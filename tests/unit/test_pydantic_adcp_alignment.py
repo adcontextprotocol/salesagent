@@ -58,7 +58,8 @@ class TestGetProductsRequestAlignment:
         assert req.filters is not None
         assert req.filters.delivery_type == "guaranteed"
         assert req.filters.is_fixed_price is True
-        assert req.filters.format_types == ["video", "display"]
+        # format_types are stored as enum objects internally but serialize to strings
+        assert [ft.value for ft in req.filters.format_types] == ["video", "display"]
         assert len(req.filters.format_ids) == 2
         assert req.filters.format_ids[0].id == "display_300x250"
         assert req.filters.format_ids[1].id == "video_30s"
@@ -77,7 +78,7 @@ class TestGetProductsRequestAlignment:
 
         assert req.filters is not None
         assert req.filters.delivery_type == "non_guaranteed"
-        assert req.filters.format_types == ["video"]
+        assert [ft.value for ft in req.filters.format_types] == ["video"]
         assert req.filters.is_fixed_price is False
 
     def test_partial_filters(self):
@@ -113,7 +114,8 @@ class TestGetProductsRequestAlignment:
             req = GetProductsRequest(
                 brand_manifest={"name": "Test product"}, filters=ProductFilters(format_types=[format_type])
             )
-            assert format_type in req.filters.format_types
+            # format_types are stored as enum objects, check enum value
+            assert format_type in [ft.value for ft in req.filters.format_types]
 
     def test_filters_delivery_type_values(self):
         """Test that delivery_type accepts valid values per AdCP spec."""
@@ -168,7 +170,8 @@ class TestProductFiltersModel:
         )
 
         assert len(filters.format_types) == 3
-        assert "video" in filters.format_types
+        # format_types are stored as enum objects, convert to strings for comparison
+        assert "video" in [ft.value for ft in filters.format_types]
         assert len(filters.format_ids) == 3
         assert filters.format_ids[0].id == "display_300x250"
 
@@ -196,7 +199,7 @@ class TestAdCPSchemaCompatibility:
         )
 
         assert req.brand_manifest.name == "mobile apps"
-        assert req.filters.format_types == ["video"]
+        assert [ft.value for ft in req.filters.format_types] == ["video"]
         assert req.filters.is_fixed_price is True
 
     def test_example_minimal_adcp_request(self):
@@ -230,7 +233,7 @@ class TestAdCPSchemaCompatibility:
         )
 
         assert req.filters.delivery_type == "non_guaranteed"
-        assert req.filters.format_types == ["video"]
+        assert [ft.value for ft in req.filters.format_types] == ["video"]
         assert len(req.filters.format_ids) == 2
         assert req.filters.format_ids[0].id == "video_30s"
         assert req.filters.format_ids[1].id == "video_15s"
@@ -302,5 +305,5 @@ class TestRegressionPrevention:
         assert req.brief == "video advertising campaigns"
         assert req.adcp_version == "1.6.0"
         assert req.filters.delivery_type == "guaranteed"
-        assert req.filters.format_types == ["video"]
+        assert [ft.value for ft in req.filters.format_types] == ["video"]
         assert req.filters.is_fixed_price is True

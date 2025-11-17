@@ -803,8 +803,8 @@ class MockAdServer(AdServerAdapter):
         return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",  # Required field per AdCP spec
             media_buy_id=media_buy_id,
-            creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),
-            packages=response_packages,  # Include packages with buyer_ref
+            creative_deadline=datetime.now(UTC) + timedelta(days=2),  # type: ignore[arg-type]
+            packages=response_packages,  # type: ignore[arg-type]
         )
 
     def add_creative_assets(
@@ -1246,7 +1246,7 @@ class MockAdServer(AdServerAdapter):
         return UpdateMediaBuySuccess(
             media_buy_id=media_buy_id,
             buyer_ref=buyer_ref,
-            packages=[],  # Required by AdCP spec
+            affected_packages=[],  # type: ignore[arg-type]
             implementation_date=today,
         )
 

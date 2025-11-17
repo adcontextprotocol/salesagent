@@ -646,7 +646,9 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                                 if not format_id or not isinstance(format_id, str):
                                     raise ValueError(f"Format missing or invalid id: id={format_id!r}")
 
-                                format_ids_list.append(FormatIdType(agent_url=agent_url, id=format_id))
+                                format_ids_list.append(
+                                    FormatIdType(agent_url=agent_url, id=format_id)  # type: ignore[arg-type]
+                                )
 
                             # Already correct type (no conversion needed)
                             elif isinstance(fmt, FormatIdType):
@@ -1310,7 +1312,7 @@ async def _create_media_buy_impl(
     if not principal:
         error_msg = f"Principal {principal_id} not found"
         # Cannot create context or workflow step without valid principal
-        return CreateMediaBuyError(
+        return CreateMediaBuyError(  # type: ignore[return-value]
             errors=[Error(code="authentication_error", message=error_msg, details=None)],
             context=req.context,
         )
@@ -1724,7 +1726,7 @@ async def _create_media_buy_impl(
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
 
         # Return error response (protocol layer will add status="failed")
-        return CreateMediaBuyError(
+        return CreateMediaBuyError(  # type: ignore[return-value]
             errors=[Error(code="validation_error", message=str(e), details=None)],
             context=req.context,
         )
@@ -2117,11 +2119,11 @@ async def _create_media_buy_impl(
             # The workflow_step_id in packages indicates approval is required
             # buyer_ref is required by schema, but mypy needs explicit check
             response_buyer_ref = req.buyer_ref if req.buyer_ref else "unknown"
-            return CreateMediaBuySuccess(
+            return CreateMediaBuySuccess(  # type: ignore[return-value]
                 buyer_ref=response_buyer_ref,
                 media_buy_id=media_buy_id,
                 creative_deadline=None,
-                packages=pending_packages,
+                packages=pending_packages,  # type: ignore[arg-type]
                 workflow_step_id=step.step_id,  # Client can track approval via this ID
                 context=req.context,
             )
@@ -2188,7 +2190,7 @@ async def _create_media_buy_impl(
                     f"  • {err}" for err in config_errors
                 )
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
-                return CreateMediaBuyError(
+                return CreateMediaBuyError(  # type: ignore[return-value]
                     errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
                     context=req.context,
                 )
@@ -2281,10 +2283,10 @@ async def _create_media_buy_impl(
             except Exception as e:
                 logger.warning(f"⚠️ Failed to send configuration approval Slack notification: {e}")
 
-            return CreateMediaBuySuccess(
+            return CreateMediaBuySuccess(  # type: ignore[return-value]
                 buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                 media_buy_id=media_buy_id,
-                packages=response_packages,  # Include packages with buyer_ref
+                packages=response_packages,  # type: ignore[arg-type]
                 workflow_step_id=step.step_id,
                 context=req.context,
             )
@@ -2455,8 +2457,10 @@ async def _create_media_buy_impl(
             cpm = 10.0  # Default
             if pkg_product.pricing_options and len(pkg_product.pricing_options) > 0:
                 first_option = pkg_product.pricing_options[0]
-                if first_option.rate:
-                    cpm = float(first_option.rate)
+                # Use getattr for discriminated union to avoid union-attr errors
+                rate = getattr(first_option, "rate", None)
+                if rate:
+                    cpm = float(rate)
 
             # Generate permanent package ID (not product_id)
             import secrets
@@ -2534,7 +2538,7 @@ async def _create_media_buy_impl(
         if not req.start_time or not req.end_time:
             error_msg = "start_time and end_time are required but were not properly set"
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return CreateMediaBuyError(
+            return CreateMediaBuyError(  # type: ignore[return-value]
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
                 context=req.context,
             )
@@ -2785,7 +2789,8 @@ async def _create_media_buy_impl(
                         # NO FALLBACK - if adapter doesn't return package_id, fail loudly
                         response_package_id = None
                         if response.packages and i < len(response.packages):
-                            response_package_id = response.packages[i].get("package_id")
+                            # Package is a Pydantic model, use attribute access
+                            response_package_id = getattr(response.packages[i], "package_id", None)
                             logger.info(f"[DEBUG] Package {i}: response.packages[i] = {response.packages[i]}")
                             logger.info(f"[DEBUG] Package {i}: extracted package_id = {response_package_id}")
 
@@ -2797,7 +2802,7 @@ async def _create_media_buy_impl(
                         # Get platform_line_item_id from response if available
                         platform_line_item_id = None
                         if response.packages and i < len(response.packages):
-                            platform_line_item_id = response.packages[i].get("platform_line_item_id")
+                            platform_line_item_id = getattr(response.packages[i], "platform_line_item_id", None)
 
                         # Collect platform creative IDs for association
                         platform_creative_ids = []
@@ -3082,7 +3087,7 @@ async def _create_media_buy_impl(
         adcp_response = CreateMediaBuySuccess(
             buyer_ref=buyer_ref_value,
             media_buy_id=response.media_buy_id,
-            packages=response_packages,
+            packages=response_packages,  # type: ignore[arg-type]
             creative_deadline=response.creative_deadline,
             context=req.context,
         )
@@ -3225,7 +3230,7 @@ async def _create_media_buy_impl(
             },
         )
 
-        return modified_response
+        return modified_response  # type: ignore[return-value]
 
     except Exception as e:
         # Update workflow step as failed on any error during execution

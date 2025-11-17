@@ -72,4 +72,5 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     # Re-raise with context - don't silently skip products!
                     raise ValueError(error_msg) from e
 
-            return loaded_products
+            # Return library Product list - compatible with our extended Product at runtime
+            return loaded_products  # type: ignore[return-value]

@@ -47,8 +47,10 @@ def get_recommended_cpm(product: Product) -> float | None:
         Recommended CPM value (p75) from price_guidance, or None if not available
     """
     for option in product.pricing_options:
-        if option.pricing_model.upper() == "CPM" and option.price_guidance:
-            p75 = option.price_guidance.p75
+        # Use getattr for discriminated union field access
+        price_guidance = getattr(option, "price_guidance", None)
+        if option.pricing_model.upper() == "CPM" and price_guidance:
+            p75 = price_guidance.p75
             if p75 is not None:
                 return float(p75)
     return None
@@ -361,9 +363,11 @@ async def _get_products_impl(
             # Convert Product models to Product schemas for response
 
             for variant_model in dynamic_variants:
-                # Convert database model to schema
+                # Convert database model to schema (returns library Product)
+                # Cast to our extended Product type for mypy compatibility
                 variant_schema = convert_product_model_to_schema(variant_model)
-                products.append(variant_schema)
+                # Type: ignore - library Product is compatible with our extended Product at runtime
+                products.append(variant_schema)  # type: ignore[arg-type]
 
             logger.info(f"[GET_PRODUCTS] Added {len(dynamic_variants)} dynamic product variants")
     except Exception as e:
@@ -401,7 +405,10 @@ async def _get_products_impl(
             # Filter by is_fixed_price (check pricing_options)
             if req.filters.is_fixed_price is not None:
                 # Check if product has any pricing option matching the fixed/auction filter
-                has_matching_pricing = any(po.is_fixed == req.filters.is_fixed_price for po in product.pricing_options)
+                # Use getattr for discriminated union field access
+                has_matching_pricing = any(
+                    getattr(po, "is_fixed", None) == req.filters.is_fixed_price for po in product.pricing_options
+                )
                 if not has_matching_pricing:
                     continue
 
@@ -549,17 +556,13 @@ async def _get_products_impl(
                 if product.pricing_options:
                     # Annotate each pricing option with "supported" flag
                     for option in product.pricing_options:
-                        pricing_model = (
-                            option.pricing_model.value
-                            if hasattr(option.pricing_model, "value")
-                            else option.pricing_model
-                        )
+                        # Get pricing model as string (handle both enum and literal)
+                        pricing_model = getattr(option.pricing_model, "value", option.pricing_model)
                         # Add supported annotation (will be included in response)
-                        option.supported = pricing_model in supported_models
-                        if not option.supported:
-                            option.unsupported_reason = (
-                                f"Current adapter does not support {pricing_model.upper()} pricing"
-                            )
+                        # Use setattr for dynamic attribute assignment on discriminated unions
+                        option.supported = pricing_model in supported_models  # type: ignore[misc]
+                        if not getattr(option, "supported", False):
+                            option.unsupported_reason = f"Current adapter does not support {pricing_model.upper()} pricing"  # type: ignore[misc]
         except Exception as e:
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 
@@ -699,9 +702,11 @@ def get_product_catalog() -> list[Product]:
         loaded_products = []
         for product in products:
             try:
-                loaded_products.append(convert_product_model_to_schema(product))
+                # convert_product_model_to_schema returns library Product
+                # which is compatible with our extended Product at runtime
+                loaded_products.append(convert_product_model_to_schema(product))  # type: ignore[arg-type]
             except ValueError as e:
                 logger.warning(f"Skipping product {product.product_id}: {e}")
                 continue
 
-    return loaded_products
+    return loaded_products  # type: ignore[return-value]

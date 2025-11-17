@@ -24,19 +24,21 @@ publisher_partners_bp = Blueprint("publisher_partners", __name__)
 
 
 @publisher_partners_bp.route("/<tenant_id>/publisher-partners", methods=["GET"])
-def list_publisher_partners(tenant_id: str) -> Response:
+def list_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
     """List all publisher partners for a tenant."""
     try:
         with get_db_session() as session:
             # Get tenant
-            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-            tenant = session.scalars(stmt).first()
+            stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = session.scalars(stmt_tenant).first()
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
             # Get all publisher partners
-            stmt = select(PublisherPartner).filter_by(tenant_id=tenant_id).order_by(PublisherPartner.publisher_domain)
-            partners = session.scalars(stmt).all()
+            stmt_partners = (
+                select(PublisherPartner).filter_by(tenant_id=tenant_id).order_by(PublisherPartner.publisher_domain)
+            )
+            partners = session.scalars(stmt_partners).all()
 
             # Convert to dict
             partners_list = []
@@ -47,10 +49,10 @@ def list_publisher_partners(tenant_id: str) -> Response:
                         "publisher_domain": partner.publisher_domain,
                         "display_name": partner.display_name,
                         "is_verified": partner.is_verified,
-                        "last_synced_at": partner.last_synced_at.isoformat() if partner.last_synced_at else None,
+                        "last_synced_at": partner.last_synced_at.isoformat() if partner.last_synced_at else None,  # type: ignore[attr-defined]
                         "sync_status": partner.sync_status,
                         "sync_error": partner.sync_error,
-                        "created_at": partner.created_at.isoformat(),
+                        "created_at": partner.created_at.isoformat(),  # type: ignore[attr-defined]
                     }
                 )
 
@@ -69,7 +71,7 @@ def list_publisher_partners(tenant_id: str) -> Response:
 
 
 @publisher_partners_bp.route("/<tenant_id>/publisher-partners", methods=["POST"])
-def add_publisher_partner(tenant_id: str) -> Response:
+def add_publisher_partner(tenant_id: str) -> Response | tuple[Response, int]:
     """Add a new publisher partner."""
     try:
         data = request.get_json()
@@ -120,7 +122,7 @@ def add_publisher_partner(tenant_id: str) -> Response:
 
 
 @publisher_partners_bp.route("/<tenant_id>/publisher-partners/<int:partner_id>", methods=["DELETE"])
-def delete_publisher_partner(tenant_id: str, partner_id: int) -> Response:
+def delete_publisher_partner(tenant_id: str, partner_id: int) -> Response | tuple[Response, int]:
     """Delete a publisher partner."""
     try:
         with get_db_session() as session:
@@ -141,13 +143,13 @@ def delete_publisher_partner(tenant_id: str, partner_id: int) -> Response:
 
 
 @publisher_partners_bp.route("/<tenant_id>/publisher-partners/sync", methods=["POST"])
-def sync_publisher_partners(tenant_id: str) -> Response:
+def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
     """Sync verification status for all publisher partners."""
     try:
         with get_db_session() as session:
             # Get tenant
-            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-            tenant = session.scalars(stmt).first()
+            stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = session.scalars(stmt_tenant).first()
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
@@ -155,8 +157,8 @@ def sync_publisher_partners(tenant_id: str) -> Response:
             agent_url = get_tenant_url(tenant.subdomain)
 
             # Get all publisher partners
-            stmt = select(PublisherPartner).filter_by(tenant_id=tenant_id)
-            partners = session.scalars(stmt).all()
+            stmt_partners = select(PublisherPartner).filter_by(tenant_id=tenant_id)
+            partners = session.scalars(stmt_partners).all()
 
             if not partners:
                 return jsonify({"message": "No publishers to sync"}), 200
@@ -245,15 +247,15 @@ def sync_publisher_partners(tenant_id: str) -> Response:
             for partner in partners:
                 result = results_dict.get(partner.publisher_domain)
 
-                if result["status"] == "success":
+                if result and result["status"] == "success":
                     partner.sync_status = "success"
                     partner.sync_error = None
                     partner.is_verified = result["is_verified"]
-                    partner.last_synced_at = datetime.now(UTC)
+                    partner.last_synced_at = datetime.now(UTC)  # type: ignore[assignment]
                     synced += 1
                     if result["is_verified"]:
                         verified += 1
-                else:
+                elif result:
                     partner.sync_status = "error"
                     partner.sync_error = result["error"]
                     partner.is_verified = False
@@ -277,19 +279,19 @@ def sync_publisher_partners(tenant_id: str) -> Response:
 
 
 @publisher_partners_bp.route("/<tenant_id>/publisher-partners/<int:partner_id>/properties", methods=["GET"])
-def get_publisher_properties(tenant_id: str, partner_id: int) -> Response:
+def get_publisher_properties(tenant_id: str, partner_id: int) -> Response | tuple[Response, int]:
     """Get properties for a specific publisher (fetched fresh from adagents.json)."""
     try:
         with get_db_session() as session:
             # Get tenant
-            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-            tenant = session.scalars(stmt).first()
+            stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = session.scalars(stmt_tenant).first()
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
             # Get publisher partner
-            stmt = select(PublisherPartner).filter_by(id=partner_id, tenant_id=tenant_id)
-            partner = session.scalars(stmt).first()
+            stmt_partner = select(PublisherPartner).filter_by(id=partner_id, tenant_id=tenant_id)
+            partner = session.scalars(stmt_partner).first()
 
             if not partner:
                 return jsonify({"error": "Publisher not found"}), 404
@@ -331,7 +333,7 @@ def get_publisher_properties(tenant_id: str, partner_id: int) -> Response:
                         "is_authorized": True,
                         "property_ids": ctx.property_ids,
                         "property_tags": ctx.property_tags,
-                        "properties": ctx.properties,
+                        "properties": ctx.raw_properties,
                     }
                 )
 

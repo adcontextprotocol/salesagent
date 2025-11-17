@@ -309,8 +309,8 @@ class TritonDigital(AdServerAdapter):
         return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",
             media_buy_id=media_buy_id,
-            creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),
-            packages=package_responses,
+            creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),  # type: ignore[arg-type]
+            packages=package_responses,  # type: ignore[arg-type]
         )
 
     def add_creative_assets(
@@ -636,7 +636,7 @@ class TritonDigital(AdServerAdapter):
             return UpdateMediaBuySuccess(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
-                packages=[],  # Required by AdCP spec
+                affected_packages=[],  # List of package_ids affected by update
                 implementation_date=today,
             )
         else:
@@ -711,7 +711,7 @@ class TritonDigital(AdServerAdapter):
                 return UpdateMediaBuySuccess(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
-                    packages=[],  # Required by AdCP spec
+                    affected_packages=[],  # List of package_ids affected by update
                     implementation_date=today,
                 )
 

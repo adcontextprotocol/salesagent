@@ -343,13 +343,13 @@ class XandrAdapter(AdServerAdapter):
                     name="Display - Standard Banners",
                     description="Standard display banner placements (supports geo, device, os, browser targeting)",
                     format_ids=[
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_320x50"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),  # type: ignore[arg-type]
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),  # type: ignore[arg-type]
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_320x50"),  # type: ignore[arg-type]
                     ],
-                    delivery_type="non_guaranteed",
+                    delivery_type="non_guaranteed",  # type: ignore[arg-type]
                     pricing_options=[
-                        PricingOption(
+                        PricingOption(  # type: ignore[list-item]
                             pricing_option_id="xandr_display_cpm",
                             pricing_model=PricingModel.CPM,
                             rate=None,
@@ -363,7 +363,7 @@ class XandrAdapter(AdServerAdapter):
                         )
                     ],
                     publisher_properties=[
-                        Property(
+                        Property(  # type: ignore[list-item]
                             property_type="website",
                             name="All Inventory",
                             identifiers=[PropertyIdentifier(type="domain", value="*")],
@@ -375,7 +375,7 @@ class XandrAdapter(AdServerAdapter):
                     creative_policy=None,
                     brief_relevance=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=None,  # type: ignore[arg-type]
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -386,12 +386,12 @@ class XandrAdapter(AdServerAdapter):
                     name="Video - In-Stream",
                     description="Pre-roll, mid-roll, and post-roll video (supports geo, device, content targeting)",
                     format_ids=[
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_9x16"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),  # type: ignore[arg-type]
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_9x16"),  # type: ignore[arg-type]
                     ],
-                    delivery_type="non_guaranteed",
+                    delivery_type="non_guaranteed",  # type: ignore[arg-type]
                     pricing_options=[
-                        PricingOption(
+                        PricingOption(  # type: ignore[list-item]
                             pricing_option_id="xandr_video_cpm",
                             pricing_model=PricingModel.CPM,
                             rate=None,
@@ -405,7 +405,7 @@ class XandrAdapter(AdServerAdapter):
                         )
                     ],
                     publisher_properties=[
-                        Property(
+                        Property(  # type: ignore[list-item]
                             property_type="website",
                             name="All Inventory",
                             identifiers=[PropertyIdentifier(type="domain", value="*")],
@@ -417,7 +417,7 @@ class XandrAdapter(AdServerAdapter):
                     creative_policy=None,
                     brief_relevance=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=None,  # type: ignore[arg-type]
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -428,12 +428,12 @@ class XandrAdapter(AdServerAdapter):
                     name="Native Advertising",
                     description="Native ad placements (supports geo, device, context targeting)",
                     format_ids=[
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_1x1"),
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_1.2x1"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_1x1"),  # type: ignore[arg-type]
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="native_1.2x1"),  # type: ignore[arg-type]
                     ],
-                    delivery_type="non_guaranteed",
+                    delivery_type="non_guaranteed",  # type: ignore[arg-type]
                     pricing_options=[
-                        PricingOption(
+                        PricingOption(  # type: ignore[list-item]
                             pricing_option_id="xandr_native_cpm",
                             pricing_model=PricingModel.CPM,
                             rate=None,
@@ -447,7 +447,7 @@ class XandrAdapter(AdServerAdapter):
                         )
                     ],
                     publisher_properties=[
-                        Property(
+                        Property(  # type: ignore[list-item]
                             property_type="website",
                             name="All Inventory",
                             identifiers=[PropertyIdentifier(type="domain", value="*")],
@@ -459,7 +459,7 @@ class XandrAdapter(AdServerAdapter):
                     creative_policy=None,
                     brief_relevance=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=None,  # type: ignore[arg-type]
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -470,13 +470,13 @@ class XandrAdapter(AdServerAdapter):
                     name="Private Marketplace Deals",
                     description="Access to premium inventory through deals (pricing varies by deal)",
                     format_ids=[
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
-                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),  # type: ignore[arg-type]
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),  # type: ignore[arg-type]
+                        FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),  # type: ignore[arg-type]
                     ],
-                    delivery_type="non_guaranteed",
+                    delivery_type="non_guaranteed",  # type: ignore[arg-type]
                     pricing_options=[
-                        PricingOption(
+                        PricingOption(  # type: ignore[list-item]
                             pricing_option_id="xandr_deals_cpm",
                             pricing_model=PricingModel.CPM,
                             rate=None,
@@ -490,7 +490,7 @@ class XandrAdapter(AdServerAdapter):
                         )
                     ],
                     publisher_properties=[
-                        Property(
+                        Property(  # type: ignore[list-item]
                             property_type="website",
                             name="All Inventory",
                             identifiers=[PropertyIdentifier(type="domain", value="*")],
@@ -502,7 +502,7 @@ class XandrAdapter(AdServerAdapter):
                     creative_policy=None,
                     brief_relevance=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=None,  # type: ignore[arg-type]
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -556,7 +556,7 @@ class XandrAdapter(AdServerAdapter):
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
                 media_buy_id=f"xandr_pending_{task_id}",
-                packages=package_responses,
+                packages=package_responses,  # type: ignore[arg-type]
                 creative_deadline=None,
             )
 
@@ -660,8 +660,8 @@ class XandrAdapter(AdServerAdapter):
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
                 media_buy_id=f"xandr_io_{io_id}",
-                creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),
-                packages=package_responses,
+                creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),  # type: ignore[arg-type]
+                packages=package_responses,  # type: ignore[arg-type]
             )
 
         except Exception as e:

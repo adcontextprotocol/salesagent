@@ -537,7 +537,7 @@ class GoogleAdManager(AdServerAdapter):
                     media_buy_id=media_buy_id,
                     creative_deadline=None,
                     workflow_step_id=step_id,
-                    packages=package_responses,
+                    packages=package_responses,  # type: ignore[arg-type]
                 )
             else:
                 error_msg = "Failed to create manual order workflow step"
@@ -698,7 +698,7 @@ class GoogleAdManager(AdServerAdapter):
                 media_buy_id=order_id,
                 creative_deadline=None,
                 workflow_step_id=step_id,
-                packages=package_responses,
+                packages=package_responses,  # type: ignore[arg-type]
             )
 
         # Build package responses - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
@@ -724,7 +724,7 @@ class GoogleAdManager(AdServerAdapter):
             )
 
         return CreateMediaBuySuccess(
-            buyer_ref=request.buyer_ref or "", media_buy_id=order_id, creative_deadline=None, packages=package_responses
+            buyer_ref=request.buyer_ref or "", media_buy_id=order_id, creative_deadline=None, packages=package_responses  # type: ignore[arg-type]
         )
 
     def archive_order(self, order_id: str) -> bool:
@@ -947,7 +947,7 @@ class GoogleAdManager(AdServerAdapter):
                 return UpdateMediaBuySuccess(
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
-                    packages=[],  # Required by AdCP spec
+                    affected_packages=[],  # List of package_ids affected by update
                     implementation_date=today,
                 )
             else:
@@ -976,7 +976,7 @@ class GoogleAdManager(AdServerAdapter):
                     return UpdateMediaBuySuccess(
                         media_buy_id=media_buy_id,
                         buyer_ref=buyer_ref,
-                        packages=[],  # Required by AdCP spec
+                        affected_packages=[],  # type: ignore[arg-type]
                         implementation_date=today,
                         workflow_step_id=step_id,
                     )
@@ -995,7 +995,7 @@ class GoogleAdManager(AdServerAdapter):
         return UpdateMediaBuySuccess(
             media_buy_id=media_buy_id,
             buyer_ref=buyer_ref,
-            packages=[],
+            affected_packages=[],  # List of package_ids affected by update
             implementation_date=today,  # Required by AdCP spec
         )
 

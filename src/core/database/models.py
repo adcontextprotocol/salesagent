@@ -148,6 +148,11 @@ class Tenant(Base, JSONValidatorMixin):
 
         self._gemini_api_key = encrypt_api_key(value)
 
+    @property
+    def primary_domain(self) -> str | None:
+        """Get primary domain for this tenant (virtual_host or subdomain-based)."""
+        return self.virtual_host or (f"{self.subdomain}.example.com" if self.subdomain else None)
+
 
 # CreativeFormat model removed - table dropped in migration f2addf453200 (Oct 13, 2025)
 # Creative formats are now fetched from creative agents via AdCP protocol

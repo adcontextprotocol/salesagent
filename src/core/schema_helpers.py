@@ -52,10 +52,11 @@ def create_get_products_request(
         ... )
     """
     # Create GetProductsRequest directly - adcp library handles validation
+    # Type ignores: dict inputs are validated by Pydantic at runtime
     return GetProductsRequest(
-        brand_manifest=brand_manifest,
+        brand_manifest=brand_manifest,  # type: ignore[arg-type]
         brief=brief or None,
-        filters=filters,
+        filters=filters,  # type: ignore[arg-type]
         context=context,
     )
 

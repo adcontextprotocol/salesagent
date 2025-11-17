@@ -12,6 +12,7 @@ Products can reference inventory profiles to avoid duplicating configuration.
 import json
 import logging
 import re
+from collections.abc import Sequence
 
 from flask import Blueprint, Flask, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func, select
@@ -348,8 +349,8 @@ def add_inventory_profile(tenant_id: str):
             select(AuthorizedProperty).where(AuthorizedProperty.tenant_id == tenant_id)
         ).all()
 
-        # Get property tags
-        property_tags = session.scalars(
+        # Get property tags (as PropertyTag objects, not strings)
+        property_tags_list: Sequence[PropertyTag] = session.scalars(
             select(PropertyTag).where(PropertyTag.tenant_id == tenant_id).order_by(PropertyTag.tag_id)
         ).all()
 
@@ -358,7 +359,7 @@ def add_inventory_profile(tenant_id: str):
         tenant_id=tenant_id,
         tenant=tenant,
         authorized_properties=authorized_properties,
-        property_tags=property_tags,
+        property_tags=property_tags_list,
         active_tab="inventory_profiles",
     )
 
@@ -566,7 +567,7 @@ def edit_inventory_profile(tenant_id: str, profile_id: int):
             select(AuthorizedProperty).where(AuthorizedProperty.tenant_id == tenant_id)
         ).all()
 
-        property_tags = session.scalars(
+        property_tags_list: Sequence[PropertyTag] = session.scalars(
             select(PropertyTag).where(PropertyTag.tenant_id == tenant_id).order_by(PropertyTag.tag_id)
         ).all()
 
@@ -576,7 +577,7 @@ def edit_inventory_profile(tenant_id: str, profile_id: int):
         tenant=tenant,
         profile=profile,
         authorized_properties=authorized_properties,
-        property_tags=property_tags,
+        property_tags=property_tags_list,
         active_tab="inventory_profiles",
     )
 

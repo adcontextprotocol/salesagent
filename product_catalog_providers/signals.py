@@ -179,17 +179,17 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             name=product_name,
             description=product_description,
             format_ids=[
-                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
-                FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_pre_roll"),
+                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),  # type: ignore[arg-type]
+                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),  # type: ignore[arg-type]
+                FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_pre_roll"),  # type: ignore[arg-type]
             ],
-            delivery_type="non_guaranteed",  # Signals products are typically programmatic
+            delivery_type="non_guaranteed",  # type: ignore[arg-type]  # String matches DeliveryType enum
             measurement=None,  # Optional - signals products don't include measurement
             creative_policy=None,  # Optional - signals products don't include creative policy
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
             publisher_properties=[
-                Property(
+                Property(  # type: ignore[list-item]
                     property_type="website",
                     name="All Inventory",
                     identifiers=[PropertyIdentifier(type="domain", value="*")],
@@ -198,13 +198,13 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
                 )
             ],  # Required per AdCP spec
             estimated_exposures=None,  # Optional - signals products don't have exposure estimates
-            delivery_measurement=None,  # Optional - new field from product details
+            delivery_measurement=None,  # type: ignore[arg-type]  # Optional field, None is valid at runtime
             product_card=None,  # Optional - new field from product details
             product_card_detailed=None,  # Optional - new field from product details
             placements=None,  # Optional - new field from product details
             reporting_capabilities=None,  # Optional - new field from product details
             pricing_options=[
-                PricingOption(
+                PricingOption(  # type: ignore[list-item]
                     pricing_option_id="cpm_usd_auction",
                     pricing_model="cpm",  # type: ignore[arg-type]  # String literal matches PricingModel enum
                     rate=None,  # Optional - auction-based pricing doesn't have fixed rate

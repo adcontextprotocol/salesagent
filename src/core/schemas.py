@@ -261,9 +261,13 @@ class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
+    # Override affected_packages to allow custom internal format
+    # AdCP spec defines affected_packages with buyer_ref + package_id
+    # We extend with buyer_package_ref + changes_applied for internal tracking
+    affected_packages: list[dict[str, Any]] | None = None  # type: ignore[assignment]
+
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
-    # Note: affected_packages is defined in parent class (AdCPUpdateMediaBuySuccess)
 
     @model_serializer(mode="wrap")
     def _serialize_model(self, serializer, info):
@@ -1412,7 +1416,9 @@ class GetProductsResponse(NestedModelSerializerMixin, AdCPBaseModel):
         # Check if this looks like an anonymous response (all pricing options have no rates)
         # Use getattr() to handle discriminated union (rate field only exists in fixed-rate variants)
         if count > 0 and all(
-            all(getattr(po, "rate", None) is None for po in p.pricing_options) for p in self.products if p.pricing_options
+            all(getattr(po, "rate", None) is None for po in p.pricing_options)
+            for p in self.products
+            if p.pricing_options
         ):
             return f"{base_msg} Please connect through an authorized buying agent for pricing data."
 
