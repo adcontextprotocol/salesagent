@@ -16,7 +16,7 @@ def test_upgrade_legacy_string_format():
 
     assert isinstance(result, FormatId)
     assert result.id == "display_300x250"
-    assert result.agent_url == DEFAULT_AGENT_URL
+    assert str(result.agent_url) == DEFAULT_AGENT_URL  # AnyUrl object, convert to string for comparison
 
 
 def test_upgrade_format_id_object_passthrough():
@@ -25,7 +25,7 @@ def test_upgrade_format_id_object_passthrough():
     result = upgrade_legacy_format_id(original)
 
     assert result is original
-    assert result.agent_url == "https://custom.example.com"
+    assert str(result.agent_url) == "https://custom.example.com"  # AnyUrl object, convert to string
 
 
 def test_upgrade_dict_with_agent_url():
@@ -33,7 +33,7 @@ def test_upgrade_dict_with_agent_url():
     result = upgrade_legacy_format_id({"agent_url": "https://custom.example.com", "id": "custom_format"})
 
     assert isinstance(result, FormatId)
-    assert result.agent_url == "https://custom.example.com"
+    assert str(result.agent_url) == "https://custom.example.com"  # AnyUrl object, convert to string
     assert result.id == "custom_format"
 
 
@@ -43,7 +43,7 @@ def test_upgrade_dict_without_agent_url():
 
     assert isinstance(result, FormatId)
     assert result.id == "display_300x250"
-    assert result.agent_url == DEFAULT_AGENT_URL
+    assert str(result.agent_url) == DEFAULT_AGENT_URL  # AnyUrl object, convert to string
 
 
 def test_get_agent_url_for_format():
