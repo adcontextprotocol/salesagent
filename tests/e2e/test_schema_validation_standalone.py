@@ -38,7 +38,11 @@ async def test_valid_get_products_response():
                     "name": "Test Display Product",
                     "description": "Test description",
                     "publisher_properties": [
-                        {"publisher_domain": "example.com", "property_tags": ["premium_content"]}
+                        {
+                            "publisher_domain": "example.com",
+                            "selection_type": "by_tag",
+                            "property_tags": ["premium_content"],
+                        }
                     ],  # Required: publisher properties covered by this product
                     "format_ids": [
                         {
