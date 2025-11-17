@@ -1899,10 +1899,10 @@ def _list_creatives_impl(
                 )
 
             # Build Creative directly with explicit types to satisfy mypy
-            from src.core.schemas import FormatId
+            from src.core.schemas import FormatId, url
 
             format_obj = FormatId(
-                agent_url=db_creative.agent_url or "",  # type: ignore[arg-type]
+                agent_url=url(db_creative.agent_url),  # agent_url is nullable=False in DB
                 id=db_creative.format or "",
             )
 
