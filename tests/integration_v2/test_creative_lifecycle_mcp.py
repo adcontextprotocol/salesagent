@@ -194,8 +194,8 @@ class TestCreativeLifecycleMCP:
         core_sync_creatives_tool, _ = self._import_mcp_tools()
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
             # Call sync_creatives tool (uses default patch=False for full upsert)
             response = core_sync_creatives_tool(creatives=sample_creatives, ctx=mock_context)
@@ -251,6 +251,7 @@ class TestCreativeLifecycleMCP:
                     "url": "https://example.com/old.jpg",
                     "width": 300,
                     "height": 250,
+                    "assets": {"main": {"url": "https://example.com/old.jpg", "width": 300, "height": 250}},
                 },
             )
             session.add(existing_creative)
@@ -270,8 +271,8 @@ class TestCreativeLifecycleMCP:
         ]
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
             # Upsert with patch=False (default): full replacement
             response = core_sync_creatives_tool(creatives=updated_creative_data, ctx=mock_context)
@@ -305,8 +306,8 @@ class TestCreativeLifecycleMCP:
         creative_id = creative_data[0]["creative_id"]
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
             # Use spec-compliant assignments dict: creative_id → package_ids
             response = core_sync_creatives_tool(
@@ -341,8 +342,8 @@ class TestCreativeLifecycleMCP:
         creative_id = creative_data[0]["creative_id"]
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
             # Use spec-compliant assignments dict
             response = core_sync_creatives_tool(
@@ -383,8 +384,8 @@ class TestCreativeLifecycleMCP:
         ]
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
             response = core_sync_creatives_tool(creatives=invalid_creatives, ctx=mock_context)
 
@@ -432,6 +433,13 @@ class TestCreativeLifecycleMCP:
                         "url": f"https://example.com/creative_{i}.jpg",
                         "width": 300,
                         "height": 250,
+                        "assets": {
+                            "main": {
+                                "url": f"https://example.com/creative_{i}.jpg",
+                                "width": 300,
+                                "height": 250,
+                            }
+                        },
                     },
                 )
                 for i in range(5)
@@ -440,8 +448,8 @@ class TestCreativeLifecycleMCP:
             session.commit()
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
             patch(
                 "fastmcp.server.dependencies.get_http_headers",
                 return_value={
@@ -478,6 +486,7 @@ class TestCreativeLifecycleMCP:
                     agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
+                    data={"assets": {"main": {"url": f"https://example.com/approved_{i}.jpg"}}},
                 )
                 for i in range(3)
             ] + [
@@ -489,6 +498,7 @@ class TestCreativeLifecycleMCP:
                     agent_url="https://creative.adcontextprotocol.org",
                     format="display_728x90",
                     status="pending",
+                    data={"assets": {"main": {"url": f"https://example.com/pending_{i}.jpg"}}},
                 )
                 for i in range(2)
             ]
@@ -496,8 +506,8 @@ class TestCreativeLifecycleMCP:
             session.commit()
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
             patch(
                 "fastmcp.server.dependencies.get_http_headers",
                 return_value={
@@ -536,6 +546,7 @@ class TestCreativeLifecycleMCP:
                     agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
+                    data={"assets": {"main": {"url": f"https://example.com/banner_{i}.jpg"}}},
                 )
                 for i in range(2)
             ] + [
@@ -547,7 +558,7 @@ class TestCreativeLifecycleMCP:
                     agent_url="https://creative.adcontextprotocol.org",
                     format="video_640x480",
                     status="approved",
-                    data={"duration": 15.0},
+                    data={"duration": 15.0, "assets": {"main": {"url": f"https://example.com/video_{i}.mp4"}}},
                 )
                 for i in range(3)
             ]
@@ -555,8 +566,8 @@ class TestCreativeLifecycleMCP:
             session.commit()
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
             patch(
                 "fastmcp.server.dependencies.get_http_headers",
                 return_value={
@@ -618,6 +629,7 @@ class TestCreativeLifecycleMCP:
                     format="display_300x250",
                     status="approved",
                     created_at=now - timedelta(days=10 + i),  # 10+ days ago
+                    data={"assets": {"main": {"url": f"https://example.com/old_{i}.jpg"}}},
                 )
                 for i in range(2)
             ] + [
@@ -630,6 +642,7 @@ class TestCreativeLifecycleMCP:
                     format="display_300x250",
                     status="approved",
                     created_at=now - timedelta(days=2 + i),  # 2-3 days ago
+                    data={"assets": {"main": {"url": f"https://example.com/recent_{i}.jpg"}}},
                 )
                 for i in range(2)
             ]
@@ -637,8 +650,8 @@ class TestCreativeLifecycleMCP:
             session.commit()
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
             patch(
                 "fastmcp.server.dependencies.get_http_headers",
                 return_value={
@@ -671,6 +684,7 @@ class TestCreativeLifecycleMCP:
                     agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
+                    data={"assets": {"main": {"url": "https://example.com/holiday_banner.jpg"}}},
                 ),
                 DBCreative(
                     tenant_id=self.test_tenant_id,
@@ -680,6 +694,7 @@ class TestCreativeLifecycleMCP:
                     agent_url="https://creative.adcontextprotocol.org",
                     format="video_pre_roll",
                     status="approved",
+                    data={"assets": {"main": {"url": "https://example.com/holiday_video.mp4"}}},
                 ),
                 DBCreative(
                     tenant_id=self.test_tenant_id,
@@ -689,14 +704,15 @@ class TestCreativeLifecycleMCP:
                     agent_url="https://creative.adcontextprotocol.org",
                     format="display_728x90",
                     status="approved",
+                    data={"assets": {"main": {"url": "https://example.com/summer_banner.jpg"}}},
                 ),
             ]
             session.add_all(creatives)
             session.commit()
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
             patch(
                 "fastmcp.server.dependencies.get_http_headers",
                 return_value={
@@ -735,6 +751,7 @@ class TestCreativeLifecycleMCP:
                     agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
                     status="approved",
+                    data={"assets": {"main": {"url": f"https://example.com/creative_{i:02d}.jpg"}}},
                 )
                 for i in range(25)  # Create 25 creatives
             ]
@@ -742,8 +759,8 @@ class TestCreativeLifecycleMCP:
             session.commit()
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
             patch(
                 "fastmcp.server.dependencies.get_http_headers",
                 return_value={
@@ -793,6 +810,7 @@ class TestCreativeLifecycleMCP:
                 agent_url="https://creative.adcontextprotocol.org",
                 format="display_300x250",
                 status="approved",
+                data={"assets": {"main": {"url": "https://example.com/assigned_1.jpg"}}},
             )
             creative_2 = DBCreative(
                 tenant_id=self.test_tenant_id,
@@ -802,6 +820,7 @@ class TestCreativeLifecycleMCP:
                 agent_url="https://creative.adcontextprotocol.org",
                 format="display_300x250",
                 status="approved",
+                data={"assets": {"main": {"url": "https://example.com/unassigned.jpg"}}},
             )
             session.add_all([creative_1, creative_2])
 
@@ -818,8 +837,8 @@ class TestCreativeLifecycleMCP:
             session.commit()
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
             patch(
                 "fastmcp.server.dependencies.get_http_headers",
                 return_value={
@@ -879,8 +898,8 @@ class TestCreativeLifecycleMCP:
         """
         core_sync_creatives_tool, _ = self._import_mcp_tools()
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value=None),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value=None),
         ):
             # The function still works because principal lookup finds the tenant
             response = core_sync_creatives_tool(creatives=sample_creatives, ctx=mock_context)
@@ -890,8 +909,8 @@ class TestCreativeLifecycleMCP:
         """Test list_creatives handles empty results gracefully."""
         _, core_list_creatives_tool = self._import_mcp_tools()
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
             patch(
                 "fastmcp.server.dependencies.get_http_headers",
                 return_value={
@@ -913,8 +932,8 @@ class TestCreativeLifecycleMCP:
         # First, sync creatives to have IDs to reference
         core_sync_creatives_tool, _ = self._import_mcp_tools()
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
         ):
             sync_response = core_sync_creatives_tool(creatives=sample_creatives, ctx=mock_context)
             assert len(sync_response.creatives) == 3
@@ -927,8 +946,8 @@ class TestCreativeLifecycleMCP:
         creative_ids = [c["creative_id"] for c in sample_creatives]
 
         with (
-            patch("src.core.helpers.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.main.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
+            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
             patch("src.core.tools.media_buy_create.get_principal_object") as mock_principal,
             patch("src.core.tools.media_buy_create.get_adapter") as mock_adapter,
             patch("src.core.main.get_product_catalog") as mock_catalog,

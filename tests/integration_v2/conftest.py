@@ -452,6 +452,25 @@ def add_required_setup_data(session, tenant_id: str):
 # (intentional - ensures tests stay up to date with migrations).
 
 
+def get_pricing_option_id(product, currency: str = "USD") -> str:
+    """Get the pricing_option_id for a given product and currency.
+
+    Args:
+        product: Product instance (from create_test_product_with_pricing)
+        currency: Currency code to find (default: USD)
+
+    Returns:
+        String pricing_option_id (database ID converted to string)
+
+    Raises:
+        ValueError: If no pricing option found for currency
+    """
+    for pricing_option in product.pricing_options:
+        if pricing_option.currency == currency:
+            return str(pricing_option.id)
+    raise ValueError(f"No pricing option found for currency {currency} on product {product.product_id}")
+
+
 def create_test_product_with_pricing(
     session,
     tenant_id: str,
