@@ -2492,9 +2492,11 @@ class Package(BaseModel):
 
         # Ensure required AdCP fields are present for responses
         # (These should be set during package creation/processing)
-        if data.get("package_id") is None:
+        # Check the actual object attributes, not the serialized dict,
+        # because exclude_none=True (default) may exclude None values from the dict
+        if self.package_id is None:
             raise ValueError("Package missing required package_id for AdCP response")
-        if data.get("status") is None:
+        if self.status is None:
             raise ValueError("Package missing required status for AdCP response")
 
         return data
