@@ -91,10 +91,17 @@ def convert_product_model_to_schema(product_model) -> Product:
         }
 
     # pricing_options: Convert database PricingOption models to AdCP discriminated unions
+    # Per adcp library spec, pricing_options must have at least 1 item (min_length=1)
     if product_model.pricing_options:
         product_data["pricing_options"] = [convert_pricing_option_to_adcp(po) for po in product_model.pricing_options]
     else:
-        product_data["pricing_options"] = []
+        # Products without pricing options cannot be converted to AdCP schema
+        # This is a data integrity error - all products must have pricing
+        raise ValueError(
+            f"Product {product_model.product_id} has no pricing_options. "
+            f"All products must have at least one pricing option per AdCP spec. "
+            f"Create a PricingOption record for this product."
+        )
 
     # Optional fields
     if product_model.measurement:

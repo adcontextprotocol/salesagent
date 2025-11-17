@@ -13,10 +13,12 @@ Tests cover:
 - effective_implementation_config: Builds GAM config from profile or returns custom config
 """
 
+from decimal import Decimal
+
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import InventoryProfile, Tenant
+from src.core.database.models import InventoryProfile, PricingOption, Tenant
 from tests.helpers.adcp_factories import create_test_db_product
 
 
@@ -96,7 +98,19 @@ def test_product_custom(integration_db, test_tenant):
             is_custom=True,
             countries=["US"],
         )
+
+        # Add required pricing option
+        pricing = PricingOption(
+            tenant_id=test_tenant.tenant_id,
+            product_id="custom_product",
+            pricing_model="cpm",
+            rate=Decimal("10.0"),
+            currency="USD",
+            is_fixed=True,
+        )
+
         session.add(product)
+        session.add(pricing)
         session.commit()
         session.refresh(product)
         return product
@@ -122,7 +136,19 @@ def test_product_with_profile(integration_db, test_tenant, test_profile):
             is_custom=False,
             countries=["US"],
         )
+
+        # Add required pricing option
+        pricing = PricingOption(
+            tenant_id=test_tenant.tenant_id,
+            product_id="profile_product",
+            pricing_model="cpm",
+            rate=Decimal("10.0"),
+            currency="USD",
+            is_fixed=True,
+        )
+
         session.add(product)
+        session.add(pricing)
         session.commit()
         session.refresh(product)
         return product
@@ -407,6 +433,18 @@ class TestEffectiveImplementationConfig:
             session.add(product)
             session.commit()
             product_id = product.product_id
+
+            # Add required pricing option
+            pricing = PricingOption(
+                tenant_id=test_tenant.tenant_id,
+                product_id="test_profile_fallback",
+                pricing_model="cpm",
+                rate=Decimal("10.0"),
+                currency="USD",
+                is_fixed=True,
+            )
+            session.add(pricing)
+            session.commit()
 
         # Reload product in a new session without loading the relationship
         with get_db_session() as session:

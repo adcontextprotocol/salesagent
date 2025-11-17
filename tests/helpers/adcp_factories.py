@@ -799,3 +799,63 @@ def create_test_db_product(
         inventory_profile_id=inventory_profile_id,
         **kwargs,
     )
+
+
+def create_test_db_product_with_pricing(
+    tenant_id: str,
+    product_id: str = "test_product",
+    pricing_model: str = "cpm",
+    rate: float = 10.0,
+    currency: str = "USD",
+    **product_kwargs,
+) -> tuple[Any, Any]:
+    """Create a test Product with PricingOption - ready for AdCP schema conversion.
+
+    This is a convenience helper that creates both a Product and its required PricingOption,
+    ensuring the product can be successfully converted to AdCP schema format.
+
+    Args:
+        tenant_id: Tenant identifier (REQUIRED)
+        product_id: Product identifier
+        pricing_model: Pricing model (cpm, cpc, vcpm, etc.)
+        rate: Fixed rate for the pricing model
+        currency: Currency code (USD, EUR, etc.)
+        **product_kwargs: Additional arguments passed to create_test_db_product()
+
+    Returns:
+        Tuple of (Product, PricingOption) ready to be added to session
+
+    Example:
+        from decimal import Decimal
+        with get_db_session() as session:
+            product, pricing = create_test_db_product_with_pricing(
+                tenant_id="test_tenant",
+                product_id="display_premium",
+                rate=15.0
+            )
+            session.add(product)
+            session.add(pricing)
+            session.commit()
+
+            # Product can now be converted to AdCP schema
+            from src.core.product_conversion import convert_product_model_to_schema
+            adcp_product = convert_product_model_to_schema(product)
+    """
+    from decimal import Decimal
+
+    from src.core.database.models import PricingOption
+
+    # Create product
+    product = create_test_db_product(tenant_id=tenant_id, product_id=product_id, **product_kwargs)
+
+    # Create pricing option
+    pricing = PricingOption(
+        tenant_id=tenant_id,
+        product_id=product_id,
+        pricing_model=pricing_model,
+        rate=Decimal(str(rate)),
+        currency=currency,
+        is_fixed=True,
+    )
+
+    return product, pricing

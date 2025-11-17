@@ -5,7 +5,7 @@ from typing import Any
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ModelProduct
-from src.core.database.product_pricing import get_product_pricing_options
+from src.core.product_conversion import convert_product_model_to_schema
 from src.core.schemas import Product
 from src.core.signals_agent_registry import get_signals_agent_registry
 
@@ -247,53 +247,16 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
 
                 for db_product in db_products:
                     # Convert database model to AdCP-compliant Product schema
-                    # (Similar to database.py approach - only include AdCP spec fields)
-                    # Get pricing from pricing_options (preferred) or legacy fields (fallback)
-                    pricing_options = get_product_pricing_options(db_product)
-                    first_pricing = pricing_options[0] if pricing_options else {}
-
-                    product_data = {
-                        "product_id": db_product.product_id,
-                        "name": db_product.name,
-                        "description": db_product.description or f"Advertising product: {db_product.name}",
-                        "format_ids": db_product.format_ids or [],
-                        "delivery_type": "guaranteed" if first_pricing.get("is_fixed") else "non_guaranteed",
-                        "is_fixed_price": first_pricing.get("is_fixed", False),
-                        "cpm": first_pricing.get("rate"),
-                        "min_spend": (
-                            float(first_pricing["min_spend_per_package"])
-                            if first_pricing.get("min_spend_per_package")
-                            else None
-                        ),
-                        "is_custom": getattr(db_product, "is_custom", False),
-                        "property_tags": getattr(
-                            db_product, "property_tags", ["all_inventory"]
-                        ),  # Required per AdCP spec
-                    }
-
-                    # Handle JSON fields (might be strings in SQLite)
-                    if isinstance(product_data["format_ids"], str):
-                        import json
-
-                        try:
-                            product_data["format_ids"] = json.loads(product_data["format_ids"])
-                        except json.JSONDecodeError:
-                            product_data["format_ids"] = []
-
-                    # Extract format IDs if format_ids are objects
-                    if product_data["format_ids"]:
-                        format_ids = []
-                        for fmt in product_data["format_ids"]:
-                            if isinstance(fmt, dict) and "format_id" in fmt:
-                                format_ids.append(fmt["format_id"])
-                            elif isinstance(fmt, str):
-                                format_ids.append(fmt)
-                        product_data["format_ids"] = format_ids
-
-                    product = Product(**product_data)
-                    products.append(product)
+                    # Use proper conversion function to ensure all required fields are present
+                    # (delivery_measurement, pricing_options, publisher_properties, etc.)
+                    try:
+                        product = convert_product_model_to_schema(db_product)
+                        products.append(product)
+                    except ValueError as convert_error:
+                        # Log conversion errors but continue with other products
+                        logger.warning(f"Skipping product {db_product.product_id}: {convert_error}")
 
         except Exception as e:
             logger.error(f"Error fetching database products: {e}")
 
-        return products
+        return products  # type: ignore[return-value]  # Library Product is compatible with our extended Product
