@@ -19,19 +19,26 @@ def _extract_format_namespace(format_value: Any) -> tuple[str, str]:
         format_value: FormatId dict/object with agent_url+id fields
 
     Returns:
-        Tuple of (agent_url, format_id)
+        Tuple of (agent_url, format_id) - both as strings
 
     Raises:
         ValueError: If format_value doesn't have required agent_url and id fields
+
+    Note:
+        Converts Pydantic AnyUrl types to strings for database compatibility.
+        The adcp library's FormatId.agent_url is typed as AnyUrl, but PostgreSQL
+        needs strings.
     """
     if isinstance(format_value, dict):
         agent_url = format_value.get("agent_url")
         format_id = format_value.get("id")
         if not agent_url or not format_id:
             raise ValueError(f"format_id must have both 'agent_url' and 'id' fields. Got: {format_value}")
-        return agent_url, format_id
+        # Convert to string in case agent_url is AnyUrl from Pydantic model
+        return str(agent_url), format_id
     if hasattr(format_value, "agent_url") and hasattr(format_value, "id"):
-        return format_value.agent_url, format_value.id
+        # Convert AnyUrl to string for database compatibility
+        return str(format_value.agent_url), format_value.id
     if isinstance(format_value, str):
         raise ValueError(
             f"format_id must be an object with 'agent_url' and 'id' fields (AdCP v2.4). "

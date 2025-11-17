@@ -101,8 +101,8 @@ def convert_product_model_to_schema(product_model) -> Product:
         product_data["measurement"] = product_model.measurement
     if product_model.creative_policy:
         product_data["creative_policy"] = product_model.creative_policy
-    if product_model.price_guidance:
-        product_data["price_guidance"] = product_model.price_guidance
+    # Note: price_guidance is database metadata, not in AdCP Product schema - omit it
+    # Pricing information should be in pricing_options per AdCP spec
     # Note: countries is NOT in AdCP Product schema - omit it
     # if product_model.countries:
     #     product_data["countries"] = product_model.countries
