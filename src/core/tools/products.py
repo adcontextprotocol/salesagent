@@ -533,16 +533,9 @@ async def _get_products_impl(
                     filtered_products.append(product)
         eligible_products = filtered_products
 
-    # Apply testing hooks to response
-    # AdCP library Product uses model_dump(), not model_dump_internal()
-    response_data = {"products": [p.model_dump() for p in eligible_products]}
-    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")  # type: ignore[arg-type]
-
-    # Reconstruct products from modified data
-    modified_products = [Product(**p) for p in response_data["products"]]
-
     # Annotate pricing options with adapter support (AdCP PR #88)
-    if principal and modified_products:
+    # Do this BEFORE serialization to avoid reconstruction issues
+    if principal and eligible_products:
         try:
             # Use correct get_adapter from adapter_helpers (accepts Principal and dry_run)
             from src.core.helpers.adapter_helpers import get_adapter
@@ -552,7 +545,7 @@ async def _get_products_impl(
 
             supported_models = adapter.get_supported_pricing_models()
 
-            for product in modified_products:
+            for product in eligible_products:
                 if product.pricing_options:
                     # Annotate each pricing option with "supported" flag
                     for option in product.pricing_options:
@@ -567,16 +560,25 @@ async def _get_products_impl(
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 
     # Filter pricing data for anonymous users
+    # Do this BEFORE serialization to avoid reconstruction issues
     if principal_id is None:  # Anonymous user
         # Remove pricing data from products for anonymous users
         # Set to empty list to hide pricing (will be excluded during serialization)
-        for product in modified_products:
+        for product in eligible_products:
             product.pricing_options = []
+
+    # Apply testing hooks to response (after modifications)
+    # AdCP library Product uses model_dump(), not model_dump_internal()
+    response_data = {"products": [p.model_dump() for p in eligible_products]}
+    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")  # type: ignore[arg-type]
 
     # No conversion needed - our Product extends library Product
     # When serialized, Pydantic automatically uses library Product fields
     # Internal-only fields (implementation_config) excluded by model_dump()
-    resp = GetProductsResponse(products=modified_products, errors=None, context=req.context)
+    # Note: We use eligible_products (Product objects), not response_data (dicts)
+    # because Product objects have typed pricing_options (CpmFixedRatePricingOption, etc.)
+    # while dicts lose this type information during serialization
+    resp = GetProductsResponse(products=eligible_products, errors=None, context=req.context)
 
     return resp
 
