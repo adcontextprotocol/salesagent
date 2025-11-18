@@ -654,7 +654,9 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
 
 @pytest.mark.requires_db
 async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_pricing_models):
-    """Test auction-based CPC (non-fixed) creates PRICE_PRIORITY line item."""
+    """Test auction-based CPC (non-fixed) is rejected with clear error (not supported by adcp library v2.5.0)."""
+    from fastmcp.exceptions import ToolError
+
     from src.core.tools.media_buy_create import _create_media_buy_impl
 
     # Add auction CPC pricing option
@@ -700,30 +702,33 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
-        buyer_ref=request.buyer_ref,
-        brand_manifest=request.brand_manifest,
-        packages=request.packages,
-        start_time=request.start_time,
-        end_time=request.end_time,
-        budget=request.budget,
-        ctx=context,
-    )
+    # Auction CPC should be rejected because adcp library v2.5.0 doesn't support CpcAuctionPricingOption
+    # Only CpcPricingOption exists, which requires is_fixed=true
+    with pytest.raises(ToolError) as exc_info:
+        await _create_media_buy_impl(
+            buyer_ref=request.buyer_ref,
+            brand_manifest=request.brand_manifest,
+            packages=request.packages,
+            start_time=request.start_time,
+            end_time=request.end_time,
+            budget=request.budget,
+            ctx=context,
+        )
 
-    # Verify response is success (AdCP 2.4 compliant)
-    # Success response has media_buy_id, error response has errors field
-    assert (
-        not hasattr(response, "errors") or response.errors is None or response.errors == []
-    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
-    assert response.media_buy_id is not None
-
-    # Line item should use bid_price ($2.25) for costPerUnit
-    # - lineItemType = "PRICE_PRIORITY" (auction = non-guaranteed)
-    # - costPerUnit = $2.25 (from bid_price)
+    # Verify error message explains the limitation
+    error_message = str(exc_info.value)
+    assert "Auction CPC pricing option cpc_usd_auction is not supported" in error_message
+    assert "adcp library v2.5.0" in error_message
+    assert "CpcPricingOption class only supports fixed-rate pricing" in error_message
 
     # Cleanup auction pricing option
     with get_db_session() as session:
-        session.query(PricingOption).filter_by(
+        from sqlalchemy import select
+
+        stmt = select(PricingOption).filter_by(
             tenant_id="test_gam_pricing_tenant", product_id="prod_gam_cpc", is_fixed=False
-        ).delete()
-        session.commit()
+        )
+        pricing_option = session.scalars(stmt).first()
+        if pricing_option:
+            session.delete(pricing_option)
+            session.commit()

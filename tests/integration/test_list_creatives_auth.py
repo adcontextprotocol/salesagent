@@ -88,9 +88,13 @@ class TestListCreativesAuthentication:
                     agent_url="https://creative.adcontextprotocol.org/",
                     status="approved",
                     data={
-                        "url": f"https://example.com/creative_a_{i}.jpg",
-                        "width": 300,
-                        "height": 250,
+                        "assets": {
+                            "image": {
+                                "url": f"https://example.com/creative_a_{i}.jpg",
+                                "width": 300,
+                                "height": 250,
+                            }
+                        }
                     },
                 )
                 session.add(creative_a)
@@ -106,9 +110,13 @@ class TestListCreativesAuthentication:
                     agent_url="https://creative.adcontextprotocol.org/",
                     status="approved",
                     data={
-                        "url": f"https://example.com/creative_b_{i}.jpg",
-                        "width": 300,
-                        "height": 250,
+                        "assets": {
+                            "image": {
+                                "url": f"https://example.com/creative_b_{i}.jpg",
+                                "width": 300,
+                                "height": 250,
+                            }
+                        }
                     },
                 )
                 session.add(creative_b)

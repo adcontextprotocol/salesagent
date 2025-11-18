@@ -433,7 +433,7 @@ def _update_media_buy_impl(
             action=action,
             package_id=None,
             budget=None,
-            today=datetime.combine(today, datetime.min.time()),
+            today=datetime.combine(today, datetime.min.time(), tzinfo=UTC),
         )
         # Manual approval case - convert adapter result to appropriate Success/Error
         # adcp v1.2.1 oneOf pattern: Check if result is Error variant (has errors field)
@@ -465,7 +465,7 @@ def _update_media_buy_impl(
                     action=action,
                     package_id=pkg_update.package_id,
                     budget=None,
-                    today=datetime.combine(today, datetime.min.time()),
+                    today=datetime.combine(today, datetime.min.time(), tzinfo=UTC),
                 )
                 # adcp v1.2.1 oneOf pattern: Check if result is Error variant
                 if hasattr(result, "errors") and result.errors:
@@ -515,7 +515,7 @@ def _update_media_buy_impl(
                     action="update_package_budget",
                     package_id=pkg_update.package_id,
                     budget=int(budget_amount),
-                    today=datetime.combine(today, datetime.min.time()),
+                    today=datetime.combine(today, datetime.min.time(), tzinfo=UTC),
                 )
                 # adcp v1.2.1 oneOf pattern: Check if result is Error variant
                 if hasattr(result, "errors") and result.errors:

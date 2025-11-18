@@ -253,11 +253,11 @@ class TestEffectiveProperties:
     def test_effective_properties_returns_custom_properties_when_profile_not_set(
         self, integration_db, test_product_custom
     ):
-        """Test effective_properties returns product.properties when profile is not set.
+        """Test effective_properties returns synthesized publisher_properties when profile is not set.
 
         Validates that:
         - Product has no inventory_profile_id
-        - effective_properties returns product.properties (custom config)
+        - effective_properties synthesizes AdCP publisher_properties from property_tags
         - When product uses property_tags, properties is None
         """
         with get_db_session() as session:
@@ -273,9 +273,13 @@ class TestEffectiveProperties:
             assert product.properties is None
             assert product.property_tags == ["premium", "video"]
 
-            # effective_properties should return None (matching product.properties)
+            # effective_properties should synthesize by_tag variant from property_tags
             effective = product.effective_properties
-            assert effective is None
+            assert effective is not None
+            assert len(effective) == 1
+            assert effective[0]["selection_type"] == "by_tag"
+            assert effective[0]["property_tags"] == ["premium", "video"]
+            assert "publisher_domain" in effective[0]
 
 
 class TestEffectivePropertyTags:

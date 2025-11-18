@@ -111,9 +111,16 @@ def convert_pricing_option_to_adcp(
             )
 
     elif pricing_model == "cpc":
-        # CPC can be fixed or auction
+        # CPC: adcp library v2.5.0 only supports fixed-rate CPC
+        # CpcPricingOption has is_fixed=const(true) - auction CPC not supported yet
+        if not is_fixed:
+            raise ValueError(
+                f"Auction CPC pricing option {pricing_option_id} is not supported by adcp library v2.5.0. "
+                f"The CpcPricingOption class only supports fixed-rate pricing (is_fixed=true). "
+                f"Please use fixed-rate CPC (with rate parameter) or contact AdCP maintainers to add CpcAuctionPricingOption support."
+            )
         if not rate:
-            raise ValueError(f"CPC pricing option {pricing_option_id} requires rate")
+            raise ValueError(f"Fixed CPC pricing option {pricing_option_id} requires rate")
         return CpcPricingOption(
             **common_fields,
             rate=float(rate),
