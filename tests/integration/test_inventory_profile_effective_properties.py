@@ -18,7 +18,7 @@ from decimal import Decimal
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import InventoryProfile, PricingOption, Tenant
+from src.core.database.models import InventoryProfile, PricingOption, Product, Tenant
 from tests.helpers.adcp_factories import create_test_db_product
 
 
