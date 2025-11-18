@@ -460,16 +460,17 @@ def get_pricing_option_id(product, currency: str = "USD") -> str:
         currency: Currency code to find (default: USD)
 
     Returns:
-        String pricing_option_id (from AdCP pricing option)
+        String pricing_option_id in format {pricing_model}_{currency}_{fixed|auction}
 
     Raises:
         ValueError: If no pricing option found for currency
     """
     for pricing_option in product.pricing_options:
         if pricing_option.currency == currency:
-            # product.pricing_options returns database PricingOption models (not Pydantic schemas)
-            # Database model uses 'id' field, not 'pricing_option_id'
-            return str(pricing_option.id)
+            # Generate pricing_option_id in same format as media_buy_create matching logic
+            # Format: {pricing_model}_{currency}_{fixed|auction}
+            fixed_str = "fixed" if pricing_option.is_fixed else "auction"
+            return f"{pricing_option.pricing_model}_{pricing_option.currency.lower()}_{fixed_str}"
     raise ValueError(f"No pricing option found for currency {currency} on product {product.product_id}")
 
 
