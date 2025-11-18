@@ -31,9 +31,10 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from adcp import ADCPMultiAgentClient, AgentConfig, Protocol
+from adcp import ADCPMultiAgentClient, AgentConfig, GetSignalsRequest, Protocol
 from adcp.exceptions import ADCPAuthenticationError, ADCPConnectionError, ADCPError, ADCPTimeoutError
-from adcp.types.generated import DeliverTo, Destination1, GetSignalsRequest
+from adcp.types.generated_poc.destination import Destination1
+from adcp.types.generated_poc.get_signals_request import DeliverTo
 
 logger = logging.getLogger(__name__)
 

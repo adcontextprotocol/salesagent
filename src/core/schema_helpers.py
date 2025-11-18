@@ -12,16 +12,11 @@ Philosophy:
 
 from typing import Any
 
-from adcp.types.generated import (
-    GetProductsRequest,
-    GetProductsResponse,
-    Product,
-)
+from adcp import GetProductsRequest, GetProductsResponse, Product
 
-# Filters type - check if it exists in adcp.types.generated
-# If not, we'll need to define it locally or use dict[str, Any]
+# Filters type - import from get_products_request module
 try:
-    from adcp.types.generated import Filters
+    from adcp.types.generated_poc.get_products_request import Filters
 except ImportError:
     # Fallback: Filters might be a nested type or not exported
     Filters = dict[str, Any]  # type: ignore

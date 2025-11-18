@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, time
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from adcp.types._generated import Error, PushNotificationConfig
+from adcp import Error
 from adcp.types.aliases import (
     CreateMediaBuyErrorResponse as AdCPCreateMediaBuyError,
 )
@@ -52,6 +52,7 @@ from adcp.types.generated_poc.package_request import PackageRequest as LibraryPa
 
 # Import library Product, Format, and FormatId to ensure we use canonical AdCP schema
 from adcp.types.generated_poc.product import Product as LibraryProduct
+from adcp.types.generated_poc.push_notification_config import PushNotificationConfig
 
 # Import AffectedPackage for UpdateMediaBuySuccess response
 from adcp.types.generated_poc.update_media_buy_response import AffectedPackage as LibraryAffectedPackage

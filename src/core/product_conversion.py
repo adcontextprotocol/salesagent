@@ -5,7 +5,7 @@ and AdCP Product schema objects, including proper handling of pricing options,
 publisher properties, and all required fields.
 """
 
-from adcp.types.generated import (
+from adcp import (
     CpcPricingOption,
     CpcvPricingOption,
     CpmAuctionPricingOption,

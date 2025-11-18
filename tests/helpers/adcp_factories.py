@@ -10,14 +10,10 @@ All factories use sensible defaults for required fields and accept overrides for
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-# Import types from adcp 2.1.0 library - these are the canonical schemas
-from adcp.types.generated import (
-    BrandManifest,
-    CreativeAsset,
-    Format,
-    FormatId,
-    Property,
-)
+# Import types from adcp library - use public API when available
+from adcp import BrandManifest, Format, Property
+from adcp.types.generated_poc.creative_asset import CreativeAsset
+from adcp.types.generated_poc.format_id import FormatId
 from adcp.types.generated_poc.product import Product
 
 # Import Package and PackageRequest from our schemas (they extend adcp library)
