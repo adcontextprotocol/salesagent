@@ -460,14 +460,14 @@ def get_pricing_option_id(product, currency: str = "USD") -> str:
         currency: Currency code to find (default: USD)
 
     Returns:
-        String pricing_option_id (database ID converted to string)
+        String pricing_option_id (from AdCP pricing option)
 
     Raises:
         ValueError: If no pricing option found for currency
     """
     for pricing_option in product.pricing_options:
         if pricing_option.currency == currency:
-            return str(pricing_option.id)
+            return str(pricing_option.pricing_option_id)
     raise ValueError(f"No pricing option found for currency {currency} on product {product.product_id}")
 
 

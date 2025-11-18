@@ -1199,6 +1199,50 @@ class Product(LibraryProduct):
 
         return result
 
+    @field_serializer("pricing_options", when_used="json")
+    def serialize_pricing_options_for_json(self, pricing_options: list) -> list:
+        """Serialize pricing_options with is_fixed field.
+
+        The adcp library's discriminated union types (CpmFixedRatePricingOption vs
+        CpmAuctionPricingOption) don't include an explicit is_fixed field - the type
+        itself is the discriminator. When serialized to JSON, this type info is lost.
+
+        This serializer adds is_fixed field to help clients distinguish fixed from
+        auction pricing without needing to check for presence of rate vs price_guidance.
+
+        Returns:
+            List of pricing option dicts with is_fixed field added
+        """
+        if not pricing_options:
+            return []
+
+        result = []
+        for option in pricing_options:
+            # Get the dict representation
+            if hasattr(option, "model_dump"):
+                option_dict = option.model_dump()
+            elif isinstance(option, dict):
+                option_dict = option.copy()
+            else:
+                # Fallback: try to convert to dict
+                option_dict = dict(option)
+
+            # Determine is_fixed based on presence of rate vs price_guidance
+            # Fixed pricing: has 'rate' field
+            # Auction pricing: has 'price_guidance' field
+            if "rate" in option_dict and option_dict["rate"] is not None:
+                option_dict["is_fixed"] = True
+            elif "price_guidance" in option_dict:
+                option_dict["is_fixed"] = False
+            else:
+                # Fallback: assume fixed if we can't determine
+                # (most pricing models are fixed rate)
+                option_dict["is_fixed"] = True
+
+            result.append(option_dict)
+
+        return result
+
     @property
     def pricing_summary(self) -> str | None:
         """Generate human-readable pricing summary for display to buyers (AdCP PR #88).
@@ -1707,6 +1751,10 @@ class Creative(LibraryCreative):
         data.pop("updated_at", None)
         data.pop("format", None)  # format_id is the spec field
 
+        # Convert status enum to string value for AdCP compliance
+        if "status" in data and hasattr(data["status"], "value"):
+            data["status"] = data["status"].value
+
         return data
 
     def model_dump_internal(self, **kwargs):
@@ -1721,6 +1769,10 @@ class Creative(LibraryCreative):
         # Manually add excluded fields
         if hasattr(self, "principal_id") and self.principal_id is not None:
             data["principal_id"] = self.principal_id
+
+        # Convert status enum to string value for database storage
+        if "status" in data and hasattr(data["status"], "value"):
+            data["status"] = data["status"].value
 
         return data
 
