@@ -455,6 +455,7 @@ class TestMCPToolRoundtripValidation:
                     "pricing_model": "cpm",
                     "rate": 15.75,
                     "currency": "USD",
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                 }
             ],
         )
@@ -522,6 +523,7 @@ class TestMCPToolRoundtripValidation:
                     "pricing_model": "cpm",
                     "price_guidance": {"floor": 5.0, "p50": 8.25, "p75": 10.0},
                     "currency": "USD",
+                    "is_fixed": False,  # Required in adcp 2.4.0+
                 }
             ],
         )
@@ -584,6 +586,7 @@ class TestMCPToolRoundtripValidation:
                     "pricing_model": "cpm",
                     "rate": 10.0,
                     "currency": "USD",
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                 }
             ],
         }
@@ -612,6 +615,7 @@ class TestMCPToolRoundtripValidation:
                     "pricing_model": "cpm",
                     "rate": 10.0,
                     "currency": "USD",
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                 }
             ],
         }
@@ -792,6 +796,7 @@ class TestMCPToolRoundtripPatterns:
                     "pricing_model": "cpm",
                     "rate": 15.0,
                     "currency": "USD",
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                     "min_spend_per_package": 2500.0,
                 }
             ],
