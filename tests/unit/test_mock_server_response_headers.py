@@ -145,7 +145,7 @@ class TestMockServerResponseHeaders:
                     "pricing_model": "cpm",
                     "currency": "USD",
                     "is_fixed": False,  # Required in adcp 2.4.0+
-                    "price_guidance": {"floor": 1.0, "suggested_rate": 5.0},
+                    "price_guidance": {"floor": 1.0, "p50": 5.0},
                 }
             ],
         )
