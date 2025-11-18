@@ -3142,7 +3142,9 @@ class MediaPackage(BaseModel):
     delivery_type: Literal["guaranteed", "non_guaranteed"]
     cpm: float
     impressions: int
-    format_ids: list[FormatId]  # FormatId objects per AdCP spec
+    # Accept library FormatId (not our extended FormatId) to avoid validation errors
+    # when Product from library returns LibraryFormatId instances
+    format_ids: list[LibraryFormatId]  # FormatId objects per AdCP spec
     targeting_overlay: Optional["Targeting"] = None
     buyer_ref: str | None = None  # Optional buyer reference from request package
     product_id: str | None = None  # Product ID for this package

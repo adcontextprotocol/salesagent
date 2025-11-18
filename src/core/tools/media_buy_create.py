@@ -703,7 +703,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                         delivery_type=delivery_type_str,  # type: ignore[arg-type]
                         cpm=cpm,
                         impressions=impressions,
-                        format_ids=format_ids_list,
+                        format_ids=format_ids_list,  # type: ignore[arg-type]
                         targeting_overlay=targeting_overlay,
                         buyer_ref=package_config.get("buyer_ref"),
                         product_id=product_id,
