@@ -195,7 +195,10 @@ class TestCreativeLifecycleMCP:
 
         with (
             patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "src.core.tools.creatives.get_current_tenant",
+                return_value={"tenant_id": self.test_tenant_id, "approval_mode": "auto-approve"},
+            ),
         ):
             # Call sync_creatives tool (uses default patch=False for full upsert)
             response = core_sync_creatives_tool(creatives=sample_creatives, ctx=mock_context)
@@ -428,7 +431,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Test Creative {i}",
                     agent_url="https://creative.adcontextprotocol.org",
                     format="display_300x250",
-                    status="approved" if i % 2 == 0 else "pending",
+                    status="approved" if i % 2 == 0 else "pending_review",
                     data={
                         "url": f"https://example.com/creative_{i}.jpg",
                         "width": 300,
@@ -497,7 +500,7 @@ class TestCreativeLifecycleMCP:
                     name=f"Pending Creative {i}",
                     agent_url="https://creative.adcontextprotocol.org",
                     format="display_728x90",
-                    status="pending",
+                    status="pending_review",
                     data={"assets": {"main": {"url": f"https://example.com/pending_{i}.jpg"}}},
                 )
                 for i in range(2)
@@ -529,8 +532,8 @@ class TestCreativeLifecycleMCP:
                     status_val = status_val.value
                 assert status_val == "approved"
 
-            # Test pending filter
-            response = core_list_creatives_tool(status="pending", ctx=mock_context)
+            # Test pending_review filter (correct AdCP status value)
+            response = core_list_creatives_tool(status="pending_review", ctx=mock_context)
             assert len(response.creatives) == 2
             # Check status field (handle both dict, object, and enum)
             for c in response.creatives:
@@ -540,7 +543,7 @@ class TestCreativeLifecycleMCP:
 
                 if isinstance(status_val, Enum):
                     status_val = status_val.value
-                assert status_val == "pending"
+                assert status_val == "pending_review"
 
     def test_list_creatives_with_format_filter(self, mock_context):
         """Test list_creatives filters by format correctly."""
@@ -900,18 +903,20 @@ class TestCreativeLifecycleMCP:
             core_list_creatives_tool(ctx=mock_context_no_auth)
 
     def test_sync_creatives_missing_tenant(self, mock_context, sample_creatives):
-        """Test sync_creatives when tenant lookup succeeds even with None mocked.
+        """Test sync_creatives when tenant lookup succeeds even with approval_mode provided.
 
         Note: The function uses get_principal_id_from_context which does its own tenant lookup,
-        so mocking get_current_tenant to None doesn't actually cause a failure since the
-        principal lookup finds the tenant.
+        so providing tenant_id with approval_mode ensures proper creative status handling.
         """
         core_sync_creatives_tool, _ = self._import_mcp_tools()
         with (
             patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.tools.creatives.get_current_tenant", return_value=None),
+            patch(
+                "src.core.tools.creatives.get_current_tenant",
+                return_value={"tenant_id": self.test_tenant_id, "approval_mode": "auto-approve"},
+            ),
         ):
-            # The function still works because principal lookup finds the tenant
+            # The function works with tenant_id and approval_mode
             response = core_sync_creatives_tool(creatives=sample_creatives, ctx=mock_context)
             assert isinstance(response, SyncCreativesResponse)
 
