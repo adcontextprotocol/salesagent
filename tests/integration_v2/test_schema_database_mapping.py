@@ -379,6 +379,7 @@ class TestSchemaFieldMapping:
                         "pricing_model": "cpm",
                         "rate": 7.25,
                         "currency": "USD",
+                        "is_fixed": True,  # Required by adcp 2.5.0
                     }
                 ],
                 "delivery_measurement": {"provider": "Test Provider", "notes": "Test measurement methodology"},
