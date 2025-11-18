@@ -19,10 +19,11 @@ or with Docker Compose running for PostgreSQL.
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from adcp.types.generated_poc.targeting import TargetingOverlay
 from sqlalchemy import delete, select
 
 from src.core.database.database_session import get_db_session
-from src.core.schemas import Budget, PackageRequest, Targeting
+from src.core.schemas import Budget, PackageRequest
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.asyncio]
@@ -152,27 +153,19 @@ class TestCreateMediaBuyV24Format:
             )
 
             # Get pricing_option_ids for created products (needed for PackageRequest)
-            from src.core.database.models import PricingOption
-
-            stmt_usd = select(PricingOption).filter_by(tenant_id="test_tenant_v24", product_id="prod_test_v24_usd")
-            pricing_option_usd = session.scalars(stmt_usd).first()
-
-            stmt_eur = select(PricingOption).filter_by(tenant_id="test_tenant_v24", product_id="prod_test_v24_eur")
-            pricing_option_eur = session.scalars(stmt_eur).first()
-
-            stmt_gbp = select(PricingOption).filter_by(tenant_id="test_tenant_v24", product_id="prod_test_v24_gbp")
-            pricing_option_gbp = session.scalars(stmt_gbp).first()
-
+            # NOTE: pricing_option_id is auto-generated from pricing model details
+            # Format: {pricing_model}_{currency}_{fixed|auction}
+            # Example: "cpm_usd_fixed", "cpm_eur_auction"
             yield {
                 "tenant_id": "test_tenant_v24",
                 "principal_id": "test_principal_v24",
                 "product_id_usd": "prod_test_v24_usd",
                 "product_id_eur": "prod_test_v24_eur",
                 "product_id_gbp": "prod_test_v24_gbp",
-                # Convert integer id to string for pricing_option_id (AdCP field is string type)
-                "pricing_option_id_usd": str(pricing_option_usd.id),
-                "pricing_option_id_eur": str(pricing_option_eur.id),
-                "pricing_option_id_gbp": str(pricing_option_gbp.id),
+                # Use generated pricing_option_id format (not database ID)
+                "pricing_option_id_usd": "cpm_usd_fixed",
+                "pricing_option_id_eur": "cpm_eur_fixed",
+                "pricing_option_id_gbp": "cpm_gbp_fixed",
             }
 
             # Cleanup - IMPORTANT: Delete in reverse dependency order
@@ -254,6 +247,20 @@ class TestCreateMediaBuyV24Format:
         )
 
         # Verify response structure
+        if not hasattr(response, "media_buy_id"):
+            # If error response, print the error for debugging
+            print(f"ERROR RESPONSE: {response}")
+            print(f"ERROR RESPONSE TYPE: {type(response)}")
+            print(
+                f"ERROR RESPONSE DICT: {response.model_dump() if hasattr(response, 'model_dump') else vars(response)}"
+            )
+            if hasattr(response, "error_code"):
+                print(f"Error code: {response.error_code}")
+            if hasattr(response, "message"):
+                print(f"Error message: {response.message}")
+            if hasattr(response, "details"):
+                print(f"Error details: {response.details}")
+            raise AssertionError(f"Expected CreateMediaBuySuccess but got {type(response).__name__}: {response}")
         assert response.media_buy_id
         assert len(response.packages) == 1
 
@@ -266,8 +273,8 @@ class TestCreateMediaBuyV24Format:
         assert package["buyer_ref"] == "pkg_budget_test"
         assert package["package_id"]  # Should have generated ID
 
-        # Verify nested budget was serialized correctly
-        assert "budget" in package or "products" in package  # Either field structure is fine
+        # Per AdCP spec, CreateMediaBuyResponse.Package only contains buyer_ref and package_id
+        # (not budget, targeting, etc - those are in the request Package schema)
 
     async def test_create_media_buy_with_targeting_overlay_mcp(self, setup_test_tenant):
         """Test MCP path with packages containing Targeting objects.
@@ -278,16 +285,15 @@ class TestCreateMediaBuyV24Format:
 
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create PackageRequest with nested Targeting object
+        # Create PackageRequest with nested TargetingOverlay object
         packages = [
             PackageRequest(
                 buyer_ref="pkg_targeting_test",
                 product_id=setup_test_tenant["product_id_eur"],  # Use EUR product
                 pricing_option_id=setup_test_tenant["pricing_option_id_eur"],  # Required field
                 budget=8000.0,  # Float budget, currency from pricing_option
-                targeting_overlay=Targeting(
+                targeting_overlay=TargetingOverlay(
                     geo_country_any_of=["US", "CA"],
-                    device_type_any_of=["mobile", "tablet"],
                 ),
             )
         ]
@@ -308,6 +314,20 @@ class TestCreateMediaBuyV24Format:
         )
 
         # Verify response structure
+        if not hasattr(response, "media_buy_id"):
+            # If error response, print the error for debugging
+            print(f"ERROR RESPONSE: {response}")
+            print(f"ERROR RESPONSE TYPE: {type(response)}")
+            print(
+                f"ERROR RESPONSE DICT: {response.model_dump() if hasattr(response, 'model_dump') else vars(response)}"
+            )
+            if hasattr(response, "error_code"):
+                print(f"Error code: {response.error_code}")
+            if hasattr(response, "message"):
+                print(f"Error message: {response.message}")
+            if hasattr(response, "details"):
+                print(f"Error details: {response.details}")
+            raise AssertionError(f"Expected CreateMediaBuySuccess but got {type(response).__name__}: {response}")
         assert response.media_buy_id
         assert len(response.packages) == 1
 

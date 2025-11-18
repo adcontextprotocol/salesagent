@@ -186,15 +186,16 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_option_id = "cpm_usd_fixed"
 
-            # Build pricing_options dict (no is_fixed - not in adcp library)
+            # Build pricing_options dict (is_fixed required by adcp 2.5.0 discriminated unions)
             pricing_kwargs = {
                 "pricing_option_id": pricing_option_id,
                 "pricing_model": pricing_option.pricing_model if pricing_option else "cpm",
                 "currency": pricing_option.currency if pricing_option else "USD",
             }
 
-            # Add rate or price_guidance based on is_fixed (but don't include is_fixed itself)
+            # Add rate or price_guidance based on is_fixed (MUST include is_fixed for adcp 2.5.0)
             if pricing_option:
+                pricing_kwargs["is_fixed"] = pricing_option.is_fixed
                 if pricing_option.is_fixed:
                     pricing_kwargs["rate"] = float(pricing_option.rate) if pricing_option.rate else 10.0
                 else:
@@ -205,6 +206,7 @@ class TestMCPToolRoundtripValidation:
                         "p75": 15.0,
                     }
             else:
+                pricing_kwargs["is_fixed"] = True
                 pricing_kwargs["rate"] = 10.0
 
             # Convert format_ids to FormatId objects if they're dicts or strings
@@ -324,15 +326,16 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_option_id = "cpm_usd_fixed"
 
-            # Build pricing_options dict (no is_fixed - not in adcp library)
+            # Build pricing_options dict (is_fixed required by adcp 2.5.0 discriminated unions)
             pricing_kwargs = {
                 "pricing_option_id": pricing_option_id,
                 "pricing_model": pricing_option.pricing_model if pricing_option else "cpm",
                 "currency": pricing_option.currency if pricing_option else "USD",
             }
 
-            # Add rate or price_guidance based on is_fixed (but don't include is_fixed itself)
+            # Add rate or price_guidance based on is_fixed (MUST include is_fixed for adcp 2.5.0)
             if pricing_option:
+                pricing_kwargs["is_fixed"] = pricing_option.is_fixed
                 if pricing_option.is_fixed:
                     pricing_kwargs["rate"] = float(pricing_option.rate) if pricing_option.rate else 10.0
                 else:
@@ -343,6 +346,7 @@ class TestMCPToolRoundtripValidation:
                         "p75": 15.0,
                     }
             else:
+                pricing_kwargs["is_fixed"] = True
                 pricing_kwargs["rate"] = 10.0
 
             # Convert format_ids to FormatId objects if they're dicts or strings

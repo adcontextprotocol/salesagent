@@ -46,10 +46,25 @@ def create_get_products_request(
         ...     brief="Display ads"
         ... )
     """
+    # Adapt brand_manifest to ensure 'name' field exists (adcp 2.5.0 requirement)
+    brand_manifest_adapted = brand_manifest
+    if brand_manifest and isinstance(brand_manifest, dict):
+        if "name" not in brand_manifest:
+            # If only 'url' provided, use domain as name
+            if "url" in brand_manifest:
+                from urllib.parse import urlparse
+
+                url_str = brand_manifest["url"]
+                domain = urlparse(url_str).netloc or url_str
+                brand_manifest_adapted = {**brand_manifest, "name": domain}
+            else:
+                # Fallback: use a placeholder name
+                brand_manifest_adapted = {**brand_manifest, "name": "Brand"}
+
     # Create GetProductsRequest directly - adcp library handles validation
     # Type ignores: dict inputs are validated by Pydantic at runtime
     return GetProductsRequest(
-        brand_manifest=brand_manifest,  # type: ignore[arg-type]
+        brand_manifest=brand_manifest_adapted,  # type: ignore[arg-type]
         brief=brief or None,
         filters=filters,  # type: ignore[arg-type]
         context=context,

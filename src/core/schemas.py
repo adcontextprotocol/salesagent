@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, time
 # --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
 # --- MCP Status System (AdCP PR #77) ---
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Union
 
 from adcp import Error
 from adcp.types.aliases import (
@@ -3159,7 +3159,8 @@ class MediaPackage(BaseModel):
     # Accept library FormatId (not our extended FormatId) to avoid validation errors
     # when Product from library returns LibraryFormatId instances
     format_ids: list[LibraryFormatId]  # FormatId objects per AdCP spec
-    targeting_overlay: Optional["Targeting"] = None
+    # Accept both Targeting (internal) and TargetingOverlay (adcp library) for compatibility
+    targeting_overlay: Union["Targeting", Any] | None = None
     buyer_ref: str | None = None  # Optional buyer reference from request package
     product_id: str | None = None  # Product ID for this package
     budget: float | None = None  # Budget allocation in the currency specified by the pricing option

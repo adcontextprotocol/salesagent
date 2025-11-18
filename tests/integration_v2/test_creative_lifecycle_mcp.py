@@ -519,17 +519,27 @@ class TestCreativeLifecycleMCP:
             # Test approved filter
             response = core_list_creatives_tool(status="approved", ctx=mock_context)
             assert len(response.creatives) == 3
-            # Check status field (handle both dict and object)
+            # Check status field (handle both dict, object, and enum)
             for c in response.creatives:
                 status_val = c.get("status") if isinstance(c, dict) else getattr(c, "status", None)
+                # Handle enum values - get the string value
+                from enum import Enum
+
+                if isinstance(status_val, Enum):
+                    status_val = status_val.value
                 assert status_val == "approved"
 
             # Test pending filter
             response = core_list_creatives_tool(status="pending", ctx=mock_context)
             assert len(response.creatives) == 2
-            # Check status field (handle both dict and object)
+            # Check status field (handle both dict, object, and enum)
             for c in response.creatives:
                 status_val = c.get("status") if isinstance(c, dict) else getattr(c, "status", None)
+                # Handle enum values - get the string value
+                from enum import Enum
+
+                if isinstance(status_val, Enum):
+                    status_val = status_val.value
                 assert status_val == "pending"
 
     def test_list_creatives_with_format_filter(self, mock_context):

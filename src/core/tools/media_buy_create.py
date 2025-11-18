@@ -1509,6 +1509,23 @@ async def _create_media_buy_impl(
             # Build product lookup map
             product_map = {p.product_id: p for p in products}
 
+            # Resolve legacy pricing_option_id values to actual product pricing_option_ids
+            # This happens when using the legacy product_ids parameter (auto-converted to packages)
+            for package in req.packages:
+                if package.pricing_option_id == "legacy_conversion" and package.product_id in product_map:
+                    product = product_map[package.product_id]
+                    # Use the first pricing option from the product
+                    if product.pricing_options and len(product.pricing_options) > 0:
+                        # Use the generated pricing_option_id format from the product's first option
+                        first_option = product.pricing_options[0]
+                        pricing_model = first_option.pricing_model.lower()
+                        currency = first_option.currency.lower()
+                        is_fixed = "fixed" if first_option.is_fixed else "auction"
+                        package.pricing_option_id = f"{pricing_model}_{currency}_{is_fixed}"
+                        logger.info(
+                            f"Resolved legacy pricing_option_id for product {package.product_id}: {package.pricing_option_id}"
+                        )
+
             # Get currency from product pricing options (per AdCP spec)
             request_currency = None
 
