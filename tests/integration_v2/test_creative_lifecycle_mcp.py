@@ -954,7 +954,7 @@ class TestCreativeLifecycleMCP:
             assert len(sync_response.creatives) == 3
 
         # Import create_media_buy tool
-        from src.core.schemas import Budget, Package
+        from src.core.schemas import Budget
         from src.core.tools import create_media_buy_raw
 
         # Create media buy with creative_ids in packages
@@ -995,39 +995,43 @@ class TestCreativeLifecycleMCP:
             )
             mock_adapter_instance.manual_approval_required = False
 
-            # Mock product catalog
-            from src.core.schemas import PriceGuidance, PricingOption
-            from src.core.schemas import Product as SchemaProduct
+            # Mock product catalog - use our internal Product schema with implementation_config
+            from src.core.schemas import Product as InternalProduct
+            from tests.helpers.adcp_factories import create_test_product
 
+            # Create library Product with factory, then convert to our extended Product
+            library_product = create_test_product(
+                product_id="prod_1",
+                name="Test Product",
+                description="Test",
+                format_ids=["display_300x250"],
+                delivery_type="non_guaranteed",
+                pricing_options=[
+                    {
+                        "pricing_option_id": "cpm_usd_auction",
+                        "pricing_model": "cpm",
+                        "currency": "USD",
+                        "is_fixed": False,
+                        "price_guidance": {"floor": 5.0, "p50": 10.0, "p75": 12.0, "p90": 15.0},
+                    }
+                ],
+            )
+
+            # Convert to internal Product with implementation_config
             mock_catalog.return_value = [
-                SchemaProduct(
-                    product_id="prod_1",
-                    name="Test Product",
-                    description="Test",
-                    format_ids=[],
-                    delivery_type="non_guaranteed",
-                    is_custom=False,
-                    property_tags=["all_inventory"],
-                    pricing_options=[
-                        PricingOption(
-                            pricing_option_id="cpm_usd_auction",
-                            pricing_model="cpm",
-                            rate=10.0,
-                            currency="USD",
-                            is_fixed=False,
-                            price_guidance=PriceGuidance(floor=5.0, p50=10.0, p75=12.0, p90=15.0),
-                        )
-                    ],
-                )
+                InternalProduct(**library_product.model_dump(), implementation_config={"line_item_type": "STANDARD"})
             ]
 
-            # Create packages with creative_ids
+            # Create packages with creative_ids - use PackageRequest (request schema)
+            from src.core.schemas import PackageRequest
+
             packages = [
-                Package(
+                PackageRequest(
                     buyer_ref="pkg_1",
                     product_id="prod_1",
+                    pricing_option_id="cpm_usd_auction",  # Required by adcp 2.5.0
                     budget=5000.0,  # Float budget, currency from pricing_option
-                    creative_ids=creative_ids,  # NEW: Provide creative_ids
+                    creative_ids=creative_ids,  # Provide creative_ids
                 )
             ]
 
