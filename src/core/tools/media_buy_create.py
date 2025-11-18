@@ -2225,23 +2225,13 @@ async def _create_media_buy_impl(
 
                 package_id = f"pkg_{pkg.product_id}_{secrets.token_hex(4)}_{idx}"
 
-                # Serialize the full package to include all fields (budget, targeting, etc.)
-                # Use model_dump_internal to get complete package data
-                if hasattr(pkg, "model_dump_internal"):
-                    pkg_dict = pkg.model_dump_internal()
-                elif hasattr(pkg, "model_dump"):
-                    pkg_dict = pkg.model_dump(exclude_none=True, mode="python")
-                else:
-                    pkg_dict = {}
-
-                # Build response with complete package data (matching auto-approval path)
+                # Per AdCP spec, create-media-buy-response Package only includes:
+                # - buyer_ref (required): Buyer's reference identifier
+                # - package_id (required): Publisher's unique identifier
                 response_packages.append(
                     {
-                        **pkg_dict,  # Include all package fields (budget, targeting_overlay, creative_ids, etc.)
+                        "buyer_ref": pkg.buyer_ref,
                         "package_id": package_id,
-                        "name": f"{pkg.product_id} - Package {idx}",
-                        "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request
-                        "status": "draft",  # Package is pending approval (AdCP-compliant status)
                     }
                 )
 
@@ -3044,73 +3034,43 @@ async def _create_media_buy_impl(
                     )
 
         # Build packages list for response (AdCP v2.4 format)
-        # Use packages from adapter response (has package_ids) merged with request package fields
+        # Per AdCP spec, create-media-buy-response Package only includes:
+        # - buyer_ref (required): Buyer's reference identifier
+        # - package_id (required): Publisher's unique identifier
         response_packages = []
 
         # Get adapter response packages (have package_ids)
         adapter_packages = response.packages if response.packages else []
 
         for i, package in enumerate(req.packages):
-            # Start with adapter response package (has package_id)
+            # Get package_id from adapter response
             if i < len(adapter_packages):
-                # Get package_id and other fields from adapter response
                 # adapter_packages may be Package Pydantic objects (adcp v1.2.1) or dicts
                 response_package = adapter_packages[i]
                 if hasattr(response_package, "model_dump"):
                     response_package_dict = response_package.model_dump(exclude_none=True, mode="python")
                 else:
                     response_package_dict = response_package if isinstance(response_package, dict) else {}
+
+                adapter_package_id = response_package_dict.get("package_id")
             else:
                 # Fallback if adapter didn't return enough packages
                 logger.warning(f"Adapter returned fewer packages than request. Using request package {i}")
-                response_package_dict = {}  # type: ignore[assignment]
+                adapter_package_id = None
 
-            # CRITICAL: Save package_id from adapter response BEFORE merge
-            adapter_package_id = response_package_dict.get("package_id")
-            logger.info(f"[DEBUG] Package {i}: adapter_package_id from response = {adapter_package_id}")
-
-            # Serialize the request package to get fields like buyer_ref, format_ids
-            if hasattr(package, "model_dump_internal"):
-                request_package_dict = package.model_dump_internal()
-            elif hasattr(package, "model_dump"):
-                request_package_dict = package.model_dump(exclude_none=True, mode="python")
-            else:
-                request_package_dict = package if isinstance(package, dict) else {}
-
-            # Merge: Start with adapter response (has package_id), overlay request fields
-            package_dict = {**response_package_dict, **request_package_dict}
-
-            # CRITICAL: Restore package_id from adapter (merge may have overwritten it with None from request)
-            if adapter_package_id:
-                package_dict["package_id"] = adapter_package_id
-                logger.info(f"[DEBUG] Package {i}: Forced package_id = {adapter_package_id}")
-            else:
-                # NO FALLBACK - adapter MUST return package_id
+            # Validate that adapter returned package_id
+            if not adapter_package_id:
                 error_msg = f"Adapter did not return package_id for package {i}. Cannot build response."
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-            # Validate and convert format_ids (request field) to format_ids_to_provide (response field)
-            if "format_ids" in package_dict and package_dict["format_ids"]:
-                validated_format_ids = await _validate_and_convert_format_ids(
-                    package_dict["format_ids"], tenant["tenant_id"], i
-                )
-                package_dict["format_ids_to_provide"] = validated_format_ids
-                # Remove format_ids from response
-                del package_dict["format_ids"]
-
-            # Determine package status (AdCP expects: "draft", "active", "paused", "completed")
-            # Map internal TaskStatus to AdCP status strings
-            if package.creative_ids and len(package.creative_ids) > 0:
-                package_status = "active"  # Has creatives, so it's active
-            elif hasattr(package, "format_ids_to_provide") and package.format_ids_to_provide:
-                package_status = "active"  # Has format requirements, considered active
-            else:
-                package_status = "draft"  # Default to draft if no creatives or formats
-
-            # Add status
-            package_dict["status"] = package_status
-            response_packages.append(package_dict)
+            # Build minimal response package per AdCP spec
+            response_packages.append(
+                {
+                    "buyer_ref": package.buyer_ref,
+                    "package_id": adapter_package_id,
+                }
+            )
 
         # Ensure buyer_ref is set (defensive check)
         buyer_ref_value = req.buyer_ref if req.buyer_ref else buyer_ref
