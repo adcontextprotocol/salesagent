@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime, time
 from enum import Enum
 from typing import Any, Literal, Optional
 
+from adcp.types._generated import Error, PushNotificationConfig
 from adcp.types.aliases import (
     CreateMediaBuyErrorResponse as AdCPCreateMediaBuyError,
 )
@@ -19,7 +20,6 @@ from adcp.types.aliases import (
 from adcp.types.aliases import (
     UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
 )
-from adcp.types.generated import Error, PushNotificationConfig
 
 # Import Creative-related library types
 from adcp.types.generated_poc.creative_status import CreativeStatus
