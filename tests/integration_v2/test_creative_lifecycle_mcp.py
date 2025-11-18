@@ -967,6 +967,7 @@ class TestCreativeLifecycleMCP:
             patch("src.core.tools.media_buy_create.get_adapter") as mock_adapter,
             patch("src.core.main.get_product_catalog") as mock_catalog,
             patch("src.core.tools.media_buy_create.validate_setup_complete"),
+            patch("src.core.format_spec_cache.get_cached_format") as mock_cached_format,
         ):
             # Mock principal
             from src.core.schemas import Principal as SchemaPrincipal
@@ -994,6 +995,18 @@ class TestCreativeLifecycleMCP:
                 ],
             )
             mock_adapter_instance.manual_approval_required = False
+
+            # Mock get_cached_format to return valid format specs for creative validation
+            # This prevents the code from trying to fetch formats from creative agent
+            from adcp.types.generated_poc.format import Format as LibraryFormat
+
+            from tests.helpers.adcp_factories import create_test_format_id
+
+            mock_cached_format.return_value = LibraryFormat(
+                format_id=create_test_format_id("display_300x250"),
+                name="Display 300x250",
+                type="display",
+            )
 
             # Mock product catalog - use our internal Product schema with implementation_config
             from src.core.schemas import Product as InternalProduct
