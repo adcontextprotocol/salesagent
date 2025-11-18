@@ -948,10 +948,34 @@ class TestCreativeLifecycleMCP:
         core_sync_creatives_tool, _ = self._import_mcp_tools()
         with (
             patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "src.core.tools.creatives.get_current_tenant",
+                return_value={"tenant_id": self.test_tenant_id, "approval_mode": "require-human"},
+            ),
         ):
             sync_response = core_sync_creatives_tool(creatives=sample_creatives, ctx=mock_context)
             assert len(sync_response.creatives) == 3
+
+        # Update creatives in database to have platform_creative_id
+        # This simulates that the creatives have already been uploaded to GAM
+        from sqlalchemy import select
+
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Creative
+
+        with get_db_session() as session:
+            for idx, creative_data in enumerate(sample_creatives):
+                stmt = select(Creative).where(Creative.creative_id == creative_data["creative_id"])
+                creative = session.scalars(stmt).first()
+                if creative:
+                    # Set platform_creative_id in data JSON to skip upload
+                    if not creative.data:
+                        creative.data = {}
+                    creative.data["platform_creative_id"] = f"gam_creative_{idx + 1}"
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(creative, "data")
+            session.commit()
 
         # Import create_media_buy tool
         from src.core.schemas import Budget
@@ -962,12 +986,18 @@ class TestCreativeLifecycleMCP:
 
         with (
             patch("src.core.tools.creatives.get_principal_id_from_context", return_value=self.test_principal_id),
-            patch("src.core.tools.creatives.get_current_tenant", return_value={"tenant_id": self.test_tenant_id}),
+            patch(
+                "src.core.tools.creatives.get_current_tenant",
+                return_value={"tenant_id": self.test_tenant_id, "approval_mode": "require-human"},
+            ),
             patch("src.core.tools.media_buy_create.get_principal_object") as mock_principal,
             patch("src.core.tools.media_buy_create.get_adapter") as mock_adapter,
             patch("src.core.main.get_product_catalog") as mock_catalog,
             patch("src.core.tools.media_buy_create.validate_setup_complete"),
             patch("src.core.format_spec_cache.get_cached_format") as mock_cached_format,
+            patch(
+                "src.core.tools.media_buy_create._validate_creatives_before_adapter_call"
+            ),  # Skip creative validation
         ):
             # Mock principal
             from src.core.schemas import Principal as SchemaPrincipal
@@ -980,33 +1010,42 @@ class TestCreativeLifecycleMCP:
 
             # Mock adapter
             from src.core.schema_adapters import CreateMediaBuyResponse
+            from src.core.schemas import Package
 
             mock_adapter_instance = mock_adapter.return_value
             mock_adapter_instance.create_media_buy.return_value = CreateMediaBuyResponse(
                 buyer_ref="test_buyer",
                 media_buy_id="test_buy_123",
                 packages=[
-                    {
-                        "buyer_ref": "pkg_1",
-                        "package_id": "pkg_123",
-                        "product_id": "prod_1",
-                        "budget": {"total": 5000.0, "currency": "USD"},
-                    }
+                    Package(
+                        buyer_ref="pkg_1",
+                        package_id="pkg_123",
+                        product_id="prod_1",
+                        status="active",
+                        budget=5000.0,  # Package.budget is float, not Budget object
+                    )
                 ],
             )
             mock_adapter_instance.manual_approval_required = False
+            # Mock upload_creatives to return platform creative IDs without validation
+            mock_adapter_instance.upload_creatives.return_value = [
+                {"creative_id": "creative_display_1", "platform_creative_id": "gam_creative_1"},
+                {"creative_id": "creative_video_1", "platform_creative_id": "gam_creative_2"},
+                {"creative_id": "creative_display_2", "platform_creative_id": "gam_creative_3"},
+            ]
 
             # Mock get_cached_format to return valid format specs for creative validation
             # This prevents the code from trying to fetch formats from creative agent
-            from adcp.types.generated_poc.format import Format as LibraryFormat
+            from tests.helpers.adcp_factories import create_test_format
 
-            from tests.helpers.adcp_factories import create_test_format_id
+            # Return different formats based on format_id argument
+            def mock_get_format(format_id):
+                if "video" in format_id:
+                    return create_test_format(format_id=format_id, name=f"Video {format_id}", type="video")
+                else:
+                    return create_test_format(format_id=format_id, name=f"Display {format_id}", type="display")
 
-            mock_cached_format.return_value = LibraryFormat(
-                format_id=create_test_format_id("display_300x250"),
-                name="Display 300x250",
-                type="display",
-            )
+            mock_cached_format.side_effect = mock_get_format
 
             # Mock product catalog - use our internal Product schema with implementation_config
             from src.core.schemas import Product as InternalProduct

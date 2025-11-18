@@ -172,7 +172,11 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         product_id = f"signal_{product_id_hash}"
 
         # Create AdCP-compliant Product (without internal fields like tenant_id)
-        from src.core.schemas import FormatId, PriceGuidance, PricingOption, Property, PropertyIdentifier
+        from adcp.types import CpmAuctionPricingOption
+        from adcp.types.generated_poc.cpm_auction_option import PriceGuidance
+        from adcp.types.generated_poc.product import DeliveryMeasurement, PropertyTag, PublisherProperties5
+
+        from src.core.schemas import FormatId
 
         return Product(
             product_id=product_id,
@@ -189,38 +193,32 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
             publisher_properties=[
-                Property(  # type: ignore[list-item]
-                    property_type="website",
-                    name="All Inventory",
-                    identifiers=[PropertyIdentifier(type="domain", value="*")],
-                    publisher_domain="*",  # Wildcard for all inventory
-                    tags=None,  # No specific tags for all inventory
+                PublisherProperties5(
+                    selection_type="by_tag",
+                    property_tags=[PropertyTag("all_inventory")],  # Tag for all inventory
+                    publisher_domain="publisher.example.com",  # Placeholder domain
                 )
             ],  # Required per AdCP spec
             estimated_exposures=None,  # Optional - signals products don't have exposure estimates
-            delivery_measurement=None,  # type: ignore[arg-type]  # Optional field, None is valid at runtime
+            delivery_measurement=DeliveryMeasurement(provider="Signals Discovery Agent"),  # Required in adcp 2.5.0
             product_card=None,  # Optional - new field from product details
             product_card_detailed=None,  # Optional - new field from product details
             placements=None,  # Optional - new field from product details
             reporting_capabilities=None,  # Optional - new field from product details
             pricing_options=[
-                PricingOption(  # type: ignore[list-item]
+                CpmAuctionPricingOption(
                     pricing_option_id="cpm_usd_auction",
-                    pricing_model="cpm",  # type: ignore[arg-type]  # String literal matches PricingModel enum
-                    rate=None,  # Optional - auction-based pricing doesn't have fixed rate
+                    pricing_model="cpm",  # Required literal for discriminated union
+                    is_fixed=False,  # Required literal for CpmAuctionPricingOption
                     currency="USD",
-                    is_fixed=False,
                     price_guidance=PriceGuidance(
                         floor=float(adjusted_price),
                         p25=None,  # Optional percentile
                         p50=float(adjusted_price) * 1.2,
                         p75=float(adjusted_price) * 1.5,
-                        p90=float(adjusted_price) * 1.8,  # Required field
+                        p90=float(adjusted_price) * 1.8,
                     ),
-                    parameters=None,  # Optional - no additional parameters needed
                     min_spend_per_package=100.0,
-                    supported=True,  # Required field - signals products are supported
-                    unsupported_reason=None,  # Optional field
                 )
             ],
         )

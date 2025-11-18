@@ -162,30 +162,74 @@ def create_test_format(
     format_id: str | FormatId | None = None,
     name: str = "Test Format",
     type: str = "display",
-    is_standard: bool = True,
+    assets_required: list[dict[str, Any]] | None = None,
     **kwargs,
 ) -> Format:
-    """Create a test Format object.
+    """Create a test Format object compatible with adcp 2.5.0.
 
     Args:
         format_id: FormatId object or string. Defaults to "display_300x250"
         name: Human-readable format name
         type: Format type ("display", "video", "audio", etc.)
-        is_standard: Whether this is a standard format
+        assets_required: List of asset requirements with discriminated union structure.
+            Each asset must have 'item_type' discriminator:
+            - 'individual': Single asset (requires asset_id, asset_type)
+            - 'repeatable_group': Asset group (requires asset_group_id, assets, min_count, max_count)
+            Defaults to a single image asset for display, video asset for video.
         **kwargs: Additional optional fields (requirements, iab_specification, etc.)
 
     Returns:
-        AdCP-compliant Format object
+        AdCP-compliant Format object (adcp 2.5.0+)
 
     Example:
+        # Simple display format
+        format = create_test_format("display_300x250", name="Medium Rectangle")
+
+        # Video format
         format = create_test_format("video_1920x1080", name="Full HD Video", type="video")
+
+        # Custom assets
+        format = create_test_format(
+            "carousel_3x",
+            assets_required=[
+                {"item_type": "individual", "asset_id": "primary", "asset_type": "image"},
+                {"item_type": "individual", "asset_id": "secondary", "asset_type": "image"},
+            ]
+        )
     """
     if format_id is None:
         format_id = create_test_format_id("display_300x250")
     elif isinstance(format_id, str):
         format_id = create_test_format_id(format_id)
 
-    return Format(format_id=format_id, name=name, type=type, is_standard=is_standard, **kwargs)
+    # Default assets_required based on type if not provided
+    if assets_required is None:
+        if "video" in type.lower():
+            assets_required = [
+                {
+                    "item_type": "individual",
+                    "asset_id": "primary",
+                    "asset_type": "video",
+                }
+            ]
+        elif "audio" in type.lower():
+            assets_required = [
+                {
+                    "item_type": "individual",
+                    "asset_id": "primary",
+                    "asset_type": "audio",
+                }
+            ]
+        else:  # display or other
+            assets_required = [
+                {
+                    "item_type": "individual",
+                    "asset_id": "primary",
+                    "asset_type": "image",
+                }
+            ]
+
+    return Format(format_id=format_id, name=name, type=type, assets_required=assets_required, **kwargs)
 
 
 def create_test_publisher_properties_by_tag(
