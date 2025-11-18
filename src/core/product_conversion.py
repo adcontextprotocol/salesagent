@@ -5,49 +5,153 @@ and AdCP Product schema objects, including proper handling of pricing options,
 publisher properties, and all required fields.
 """
 
+from adcp.types.generated import (
+    CpcPricingOption,
+    CpcvPricingOption,
+    CpmAuctionPricingOption,
+    CpmFixedRatePricingOption,
+    CppPricingOption,
+    CpvPricingOption,
+    FlatRatePricingOption,
+    VcpmAuctionPricingOption,
+    VcpmFixedRatePricingOption,
+)
 from adcp.types.generated_poc.product import Product
 
 
-def convert_pricing_option_to_adcp(pricing_option) -> dict:
+def convert_pricing_option_to_adcp(
+    pricing_option,
+) -> (
+    CpmFixedRatePricingOption
+    | CpmAuctionPricingOption
+    | VcpmFixedRatePricingOption
+    | VcpmAuctionPricingOption
+    | CpcPricingOption
+    | CpcvPricingOption
+    | CpvPricingOption
+    | CppPricingOption
+    | FlatRatePricingOption
+):
     """Convert database PricingOption to AdCP pricing option discriminated union.
 
     Args:
         pricing_option: Database PricingOption model
 
     Returns:
-        Dict representing AdCP pricing option (CpmFixedRatePricingOption, etc.)
+        Typed AdCP pricing option instance (CpmFixedRatePricingOption, etc.)
+
+    Raises:
+        ValueError: If pricing_model is not supported
     """
-    # Base fields common to all pricing options
-    result = {
-        "pricing_model": pricing_option.pricing_model.lower(),
+    pricing_model = pricing_option.pricing_model.lower()
+    pricing_option_id = (
+        f"{pricing_model}_{pricing_option.currency.lower()}_{'fixed' if pricing_option.is_fixed else 'auction'}"
+    )
+
+    # Build common fields shared across all pricing options
+    common_fields = {
+        "pricing_model": pricing_model,
         "currency": pricing_option.currency,
-        "pricing_option_id": f"{pricing_option.pricing_model.lower()}_{pricing_option.currency.lower()}_{'fixed' if pricing_option.is_fixed else 'auction'}",
+        "pricing_option_id": pricing_option_id,
     }
 
     # Add min_spend_per_package if present
     if pricing_option.min_spend_per_package:
-        result["min_spend_per_package"] = float(pricing_option.min_spend_per_package)
+        common_fields["min_spend_per_package"] = float(pricing_option.min_spend_per_package)
 
-    # Handle fixed vs auction pricing
-    if pricing_option.is_fixed and pricing_option.rate:
-        # Fixed rate pricing
-        result["rate"] = float(pricing_option.rate)
-    elif not pricing_option.is_fixed and pricing_option.price_guidance:
-        # Auction pricing with price guidance
-        result["price_guidance"] = pricing_option.price_guidance
-
-    # Add pricing model-specific parameters
-    # CPP and some other pricing models need parameters as a nested object
-    if pricing_option.parameters:
-        pricing_model = pricing_option.pricing_model.lower()
-        if pricing_model in ("cpp", "cpcv", "cpv"):
-            # These models expect parameters as a nested object
-            result["parameters"] = pricing_option.parameters
+    # Discriminate by pricing_model and is_fixed to return typed instances
+    if pricing_model == "cpm":
+        if pricing_option.is_fixed:
+            if not pricing_option.rate:
+                raise ValueError(f"Fixed CPM pricing option {pricing_option_id} requires rate")
+            return CpmFixedRatePricingOption(
+                **common_fields,
+                rate=float(pricing_option.rate),
+            )
         else:
-            # Other models may use parameters differently
-            result.update(pricing_option.parameters)
+            if not pricing_option.price_guidance:
+                raise ValueError(f"Auction CPM pricing option {pricing_option_id} requires price_guidance")
+            return CpmAuctionPricingOption(
+                **common_fields,
+                price_guidance=pricing_option.price_guidance,
+            )
 
-    return result
+    elif pricing_model == "vcpm":
+        if pricing_option.is_fixed:
+            if not pricing_option.rate:
+                raise ValueError(f"Fixed VCPM pricing option {pricing_option_id} requires rate")
+            return VcpmFixedRatePricingOption(
+                **common_fields,
+                rate=float(pricing_option.rate),
+            )
+        else:
+            if not pricing_option.price_guidance:
+                raise ValueError(f"Auction VCPM pricing option {pricing_option_id} requires price_guidance")
+            return VcpmAuctionPricingOption(
+                **common_fields,
+                price_guidance=pricing_option.price_guidance,
+            )
+
+    elif pricing_model == "cpc":
+        # CPC can be fixed or auction
+        if not pricing_option.rate:
+            raise ValueError(f"CPC pricing option {pricing_option_id} requires rate")
+        return CpcPricingOption(
+            **common_fields,
+            rate=float(pricing_option.rate),
+        )
+
+    elif pricing_model == "cpcv":
+        # CPCV (Cost Per Completed View) - typically fixed rate
+        if not pricing_option.rate:
+            raise ValueError(f"CPCV pricing option {pricing_option_id} requires rate")
+        result_fields = {**common_fields, "rate": float(pricing_option.rate)}
+        # CPCV may have optional parameters for view completion threshold
+        if pricing_option.parameters:
+            result_fields["parameters"] = pricing_option.parameters
+        return CpcvPricingOption(**result_fields)
+
+    elif pricing_model == "cpv":
+        # CPV (Cost Per View) - typically auction-based
+        if not pricing_option.rate:
+            raise ValueError(f"CPV pricing option {pricing_option_id} requires rate")
+        result_fields = {**common_fields, "rate": float(pricing_option.rate)}
+        # CPV may have optional parameters for view threshold
+        if pricing_option.parameters:
+            result_fields["parameters"] = pricing_option.parameters
+        return CpvPricingOption(**result_fields)
+
+    elif pricing_model == "cpp":
+        # CPP (Cost Per Point) - requires demographic parameters
+        if not pricing_option.rate:
+            raise ValueError(f"CPP pricing option {pricing_option_id} requires rate")
+        if not pricing_option.parameters:
+            raise ValueError(f"CPP pricing option {pricing_option_id} requires parameters (demographic)")
+        return CppPricingOption(
+            **common_fields,
+            rate=float(pricing_option.rate),
+            parameters=pricing_option.parameters,
+        )
+
+    elif pricing_model == "flat_rate":
+        # Flat rate pricing - fixed cost regardless of delivery
+        if not pricing_option.rate:
+            raise ValueError(f"Flat rate pricing option {pricing_option_id} requires rate")
+        result_fields = {
+            **common_fields,
+            "rate": float(pricing_option.rate),
+            "is_fixed": True,  # Flat rate is always fixed per AdCP spec
+        }
+        # Flat rate may have optional parameters (DOOH venue packages, SOV, etc.)
+        if pricing_option.parameters:
+            result_fields["parameters"] = pricing_option.parameters
+        return FlatRatePricingOption(**result_fields)
+
+    else:
+        raise ValueError(
+            f"Unsupported pricing_model '{pricing_model}'. "
+            f"Supported models: cpm, vcpm, cpc, cpcv, cpv, cpp, flat_rate"
+        )
 
 
 def convert_product_model_to_schema(product_model) -> Product:
