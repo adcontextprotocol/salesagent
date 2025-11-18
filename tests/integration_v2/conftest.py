@@ -467,7 +467,9 @@ def get_pricing_option_id(product, currency: str = "USD") -> str:
     """
     for pricing_option in product.pricing_options:
         if pricing_option.currency == currency:
-            return str(pricing_option.pricing_option_id)
+            # product.pricing_options returns database PricingOption models (not Pydantic schemas)
+            # Database model uses 'id' field, not 'pricing_option_id'
+            return str(pricing_option.id)
     raise ValueError(f"No pricing option found for currency {currency} on product {product.product_id}")
 
 
