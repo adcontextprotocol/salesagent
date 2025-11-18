@@ -230,17 +230,25 @@ class TestMinimumSpendValidation:
             set_current_tenant("test_minspend_tenant")
 
         # Return pricing_option_ids for tests (database-generated IDs as strings)
+        # Eager-load pricing_options to avoid DetachedInstanceError
+        from sqlalchemy.orm import selectinload
+
         with get_db_session() as session:
-            stmt = select(Product).filter_by(tenant_id="test_minspend_tenant")
+            stmt = (
+                select(Product)
+                .filter_by(tenant_id="test_minspend_tenant")
+                .options(selectinload(Product.pricing_options))
+            )
             products = {p.product_id: p for p in session.scalars(stmt).all()}
 
-        pricing_data = {
-            "prod_global_usd": get_pricing_option_id(products["prod_global"], "USD"),
-            "prod_global_eur": get_pricing_option_id(products["prod_global"], "EUR"),
-            "prod_high": get_pricing_option_id(products["prod_high"], "USD"),
-            "prod_low": get_pricing_option_id(products["prod_low"], "USD"),
-            "prod_global_gbp": get_pricing_option_id(products["prod_global_gbp"], "GBP"),
-        }
+            # Extract pricing_option_ids while session is still open
+            pricing_data = {
+                "prod_global_usd": get_pricing_option_id(products["prod_global"], "USD"),
+                "prod_global_eur": get_pricing_option_id(products["prod_global"], "EUR"),
+                "prod_high": get_pricing_option_id(products["prod_high"], "USD"),
+                "prod_low": get_pricing_option_id(products["prod_low"], "USD"),
+                "prod_global_gbp": get_pricing_option_id(products["prod_global_gbp"], "GBP"),
+            }
 
         yield pricing_data
 
