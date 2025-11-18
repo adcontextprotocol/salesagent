@@ -56,6 +56,7 @@ def convert_pricing_option_to_adcp(
         "pricing_model": pricing_model,
         "currency": pricing_option.currency,
         "pricing_option_id": pricing_option_id,
+        "is_fixed": pricing_option.is_fixed,  # Required in adcp 2.4.0+
     }
 
     # Add min_spend_per_package if present
