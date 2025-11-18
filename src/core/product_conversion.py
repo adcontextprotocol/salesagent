@@ -16,7 +16,10 @@ from adcp.types.generated import (
     VcpmAuctionPricingOption,
     VcpmFixedRatePricingOption,
 )
-from adcp.types.generated_poc.product import Product
+
+# Import our extended Product (includes implementation_config)
+# Not the library Product - we need the internal fields
+from src.core.schemas import Product
 
 
 def convert_pricing_option_to_adcp(
@@ -228,5 +231,14 @@ def convert_product_model_to_schema(product_model) -> Product:
 
     # Default is_custom to False if not set
     product_data["is_custom"] = product_model.is_custom if product_model.is_custom else False
+
+    # Internal fields (not in AdCP spec, but in our extended Product schema)
+    # Use effective_implementation_config to auto-resolve from inventory profile if set
+    if hasattr(product_model, "effective_implementation_config"):
+        product_data["implementation_config"] = product_model.effective_implementation_config
+    elif hasattr(product_model, "implementation_config"):
+        product_data["implementation_config"] = product_model.implementation_config
+    else:
+        product_data["implementation_config"] = None
 
     return Product(**product_data)
