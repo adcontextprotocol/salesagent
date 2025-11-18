@@ -1016,8 +1016,9 @@ def _validate_pricing_model_selection(
             break
 
     if not selected_option:
+        # Show available options in same format as matching logic expects
         available_options = [
-            f"{opt.pricing_model}_{opt.currency}_{opt.id} ({opt.pricing_model} - {opt.currency})"
+            f"{opt.pricing_model}_{opt.currency.lower()}_{'fixed' if opt.is_fixed else 'auction'} ({opt.pricing_model} - {opt.currency})"
             for opt in product.pricing_options
         ]
         error_msg = f"Product {product.product_id} does not offer "
