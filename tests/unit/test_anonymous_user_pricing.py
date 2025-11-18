@@ -28,8 +28,9 @@ def test_product_with_empty_pricing_options():
                 "pricing_option_id": "cpm_usd_auction",
                 "pricing_model": "cpm",
                 "currency": "USD",
+                "is_fixed": False,  # Required in adcp 2.4.0+
                 "price_guidance": {"floor": 1.0, "suggested_rate": 5.0},
-                # No rate field - indicates auction pricing (anonymous user view)
+                # Auction pricing (anonymous user view)
             }
         ],
         publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],

@@ -62,8 +62,8 @@ http-server = [
 
 [[package]]
 name = "adcp"
-version = "2.3.0"
-source = { git = "https://github.com/adcontextprotocol/adcp-client-python.git?rev=v2.3.0#a277ad2a91d4fa7c9c8c8020c3fa53b2bb0c0249" }
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "email-validator" },
@@ -71,6 +71,10 @@ dependencies = [
     { name = "mcp" },
     { name = "pydantic" },
     { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/63/5e/61b80057294eb33074cde14ff545128002d30b527063c6a3da9e791724b7/adcp-2.4.0.tar.gz", hash = "sha256:3334f8b8f36752d549a92e1b7d098d524be7189f7f5de19e63f11fbe35424cb2", size = 133565, upload-time = "2025-11-18T03:12:03.299Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/62/19/a278ab680ccfa907dd0e02fd8b36d5c366c37cd9730f14f4949a00a1858b/adcp-2.4.0-py3-none-any.whl", hash = "sha256:7ae125a7f292a356edbf0e158758c8ecf7aaac9dc1420de546c3f658ab4f1b08", size = 164232, upload-time = "2025-11-18T03:12:02.277Z" },
 ]
 
 [[package]]
@@ -158,7 +162,7 @@ dev = [
 requires-dist = [
     { name = "a2a-cli", specifier = ">=0.2.0" },
     { name = "a2a-sdk", extras = ["http-server"], specifier = ">=0.3.10" },
-    { name = "adcp", git = "https://github.com/adcontextprotocol/adcp-client-python.git?rev=v2.3.0" },
+    { name = "adcp", specifier = ">=2.4.0" },
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "allure-pytest", marker = "extra == 'ui-tests'", specifier = "==2.13.5" },

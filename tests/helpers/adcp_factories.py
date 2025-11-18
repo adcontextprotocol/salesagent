@@ -474,17 +474,19 @@ def create_test_cpm_pricing_option(
     pricing_option_id: str = "cpm_option_1",
     currency: str = "USD",
     rate: float = 10.0,
+    is_fixed: bool = True,
     **kwargs,
 ) -> dict[str, Any]:
     """Create a test CPM fixed rate pricing option (discriminated union).
 
-    This creates a proper AdCP 2.0+ CpmFixedRatePricingOption discriminated union.
-    The presence of 'rate' field (vs 'price_guidance') determines this is fixed rate.
+    This creates a proper AdCP 2.4.0+ CpmFixedRatePricingOption discriminated union.
+    As of adcp 2.4.0, is_fixed is a required field per AdCP spec.
 
     Args:
         pricing_option_id: Unique identifier for this pricing option
         currency: Currency code (3-letter ISO)
         rate: CPM rate in the specified currency
+        is_fixed: Whether this is fixed rate (True) or auction (False). Defaults to True.
         **kwargs: Additional optional fields (min_spend_per_package, etc.)
 
     Returns:
@@ -498,6 +500,7 @@ def create_test_cpm_pricing_option(
         "pricing_model": "cpm",
         "currency": currency,
         "rate": rate,
+        "is_fixed": is_fixed,
         **kwargs,
     }
 

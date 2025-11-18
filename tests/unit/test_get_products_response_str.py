@@ -1,12 +1,11 @@
 """Test that GetProductsResponse __str__ provides human-readable content for protocols."""
 
+from src.core.schemas import GetProductsResponse, Product
 from tests.helpers.adcp_factories import (
     create_test_cpm_pricing_option,
     create_test_format_id,
     create_test_publisher_properties_by_tag,
 )
-
-from src.core.schemas import GetProductsResponse, Product
 
 
 def test_get_products_response_str_single_product():
@@ -93,8 +92,9 @@ def test_get_products_response_str_anonymous_user():
                     "pricing_option_id": "cpm_usd_auction",
                     "pricing_model": "cpm",
                     "currency": "USD",
+                    "is_fixed": False,  # Required in adcp 2.4.0+
                     "price_guidance": {"floor": 1.0, "suggested_rate": 5.0},
-                    # No rate field - indicates anonymous user (auction pricing)
+                    # Auction pricing (anonymous user)
                 }
             ],
         )

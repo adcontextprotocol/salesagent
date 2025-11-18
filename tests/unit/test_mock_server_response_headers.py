@@ -122,11 +122,11 @@ class TestMockServerResponseHeaders:
 
     def test_response_headers_without_campaign_info(self):
         """Test response headers when no campaign info is available."""
+        from src.core.schemas import Product
         from tests.helpers.adcp_factories import (
             create_test_format_id,
             create_test_publisher_properties_by_tag,
         )
-        from src.core.schemas import Product
 
         testing_ctx = AdCPTestContext(dry_run=True, test_session_id="test_no_campaign")
 
@@ -144,6 +144,7 @@ class TestMockServerResponseHeaders:
                     "pricing_option_id": "cpm_usd_auction",
                     "pricing_model": "cpm",
                     "currency": "USD",
+                    "is_fixed": False,  # Required in adcp 2.4.0+
                     "price_guidance": {"floor": 1.0, "suggested_rate": 5.0},
                 }
             ],
@@ -165,7 +166,9 @@ class TestMockServerResponseHeaders:
 
         # CRITICAL: Test roundtrip conversion - this would catch the "formats field required" bug
         # Filter out computed fields (pricing_summary is a @property, not a model field)
-        modified_products = [Product(**{k: v for k, v in p.items() if k != "pricing_summary"}) for p in result["products"]]
+        modified_products = [
+            Product(**{k: v for k, v in p.items() if k != "pricing_summary"}) for p in result["products"]
+        ]
 
         # Verify the roundtrip worked correctly
         assert len(modified_products) == 1
