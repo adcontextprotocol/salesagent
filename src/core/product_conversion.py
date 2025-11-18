@@ -56,9 +56,7 @@ def convert_pricing_option_to_adcp(
         "pricing_model": pricing_model,
         "currency": pricing_option.currency,
         "pricing_option_id": pricing_option_id,
-        # NOTE: is_fixed is NOT included here because only FlatRatePricingOption has this field
-        # Other pricing option classes (CpmFixedRatePricingOption, CpmAuctionPricingOption, etc.)
-        # do NOT have an is_fixed field in adcp 2.4.1
+        "is_fixed": pricing_option.is_fixed,  # Required by adcp 2.5.0 pricing option classes
     }
 
     # Add min_spend_per_package if present
