@@ -140,7 +140,7 @@ class SignalsAgentRegistry:
             # Map to AgentConfig
             config = AgentConfig(
                 id=agent.name,  # Use name as ID for readability
-                agent_uri=agent.agent_url,
+                agent_uri=str(agent.agent_url),  # Convert AnyUrl to string for adcp 2.5.0
                 protocol=Protocol.MCP,  # Signals agents use MCP protocol
                 auth_token=auth_token,
                 auth_type=auth_type,
