@@ -243,6 +243,7 @@ class TestSchemaFieldMapping:
                     "pricing_model": "cpm",
                     "rate": 10.0,
                     "currency": "USD",
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                 }
             ],
             "delivery_measurement": {"provider": "Test Provider", "notes": "Test measurement methodology"},
@@ -422,6 +423,7 @@ class TestFieldAccessPatterns:
                     "pricing_model": "cpm",
                     "rate": 10.0,
                     "currency": "USD",
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                 }
             ],
             "delivery_measurement": {"provider": "Test Provider", "notes": "Test measurement methodology"},
@@ -474,6 +476,7 @@ class TestFieldAccessPatterns:
                     "pricing_model": "cpm",
                     "rate": 10.0,
                     "currency": "USD",
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                 }
             ],
             "delivery_measurement": {"provider": "Test Provider", "notes": "Test measurement methodology"},
