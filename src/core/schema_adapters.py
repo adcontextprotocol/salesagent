@@ -103,10 +103,32 @@ class GetProductsRequest(BaseModel):
                     for fmt_id in filters_dict["format_ids"]
                 ]
 
+        # Convert brand_manifest dict to proper BrandManifest object for adcp 2.5.0
+        brand_manifest_converted: dict[str, Any] | str | None = None
+        if self.brand_manifest:
+            if isinstance(self.brand_manifest, dict):
+                # Ensure required 'name' field exists (adcp 2.5.0 requirement)
+                if "name" not in self.brand_manifest:
+                    # If only 'url' provided, use domain as name
+                    if "url" in self.brand_manifest:
+                        from urllib.parse import urlparse
+
+                        url_str = self.brand_manifest["url"]
+                        domain = urlparse(url_str).netloc or url_str
+                        self.brand_manifest["name"] = domain
+                    else:
+                        # Fallback: use a placeholder name
+                        self.brand_manifest["name"] = "Brand"
+
+                brand_manifest_converted = self.brand_manifest
+            else:
+                # String brand_manifest (URL or name)
+                brand_manifest_converted = self.brand_manifest
+
         # Create generated schema instance (only fields that exist in AdCP spec)
         # Note: promoted_offering, min_exposures, strategy_id, webhook_url are adapter-only fields
         return _GeneratedGetProductsRequest(
-            brand_manifest=self.brand_manifest,  # type: ignore[arg-type]
+            brand_manifest=brand_manifest_converted,  # type: ignore[arg-type]
             brief=self.brief or None,
             filters=filters_dict,  # type: ignore[arg-type]
         )
