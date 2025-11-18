@@ -657,6 +657,7 @@ class TestMCPToolRoundtripPatterns:
                             "pricing_model": "cpm",
                             "rate": 12.0,
                             "currency": "USD",
+                            "is_fixed": True,  # Required in adcp 2.4.0+
                             "min_spend_per_package": 2000.0,
                         }
                     ],
@@ -686,6 +687,7 @@ class TestMCPToolRoundtripPatterns:
                         {
                             "pricing_option_id": "cpm_usd_auction",
                             "pricing_model": "cpm",
+                            "is_fixed": False,  # Required in adcp 2.4.0+
                             "price_guidance": {"floor": 3.0, "p50": 5.0, "p75": 7.0},
                             "currency": "USD",
                             "min_spend_per_package": 5000.0,
@@ -714,6 +716,7 @@ class TestMCPToolRoundtripPatterns:
                         {
                             "pricing_option_id": "cpm_usd_auction",
                             "pricing_model": "cpm",
+                            "is_fixed": False,  # Required in adcp 2.4.0+
                             "price_guidance": {"floor": 3.0, "p50": 5.0, "p75": 7.0},
                             "currency": "USD",
                         }
