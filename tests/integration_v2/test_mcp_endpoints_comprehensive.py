@@ -140,6 +140,7 @@ class TestMCPEndpointsComprehensive:
         client = Client(transport=transport)
         return client
 
+    @pytest.mark.timeout(60)
     @pytest.mark.requires_server
     async def test_get_products_basic(self, mcp_client):
         """Test basic get_products functionality."""
@@ -177,6 +178,7 @@ class TestMCPEndpointsComprehensive:
                 assert "pricing_model" in pricing
                 assert "is_fixed" in pricing
 
+    @pytest.mark.timeout(60)
     @pytest.mark.requires_server
     async def test_get_products_filtering(self, mcp_client):
         """Test that get_products filters based on brief."""
@@ -197,6 +199,7 @@ class TestMCPEndpointsComprehensive:
             news_products = [p for p in products if "news" in p["name"].lower()]
             assert len(news_products) > 0
 
+    @pytest.mark.timeout(60)
     @pytest.mark.requires_server
     async def test_get_products_missing_required_field(self, mcp_client):
         """Test that get_products succeeds without brand_manifest when authenticated.
@@ -290,6 +293,7 @@ class TestMCPEndpointsComprehensive:
         assert mixed_request.budget.currency == "GBP"
         assert mixed_request.get_total_budget() == 3000.0
 
+    @pytest.mark.timeout(60)
     @pytest.mark.requires_server
     async def test_invalid_auth(self, mcp_server):
         """Test that invalid authentication is rejected."""
@@ -310,6 +314,7 @@ class TestMCPEndpointsComprehensive:
             # Should get authentication error
             assert "auth" in str(exc_info.value).lower() or "invalid" in str(exc_info.value).lower()
 
+    @pytest.mark.timeout(60)
     @pytest.mark.requires_server
     async def test_get_signals_optional(self, mcp_client):
         """Test the optional get_signals endpoint."""
@@ -338,6 +343,7 @@ class TestMCPEndpointsComprehensive:
                 if "unknown tool" not in str(e).lower():
                     raise
 
+    @pytest.mark.timeout(60)
     @pytest.mark.requires_server
     async def test_full_workflow(self, mcp_client):
         """Test a complete workflow from discovery to media buy."""

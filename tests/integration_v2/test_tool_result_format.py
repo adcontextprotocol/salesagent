@@ -57,6 +57,7 @@ async def mcp_client(mcp_server, setup_test_data):
     return client
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.requires_server
 @pytest.mark.asyncio
 async def test_get_products_returns_tool_result(mcp_client):
@@ -87,6 +88,7 @@ async def test_get_products_returns_tool_result(mcp_client):
         assert isinstance(result.structured_content["products"], list), "Products should be a list"
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.requires_server
 @pytest.mark.asyncio
 async def test_list_creative_formats_returns_tool_result(mcp_client):
@@ -110,6 +112,7 @@ async def test_list_creative_formats_returns_tool_result(mcp_client):
         assert "formats" in result.structured_content, "Structured content should have formats field"
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.requires_server
 @pytest.mark.asyncio
 async def test_list_authorized_properties_returns_tool_result(mcp_client):
@@ -132,6 +135,7 @@ async def test_list_authorized_properties_returns_tool_result(mcp_client):
         assert "publisher_domains" in result.structured_content, "Should have publisher_domains field"
 
 
+@pytest.mark.timeout(60)
 @pytest.mark.requires_server
 @pytest.mark.asyncio
 async def test_tool_result_content_differs_from_structured(mcp_client):
