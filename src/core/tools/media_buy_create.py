@@ -615,8 +615,15 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                         logger.error(f"[APPROVAL] {error_msg}")
                         return False, error_msg
 
+                    # Extract delivery_type string value from enum (if it's an enum)
+                    if hasattr(product.delivery_type, "value"):
+                        # It's an enum - extract the string value
+                        delivery_type_str = product.delivery_type.value
+                    else:
+                        # Already a string
+                        delivery_type_str = str(product.delivery_type)
+
                     # Validate delivery_type is a valid literal
-                    delivery_type_str = str(product.delivery_type)
                     if delivery_type_str not in ["guaranteed", "non_guaranteed"]:
                         delivery_type_str = "non_guaranteed"  # Default fallback
 
@@ -2479,11 +2486,18 @@ async def _create_media_buy_impl(
                         else:
                             package_budget_value = None
 
-            # Ensure delivery_type is the correct literal type
+            # Extract delivery_type string value from enum (if it's an enum)
             from typing import cast
 
+            if hasattr(pkg_product.delivery_type, "value"):
+                # It's an enum - extract the string value
+                delivery_type_str = pkg_product.delivery_type.value
+            else:
+                # Already a string - cast to satisfy mypy
+                delivery_type_str = str(pkg_product.delivery_type)
+
             delivery_type_value: Literal["guaranteed", "non_guaranteed"] = cast(
-                Literal["guaranteed", "non_guaranteed"], pkg_product.delivery_type
+                Literal["guaranteed", "non_guaranteed"], delivery_type_str
             )
 
             packages.append(
@@ -2493,7 +2507,7 @@ async def _create_media_buy_impl(
                     delivery_type=delivery_type_value,
                     cpm=cpm,
                     impressions=int(total_budget / cpm * 1000),
-                    format_ids=format_ids_to_use,
+                    format_ids=format_ids_to_use,  # type: ignore[arg-type]
                     targeting_overlay=(
                         matching_package.targeting_overlay  # type: ignore[arg-type]
                         if matching_package and hasattr(matching_package, "targeting_overlay")
