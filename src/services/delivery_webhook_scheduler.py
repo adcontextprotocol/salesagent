@@ -7,7 +7,7 @@ This runs as a background task and sends reports when GAM data is fresh (after 4
 import asyncio
 import logging
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, time
 from typing import Any
 
 import pytz
@@ -119,7 +119,6 @@ class DeliveryWebhookScheduler:
         """
         try:
             # Determine reporting frequency from AdCP config (hourly, daily, monthly)
-            now_utc = datetime.now(UTC)
             raw_freq = str(reporting_webhook.get("frequency") or "daily").lower()
 
             if raw_freq != "daily":
@@ -132,9 +131,8 @@ class DeliveryWebhookScheduler:
                 return
 
             # Calculate reporting period for daily frequency: yesterday (full day)
-            yesterday = now_utc.date() - timedelta(days=1)
-            start_date_obj = yesterday
-            end_date_obj = yesterday
+            start_date_obj = datetime.now(UTC).date() - timedelta(days=1)
+            end_date_obj = datetime.now(UTC)
 
             # Check if we've already sent a scheduled delivery_report webhook for this media buy
             # and reporting date. We use created_at::date as the period key.
@@ -200,7 +198,7 @@ class DeliveryWebhookScheduler:
             try:
                 stmt = select(func.coalesce(func.max(WebhookDeliveryLog.sequence_number), 0)).where(
                     WebhookDeliveryLog.media_buy_id == media_buy.media_buy_id,
-                    WebhookDeliveryLog.task_type == "delivery_report",
+                    WebhookDeliveryLog.task_type == "media_buy_delivery",
                 )
                 max_seq = session.scalar(stmt)
                 sequence_number = (max_seq or 0) + 1
@@ -208,7 +206,7 @@ class DeliveryWebhookScheduler:
                 logger.warning(f"Could not get sequence number for media buy {media_buy.media_buy_id}: {e}")
 
             # Calculate next_expected_at for daily frequency: start of next day (UTC)
-            next_day = now_utc.date() + timedelta(days=1)
+            next_day = datetime.now(UTC).date() + timedelta(days=1)
             next_expected_at = datetime.combine(next_day, datetime.min.time(), tzinfo=UTC).isoformat()
 
             # Add webhook-specific metadata to the response
@@ -269,15 +267,14 @@ class DeliveryWebhookScheduler:
             # Send webhook notification OUTSIDE the session context
             # This ensures the session is closed before async webhook call
             await self.webhook_service.send_notification(
-                task_type="delivery_report",
+                task_type="media_buy_delivery",
                 task_id=media_buy.media_buy_id,
                 status="completed",
                 push_notification_config=webhook_config,
                 result=response_dict,  # Use modified dict with webhook metadata
                 tenant_id=media_buy.tenant_id,
                 principal_id=media_buy.principal_id,
-                media_buy_id=media_buy.media_buy_id,
-                notification_type="scheduled",  # Daily scheduled delivery report
+                media_buy_id=media_buy.media_buy_id
             )
 
             logger.info(f"Sent delivery report webhook for media buy {media_buy.media_buy_id}")

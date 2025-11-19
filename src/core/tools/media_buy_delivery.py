@@ -110,6 +110,11 @@ def _get_media_buy_delivery_impl(
         start_dt = datetime.strptime(req.start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(req.end_date, "%Y-%m-%d")
 
+        print("Start date")
+        print(start_dt)
+        print("End date")
+        print(end_dt)
+
         if start_dt >= end_dt:
             return GetMediaBuyDeliveryResponse(
                 reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
@@ -148,6 +153,9 @@ def _get_media_buy_delivery_impl(
     total_impressions = 0
     media_buy_count = 0
     total_clicks = 0
+
+    print("TARGET MEDIA BUYS: ")
+    print(target_media_buys)
 
     for media_buy_id, buy in target_media_buys:
         try:
@@ -212,7 +220,7 @@ def _get_media_buy_delivery_impl(
                     logger.error(f"Error getting delivery for {media_buy_id}: {e}")
                     return GetMediaBuyDeliveryResponse(
                         reporting_period=reporting_period,
-                        currency="USD",
+                        currency=buy.currency,
                         aggregated_totals={
                             "impressions": 0,
                             "spend": 0,
@@ -264,7 +272,10 @@ def _get_media_buy_delivery_impl(
                     product_ids = buy.raw_request.get("product_ids", [])
                     packages = [{"product_id": pid} for pid in product_ids]
                 
-                for i, pkg_data in enumerate(packages):
+                i = -1
+                for pkg_data in packages:
+                    i += 1
+
                     package_id = pkg_data.get("package_id") or f"pkg_{pkg_data.get('product_id', 'unknown')}_{i}"
                     
                     # Get pricing info for this package
@@ -301,7 +312,7 @@ def _get_media_buy_delivery_impl(
 
             # Create delivery data
             buyer_ref = buy.raw_request.get("buyer_ref", None)
-            pricing_option_id = buy.raw_request.get("pricing_option_id", None)
+            pricing_option_id = buy.raw_request.get("pricing_option_id", None)    
             pricing_option = pricing_options.get(pricing_option_id, None) if pricing_option_id and isinstance(pricing_option_id, str) else None
 
             if not pricing_option:
@@ -357,6 +368,7 @@ def _get_media_buy_delivery_impl(
             total_clicks += clicks if clicks is not None else 0
 
         except Exception as e:
+            raise e
             logger.error(f"Error getting delivery for {media_buy_id}: {e}")
             # TODO: @yusuf - Ask should we attach an error message for this media buy, instead of omitting it from the response?
             # Continue with other media buys
@@ -368,7 +380,7 @@ def _get_media_buy_delivery_impl(
         aggregated_totals={
             "impressions": total_impressions,
             "spend": total_spend,
-            "clicks": clicks,
+            "clicks": total_clicks,
             "video_completions": None,
             "media_buy_count": media_buy_count,
         },
