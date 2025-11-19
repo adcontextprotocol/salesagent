@@ -940,7 +940,16 @@ def edit_property(tenant_id: str, property_id: str) -> str | Response:
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties/api/list")
 @require_tenant_access(api_mode=True)
 def list_authorized_properties_api(tenant_id: str):
-    """Get all authorized properties as JSON (API endpoint for unified inventory page)."""
+    """Get all authorized properties as JSON (API endpoint for unified inventory page).
+
+    Groups properties by publisher_domain and combines their identifiers and tags.
+    Returns format expected by inventory profile editor:
+    {
+        publisher_domain: "example.com",
+        property_ids: ["id1", "id2"],  // Extracted from identifiers
+        property_tags: ["tag1", "tag2"]  // From tags field
+    }
+    """
     try:
         with get_db_session() as db_session:
             # Get all properties for this tenant
@@ -951,20 +960,32 @@ def list_authorized_properties_api(tenant_id: str):
             )
             properties = db_session.scalars(stmt).all()
 
-            # Convert to JSON-serializable format
-            properties_data = []
+            # Group properties by publisher_domain and combine identifiers/tags
+            domain_groups: dict[str, dict] = {}
+
             for prop in properties:
-                properties_data.append(
-                    {
-                        "property_id": prop.property_id,
-                        "property_type": prop.property_type,
-                        "name": prop.name,
-                        "publisher_domain": prop.publisher_domain,
-                        "identifiers": prop.identifiers,
-                        "tags": prop.tags,
-                        "verification_status": prop.verification_status,
-                    }
-                )
+                domain = prop.publisher_domain
+
+                if domain not in domain_groups:
+                    domain_groups[domain] = {"publisher_domain": domain, "property_ids": [], "property_tags": []}
+
+                # Extract property IDs from identifiers
+                # Each identifier has {type, value} - we want the values
+                if prop.identifiers:
+                    for identifier in prop.identifiers:
+                        if isinstance(identifier, dict) and "value" in identifier:
+                            value = identifier["value"]
+                            if value not in domain_groups[domain]["property_ids"]:
+                                domain_groups[domain]["property_ids"].append(value)
+
+                # Add tags (de-duplicate)
+                if prop.tags:
+                    for tag in prop.tags:
+                        if tag not in domain_groups[domain]["property_tags"]:
+                            domain_groups[domain]["property_tags"].append(tag)
+
+            # Convert to list
+            properties_data = list(domain_groups.values())
 
             return jsonify({"properties": properties_data, "total": len(properties_data)})
 
