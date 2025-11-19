@@ -21,20 +21,26 @@ from adcp.types.aliases import (
 from adcp.types.aliases import (
     UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
 )
+from adcp.types.generated_poc.format import (
+    Type as FormatTypeEnum,
+)
 
 # Import types from stable API (per adcp 2.8.0+ - all types now in stable)
 from adcp.types.stable import AffectedPackage as LibraryAffectedPackage
 from adcp.types.stable import Creative as LibraryCreative
 from adcp.types.stable import (
     CreativeStatus,
-    FieldModel as LibraryFieldModel,
-    Filters as LibraryFilters,
-    Filters as LibraryCreativeFilters,  # Same as LibraryFilters
-    Pagination as LibraryPagination,
     PriceGuidance,  # Replaces local PriceGuidance class
     PushNotificationConfig,
-    Sort as LibrarySort,
-    Type as FormatTypeEnum,
+)
+from adcp.types.stable import (
+    FieldModel as LibraryFieldModel,
+)
+from adcp.types.stable import (
+    Filters as LibraryCreativeFilters,  # Same as LibraryFilters
+)
+from adcp.types.stable import (
+    Filters as LibraryFilters,
 )
 
 # Import main request/response types from stable API
@@ -46,6 +52,12 @@ from adcp.types.stable import ListCreativeFormatsRequest as LibraryListCreativeF
 from adcp.types.stable import ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse
 from adcp.types.stable import ListCreativesRequest as LibraryListCreativesRequest
 from adcp.types.stable import PackageRequest as LibraryPackageRequest
+from adcp.types.stable import (
+    Pagination as LibraryPagination,
+)
+from adcp.types.stable import (
+    Sort as LibrarySort,
+)
 
 # For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)
 LibraryPackage: TypeAlias = AdCPPackage
@@ -2090,6 +2102,10 @@ class ListCreativesRequest(LibraryListCreativesRequest):
     to AdCP clients.
     """
 
+    # Override model_config to allow our convenience fields
+    # Parent has extra="forbid" but we need to accept convenience fields marked with exclude=True
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
     # Override parent fields to accept dict or Pydantic objects (validator handles conversion)
     filters: LibraryCreativeFilters | dict[str, Any] | None = None  # type: ignore[assignment]
     pagination: LibraryPagination | dict[str, Any] | None = None  # type: ignore[assignment]
@@ -2249,6 +2265,11 @@ class ListCreativesRequest(LibraryListCreativesRequest):
             values["sort"] = LibrarySort(**sort_dict)
 
         return values
+
+
+# Rebuild model to ensure convenience fields are recognized
+# (parent has extra='forbid' which we need to override for our excluded convenience fields)
+ListCreativesRequest.model_rebuild()
 
 
 class QuerySummary(BaseModel):

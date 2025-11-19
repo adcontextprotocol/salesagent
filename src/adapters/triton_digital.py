@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import requests
-from adcp.types.aliases import Package as ResponsePackage
+from adcp.types.generated_poc.create_media_buy_response import Package as ResponsePackage
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS

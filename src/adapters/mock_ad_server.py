@@ -2,7 +2,7 @@ import random
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from adcp.types.aliases import Package as ResponsePackage
+from adcp.types.generated_poc.create_media_buy_response import Package as ResponsePackage
 
 from src.adapters.base import AdServerAdapter
 from src.core.schemas import (
