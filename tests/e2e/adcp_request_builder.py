@@ -53,8 +53,10 @@ def build_adcp_media_buy_request(
     currency: str = "USD",
     pacing: str = "even",
     webhook_url: str | None = None,
+    reporting_frequency: str = "daily",
     brand_manifest: dict[str, Any] | str | None = None,  # AdCP spec field (preferred)
     context: dict[str, Any] | None = None,
+    pricing_option_id: str = "default"
 ) -> dict[str, Any]:
     """
     Build a valid AdCP V2.3 create_media_buy request.
@@ -111,7 +113,7 @@ def build_adcp_media_buy_request(
                     product_ids[0] if len(product_ids) == 1 else product_ids[0]
                 ),  # AdCP spec: singular product_id
                 "budget": total_budget,  # Package budget is plain number per AdCP spec
-                "pricing_option_id": "default",  # Required per AdCP spec - use default pricing
+                "pricing_option_id": pricing_option_id,  # Required per AdCP spec
             }
         ],
         "start_time": start_time,
@@ -125,7 +127,7 @@ def build_adcp_media_buy_request(
     if webhook_url:
         request["reporting_webhook"] = {
             "url": webhook_url,
-            "reporting_frequency": "daily",
+            "reporting_frequency": reporting_frequency,
             "authentication": {"type": "none"},
         }
 
