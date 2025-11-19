@@ -1886,14 +1886,18 @@ class SyncCreativeResult(BaseModel):
     action: Literal["created", "updated", "unchanged", "failed", "deleted"] = Field(
         ..., description="Action taken for this creative"
     )
-    status: str | None = Field(None, description="Current approval status of the creative")
+    status: str | None = Field(
+        None, exclude=True, description="Current approval status of the creative (INTERNAL - excluded from responses)"
+    )
     platform_id: str | None = Field(None, description="Platform-specific ID assigned to the creative")
     changes: list[str] = Field(
         default_factory=list, description="List of field names that were modified (for 'updated' action)"
     )
     errors: list[str] = Field(default_factory=list, description="Validation or processing errors (for 'failed' action)")
     warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings about this creative")
-    review_feedback: str | None = Field(None, description="Feedback from platform review process")
+    review_feedback: str | None = Field(
+        None, exclude=True, description="Feedback from platform review process (INTERNAL - excluded from responses)"
+    )
     assigned_to: list[str] | None = Field(
         None,
         description="Package IDs this creative was successfully assigned to (only present when assignments were requested)",
