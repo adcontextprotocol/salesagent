@@ -1068,18 +1068,8 @@ class TestCreativeLifecycleMCP:
                 {"creative_id": "creative_display_2", "platform_creative_id": "gam_creative_3"},
             ]
 
-            # Mock get_cached_format to return valid format specs for creative validation
-            # This prevents the code from trying to fetch formats from creative agent
-            from tests.helpers.adcp_factories import create_test_format
-
-            # Return different formats based on format_id argument
-            def mock_get_format(format_id):
-                if "video" in format_id:
-                    return create_test_format(format_id=format_id, name=f"Video {format_id}", type="video")
-                else:
-                    return create_test_format(format_id=format_id, name=f"Display {format_id}", type="display")
-
-            mock_cached_format.side_effect = mock_get_format
+            # Format validation is now handled by mock_format_registry fixture
+            # (see conftest.py - mocks CreativeAgentRegistry.get_format())
 
             # Mock product catalog - use our internal Product schema with implementation_config
             from src.core.schemas import Product as InternalProduct
