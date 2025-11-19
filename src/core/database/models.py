@@ -275,12 +275,16 @@ class Product(Base, JSONValidatorMixin):
         """Get publisher properties from inventory profile (if set) or product itself.
 
         Returns properties in AdCP 2.0.0 discriminated union format:
+        - all variant: {publisher_domain, selection_type='all'} (default)
         - by_id variant: {publisher_domain, property_ids, selection_type='by_id'}
         - by_tag variant: {publisher_domain, property_tags, selection_type='by_tag'}
         - legacy: Full Property objects (for backward compatibility)
 
         When inventory_profile_id is set, returns current profile's properties (auto-updates).
         When inventory_profile_id is null, converts product's authorization to AdCP format.
+
+        If no properties/property_ids/property_tags are set, defaults to "all" variant
+        (all properties from this publisher).
         """
         if self.inventory_profile_id and self.inventory_profile:
             return self.inventory_profile.publisher_properties
@@ -310,7 +314,14 @@ class Product(Base, JSONValidatorMixin):
             return [
                 {"publisher_domain": publisher_domain, "property_tags": self.property_tags, "selection_type": "by_tag"}
             ]
-        return None
+
+        # Default: Use "all" variant (all properties from this publisher)
+        # This ensures products always have publisher_properties as required by AdCP spec
+        if hasattr(self, "tenant") and self.tenant:
+            publisher_domain = self.tenant.virtual_host or f"{self.tenant.subdomain}.example.com"
+        else:
+            publisher_domain = "unknown"
+        return [{"publisher_domain": publisher_domain, "selection_type": "all"}]
 
     @property
     def effective_property_tags(self) -> list[str] | None:
