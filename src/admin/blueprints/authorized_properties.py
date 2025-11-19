@@ -942,12 +942,13 @@ def edit_property(tenant_id: str, property_id: str) -> str | Response:
 def list_authorized_properties_api(tenant_id: str):
     """Get all authorized properties as JSON (API endpoint for unified inventory page).
 
-    Groups properties by publisher_domain and combines their identifiers and tags.
-    Returns format expected by inventory profile editor:
+    Returns individual properties with format expected by inventory profile editor:
     {
         publisher_domain: "example.com",
-        property_ids: ["id1", "id2"],  // Extracted from identifiers
-        property_tags: ["tag1", "tag2"]  // From tags field
+        property_name: "AccuWeather iOS App",  // Added for better UI display
+        property_type: "mobile_app",           // Added for better UI display
+        property_ids: ["300048137"],           // Extracted from identifiers
+        property_tags: ["all_inventory"]       // From tags field
     }
     """
     try:
@@ -960,32 +961,28 @@ def list_authorized_properties_api(tenant_id: str):
             )
             properties = db_session.scalars(stmt).all()
 
-            # Group properties by publisher_domain and combine identifiers/tags
-            domain_groups: dict[str, dict] = {}
+            # Transform each property to the format expected by JavaScript
+            properties_data = []
 
             for prop in properties:
-                domain = prop.publisher_domain
-
-                if domain not in domain_groups:
-                    domain_groups[domain] = {"publisher_domain": domain, "property_ids": [], "property_tags": []}
-
                 # Extract property IDs from identifiers
                 # Each identifier has {type, value} - we want the values
+                property_ids = []
                 if prop.identifiers:
                     for identifier in prop.identifiers:
                         if isinstance(identifier, dict) and "value" in identifier:
-                            value = identifier["value"]
-                            if value not in domain_groups[domain]["property_ids"]:
-                                domain_groups[domain]["property_ids"].append(value)
+                            property_ids.append(identifier["value"])
 
-                # Add tags (de-duplicate)
-                if prop.tags:
-                    for tag in prop.tags:
-                        if tag not in domain_groups[domain]["property_tags"]:
-                            domain_groups[domain]["property_tags"].append(tag)
-
-            # Convert to list
-            properties_data = list(domain_groups.values())
+                # Transform to expected format
+                properties_data.append(
+                    {
+                        "publisher_domain": prop.publisher_domain,
+                        "property_name": prop.name,  # e.g., "AccuWeather iOS App"
+                        "property_type": prop.property_type,  # e.g., "mobile_app"
+                        "property_ids": property_ids,  # e.g., ["300048137"]
+                        "property_tags": prop.tags if prop.tags else [],  # e.g., ["all_inventory"]
+                    }
+                )
 
             return jsonify({"properties": properties_data, "total": len(properties_data)})
 
