@@ -332,6 +332,14 @@ When processing creatives, the adapter looks for assets using these common role 
 - `schemas/v1/_schemas_v1_core_creative-asset_json.json` - Official AdCP spec
 - `tests/unit/test_adcp_contract.py` - AdCP compliance tests
 - `tests/unit/test_creative_conversion_assets.py` - Asset conversion tests
+- `tests/unit/test_sync_creatives_format_validation.py` - Format validation tests
+
+## Related Documentation
+
+- **Format Validation**: `docs/architecture/creative-format-validation.md`
+  - Format validation architecture and caching strategy
+  - Error message design (unknown format vs agent unreachable)
+  - Optimization considerations and testing strategy
 
 ## Summary
 

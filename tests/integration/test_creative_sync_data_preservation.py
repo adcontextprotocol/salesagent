@@ -154,6 +154,7 @@ class TestCreativeSyncDataPreservation:
         # Mock preview_creative to return a different URL
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.preview_creative = AsyncMock(
             return_value={
                 "previews": [
@@ -229,6 +230,7 @@ class TestCreativeSyncDataPreservation:
         # Mock preview returns DIFFERENT dimensions
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.preview_creative = AsyncMock(
             return_value={
                 "previews": [
@@ -316,6 +318,7 @@ class TestCreativeSyncDataPreservation:
         # Mock build_creative returns DIFFERENT assets
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.build_creative = AsyncMock(
             return_value={
                 "status": "draft",
@@ -398,6 +401,7 @@ class TestCreativeSyncDataPreservation:
         # Mock build_creative returns DIFFERENT URL
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.build_creative = AsyncMock(
             return_value={
                 "status": "draft",
@@ -464,6 +468,7 @@ class TestCreativeSyncDataPreservation:
 
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.preview_creative = AsyncMock(
             return_value={
                 "previews": [
