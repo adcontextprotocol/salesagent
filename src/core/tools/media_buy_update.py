@@ -1029,10 +1029,11 @@ def _update_media_buy_impl(
     # Build final response first
     logger.info(f"[update_media_buy] Final affected_packages before return: {affected_packages_list}")
 
-    # UpdateMediaBuySuccess extends adcp v1.2.1 with internal fields (workflow_step_id, affected_packages)
-    # affected_packages_list contains AffectedPackage objects with both:
-    # - AdCP-required fields (buyer_ref, package_id) for spec compliance
-    # - Internal tracking fields (buyer_package_ref, changes_applied) excluded via exclude=True
+    # UpdateMediaBuySuccess extends adcp library (adcp>=2.5.0) with internal workflow tracking
+    # affected_packages_list contains our extended AffectedPackage objects with:
+    # - adcp library required fields (buyer_ref, package_id)
+    # - Sales agent extension (changes_applied) - provides change details to clients
+    # - Internal tracking field (buyer_package_ref) excluded via exclude=True
 
     final_response = UpdateMediaBuySuccess(
         media_buy_id=req.media_buy_id or "",

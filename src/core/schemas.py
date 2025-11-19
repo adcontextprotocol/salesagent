@@ -293,18 +293,21 @@ CreateMediaBuyResponse = CreateMediaBuySuccess | CreateMediaBuyError
 class AffectedPackage(LibraryAffectedPackage):
     """Affected package in UpdateMediaBuySuccess response.
 
-    Extends adcp library AffectedPackage with internal tracking fields.
+    Extends adcp library AffectedPackage (adcp>=2.5.0) with changes_applied field.
 
     Library AffectedPackage required fields:
     - buyer_ref: Buyer's reference for the package
     - package_id: Publisher's package identifier
+
+    Extended fields (sales agent extension):
+    - changes_applied: Details of what changed in the package
+    - buyer_package_ref: Internal legacy compatibility field
     """
 
-    # Internal fields for tracking what changed (not in AdCP spec)
+    # Sales agent extension: provides details about what changed
     changes_applied: dict[str, Any] | None = Field(
         None,
-        description="Internal: Detailed changes applied to package (creative_ids added/removed, etc.)",
-        exclude=True,
+        description="Details of changes applied to package (creative_ids added/removed/current, budget updates, etc.)",
     )
     buyer_package_ref: str | None = Field(
         None, description="Internal: Buyer's package reference (legacy compatibility)", exclude=True
@@ -312,20 +315,18 @@ class AffectedPackage(LibraryAffectedPackage):
 
 
 class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
-    """Successful update_media_buy response extending adcp v1.2.1 type.
+    """Successful update_media_buy response extending adcp library (adcp>=2.5.0).
 
-    Extends the official adcp UpdateMediaBuySuccess type with internal workflow tracking.
-    Per AdCP PR #113, this response contains ONLY domain data.
-    Protocol fields (status, task_id, message, context_id) are added by the
-    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+    Extends the official adcp UpdateMediaBuySuccess type with:
+    - Extended AffectedPackage type (includes changes_applied field)
+    - Internal workflow tracking (workflow_step_id)
     """
 
     # Override affected_packages to use our extended AffectedPackage type
-    # This allows us to include internal tracking fields (changes_applied, buyer_package_ref)
-    # while still being AdCP-compliant (those fields are excluded via exclude=True)
+    # This provides clients with change details (changes_applied) not in base library
     affected_packages: list[AffectedPackage] | None = None  # type: ignore[assignment]
 
-    # Internal fields (excluded from AdCP responses)
+    # Internal fields (excluded from responses)
     workflow_step_id: str | None = None
 
     @model_serializer(mode="wrap")
@@ -340,7 +341,8 @@ class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
             data.pop("workflow_step_id", None)
 
         # Explicitly serialize affected_packages to ensure AffectedPackage.model_dump() is called
-        # This ensures internal fields (changes_applied, buyer_package_ref) are excluded via exclude=True
+        # This ensures internal fields (buyer_package_ref) are excluded via exclude=True
+        # while extension fields (changes_applied) are included
         if "affected_packages" in data and self.affected_packages:
             data["affected_packages"] = [pkg.model_dump() for pkg in self.affected_packages]
 
@@ -373,8 +375,42 @@ class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
             return f"Media buy {self.media_buy_id} updated successfully."
 
 
+# Factory function for creating AffectedPackage objects consistently
+def create_affected_package(
+    buyer_ref: str,
+    package_id: str,
+    changes_applied: dict[str, Any] | None = None,
+) -> AffectedPackage:
+    """Factory function to create AffectedPackage objects with proper field handling.
+
+    This ensures consistent creation of extended AffectedPackage objects across the codebase.
+
+    Args:
+        buyer_ref: Buyer's reference for the package (required by adcp library)
+        package_id: Publisher's package identifier (required by adcp library)
+        changes_applied: Optional change details (sales agent extension)
+            Example: {"creative_ids": {"added": [...], "removed": [...], "current": [...]}}
+
+    Returns:
+        AffectedPackage object with all fields properly set
+
+    Example:
+        >>> pkg = create_affected_package(
+        ...     buyer_ref="buyer_123",
+        ...     package_id="pkg_1",
+        ...     changes_applied={"creative_ids": {"added": ["c1"], "removed": [], "current": ["c1"]}}
+        ... )
+    """
+    return AffectedPackage(
+        buyer_ref=buyer_ref,
+        package_id=package_id,
+        changes_applied=changes_applied,
+        buyer_package_ref=package_id,  # Internal legacy field
+    )
+
+
 class UpdateMediaBuyError(AdCPUpdateMediaBuyError):
-    """Failed update_media_buy response extending adcp v1.2.1 type.
+    """Failed update_media_buy response extending adcp library.
 
     Extends the official adcp UpdateMediaBuyError type.
     Per AdCP PR #113, this response contains ONLY domain data.
@@ -1886,14 +1922,18 @@ class SyncCreativeResult(BaseModel):
     action: Literal["created", "updated", "unchanged", "failed", "deleted"] = Field(
         ..., description="Action taken for this creative"
     )
-    status: str | None = Field(None, description="Current approval status of the creative")
+    status: str | None = Field(
+        None, exclude=True, description="Current approval status of the creative (INTERNAL - excluded from responses)"
+    )
     platform_id: str | None = Field(None, description="Platform-specific ID assigned to the creative")
     changes: list[str] = Field(
         default_factory=list, description="List of field names that were modified (for 'updated' action)"
     )
     errors: list[str] = Field(default_factory=list, description="Validation or processing errors (for 'failed' action)")
     warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings about this creative")
-    review_feedback: str | None = Field(None, description="Feedback from platform review process")
+    review_feedback: str | None = Field(
+        None, exclude=True, description="Feedback from platform review process (INTERNAL - excluded from responses)"
+    )
     assigned_to: list[str] | None = Field(
         None,
         description="Package IDs this creative was successfully assigned to (only present when assignments were requested)",
