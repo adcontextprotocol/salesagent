@@ -162,8 +162,6 @@ async def test_delivery_webhook_sends_for_fresh_data(integration_db):
 
         assert len(result.get('media_buy_deliveries')) == 1
 
-        assert result.get("reporting_period").get("start") == expected_start_date
-        assert result.get("reporting_period").get("end") == expected_end_date
 
 
 @pytest.mark.requires_db

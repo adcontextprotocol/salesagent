@@ -154,9 +154,6 @@ def _get_media_buy_delivery_impl(
     media_buy_count = 0
     total_clicks = 0
 
-    print("TARGET MEDIA BUYS: ")
-    print(target_media_buys)
-
     for media_buy_id, buy in target_media_buys:
         try:
             # Apply time simulation from testing context
@@ -276,10 +273,12 @@ def _get_media_buy_delivery_impl(
                 for pkg_data in packages:
                     i += 1
 
-                    package_id = pkg_data.get("package_id") or f"pkg_{pkg_data.get('product_id', 'unknown')}_{i}"
+                    package_id = pkg_data.get("package_id") or f"pkg_{pkg_data.get('product_id', 'unknown')}_{i}" 
+                    pricing_option_id = pkg_data.get("pricing_option_id") or None
                     
                     # Get pricing info for this package
                     pricing_info = package_pricing_map.get(package_id)
+                    pricing_option = pricing_options.get(pricing_option_id) if pricing_option_id is not None else None
                     
                     # Get REAL per-package metrics from adapter if available, otherwise divide equally
                     if package_id in adapter_package_metrics:
@@ -287,11 +286,15 @@ def _get_media_buy_delivery_impl(
                         pkg_metrics = adapter_package_metrics[package_id]
                         package_spend = pkg_metrics["spend"]
                         package_impressions = pkg_metrics["impressions"]
-                        package_clicks = pkg_metrics.get("clicks")
                     else:
                         # Fallback: divide equally if adapter didn't return this package
                         package_spend = spend / len(packages)
                         package_impressions = impressions / len(packages)
+
+
+                    if pricing_option and pricing_option.pricing_model == PricingModel.CPC and pricing_option.rate:
+                        package_clicks = floor(spend / (float(pricing_option.rate)))
+                    else:
                         package_clicks = None
 
                     package_deliveries.append(
@@ -312,33 +315,10 @@ def _get_media_buy_delivery_impl(
 
             # Create delivery data
             buyer_ref = buy.raw_request.get("buyer_ref", None)
-            pricing_option_id = buy.raw_request.get("pricing_option_id", None)    
-            pricing_option = pricing_options.get(pricing_option_id, None) if pricing_option_id and isinstance(pricing_option_id, str) else None
-
-            if not pricing_option:
-                logger.error(f"Error getting delivery for {media_buy_id}: Pricing option with id {pricing_option_id} is expected but not found")
-
-                return GetMediaBuyDeliveryResponse(
-                    reporting_period=reporting_period,
-                    currency="USD",
-                    aggregated_totals={
-                        "impressions": 0,
-                        "spend": 0,
-                        "clicks": None,
-                        "video_completions": None,
-                        "media_buy_count": 0,
-                    },
-                    media_buy_deliveries=[],
-                    errors=[{"code": "pricing_option_not_found", "message": f"Pricing option with id {pricing_option_id} is expected but not found"}],
-                    context=req.context or None,
-                )
 
             # Calculate clicks and CTR (click-through rate) where applicable
-            clicks = (
-                floor(spend / (float(pricing_option.rate)))
-                if pricing_option.pricing_model == PricingModel.CPC and pricing_option.rate
-                else None
-            )
+
+            clicks = 0
 
             ctr = (clicks / impressions) if clicks is not None and impressions > 0 else None
 
@@ -348,7 +328,7 @@ def _get_media_buy_delivery_impl(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
                 status=status_literal,  # type: ignore[arg-type]
-                pricing_model=PricingModel(pricing_option.pricing_model) if pricing_option.pricing_model else None,
+                pricing_model=PricingModel("cpm"), # TODO: @yusuf - remove this from adcp protocol. MediaBuy itself doesn't have pricing model. It is in package level
                 totals=DeliveryTotals(
                     impressions=impressions,
                     spend=spend,
