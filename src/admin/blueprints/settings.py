@@ -769,9 +769,12 @@ def update_business_rules(tenant_id):
             default_provider = data.get("default_measurement_provider", "").strip()
 
             # Get all provider text inputs and deduplicate
+            provider_keys = [k for k in data.keys() if k.startswith("provider_name_")]
+            logger.info(f"Processing {len(provider_keys)} provider inputs for tenant {tenant_id}")
             for key in data.keys():
                 if key.startswith("provider_name_"):
                     provider_name = data.get(key, "").strip()
+                    logger.debug(f"Provider input {key}: '{provider_name}' (length: {len(provider_name)})")
                     if provider_name and provider_name not in seen_providers:  # Only add non-empty, unique providers
                         providers.append(provider_name)
                         seen_providers.add(provider_name)
@@ -791,14 +794,31 @@ def update_business_rules(tenant_id):
 
                 tenant.measurement_providers = {"providers": providers, "default": default_provider}
                 attributes.flag_modified(tenant, "measurement_providers")
-            elif tenant.ad_server == "google_ad_manager":
-                # For GAM tenants without configured providers, set default
-                tenant.measurement_providers = {"providers": ["Google Ad Manager"], "default": "Google Ad Manager"}
-                attributes.flag_modified(tenant, "measurement_providers")
             else:
-                # Non-GAM tenants must have at least one provider
-                flash("At least one measurement provider is required.", "error")
-                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+                # Check if GAM is configured (check both ad_server and adapter_config)
+                is_gam_tenant = False
+                if tenant.ad_server == "google_ad_manager":
+                    is_gam_tenant = True
+                elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
+                    is_gam_tenant = True
+
+                if is_gam_tenant:
+                    # For GAM tenants without configured providers, set default
+                    logger.info(f"GAM tenant {tenant_id} has no providers, using GAM default")
+                    tenant.measurement_providers = {"providers": ["Google Ad Manager"], "default": "Google Ad Manager"}
+                    attributes.flag_modified(tenant, "measurement_providers")
+                else:
+                    # Non-GAM tenants must have at least one provider
+                    logger.warning(
+                        f"Tenant {tenant_id} (adapter: {tenant.ad_server or tenant.adapter_config.adapter_type if tenant.adapter_config else 'unknown'}) "
+                        f"submitted business rules with no measurement providers. "
+                        f"Received {len(provider_keys)} provider inputs, all empty or whitespace."
+                    )
+                    flash(
+                        "At least one measurement provider is required. Please add a provider name and try again.",
+                        "error",
+                    )
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
 
             # Update brand manifest policy
             if "brand_manifest_policy" in data:
