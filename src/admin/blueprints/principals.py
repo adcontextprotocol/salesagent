@@ -125,13 +125,8 @@ def create_principal(tenant_id):
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            # Check if GAM is configured
-            has_gam = False
-
-            if tenant.ad_server == "google_ad_manager":
-                has_gam = True
-            elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
-                has_gam = True
+            # Check if GAM is configured (uses centralized tenant.is_gam_tenant property)
+            has_gam = tenant.is_gam_tenant
 
             return render_template(
                 "create_principal.html",
@@ -232,12 +227,8 @@ def edit_principal(tenant_id, principal_id):
                 flash("Advertiser not found", "error")
                 return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
-            # Check if GAM is configured
-            has_gam = False
-            if tenant.ad_server == "google_ad_manager":
-                has_gam = True
-            elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
-                has_gam = True
+            # Check if GAM is configured (uses centralized tenant.is_gam_tenant property)
+            has_gam = tenant.is_gam_tenant
 
             # Extract existing GAM advertiser ID if present
             existing_gam_id = None
@@ -428,14 +419,8 @@ def get_gam_advertisers(tenant_id):
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
-            # Check if GAM is configured
-            gam_enabled = False
-
-            # Check multiple ways GAM might be configured
-            if tenant.ad_server == "google_ad_manager":
-                gam_enabled = True
-            elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
-                gam_enabled = True
+            # Check if GAM is configured (uses centralized tenant.is_gam_tenant property)
+            gam_enabled = tenant.is_gam_tenant
 
             # Debug logging to help troubleshoot
             logger.info(

@@ -26,6 +26,8 @@ class TestSetupChecklistMockAdapter:
             mock_tenant.tenant_id = tenant_id
             mock_tenant.name = "Test Tenant"
             mock_tenant.ad_server = "mock"
+            mock_tenant.adapter_config = None  # Required for is_gam_tenant property
+            mock_tenant.is_gam_tenant = False  # Mock the is_gam_tenant property
             mock_tenant.authorized_domains = []
             mock_tenant.authorized_emails = []
             mock_tenant.human_review_required = None
@@ -70,6 +72,8 @@ class TestSetupChecklistMockAdapter:
             mock_tenant.tenant_id = tenant_id
             mock_tenant.name = "Test Tenant"
             mock_tenant.ad_server = "google_ad_manager"
+            mock_tenant.adapter_config = None  # Required for is_gam_tenant property
+            mock_tenant.is_gam_tenant = True  # Mock the is_gam_tenant property
             mock_tenant.authorized_domains = []
             mock_tenant.authorized_emails = []
             mock_tenant.human_review_required = None
@@ -112,6 +116,8 @@ class TestSetupChecklistMockAdapter:
             mock_tenant.tenant_id = tenant_id
             mock_tenant.name = "Test Tenant"
             mock_tenant.ad_server = "google_ad_manager"
+            mock_tenant.adapter_config = None  # Required for is_gam_tenant property
+            mock_tenant.is_gam_tenant = True  # Mock the is_gam_tenant property
             mock_tenant.authorized_domains = []
             mock_tenant.authorized_emails = []
             mock_tenant.human_review_required = None

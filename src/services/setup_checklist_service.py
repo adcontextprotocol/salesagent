@@ -305,7 +305,7 @@ class SetupChecklistService:
         config_details = "No ad server configured"
 
         if ad_server_selected:
-            if tenant.ad_server == "google_ad_manager":
+            if tenant.is_gam_tenant:
                 # Check if GAM has OAuth tokens (indicates successful authentication)
                 # GAM config is stored in the adapter_config table, not directly on tenant
                 # For now, just check if adapter is selected
@@ -388,7 +388,7 @@ class SetupChecklistService:
                     details="Ad server must be configured before inventory can be synced",
                 )
             )
-        elif tenant.ad_server == "google_ad_manager":
+        elif tenant.is_gam_tenant:
             # GAM requires syncing inventory from Google Ad Manager
             stmt = select(func.count()).select_from(GAMInventory).where(GAMInventory.tenant_id == self.tenant_id)
             inventory_count = session.scalar(stmt) or 0
@@ -694,7 +694,7 @@ class SetupChecklistService:
         config_details = "No ad server configured"
 
         if ad_server_selected:
-            if tenant.ad_server == "google_ad_manager":
+            if tenant.is_gam_tenant:
                 ad_server_fully_configured = True
                 config_details = "GAM configured - Test connection to verify"
             elif tenant.ad_server == "mock":
@@ -754,7 +754,7 @@ class SetupChecklistService:
                     details="Ad server must be configured before inventory can be synced",
                 )
             )
-        elif tenant.ad_server == "google_ad_manager":
+        elif tenant.is_gam_tenant:
             inventory_synced = gam_inventory_count > 0
             tasks.append(
                 SetupTask(
