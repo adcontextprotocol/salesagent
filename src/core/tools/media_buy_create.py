@@ -2367,7 +2367,8 @@ async def _create_media_buy_impl(
 
                         if format_id:
                             # Normalize agent_url by removing trailing slash for consistent comparison
-                            normalized_url = agent_url.rstrip("/") if agent_url else None
+                            # Convert AnyUrl to string before calling rstrip()
+                            normalized_url = str(agent_url).rstrip("/") if agent_url else None
                             product_format_keys.add((normalized_url, format_id))
 
                 # Build set of requested format keys for comparison
@@ -2390,7 +2391,8 @@ async def _create_media_buy_impl(
 
                     if format_id:
                         # Normalize agent_url by removing trailing slash for consistent comparison
-                        normalized_url = agent_url.rstrip("/") if agent_url else None
+                        # Convert AnyUrl to string before calling rstrip()
+                        normalized_url = str(agent_url).rstrip("/") if agent_url else None
                         requested_format_keys.add((normalized_url, format_id))
 
                 def format_display(url: str | None, fid: str) -> str:
@@ -2398,7 +2400,8 @@ async def _create_media_buy_impl(
                     if not url:
                         return fid
                     # Remove trailing slash from URL to avoid double slashes
-                    clean_url = url.rstrip("/")
+                    # Convert to string in case it's an AnyUrl object
+                    clean_url = str(url).rstrip("/")
                     return f"{clean_url}/{fid}"
 
                 def _has_supported_key(url: str | None, fid: str, keys: set = product_format_keys) -> bool:
@@ -2419,7 +2422,8 @@ async def _create_media_buy_impl(
 
                     # If URL provided, also try with '/mcp' appended (idempotent if already present)
                     if url:
-                        base = url.rstrip("/")
+                        # Convert to string in case it's an AnyUrl object
+                        base = str(url).rstrip("/")
                         mcp_url = base if base.endswith("/mcp") else f"{base}/mcp"
                         if (mcp_url, fid) in keys:
                             return True
