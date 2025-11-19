@@ -423,9 +423,8 @@ def _execute_adapter_media_buy_creation(
             )
             if response.packages:
                 for i, pkg in enumerate(response.packages):
-                    # response.packages can be dicts or objects
-                    pkg_id = pkg.get("package_id") if isinstance(pkg, dict) else pkg.package_id
-                    logger.info(f"[ADAPTER] Response package {i}: {pkg_id}")
+                    # response.packages are now always Package objects
+                    logger.info(f"[ADAPTER] Response package {i}: {pkg.package_id}")
         return response
     except Exception as adapter_error:
         import traceback
@@ -2664,15 +2663,7 @@ async def _create_media_buy_impl(
                 logger.info(f"[DEBUG] Saving {len(packages_to_save)} packages to media_packages table")
 
                 for i, resp_package in enumerate(packages_to_save):
-                    # Handle both dict and Pydantic Package objects
-                    # resp_package can be dict (from some adapters) or Package (from adcp v1.2.1)
-                    def get_package_field(pkg, field: str, default=None):
-                        """Get field from Package object or dict."""
-                        if isinstance(pkg, dict):
-                            return pkg.get(field, default)
-                        else:
-                            return getattr(pkg, field, default)
-
+                    # resp_package is always a Package object (adapters no longer return dicts)
                     def serialize_for_json(value):
                         """Serialize Pydantic models to dicts for JSON storage."""
                         from pydantic import BaseModel
@@ -2688,7 +2679,7 @@ async def _create_media_buy_impl(
                         return value
 
                     # Extract package_id from response - MUST be present, no fallback allowed
-                    resp_package_id: str | None = get_package_field(resp_package, "package_id")
+                    resp_package_id: str | None = resp_package.package_id
                     logger.info(f"[DEBUG] Package {i}: package_id = {resp_package_id}")
 
                     if not resp_package_id:
@@ -2702,7 +2693,7 @@ async def _create_media_buy_impl(
 
                     # Store full package config as JSON
                     # Sanitize status to ensure AdCP spec compliance
-                    raw_status = get_package_field(resp_package, "status")
+                    raw_status = getattr(resp_package, "status", None)  # type: ignore[assignment]
                     sanitized_status = _sanitize_package_status(raw_status)
 
                     # Get pricing info for this package if available
@@ -2714,15 +2705,13 @@ async def _create_media_buy_impl(
 
                     package_config = {
                         "package_id": resp_package_id,
-                        "name": get_package_field(resp_package, "name"),  # Include package name from adapter response
-                        "product_id": get_package_field(resp_package, "product_id"),
-                        "budget": serialize_for_json(get_package_field(resp_package, "budget")),
-                        "targeting_overlay": serialize_for_json(get_package_field(resp_package, "targeting_overlay")),
-                        "creative_ids": get_package_field(resp_package, "creative_ids"),
-                        "creative_assignments": serialize_for_json(
-                            get_package_field(resp_package, "creative_assignments")
-                        ),
-                        "format_ids_to_provide": get_package_field(resp_package, "format_ids_to_provide"),
+                        "name": getattr(resp_package, "name", None),  # Include package name from adapter response
+                        "product_id": getattr(resp_package, "product_id", None),
+                        "budget": serialize_for_json(getattr(resp_package, "budget", None)),
+                        "targeting_overlay": serialize_for_json(getattr(resp_package, "targeting_overlay", None)),
+                        "creative_ids": getattr(resp_package, "creative_ids", None),
+                        "creative_assignments": serialize_for_json(getattr(resp_package, "creative_assignments", None)),
+                        "format_ids_to_provide": getattr(resp_package, "format_ids_to_provide", None),
                         "status": sanitized_status,  # Only store AdCP-compliant status values
                         "pricing_info": pricing_info_for_package,  # Store pricing info for UI display
                         "impressions": impressions,  # Store impressions for display
@@ -2732,7 +2721,7 @@ async def _create_media_buy_impl(
                     from decimal import Decimal
 
                     budget_total = None
-                    budget_data = get_package_field(resp_package, "budget")
+                    budget_data = getattr(resp_package, "budget", None)
                     if budget_data:
                         if isinstance(budget_data, dict):
                             budget_total = budget_data.get("total")

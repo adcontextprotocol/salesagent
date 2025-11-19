@@ -3,6 +3,9 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import requests
+from adcp.types.generated_poc.create_media_buy_response import (
+    Package as ResponsePackage,
+)
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
@@ -274,10 +277,10 @@ class TritonDigital(AdServerAdapter):
                 # - buyer_ref (required)
                 # - package_id (required)
                 package_responses.append(
-                    {
-                        "buyer_ref": buyer_ref,
-                        "package_id": package.package_id,
-                    }
+                    ResponsePackage(
+                        buyer_ref=buyer_ref,
+                        package_id=package.package_id,
+                    )
                 )
 
             # Use the actual campaign ID from Triton
@@ -286,6 +289,7 @@ class TritonDigital(AdServerAdapter):
         # For dry_run, build package responses - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
         # - buyer_ref (required)
         # - package_id (required)
+        # - status (required)
         if self.dry_run:
             package_responses = []
             for idx, package in enumerate(packages):
@@ -300,17 +304,17 @@ class TritonDigital(AdServerAdapter):
 
                 # Create minimal AdCP-compliant Package response
                 package_responses.append(
-                    {
-                        "buyer_ref": buyer_ref,
-                        "package_id": package.package_id,
-                    }
+                    ResponsePackage(
+                        buyer_ref=buyer_ref,
+                        package_id=package.package_id,
+                    )
                 )
 
         return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",
             media_buy_id=media_buy_id,
             creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),  # type: ignore[arg-type]
-            packages=package_responses,  # type: ignore[arg-type]
+            packages=package_responses,
         )
 
     def add_creative_assets(
