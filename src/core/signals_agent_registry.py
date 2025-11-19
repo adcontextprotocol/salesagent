@@ -31,9 +31,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from adcp import ADCPMultiAgentClient, AgentConfig, GetSignalsRequest, Protocol
+from adcp import ADCPMultiAgentClient, AgentConfig, GetSignalsRequest, PlatformDestination, Protocol
 from adcp.exceptions import ADCPAuthenticationError, ADCPConnectionError, ADCPError, ADCPTimeoutError
-from adcp.types.generated_poc.destination import Destination1
 from adcp.types.generated_poc.get_signals_request import DeliverTo
 
 logger = logging.getLogger(__name__)
@@ -190,7 +189,7 @@ class SignalsAgentRegistry:
             deliver_to = DeliverTo(
                 countries=[],  # Empty = all countries
                 destinations=[
-                    Destination1(
+                    PlatformDestination(
                         type="platform",  # Generic platform destination
                         platform="all",  # All platforms
                     )
