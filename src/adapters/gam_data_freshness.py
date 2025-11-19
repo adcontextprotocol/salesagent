@@ -10,6 +10,7 @@ Since GAM doesn't provide a real-time freshness API, we use heuristics based on:
 
 import logging
 from datetime import UTC, datetime, timedelta
+from src.adapters.gam_reporting_service import ReportingData
 
 import pytz
 

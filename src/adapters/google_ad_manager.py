@@ -34,7 +34,7 @@ from src.adapters.gam.managers import (
     GAMTargetingManager,
     GAMWorkflowManager,
 )
-
+from src.adapters.gam_data_freshness import validate_and_log_freshness
 # Re-export constants for backward compatibility
 from src.adapters.gam.managers.orders import (
     GUARANTEED_LINE_ITEM_TYPES,
@@ -1057,6 +1057,20 @@ class GoogleAdManager(AdServerAdapter):
             advertiser_id=self.advertiser_id,
             requested_timezone="America/New_York",
         )
+
+        # Validate data freshness
+        # The adapter decides whether to return data or raise error if data is stale
+        # Target date is the end of the reporting period
+        target_date = dt.fromisoformat(date_range.end.replace("Z", "+00:00"))
+        
+        is_fresh = validate_and_log_freshness(
+            reporting_data, 
+            media_buy_id, 
+            target_date=target_date
+        )
+
+        if not is_fresh:
+            raise ValueError(f"GAM data is not fresh enough for media buy {media_buy_id}")
 
         # Aggregate totals across all packages
         total_impressions = reporting_data.metrics.get("total_impressions", 0)

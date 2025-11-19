@@ -20,7 +20,6 @@ from src.core.schema_adapters import GetMediaBuyDeliveryResponse
 from src.core.tool_context import ToolContext
 from src.core.tools.media_buy_delivery import _get_media_buy_delivery_impl
 from src.services.protocol_webhook_service import get_protocol_webhook_service
-from src.adapters.gam_data_freshness import validate_and_log_freshness
 
 logger = logging.getLogger(__name__)
 
@@ -177,24 +176,12 @@ class DeliveryWebhookScheduler:
 
             delivery_response = _get_media_buy_delivery_impl(req, context)
 
-            # Validate data freshness before sending webhook (optional - only if reporting_data available)
-            # Skip webhook if data isn't fresh enough
-            if isinstance(delivery_response, GetMediaBuyDeliveryResponse):
-                try:
+            if not isinstance(delivery_response, GetMediaBuyDeliveryResponse):
+                logger.warning(f"`Couldn't get media_delivery` for {media_buy.media_buy_id}. Result is {delivery_response.model_dump()}")
+                return
 
-                    is_fresh = validate_and_log_freshness(
-                        delivery_response,
-                        media_buy.media_buy_id,
-                        target_date=datetime.combine(end_date_obj, datetime.min.time(), tzinfo=UTC),
-                    )
-                    if not is_fresh:
-                        logger.warning(f"Skipping webhook for {media_buy.media_buy_id} - data not fresh enough")
-                        return
-                except Exception as e:
-                    # If freshness check fails, log warning but continue (data freshness is optional)
-                    logger.warning(f"Could not validate data freshness for {media_buy.media_buy_id}: {e}")
-            else:
-                logger.warning(f"Couldn't get media_delivery for {media_buy.media_buy_id}. Result is {delivery_response.model_dump()}")
+            if delivery_response.errors is not None:
+                logger.warning(f"`Couldn't get media_delivery` for {media_buy.media_buy_id}. We have recieved error in the result. Result is {delivery_response.model_dump()}")
                 return
 
             # Get sequence number for this webhook (get max sequence + 1)

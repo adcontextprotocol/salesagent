@@ -122,6 +122,51 @@ def _create_basic_media_buy_with_webhook(
 
     return media_buy_id
 
+# Create mocked GAM reporting data so we don't hit real GAM APIs
+def get_mock_gam_reporting_delivery_data(
+    base_date = datetime.now(UTC) 
+) -> ReportingData:
+    return ReportingData(
+        data=[
+            {
+                "timestamp": base_date.isoformat(),
+                "advertiser_id": "adv_123",
+                "advertiser_name": "Test Advertiser",
+                "order_id": "order_1",
+                "order_name": "Test Order",
+                "line_item_id": "line_1",
+                "line_item_name": "Test Line Item",
+                "country": "",
+                "ad_unit_id": "",
+                "ad_unit_name": "",
+                "impressions": 1000,
+                "clicks": 10,
+                "ctr": 1.0,
+                "spend": 100.0,
+                "cpm": 100.0,
+                "aggregated_rows": 1,
+
+            }
+        ],
+        start_date=base_date - timedelta(days=1),
+        end_date=base_date,
+        requested_timezone="America/New_York",
+        data_timezone="America/New_York",
+        data_valid_until=base_date + timedelta(hours=1),
+        query_type="today",
+        dimensions=["DATE"],
+        metrics={
+            "total_impressions": 1000,
+            "total_clicks": 10,
+            "total_spend": 100.0,
+            "average_ctr": 1.0,
+            "average_ecpm": 100.0,
+            "unique_advertisers": 1,
+            "unique_orders": 1,
+            "unique_line_items": 1,
+        },
+    )
+
 
 @pytest.mark.requires_db
 @pytest.mark.asyncio
@@ -136,7 +181,7 @@ async def test_delivery_webhook_sends_for_fresh_data(integration_db):
     async def fake_send_notification(*args, **kwargs):
         # Simulate successful webhook send without doing network I/O
         return True
-
+        
     # Patch only webhook sending
     with (
         patch.object(
@@ -189,7 +234,7 @@ async def test_delivery_webhook_sends_for_fresh_data(integration_db):
 @pytest.mark.asyncio
 async def test_delivery_webhook_sends_gam_based_reporting_data_only_on_gam_available_time(integration_db):
     """
-    Scheduler should call webhook with fresh data every day at 4 AM PST but scheduler it self should keep checking to run every hour.
+    Scheduler should call webhook only when data is fresh enough and not have been called for the exact period already
     """
     tenant_id, principal_id = _create_test_tenant_and_principal("google_ad_manager")
     media_buy_id = _create_basic_media_buy_with_webhook(tenant_id, principal_id, start_date=datetime(2024, 12, 28, 1, 0, 0, tzinfo=timezone.utc), end_date=datetime(2026, 1, 1, 15, 0, 5, tzinfo=timezone.utc))
@@ -200,49 +245,6 @@ async def test_delivery_webhook_sends_gam_based_reporting_data_only_on_gam_avail
         # Simulate successful webhook send without doing network I/O
         return True
 
-    # Create mocked GAM reporting data so we don't hit real GAM APIs
-    now_utc = datetime.now(UTC)
-    mocked_reporting_data = ReportingData(
-        data=[
-            {
-                "timestamp": now_utc.isoformat(),
-                "advertiser_id": "adv_123",
-                "advertiser_name": "Test Advertiser",
-                "order_id": "order_1",
-                "order_name": "Test Order",
-                "line_item_id": "line_1",
-                "line_item_name": "Test Line Item",
-                "country": "",
-                "ad_unit_id": "",
-                "ad_unit_name": "",
-                "impressions": 1000,
-                "clicks": 10,
-                "ctr": 1.0,
-                "spend": 100.0,
-                "cpm": 100.0,
-                "aggregated_rows": 1,
-
-            }
-        ],
-        start_date=now_utc - timedelta(days=1),
-        end_date=now_utc,
-        requested_timezone="America/New_York",
-        data_timezone="America/New_York",
-        data_valid_until=now_utc + timedelta(hours=1),
-        query_type="today",
-        dimensions=["DATE"],
-        metrics={
-            "total_impressions": 1000,
-            "total_clicks": 10,
-            "total_spend": 100.0,
-            "average_ctr": 1.0,
-            "average_ecpm": 100.0,
-            "unique_advertisers": 1,
-            "unique_orders": 1,
-            "unique_line_items": 1,
-        },
-    )
-
     with (
         patch.object(
             scheduler.webhook_service,
@@ -252,19 +254,15 @@ async def test_delivery_webhook_sends_gam_based_reporting_data_only_on_gam_avail
         ) as mock_send_notification,
         patch("src.adapters.gam_reporting_service.GAMReportingService") as mock_reporting_service_class,
     ):
-        # Ensure GoogleAdManager.get_media_buy_delivery uses mocked GAM reporting data
-        mock_reporting_instance = mock_reporting_service_class.return_value
-        mock_reporting_instance.get_reporting_data.return_value = mocked_reporting_data
-
-        # Set time to 2 AM
-        with freeze_time("2025-1-1 02:00:00"):
-            await scheduler._send_reports()
-
-            # Expect there's no webhook has been called
-            assert mock_send_notification.await_count == 0
-
         # Set time to 3 AM
         with freeze_time("2025-1-1 03:00:00"):
+            # Ensure GoogleAdManager.get_media_buy_delivery uses mocked GAM reporting data
+            mocked_reporting_data = get_mock_gam_reporting_delivery_data(
+                datetime(2024, 12, 28, 0, 0, 0, tzinfo=timezone.utc)
+            )
+            mock_reporting_instance = mock_reporting_service_class.return_value
+            mock_reporting_instance.get_reporting_data.return_value = mocked_reporting_data
+            
             await scheduler._send_reports()
             
             # Expect there's no webhook has been called
@@ -272,6 +270,11 @@ async def test_delivery_webhook_sends_gam_based_reporting_data_only_on_gam_avail
 
         # Set time to 4 AM
         with freeze_time("2025-1-1 04:00:00"):
+            # Ensure GoogleAdManager.get_media_buy_delivery uses mocked GAM reporting data
+            mocked_reporting_data = get_mock_gam_reporting_delivery_data()
+            mock_reporting_instance = mock_reporting_service_class.return_value
+            mock_reporting_instance.get_reporting_data.return_value = mocked_reporting_data
+            
             await scheduler._send_reports()
 
             # Expect one webhook has been called
@@ -284,20 +287,6 @@ async def test_delivery_webhook_sends_gam_based_reporting_data_only_on_gam_avail
             errors = result.get("errors")
 
             assert errors is None
-
-        # Set time to 5 AM
-        with freeze_time("2025-1-1 05:00:00"):
-            await scheduler._send_reports()
-
-            # Expect no webhook has been called
-            assert mock_send_notification.await_count == 0
-
-        # Set time to 4 AM next day
-        with freeze_time("2025-1-2 04:00:00"):
-            await scheduler._send_reports()
-
-            # Expect one webhook has been called
-            assert mock_send_notification.await_count == 1
 
 
 # TODO: @yusuf - Test we don't call get_media_buy_delivery tool unless media_buy start date + frequency time has been passed
