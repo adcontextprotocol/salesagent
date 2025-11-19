@@ -22,32 +22,25 @@ from adcp.types.aliases import (
     UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
 )
 
-# Import types not yet in stable API (using generated_poc for now)
-from adcp.types.generated_poc.format import Type as FormatTypeEnum
-from adcp.types.generated_poc.get_products_request import Filters as LibraryFilters
-
-# Import nested types from generated_poc (not yet exposed in stable API)
-from adcp.types.generated_poc.list_creatives_request import (
-    FieldModel as LibraryFieldModel,
-)
-from adcp.types.generated_poc.list_creatives_request import (
-    Filters as LibraryCreativeFilters,
-)
-from adcp.types.generated_poc.list_creatives_request import Pagination as LibraryPagination
-from adcp.types.generated_poc.list_creatives_request import Sort as LibrarySort
-
-# Import types from stable API (per adcp 2.6.0+ recommendation)
+# Import types from stable API (per adcp 2.8.0+ - all types now in stable)
+from adcp.types.stable import AffectedPackage as LibraryAffectedPackage
 from adcp.types.stable import Creative as LibraryCreative
 from adcp.types.stable import (
     CreativeStatus,
+    FieldModel as LibraryFieldModel,
+    Filters as LibraryFilters,
+    Filters as LibraryCreativeFilters,  # Same as LibraryFilters
+    Pagination as LibraryPagination,
     PriceGuidance,  # Replaces local PriceGuidance class
     PushNotificationConfig,
+    Sort as LibrarySort,
+    Type as FormatTypeEnum,
 )
 
-# Import main request/response types from stable API (per adcp 2.6.0+ recommendation)
+# Import main request/response types from stable API
 from adcp.types.stable import Format as LibraryFormat
 
-# Import types from stable API (per adcp 2.7.0+ recommendation - new in 2.7.0)
+# Import types from stable API (per adcp 2.7.0+)
 from adcp.types.stable import FormatId as LibraryFormatId
 from adcp.types.stable import ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest
 from adcp.types.stable import ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse
@@ -56,10 +49,6 @@ from adcp.types.stable import PackageRequest as LibraryPackageRequest
 
 # For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)
 LibraryPackage: TypeAlias = AdCPPackage
-
-# Import Product and pricing options from stable API
-# Import types not yet in stable API
-from adcp.types.generated_poc.update_media_buy_response import AffectedPackage as LibraryAffectedPackage
 from adcp.types.stable import (
     CpcPricingOption,
     CpcvPricingOption,
@@ -631,7 +620,7 @@ class Format(LibraryFormat):
     the authoritative creative agent that provides this format (e.g., the reference
     creative agent at https://creative.adcontextprotocol.org).
 
-    Note: All spec-defined fields are inherited from adcp.types.generated_poc.format.Format.
+    Note: All spec-defined fields are inherited from adcp.types.stable.Format.
     We only add internal fields here marked with exclude=True.
     """
 
@@ -1620,7 +1609,7 @@ class Creative(LibraryCreative):
     2. Internal-only principal_id for workflow tracking
     3. Backward-compatible defaults for created_date/updated_date/status
 
-    **Library Fields (from adcp.types.generated_poc.list_creatives_response.Creative):**
+    **Library Fields (from adcp.types.stable.Creative):**
     - Required: creative_id, name, format_id, created_date, updated_date, status
     - Optional: assets, click_url, media_url, width, height, duration, tags, performance,
                 assignments, sub_assets
