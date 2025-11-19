@@ -5,13 +5,13 @@ from src.core.schemas import AffectedPackage, UpdateMediaBuySuccess
 
 def test_affected_packages_includes_creative_assignment_details():
     """Test that affected_packages contains proper PackageUpdateResult structure."""
-    # Create AffectedPackage with both AdCP-required and internal fields
+    # Create AffectedPackage with extended fields
     affected_packages = [
         AffectedPackage(
-            buyer_ref="buyer_ref_123",  # Required by AdCP
-            package_id="pkg_1",  # Required by AdCP
+            buyer_ref="buyer_ref_123",  # Required by adcp library
+            package_id="pkg_1",  # Required by adcp library
             buyer_package_ref="pkg_default",  # Internal field (excluded from serialization)
-            changes_applied={  # Internal field (excluded from serialization)
+            changes_applied={  # Sales agent extension (included in serialization)
                 "creative_ids": {
                     "added": ["creative_1", "creative_2"],
                     "removed": [],
@@ -66,10 +66,10 @@ def test_affected_packages_shows_replaced_creatives():
     """Test that affected_packages shows both added and removed creatives."""
     affected_packages = [
         AffectedPackage(
-            buyer_ref="buyer_ref_789",  # Required by AdCP
-            package_id="pkg_1",  # Required by AdCP
+            buyer_ref="buyer_ref_789",  # Required by adcp library
+            package_id="pkg_1",  # Required by adcp library
             buyer_package_ref="pkg_default",  # Internal field
-            changes_applied={  # Internal field
+            changes_applied={  # Sales agent extension
                 "creative_ids": {
                     "added": ["creative_2", "creative_3"],
                     "removed": ["creative_1"],
@@ -98,10 +98,10 @@ def test_response_serialization_includes_affected_packages():
         buyer_ref="buyer_ref_serialization",
         affected_packages=[
             AffectedPackage(
-                buyer_ref="buyer_ref_serialization",  # Required by AdCP
-                package_id="pkg_1",  # Required by AdCP
-                buyer_package_ref="pkg_1_buyer_ref",  # Internal field
-                changes_applied={  # Internal field
+                buyer_ref="buyer_ref_serialization",  # Required by adcp library
+                package_id="pkg_1",  # Required by adcp library
+                buyer_package_ref="pkg_1_buyer_ref",  # Internal field (excluded)
+                changes_applied={  # Sales agent extension (included)
                     "creative_ids": {
                         "added": ["creative_a"],
                         "removed": [],
@@ -112,19 +112,26 @@ def test_response_serialization_includes_affected_packages():
         ],
     )
 
-    # Test 1: Regular serialization (AdCP-compliant) - internal fields excluded
+    # Test 1: Regular serialization
     response_dict = response.model_dump()
     assert "affected_packages" in response_dict
     assert len(response_dict["affected_packages"]) == 1
-    # Internal fields should be EXCLUDED in regular serialization
-    assert "buyer_package_ref" not in response_dict["affected_packages"][0], "Internal field should be excluded"
-    assert "changes_applied" not in response_dict["affected_packages"][0], "Internal field should be excluded"
-    # AdCP-required fields should be PRESENT
-    assert response_dict["affected_packages"][0]["buyer_ref"] == "buyer_ref_serialization"
-    assert response_dict["affected_packages"][0]["package_id"] == "pkg_1"
 
-    # Test 2: Internal serialization - internal fields included
+    pkg = response_dict["affected_packages"][0]
+
+    # Internal fields should be EXCLUDED
+    assert "buyer_package_ref" not in pkg, "Internal field should be excluded"
+
+    # Required and extension fields should be PRESENT
+    assert pkg["buyer_ref"] == "buyer_ref_serialization"
+    assert pkg["package_id"] == "pkg_1"
+    assert "changes_applied" in pkg, "changes_applied extension field should be included"
+    assert pkg["changes_applied"]["creative_ids"]["added"] == ["creative_a"]
+    assert pkg["changes_applied"]["creative_ids"]["removed"] == []
+    assert pkg["changes_applied"]["creative_ids"]["current"] == ["creative_a"]
+
+    # Test 2: Internal serialization - same as regular for this response
     response_internal = response.model_dump_internal()
     assert "affected_packages" in response_internal
-    # Note: Even with model_dump_internal(), the nested AffectedPackage.model_dump() excludes internal fields
-    # This is because exclude=True on the fields themselves takes precedence
+    # changes_applied should be present in both regular and internal serialization
+    assert "changes_applied" in response_internal["affected_packages"][0]
