@@ -154,6 +154,26 @@ class Tenant(Base, JSONValidatorMixin):
         """Get primary domain for this tenant (virtual_host or subdomain-based)."""
         return self.virtual_host or (f"{self.subdomain}.example.com" if self.subdomain else None)
 
+    @property
+    def is_gam_tenant(self) -> bool:
+        """Check if this tenant is using Google Ad Manager adapter.
+
+        Checks both legacy ad_server field and current adapter_config.adapter_type.
+        This is the single source of truth for GAM tenant detection.
+
+        Returns:
+            bool: True if tenant is using GAM, False otherwise
+        """
+        # Check legacy ad_server field
+        if self.ad_server == "google_ad_manager":
+            return True
+
+        # Check adapter_config relationship
+        if self.adapter_config and self.adapter_config.adapter_type == "google_ad_manager":
+            return True
+
+        return False
+
 
 # CreativeFormat model removed - table dropped in migration f2addf453200 (Oct 13, 2025)
 # Creative formats are now fetched from creative agents via AdCP protocol

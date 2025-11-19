@@ -795,14 +795,8 @@ def update_business_rules(tenant_id):
                 tenant.measurement_providers = {"providers": providers, "default": default_provider}
                 attributes.flag_modified(tenant, "measurement_providers")
             else:
-                # Check if GAM is configured (check both ad_server and adapter_config)
-                is_gam_tenant = False
-                if tenant.ad_server == "google_ad_manager":
-                    is_gam_tenant = True
-                elif tenant.adapter_config and tenant.adapter_config.adapter_type == "google_ad_manager":
-                    is_gam_tenant = True
-
-                if is_gam_tenant:
+                # Check if GAM is configured (uses centralized tenant.is_gam_tenant property)
+                if tenant.is_gam_tenant:
                     # For GAM tenants without configured providers, set default
                     logger.info(f"GAM tenant {tenant_id} has no providers, using GAM default")
                     tenant.measurement_providers = {"providers": ["Google Ad Manager"], "default": "Google Ad Manager"}
