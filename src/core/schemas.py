@@ -26,20 +26,13 @@ from adcp.types.aliases import (
 from adcp.types.generated_poc.format import Type as FormatTypeEnum
 from adcp.types.generated_poc.format_id import FormatId as LibraryFormatId
 from adcp.types.generated_poc.get_products_request import Filters as LibraryFilters
-from adcp.types.generated_poc.list_creative_formats_request import (
-    ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest,
-)
-from adcp.types.generated_poc.list_creative_formats_response import (
-    ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse,
-)
+
+# Import nested types from generated_poc (not yet exposed in stable API)
 from adcp.types.generated_poc.list_creatives_request import (
     FieldModel as LibraryFieldModel,
 )
 from adcp.types.generated_poc.list_creatives_request import (
     Filters as LibraryCreativeFilters,
-)
-from adcp.types.generated_poc.list_creatives_request import (
-    ListCreativesRequest as LibraryListCreativesRequest,
 )
 from adcp.types.generated_poc.list_creatives_request import Pagination as LibraryPagination
 from adcp.types.generated_poc.list_creatives_request import Sort as LibrarySort
@@ -50,7 +43,12 @@ from adcp.types.generated_poc.package_request import PackageRequest as LibraryPa
 # Import types from stable API (per adcp 2.6.0+ recommendation)
 from adcp.types.stable import Creative as LibraryCreative
 from adcp.types.stable import CreativeStatus
+
+# Import main request/response types from stable API (per adcp 2.6.0+ recommendation)
 from adcp.types.stable import Format as LibraryFormat
+from adcp.types.stable import ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest
+from adcp.types.stable import ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse
+from adcp.types.stable import ListCreativesRequest as LibraryListCreativesRequest
 
 # For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)
 LibraryPackage: TypeAlias = AdCPPackage

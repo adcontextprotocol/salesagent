@@ -21,7 +21,7 @@ from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 
-from adcp.types.generated_poc.error import Error
+from adcp.types.stable import Error
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
