@@ -24,7 +24,6 @@ from adcp.types.aliases import (
 
 # Import types not yet in stable API (using generated_poc for now)
 from adcp.types.generated_poc.format import Type as FormatTypeEnum
-from adcp.types.generated_poc.format_id import FormatId as LibraryFormatId
 from adcp.types.generated_poc.get_products_request import Filters as LibraryFilters
 
 # Import nested types from generated_poc (not yet exposed in stable API)
@@ -37,25 +36,29 @@ from adcp.types.generated_poc.list_creatives_request import (
 from adcp.types.generated_poc.list_creatives_request import Pagination as LibraryPagination
 from adcp.types.generated_poc.list_creatives_request import Sort as LibrarySort
 
-# Import PackageRequest for request handling (Package comes from aliases above)
-from adcp.types.generated_poc.package_request import PackageRequest as LibraryPackageRequest
-
 # Import types from stable API (per adcp 2.6.0+ recommendation)
 from adcp.types.stable import Creative as LibraryCreative
-from adcp.types.stable import CreativeStatus
+from adcp.types.stable import (
+    CreativeStatus,
+    PriceGuidance,  # Replaces local PriceGuidance class
+    PushNotificationConfig,
+)
 
 # Import main request/response types from stable API (per adcp 2.6.0+ recommendation)
 from adcp.types.stable import Format as LibraryFormat
+
+# Import types from stable API (per adcp 2.7.0+ recommendation - new in 2.7.0)
+from adcp.types.stable import FormatId as LibraryFormatId
 from adcp.types.stable import ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest
 from adcp.types.stable import ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse
 from adcp.types.stable import ListCreativesRequest as LibraryListCreativesRequest
+from adcp.types.stable import PackageRequest as LibraryPackageRequest
 
 # For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)
 LibraryPackage: TypeAlias = AdCPPackage
 
 # Import Product and pricing options from stable API
 # Import types not yet in stable API
-from adcp.types.generated_poc.push_notification_config import PushNotificationConfig
 from adcp.types.generated_poc.update_media_buy_response import AffectedPackage as LibraryAffectedPackage
 from adcp.types.stable import (
     CpcPricingOption,
@@ -480,20 +483,8 @@ class PricingModel(str, Enum):
     FLAT_RATE = "flat_rate"  # Fixed cost regardless of delivery
 
 
-class PriceGuidance(BaseModel):
-    """Pricing guidance for auction-based pricing per AdCP spec."""
-
-    floor: float = Field(..., ge=0, description="Minimum bid price - publisher will reject bids under this value")
-    p25: float | None = Field(None, ge=0, description="25th percentile winning price")
-    p50: float | None = Field(None, ge=0, description="Median winning price")
-    p75: float | None = Field(None, ge=0, description="75th percentile winning price")
-    p90: float | None = Field(None, ge=0, description="90th percentile winning price")
-
-    def model_dump(self, **kwargs):
-        """Exclude null percentile values per AdCP spec (only floor is required)."""
-        if "exclude_none" not in kwargs:
-            kwargs["exclude_none"] = True
-        return super().model_dump(**kwargs)
+# PriceGuidance is now imported from adcp.types.stable (adcp 2.7.0+)
+# The library version has the same fields and behavior as our previous local class
 
 
 class PricingParameters(BaseModel):

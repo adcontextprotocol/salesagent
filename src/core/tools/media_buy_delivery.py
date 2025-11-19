@@ -22,7 +22,7 @@ from src.core.tool_context import ToolContext
 logger = logging.getLogger(__name__)
 console = Console()
 
-from adcp.types.generated_poc.push_notification_config import PushNotificationConfig
+from adcp.types.stable import PushNotificationConfig
 
 from src.core.auth import get_principal_object
 from src.core.helpers import get_principal_id_from_context
