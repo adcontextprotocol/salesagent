@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, time
 # --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
 # --- MCP Status System (AdCP PR #77) ---
 from enum import Enum
-from typing import Any, Literal, Union
+from typing import Any, Literal, TypeAlias, Union
 
 from adcp import Error
 from adcp.types.aliases import (
@@ -14,6 +14,7 @@ from adcp.types.aliases import (
 from adcp.types.aliases import (
     CreateMediaBuySuccessResponse as AdCPCreateMediaBuySuccess,
 )
+from adcp.types.aliases import Package as AdCPPackage
 from adcp.types.aliases import (
     UpdateMediaBuyErrorResponse as AdCPUpdateMediaBuyError,
 )
@@ -46,17 +47,42 @@ from adcp.types.generated_poc.list_creatives_request import Pagination as Librar
 from adcp.types.generated_poc.list_creatives_request import Sort as LibrarySort
 from adcp.types.generated_poc.list_creatives_response import Creative as LibraryCreative
 
-# Import library Package and PackageRequest for proper request/response separation
-from adcp.types.generated_poc.package import Package as LibraryPackage
+# Import PackageRequest for request handling (Package comes from aliases above)
 from adcp.types.generated_poc.package_request import PackageRequest as LibraryPackageRequest
 
+# For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)
+LibraryPackage: TypeAlias = AdCPPackage
+
 # Import library Product, Format, and FormatId to ensure we use canonical AdCP schema
+# Import pricing option types from adcp library
+from adcp.types.generated_poc.cpc_option import CpcPricingOption
+from adcp.types.generated_poc.cpcv_option import CpcvPricingOption
+from adcp.types.generated_poc.cpm_auction_option import CpmAuctionPricingOption
+from adcp.types.generated_poc.cpm_fixed_option import CpmFixedRatePricingOption
+from adcp.types.generated_poc.cpp_option import CppPricingOption
+from adcp.types.generated_poc.cpv_option import CpvPricingOption
+from adcp.types.generated_poc.flat_rate_option import FlatRatePricingOption
 from adcp.types.generated_poc.product import Product as LibraryProduct
 from adcp.types.generated_poc.push_notification_config import PushNotificationConfig
 
 # Import AffectedPackage for UpdateMediaBuySuccess response
 from adcp.types.generated_poc.update_media_buy_response import AffectedPackage as LibraryAffectedPackage
+from adcp.types.generated_poc.vcpm_auction_option import VcpmAuctionPricingOption
+from adcp.types.generated_poc.vcpm_fixed_option import VcpmFixedRatePricingOption
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
+
+# Type alias for the union of all AdCP pricing option types
+AdCPPricingOption = (
+    CpmFixedRatePricingOption
+    | CpmAuctionPricingOption
+    | VcpmFixedRatePricingOption
+    | VcpmAuctionPricingOption
+    | CpcPricingOption
+    | CpcvPricingOption
+    | CpvPricingOption
+    | CppPricingOption
+    | FlatRatePricingOption
+)
 
 
 # Helper function for creating AnyUrl instances (eliminates mypy warnings)
