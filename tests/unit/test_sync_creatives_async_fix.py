@@ -157,6 +157,16 @@ class TestSyncCreativesErrorHandling:
                         mock_reg_instance = MagicMock()
                         mock_registry.return_value = mock_reg_instance
 
+                        # Mock get_format to return a valid format spec
+                        async def mock_get_format(*args, **kwargs):
+                            mock_format = MagicMock()
+                            mock_format.format_id = {"agent_url": "https://example.com", "id": "display_300x250"}
+                            mock_format.agent_url = "https://example.com"
+                            mock_format.output_format_ids = None  # Not generative
+                            return mock_format
+
+                        mock_reg_instance.get_format = mock_get_format
+
                         # Mock list_all_formats to return a matching format
                         async def mock_list_formats(*args, **kwargs):
                             mock_format = MagicMock()
@@ -233,6 +243,15 @@ class TestSyncCreativesAsyncScenario:
                         mock_registry.return_value = mock_reg_instance
 
                         # Mock async methods
+                        async def mock_get_format(*args, **kwargs):
+                            # Simulate work
+                            await asyncio.sleep(0.001)
+                            mock_format = MagicMock()
+                            mock_format.format_id = {"agent_url": "https://example.com", "id": "display_300x250"}
+                            mock_format.agent_url = "https://example.com"
+                            mock_format.output_format_ids = None
+                            return mock_format
+
                         async def mock_list_formats(*args, **kwargs):
                             # Simulate work
                             await asyncio.sleep(0.001)
@@ -257,6 +276,7 @@ class TestSyncCreativesAsyncScenario:
                                 ]
                             }
 
+                        mock_reg_instance.get_format = mock_get_format
                         mock_reg_instance.list_all_formats = mock_list_formats
                         mock_reg_instance.preview_creative = mock_preview
                         mock_session.scalars.return_value.first.return_value = None

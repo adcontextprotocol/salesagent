@@ -192,23 +192,16 @@ def _sync_creatives_impl(
                     # Validate format exists in creative agent
                     # Extract agent_url and format_id from FormatId
                     if hasattr(format_value, "agent_url") and hasattr(format_value, "id"):
-                        import asyncio
-
                         agent_url = str(format_value.agent_url)
                         format_id = format_value.id
 
                         # Check if format exists (uses in-memory cache with 1-hour TTL)
-                        # Use explicit event loop for async/sync bridge (consistent with media_buy_create.py)
+                        # Use run_async_in_sync_context to handle both sync and async contexts
                         format_spec = None
                         validation_error = None
 
                         try:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                            try:
-                                format_spec = loop.run_until_complete(registry.get_format(agent_url, format_id))
-                            finally:
-                                loop.close()
+                            format_spec = run_async_in_sync_context(registry.get_format(agent_url, format_id))
                         except Exception as e:
                             # Network error, agent unreachable, etc.
                             validation_error = e
