@@ -19,10 +19,11 @@ or with Docker Compose running for PostgreSQL.
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from adcp.types.generated_poc.targeting import TargetingOverlay
 from sqlalchemy import delete, select
 
 from src.core.database.database_session import get_db_session
-from src.core.schemas import Budget, Package, Targeting
+from src.core.schemas import Budget, PackageRequest
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.asyncio]
@@ -79,7 +80,7 @@ class TestCreateMediaBuyV24Format:
                 product_id="prod_test_v24_usd",
                 name="Test Product V24 USD",
                 description="Test product for v2.4 format (USD)",
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 delivery_type="guaranteed",
                 pricing_model="CPM",
                 rate="10.0",
@@ -95,7 +96,7 @@ class TestCreateMediaBuyV24Format:
                 product_id="prod_test_v24_eur",
                 name="Test Product V24 EUR",
                 description="Test product for v2.4 format (EUR)",
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 delivery_type="guaranteed",
                 pricing_model="CPM",
                 rate="10.0",
@@ -111,7 +112,7 @@ class TestCreateMediaBuyV24Format:
                 product_id="prod_test_v24_gbp",
                 name="Test Product V24 GBP",
                 description="Test product for v2.4 format (GBP)",
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
                 delivery_type="guaranteed",
                 pricing_model="CPM",
                 rate="10.0",
@@ -147,16 +148,24 @@ class TestCreateMediaBuyV24Format:
                     "tenant_id": "test_tenant_v24",
                     "name": "Test V24 Tenant",
                     "ad_server": "mock",
-                    "auto_approve_formats": ["display_300x250"],
+                    "auto_approve_format_ids": ["display_300x250"],
                 }
             )
 
+            # Get pricing_option_ids for created products (needed for PackageRequest)
+            # NOTE: pricing_option_id is auto-generated from pricing model details
+            # Format: {pricing_model}_{currency}_{fixed|auction}
+            # Example: "cpm_usd_fixed", "cpm_eur_auction"
             yield {
                 "tenant_id": "test_tenant_v24",
                 "principal_id": "test_principal_v24",
                 "product_id_usd": "prod_test_v24_usd",
                 "product_id_eur": "prod_test_v24_eur",
                 "product_id_gbp": "prod_test_v24_gbp",
+                # Use generated pricing_option_id format (not database ID)
+                "pricing_option_id_usd": "cpm_usd_fixed",
+                "pricing_option_id_eur": "cpm_eur_fixed",
+                "pricing_option_id_gbp": "cpm_gbp_fixed",
             }
 
             # Cleanup - IMPORTANT: Delete in reverse dependency order
@@ -209,11 +218,12 @@ class TestCreateMediaBuyV24Format:
 
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create Package with float budget (new format)
+        # Create PackageRequest with float budget (new format)
         packages = [
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_budget_test",
                 product_id=setup_test_tenant["product_id_usd"],  # Use USD product
+                pricing_option_id=setup_test_tenant["pricing_option_id_usd"],  # Required field
                 budget=5000.0,  # Float budget, currency from pricing_option
             )
         ]
@@ -228,15 +238,29 @@ class TestCreateMediaBuyV24Format:
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
-            packages=[p.model_dump_internal() for p in packages],  # Use internal to skip package_id validation
+            packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=5000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-001",
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure
+        if not hasattr(response, "media_buy_id"):
+            # If error response, print the error for debugging
+            print(f"ERROR RESPONSE: {response}")
+            print(f"ERROR RESPONSE TYPE: {type(response)}")
+            print(
+                f"ERROR RESPONSE DICT: {response.model_dump() if hasattr(response, 'model_dump') else vars(response)}"
+            )
+            if hasattr(response, "error_code"):
+                print(f"Error code: {response.error_code}")
+            if hasattr(response, "message"):
+                print(f"Error message: {response.message}")
+            if hasattr(response, "details"):
+                print(f"Error details: {response.details}")
+            raise AssertionError(f"Expected CreateMediaBuySuccess but got {type(response).__name__}: {response}")
         assert response.media_buy_id
         assert len(response.packages) == 1
 
@@ -249,8 +273,8 @@ class TestCreateMediaBuyV24Format:
         assert package["buyer_ref"] == "pkg_budget_test"
         assert package["package_id"]  # Should have generated ID
 
-        # Verify nested budget was serialized correctly
-        assert "budget" in package or "products" in package  # Either field structure is fine
+        # Per AdCP spec, CreateMediaBuyResponse.Package only contains buyer_ref and package_id
+        # (not budget, targeting, etc - those are in the request Package schema)
 
     async def test_create_media_buy_with_targeting_overlay_mcp(self, setup_test_tenant):
         """Test MCP path with packages containing Targeting objects.
@@ -261,15 +285,15 @@ class TestCreateMediaBuyV24Format:
 
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create Package with nested Targeting object
+        # Create PackageRequest with nested TargetingOverlay object
         packages = [
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_targeting_test",
                 product_id=setup_test_tenant["product_id_eur"],  # Use EUR product
+                pricing_option_id=setup_test_tenant["pricing_option_id_eur"],  # Required field
                 budget=8000.0,  # Float budget, currency from pricing_option
-                targeting_overlay=Targeting(
+                targeting_overlay=TargetingOverlay(
                     geo_country_any_of=["US", "CA"],
-                    device_type_any_of=["mobile", "tablet"],
                 ),
             )
         ]
@@ -281,15 +305,29 @@ class TestCreateMediaBuyV24Format:
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_targeting",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
-            packages=[p.model_dump_internal() for p in packages],
+            packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=8000.0, currency="EUR"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-002",
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure
+        if not hasattr(response, "media_buy_id"):
+            # If error response, print the error for debugging
+            print(f"ERROR RESPONSE: {response}")
+            print(f"ERROR RESPONSE TYPE: {type(response)}")
+            print(
+                f"ERROR RESPONSE DICT: {response.model_dump() if hasattr(response, 'model_dump') else vars(response)}"
+            )
+            if hasattr(response, "error_code"):
+                print(f"Error code: {response.error_code}")
+            if hasattr(response, "message"):
+                print(f"Error message: {response.message}")
+            if hasattr(response, "details"):
+                print(f"Error details: {response.details}")
+            raise AssertionError(f"Expected CreateMediaBuySuccess but got {type(response).__name__}: {response}")
         assert response.media_buy_id
         assert len(response.packages) == 1
 
@@ -314,19 +352,22 @@ class TestCreateMediaBuyV24Format:
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
         packages = [
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_usd",
                 product_id=setup_test_tenant["product_id_usd"],  # Use USD product
+                pricing_option_id=setup_test_tenant["pricing_option_id_usd"],  # Required field
                 budget=3000.0,  # Float budget, currency from pricing_option
             ),
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_eur",
                 product_id=setup_test_tenant["product_id_eur"],  # Use EUR product
+                pricing_option_id=setup_test_tenant["pricing_option_id_eur"],  # Required field
                 budget=2500.0,  # Float budget, currency from pricing_option
             ),
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_gbp",
                 product_id=setup_test_tenant["product_id_gbp"],  # Use GBP product
+                pricing_option_id=setup_test_tenant["pricing_option_id_gbp"],  # Required field
                 budget=2000.0,  # Float budget, currency from pricing_option
             ),
         ]
@@ -341,12 +382,12 @@ class TestCreateMediaBuyV24Format:
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_multi",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Puma RS-X 2025 training shoes"},
-            packages=[p.model_dump_internal() for p in packages],
+            packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=total_budget_value, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-003",
-            context=context,
+            ctx=context,
         )
 
         # Verify all packages serialized correctly
@@ -369,11 +410,12 @@ class TestCreateMediaBuyV24Format:
 
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create Package with float budget (new format)
+        # Create PackageRequest with float budget (new format)
         packages = [
-            Package(
+            PackageRequest(
                 buyer_ref="pkg_a2a_test",
                 product_id=setup_test_tenant["product_id_usd"],  # Use USD product
+                pricing_option_id=setup_test_tenant["pricing_option_id_usd"],  # Required field
                 budget=6000.0,  # Float budget, currency from pricing_option
             )
         ]
@@ -385,12 +427,12 @@ class TestCreateMediaBuyV24Format:
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_a2a",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Reebok Nano 2025 cross-training shoes"},
-            packages=[p.model_dump_internal() for p in packages],
+            packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
             budget=Budget(total=6000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-A2A-001",
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure (same as MCP)
@@ -431,7 +473,7 @@ class TestCreateMediaBuyV24Format:
             total_budget=4000.0,  # Legacy parameter
             start_date=(datetime.now(UTC) + timedelta(days=1)).date(),  # Legacy parameter
             end_date=(datetime.now(UTC) + timedelta(days=31)).date(),  # Legacy parameter
-            context=context,
+            ctx=context,
         )
 
         # Verify response

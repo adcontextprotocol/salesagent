@@ -176,7 +176,7 @@ class TestCreativeSyncDataPreservation:
         context = MockContext()
 
         result = sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "preserve-url-001",
@@ -251,7 +251,7 @@ class TestCreativeSyncDataPreservation:
         context = MockContext()
 
         result = sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "preserve-dims-001",
@@ -340,7 +340,7 @@ class TestCreativeSyncDataPreservation:
         context = MockContext()
 
         result = sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "preserve-assets-001",
@@ -416,7 +416,7 @@ class TestCreativeSyncDataPreservation:
         context = MockContext()
 
         result = sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "preserve-gen-url-001",
@@ -486,7 +486,7 @@ class TestCreativeSyncDataPreservation:
         # First create the creative
         original_url = "https://user-v1.example.com/banner.png"
         sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "update-preserve-001",
@@ -500,7 +500,7 @@ class TestCreativeSyncDataPreservation:
         # Now update with new user URL
         new_user_url = "https://user-v2.example.com/banner-updated.png"
         result = sync_fn(
-            context=context,
+            ctx=context,
             creatives=[
                 {
                     "creative_id": "update-preserve-001",

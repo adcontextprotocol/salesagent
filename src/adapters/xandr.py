@@ -17,8 +17,11 @@ from src.core.schemas import (
     CreateMediaBuyResponse,
     CreateMediaBuySuccess,
     MediaPackage,
+    PriceGuidance,
+    PricingModel,
     Principal,
     Product,
+    url,
 )
 
 # NOTE: Xandr adapter needs full refactor - it's using old schemas and patterns
@@ -331,6 +334,8 @@ class XandrAdapter(AdServerAdapter):
     def get_products(self) -> list[Product]:
         """Get available products (placement groups in Xandr)."""
         try:
+            from src.core.schemas import FormatId, PricingOption, Property, PropertyIdentifier
+
             # In Xandr, products map to placement groups or custom deals
             # For now, return standard IAB formats as products
             products = [
@@ -338,17 +343,40 @@ class XandrAdapter(AdServerAdapter):
                     product_id="xandr_display_standard",
                     name="Display - Standard Banners",
                     description="Standard display banner placements (supports geo, device, os, browser targeting)",
-                    formats=["display_728x90", "display_300x250", "display_320x50"],
-                    delivery_type="non_guaranteed",
-                    floor_cpm=0.50,
-                    recommended_cpm=10.0,
-                    property_tags=["all_inventory"],
+                    format_ids=[
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_728x90"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_300x250"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_320x50"),
+                    ],
+                    delivery_type="non_guaranteed",  # type: ignore[arg-type]
+                    pricing_options=[
+                        PricingOption(  # type: ignore[list-item]
+                            pricing_option_id="xandr_display_cpm",
+                            pricing_model=PricingModel.CPM,
+                            rate=None,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=0.50, p25=None, p50=None, p75=10.0, p90=None),
+                            parameters=None,
+                            min_spend_per_package=None,
+                            supported=None,
+                            unsupported_reason=None,
+                        )
+                    ],
+                    publisher_properties=[
+                        Property(  # type: ignore[list-item]
+                            property_type="website",
+                            name="All Inventory",
+                            identifiers=[PropertyIdentifier(type="domain", value="*")],
+                            publisher_domain="*",
+                            tags=None,
+                        )
+                    ],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
-                    properties=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=None,  # type: ignore[arg-type]
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -358,17 +386,39 @@ class XandrAdapter(AdServerAdapter):
                     product_id="xandr_video_instream",
                     name="Video - In-Stream",
                     description="Pre-roll, mid-roll, and post-roll video (supports geo, device, content targeting)",
-                    formats=["video_16x9", "video_9x16"],
-                    delivery_type="non_guaranteed",
-                    floor_cpm=10.0,
-                    recommended_cpm=30.0,
-                    property_tags=["all_inventory"],
+                    format_ids=[
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="video_16x9"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="video_9x16"),
+                    ],
+                    delivery_type="non_guaranteed",  # type: ignore[arg-type]
+                    pricing_options=[
+                        PricingOption(  # type: ignore[list-item]
+                            pricing_option_id="xandr_video_cpm",
+                            pricing_model=PricingModel.CPM,
+                            rate=None,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=10.0, p25=None, p50=None, p75=30.0, p90=None),
+                            parameters=None,
+                            min_spend_per_package=None,
+                            supported=None,
+                            unsupported_reason=None,
+                        )
+                    ],
+                    publisher_properties=[
+                        Property(  # type: ignore[list-item]
+                            property_type="website",
+                            name="All Inventory",
+                            identifiers=[PropertyIdentifier(type="domain", value="*")],
+                            publisher_domain="*",
+                            tags=None,
+                        )
+                    ],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
-                    properties=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=None,  # type: ignore[arg-type]
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -378,17 +428,39 @@ class XandrAdapter(AdServerAdapter):
                     product_id="xandr_native",
                     name="Native Advertising",
                     description="Native ad placements (supports geo, device, context targeting)",
-                    formats=["native_1x1", "native_1.2x1"],
-                    delivery_type="non_guaranteed",
-                    floor_cpm=2.0,
-                    recommended_cpm=15.0,
-                    property_tags=["all_inventory"],
+                    format_ids=[
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="native_1x1"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="native_1.2x1"),
+                    ],
+                    delivery_type="non_guaranteed",  # type: ignore[arg-type]
+                    pricing_options=[
+                        PricingOption(  # type: ignore[list-item]
+                            pricing_option_id="xandr_native_cpm",
+                            pricing_model=PricingModel.CPM,
+                            rate=None,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=2.0, p25=None, p50=None, p75=15.0, p90=None),
+                            parameters=None,
+                            min_spend_per_package=None,
+                            supported=None,
+                            unsupported_reason=None,
+                        )
+                    ],
+                    publisher_properties=[
+                        Property(  # type: ignore[list-item]
+                            property_type="website",
+                            name="All Inventory",
+                            identifiers=[PropertyIdentifier(type="domain", value="*")],
+                            publisher_domain="*",
+                            tags=None,
+                        )
+                    ],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
-                    properties=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=None,  # type: ignore[arg-type]
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -398,17 +470,40 @@ class XandrAdapter(AdServerAdapter):
                     product_id="xandr_deals",
                     name="Private Marketplace Deals",
                     description="Access to premium inventory through deals (pricing varies by deal)",
-                    formats=["display_300x250", "display_728x90", "video_16x9"],
-                    delivery_type="non_guaranteed",
-                    floor_cpm=5.0,
-                    recommended_cpm=25.0,
-                    property_tags=["all_inventory"],
+                    format_ids=[
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_300x250"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_728x90"),
+                        FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="video_16x9"),
+                    ],
+                    delivery_type="non_guaranteed",  # type: ignore[arg-type]
+                    pricing_options=[
+                        PricingOption(  # type: ignore[list-item]
+                            pricing_option_id="xandr_deals_cpm",
+                            pricing_model=PricingModel.CPM,
+                            rate=None,
+                            currency="USD",
+                            is_fixed=False,
+                            price_guidance=PriceGuidance(floor=5.0, p25=None, p50=None, p75=25.0, p90=None),
+                            parameters=None,
+                            min_spend_per_package=None,
+                            supported=None,
+                            unsupported_reason=None,
+                        )
+                    ],
+                    publisher_properties=[
+                        Property(  # type: ignore[list-item]
+                            property_type="website",
+                            name="All Inventory",
+                            identifiers=[PropertyIdentifier(type="domain", value="*")],
+                            publisher_domain="*",
+                            tags=None,
+                        )
+                    ],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
-                    properties=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=None,  # type: ignore[arg-type]
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -437,20 +532,32 @@ class XandrAdapter(AdServerAdapter):
                 {"request": request.dict(), "principal": self.principal.name, "advertiser_id": self.advertiser_id},
             )
 
-            # Build package responses
+            # Build package responses - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
+            # - buyer_ref (required)
+            # - package_id (required)
             package_responses = []
-            for package in packages:
+            for idx, package in enumerate(packages):
+                # Get matching request package for buyer_ref
+                matching_req_package = None
+                if request.packages and idx < len(request.packages):
+                    matching_req_package = request.packages[idx]
+
+                buyer_ref = "unknown"  # Default fallback
+                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
+                    buyer_ref = matching_req_package.buyer_ref or buyer_ref
+
+                # Create minimal AdCP-compliant Package response
                 package_responses.append(
                     {
+                        "buyer_ref": buyer_ref,
                         "package_id": package.package_id,
-                        "status": "active",  # Required by AdCP spec
                     }
                 )
 
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
                 media_buy_id=f"xandr_pending_{task_id}",
-                packages=package_responses,
+                packages=package_responses,  # type: ignore[arg-type]
                 creative_deadline=None,
             )
 
@@ -490,7 +597,7 @@ class XandrAdapter(AdServerAdapter):
             package_responses = []
 
             # Create line items for each package
-            for package in packages:
+            for idx, package in enumerate(packages):
                 if not self.advertiser_id:
                     raise ValueError("Advertiser ID is required for creating line items")
 
@@ -532,20 +639,30 @@ class XandrAdapter(AdServerAdapter):
                 li_response = self._make_request("POST", "/line-item", li_data)
                 li_id = li_response["response"]["line-item"]["id"]
 
-                # Build package response with package_id and platform_line_item_id
+                # Get matching request package for buyer_ref
+                matching_req_package = None
+                if request.packages and idx < len(request.packages):
+                    matching_req_package = request.packages[idx]
+
+                buyer_ref = "unknown"  # Default fallback
+                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
+                    buyer_ref = matching_req_package.buyer_ref or buyer_ref
+
+                # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
+                # - buyer_ref (required)
+                # - package_id (required)
                 package_responses.append(
                     {
+                        "buyer_ref": buyer_ref,
                         "package_id": package.package_id,
-                        "platform_line_item_id": str(li_id),
-                        "status": "active",  # Required by AdCP spec
                     }
                 )
 
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
                 media_buy_id=f"xandr_io_{io_id}",
-                creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),
-                packages=package_responses,
+                creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),  # type: ignore[arg-type]
+                packages=package_responses,  # type: ignore[arg-type]
             )
 
         except Exception as e:

@@ -22,7 +22,7 @@ from src.core.tool_context import ToolContext
 logger = logging.getLogger(__name__)
 console = Console()
 
-from adcp.types.generated import PushNotificationConfig
+from adcp.types.generated_poc.push_notification_config import PushNotificationConfig
 
 from src.core.auth import get_principal_object
 from src.core.helpers import get_principal_id_from_context
@@ -40,7 +40,7 @@ from src.core.validation_helpers import format_validation_error
 
 
 def _get_media_buy_delivery_impl(
-    req: GetMediaBuyDeliveryRequest, context: Context | ToolContext | None
+    req: GetMediaBuyDeliveryRequest, ctx: Context | ToolContext | None
 ) -> GetMediaBuyDeliveryResponse:
     """Get delivery data for one or more media buys.
 
@@ -49,13 +49,13 @@ def _get_media_buy_delivery_impl(
     """
 
     # Validate context is provided
-    if context is None:
+    if ctx is None:
         raise ToolError("Context is required")
 
     # Extract testing context for time simulation and event jumping
-    testing_ctx = get_testing_context(context)
+    testing_ctx = get_testing_context(ctx)
 
-    principal_id = get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(ctx)
     if not principal_id:
         # Return AdCP-compliant error response
         return GetMediaBuyDeliveryResponse(
@@ -324,6 +324,7 @@ def _get_media_buy_delivery_impl(
             "media_buy_count": media_buy_count,
         },
         media_buy_deliveries=deliveries,
+        context=req.context or None,
     )
 
     # Apply testing hooks if needed
@@ -391,6 +392,7 @@ def _get_media_buy_delivery_impl(
             sequence_number=filtered_data.get("sequence_number"),
             next_expected_at=filtered_data.get("next_expected_at"),
             errors=filtered_data.get("errors"),
+            context=req.context or None,
         )
 
     return response
@@ -402,9 +404,10 @@ def get_media_buy_delivery(
     status_filter: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    context: dict | None = None,  # Application level context per adcp spec
     webhook_url: str | None = None,
     push_notification_config: PushNotificationConfig | None = None,
-    context: Context | ToolContext | None = None,
+    ctx: Context | ToolContext | None = None,
 ):
     """Get delivery data for media buys.
 
@@ -418,7 +421,8 @@ def get_media_buy_delivery(
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
         push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ToolResult with GetMediaBuyDeliveryResponse data
@@ -432,11 +436,12 @@ def get_media_buy_delivery(
             start_date=start_date,
             end_date=end_date,
             push_notification_config=push_notification_config,
+            context=context,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="get_media_buy_delivery request")) from e
 
-    response = _get_media_buy_delivery_impl(req, context)
+    response = _get_media_buy_delivery_impl(req, ctx)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
@@ -446,7 +451,8 @@ def get_media_buy_delivery_raw(
     status_filter: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ):
     """Get delivery metrics for media buys (raw function for A2A server use).
 
@@ -471,10 +477,11 @@ def get_media_buy_delivery_raw(
         start_date=start_date,
         end_date=end_date,
         push_notification_config=None,
+        context=context,
     )
 
     # Call the implementation
-    return _get_media_buy_delivery_impl(req, context)
+    return _get_media_buy_delivery_impl(req, ctx)
 
 
 # --- Admin Tools ---

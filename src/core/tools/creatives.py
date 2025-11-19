@@ -11,7 +11,6 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -47,7 +46,8 @@ def _sync_creatives_impl(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
 
@@ -65,7 +65,8 @@ def _sync_creatives_impl(
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
         push_notification_config: Push notification config for status updates (AdCP spec, optional)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         SyncCreativesResponse with synced creatives and assignments
@@ -79,7 +80,7 @@ def _sync_creatives_impl(
     start_time = time.time()
 
     # Authentication
-    principal_id = get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(ctx)
 
     # CRITICAL: principal_id is required for creative sync (NOT NULL in database)
     if not principal_id:
@@ -92,14 +93,14 @@ def _sync_creatives_impl(
     # If context is ToolContext (A2A), tenant is already set, but verify it matches
     from src.core.tool_context import ToolContext
 
-    if isinstance(context, ToolContext):
+    if isinstance(ctx, ToolContext):
         # Tenant context should already be set by A2A handler, but verify
         tenant = get_current_tenant()
-        if not tenant or tenant.get("tenant_id") != context.tenant_id:
+        if not tenant or tenant.get("tenant_id") != ctx.tenant_id:
             # Tenant context wasn't set properly - this shouldn't happen but handle it
-            logger.warning(f"Warning: Tenant context mismatch, setting from ToolContext: {context.tenant_id}")
+            logger.warning(f"Warning: Tenant context mismatch, setting from ToolContext: {ctx.tenant_id}")
             # We need to load the tenant properly - for now use the ID from context
-            tenant = {"tenant_id": context.tenant_id}
+            tenant = {"tenant_id": ctx.tenant_id}
     else:
         # FastMCP path - tenant should be set by get_principal_from_context
         tenant = get_current_tenant()
@@ -349,6 +350,9 @@ def _sync_creatives_impl(
                             if creative.get("template_variables") is not None:
                                 data["template_variables"] = creative.get("template_variables")
                                 changes.append("template_variables")
+                            # Persist application context
+                            if context is not None:
+                                data["context"] = context
                         else:
                             # Full upsert mode: replace all data
                             # Extract URL from assets if not provided at top level
@@ -388,6 +392,8 @@ def _sync_creatives_impl(
                                 data["assets"] = creative.get("assets")
                             if creative.get("template_variables"):
                                 data["template_variables"] = creative.get("template_variables")
+                            if context is not None:
+                                data["context"] = context
 
                             # ALWAYS validate updates with creative agent
                             if creative_format:
@@ -1302,10 +1308,10 @@ def _sync_creatives_impl(
                         )
                         product = session.scalars(product_stmt).first()
 
-                        if product and product.formats:
+                        if product and product.format_ids:
                             # Build set of supported formats (agent_url, format_id) tuples
                             supported_formats: set[tuple[str, str]] = set()
-                            for fmt in product.formats:
+                            for fmt in product.format_ids:
                                 if isinstance(fmt, dict):
                                     agent_url_val = fmt.get("agent_url")
                                     format_id_val = fmt.get("id") or fmt.get("format_id")
@@ -1575,8 +1581,8 @@ def _sync_creatives_impl(
 
     # Log activity
     # Activity logging imported at module level
-    if context is not None:
-        log_tool_activity(context, "sync_creatives", start_time)
+    if ctx is not None:
+        log_tool_activity(ctx, "sync_creatives", start_time)
 
     # Build message
     message = f"Synced {created_count + updated_count} creatives"
@@ -1635,6 +1641,7 @@ def _sync_creatives_impl(
     return SyncCreativesResponse(
         creatives=results,
         dry_run=dry_run,
+        context=context,
     )
 
 
@@ -1646,7 +1653,8 @@ async def sync_creatives(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ):
     """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
 
@@ -1660,7 +1668,8 @@ async def sync_creatives(
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
         push_notification_config: Push notification config for async notifications (AdCP spec, optional)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ToolResult with SyncCreativesResponse data
@@ -1674,6 +1683,7 @@ async def sync_creatives(
         validation_mode=validation_mode,
         push_notification_config=push_notification_config,
         context=context,
+        ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
@@ -1698,7 +1708,8 @@ def _list_creatives_impl(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ) -> ListCreativesResponse:
     """List and search creative library (AdCP spec endpoint).
 
@@ -1725,7 +1736,8 @@ def _list_creatives_impl(
         limit: Number of results per page (default: 50, max: 1000)
         sort_by: Sort field (created_date, name, status) (default: created_date)
         sort_order: Sort order (asc, desc) (default: desc)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ListCreativesResponse with filtered creative assets and pagination info
@@ -1775,6 +1787,7 @@ def _list_creatives_impl(
             limit=min(limit, 1000),  # Enforce max limit
             sort_by=sort_by,
             sort_order=valid_sort_order,
+            context=context,
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creatives request")) from e
@@ -1784,7 +1797,7 @@ def _list_creatives_impl(
     # Authentication - REQUIRED (creatives contain sensitive data)
     # Unlike discovery endpoints (list_creative_formats), this returns actual creative assets
     # which are principal-specific and must be access-controlled
-    principal_id = get_principal_id_from_context(context)
+    principal_id = get_principal_id_from_context(ctx)
     if not principal_id:
         raise ToolError("Missing x-adcp-auth header")
 
@@ -1885,9 +1898,12 @@ def _list_creatives_impl(
                 )
 
             # Build Creative directly with explicit types to satisfy mypy
-            from src.core.schemas import FormatId
+            from src.core.schemas import FormatId, url
 
-            format_obj = FormatId(agent_url=db_creative.agent_url or "", id=db_creative.format or "")
+            format_obj = FormatId(
+                agent_url=url(db_creative.agent_url),  # agent_url is nullable=False in DB
+                id=db_creative.format or "",
+            )
 
             # Ensure datetime fields are datetime (not SQLAlchemy DateTime)
             created_at_dt: datetime = (
@@ -1898,43 +1914,39 @@ def _list_creatives_impl(
             )
 
             # AdCP v1 spec compliant - only spec fields
-            # Reconstruct assets dict from database data
+            # Get assets dict from database (all production data uses AdCP v2.4 format)
             assets_dict = db_creative.data.get("assets", {}) if db_creative.data else {}
-            if not assets_dict:
-                # Legacy data: reconstruct assets dict from old fields
-                assets_dict = {}
-                if content_uri:
-                    # Detect asset type and build appropriate asset structure
-                    main_asset: dict[str, Any] = {"url": content_uri}
-                    if db_creative.data:
-                        if "width" in db_creative.data and db_creative.data["width"] is not None:
-                            main_asset["width"] = db_creative.data["width"]
-                        if "height" in db_creative.data and db_creative.data["height"] is not None:
-                            main_asset["height"] = db_creative.data["height"]
-                        if "duration" in db_creative.data and db_creative.data["duration"] is not None:
-                            main_asset["duration_ms"] = int(db_creative.data["duration"] * 1000)
-                    assets_dict["main"] = main_asset
 
-                # Add click URL if present
-                if db_creative.data and "click_url" in db_creative.data:
-                    assets_dict["click_url"] = {
-                        "url": db_creative.data["click_url"],
-                        "url_type": "clickthrough",
-                    }
+            # Safety check: Skip creatives with no assets (legacy data without proper migration)
+            if not assets_dict:
+                logger.error(
+                    f"Creative {db_creative.creative_id} has no assets dict - "
+                    f"may be legacy format without proper migration. Skipping.",
+                    extra={"creative_id": db_creative.creative_id, "tenant_id": tenant["tenant_id"]},
+                )
+                continue
+
+            # Convert string status to CreativeStatus enum
+            from src.core.schemas import CreativeStatus
+
+            try:
+                status_enum = CreativeStatus(db_creative.status)
+            except ValueError:
+                # Default to pending_review if invalid status
+                status_enum = CreativeStatus.pending_review
 
             creative = Creative(
                 creative_id=db_creative.creative_id,
                 name=db_creative.name,
                 format_id=format_obj,
                 assets=assets_dict,
-                inputs=db_creative.data.get("inputs") if db_creative.data else None,
                 tags=db_creative.data.get("tags") if db_creative.data else None,
-                approved=db_creative.data.get("approved") if db_creative.data else None,
-                # Internal fields
-                status=db_creative.status,
+                # AdCP spec fields (library Creative)
+                status=status_enum,
+                created_date=created_at_dt,
+                updated_date=updated_at_dt,
+                # Internal field (our extension)
                 principal_id=db_creative.principal_id,
-                created_at=created_at_dt,
-                updated_at=updated_at_dt,
             )
             creatives.append(creative)
 
@@ -1964,8 +1976,8 @@ def _list_creatives_impl(
 
     # Log activity
     # Activity logging imported at module level
-    if context is not None:
-        log_tool_activity(context, "list_creatives", start_time)
+    if ctx is not None:
+        log_tool_activity(ctx, "list_creatives", start_time)
 
     message = f"Found {len(creatives)} creatives"
     if total_count > len(creatives):
@@ -2011,6 +2023,7 @@ def _list_creatives_impl(
             limit=req.limit, offset=offset, has_more=has_more, total_pages=total_pages, current_page=req.page
         ),
         creatives=creatives,
+        context=req.context,
     )
 
 
@@ -2035,7 +2048,8 @@ async def list_creatives(
     sort_by: str = "created_date",
     sort_order: str = "desc",
     webhook_url: str | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ):
     """List and filter creative assets from the centralized library.
 
@@ -2067,6 +2081,7 @@ async def list_creatives(
         sort_by,
         sort_order,
         context,
+        ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
@@ -2079,7 +2094,8 @@ def sync_creatives_raw(
     dry_run: bool = False,
     validation_mode: str = "strict",
     push_notification_config: dict = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ):
     """Sync creative assets to the centralized creative library (raw function for A2A server use).
 
@@ -2093,7 +2109,8 @@ def sync_creatives_raw(
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
         push_notification_config: Push notification config for status updates
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         SyncCreativesResponse with synced creatives and assignments
@@ -2107,6 +2124,7 @@ def sync_creatives_raw(
         validation_mode=validation_mode,
         push_notification_config=push_notification_config,
         context=context,
+        ctx=ctx,
     )
 
 
@@ -2123,7 +2141,8 @@ def list_creatives_raw(
     limit: int = 50,
     sort_by: str = "created_date",
     sort_order: str = "desc",
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ):
     """List creative assets with filtering and pagination (raw function for A2A server use).
 
@@ -2142,7 +2161,8 @@ def list_creatives_raw(
         limit: Number of results per page (default: 50, max: 1000)
         sort_by: Sort field (default: created_date)
         sort_order: Sort order (default: desc)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ListCreativesResponse with filtered creative assets and pagination info
@@ -2161,4 +2181,5 @@ def list_creatives_raw(
         sort_by=sort_by,
         sort_order=sort_order,
         context=context,
+        ctx=ctx,
     )

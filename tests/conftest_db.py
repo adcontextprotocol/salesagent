@@ -247,7 +247,9 @@ def test_product(db_session, test_tenant):
         product_id=f"test_product_{unique_id}",
         tenant_id=test_tenant.tenant_id,
         name=f"Test Product {unique_id}",
-        formats=["display_300x250"],
+        format_ids=[
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+        ],
         targeting_template={},
         delivery_type="guaranteed",
         property_tags=["all_inventory"],  # Required: products must have properties OR property_tags

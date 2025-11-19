@@ -35,7 +35,9 @@ class TestMediaPackageFormatIds:
         assert len(package.format_ids) == 1
         assert isinstance(package.format_ids[0], FormatId)
         assert package.format_ids[0].id == "display_300x250"
-        assert package.format_ids[0].agent_url == DEFAULT_AGENT_URL
+        assert str(package.format_ids[0].agent_url).rstrip("/") == DEFAULT_AGENT_URL.rstrip(
+            "/"
+        )  # AnyUrl adds trailing slash
 
     def test_media_package_accepts_multiple_format_ids(self):
         """MediaPackage must accept multiple FormatId objects."""
@@ -62,9 +64,9 @@ class TestMediaPackageFormatIds:
         """Test the production code path: Product.formats[0] → MediaPackage.format_ids.
 
         This replicates the error that occurred in production at src/core/main.py:4519
-        where product.formats contained FormatId objects but MediaPackage expected strings.
+        where product.format_ids contained FormatId objects but MediaPackage expected strings.
         """
-        # Simulate product.formats containing FormatId object (from database/API)
+        # Simulate product.format_ids containing FormatId object (from database/API)
         product_format = make_format_id("leaderboard_728x90")
 
         # This is what main.py:4519 does - must NOT raise ValidationError
@@ -101,10 +103,12 @@ class TestFormatFormatIdFields:
             make_format_id("display_728x90"),
         ]
 
+        # Use 'universal' type for formats that can output multiple types
+        # Valid types per AdCP spec: audio, video, display, native, dooh, rich_media, universal
         format_obj = Format(
-            format_id=make_format_id("generative_banner"),
-            name="Generative Banner Format",
-            type="generative",
+            format_id=make_format_id("universal_banner"),
+            name="Universal Banner Format",
+            type="universal",
             output_format_ids=output_formats,
         )
 

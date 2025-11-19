@@ -32,7 +32,7 @@ def test_serialize_tenant_json_fields_are_deserialized(integration_db):
             subdomain="test_json",
             authorized_emails=["admin@test.com", "user@test.com"],
             authorized_domains=["test.com", "example.com"],
-            auto_approve_formats=["display_300x250", "video_640x480"],
+            auto_approve_format_ids=["display_300x250", "video_640x480"],
             policy_settings={"enabled": True},
             signals_agent_config={"endpoint": "https://api.example.com", "timeout": 10},
         )

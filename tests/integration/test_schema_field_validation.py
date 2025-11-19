@@ -178,7 +178,7 @@ class TestSchemaFieldValidation:
             "is_active",
             "enable_axe_signals",
             "human_review_required",
-            "auto_approve_formats",
+            "auto_approve_format_ids",
         }
 
         missing_tenant = required_tenant_fields - tenant_fields
@@ -213,7 +213,7 @@ class TestSchemaFieldValidation:
             (r"tenant\.features_config", "Use tenant.enable_axe_signals instead"),
             (
                 r"tenant\.creative_engine_config",
-                "Use tenant.auto_approve_formats, tenant.human_review_required instead",
+                "Use tenant.auto_approve_format_ids, tenant.human_review_required instead",
             ),
             (r"buy\.flight_start_date", "Use buy.start_date instead"),
             (r"buy\.flight_end_date", "Use buy.end_date instead"),

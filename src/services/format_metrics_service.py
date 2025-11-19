@@ -5,7 +5,7 @@ Aggregates GAM reporting data by country + creative format for dynamic pricing.
 Queries GAM ReportService with COUNTRY_CODE + CREATIVE_SIZE dimensions.
 Stores results in format_performance_metrics table for fast lookup.
 
-Used by DynamicPricingService to calculate floor_cpm, recommended_cpm, estimated_exposures.
+Used by DynamicPricingService to calculate price_guidance (floor, recommended) and estimated_exposures.
 """
 
 import logging

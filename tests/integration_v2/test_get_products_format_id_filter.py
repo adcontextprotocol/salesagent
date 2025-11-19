@@ -64,7 +64,7 @@ def setup_products_with_formatid_objects(integration_db):
             rate="15.00",
             is_fixed=True,
             currency="USD",
-            formats=[
+            format_ids=[
                 {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250"},
                 {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_728x90"},
             ],
@@ -85,7 +85,7 @@ def setup_products_with_formatid_objects(integration_db):
             rate="20.00",
             is_fixed=True,
             currency="USD",
-            formats=[
+            format_ids=[
                 {"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_1280x720"},
             ],
             targeting_template={},
@@ -137,7 +137,7 @@ async def test_filter_by_format_ids_with_formatid_objects(mock_context):
 
     # Verify the product has the requested format
     product_format_ids = []
-    for fmt in result.products[0].formats:
+    for fmt in result.products[0].format_ids:
         if isinstance(fmt, dict):
             product_format_ids.append(fmt.get("id"))
         elif hasattr(fmt, "id"):

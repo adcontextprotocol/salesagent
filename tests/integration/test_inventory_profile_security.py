@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import InventoryProfile, Product
+from tests.helpers.adcp_factories import create_test_db_product
 from tests.utils.database_helpers import (
     create_tenant_with_timestamps,
 )
@@ -69,7 +70,7 @@ def profile_a(tenant_a):
                 "placements": ["placement_a1"],
                 "include_descendants": True,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"},
                 {"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_728x90"},
             ],
@@ -103,7 +104,7 @@ def profile_b(tenant_b):
                 "placements": ["placement_b1"],
                 "include_descendants": True,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"},
             ],
             publisher_properties=[
@@ -144,16 +145,15 @@ class TestInventoryProfileSecurity:
         with get_db_session() as session:
             # Attempt to create product for tenant_b referencing tenant_a's profile
             # Note: Must satisfy ck_product_properties_xor constraint (either properties OR property_tags)
-            product_b = Product(
+            product_b = create_test_db_product(
                 tenant_id=tenant_b,  # Tenant B
                 product_id="product_b_bad",
                 name="Product B (Invalid)",
                 description="Attempting to use tenant A's profile",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_a,  # SECURITY VIOLATION: References tenant A's profile!
-                property_tags=["all_inventory"],  # Required by ck_product_properties_xor
             )
             session.add(product_b)
 
@@ -185,29 +185,27 @@ class TestInventoryProfileSecurity:
         """
         with get_db_session() as session:
             # Create product for tenant_a using profile_a
-            product_a = Product(
+            product_a = create_test_db_product(
                 tenant_id=tenant_a,
                 product_id="product_a",
                 name="Product A",
                 description="Product A using Profile A",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_a,
-                property_tags=["all_inventory"],  # Required by ck_product_properties_xor
             )
 
             # Create product for tenant_b using profile_b
-            product_b = Product(
+            product_b = create_test_db_product(
                 tenant_id=tenant_b,
                 product_id="product_b",
                 name="Product B",
                 description="Product B using Profile B",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_b,
-                property_tags=["all_inventory"],  # Required by ck_product_properties_xor
             )
 
             session.add_all([product_a, product_b])
@@ -243,29 +241,27 @@ class TestInventoryProfileSecurity:
         """
         with get_db_session() as session:
             # Create product for tenant_a using profile_a
-            product_a = Product(
+            product_a = create_test_db_product(
                 tenant_id=tenant_a,
                 product_id="product_a",
                 name="Product A",
                 description="Product A using Profile A",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_a,
-                property_tags=["all_inventory"],  # Required by ck_product_properties_xor
             )
 
             # Create product for tenant_b using profile_b
-            product_b = Product(
+            product_b = create_test_db_product(
                 tenant_id=tenant_b,
                 product_id="product_b",
                 name="Product B",
                 description="Product B using Profile B",
-                formats=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"}],
                 targeting_template={"geo": ["US"]},
                 delivery_type="non_guaranteed",
                 inventory_profile_id=profile_b,
-                property_tags=["all_inventory"],  # Required by ck_product_properties_xor
             )
 
             session.add_all([product_a, product_b])
@@ -274,14 +270,14 @@ class TestInventoryProfileSecurity:
             # Get original formats for both profiles
             stmt = select(InventoryProfile).filter_by(id=profile_a)
             profile_a_obj = session.scalars(stmt).first()
-            original_formats_a = profile_a_obj.formats.copy()
+            original_formats_a = profile_a_obj.format_ids.copy()
 
             stmt = select(InventoryProfile).filter_by(id=profile_b)
             profile_b_obj = session.scalars(stmt).first()
-            original_formats_b = profile_b_obj.formats.copy()
+            original_formats_b = profile_b_obj.format_ids.copy()
 
             # Update tenant_a's profile formats (add video format)
-            profile_a_obj.formats = [
+            profile_a_obj.format_ids = [
                 {"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"},
                 {"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_728x90"},
                 {"agent_url": "https://creative.adcontextprotocol.org/", "id": "video_640x480"},  # NEW
@@ -296,19 +292,19 @@ class TestInventoryProfileSecurity:
             session.refresh(profile_b_obj)
 
             # Verify product_a now reflects the updated profile formats
-            effective_formats_a = product_a.effective_formats
+            effective_formats_a = product_a.effective_format_ids
             assert len(effective_formats_a) == 3, "Product A should have 3 formats after profile update"
             format_ids_a = [f["id"] for f in effective_formats_a]
             assert "video_640x480" in format_ids_a, "Product A should include new video format"
 
             # Verify product_b still uses original profile_b formats (unchanged)
-            effective_formats_b = product_b.effective_formats
+            effective_formats_b = product_b.effective_format_ids
             assert len(effective_formats_b) == len(original_formats_b), "Product B formats should be unchanged"
             format_ids_b = [f["id"] for f in effective_formats_b]
             assert "video_640x480" not in format_ids_b, "Product B should NOT have tenant A's new video format!"
 
             # Verify profile_b itself was not modified
-            assert profile_b_obj.formats == original_formats_b, "Profile B should be unchanged"
+            assert profile_b_obj.format_ids == original_formats_b, "Profile B format_ids should be unchanged"
 
             # Double-check: Query fresh from database to ensure isolation
             stmt = select(Product).filter_by(tenant_id=tenant_b, product_id="product_b")
@@ -318,5 +314,5 @@ class TestInventoryProfileSecurity:
 
             assert product_b_fresh.inventory_profile_id == profile_b, "Product B should still reference profile_b"
             assert (
-                profile_b_fresh.formats == original_formats_b
-            ), "Profile B formats should be unchanged (verified from fresh query)"
+                profile_b_fresh.format_ids == original_formats_b
+            ), "Profile B format_ids should be unchanged (verified from fresh query)"

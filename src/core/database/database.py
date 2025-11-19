@@ -47,7 +47,7 @@ def init_db(exit_on_error=False):
                 billing_plan="standard",
                 ad_server="mock",
                 enable_axe_signals=True,
-                auto_approve_formats=json.dumps(
+                auto_approve_format_ids=json.dumps(
                     [
                         "display_300x250",
                         "display_728x90",
@@ -220,11 +220,8 @@ def init_db(exit_on_error=False):
                         "description": "Premium news site display inventory",
                         "formats": [
                             {
-                                "format_id": "display_300x250",
-                                "name": "Medium Rectangle",
-                                "type": "display",
-                                "width": 300,
-                                "height": 250,
+                                "agent_url": "https://creatives.adcontextprotocol.org",
+                                "id": "display_300x250",
                             }
                         ],
                         "targeting_template": {
@@ -247,11 +244,8 @@ def init_db(exit_on_error=False):
                         "description": "General display inventory across all properties",
                         "formats": [
                             {
-                                "format_id": "display_728x90",
-                                "name": "Leaderboard",
-                                "type": "display",
-                                "width": 728,
-                                "height": 90,
+                                "agent_url": "https://creatives.adcontextprotocol.org",
+                                "id": "display_728x90",
                             }
                         ],
                         "targeting_template": {
@@ -277,7 +271,7 @@ def init_db(exit_on_error=False):
                         product_id=p["product_id"],
                         name=p["name"],
                         description=p["description"],
-                        formats=p["formats"],
+                        format_ids=p["formats"],
                         targeting_template=p["targeting_template"],
                         implementation_config=p.get("implementation_config"),
                         property_tags=p.get("property_tags"),

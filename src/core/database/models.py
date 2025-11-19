@@ -61,7 +61,9 @@ class Tenant(Base, JSONValidatorMixin):
     slack_audit_webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     hitl_webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     admin_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    auto_approve_formats: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+    # List of format ID strings (just the id part, not full FormatId objects)
+    # Validated at database level via CHECK constraint (see migration: rename_formats_to_format_ids)
+    auto_approve_format_ids: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
     human_review_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     policy_settings: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     signals_agent_config: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
@@ -147,6 +149,11 @@ class Tenant(Base, JSONValidatorMixin):
 
         self._gemini_api_key = encrypt_api_key(value)
 
+    @property
+    def primary_domain(self) -> str | None:
+        """Get primary domain for this tenant (virtual_host or subdomain-based)."""
+        return self.virtual_host or (f"{self.subdomain}.example.com" if self.subdomain else None)
+
 
 # CreativeFormat model removed - table dropped in migration f2addf453200 (Oct 13, 2025)
 # Creative formats are now fetched from creative agents via AdCP protocol
@@ -165,7 +172,8 @@ class Product(Base, JSONValidatorMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Type hint: list of FormatId dicts with {agent_url: str, id: str}
-    formats: Mapped[list[dict[str, str]]] = mapped_column(JSONType, nullable=False)
+    # Validated at database level via CHECK constraint (see migration: rename_formats_to_format_ids)
+    format_ids: Mapped[list[dict[str, str]]] = mapped_column(JSONType, nullable=False)
     # Type hint: targeting template dict structure
     targeting_template: Mapped[dict] = mapped_column(JSONType, nullable=False)
     delivery_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -184,9 +192,12 @@ class Product(Base, JSONValidatorMixin):
     # Type hint: implementation config dict
     implementation_config: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     # AdCP property authorization fields (at least one required per spec)
-    # Type hint: list of Property dicts for validation
+    # XOR constraint: exactly one of (properties, property_ids, property_tags) must be set
+    # Type hint: list of Property dicts for validation (legacy, full objects)
     properties: Mapped[list[dict] | None] = mapped_column(JSONType, nullable=True)
-    # Type hint: list of tag strings
+    # Type hint: list of property ID strings (AdCP 2.0.0 by_id variant)
+    property_ids: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+    # Type hint: list of tag strings (AdCP 2.0.0 by_tag variant)
     property_tags: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
     # Note: PR #79 fields (estimated_exposures, floor_cpm, recommended_cpm) are NOT stored in database
     # They are calculated dynamically from product_performance_metrics table
@@ -247,28 +258,71 @@ class Product(Base, JSONValidatorMixin):
 
     # Effective properties - auto-resolve from inventory profile if set
     @property
-    def effective_formats(self) -> list[dict[str, str]]:
-        """Get formats from inventory profile (if set) or product itself.
+    def effective_format_ids(self) -> list[dict[str, str]]:
+        """Get format_ids from inventory profile (if set) or product itself.
 
-        Returns formats as list of FormatId dicts: [{"agent_url": str, "id": str}, ...]
-        When inventory_profile_id is set, returns current profile's formats (auto-updates).
-        When inventory_profile_id is null, returns product's own formats (legacy).
+        Returns format_ids as list of FormatId dicts: [{"agent_url": str, "id": str}, ...]
+        When inventory_profile_id is set, returns current profile's format_ids (auto-updates).
+        When inventory_profile_id is null, returns product's own format_ids.
+
+        Database validation ensures all format_ids match AdCP FormatId spec.
         """
         if self.inventory_profile_id and self.inventory_profile:
-            return self.inventory_profile.formats
-        return self.formats
+            return self.inventory_profile.format_ids
+        return self.format_ids
 
     @property
     def effective_properties(self) -> list[dict] | None:
         """Get publisher properties from inventory profile (if set) or product itself.
 
-        Returns properties array (AdCP Property objects).
+        Returns properties in AdCP 2.0.0 discriminated union format:
+        - all variant: {publisher_domain, selection_type='all'} (default)
+        - by_id variant: {publisher_domain, property_ids, selection_type='by_id'}
+        - by_tag variant: {publisher_domain, property_tags, selection_type='by_tag'}
+        - legacy: Full Property objects (for backward compatibility)
+
         When inventory_profile_id is set, returns current profile's properties (auto-updates).
-        When inventory_profile_id is null, returns product's own properties (legacy).
+        When inventory_profile_id is null, converts product's authorization to AdCP format.
+
+        If no properties/property_ids/property_tags are set, defaults to "all" variant
+        (all properties from this publisher).
         """
         if self.inventory_profile_id and self.inventory_profile:
             return self.inventory_profile.publisher_properties
-        return self.properties
+
+        # Convert product's authorization to AdCP publisher_properties format
+        if self.properties:
+            # Legacy: Full Property objects - return as-is for now
+            # TODO: Consider converting to discriminated union format
+            return self.properties
+        elif self.property_ids:
+            # AdCP 2.0.0 by_id variant
+            # Get publisher_domain from tenant (use subdomain or virtual_host)
+            if hasattr(self, "tenant") and self.tenant:
+                publisher_domain = self.tenant.virtual_host or f"{self.tenant.subdomain}.example.com"
+            else:
+                publisher_domain = "unknown"
+            return [
+                {"publisher_domain": publisher_domain, "property_ids": self.property_ids, "selection_type": "by_id"}
+            ]
+        elif self.property_tags:
+            # AdCP 2.0.0 by_tag variant
+            # Get publisher_domain from tenant (use subdomain or virtual_host)
+            if hasattr(self, "tenant") and self.tenant:
+                publisher_domain = self.tenant.virtual_host or f"{self.tenant.subdomain}.example.com"
+            else:
+                publisher_domain = "unknown"
+            return [
+                {"publisher_domain": publisher_domain, "property_tags": self.property_tags, "selection_type": "by_tag"}
+            ]
+
+        # Default: Use "all" variant (all properties from this publisher)
+        # This ensures products always have publisher_properties as required by AdCP spec
+        if hasattr(self, "tenant") and self.tenant:
+            publisher_domain = self.tenant.virtual_host or f"{self.tenant.subdomain}.example.com"
+        else:
+            publisher_domain = "unknown"
+        return [{"publisher_domain": publisher_domain, "selection_type": "all"}]
 
     @property
     def effective_property_tags(self) -> list[str] | None:
@@ -764,6 +818,31 @@ class AdapterConfig(Base):
     gam_manual_approval_required: Mapped[bool] = mapped_column(Boolean, default=False)
     gam_order_name_template: Mapped[str | None] = mapped_column(String(500), nullable=True)
     gam_line_item_name_template: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # AXE (Audience Exchange) custom targeting keys (AdCP spec requires separate keys for each purpose)
+    # These are adapter-agnostic and work with GAM, Kevel, Mock, or any other adapter
+    # Note: gam_axe_custom_targeting_key was removed - use the three separate keys below
+    axe_include_key: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Custom targeting key for AXE include segments (axe_include_segment) - works with all adapters",
+    )
+    axe_exclude_key: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Custom targeting key for AXE exclude segments (axe_exclude_segment) - works with all adapters",
+    )
+    axe_macro_key: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Custom targeting key for AXE creative macro segments (enable_creative_macro) - works with all adapters",
+    )
+
+    # Custom targeting key ID mappings for GAM
+    # Maps key names → GAM custom targeting key IDs (e.g., {"axe_include_segment": "123456789"})
+    # This allows the adapter to resolve key names to IDs without additional API calls
+    custom_targeting_keys: Mapped[dict] = mapped_column(JSONType, nullable=False, server_default=text("'{}'::jsonb"))
+
     # NOTE: gam_company_id (advertiser_id) is per-principal, stored in Principal.platform_mappings
 
     # Kevel
@@ -946,7 +1025,8 @@ class InventoryProfile(Base, JSONValidatorMixin):
 
     # Creative formats (FormatId objects)
     # Structure: [{"agent_url": "...", "id": "display_300x250_image"}]
-    formats: Mapped[list] = mapped_column(JSONType, nullable=False)
+    # Validated at database level via CHECK constraint (see migration: rename_formats_to_format_ids)
+    format_ids: Mapped[list] = mapped_column(JSONType, nullable=False)
 
     # Publisher properties (AdCP spec-compliant)
     # Structure: [
@@ -1488,6 +1568,46 @@ class PropertyTag(Base, JSONValidatorMixin):
     __table_args__ = (
         ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
         Index("idx_property_tags_tenant", "tenant_id"),
+    )
+
+
+class PublisherPartner(Base, JSONValidatorMixin):
+    """Publisher domains that this tenant has partnerships with.
+
+    Tracks which publishers the tenant works with and verification status
+    of whether the tenant's agent is listed in each publisher's adagents.json.
+
+    The actual property IDs/tags are fetched fresh from adagents.json (not cached),
+    but this table tracks partnership status and last sync time.
+    """
+
+    __tablename__ = "publisher_partners"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    publisher_domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_synced_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
+    sync_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", comment="pending, success, error"
+    )
+    sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, server_default=func.now())
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    tenant = relationship("Tenant", backref="publisher_partners")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
+        UniqueConstraint("tenant_id", "publisher_domain", name="uq_tenant_publisher"),
+        CheckConstraint("sync_status IN ('pending', 'success', 'error')", name="ck_sync_status"),
+        Index("idx_publisher_partners_tenant", "tenant_id"),
+        Index("idx_publisher_partners_domain", "publisher_domain"),
+        Index("idx_publisher_partners_verified", "is_verified"),
     )
 
 

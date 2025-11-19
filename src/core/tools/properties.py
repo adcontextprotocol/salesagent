@@ -51,7 +51,7 @@ def _list_authorized_properties_impl(
 
     # Handle missing request object (allows empty calls)
     if req is None:
-        req = ListAuthorizedPropertiesRequest(tags=None)
+        req = ListAuthorizedPropertiesRequest(tags=None, context=None)
 
     # Get tenant and principal from context
     # Authentication is OPTIONAL for discovery endpoints (returns public inventory)
@@ -222,6 +222,10 @@ def _list_authorized_properties_impl(
 
             response = ListAuthorizedPropertiesResponse(**response_data)
 
+            # Carry back application context from request if provided
+            if req.context is not None:
+                response.context = req.context
+
             # Log audit
             audit_logger = get_audit_logger("AdCP", tenant_id)
             audit_logger.log_operation(
@@ -260,7 +264,8 @@ def _list_authorized_properties_impl(
 def list_authorized_properties(
     req: ListAuthorizedPropertiesRequest | None = None,
     webhook_url: str | None = None,
-    context: Context | ToolContext | None = None,
+    ctx: Context | ToolContext | None = None,
+    context: dict | None = None,  # payload-level context
 ):
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
@@ -269,7 +274,8 @@ def list_authorized_properties(
     Args:
         req: Request parameters including optional tag filters
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
-        context: FastMCP context for authentication
+        context: Application level context per adcp spec
+        ctx: FastMCP context for authentication
 
     Returns:
         ToolResult with human-readable text and structured data
@@ -282,17 +288,17 @@ def list_authorized_properties(
     logger = logging.getLogger(__name__)
     tool_context: Context | ToolContext | None = None
 
-    if context:
+    if ctx:
         try:
             # Log ALL headers received for debugging virtual host issues
             logger.error("🔍 MCP list_authorized_properties called")
-            logger.error(f"🔍 context type={type(context)}")
+            logger.error(f"🔍 context type={type(ctx)}")
 
             # Access raw Starlette request headers via context.request_context.request
             # ToolContext doesn't have request_context (A2A path doesn't use Starlette)
             request = None
-            if isinstance(context, Context) and hasattr(context, "request_context"):
-                request = context.request_context.request
+            if isinstance(ctx, Context) and hasattr(ctx, "request_context"):
+                request = ctx.request_context.request
             logger.error(f"🔍 request type={type(request) if request else None}")
 
             if request and hasattr(request, "headers"):
@@ -321,18 +327,19 @@ def list_authorized_properties(
             else:
                 print("[MCP DEBUG] request has no headers attribute", file=sys.stderr, flush=True)
                 logger.warning("MCP list_authorized_properties: request has no headers attribute")
-                tool_context = context
+                tool_context = ctx
         except Exception as e:
             # Fallback to passing context as-is
             print(f"[MCP DEBUG] Exception extracting headers: {e}", file=sys.stderr, flush=True)
             logger.error(
                 f"MCP list_authorized_properties: Could not extract headers from FastMCP context: {e}", exc_info=True
             )
-            tool_context = context
+            tool_context = ctx
     else:
         print("[MCP DEBUG] No context provided", file=sys.stderr, flush=True)
         logger.info("MCP list_authorized_properties: No context provided")
-        tool_context = context
+        tool_context = ctx
+
 
     response = _list_authorized_properties_impl(req, tool_context)
 
@@ -343,7 +350,7 @@ def list_authorized_properties(
 
 
 def list_authorized_properties_raw(
-    req: "ListAuthorizedPropertiesRequest" = None, context: Context | ToolContext | None = None
+    req: "ListAuthorizedPropertiesRequest" = None, ctx: Context | ToolContext | None = None
 ) -> "ListAuthorizedPropertiesResponse":
     """List all properties this agent is authorized to represent (raw function for A2A server use).
 
@@ -356,4 +363,4 @@ def list_authorized_properties_raw(
     Returns:
         ListAuthorizedPropertiesResponse with authorized properties
     """
-    return _list_authorized_properties_impl(req, context)
+    return _list_authorized_properties_impl(req, ctx)

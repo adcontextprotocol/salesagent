@@ -60,7 +60,7 @@ def test_tenant_setup(integration_db):
             ad_server="mock",
             is_active=True,
             human_review_required=False,
-            auto_approve_formats=[],
+            auto_approve_format_ids=[],
             policy_settings={},
         )
         session.add(tenant)
@@ -154,7 +154,7 @@ def test_update_media_buy_with_database_persisted_buy(test_tenant_setup):
     response = _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref="updated_ref",
-        context=context,
+        ctx=context,
     )
 
     # Verify response
@@ -178,17 +178,30 @@ def test_update_media_buy_requires_context():
 
 @pytest.mark.requires_db
 def test_update_media_buy_requires_media_buy_id():
-    """Test update_media_buy raises error when media_buy_id is None."""
+    """Test update_media_buy raises error when buyer_ref lookup fails."""
     # Create minimal mock context
     context = MagicMock()
-    context.headers = {"x-adcp-auth": "test_token"}
+    context.headers = {"x-adcp-auth": "test_token", "host": "test-tenant.test.com"}
 
-    # Note: Pydantic requires at least one of media_buy_id or buyer_ref
-    # So this test actually validates Pydantic's validation, not our code
-    # We pass buyer_ref to satisfy Pydantic's oneOf constraint
-    with pytest.raises(ValueError, match="media_buy_id is required"):
+    # Set tenant context (required by get_current_tenant)
+    from src.core.config_loader import set_current_tenant
+
+    set_current_tenant(
+        {
+            "tenant_id": "test_tenant_no_mb",
+            "name": "Test Tenant",
+            "subdomain": "test-tenant",
+            "ad_server": "mock",
+            "is_active": True,
+        }
+    )
+
+    # Note: When media_buy_id is None and buyer_ref is provided,
+    # we try to look it up in the database. If not found, we raise ValueError.
+    # This tests the buyer_ref lookup path when the media buy doesn't exist.
+    with pytest.raises(ValueError, match="Media buy with buyer_ref 'nonexistent_ref' not found"):
         _update_media_buy_impl(
             media_buy_id=None,
-            buyer_ref="test_ref",
-            context=context,
+            buyer_ref="nonexistent_ref",
+            ctx=context,
         )

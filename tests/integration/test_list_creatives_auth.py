@@ -52,7 +52,7 @@ class TestListCreativesAuthentication:
                 enable_axe_signals=True,
                 authorized_emails=[],
                 authorized_domains=[],
-                auto_approve_formats=["display_300x250"],
+                auto_approve_format_ids=["display_300x250"],
                 human_review_required=False,
             )
             session.add(tenant)
@@ -88,9 +88,13 @@ class TestListCreativesAuthentication:
                     agent_url="https://creative.adcontextprotocol.org/",
                     status="approved",
                     data={
-                        "url": f"https://example.com/creative_a_{i}.jpg",
-                        "width": 300,
-                        "height": 250,
+                        "assets": {
+                            "image": {
+                                "url": f"https://example.com/creative_a_{i}.jpg",
+                                "width": 300,
+                                "height": 250,
+                            }
+                        }
                     },
                 )
                 session.add(creative_a)
@@ -106,9 +110,13 @@ class TestListCreativesAuthentication:
                     agent_url="https://creative.adcontextprotocol.org/",
                     status="approved",
                     data={
-                        "url": f"https://example.com/creative_b_{i}.jpg",
-                        "width": 300,
-                        "height": 250,
+                        "assets": {
+                            "image": {
+                                "url": f"https://example.com/creative_b_{i}.jpg",
+                                "width": 300,
+                                "height": 250,
+                            }
+                        }
                     },
                 )
                 session.add(creative_b)
@@ -134,12 +142,13 @@ class TestListCreativesAuthentication:
         mock_context = MockContext(auth_token=None)
 
         # Mock get_http_headers to return empty headers (no auth)
-        with patch("src.core.auth.get_http_headers", return_value={}):
+        # Patch at the source where it's imported from
+        with patch("fastmcp.server.dependencies.get_http_headers", return_value={}):
             # This should raise ToolError due to missing authentication
             from fastmcp.exceptions import ToolError
 
             with pytest.raises(ToolError, match="Missing x-adcp-auth header"):
-                core_list_creatives_tool(context=mock_context)
+                core_list_creatives_tool(ctx=mock_context)
 
     def test_authenticated_user_sees_only_own_creatives(self):
         """Test that authenticated users only see their own creatives.
@@ -153,14 +162,15 @@ class TestListCreativesAuthentication:
         mock_context = MockContext(auth_token="token-advertiser-a")
 
         # Mock get_http_headers to return auth + host headers for tenant detection
+        # Patch at the source where it's imported from
         with patch(
-            "src.core.auth.get_http_headers",
+            "fastmcp.server.dependencies.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-a",
                 "host": "auth-test.sales-agent.scope3.com",
             },
         ):
-            response = core_list_creatives_tool(context=mock_context)
+            response = core_list_creatives_tool(ctx=mock_context)
 
             # Verify response structure
             assert isinstance(response, ListCreativesResponse)
@@ -185,14 +195,15 @@ class TestListCreativesAuthentication:
         mock_context_b = MockContext(auth_token="token-advertiser-b")
 
         # Mock get_http_headers to return auth + host headers for tenant detection
+        # Patch at the source where it's imported from
         with patch(
-            "src.core.auth.get_http_headers",
+            "fastmcp.server.dependencies.get_http_headers",
             return_value={
                 "x-adcp-auth": "token-advertiser-b",
                 "host": "auth-test.sales-agent.scope3.com",
             },
         ):
-            response = core_list_creatives_tool(context=mock_context_b)
+            response = core_list_creatives_tool(ctx=mock_context_b)
 
             # Verify response structure
             assert isinstance(response, ListCreativesResponse)
@@ -217,8 +228,9 @@ class TestListCreativesAuthentication:
         mock_context = MockContext(auth_token="invalid-token-xyz")
 
         # Mock get_http_headers to return auth + host headers for tenant detection
+        # Patch at the source where it's imported from
         with patch(
-            "src.core.auth.get_http_headers",
+            "fastmcp.server.dependencies.get_http_headers",
             return_value={
                 "x-adcp-auth": "invalid-token-xyz",
                 "host": "auth-test.sales-agent.scope3.com",
@@ -228,4 +240,4 @@ class TestListCreativesAuthentication:
 
             # This should raise ToolError due to invalid authentication
             with pytest.raises(ToolError, match="INVALID_AUTH_TOKEN"):
-                core_list_creatives_tool(context=mock_context)
+                core_list_creatives_tool(ctx=mock_context)

@@ -45,7 +45,7 @@ class PlatformMappingModel(BaseModel):
 
 
 class CreativeFormatModel(BaseModel):
-    """Model for product.formats array items."""
+    """Model for product.format_ids array items."""
 
     format_id: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)
@@ -142,7 +142,7 @@ class DeliveryDataModel(BaseModel):
 class JSONValidatorMixin:
     """Mixin to add JSON validation to SQLAlchemy models."""
 
-    @validates("authorized_emails", "authorized_domains", "auto_approve_formats")
+    @validates("authorized_emails", "authorized_domains", "auto_approve_format_ids")
     def validate_json_array_fields(self, key, value):
         """Validate that these fields are JSON arrays."""
         return ensure_json_array(value, default=[])

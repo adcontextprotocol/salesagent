@@ -1,6 +1,6 @@
 """Integration tests for format conversion logic during media buy approval.
 
-Tests the conversion of product.formats (FormatReference/dict) to MediaPackage.format_ids
+Tests the conversion of product.format_ids (FormatReference/dict) to MediaPackage.format_ids
 (FormatId objects) in execute_approved_media_buy function.
 
 This tests the critical format conversion logic at lines 391-452 of media_buy_create.py.
@@ -24,9 +24,18 @@ from src.core.database.models import (
     Tenant,
 )
 from src.core.tools.media_buy_create import execute_approved_media_buy
+from tests.helpers.adcp_factories import create_test_db_product
 
 
-def create_media_package(media_buy_id: str, package_id: str, product_id: str, budget: float, tenant_id: str):
+def create_media_package(
+    media_buy_id: str,
+    package_id: str,
+    product_id: str,
+    budget: float,
+    tenant_id: str,
+    buyer_ref: str = "pkg_buyer_ref",
+    pricing_option_id: str = "pricing_opt_1",
+):
     """Helper function to create MediaPackage record (required for execute_approved_media_buy)."""
     with get_db_session() as session:
         media_package = MediaPackage(
@@ -36,7 +45,9 @@ def create_media_package(media_buy_id: str, package_id: str, product_id: str, bu
             package_config={
                 "package_id": package_id,
                 "product_id": product_id,
+                "buyer_ref": buyer_ref,
                 "budget": budget,
+                "pricing_option_id": pricing_option_id,
             },
         )
         session.add(media_package)
@@ -163,20 +174,17 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with FormatReference-style dict (has format_id field)
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Format Reference Product",
                 description="Product with FormatReference format",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://creatives.example.com",
-                        "format_id": "display_300x250",  # Legacy field name
+                        "id": "display_300x250",  # Changed from format_id to id
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -214,7 +222,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -245,6 +255,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -262,20 +278,17 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with invalid format (no agent_url)
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Invalid Format Product",
                 description="Product with missing agent_url",
-                formats=[
+                format_ids=[
                     {
-                        "format_id": "display_300x250",
+                        "id": "display_300x250",
                         # Missing agent_url - should fail
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -313,7 +326,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -345,6 +360,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -360,20 +381,17 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with empty agent_url
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Empty Agent URL Product",
                 description="Product with empty agent_url",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "",  # Empty string - should fail
-                        "format_id": "display_300x250",
+                        "id": "display_300x250",
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -411,7 +429,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -442,6 +462,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -457,20 +483,17 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with invalid URL scheme
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Invalid URL Product",
                 description="Product with non-HTTP URL",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "ftp://creatives.example.com",  # FTP not allowed
-                        "format_id": "display_300x250",
+                        "id": "display_300x250",
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -508,7 +531,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -540,6 +565,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -557,20 +588,17 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with missing format_id
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="No Format ID Product",
                 description="Product with missing format_id",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://creatives.example.com",
                         # Missing format_id/id - should fail
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -608,7 +636,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -640,6 +670,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -655,20 +691,17 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with FormatId-style dict (has 'id' field, not 'format_id')
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Format ID Product",
                 description="Product with FormatId format",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://creatives.example.com",
                         "id": "display_728x90",  # New field name per AdCP spec
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -706,7 +739,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1500.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -737,6 +772,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -752,20 +793,17 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with dict missing both id fields
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Missing ID Product",
                 description="Product with dict missing both id fields",
-                formats=[
+                format_ids=[
                     {
                         "agent_url": "https://creatives.example.com",
                         "name": "Display Ad",  # Wrong field - not id or format_id
                     }
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -803,7 +841,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -834,6 +874,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -849,15 +895,12 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with empty formats list
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Empty Formats Product",
                 description="Product with no formats",
-                formats=[],  # Empty list - should fail
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
+                format_ids=[],  # Empty list - should fail
             )
             session.add(product)
 
@@ -895,7 +938,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -926,6 +971,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -941,31 +992,28 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with multiple format types
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Mixed Formats Product",
                 description="Product with different format styles",
-                formats=[
-                    # FormatReference style (legacy)
+                format_ids=[
+                    # FormatId style
                     {
                         "agent_url": "https://creatives.example.com",
-                        "format_id": "display_300x250",
+                        "id": "display_300x250",
                     },
-                    # FormatId style (new)
+                    # FormatId style
                     {
                         "agent_url": "https://creatives.example.com",
                         "id": "display_728x90",
                     },
-                    # Another FormatId style
+                    # FormatId style
                     {
                         "agent_url": "https://creatives.example.com",
                         "id": "display_160x600",
                     },
                 ],
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
             )
             session.add(product)
 
@@ -1003,7 +1051,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 2000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -1034,6 +1084,12 @@ class TestFormatConversionApproval:
             if media_buy:
                 session.delete(media_buy)
 
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
+
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)
             product = session.scalars(stmt_prod).first()
@@ -1049,15 +1105,12 @@ class TestFormatConversionApproval:
 
         with get_db_session() as session:
             # Create product with invalid format type (string instead of dict)
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant,
                 product_id=product_id,
                 name="Invalid Type Product",
                 description="Product with string format (should be dict)",
-                formats=["display_300x250"],  # String instead of dict - should fail
-                targeting_template={},
-                delivery_type="guaranteed",
-                property_tags=["all_inventory"],
+                format_ids=["display_300x250"],  # String instead of dict - should fail
             )
             session.add(product)
 
@@ -1095,7 +1148,9 @@ class TestFormatConversionApproval:
                         {
                             "package_id": "pkg_1",
                             "product_id": product_id,
+                            "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1000.0,
+                            "pricing_option_id": "pricing_opt_1",
                         }
                     ],
                 },
@@ -1125,6 +1180,12 @@ class TestFormatConversionApproval:
             media_buy = session.scalars(stmt_mb).first()
             if media_buy:
                 session.delete(media_buy)
+
+            # Delete PricingOption (foreign key constraint to Product)
+            stmt_pricing = select(PricingOption).filter_by(tenant_id=test_tenant, product_id=product_id)
+            pricing_options = session.scalars(stmt_pricing).all()
+            for pricing in pricing_options:
+                session.delete(pricing)
 
             # Finally delete Product
             stmt_prod = select(Product).filter_by(product_id=product_id)

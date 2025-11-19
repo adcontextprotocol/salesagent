@@ -29,7 +29,7 @@ class TestSetupChecklistMockAdapter:
             mock_tenant.authorized_domains = []
             mock_tenant.authorized_emails = []
             mock_tenant.human_review_required = None
-            mock_tenant.auto_approve_formats = None
+            mock_tenant.auto_approve_format_ids = None
             mock_tenant.order_name_template = None
             mock_tenant.line_item_name_template = None
             mock_tenant.slack_webhook_url = None
@@ -73,7 +73,7 @@ class TestSetupChecklistMockAdapter:
             mock_tenant.authorized_domains = []
             mock_tenant.authorized_emails = []
             mock_tenant.human_review_required = None
-            mock_tenant.auto_approve_formats = None
+            mock_tenant.auto_approve_format_ids = None
             mock_tenant.order_name_template = None
             mock_tenant.line_item_name_template = None
             mock_tenant.slack_webhook_url = None
@@ -115,7 +115,7 @@ class TestSetupChecklistMockAdapter:
             mock_tenant.authorized_domains = []
             mock_tenant.authorized_emails = []
             mock_tenant.human_review_required = None
-            mock_tenant.auto_approve_formats = None
+            mock_tenant.auto_approve_format_ids = None
             mock_tenant.order_name_template = None
             mock_tenant.line_item_name_template = None
             mock_tenant.slack_webhook_url = None
@@ -161,7 +161,7 @@ class TestSetupChecklistMockAdapter:
             mock_tenant.authorized_domains = []
             mock_tenant.authorized_emails = []
             mock_tenant.human_review_required = None
-            mock_tenant.auto_approve_formats = None
+            mock_tenant.auto_approve_format_ids = None
             mock_tenant.order_name_template = None
             mock_tenant.line_item_name_template = None
             mock_tenant.slack_webhook_url = None
@@ -205,7 +205,7 @@ class TestSetupChecklistMockAdapter:
             mock_tenant.authorized_domains = ["example.com"]
             mock_tenant.authorized_emails = []
             mock_tenant.human_review_required = None
-            mock_tenant.auto_approve_formats = None
+            mock_tenant.auto_approve_format_ids = None
             mock_tenant.order_name_template = None
             mock_tenant.line_item_name_template = None
             mock_tenant.slack_webhook_url = None

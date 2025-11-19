@@ -325,7 +325,7 @@ def list_authorized_properties(tenant_id: str) -> str | Response:
     except Exception as e:
         logger.error(f"Error listing authorized properties: {e}", exc_info=True)
         flash(f"Error loading properties: {str(e)}", "error")
-        return redirect(url_for("tenants.tenant_dashboard", tenant_id=tenant_id))
+        return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
 
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties/upload", methods=["GET", "POST"])
@@ -474,7 +474,7 @@ def list_property_tags(tenant_id: str) -> str | Response:
     except Exception as e:
         logger.error(f"Error listing property tags: {e}")
         flash(f"Error loading tags: {str(e)}", "error")
-        return redirect(url_for("tenants.tenant_dashboard", tenant_id=tenant_id))
+        return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
 
 @authorized_properties_bp.route("/<tenant_id>/property-tags/create", methods=["POST"])
@@ -940,7 +940,17 @@ def edit_property(tenant_id: str, property_id: str) -> str | Response:
 @authorized_properties_bp.route("/<tenant_id>/authorized-properties/api/list")
 @require_tenant_access(api_mode=True)
 def list_authorized_properties_api(tenant_id: str):
-    """Get all authorized properties as JSON (API endpoint for unified inventory page)."""
+    """Get all authorized properties as JSON (API endpoint for unified inventory page).
+
+    Returns individual properties with format expected by inventory profile editor:
+    {
+        publisher_domain: "example.com",
+        property_name: "AccuWeather iOS App",  // Added for better UI display
+        property_type: "mobile_app",           // Added for better UI display
+        property_ids: ["300048137"],           // Extracted from identifiers
+        property_tags: ["all_inventory"]       // From tags field
+    }
+    """
     try:
         with get_db_session() as db_session:
             # Get all properties for this tenant
@@ -951,18 +961,26 @@ def list_authorized_properties_api(tenant_id: str):
             )
             properties = db_session.scalars(stmt).all()
 
-            # Convert to JSON-serializable format
+            # Transform each property to the format expected by JavaScript
             properties_data = []
+
             for prop in properties:
+                # Extract property IDs from identifiers
+                # Each identifier has {type, value} - we want the values
+                property_ids = []
+                if prop.identifiers:
+                    for identifier in prop.identifiers:
+                        if isinstance(identifier, dict) and "value" in identifier:
+                            property_ids.append(identifier["value"])
+
+                # Transform to expected format
                 properties_data.append(
                     {
-                        "property_id": prop.property_id,
-                        "property_type": prop.property_type,
-                        "name": prop.name,
                         "publisher_domain": prop.publisher_domain,
-                        "identifiers": prop.identifiers,
-                        "tags": prop.tags,
-                        "verification_status": prop.verification_status,
+                        "property_name": prop.name,  # e.g., "AccuWeather iOS App"
+                        "property_type": prop.property_type,  # e.g., "mobile_app"
+                        "property_ids": property_ids,  # e.g., ["300048137"]
+                        "property_tags": prop.tags if prop.tags else [],  # e.g., ["all_inventory"]
                     }
                 )
 

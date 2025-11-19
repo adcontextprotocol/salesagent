@@ -10,8 +10,8 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from adcp.types.generated import GetProductsRequest as GetProductsRequestGenerated
-from adcp.types.generated import PushNotificationConfig
+from adcp import GetProductsRequest as GetProductsRequestGenerated
+from adcp.types.generated_poc.push_notification_config import PushNotificationConfig
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -26,7 +26,7 @@ from src.core.config_loader import set_current_tenant
 from src.core.database.database_session import get_db_session
 from src.core.schema_adapters import GetProductsResponse
 from src.core.schema_helpers import create_get_products_request
-from src.core.schemas import Product
+from src.core.schemas import Product  # Extends library Product
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
 from src.core.validation_helpers import format_validation_error, safe_parse_json_field
@@ -35,62 +35,29 @@ from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 logger = logging.getLogger(__name__)
 
 
-def convert_product_model_to_schema(product_model) -> Product:
-    """Convert database Product model to Product schema.
+def get_recommended_cpm(product: Product) -> float | None:
+    """Extract recommended CPM from product's pricing_options.
+
+    Uses p75 (75th percentile) as the recommended value per AdCP price_guidance spec.
 
     Args:
-        product_model: Product database model
+        product: Product schema object
 
     Returns:
-        Product schema object
+        Recommended CPM value (p75) from price_guidance, or None if not available
     """
+    for option in product.pricing_options:
+        # Use getattr for discriminated union field access
+        price_guidance = getattr(option, "price_guidance", None)
+        if option.pricing_model.upper() == "CPM" and price_guidance:
+            p75 = price_guidance.p75
+            if p75 is not None:
+                return float(p75)
+    return None
 
-    # Use model_dump_internal() to get all fields
-    product_data = {}
 
-    # Map fields from model to schema
-    product_data["product_id"] = product_model.product_id
-    product_data["name"] = product_model.name
-    product_data["description"] = product_model.description
-    product_data["formats"] = product_model.effective_formats  # Auto-resolves from profile if set
-    product_data["targeting_template"] = product_model.targeting_template
-    product_data["delivery_type"] = product_model.delivery_type
-
-    # Optional fields
-    if product_model.measurement:
-        product_data["measurement"] = product_model.measurement
-    if product_model.creative_policy:
-        product_data["creative_policy"] = product_model.creative_policy
-    if product_model.price_guidance:
-        product_data["price_guidance"] = product_model.price_guidance
-    if product_model.countries:
-        product_data["countries"] = product_model.countries
-
-    # Property authorization (one is required)
-    # Use effective_properties to auto-resolve from profile
-    effective_props = product_model.effective_properties
-    effective_tags = product_model.effective_property_tags
-    if effective_props:
-        product_data["properties"] = effective_props
-    elif effective_tags:
-        product_data["property_tags"] = effective_tags
-
-    # Product detail fields
-    if product_model.delivery_measurement:
-        product_data["delivery_measurement"] = product_model.delivery_measurement
-    if product_model.product_card:
-        product_data["product_card"] = product_model.product_card
-    if product_model.product_card_detailed:
-        product_data["product_card_detailed"] = product_model.product_card_detailed
-    if product_model.placements:
-        product_data["placements"] = product_model.placements
-    if product_model.reporting_capabilities:
-        product_data["reporting_capabilities"] = product_model.reporting_capabilities
-
-    # Default is_custom to False if not set
-    product_data["is_custom"] = product_model.is_custom if product_model.is_custom else False
-
-    return Product(**product_data)
+# Import conversion utilities from dedicated module to avoid circular imports
+from src.core.product_conversion import convert_product_model_to_schema
 
 
 async def _get_products_impl(
@@ -125,6 +92,8 @@ async def _get_products_impl(
             testing_ctx = testing_ctx_raw
         principal_id: str | None = context.principal_id
         tenant: dict[str, Any] = {"tenant_id": context.tenant_id}  # Simplified tenant info
+        # Ensure ContextVar is populated for helpers that require tenant context
+        set_current_tenant(tenant)
     else:
         # Legacy path - extract from FastMCP Context
         if context is None:
@@ -394,9 +363,11 @@ async def _get_products_impl(
             # Convert Product models to Product schemas for response
 
             for variant_model in dynamic_variants:
-                # Convert database model to schema
+                # Convert database model to schema (returns library Product)
+                # Cast to our extended Product type for mypy compatibility
                 variant_schema = convert_product_model_to_schema(variant_model)
-                products.append(variant_schema)
+                # Type: ignore - library Product is compatible with our extended Product at runtime
+                products.append(variant_schema)  # type: ignore[arg-type]
 
             logger.info(f"[GET_PRODUCTS] Added {len(dynamic_variants)} dynamic product variants")
     except Exception as e:
@@ -404,8 +375,8 @@ async def _get_products_impl(
 
     logger.info(f"[GET_PRODUCTS] Total products (static + dynamic): {len(products)}")
 
-    # Enrich products with dynamic pricing (AdCP PR #79)
-    # Calculate floor_cpm, recommended_cpm, estimated_exposures from cached metrics
+    # Enrich products with dynamic pricing from cached performance metrics
+    # Updates pricing_options with price_guidance (floor, recommended) and estimated_exposures
     try:
         from src.services.dynamic_pricing_service import DynamicPricingService
 
@@ -434,17 +405,20 @@ async def _get_products_impl(
             # Filter by is_fixed_price (check pricing_options)
             if req.filters.is_fixed_price is not None:
                 # Check if product has any pricing option matching the fixed/auction filter
-                has_matching_pricing = any(po.is_fixed == req.filters.is_fixed_price for po in product.pricing_options)
+                # Use getattr for discriminated union field access
+                has_matching_pricing = any(
+                    getattr(po, "is_fixed", None) == req.filters.is_fixed_price for po in product.pricing_options
+                )
                 if not has_matching_pricing:
                     continue
 
             # Filter by format_types
             if req.filters.format_types:
-                # Product.formats is list[str] (format IDs), need to look up types from FORMAT_REGISTRY
+                # Product.format_ids is list[str] (format IDs), need to look up types from FORMAT_REGISTRY
                 from src.core.schemas import get_format_by_id
 
                 product_format_types = set()
-                for format_id in product.formats:
+                for format_id in product.format_ids:
                     if isinstance(format_id, str):
                         format_obj = get_format_by_id(format_id)
                         if format_obj:
@@ -458,9 +432,9 @@ async def _get_products_impl(
 
             # Filter by format_ids
             if req.filters.format_ids:
-                # Product.formats is list[str] or list[dict] (format IDs)
-                product_format_ids = set()
-                for format_id in product.formats:
+                # Product.format_ids is list[str] or list[dict] (format IDs)
+                product_format_ids: set[str] = set()
+                for format_id in product.format_ids:
                     if isinstance(format_id, str):
                         product_format_ids.add(format_id)
                     elif isinstance(format_id, dict):
@@ -493,8 +467,8 @@ async def _get_products_impl(
                 # Check if all formats are IAB standard formats
                 # IAB standard formats typically follow patterns like "display_", "video_", "audio_", "native_"
                 has_only_standard = True
-                for format_id in product.formats:
-                    format_id_str = None
+                for format_id in product.format_ids:
+                    format_id_str: str | None = None
                     if isinstance(format_id, str):
                         format_id_str = format_id
                     elif isinstance(format_id, dict):
@@ -548,24 +522,20 @@ async def _get_products_impl(
                         f"({product.estimated_exposures}) < min_exposures ({min_exposures})"
                     )
             else:
-                # For non-guaranteed, include if recommended_cpm is set (indicates it can meet min_exposures)
-                # or if no recommended_cpm is set (product doesn't provide exposure estimates)
-                if product.recommended_cpm is not None:
+                # For non-guaranteed, include if recommended CPM is set in price_guidance
+                # (indicates it can meet min_exposures) or if no pricing data available
+                # (product doesn't provide exposure estimates)
+                recommended = get_recommended_cpm(product)
+                if recommended is not None:
                     filtered_products.append(product)
                 else:
-                    # Include non-guaranteed products without recommended_cpm (can't filter by exposure estimates)
+                    # Include non-guaranteed products without price_guidance (can't filter by exposure estimates)
                     filtered_products.append(product)
         eligible_products = filtered_products
 
-    # Apply testing hooks to response
-    response_data = {"products": [p.model_dump_internal() for p in eligible_products]}
-    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")  # type: ignore[arg-type]
-
-    # Reconstruct products from modified data
-    modified_products = [Product(**p) for p in response_data["products"]]
-
     # Annotate pricing options with adapter support (AdCP PR #88)
-    if principal and modified_products:
+    # Do this BEFORE serialization to avoid reconstruction issues
+    if principal and eligible_products:
         try:
             # Use correct get_adapter from adapter_helpers (accepts Principal and dry_run)
             from src.core.helpers.adapter_helpers import get_adapter
@@ -575,33 +545,42 @@ async def _get_products_impl(
 
             supported_models = adapter.get_supported_pricing_models()
 
-            for product in modified_products:
+            for product in eligible_products:
                 if product.pricing_options:
                     # Annotate each pricing option with "supported" flag
                     for option in product.pricing_options:
-                        pricing_model = (
-                            option.pricing_model.value
-                            if hasattr(option.pricing_model, "value")
-                            else option.pricing_model
-                        )
+                        # Get pricing model as string (handle both enum and literal)
+                        pricing_model = getattr(option.pricing_model, "value", option.pricing_model)
                         # Add supported annotation (will be included in response)
-                        option.supported = pricing_model in supported_models
-                        if not option.supported:
-                            option.unsupported_reason = (
-                                f"Current adapter does not support {pricing_model.upper()} pricing"
-                            )
+                        # Use dynamic attribute assignment on discriminated unions
+                        option.supported = pricing_model in supported_models  # type: ignore[union-attr]
+                        if not getattr(option, "supported", False):
+                            option.unsupported_reason = f"Current adapter does not support {pricing_model.upper()} pricing"  # type: ignore[union-attr]
         except Exception as e:
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 
     # Filter pricing data for anonymous users
+    # Do this BEFORE serialization to avoid reconstruction issues
     if principal_id is None:  # Anonymous user
         # Remove pricing data from products for anonymous users
         # Set to empty list to hide pricing (will be excluded during serialization)
-        for product in modified_products:
+        for product in eligible_products:
             product.pricing_options = []
 
-    # Response __str__() will generate appropriate message based on content
-    return GetProductsResponse(products=modified_products, errors=None)
+    # Apply testing hooks to response (after modifications)
+    # AdCP library Product uses model_dump(), not model_dump_internal()
+    response_data = {"products": [p.model_dump() for p in eligible_products]}
+    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")  # type: ignore[arg-type]
+
+    # No conversion needed - our Product extends library Product
+    # When serialized, Pydantic automatically uses library Product fields
+    # Internal-only fields (implementation_config) excluded by model_dump()
+    # Note: We use eligible_products (Product objects), not response_data (dicts)
+    # because Product objects have typed pricing_options (CpmFixedRatePricingOption, etc.)
+    # while dicts lose this type information during serialization
+    resp = GetProductsResponse(products=eligible_products, errors=None, context=req.context)
+
+    return resp
 
 
 async def get_products(
@@ -609,7 +588,8 @@ async def get_products(
     brief: str = "",
     filters: dict | None = None,
     push_notification_config: PushNotificationConfig | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # payload-level context
+    ctx: Context | ToolContext | None = None,
 ):
     """Get available products matching the brief.
 
@@ -620,7 +600,8 @@ async def get_products(
                        Example: {"name": "Acme", "url": "https://acme.com"}
         brief: Brief description of the advertising campaign or requirements (optional)
         filters: Structured filters for product discovery (optional)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
         push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
 
     Returns:
@@ -632,7 +613,9 @@ async def get_products(
             brief=brief,
             brand_manifest=brand_manifest,
             filters=filters,
+            context=context,
         )
+
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="get_products request")) from e
     except ValueError as e:
@@ -641,7 +624,7 @@ async def get_products(
 
     # Call shared implementation
     # Note: GetProductsRequest is now a flat class (not RootModel), so pass req directly
-    response = await _get_products_impl(req, context)
+    response = await _get_products_impl(req, ctx)
 
     # Return ToolResult with human-readable text and structured data
     return ToolResult(content=str(response), structured_content=response.model_dump())
@@ -654,7 +637,8 @@ async def get_products_raw(
     min_exposures: int | None = None,
     filters: dict | None = None,
     strategy_id: str | None = None,
-    context: Context | ToolContext | None = None,
+    context: dict | None = None,  # Application level context per adcp spec
+    ctx: Context | ToolContext | None = None,
 ) -> GetProductsResponse:
     """Get available products matching the brief.
 
@@ -669,7 +653,8 @@ async def get_products_raw(
         min_exposures: Minimum impressions needed for measurement validity (optional)
         filters: Structured filters for product discovery (optional)
         strategy_id: Optional strategy ID for linking operations (optional)
-        context: FastMCP context (automatically provided)
+        context: Application level context per adcp spec
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         GetProductsResponse containing matching products
@@ -679,10 +664,11 @@ async def get_products_raw(
         brief=brief or "",
         brand_manifest=brand_manifest,
         filters=filters,
+        context=context,
     )
 
     # Call shared implementation
-    return await _get_products_impl(req, context)
+    return await _get_products_impl(req, ctx)
 
 
 def get_product_catalog() -> list[Product]:
@@ -694,14 +680,11 @@ def get_product_catalog() -> list[Product]:
     Returns:
         List of Product objects with full pricing options
     """
-    import json
-
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
     from src.core.config_loader import get_current_tenant
     from src.core.database.models import Product as ModelProduct
-    from src.core.schemas import PricingOption as PricingOptionSchema
 
     tenant = get_current_tenant()
 
@@ -712,80 +695,20 @@ def get_product_catalog() -> list[Product]:
             .options(
                 selectinload(ModelProduct.pricing_options),
                 selectinload(ModelProduct.inventory_profile),  # Avoid N+1 query
+                selectinload(ModelProduct.tenant),  # For publisher_domain resolution
             )
         )
         products = session.scalars(stmt).all()
 
+        # Use convert_product_model_to_schema for consistency
         loaded_products = []
         for product in products:
-            # Convert ORM model to Pydantic schema
-            # Parse JSON fields that might be strings (SQLite) or dicts (PostgreSQL)
-            def safe_json_parse(value):
-                if isinstance(value, str):
-                    try:
-                        return json.loads(value)
-                    except (json.JSONDecodeError, TypeError):
-                        return value
-                return value
+            try:
+                # convert_product_model_to_schema returns library Product
+                # which is compatible with our extended Product at runtime
+                loaded_products.append(convert_product_model_to_schema(product))  # type: ignore[arg-type]
+            except ValueError as e:
+                logger.warning(f"Skipping product {product.product_id}: {e}")
+                continue
 
-            # Parse formats - now stored as strings by the validator
-            format_ids = safe_json_parse(product.formats) or []
-            # Ensure it's a list of strings (validator guarantees this)
-            if not isinstance(format_ids, list):
-                format_ids = []
-
-            # Convert pricing_options ORM objects to Pydantic objects
-            pricing_options = []
-            logger.info(
-                f"Product {product.name} ({product.product_id}) has {len(product.pricing_options)} pricing options loaded"
-            )
-            for po in product.pricing_options:
-                fixed_str = "fixed" if po.is_fixed else "auction"
-                pricing_option_data = {
-                    "pricing_option_id": f"{po.pricing_model}_{po.currency.lower()}_{fixed_str}",
-                    "pricing_model": po.pricing_model,
-                    "rate": float(po.rate) if po.rate else None,
-                    "currency": po.currency,
-                    "is_fixed": po.is_fixed,
-                    "price_guidance": safe_json_parse(po.price_guidance) if po.price_guidance else None,
-                    "parameters": safe_json_parse(po.parameters) if po.parameters else None,
-                    "min_spend_per_package": float(po.min_spend_per_package) if po.min_spend_per_package else None,
-                }
-                pricing_options.append(PricingOptionSchema(**pricing_option_data))
-
-            product_data = {
-                "product_id": product.product_id,
-                "name": product.name,
-                "description": product.description,
-                "formats": format_ids,
-                "delivery_type": product.delivery_type,
-                "pricing_options": pricing_options,
-                "measurement": (
-                    safe_json_parse(product.measurement)
-                    if hasattr(product, "measurement") and product.measurement
-                    else None
-                ),
-                "creative_policy": (
-                    safe_json_parse(product.creative_policy)
-                    if hasattr(product, "creative_policy") and product.creative_policy
-                    else None
-                ),
-                "is_custom": product.is_custom,
-                "expires_at": product.expires_at,
-                # Note: brief_relevance is populated dynamically when brief is provided
-                "implementation_config": safe_json_parse(product.implementation_config),
-                # Required per AdCP spec: either properties OR property_tags
-                "properties": (
-                    safe_json_parse(product.properties)
-                    if hasattr(product, "properties") and product.properties
-                    else None
-                ),
-                "property_tags": (
-                    safe_json_parse(product.property_tags)
-                    if hasattr(product, "property_tags") and product.property_tags
-                    else ["all_inventory"]  # Default required per AdCP spec
-                ),
-            }
-            loaded_products.append(Product(**product_data))
-
-    return loaded_products
+    return loaded_products  # type: ignore[return-value]

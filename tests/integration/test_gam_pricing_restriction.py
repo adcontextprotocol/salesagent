@@ -21,8 +21,9 @@ from src.core.database.models import (
     PropertyTag,
     Tenant,
 )
-from src.core.schemas import CreateMediaBuyRequest, Package, PricingModel
+from src.core.schemas import CreateMediaBuyRequest
 from src.core.tool_context import ToolContext
+from tests.helpers.adcp_factories import create_test_package_request
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # Tests are now AdCP 2.4 compliant (removed status field, using errors field)
@@ -98,7 +99,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_cpcv",
             name="Video Ads - CPCV",
             description="Video inventory with CPCV pricing",
-            formats=[
+            format_ids=[
                 {
                     "agent_url": "https://creative.adcontextprotocol.org",
                     "id": "video_standard_30s",
@@ -137,7 +138,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_cpm",
             name="Display Ads - CPM",
             description="Display inventory with CPM pricing",
-            formats=[
+            format_ids=[
                 {
                     "agent_url": "https://creative.adcontextprotocol.org",
                     "id": "display_300x250_image",
@@ -176,7 +177,7 @@ def setup_gam_tenant_with_non_cpm_product(integration_db):
             product_id="prod_gam_multi",
             name="Premium Package",
             description="Multiple pricing models (some unsupported)",
-            formats=[
+            format_ids=[
                 {
                     "agent_url": "https://creative.adcontextprotocol.org",
                     "id": "display_300x250_image",
@@ -265,10 +266,10 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                product_id="prod_gam_cpcv",  # Use product_id instead of products array
-                pricing_model=PricingModel.CPCV,  # Not supported by GAM
+            create_test_package_request(
+                buyer_ref="pkg_1",
+                product_id="prod_gam_cpcv",
+                pricing_option_id="cpcv_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=10000.0,
             )
         ],
@@ -298,7 +299,7 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify adapter returned error response
@@ -321,10 +322,10 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                product_id="prod_gam_cpm",  # Use product_id instead of products array
-                pricing_model=PricingModel.CPM,  # Supported by GAM
+            create_test_package_request(
+                buyer_ref="pkg_1",
+                product_id="prod_gam_cpm",
+                pricing_option_id="cpm_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=10000.0,
             )
         ],
@@ -351,13 +352,15 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
-    # Verify response (adcp v1.2.1 oneOf pattern)
+    # Verify response is success (AdCP 2.4 compliant)
+    # Success response has media_buy_id, error response has errors field
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
-    # Success response has no errors field (only Error variant has errors)
-    assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)
 
 
 @pytest.mark.requires_db
@@ -369,10 +372,10 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                product_id="prod_gam_multi",  # Use product_id instead of products array
-                pricing_model=PricingModel.CPP,  # Not supported by GAM
+            create_test_package_request(
+                buyer_ref="pkg_1",
+                product_id="prod_gam_multi",
+                pricing_option_id="cpp_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=15000.0,
             )
         ],
@@ -401,7 +404,7 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
     # Verify adapter returned error response
@@ -424,10 +427,10 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         buyer_ref="test_buyer",
         brand_manifest={"name": "https://example.com/product"},
         packages=[
-            Package(
-                package_id="pkg_1",
-                product_id="prod_gam_multi",  # Use product_id instead of products array
-                pricing_model=PricingModel.CPM,  # Supported by GAM
+            create_test_package_request(
+                buyer_ref="pkg_1",
+                product_id="prod_gam_multi",
+                pricing_option_id="cpm_usd_fixed",  # Generated format: {model}_{currency}_{fixed|auction}
                 budget=10000.0,
             )
         ],
@@ -454,10 +457,12 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         start_time=request.start_time,
         end_time=request.end_time,
         budget=request.budget,
-        context=context,
+        ctx=context,
     )
 
-    # Verify response (adcp v1.2.1 oneOf pattern)
+    # Verify response is success (AdCP 2.4 compliant)
+    # Success response has media_buy_id, error response has errors field
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
-    # Success response has no errors field (only Error variant has errors)
-    assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)

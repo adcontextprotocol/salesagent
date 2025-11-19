@@ -27,6 +27,7 @@ from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant as ModelTenant
 
 # fmt: on
+from tests.helpers.adcp_factories import create_test_package_request_dict
 from tests.integration_v2.conftest import (
     add_required_setup_data,
     create_test_product_with_pricing,
@@ -79,7 +80,7 @@ class TestA2AErrorPropagation:
             add_required_setup_data(session, "a2a_error_test")
 
             # Create product using new pricing model
-            # NOTE: formats must be structured FormatId objects with agent_url, not strings
+            # NOTE: format_ids must be structured FormatId objects with agent_url, not strings
             product = create_test_product_with_pricing(
                 session=session,
                 tenant_id="a2a_error_test",
@@ -90,7 +91,7 @@ class TestA2AErrorPropagation:
                 rate="10.0",
                 is_fixed=True,
                 min_spend_per_package="1000.0",
-                formats=[{"id": "display_300x250", "agent_url": "https://test.example.com"}],
+                format_ids=[{"id": "display_300x250", "agent_url": "https://test.example.com"}],
                 delivery_type="guaranteed",
                 targeting_template={},
             )
@@ -210,11 +211,12 @@ class TestA2AErrorPropagation:
             skill_params = {
                 "brand_manifest": {"name": "Test Campaign"},
                 "packages": [
-                    {
-                        "buyer_ref": "pkg_1",
-                        "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
-                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
-                    }
+                    create_test_package_request_dict(
+                        buyer_ref="pkg_1",
+                        product_id="a2a_error_product",
+                        pricing_option_id="cpm_usd_fixed",
+                        budget=10000.0,
+                    )
                 ],
                 "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_time,
@@ -263,11 +265,12 @@ class TestA2AErrorPropagation:
             skill_params = {
                 "brand_manifest": {"name": "Test Campaign"},
                 "packages": [
-                    {
-                        "buyer_ref": "pkg_1",
-                        "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
-                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
-                    }
+                    create_test_package_request_dict(
+                        buyer_ref="pkg_1",
+                        product_id="a2a_error_product",
+                        pricing_option_id="cpm_usd_fixed",
+                        budget=10000.0,
+                    )
                 ],
                 "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_time,
@@ -323,11 +326,12 @@ class TestA2AErrorPropagation:
             skill_params = {
                 "brand_manifest": {"name": "Test Campaign"},
                 "packages": [
-                    {
-                        "buyer_ref": "pkg_1",
-                        "product_id": "a2a_error_product",  # Use product_id (singular) not products (plural)
-                        "budget": 10000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
-                    }
+                    create_test_package_request_dict(
+                        buyer_ref="pkg_1",
+                        product_id="a2a_error_product",
+                        pricing_option_id="cpm_usd_fixed",
+                        budget=10000.0,
+                    )
                 ],
                 "budget": {"total": 10000.0, "currency": "USD"},  # Top-level budget keeps dict format
                 "start_time": start_time,

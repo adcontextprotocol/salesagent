@@ -153,9 +153,10 @@ class MCPContextWrapper:
 
     def _extract_fastmcp_context(self, args: tuple, kwargs: dict) -> FastMCPContext | None:
         """Extract FastMCP Context from function arguments."""
-        # Check kwargs first
-        if "context" in kwargs and isinstance(kwargs["context"], FastMCPContext):
-            return kwargs["context"]
+        # Check kwargs for any value that is a FastMCPContext (supports 'ctx' or other param names)
+        for k, v in kwargs.items():
+            if isinstance(v, FastMCPContext):
+                return v
 
         # Check positional args
         for arg in args:
@@ -259,9 +260,16 @@ class MCPContextWrapper:
 
     def _replace_context_in_args(self, args: tuple, kwargs: dict, tool_context: ToolContext) -> tuple[tuple, dict]:
         """Replace FastMCP Context with ToolContext in arguments."""
-        # Replace in kwargs
-        if "context" in kwargs:
-            kwargs = {**kwargs, "context": tool_context}
+        # Replace in kwargs: set on whichever key carried the FastMCP context (supports 'ctx' or others)
+        new_kwargs = {}
+        replaced = False
+        for k, v in kwargs.items():
+            if isinstance(v, FastMCPContext):
+                new_kwargs[k] = tool_context
+                replaced = True
+            else:
+                new_kwargs[k] = v
+        kwargs = new_kwargs
 
         # Replace in positional args
         new_args = []

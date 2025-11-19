@@ -67,7 +67,7 @@ class TestDeliverySimulatorRestart:
                 product_id=product_id,
                 name="Test Product",
                 description="Test product for delivery simulator",
-                formats=[{"agent_url": "https://example.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://example.com", "id": "display_300x250"}],
                 targeting_template={},
                 delivery_type="guaranteed",
                 property_tags=["all_inventory"],

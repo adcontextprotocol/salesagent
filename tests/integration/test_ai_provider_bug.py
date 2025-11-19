@@ -58,7 +58,7 @@ async def test_ai_provider_bug(integration_db):
             product_id="test_audio_bug",
             name="Test Audio Product",
             description="Test product to reproduce bug",
-            formats=["audio_15s", "audio_30s"],  # JSONType expects list, not json.dumps()
+            format_ids=["audio_15s", "audio_30s"],  # JSONType expects list, not json.dumps()
             targeting_template={},
             delivery_type="guaranteed",
             is_custom=False,

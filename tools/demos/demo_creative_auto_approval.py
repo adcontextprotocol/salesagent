@@ -125,7 +125,7 @@ async def test_auto_approval(server_url: str):
                     "creative_engine": {
                         "adapter": "mock_creative_engine",
                         "human_review_required": True,
-                        "auto_approve_formats": ["display_320x50", "display_728x90", "display_300x250"],
+                        "auto_approve_format_ids": ["display_320x50", "display_728x90", "display_300x250"],
                     }
                 },
                 indent=2,
@@ -147,7 +147,7 @@ async def main():
             {
                 "creative_engine": {
                     "adapter": "mock_creative_engine",
-                    "auto_approve_formats": ["display_320x50", "display_728x90", "display_300x250"],
+                    "auto_approve_format_ids": ["display_320x50", "display_728x90", "display_300x250"],
                 }
             },
             indent=2,

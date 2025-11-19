@@ -27,7 +27,6 @@ from sqlalchemy.orm import joinedload
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
 from src.core.database.models import Tenant
-from src.core.schemas import PriceGuidance, PricingOption
 from src.core.schemas import Product as ProductSchema
 from src.core.testing_hooks import TestingContext, apply_testing_hooks
 from tests.utils.database_helpers import create_tenant_with_timestamps
@@ -75,7 +74,7 @@ class TestMCPToolRoundtripValidation:
                 product_id="roundtrip_test_display",
                 name="Display Banner Product - Roundtrip Test",
                 description="Display advertising product for roundtrip validation",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "display_300x250"},
                     {"agent_url": "https://test.com", "id": "display_728x90"},
                 ],
@@ -113,7 +112,7 @@ class TestMCPToolRoundtripValidation:
                 product_id="roundtrip_test_video",
                 name="Video Ad Product - Roundtrip Test",
                 description="Video advertising product for roundtrip validation",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "video_15s"},
                     {"agent_url": "https://test.com", "id": "video_30s"},
                 ],
@@ -187,45 +186,71 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_option_id = "cpm_usd_fixed"
 
-            # Build pricing_options with proper validation
+            # Build pricing_options dict (is_fixed required by adcp 2.5.0 discriminated unions)
             pricing_kwargs = {
                 "pricing_option_id": pricing_option_id,
                 "pricing_model": pricing_option.pricing_model if pricing_option else "cpm",
                 "currency": pricing_option.currency if pricing_option else "USD",
-                "is_fixed": pricing_option.is_fixed if pricing_option else True,
             }
 
-            # Add rate or price_guidance based on is_fixed
+            # Add rate or price_guidance based on is_fixed (MUST include is_fixed for adcp 2.5.0)
             if pricing_option:
+                pricing_kwargs["is_fixed"] = pricing_option.is_fixed
                 if pricing_option.is_fixed:
                     pricing_kwargs["rate"] = float(pricing_option.rate) if pricing_option.rate else 10.0
                 else:
                     # For auction pricing, price_guidance is required
-                    pricing_kwargs["price_guidance"] = pricing_option.price_guidance or PriceGuidance(
-                        floor=5.0, p50=10.0, p75=15.0
-                    )
+                    pricing_kwargs["price_guidance"] = pricing_option.price_guidance or {
+                        "floor": 5.0,
+                        "p50": 10.0,
+                        "p75": 15.0,
+                    }
             else:
+                pricing_kwargs["is_fixed"] = True
                 pricing_kwargs["rate"] = 10.0
 
-            # Extract format IDs from FormatId objects (db_product.formats may be list of dicts or FormatId objects)
-            formats = db_product.formats
-            if formats and isinstance(formats[0], dict):
-                # Extract just the 'id' field from each format dict
-                format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
-            else:
-                format_ids = formats
+            # Convert format_ids to FormatId objects if they're dicts or strings
+            formats = db_product.format_ids
+            format_id_objects = []
+            if formats:
+                for f in formats:
+                    if isinstance(f, dict):
+                        # Already a dict with agent_url and id
+                        format_id_objects.append(f)
+                    elif isinstance(f, str):
+                        # String ID - convert to FormatId dict
+                        format_id_objects.append({"agent_url": "https://creative.adcontextprotocol.org", "id": f})
+                    else:
+                        # FormatId object - keep as is
+                        format_id_objects.append(f)
+
+            # Convert property_tags to publisher_properties per AdCP spec
+            property_tags = getattr(db_product, "property_tags", ["all_inventory"])
+            publisher_properties = (
+                [
+                    {
+                        "selection_type": "by_id",
+                        "publisher_domain": "example.com",
+                        "property_ids": property_tags,
+                    }
+                ]
+                if property_tags
+                else []
+            )
 
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "formats": format_ids,  # Internal field name (list of strings)
+                "format_ids": format_id_objects,  # FormatId objects or dicts
                 "delivery_type": db_product.delivery_type,
+                "delivery_measurement": db_product.delivery_measurement
+                or {"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
                 "is_custom": db_product.is_custom or False,
-                "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
-                "pricing_options": [PricingOption(**pricing_kwargs)],
+                "publisher_properties": publisher_properties,
+                "pricing_options": [pricing_kwargs],  # Use plain dict, not PricingOption object
             }
             schema_product = ProductSchema(**product_data)
             schema_products.append(schema_product)
@@ -246,7 +271,7 @@ class TestMCPToolRoundtripValidation:
 
             # Step 4: Verify reconstruction succeeded
             assert reconstructed_product.product_id == product.product_id
-            assert reconstructed_product.formats == product.formats
+            assert reconstructed_product.format_ids == product.format_ids
             assert reconstructed_product.name == product.name
 
         # Test specific products that were created by fixture
@@ -257,12 +282,17 @@ class TestMCPToolRoundtripValidation:
         assert video_product is not None, "Should have found video product"
 
         # Test the specific case that was failing: formats field
-        assert display_product.formats == ["display_300x250", "display_728x90"]
-        assert video_product.formats == ["video_15s", "video_30s"]
+        # format_ids is now list[FormatId] objects, not strings
+        assert len(display_product.format_ids) == 2
+        assert display_product.format_ids[0].id == "display_300x250"
+        assert display_product.format_ids[1].id == "display_728x90"
+        assert len(video_product.format_ids) == 2
+        assert video_product.format_ids[0].id == "video_15s"
+        assert video_product.format_ids[1].id == "video_30s"
 
-        # Verify AdCP spec property works
-        assert display_product.format_ids == ["display_300x250", "display_728x90"]
-        assert video_product.format_ids == ["video_15s", "video_30s"]
+        # Verify AdCP spec property works (FormatId objects)
+        assert all(hasattr(fmt, "id") and hasattr(fmt, "agent_url") for fmt in display_product.format_ids)
+        assert all(hasattr(fmt, "id") and hasattr(fmt, "agent_url") for fmt in video_product.format_ids)
 
     def test_get_products_with_testing_hooks_roundtrip_isolated(
         self, integration_db, test_tenant_id, real_products_in_db
@@ -296,45 +326,71 @@ class TestMCPToolRoundtripValidation:
             else:
                 pricing_option_id = "cpm_usd_fixed"
 
-            # Build pricing_options with proper validation
+            # Build pricing_options dict (is_fixed required by adcp 2.5.0 discriminated unions)
             pricing_kwargs = {
                 "pricing_option_id": pricing_option_id,
                 "pricing_model": pricing_option.pricing_model if pricing_option else "cpm",
                 "currency": pricing_option.currency if pricing_option else "USD",
-                "is_fixed": pricing_option.is_fixed if pricing_option else True,
             }
 
-            # Add rate or price_guidance based on is_fixed
+            # Add rate or price_guidance based on is_fixed (MUST include is_fixed for adcp 2.5.0)
             if pricing_option:
+                pricing_kwargs["is_fixed"] = pricing_option.is_fixed
                 if pricing_option.is_fixed:
                     pricing_kwargs["rate"] = float(pricing_option.rate) if pricing_option.rate else 10.0
                 else:
                     # For auction pricing, price_guidance is required
-                    pricing_kwargs["price_guidance"] = pricing_option.price_guidance or PriceGuidance(
-                        floor=5.0, p50=10.0, p75=15.0
-                    )
+                    pricing_kwargs["price_guidance"] = pricing_option.price_guidance or {
+                        "floor": 5.0,
+                        "p50": 10.0,
+                        "p75": 15.0,
+                    }
             else:
+                pricing_kwargs["is_fixed"] = True
                 pricing_kwargs["rate"] = 10.0
 
-            # Extract format IDs from FormatId objects (db_product.formats may be list of dicts or FormatId objects)
-            formats = db_product.formats
-            if formats and isinstance(formats[0], dict):
-                # Extract just the 'id' field from each format dict
-                format_ids = [f["id"] if isinstance(f, dict) else f.id for f in formats]
-            else:
-                format_ids = formats
+            # Convert format_ids to FormatId objects if they're dicts or strings
+            formats = db_product.format_ids
+            format_id_objects = []
+            if formats:
+                for f in formats:
+                    if isinstance(f, dict):
+                        # Already a dict with agent_url and id
+                        format_id_objects.append(f)
+                    elif isinstance(f, str):
+                        # String ID - convert to FormatId dict
+                        format_id_objects.append({"agent_url": "https://creative.adcontextprotocol.org", "id": f})
+                    else:
+                        # FormatId object - keep as is
+                        format_id_objects.append(f)
+
+            # Convert property_tags to publisher_properties per AdCP spec
+            property_tags = getattr(db_product, "property_tags", ["all_inventory"])
+            publisher_properties = (
+                [
+                    {
+                        "selection_type": "by_id",
+                        "publisher_domain": "example.com",
+                        "property_ids": property_tags,
+                    }
+                ]
+                if property_tags
+                else []
+            )
 
             product_data = {
                 "product_id": db_product.product_id,
                 "name": db_product.name,
                 "description": db_product.description or "",
-                "formats": format_ids,  # Internal field name (list of strings)
+                "format_ids": format_id_objects,  # FormatId objects or dicts
                 "delivery_type": db_product.delivery_type,
+                "delivery_measurement": db_product.delivery_measurement
+                or {"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
                 "measurement": db_product.measurement,
                 "creative_policy": db_product.creative_policy,
                 "is_custom": db_product.is_custom or False,
-                "property_tags": getattr(db_product, "property_tags", ["all_inventory"]),  # Required per AdCP spec
-                "pricing_options": [PricingOption(**pricing_kwargs)],
+                "publisher_properties": publisher_properties,
+                "pricing_options": [pricing_kwargs],  # Use plain dict, not PricingOption object
             }
             schema_product = ProductSchema(**product_data)
             schema_products.append(schema_product)
@@ -362,16 +418,18 @@ class TestMCPToolRoundtripValidation:
 
                 # Step 4: Verify reconstruction succeeded
                 assert reconstructed_product.product_id == product.product_id
-                assert reconstructed_product.formats == product.formats
+                assert reconstructed_product.format_ids == product.format_ids
                 assert reconstructed_product.name == product.name
                 assert reconstructed_product.delivery_type == product.delivery_type
 
                 # Test specific fields that were causing validation errors
-                assert hasattr(reconstructed_product, "formats")
-                assert isinstance(reconstructed_product.formats, list)
-                assert len(reconstructed_product.formats) > 0
-                assert reconstructed_product.measurement is not None
-                assert reconstructed_product.creative_policy is not None
+                assert hasattr(reconstructed_product, "format_ids")
+                assert isinstance(reconstructed_product.format_ids, list)
+                assert len(reconstructed_product.format_ids) > 0
+                # measurement is optional in AdCP spec (required=False)
+                assert hasattr(reconstructed_product, "measurement")
+                # creative_policy is optional in AdCP spec
+                assert hasattr(reconstructed_product, "creative_policy")
 
     def test_product_schema_roundtrip_conversion_isolated(self):
         """
@@ -385,27 +443,38 @@ class TestMCPToolRoundtripValidation:
             product_id="roundtrip_isolated_test",
             name="Isolated Roundtrip Test Product",
             description="Testing the exact roundtrip conversion pattern",
-            formats=["display_300x250", "video_15s"],  # Internal field name
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+            ],
             delivery_type="guaranteed",
+            delivery_measurement={"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
             is_custom=False,
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {"selection_type": "by_id", "publisher_domain": "example.com", "property_ids": ["all_inventory"]}
+            ],
             pricing_options=[
-                PricingOption(
-                    pricing_option_id="cpm_usd_fixed",
-                    pricing_model="cpm",
-                    rate=15.75,
-                    currency="USD",
-                    is_fixed=True,
-                )
+                {
+                    "pricing_option_id": "cpm_usd_fixed",
+                    "pricing_model": "cpm",
+                    "rate": 15.75,
+                    "currency": "USD",
+                    "is_fixed": True,  # Required in adcp 2.4.0+
+                }
             ],
         )
 
         # Step 1: Convert to dict (what the tool does before testing hooks)
         product_dict = original_product.model_dump_internal()
 
-        # Verify the dict has the internal field name
-        assert "formats" in product_dict
-        assert product_dict["formats"] == ["display_300x250", "video_15s"]
+        # Verify the dict has the correct field name
+        assert "format_ids" in product_dict
+        # model_dump_internal() returns list of dicts for format_ids (FormatId objects serialized)
+        # Note: agent_url may be serialized as AnyUrl with trailing slash
+        assert len(product_dict["format_ids"]) == 2
+        assert product_dict["format_ids"][0]["id"] == "display_300x250"
+        assert product_dict["format_ids"][1]["id"] == "video_15s"
+        assert "creative.adcontextprotocol.org" in str(product_dict["format_ids"][0]["agent_url"])
 
         # Step 2: Simulate testing hooks modifying the data
         testing_ctx = TestingContext(dry_run=True, test_session_id="isolated_test")
@@ -426,7 +495,7 @@ class TestMCPToolRoundtripValidation:
         assert reconstructed_product.product_id == original_product.product_id
         assert reconstructed_product.name == original_product.name
         assert reconstructed_product.description == original_product.description
-        assert reconstructed_product.formats == original_product.formats
+        assert reconstructed_product.format_ids == original_product.format_ids
         assert reconstructed_product.delivery_type == original_product.delivery_type
         assert reconstructed_product.pricing_options == original_product.pricing_options
 
@@ -442,19 +511,24 @@ class TestMCPToolRoundtripValidation:
             product_id="adcp_compliance_test",
             name="AdCP Compliance Test Product",
             description="Testing AdCP spec compliance after roundtrip",
-            formats=["display_300x250", "display_728x90"],  # Internal field name
+            format_ids=[
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+            ],
             delivery_type="non_guaranteed",
+            delivery_measurement={"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
             is_custom=True,
-            property_tags=["all_inventory"],  # Required per AdCP spec
+            publisher_properties=[
+                {"selection_type": "by_id", "publisher_domain": "example.com", "property_ids": ["all_inventory"]}
+            ],
             pricing_options=[
-                PricingOption(
-                    pricing_option_id="cpm_usd_auction",
-                    pricing_model="cpm",
-                    rate=8.25,
-                    currency="USD",
-                    is_fixed=False,
-                    price_guidance=PriceGuidance(floor=5.0, p50=8.25, p75=10.0),
-                )
+                {
+                    "pricing_option_id": "cpm_usd_auction",
+                    "pricing_model": "cpm",
+                    "price_guidance": {"floor": 5.0, "p50": 8.25, "p75": 10.0},
+                    "currency": "USD",
+                    "is_fixed": False,  # Required in adcp 2.4.0+
+                }
             ],
         )
 
@@ -467,8 +541,10 @@ class TestMCPToolRoundtripValidation:
 
         # Verify AdCP spec compliance
         assert "format_ids" in adcp_dict  # AdCP spec field name
-        assert "formats" not in adcp_dict  # Internal field name should be excluded
-        assert adcp_dict["format_ids"] == ["display_300x250", "display_728x90"]
+        # model_dump() serializes FormatId objects as dicts with agent_url and id
+        assert len(adcp_dict["format_ids"]) == 2
+        assert adcp_dict["format_ids"][0]["id"] == "display_300x250"
+        assert adcp_dict["format_ids"][1]["id"] == "display_728x90"
 
         # Verify required AdCP fields are present
         required_adcp_fields = [
@@ -501,48 +577,58 @@ class TestMCPToolRoundtripValidation:
             "product_id": "validation_error_test",
             "name": "Validation Error Test Product",
             "description": "Testing schema validation error detection",
-            "format_ids": ["display_300x250"],  # Now VALID: Accepts both formats and format_ids
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "guaranteed",
+            "delivery_measurement": {"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
             "is_custom": False,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "publisher_properties": [
+                {"selection_type": "by_id", "publisher_domain": "example.com", "property_ids": ["all_inventory"]}
+            ],
             "pricing_options": [
                 {
                     "pricing_option_id": "cpm_usd_fixed",
                     "pricing_model": "cpm",
                     "rate": 10.0,
                     "currency": "USD",
-                    "is_fixed": True,
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                 }
             ],
         }
 
         # This should now succeed (format_ids is a valid alias)
         product1 = ProductSchema(**product_dict_with_format_ids)
-        assert product1.formats == ["display_300x250"]
+        # format_ids is list[FormatId] objects
+        assert len(product1.format_ids) == 1
+        assert product1.format_ids[0].id == "display_300x250"
 
-        # Test 2: formats should also work (original field name)
+        # Test 2: format_ids should work (correct field name)
         correct_product_dict = {
             "product_id": "validation_success_test",
             "name": "Validation Success Test Product",
             "description": "Testing correct schema validation",
-            "formats": ["display_300x250"],  # Original field name
+            "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
             "delivery_type": "guaranteed",
+            "delivery_measurement": {"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
             "is_custom": False,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "publisher_properties": [
+                {"selection_type": "by_id", "publisher_domain": "example.com", "property_ids": ["all_inventory"]}
+            ],
             "pricing_options": [
                 {
                     "pricing_option_id": "cpm_usd_fixed",
                     "pricing_model": "cpm",
                     "rate": 10.0,
                     "currency": "USD",
-                    "is_fixed": True,
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                 }
             ],
         }
 
         # This should succeed
         product = ProductSchema(**correct_product_dict)
-        assert product.formats == ["display_300x250"]
+        # format_ids is list[FormatId] objects
+        assert len(product.format_ids) == 1
+        assert product.format_ids[0].id == "display_300x250"
 
 
 class TestMCPToolRoundtripPatterns:
@@ -562,17 +648,24 @@ class TestMCPToolRoundtripPatterns:
                     "product_id": "pattern_guaranteed",
                     "name": "Guaranteed Display Product",
                     "description": "Pattern test for guaranteed products",
-                    "formats": ["display_300x250"],
+                    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
                     "delivery_type": "guaranteed",
+                    "delivery_measurement": {"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
                     "is_custom": False,
-                    "property_tags": ["all_inventory"],  # Required per AdCP spec
+                    "publisher_properties": [
+                        {
+                            "selection_type": "by_id",
+                            "publisher_domain": "example.com",
+                            "property_ids": ["all_inventory"],
+                        }
+                    ],
                     "pricing_options": [
                         {
                             "pricing_option_id": "cpm_usd_fixed",
                             "pricing_model": "cpm",
                             "rate": 12.0,
                             "currency": "USD",
-                            "is_fixed": True,
+                            "is_fixed": True,  # Required in adcp 2.4.0+
                             "min_spend_per_package": 2000.0,
                         }
                     ],
@@ -584,18 +677,27 @@ class TestMCPToolRoundtripPatterns:
                     "product_id": "pattern_non_guaranteed",
                     "name": "Non-Guaranteed Video Product",
                     "description": "Pattern test for non-guaranteed products",
-                    "formats": ["video_15s", "video_30s"],
+                    "format_ids": [
+                        {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+                        {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s"},
+                    ],
                     "delivery_type": "non_guaranteed",
+                    "delivery_measurement": {"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
                     "is_custom": True,
-                    "property_tags": ["all_inventory"],  # Required per AdCP spec
+                    "publisher_properties": [
+                        {
+                            "selection_type": "by_id",
+                            "publisher_domain": "example.com",
+                            "property_ids": ["all_inventory"],
+                        }
+                    ],
                     "pricing_options": [
                         {
                             "pricing_option_id": "cpm_usd_auction",
                             "pricing_model": "cpm",
-                            "rate": None,  # Test null handling for auction pricing
-                            "currency": "USD",
-                            "is_fixed": False,
+                            "is_fixed": False,  # Required in adcp 2.4.0+
                             "price_guidance": {"floor": 3.0, "p50": 5.0, "p75": 7.0},
+                            "currency": "USD",
                             "min_spend_per_package": 5000.0,
                         }
                     ],
@@ -607,18 +709,24 @@ class TestMCPToolRoundtripPatterns:
                     "product_id": "pattern_minimal",
                     "name": "Minimal Product",
                     "description": "Pattern test with minimal fields",
-                    "formats": ["display_728x90"],
+                    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}],
                     "delivery_type": "non_guaranteed",
+                    "delivery_measurement": {"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
                     "is_custom": False,
-                    "property_tags": ["all_inventory"],  # Required per AdCP spec
+                    "publisher_properties": [
+                        {
+                            "selection_type": "by_id",
+                            "publisher_domain": "example.com",
+                            "property_ids": ["all_inventory"],
+                        }
+                    ],
                     "pricing_options": [
                         {
                             "pricing_option_id": "cpm_usd_auction",
                             "pricing_model": "cpm",
-                            "rate": 5.0,
-                            "currency": "USD",
-                            "is_fixed": False,
+                            "is_fixed": False,  # Required in adcp 2.4.0+
                             "price_guidance": {"floor": 3.0, "p50": 5.0, "p75": 7.0},
+                            "currency": "USD",
                         }
                     ],
                 },
@@ -646,14 +754,13 @@ class TestMCPToolRoundtripPatterns:
                 # Step 6: Verify roundtrip preserved essential data
                 assert reconstructed.product_id == original.product_id
                 assert reconstructed.name == original.name
-                assert reconstructed.formats == original.formats
+                assert reconstructed.format_ids == original.format_ids
                 assert reconstructed.delivery_type == original.delivery_type
                 assert reconstructed.pricing_options == original.pricing_options
 
                 # Step 7: Verify AdCP spec compliance
                 adcp_output = reconstructed.model_dump()
                 assert "format_ids" in adcp_output
-                assert "formats" not in adcp_output
 
     def test_field_mapping_consistency_validation(self):
         """
@@ -666,22 +773,26 @@ class TestMCPToolRoundtripPatterns:
             "product_id": "field_mapping_test",
             "name": "Field Mapping Test Product",
             "description": "Testing all field mapping scenarios",
-            "formats": ["display_300x250", "video_15s"],  # Internal name
+            "format_ids": [
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s"},
+            ],
             "delivery_type": "guaranteed",
+            "delivery_measurement": {"provider": "Google Ad Manager", "notes": "MRC-accredited viewability"},
             "is_custom": False,
-            "property_tags": ["all_inventory"],  # Required per AdCP spec
+            "publisher_properties": [
+                {"selection_type": "by_id", "publisher_domain": "example.com", "property_ids": ["all_inventory"]}
+            ],
             # Optional fields that might cause mapping issues
             "measurement": {
                 "type": "incremental_sales_lift",
                 "attribution": "deterministic_purchase",
                 "reporting": "weekly_dashboard",
-                "viewability": True,
             },
             "creative_policy": {
                 "co_branding": "optional",
                 "landing_page": "any",
                 "templates_available": True,
-                "max_file_size": "5MB",
             },
             "pricing_options": [
                 {
@@ -689,7 +800,7 @@ class TestMCPToolRoundtripPatterns:
                     "pricing_model": "cpm",
                     "rate": 15.0,
                     "currency": "USD",
-                    "is_fixed": True,
+                    "is_fixed": True,  # Required in adcp 2.4.0+
                     "min_spend_per_package": 2500.0,
                 }
             ],
@@ -700,22 +811,19 @@ class TestMCPToolRoundtripPatterns:
 
         # Test internal representation
         internal_dict = product.model_dump_internal()
-        assert "formats" in internal_dict  # Internal field name
-        assert "format_ids" not in internal_dict  # External field name excluded from internal
+        assert "format_ids" in internal_dict  # Field name (no separate internal/external anymore)
 
         # Test external (AdCP) representation
         external_dict = product.model_dump()
-        assert "format_ids" in external_dict  # External field name
-        assert "formats" not in external_dict  # Internal field name excluded from external
+        assert "format_ids" in external_dict  # Field name
 
-        # Test property access
-        assert product.formats == ["display_300x250", "video_15s"]  # Internal access
-        assert product.format_ids == ["display_300x250", "video_15s"]  # External property
+        # Test property access (format_ids returns FormatId objects)
+        assert len(product.format_ids) == 2
+        assert all(hasattr(fmt, "id") and hasattr(fmt, "agent_url") for fmt in product.format_ids)
 
         # Test roundtrip from internal dict
         roundtrip_product = ProductSchema(**internal_dict)
-        assert roundtrip_product.formats == product.formats
-        assert roundtrip_product.format_ids == product.format_ids
+        assert len(roundtrip_product.format_ids) == len(product.format_ids)
 
         # Verify external output is still compliant after roundtrip
         roundtrip_external = roundtrip_product.model_dump()

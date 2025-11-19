@@ -1,11 +1,14 @@
 """Tests for setup checklist service."""
 
+import json
 import os
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import select
 
 from src.core.database.models import (
+    AdapterConfig,
     AuthorizedProperty,
     CurrencyLimit,
     GAMInventory,
@@ -19,6 +22,7 @@ from src.services.setup_checklist_service import (
     get_incomplete_critical_tasks,
     validate_setup_complete,
 )
+from tests.helpers.adcp_factories import create_test_db_product
 
 pytestmark = pytest.mark.requires_db
 
@@ -33,8 +37,6 @@ def test_tenant_id():
 def setup_minimal_tenant(integration_db, test_tenant_id):
     """Create minimal tenant for testing (incomplete setup)."""
     from datetime import UTC, datetime
-
-    from sqlalchemy import select
 
     from src.core.database.database_session import get_db_session
 
@@ -75,7 +77,7 @@ def setup_complete_tenant(integration_db, test_tenant_id):
     """Create fully configured tenant for testing."""
     from datetime import UTC, datetime
 
-    from sqlalchemy import delete, select
+    from sqlalchemy import delete
 
     from src.core.database.database_session import get_db_session
 
@@ -101,7 +103,7 @@ def setup_complete_tenant(integration_db, test_tenant_id):
             subdomain="complete",
             ad_server="google_ad_manager",
             human_review_required=True,
-            auto_approve_formats=["display_300x250"],
+            auto_approve_format_ids=["display_300x250"],
             slack_webhook_url="https://hooks.slack.com/test",
             enable_axe_signals=True,
             authorized_emails=["test@example.com"],  # Required for access control
@@ -129,15 +131,12 @@ def setup_complete_tenant(integration_db, test_tenant_id):
         db_session.add(prop)
 
         # Add product
-        product = Product(
+        product = create_test_db_product(
             tenant_id=test_tenant_id,
             product_id="prod_1",
             name="Test Product",
             description="Test",
-            formats=["display"],
-            targeting_template={},
-            delivery_type="guaranteed",
-            property_tags=["all_inventory"],
+            format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display"}],
         )
         db_session.add(product)
 
@@ -208,44 +207,40 @@ class TestSetupChecklistService:
 
     def test_minimal_tenant_incomplete_setup(self, integration_db, setup_minimal_tenant, test_tenant_id):
         """Test that minimal tenant shows all critical tasks incomplete."""
-        with patch.dict(os.environ, {}, clear=True):  # No GEMINI_API_KEY
-            service = SetupChecklistService(test_tenant_id)
-            status = service.get_setup_status()
+        service = SetupChecklistService(test_tenant_id)
+        status = service.get_setup_status()
 
-            # Should have low progress
-            assert status["progress_percent"] < 50
-            assert not status["ready_for_orders"]
+        # Should have low progress
+        assert status["progress_percent"] < 50
+        assert not status["ready_for_orders"]
 
-            # Check critical tasks are incomplete
-            critical = {task["key"]: task for task in status["critical"]}
-            assert not critical["gemini_api_key"]["is_complete"]
-            assert not critical["currency_limits"]["is_complete"]
-            assert not critical["ad_server_connected"]["is_complete"]
-            assert not critical["authorized_properties"]["is_complete"]
-            assert not critical["inventory_synced"]["is_complete"]
-            assert not critical["products_created"]["is_complete"]
-            assert not critical["principals_created"]["is_complete"]
+        # Check critical tasks are incomplete (Gemini moved to optional)
+        critical = {task["key"]: task for task in status["critical"]}
+        assert not critical["currency_limits"]["is_complete"]
+        assert not critical["ad_server_connected"]["is_complete"]
+        assert not critical["authorized_properties"]["is_complete"]
+        assert not critical["inventory_synced"]["is_complete"]
+        assert not critical["products_created"]["is_complete"]
+        assert not critical["principals_created"]["is_complete"]
 
     def test_complete_tenant_ready_for_orders(self, integration_db, setup_complete_tenant, test_tenant_id):
         """Test that fully configured tenant shows all critical tasks complete."""
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}):
-            service = SetupChecklistService(test_tenant_id)
-            status = service.get_setup_status()
+        service = SetupChecklistService(test_tenant_id)
+        status = service.get_setup_status()
 
-            # Should have 100% critical complete
-            assert status["ready_for_orders"]
-            critical_complete = all(task["is_complete"] for task in status["critical"])
-            assert critical_complete
+        # Should have 100% critical complete
+        assert status["ready_for_orders"]
+        critical_complete = all(task["is_complete"] for task in status["critical"])
+        assert critical_complete
 
-            # Check specific critical tasks
-            critical = {task["key"]: task for task in status["critical"]}
-            assert critical["gemini_api_key"]["is_complete"]
-            assert critical["currency_limits"]["is_complete"]
-            assert critical["ad_server_connected"]["is_complete"]
-            assert critical["authorized_properties"]["is_complete"]
-            assert critical["inventory_synced"]["is_complete"]
-            assert critical["products_created"]["is_complete"]
-            assert critical["principals_created"]["is_complete"]
+        # Check specific critical tasks (Gemini moved to optional)
+        critical = {task["key"]: task for task in status["critical"]}
+        assert critical["currency_limits"]["is_complete"]
+        assert critical["ad_server_connected"]["is_complete"]
+        assert critical["authorized_properties"]["is_complete"]
+        assert critical["inventory_synced"]["is_complete"]
+        assert critical["products_created"]["is_complete"]
+        assert critical["principals_created"]["is_complete"]
 
     def test_recommended_tasks_tracked(self, integration_db, setup_complete_tenant, test_tenant_id):
         """Test that recommended tasks are properly tracked."""
@@ -353,6 +348,222 @@ class TestSetupChecklistService:
                 assert "action_url" in step
                 assert "priority" in step
 
+    def test_bulk_setup_status_for_multiple_tenants(self, integration_db):
+        """Test bulk setup status calculation for multiple tenants efficiently."""
+        from datetime import UTC, datetime
+
+        from src.core.database.database_session import get_db_session
+
+        # Create 3 test tenants with varying setup levels
+        tenant_ids = ["bulk_tenant_1", "bulk_tenant_2", "bulk_tenant_3"]
+
+        with get_db_session() as db_session:
+            now = datetime.now(UTC)
+
+            # Tenant 1: Minimal setup (no ad server, no products)
+            tenant1 = Tenant(
+                tenant_id=tenant_ids[0],
+                name="Bulk Test Tenant 1",
+                subdomain="bulk1",
+                ad_server=None,
+                created_at=now,
+                updated_at=now,
+                is_active=True,
+            )
+            db_session.add(tenant1)
+
+            # Tenant 2: Partial setup (ad server configured, has products)
+            tenant2 = Tenant(
+                tenant_id=tenant_ids[1],
+                name="Bulk Test Tenant 2",
+                subdomain="bulk2",
+                ad_server="mock",
+                created_at=now,
+                updated_at=now,
+                is_active=True,
+            )
+            db_session.add(tenant2)
+
+            # Add currency and product for tenant 2
+            from tests.fixtures.factories import PrincipalFactory
+
+            currency2 = CurrencyLimit(
+                tenant_id=tenant_ids[1], currency_code="USD", min_package_budget=0.0, max_daily_package_spend=10000.0
+            )
+            db_session.add(currency2)
+
+            # Use create_test_db_product factory
+            product2 = create_test_db_product(
+                tenant_id=tenant_ids[1],
+                product_id="bulk_product_2",
+                name="Test Product",
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
+            )
+            db_session.add(product2)
+
+            # Tenant 3: Complete setup
+            tenant3 = Tenant(
+                tenant_id=tenant_ids[2],
+                name="Bulk Test Tenant 3",
+                subdomain="bulk3",
+                ad_server="mock",
+                created_at=now,
+                updated_at=now,
+                is_active=True,
+                authorized_domains=["example.com"],
+            )
+            db_session.add(tenant3)
+
+            # Add complete setup for tenant 3
+            currency3 = CurrencyLimit(
+                tenant_id=tenant_ids[2], currency_code="USD", min_package_budget=0.0, max_daily_package_spend=10000.0
+            )
+            db_session.add(currency3)
+
+            # Add adapter config with AXE keys for tenant 3 (recommended for complete setup)
+            adapter_config3 = AdapterConfig(
+                tenant_id=tenant_ids[2],
+                adapter_type="mock",
+                axe_include_key="axe_include_segment",
+                axe_exclude_key="axe_exclude_segment",
+                axe_macro_key="axe_macro_segment",
+            )
+            db_session.add(adapter_config3)
+
+            property3 = AuthorizedProperty(
+                property_id="prop_bulk_3",
+                tenant_id=tenant_ids[2],
+                property_type="website",
+                name="Test Property",
+                identifiers=[{"type": "domain", "value": "example.com"}],
+                publisher_domain="example.com",
+                verification_status="verified",
+            )
+            db_session.add(property3)
+
+            # Use create_test_db_product factory
+            product3 = create_test_db_product(
+                tenant_id=tenant_ids[2],
+                product_id="bulk_product_3",
+                name="Test Product",
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}],
+            )
+            db_session.add(product3)
+
+            # Use PrincipalFactory to create principal with valid platform_mappings
+            principal3_data = PrincipalFactory.create(
+                tenant_id=tenant_ids[2],
+                principal_id="bulk_principal_3",
+                name="Test Principal",
+                access_token="test_token_bulk_3",
+            )
+            principal3 = Principal(
+                tenant_id=principal3_data["tenant_id"],
+                principal_id=principal3_data["principal_id"],
+                name=principal3_data["name"],
+                access_token=principal3_data["access_token"],
+                platform_mappings=(
+                    json.loads(principal3_data["platform_mappings"])
+                    if isinstance(principal3_data["platform_mappings"], str)
+                    else principal3_data["platform_mappings"]
+                ),
+            )
+            db_session.add(principal3)
+
+            db_session.commit()
+
+        # Call bulk setup status method
+        statuses = SetupChecklistService.get_bulk_setup_status(tenant_ids)
+
+        # Verify all tenants returned
+        assert len(statuses) == 3
+        assert set(statuses.keys()) == set(tenant_ids)
+
+        # Verify tenant 1 has low progress (minimal setup)
+        status1 = statuses[tenant_ids[0]]
+        assert status1["progress_percent"] < 30
+        assert not status1["ready_for_orders"]
+
+        # Verify tenant 2 has medium progress
+        status2 = statuses[tenant_ids[1]]
+        assert 30 <= status2["progress_percent"] < 80
+
+        # Verify tenant 3 has high progress (near complete)
+        status3 = statuses[tenant_ids[2]]
+        assert status3["progress_percent"] > 70
+
+        # Verify structure matches single-tenant query
+        for status in statuses.values():
+            assert "progress_percent" in status
+            assert "completed_count" in status
+            assert "total_count" in status
+            assert "ready_for_orders" in status
+            assert "critical" in status
+            assert "recommended" in status
+            assert "optional" in status
+
+        # Cleanup - Delete child objects first to avoid foreign key violations
+        with get_db_session() as db_session:
+            for tenant_id in tenant_ids:
+                # Delete child objects (CASCADE will handle some, but explicit is clearer)
+                # Delete principals
+                stmt = select(Principal).filter_by(tenant_id=tenant_id)
+                principals = db_session.scalars(stmt).all()
+                for principal in principals:
+                    db_session.delete(principal)
+
+                # Delete products
+                stmt = select(Product).filter_by(tenant_id=tenant_id)
+                products = db_session.scalars(stmt).all()
+                for product in products:
+                    db_session.delete(product)
+
+                # Delete authorized properties
+                stmt = select(AuthorizedProperty).filter_by(tenant_id=tenant_id)
+                properties = db_session.scalars(stmt).all()
+                for prop in properties:
+                    db_session.delete(prop)
+
+                # Delete currency limits
+                stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id)
+                currencies = db_session.scalars(stmt).all()
+                for currency in currencies:
+                    db_session.delete(currency)
+
+                # Finally delete tenant
+                stmt = select(Tenant).filter_by(tenant_id=tenant_id)
+                tenant = db_session.scalars(stmt).first()
+                if tenant:
+                    db_session.delete(tenant)
+
+            db_session.commit()
+
+    def test_bulk_setup_status_with_empty_list(self, integration_db):
+        """Test bulk setup status handles empty tenant list."""
+        statuses = SetupChecklistService.get_bulk_setup_status([])
+        assert statuses == {}
+
+    def test_bulk_setup_status_matches_single_query(self, integration_db, setup_complete_tenant, test_tenant_id):
+        """Test that bulk query produces same results as single-tenant query."""
+        # Get status via single query
+        single_service = SetupChecklistService(test_tenant_id)
+        single_status = single_service.get_setup_status()
+
+        # Get status via bulk query
+        bulk_statuses = SetupChecklistService.get_bulk_setup_status([test_tenant_id])
+        bulk_status = bulk_statuses[test_tenant_id]
+
+        # Compare key metrics
+        assert single_status["progress_percent"] == bulk_status["progress_percent"]
+        assert single_status["completed_count"] == bulk_status["completed_count"]
+        assert single_status["total_count"] == bulk_status["total_count"]
+        assert single_status["ready_for_orders"] == bulk_status["ready_for_orders"]
+
+        # Compare task counts
+        assert len(single_status["critical"]) == len(bulk_status["critical"])
+        assert len(single_status["recommended"]) == len(bulk_status["recommended"])
+        assert len(single_status["optional"]) == len(bulk_status["optional"])
+
 
 class TestSetupValidation:
     """Tests for setup validation functions."""
@@ -412,20 +623,25 @@ class TestTaskDetails:
     """Tests for individual task checking logic."""
 
     def test_gemini_api_key_detection(self, integration_db, setup_minimal_tenant, test_tenant_id):
-        """Test GEMINI_API_KEY environment variable detection."""
-        # Without key
-        with patch.dict(os.environ, {}, clear=True):
-            service = SetupChecklistService(test_tenant_id)
-            status = service.get_setup_status()
-            gemini_task = next(t for t in status["critical"] if t["key"] == "gemini_api_key")
-            assert not gemini_task["is_complete"]
+        """Test tenant-specific Gemini API key detection (moved to optional tasks)."""
+        from src.core.database.database_session import get_db_session
 
-        # With key
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}):
-            service = SetupChecklistService(test_tenant_id)
-            status = service.get_setup_status()
-            gemini_task = next(t for t in status["critical"] if t["key"] == "gemini_api_key")
-            assert gemini_task["is_complete"]
+        # Without key (tenant.gemini_api_key is None)
+        service = SetupChecklistService(test_tenant_id)
+        status = service.get_setup_status()
+        gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
+        assert not gemini_task["is_complete"]
+
+        # With tenant-specific key
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=test_tenant_id)).first()
+            tenant.gemini_api_key = "test_tenant_key"  # Set tenant-specific key
+            db_session.commit()
+
+        service = SetupChecklistService(test_tenant_id)
+        status = service.get_setup_status()
+        gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
+        assert gemini_task["is_complete"]
 
     def test_currency_count_in_details(self, integration_db, test_tenant_id):
         """Test that currency count is shown in task details."""

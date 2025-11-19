@@ -93,7 +93,7 @@ class TestGetProductsFilterBehavior:
                 product_id="guaranteed_display",
                 name="Premium Display - Fixed CPM",
                 description="Guaranteed display inventory",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "display_300x250"},
                     {"agent_url": "https://test.com", "id": "display_728x90"},
                 ],
@@ -114,7 +114,7 @@ class TestGetProductsFilterBehavior:
                 product_id="programmatic_video",
                 name="Programmatic Video - Dynamic CPM",
                 description="Real-time bidding video inventory",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "video_15s"},
                     {"agent_url": "https://test.com", "id": "video_30s"},
                 ],
@@ -134,7 +134,7 @@ class TestGetProductsFilterBehavior:
                 product_id="multiformat_guaranteed",
                 name="Multi-Format Package - Fixed",
                 description="Display + Video combo",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "display_300x250"},
                     {"agent_url": "https://test.com", "id": "video_15s"},
                 ],
@@ -155,7 +155,7 @@ class TestGetProductsFilterBehavior:
                 product_id="programmatic_display",
                 name="Programmatic Display - Dynamic CPM",
                 description="Real-time bidding display",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "display_300x250"},
                 ],
                 targeting_template={},
@@ -174,7 +174,7 @@ class TestGetProductsFilterBehavior:
                 product_id="guaranteed_audio",
                 name="Guaranteed Audio - Fixed CPM",
                 description="Podcast advertising",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "audio_30s"},
                 ],
                 targeting_template={},
@@ -202,15 +202,15 @@ class TestGetProductsFilterBehavior:
         result = await get_products(
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             brief="",
-            context=context,
+            ctx=context,
         )
 
         # Verify we got products (baseline test)
         assert len(result.products) > 0
 
         # Count products by delivery_type for manual verification
-        guaranteed_count = sum(1 for p in result.products if p.delivery_type == "guaranteed")
-        non_guaranteed_count = sum(1 for p in result.products if p.delivery_type == "non_guaranteed")
+        guaranteed_count = sum(1 for p in result.products if p.delivery_type.value == "guaranteed")
+        non_guaranteed_count = sum(1 for p in result.products if p.delivery_type.value == "non_guaranteed")
 
         # Should have both types before filtering
         assert guaranteed_count >= 3  # guaranteed_display, multiformat_guaranteed, guaranteed_audio
@@ -226,7 +226,7 @@ class TestGetProductsFilterBehavior:
         result = await get_products(
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             brief="",
-            context=context,
+            ctx=context,
         )
 
         # Should return all 5 products created in fixture
@@ -250,7 +250,7 @@ class TestGetProductsFilterBehavior:
         result = await get_products(
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             brief="",
-            context=context,
+            ctx=context,
         )
 
         # Check first product has all required fields
@@ -258,7 +258,7 @@ class TestGetProductsFilterBehavior:
         assert hasattr(product, "product_id")
         assert hasattr(product, "name")
         assert hasattr(product, "description")
-        assert hasattr(product, "formats")
+        assert hasattr(product, "format_ids")
         assert hasattr(product, "delivery_type")
 
         # Check pricing_options field (new v2 model)
@@ -272,4 +272,4 @@ class TestGetProductsFilterBehavior:
         assert hasattr(pricing, "currency")
 
         # Check formats structure
-        assert len(product.formats) > 0
+        assert len(product.format_ids) > 0

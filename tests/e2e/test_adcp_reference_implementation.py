@@ -130,6 +130,7 @@ class TestAdCPReferenceImplementation:
                 {
                     "brand_manifest": {"name": "Premium Athletic Footwear"},
                     "brief": "display advertising",
+                    "context": {"e2e": "get_products"},
                 },
             )
             products_data = parse_tool_result(products_result)
@@ -141,13 +142,15 @@ class TestAdCPReferenceImplementation:
 
             assert "products" in products_data, "Response must contain products"
             assert len(products_data["products"]) > 0, "Must have at least one product"
+            # Context should echo back
+            assert products_data.get("context") == {"e2e": "get_products"}
 
             # Get first product
             product = products_data["products"][0]
             product_id = product["product_id"]
             print(f"   ✓ Found product: {product['name']} ({product_id})")
-            # AdCP spec uses 'formats' not 'format_ids'
-            print(f"   ✓ Formats: {product['formats']}")
+            # Product uses 'format_ids' field
+            print(f"   ✓ Formats: {product['format_ids']}")
 
             # Get creative formats (no req wrapper - takes optional params directly)
             formats_result = await client.call_tool("list_creative_formats", {})
@@ -171,10 +174,10 @@ class TestAdCPReferenceImplementation:
                 end_time=end_time,
                 brand_manifest={"name": "Nike Air Jordan 2025 Basketball Shoes"},
                 targeting_overlay={
-                    "geographic": {"countries": ["US", "CA"]},
-                    "demographic": {"age_range": "25-44"},
+                    "geo_country_any_of": ["US", "CA"],
                 },
                 webhook_url=webhook_server["url"],  # Async notifications!
+                context={"e2e": "create_media_buy"},
             )
 
             # Create media buy (pass params directly - no req wrapper)
@@ -198,6 +201,8 @@ class TestAdCPReferenceImplementation:
             print(f"   ✓ Media buy created: {media_buy_id}")
             print(f"   ✓ Status: {media_buy_data.get('status', 'unknown')}")
             print(f"   ✓ Webhook configured: {webhook_server['url']}")
+            # Context should echo back
+            assert media_buy_data.get("context") == {"e2e": "create_media_buy"}
 
             # ================================================================
             # PHASE 3: Creative Sync (Synchronous)
@@ -246,6 +251,12 @@ class TestAdCPReferenceImplementation:
             # Verify delivery response structure (AdCP spec: deliveries is an array)
             assert "deliveries" in delivery_data or "media_buy_deliveries" in delivery_data
             print(f"   ✓ Delivery data retrieved for: {media_buy_id}")
+            # If context was provided, ensure echo works when present; add context and re-call minimally
+            delivery_result_ctx = await client.call_tool(
+                "get_media_buy_delivery", {"media_buy_ids": [media_buy_id], "context": {"e2e": "delivery"}}
+            )
+            delivery_data_ctx = parse_tool_result(delivery_result_ctx)
+            assert delivery_data_ctx.get("context") == {"e2e": "delivery"}
 
             # Check if we have deliveries
             deliveries = delivery_data.get("deliveries") or delivery_data.get("media_buy_deliveries", [])
@@ -269,6 +280,7 @@ class TestAdCPReferenceImplementation:
                 {
                     "media_buy_id": media_buy_id,
                     "budget": 7500.0,  # AdCP spec: budget is a number
+                    "context": {"e2e": "update_media_buy"},
                     "push_notification_config": {
                         "url": webhook_server["url"],
                         "authentication": {"type": "none"},
@@ -280,6 +292,8 @@ class TestAdCPReferenceImplementation:
             assert "media_buy_id" in update_data or "buyer_ref" in update_data
             print("   ✓ Budget update requested: $5000 → $7500")
             print(f"   ✓ Update status: {update_data.get('status', 'unknown')}")
+            # Context should echo back on response
+            assert update_data.get("context") == {"e2e": "update_media_buy"}
 
             # ================================================================
             # PHASE 6: Verify Webhook Notification (Async Verification)
@@ -309,6 +323,9 @@ class TestAdCPReferenceImplementation:
                 # Basic webhook validation
                 assert isinstance(webhook_data, dict), "Webhook data must be a dict"
                 print("   ✓ Webhook data validated")
+                # Verify context echoed in webhook result payload
+                if "result" in webhook_data and isinstance(webhook_data["result"], dict):
+                    assert webhook_data["result"].get("context") == {"e2e": "update_media_buy"}
             else:
                 # Webhook may not be implemented yet - that's okay for this reference test
                 print(f"   ⚠ No webhook received after {max_wait}s (may not be implemented yet)")

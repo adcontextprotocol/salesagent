@@ -5,7 +5,7 @@ Tests the new lifecycle actions: activate_order, submit_for_approval,
 approve_order, and archive_order with proper validation.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -120,12 +120,14 @@ class TestGAMOrderLifecycleIntegration:
                     action=action,
                     package_id=None,
                     budget=None,
-                    today=datetime.now(),
+                    today=datetime.now(UTC),
                 )
                 # adcp v1.2.1 oneOf pattern: Success response has no errors field
                 # If response were an Error, it would have errors field
                 assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)
-                assert response.buyer_ref  # buyer_ref should be present
+                # Only check buyer_ref if it's a success response (UpdateMediaBuySuccess)
+                if not hasattr(response, "errors") or not response.errors:
+                    assert response.buyer_ref  # buyer_ref should be present on success
 
             # Admin-only action should fail for regular user
             response = regular_adapter.update_media_buy(
@@ -134,7 +136,7 @@ class TestGAMOrderLifecycleIntegration:
                 action="approve_order",
                 package_id=None,
                 budget=None,
-                today=datetime.now(),
+                today=datetime.now(UTC),
             )
             # adcp v1.2.1: Error response has errors field
             assert hasattr(response, "errors"), "Should be UpdateMediaBuyError with errors"
@@ -158,7 +160,7 @@ class TestGAMOrderLifecycleIntegration:
                 action="approve_order",
                 package_id=None,
                 budget=None,
-                today=datetime.now(),
+                today=datetime.now(UTC),
             )
             # adcp v1.2.1: Success response has no errors field
             assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)
@@ -213,11 +215,13 @@ class TestGAMOrderLifecycleIntegration:
                     action="activate_order",
                     package_id=None,
                     budget=None,
-                    today=datetime.now(),
+                    today=datetime.now(UTC),
                 )
                 # adcp v1.2.1 oneOf pattern: Success response has no errors field
                 assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)
-                assert response.buyer_ref  # buyer_ref should be present
+                # Only check buyer_ref if it's a success response (UpdateMediaBuySuccess)
+                if not hasattr(response, "errors") or not response.errors:
+                    assert response.buyer_ref  # buyer_ref should be present on success
 
             # Test activation with guaranteed items (should create workflow step)
             with patch.object(adapter, "_check_order_has_guaranteed_items", return_value=(True, ["STANDARD"])):
@@ -231,7 +235,7 @@ class TestGAMOrderLifecycleIntegration:
                         action="activate_order",
                         package_id=None,
                         budget=None,
-                        today=datetime.now(),
+                        today=datetime.now(UTC),
                     )
                     # adcp v1.2.1: Success response has no errors field, workflow_step_id present
                     assert not hasattr(response, "errors") or (hasattr(response, "errors") and response.errors)

@@ -35,6 +35,7 @@ from src.core.database.models import Tenant as ModelTenant
 from src.core.schemas import CreateMediaBuyError, CreateMediaBuyResponse, Error
 from src.core.tool_context import ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
+from tests.helpers.adcp_factories import create_test_package_request_dict
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -91,7 +92,7 @@ class TestCreateMediaBuyErrorPaths:
                 rate="10.00",
                 is_fixed=True,
                 min_spend_per_package="1000.00",
-                formats=[{"agent_url": "https://test.com", "id": "display_300x250"}],
+                format_ids=[{"agent_url": "https://test.com", "id": "display_300x250"}],
             )
 
             session.commit()
@@ -163,17 +164,19 @@ class TestCreateMediaBuyErrorPaths:
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
+            context={"trace_id": "auth-missing-principal"},
             packages=[
-                {
-                    "package_id": "pkg1",
-                    "products": ["error_test_product"],
-                    "budget": 5000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
-                }
+                create_test_package_request_dict(
+                    buyer_ref="pkg1",
+                    product_id="error_test_product",
+                    pricing_option_id="cpm_usd_fixed",
+                    budget=5000.0,
+                )
             ],
             start_time=future_start.isoformat(),
             end_time=future_end.isoformat(),
             budget={"total": 5000.0, "currency": "USD"},
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure - error cases return CreateMediaBuyError
@@ -188,6 +191,8 @@ class TestCreateMediaBuyErrorPaths:
         assert isinstance(error, Error)
         assert error.code == "authentication_error"
         assert "principal" in error.message.lower() or "not found" in error.message.lower()
+        # Context echoed back
+        assert response.context == {"trace_id": "auth-missing-principal"}
 
     async def test_start_time_in_past_returns_validation_error(self, test_tenant_with_principal):
         """Test that start_time in past returns Error response with validation_error code.
@@ -211,17 +216,19 @@ class TestCreateMediaBuyErrorPaths:
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
+            context={"trace_id": "past-start"},
             packages=[
-                {
-                    "package_id": "pkg1",
-                    "products": ["error_test_product"],
-                    "budget": 5000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
-                }
+                create_test_package_request_dict(
+                    buyer_ref="pkg1",
+                    product_id="error_test_product",
+                    pricing_option_id="cpm_usd_fixed",
+                    budget=5000.0,
+                )
             ],
             start_time=past_start.isoformat(),
             end_time=past_end.isoformat(),
             budget={"total": 5000.0, "currency": "USD"},
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure - error cases return CreateMediaBuyError
@@ -234,6 +241,8 @@ class TestCreateMediaBuyErrorPaths:
         error = response.errors[0]
         assert isinstance(error, Error)
         assert error.code == "validation_error"
+        # Context echoed back
+        assert response.context == {"trace_id": "past-start"}
         assert "past" in error.message.lower() or "start" in error.message.lower()
 
     async def test_end_time_before_start_returns_validation_error(self, test_tenant_with_principal):
@@ -254,16 +263,17 @@ class TestCreateMediaBuyErrorPaths:
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
             packages=[
-                {
-                    "package_id": "pkg1",
-                    "products": ["error_test_product"],
-                    "budget": 5000.0,  # Float only per AdCP v2.2.0, currency from pricing_option
-                }
+                create_test_package_request_dict(
+                    buyer_ref="pkg1",
+                    product_id="error_test_product",
+                    pricing_option_id="cpm_usd_fixed",
+                    budget=5000.0,
+                )
             ],
             start_time=start.isoformat(),
             end_time=end.isoformat(),
             budget={"total": 5000.0, "currency": "USD"},
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure - error cases return CreateMediaBuyError
@@ -301,16 +311,17 @@ class TestCreateMediaBuyErrorPaths:
                 brand_manifest={"name": "Test campaign"},
                 buyer_ref="test_buyer",
                 packages=[
-                    {
-                        "package_id": "pkg1",
-                        "products": ["error_test_product"],
-                        "budget": -1000.0,  # Negative budget (will fail validation), currency from pricing_option
-                    }
+                    create_test_package_request_dict(
+                        buyer_ref="pkg1",
+                        product_id="error_test_product",
+                        pricing_option_id="cpm_usd_fixed",
+                        budget=-1000.0,  # Negative budget (will fail validation)
+                    )
                 ],
                 start_time=future_start.isoformat(),
                 end_time=future_end.isoformat(),
                 budget={"total": -1000.0, "currency": "USD"},
-                context=context,
+                ctx=context,
             )
 
         error_message = str(exc_info.value)
@@ -338,7 +349,7 @@ class TestCreateMediaBuyErrorPaths:
             start_time=future_start.isoformat(),
             end_time=future_end.isoformat(),
             budget={"total": 5000.0, "currency": "USD"},
-            context=context,
+            ctx=context,
         )
 
         # Verify response structure - error cases return CreateMediaBuyError
@@ -394,7 +405,7 @@ class TestSyncCreativesErrorPaths:
         try:
             response = await sync_creatives_raw(
                 creatives=invalid_creatives,
-                context=context,
+                ctx=context,
             )
             # If it returns, check for errors
             assert response is not None
@@ -439,7 +450,7 @@ class TestListCreativesErrorPaths:
         with pytest.raises(ToolError) as exc_info:
             await list_creatives_raw(
                 created_after="not-a-date",  # Invalid format
-                context=context,
+                ctx=context,
             )
 
         # Verify it's a proper ToolError, not NameError

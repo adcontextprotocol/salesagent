@@ -7,16 +7,19 @@ These tests require a real database (integration_db fixture) to test the
 SQLAlchemy relationship between Product and InventoryProfile models.
 
 Tests cover:
-- effective_formats: Returns profile.formats or product.formats
+- effective_formats: Returns profile.format_ids or product.format_ids
 - effective_properties: Returns profile.publisher_properties or product.properties
 - effective_property_tags: Returns None for profiles, product.property_tags for custom
 - effective_implementation_config: Builds GAM config from profile or returns custom config
 """
 
+from decimal import Decimal
+
 import pytest
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import InventoryProfile, Product, Tenant
+from src.core.database.models import InventoryProfile, PricingOption, Product, Tenant
+from tests.helpers.adcp_factories import create_test_db_product
 
 
 @pytest.fixture
@@ -29,7 +32,7 @@ def test_tenant(integration_db):
             subdomain="test",
             is_active=True,
             ad_server="gam",
-            auto_approve_formats=[],
+            auto_approve_format_ids=[],
             human_review_required=False,
             policy_settings={},
             authorized_emails=["test@example.com"],
@@ -54,7 +57,7 @@ def test_profile(integration_db, test_tenant):
                 "placements": ["45678901"],
                 "include_descendants": True,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "http://test.example.com", "id": "display_300x250_image"},
                 {"agent_url": "http://test.example.com", "id": "display_728x90_image"},
             ],
@@ -76,17 +79,15 @@ def test_profile(integration_db, test_tenant):
 def test_product_custom(integration_db, test_tenant):
     """Create a product with custom configuration (no profile)."""
     with get_db_session() as session:
-        product = Product(
+        product = create_test_db_product(
             tenant_id=test_tenant.tenant_id,
             product_id="custom_product",
             name="Custom Product",
             description="Product with custom config",
-            formats=[
+            format_ids=[
                 {"agent_url": "http://custom.example.com", "id": "video_15s"},
                 {"agent_url": "http://custom.example.com", "id": "video_30s"},
             ],
-            # Use property_tags for custom (no profile)
-            properties=None,
             property_tags=["premium", "video"],
             implementation_config={
                 "targeted_ad_unit_ids": ["custom_unit_1", "custom_unit_2"],
@@ -94,12 +95,22 @@ def test_product_custom(integration_db, test_tenant):
                 "include_descendants": False,
                 "custom_field": "custom_value",
             },
-            targeting_template={},
-            delivery_type="guaranteed",
             is_custom=True,
             countries=["US"],
         )
+
+        # Add required pricing option
+        pricing = PricingOption(
+            tenant_id=test_tenant.tenant_id,
+            product_id="custom_product",
+            pricing_model="cpm",
+            rate=Decimal("10.0"),
+            currency="USD",
+            is_fixed=True,
+        )
+
         session.add(product)
+        session.add(pricing)
         session.commit()
         session.refresh(product)
         return product
@@ -109,44 +120,53 @@ def test_product_custom(integration_db, test_tenant):
 def test_product_with_profile(integration_db, test_tenant, test_profile):
     """Create a product referencing the test_profile."""
     with get_db_session() as session:
-        product = Product(
+        product = create_test_db_product(
             tenant_id=test_tenant.tenant_id,
             product_id="profile_product",
             name="Profile-Based Product",
             description="Product using inventory profile",
             inventory_profile_id=test_profile.id,
             # Custom config exists but should be ignored when profile is set
-            formats=[{"agent_url": "http://ignored.example.com", "id": "ignored_format"}],
-            # Profile provides properties, so set property_tags=None to satisfy XOR constraint
-            properties=None,
-            property_tags=["ignored_tag"],  # This satisfies the XOR constraint
+            format_ids=[{"agent_url": "http://ignored.example.com", "id": "ignored_format"}],
+            # Profile provides properties, so set property_tags to satisfy XOR constraint
+            property_tags=["ignored_tag"],
             implementation_config={
                 "targeted_ad_unit_ids": ["ignored_unit"],
             },
-            targeting_template={},
-            delivery_type="guaranteed",
             is_custom=False,
             countries=["US"],
         )
+
+        # Add required pricing option
+        pricing = PricingOption(
+            tenant_id=test_tenant.tenant_id,
+            product_id="profile_product",
+            pricing_model="cpm",
+            rate=Decimal("10.0"),
+            currency="USD",
+            is_fixed=True,
+        )
+
         session.add(product)
+        session.add(pricing)
         session.commit()
         session.refresh(product)
         return product
 
 
 class TestEffectiveFormats:
-    """Tests for Product.effective_formats property."""
+    """Tests for Product.effective_format_ids property."""
 
     @pytest.mark.requires_db
     def test_effective_formats_returns_profile_formats_when_profile_set(
         self, integration_db, test_product_with_profile, test_profile
     ):
-        """Test effective_formats returns profile.formats when inventory_profile_id is set.
+        """Test effective_formats returns profile.format_ids when inventory_profile_id is set.
 
         Validates that:
         - Product has inventory_profile_id set
-        - effective_formats returns profile.formats
-        - effective_formats does NOT return product.formats
+        - effective_formats returns profile.format_ids
+        - effective_formats does NOT return product.format_ids
         """
         with get_db_session() as session:
             from sqlalchemy import select
@@ -159,23 +179,23 @@ class TestEffectiveFormats:
             assert product.inventory_profile is not None
 
             # effective_formats should return profile's formats
-            effective = product.effective_formats
-            assert effective == test_profile.formats
+            effective = product.effective_format_ids
+            assert effective == test_profile.format_ids
             assert len(effective) == 2
             assert effective[0]["id"] == "display_300x250_image"
             assert effective[1]["id"] == "display_728x90_image"
 
             # Should NOT return product's custom formats
-            assert effective != product.formats
-            assert product.formats[0]["id"] == "ignored_format"
+            assert effective != product.format_ids
+            assert product.format_ids[0]["id"] == "ignored_format"
 
     @pytest.mark.requires_db
     def test_effective_formats_returns_custom_formats_when_profile_not_set(self, integration_db, test_product_custom):
-        """Test effective_formats returns product.formats when inventory_profile_id is not set.
+        """Test effective_formats returns product.format_ids when inventory_profile_id is not set.
 
         Validates that:
         - Product has no inventory_profile_id
-        - effective_formats returns product.formats (custom config)
+        - effective_formats returns product.format_ids (custom config)
         """
         with get_db_session() as session:
             from sqlalchemy import select
@@ -187,8 +207,8 @@ class TestEffectiveFormats:
             assert product.inventory_profile_id is None
 
             # effective_formats should return product's custom formats
-            effective = product.effective_formats
-            assert effective == product.formats
+            effective = product.effective_format_ids
+            assert effective == product.format_ids
             assert len(effective) == 2
             assert effective[0]["id"] == "video_15s"
             assert effective[1]["id"] == "video_30s"
@@ -233,11 +253,11 @@ class TestEffectiveProperties:
     def test_effective_properties_returns_custom_properties_when_profile_not_set(
         self, integration_db, test_product_custom
     ):
-        """Test effective_properties returns product.properties when profile is not set.
+        """Test effective_properties returns synthesized publisher_properties when profile is not set.
 
         Validates that:
         - Product has no inventory_profile_id
-        - effective_properties returns product.properties (custom config)
+        - effective_properties synthesizes AdCP publisher_properties from property_tags
         - When product uses property_tags, properties is None
         """
         with get_db_session() as session:
@@ -253,9 +273,13 @@ class TestEffectiveProperties:
             assert product.properties is None
             assert product.property_tags == ["premium", "video"]
 
-            # effective_properties should return None (matching product.properties)
+            # effective_properties should synthesize by_tag variant from property_tags
             effective = product.effective_properties
-            assert effective is None
+            assert effective is not None
+            assert len(effective) == 1
+            assert effective[0]["selection_type"] == "by_tag"
+            assert effective[0]["property_tags"] == ["premium", "video"]
+            assert "publisher_domain" in effective[0]
 
 
 class TestEffectivePropertyTags:
@@ -396,21 +420,17 @@ class TestEffectiveImplementationConfig:
         """
         with get_db_session() as session:
             # Create product with valid profile_id
-            product = Product(
+            product = create_test_db_product(
                 tenant_id=test_tenant.tenant_id,
                 product_id="test_profile_fallback",
                 name="Test Profile Fallback",
                 description="Product to test profile fallback behavior",
                 inventory_profile_id=test_profile.id,
-                formats=[{"agent_url": "http://fallback.example.com", "id": "fallback_format"}],
-                # Use property_tags to satisfy XOR constraint
-                properties=None,
+                format_ids=[{"agent_url": "http://fallback.example.com", "id": "fallback_format"}],
                 property_tags=["fallback_tag"],
                 implementation_config={
                     "targeted_ad_unit_ids": ["fallback_unit"],
                 },
-                targeting_template={},
-                delivery_type="guaranteed",
                 is_custom=True,
                 countries=["US"],
             )
@@ -418,9 +438,23 @@ class TestEffectiveImplementationConfig:
             session.commit()
             product_id = product.product_id
 
+            # Add required pricing option
+            pricing = PricingOption(
+                tenant_id=test_tenant.tenant_id,
+                product_id="test_profile_fallback",
+                pricing_model="cpm",
+                rate=Decimal("10.0"),
+                currency="USD",
+                is_fixed=True,
+            )
+            session.add(pricing)
+            session.commit()
+
         # Reload product in a new session without loading the relationship
         with get_db_session() as session:
             from sqlalchemy import select
+
+            from src.core.database.models import Product
 
             stmt = select(Product).where(Product.product_id == product_id)
             product = session.scalars(stmt).first()
@@ -433,8 +467,8 @@ class TestEffectiveImplementationConfig:
             assert product.inventory_profile is not None
 
             # Effective properties should use profile config
-            effective_formats = product.effective_formats
-            assert effective_formats == test_profile.formats
+            effective_formats = product.effective_format_ids
+            assert effective_formats == test_profile.format_ids
             assert len(effective_formats) == 2
 
             # effective_properties uses profile, not product's direct properties

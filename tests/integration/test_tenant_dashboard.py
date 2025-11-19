@@ -47,7 +47,7 @@ class TestTenantDashboard:
                 # Use new schema fields
                 enable_axe_signals=True,
                 human_review_required=False,
-                auto_approve_formats=["display_300x250"],
+                auto_approve_format_ids=["display_300x250"],
             )
             db_session.add(tenant)
 
@@ -160,7 +160,7 @@ class TestTenantDashboard:
                 # New schema fields
                 enable_axe_signals=True,
                 human_review_required=True,
-                auto_approve_formats=["display_300x250", "video_16x9"],
+                auto_approve_format_ids=["display_300x250", "video_16x9"],
             )
             db_session.add(tenant)
             db_session.commit()
@@ -174,14 +174,14 @@ class TestTenantDashboard:
             }
 
             creative_config = {
-                "auto_approve_formats": tenant_obj.auto_approve_formats or [],
+                "auto_approve_format_ids": tenant_obj.auto_approve_format_ids or [],
                 "human_review_required": tenant_obj.human_review_required,
             }
 
             # Verify config can be built without AttributeError
             assert features_config["enable_axe_signals"] is True
             assert creative_config["human_review_required"] is True
-            assert "display_300x250" in creative_config["auto_approve_formats"]
+            assert "display_300x250" in creative_config["auto_approve_format_ids"]
 
     def test_all_dashboard_routes_accessible(self, authenticated_admin_session, test_tenant_with_data):
         """Test that all dashboard-related routes are accessible without errors."""

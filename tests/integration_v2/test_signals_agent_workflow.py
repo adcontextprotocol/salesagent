@@ -135,7 +135,7 @@ class TestSignalsAgentWorkflow:
                 brand_manifest={"name": "BMW M3 2025 sports sedan"},
                 brief="sports",  # Match "Database Sports Package"
                 filters=None,
-                context=context,
+                ctx=context,
             )
 
             # Should return database products only
@@ -183,7 +183,7 @@ class TestSignalsAgentWorkflow:
                     brand_manifest={"name": "Porsche 911 Turbo S 2025"},
                     brief="automotive",  # Match "Database Automotive Package"
                     filters=None,
-                    context=context,
+                    ctx=context,
                 )
 
                 # Should return both signals and database products
@@ -225,7 +225,7 @@ class TestSignalsAgentWorkflow:
                     brand_manifest={"name": "Test Product 2025"},
                     brief="sports",  # Match database products
                     filters=None,
-                    context=context,
+                    ctx=context,
                 )
 
                 # Should still return database products due to fallback
@@ -262,7 +262,7 @@ class TestSignalsAgentWorkflow:
                     brand_manifest={"name": "Generic Product 2025"},
                     brief="",  # Empty brief - should return all products
                     filters=None,
-                    context=context,
+                    ctx=context,
                 )
 
                 # Should return products but no signals call
@@ -347,7 +347,7 @@ class TestSignalsAgentWorkflow:
                 is_fixed=True,
                 min_spend_per_package="500.0",
                 delivery_type="non_guaranteed",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "300x250"},
                     {"agent_url": "https://test.com", "id": "728x90"},
                 ],
@@ -366,7 +366,7 @@ class TestSignalsAgentWorkflow:
                 is_fixed=True,
                 min_spend_per_package="750.0",
                 delivery_type="non_guaranteed",
-                formats=[
+                format_ids=[
                     {"agent_url": "https://test.com", "id": "300x250"},
                     {"agent_url": "https://test.com", "id": "video_pre_roll"},
                 ],

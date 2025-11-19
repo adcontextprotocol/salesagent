@@ -31,7 +31,7 @@ class TenantFactory:
         default_config = {
             "adapters": {"mock": {"enabled": True, "manual_approval_required": False}},
             "creative_engine": {
-                "auto_approve_formats": ["display_300x250", "display_728x90"],
+                "auto_approve_format_ids": ["display_300x250", "display_728x90"],
                 "human_review_required": False,
             },
             "features": {"max_daily_budget": 10000, "enable_axe_signals": True},
@@ -114,17 +114,21 @@ class ProductFactory:
         tenant_id: str | None = None,
         product_id: str | None = None,
         name: str | None = None,
-        formats: list[str] | None = None,
+        format_ids: list[dict[str, str]] | None = None,
         targeting_template: dict[str, Any] | None = None,
         **kwargs,
     ) -> dict[str, Any]:
-        """Create a test product."""
+        """Create a test product with AdCP-compliant format_ids."""
         tenant_id = tenant_id or f"tenant_{uuid.uuid4().hex[:8]}"
         product_id = product_id or f"prod_{uuid.uuid4().hex[:8]}"
         name = name or f"Test Product {product_id[-4:]}"
 
-        default_formats = ["display_300x250", "display_728x90"]
-        formats = formats or default_formats
+        # Default: AdCP-compliant FormatId objects
+        default_format_ids = [
+            {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_300x250"},
+            {"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_728x90"},
+        ]
+        format_ids = format_ids or default_format_ids
 
         default_targeting = {"geo_country": ["US", "CA"], "device_type": ["desktop", "mobile"], "viewability": 0.7}
 
@@ -135,13 +139,13 @@ class ProductFactory:
             "tenant_id": tenant_id,
             "product_id": product_id,
             "name": name,
+            "description": kwargs.get("description", f"Description for {name}"),
             "type": kwargs.get("type", "guaranteed"),
-            "formats": json.dumps(formats) if isinstance(formats, list) else formats,
+            "format_ids": json.dumps(format_ids) if isinstance(format_ids, list) else format_ids,
             "targeting_template": (
                 json.dumps(default_targeting) if isinstance(default_targeting, dict) else default_targeting
             ),
-            "min_cpm": kwargs.get("min_cpm", 5.0),
-            "recommended_cpm": kwargs.get("recommended_cpm", 10.0),
+            "delivery_type": kwargs.get("delivery_type", "guaranteed"),
             "min_spend": kwargs.get("min_spend", 1000.0),
             "currency": kwargs.get("currency", "USD"),
             "inventory_type": kwargs.get("inventory_type", "display"),
@@ -152,12 +156,13 @@ class ProductFactory:
 
     @staticmethod
     def create_video_product(**kwargs) -> dict[str, Any]:
-        """Create a video product."""
+        """Create a video product with video format_ids."""
         video_defaults = {
-            "formats": ["video_16x9", "video_outstream"],
+            "format_ids": [
+                {"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_16x9"},
+                {"agent_url": "https://creatives.adcontextprotocol.org", "id": "video_outstream"},
+            ],
             "inventory_type": "video",
-            "min_cpm": 15.0,
-            "recommended_cpm": 25.0,
         }
         video_defaults.update(kwargs)
         return ProductFactory.create(**video_defaults)
