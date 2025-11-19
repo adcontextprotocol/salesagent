@@ -12,38 +12,64 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from src.adapters.gam_reporting_service import ReportingData
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Tenant, PushNotificationConfig, PricingOption, Product
+from src.core.database.models import MediaBuy, Principal, Tenant, PushNotificationConfig, PricingOption, Product, AdapterConfig
 from src.services.delivery_webhook_scheduler import DeliveryWebhookScheduler
 
-
-def _create_basic_media_buy_with_webhook() -> tuple[str, str, str]:
-    """Create a minimal tenant/principal/media_buy with a daily reporting_webhook.
-
-    Returns:
-        (tenant_id, principal_id, media_buy_id)
-    """
+def _create_test_tenant_and_principal(
+    ad_server: str | None = None
+) -> tuple[str, str]:
     tenant_id = "tenant_integration"
     principal_id = "principal_integration"
-    product_id = "sample_product_id"
-    media_buy_id = "mb_integration"
-
-    today = datetime.now(UTC).date()
 
     with get_db_session() as session:
         tenant = Tenant(
             tenant_id=tenant_id,
             name="Integration Tenant",
-            subdomain="integration-tenant",
+            subdomain="gam-pricing-test",
+            ad_server="ad_server"
         )
         principal = Principal(
             tenant_id=tenant_id,
             principal_id=principal_id,
             name="Integration Principal",
             platform_mappings={"mock": {"advertiser_id": "adv_123"}},
-            access_token="test-token",
+            access_token="test-token"
         )
 
+        if ad_server == "google_ad_manager":
+            adapter_config = AdapterConfig(
+                tenant_id=tenant_id,
+                adapter_type="google_ad_manager",
+                gam_network_code="123456",
+                gam_trafficker_id="gam_traffic_456",
+                gam_refresh_token="test_refresh_token"
+            )
+            session.add(adapter_config)
+        
+        session.add(tenant)
+        session.add(principal)
+        session.commit()
+    
+    return tenant_id, principal_id
+
+
+def _create_basic_media_buy_with_webhook(
+    tenant_id: str,
+    principal_id: str
+) -> str:
+    """Create a minimal tenant/principal/media_buy with a daily reporting_webhook.
+
+    Returns:
+        (tenant_id, principal_id, media_buy_id)
+    """
+    product_id = "sample_product_id"
+    media_buy_id = "mb_integration"
+
+    today = datetime.now(UTC).date()
+
+    with get_db_session() as session:
         product = Product(
             tenant_id=tenant_id,
             product_id=product_id,
@@ -89,12 +115,12 @@ def _create_basic_media_buy_with_webhook() -> tuple[str, str, str]:
             },
         )
 
-        session.add(tenant)
-        session.add(principal)
+        # session.add(product)
+        # session.add(pricing_option)
         session.add(media_buy)
         session.commit()
 
-    return tenant_id, principal_id, media_buy_id
+    return media_buy_id
 
 
 @pytest.mark.requires_db
@@ -102,17 +128,16 @@ def _create_basic_media_buy_with_webhook() -> tuple[str, str, str]:
 async def test_delivery_webhook_sends_for_fresh_data(integration_db):
     """Scheduler should call get_media_buy_delivery for the correct period and send webhook when data is fresh."""
 
-    tenant_id, principal_id, media_buy_id = _create_basic_media_buy_with_webhook()
+    tenant_id, principal_id, = _create_test_tenant_and_principal()
+    media_buy_id = _create_basic_media_buy_with_webhook(tenant_id, principal_id)
 
     scheduler = DeliveryWebhookScheduler()
-
-    print("scheduler.webhook_service")
 
     async def fake_send_notification(*args, **kwargs):
         # Simulate successful webhook send without doing network I/O
         return True
 
-    # Patch GAM/reporting + freshness + outbound HTTP, keep scheduler logic + DB real
+    # Patch only webhook sending
     with (
         patch.object(
             scheduler.webhook_service,
@@ -134,9 +159,6 @@ async def test_delivery_webhook_sends_for_fresh_data(integration_db):
         error = kwargs.get("error")
         tenant_id = kwargs.get("tenant_id")
         principal_id = kwargs.get("principal_id")
-        
-        print("result")
-        print(result)
 
         # Webhook should have been sent exactly once
         assert mock_send_notification.await_count == 1
@@ -163,44 +185,89 @@ async def test_delivery_webhook_sends_for_fresh_data(integration_db):
         assert len(result.get('media_buy_deliveries')) == 1
 
 
-
 @pytest.mark.requires_db
 @pytest.mark.asyncio
-async def test_delivery_webhook_skips_when_data_not_fresh(integration_db):
-    """Scheduler should skip sending webhook when GAM data freshness check fails."""
-
-    _create_basic_media_buy_with_webhook()
+async def test_delivery_webhook_sends_gam_based_reporting_data_only_on_gam_available_time(integration_db):
+    """
+    Scheduler should call webhook with fresh data every day at 4 AM PST but scheduler it self should keep checking to run every hour.
+    Because per adcp spec publishers/sales agents should support pinging the buyers every hour if it is available 
+    """
+    tenant_id, principal_id = _create_test_tenant_and_principal("google_ad_manager")
+    media_buy_id = _create_basic_media_buy_with_webhook(tenant_id, principal_id)
 
     scheduler = DeliveryWebhookScheduler()
 
-    class DummyDeliveryResponse:
-        def __init__(self):
-            self.reporting_data = object()
+    async def fake_send_notification(*args, **kwargs):
+        # Simulate successful webhook send without doing network I/O
+        return True
 
-        def model_dump(self):
-            return {"dummy": "payload"}
-
-    def fake_get_media_buy_delivery_impl(req, context):
-        return DummyDeliveryResponse()
+    # Create mocked GAM reporting data so we don't hit real GAM APIs
+    now_utc = datetime.now(UTC)
+    mocked_reporting_data = ReportingData(
+        data=[
+            {
+                "timestamp": now_utc.isoformat(),
+                "advertiser_id": "adv_123",
+                "advertiser_name": "Test Advertiser",
+                "order_id": "order_1",
+                "order_name": "Test Order",
+                "line_item_id": "line_1",
+                "line_item_name": "Test Line Item",
+                "country": "",
+                "ad_unit_id": "",
+                "ad_unit_name": "",
+                "impressions": 1000,
+                "clicks": 10,
+                "ctr": 1.0,
+                "spend": 100.0,
+                "cpm": 100.0,
+                "aggregated_rows": 1,
+            }
+        ],
+        start_date=now_utc - timedelta(days=1),
+        end_date=now_utc,
+        requested_timezone="America/New_York",
+        data_timezone="America/New_York",
+        data_valid_until=now_utc + timedelta(hours=1),
+        query_type="today",
+        dimensions=["DATE"],
+        metrics={
+            "total_impressions": 1000,
+            "total_clicks": 10,
+            "total_spend": 100.0,
+            "average_ctr": 1.0,
+            "average_ecpm": 100.0,
+            "unique_advertisers": 1,
+            "unique_orders": 1,
+            "unique_line_items": 1,
+        },
+    )
 
     with (
-        patch(
-            "src.services.delivery_webhook_scheduler._get_media_buy_delivery_impl",
-            side_effect=fake_get_media_buy_delivery_impl,
-        ),
-        patch(
-            "src.adapters.gam_data_freshness.validate_and_log_freshness",
-            return_value=False,
-        ),
         patch.object(
             scheduler.webhook_service,
             "send_notification",
             new_callable=AsyncMock,
+            side_effect=fake_send_notification,
         ) as mock_send_notification,
+        patch("src.adapters.gam_reporting_service.GAMReportingService") as mock_reporting_service_class,
     ):
+        # Ensure GoogleAdManager.get_media_buy_delivery uses mocked GAM reporting data
+        mock_reporting_instance = mock_reporting_service_class.return_value
+        mock_reporting_instance.get_reporting_data.return_value = mocked_reporting_data
+
+        # Run a single batch (no need to run the full hourly loop)
         await scheduler._send_reports()
+        
+        args, kwargs = mock_send_notification.await_args
+        
+        result = kwargs.get("result")
+        errors = result.get("errors")
 
-    # Data not fresh -> no webhook should be sent
-    mock_send_notification.assert_not_awaited()
+        print("RESULT: ")
+        print(result)
+
+        assert errors is None
 
 
+# TODO: @yusuf - also tests we pick up simulated path when context is in testing mode

@@ -110,11 +110,6 @@ def _get_media_buy_delivery_impl(
         start_dt = datetime.strptime(req.start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(req.end_date, "%Y-%m-%d")
 
-        print("Start date")
-        print(start_dt)
-        print("End date")
-        print(end_dt)
-
         if start_dt >= end_dt:
             return GetMediaBuyDeliveryResponse(
                 reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
