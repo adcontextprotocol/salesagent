@@ -3112,6 +3112,29 @@ class GetMediaBuyDeliveryResponse(NestedModelSerializerMixin, AdCPBaseModel):
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
+    # Webhook-specific metadata (only present in webhook deliveries)
+    notification_type: str | None = Field(
+        None,
+        description="Type of webhook notification: scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = resending period with updated data (only present in webhook deliveries)",
+    )
+    partial_data: bool | None = Field(
+        None,
+        description="Indicates if any media buys in this webhook have missing/delayed data (only present in webhook deliveries)",
+    )
+    unavailable_count: int | None = Field(
+        None,
+        description="Number of media buys with reporting_delayed or failed status (only present in webhook deliveries when partial_data is true)",
+        ge=0,
+    )
+    sequence_number: int | None = Field(
+        None, description="Sequential notification number (only present in webhook deliveries, starts at 1)", ge=1
+    )
+    next_expected_at: str | None = Field(
+        None,
+        description="ISO 8601 timestamp for next expected notification (only present in webhook deliveries when notification_type is not 'final')",
+    )
+
+    # Core response fields
     reporting_period: ReportingPeriod = Field(..., description="Date range for the report")
     currency: str = Field(..., description="ISO 4217 currency code", pattern=r"^[A-Z]{3}$")
     aggregated_totals: AggregatedTotals = Field(..., description="Combined metrics across all returned media buys")
@@ -3328,6 +3351,7 @@ class AdapterGetMediaBuyDeliveryResponse(NestedModelSerializerMixin, AdCPBaseMod
     totals: DeliveryTotals
     by_package: list[AdapterPackageDelivery]
     currency: str
+    daily_breakdown: list[dict] | None = None  # Optional day-by-day delivery metrics
 
 
 # --- Human-in-the-Loop Task Queue ---
