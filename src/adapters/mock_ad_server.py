@@ -2,6 +2,10 @@ import random
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from adcp.types.generated_poc.create_media_buy_response import (
+    Package as ResponsePackage,
+)
+
 from src.adapters.base import AdServerAdapter
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
@@ -793,10 +797,10 @@ class MockAdServer(AdServerAdapter):
 
             # Create minimal AdCP-compliant Package response (only buyer_ref + package_id)
             response_packages.append(
-                {
-                    "buyer_ref": buyer_ref,
-                    "package_id": package_id,
-                }
+                ResponsePackage(
+                    buyer_ref=buyer_ref,
+                    package_id=package_id,
+                )
             )
 
         self.log(f"[DEBUG] MockAdapter: Returning {len(response_packages)} packages in response")
@@ -804,7 +808,7 @@ class MockAdServer(AdServerAdapter):
             buyer_ref=request.buyer_ref or "unknown",  # Required field per AdCP spec
             media_buy_id=media_buy_id,
             creative_deadline=datetime.now(UTC) + timedelta(days=2),  # type: ignore[arg-type]
-            packages=response_packages,  # type: ignore[arg-type]
+            packages=response_packages,
         )
 
     def add_creative_assets(

@@ -17,6 +17,9 @@ import uuid
 from datetime import datetime
 from typing import Any, cast
 
+from adcp.types.generated_poc.create_media_buy_response import (
+    Package as ResponsePackage,
+)
 from flask import Flask
 
 from src.adapters.base import AdServerAdapter
@@ -512,6 +515,7 @@ class GoogleAdManager(AdServerAdapter):
             # Build package responses - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
             # - buyer_ref (required)
             # - package_id (required)
+            # - status (required)
             package_responses = []
             for idx, package in enumerate(packages):
                 # Get matching request package for buyer_ref
@@ -525,10 +529,10 @@ class GoogleAdManager(AdServerAdapter):
 
                 # Create minimal AdCP-compliant Package response
                 package_responses.append(
-                    {
-                        "buyer_ref": buyer_ref,
-                        "package_id": package.package_id,
-                    }
+                    ResponsePackage(
+                        buyer_ref=buyer_ref,
+                        package_id=package.package_id,
+                    )
                 )
 
             if step_id:
@@ -537,7 +541,7 @@ class GoogleAdManager(AdServerAdapter):
                     media_buy_id=media_buy_id,
                     creative_deadline=None,
                     workflow_step_id=step_id,
-                    packages=package_responses,  # type: ignore[arg-type]
+                    packages=package_responses,
                 )
             else:
                 error_msg = "Failed to create manual order workflow step"
@@ -677,6 +681,7 @@ class GoogleAdManager(AdServerAdapter):
             # Build package responses - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
             # - buyer_ref (required)
             # - package_id (required)
+            # - status (required)
             package_responses = []
             for idx, (package, _line_item_id) in enumerate(zip(packages, line_item_ids, strict=False)):
                 # Get matching request package for buyer_ref
@@ -690,10 +695,10 @@ class GoogleAdManager(AdServerAdapter):
 
                 # Create minimal AdCP-compliant Package response
                 package_responses.append(
-                    {
-                        "buyer_ref": buyer_ref,
-                        "package_id": package.package_id,
-                    }
+                    ResponsePackage(
+                        buyer_ref=buyer_ref,
+                        package_id=package.package_id,
+                    )
                 )
 
             # Create response and attach platform_line_item_id mapping for database persistence
@@ -703,7 +708,7 @@ class GoogleAdManager(AdServerAdapter):
                 media_buy_id=order_id,
                 creative_deadline=None,
                 workflow_step_id=step_id,
-                packages=package_responses,  # type: ignore[arg-type]
+                packages=package_responses,
             )
 
             # Store platform_line_item_id mapping as a non-standard attribute
@@ -725,6 +730,7 @@ class GoogleAdManager(AdServerAdapter):
         # Build package responses - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
         # - buyer_ref (required)
         # - package_id (required)
+        # - status (required)
         package_responses = []
         for idx, (package, _line_item_id) in enumerate(zip(packages, line_item_ids, strict=False)):
             # Get matching request package for buyer_ref
@@ -738,10 +744,10 @@ class GoogleAdManager(AdServerAdapter):
 
             # Create minimal AdCP-compliant Package response
             package_responses.append(
-                {
-                    "buyer_ref": buyer_ref,
-                    "package_id": package.package_id,
-                }
+                ResponsePackage(
+                    buyer_ref=buyer_ref,
+                    package_id=package.package_id,
+                )
             )
 
         # Create response and store platform_line_item_id mapping for database persistence
@@ -750,7 +756,7 @@ class GoogleAdManager(AdServerAdapter):
             buyer_ref=request.buyer_ref or "",
             media_buy_id=order_id,
             creative_deadline=None,
-            packages=package_responses,  # type: ignore[arg-type]
+            packages=package_responses,
         )
 
         # Store platform_line_item_id mapping as a non-standard attribute
