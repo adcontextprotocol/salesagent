@@ -53,6 +53,41 @@ class TestCreativeLifecycleMCP:
         return sync_creatives_raw, list_creatives_raw
 
     @pytest.fixture(autouse=True)
+    def mock_format_registry(self):
+        """Mock creative agent format registry to avoid real API calls."""
+        from tests.helpers.adcp_factories import create_test_format
+
+        # Mock formats that tests use - create with factory
+        mock_formats = {
+            "display_300x250_image": create_test_format(
+                format_id="display_300x250_image",
+                name="Display 300x250 Image",
+                type="display",
+                description="Standard display banner",
+            ),
+            "display_728x90_image": create_test_format(
+                format_id="display_728x90_image",
+                name="Display 728x90 Image",
+                type="display",
+                description="Leaderboard banner",
+            ),
+            "video_instream_15s": create_test_format(
+                format_id="video_instream_15s",
+                name="Video Instream 15s",
+                type="video",
+                description="15 second instream video",
+            ),
+        }
+
+        with patch("src.core.creative_agent_registry.CreativeAgentRegistry.get_format") as mock_get:
+            # Mock get_format to return format from our dict
+            def get_format_side_effect(agent_url, format_id):
+                return mock_formats.get(format_id)
+
+            mock_get.side_effect = get_format_side_effect
+            yield mock_get
+
+    @pytest.fixture(autouse=True)
     def setup_test_data(self, integration_db):
         """Create test tenant, principal, and media buy for creative tests."""
         with get_db_session() as session:
@@ -66,7 +101,7 @@ class TestCreativeLifecycleMCP:
                 enable_axe_signals=True,
                 authorized_emails=[],
                 authorized_domains=[],
-                auto_approve_format_ids=["display_300x250", "display_728x90"],
+                auto_approve_format_ids=["display_300x250_image", "display_728x90_image"],
                 human_review_required=False,
                 approval_mode="auto-approve",  # Auto-approve creatives to avoid workflow blocking
             )
@@ -156,13 +191,13 @@ class TestCreativeLifecycleMCP:
         """Sample creative data for testing.
 
         NOTE: Uses structured format objects with agent_url to avoid deprecated string format_ids.
-        Available formats from creative agent: display_300x250, display_728x90, video_640x480, etc.
+        Available formats from creative agent: display_300x250_image, display_728x90_image, etc.
         """
         return [
             {
                 "creative_id": "creative_display_1",
                 "name": "Banner Ad 300x250",
-                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250_image"},
                 "url": "https://example.com/banner.jpg",
                 "click_url": "https://advertiser.com/landing",
                 "width": 300,
@@ -171,7 +206,7 @@ class TestCreativeLifecycleMCP:
             {
                 "creative_id": "creative_video_1",
                 "name": "Video Ad 30sec",
-                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_640x480"},
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_instream_15s"},
                 "url": "https://example.com/video.mp4",
                 "click_url": "https://advertiser.com/video-landing",
                 "width": 640,
@@ -181,7 +216,7 @@ class TestCreativeLifecycleMCP:
             {
                 "creative_id": "creative_display_2",
                 "name": "Leaderboard Ad 728x90",
-                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90_image"},
                 "url": "https://example.com/leaderboard.jpg",
                 "click_url": "https://advertiser.com/landing2",
                 "width": 728,
@@ -218,7 +253,7 @@ class TestCreativeLifecycleMCP:
                 assert len(db_creatives) == 3
 
                 # Verify display creative
-                display_creative = next((c for c in db_creatives if c.format == "display_300x250"), None)
+                display_creative = next((c for c in db_creatives if c.format == "display_300x250_image"), None)
                 assert display_creative is not None
                 assert display_creative.name == "Banner Ad 300x250"
                 assert display_creative.data.get("url") == "https://example.com/banner.jpg"
@@ -227,12 +262,12 @@ class TestCreativeLifecycleMCP:
                 assert display_creative.status == "approved"  # Auto-approved due to approval_mode setting
 
                 # Verify video creative
-                video_creative = next((c for c in db_creatives if c.format == "video_640x480"), None)
+                video_creative = next((c for c in db_creatives if c.format == "video_instream_15s"), None)
                 assert video_creative is not None
                 assert video_creative.data.get("duration") == 30.0
 
                 # Verify leaderboard creative
-                leaderboard_creative = next((c for c in db_creatives if c.format == "display_728x90"), None)
+                leaderboard_creative = next((c for c in db_creatives if c.format == "display_728x90_image"), None)
                 assert leaderboard_creative is not None
                 assert leaderboard_creative.data.get("width") == 728
                 assert leaderboard_creative.data.get("height") == 90
@@ -248,7 +283,7 @@ class TestCreativeLifecycleMCP:
                 principal_id=self.test_principal_id,
                 name="Old Creative Name",
                 agent_url="https://creative.adcontextprotocol.org",
-                format="display_300x250",
+                format="display_300x250_image",
                 status="pending",
                 data={
                     "url": "https://example.com/old.jpg",
@@ -265,7 +300,7 @@ class TestCreativeLifecycleMCP:
             {
                 "creative_id": "creative_update_test",
                 "name": "Updated Creative Name",
-                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250_image"},
                 "url": "https://example.com/updated.jpg",
                 "click_url": "https://advertiser.com/updated-landing",
                 "width": 300,
@@ -376,13 +411,13 @@ class TestCreativeLifecycleMCP:
             {
                 "creative_id": "valid_creative",
                 "name": "Valid Creative",
-                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250_image"},
                 "url": "https://example.com/valid.jpg",
             },
             {
                 "creative_id": "invalid_creative",
                 "name": "",  # Invalid: empty name
-                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250_image"},
             },
         ]
 
@@ -430,7 +465,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name=f"Test Creative {i}",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="display_300x250",
+                    format="display_300x250_image",
                     status="approved" if i % 2 == 0 else "pending_review",
                     data={
                         "url": f"https://example.com/creative_{i}.jpg",
@@ -487,7 +522,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name=f"Approved Creative {i}",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="display_300x250",
+                    format="display_300x250_image",
                     status="approved",
                     data={"assets": {"main": {"url": f"https://example.com/approved_{i}.jpg"}}},
                 )
@@ -499,7 +534,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name=f"Pending Creative {i}",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="display_728x90",
+                    format="display_728x90_image",
                     status="pending_review",
                     data={"assets": {"main": {"url": f"https://example.com/pending_{i}.jpg"}}},
                 )
@@ -557,7 +592,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name=f"Banner {i}",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="display_300x250",
+                    format="display_300x250_image",
                     status="approved",
                     data={"assets": {"main": {"url": f"https://example.com/banner_{i}.jpg"}}},
                 )
@@ -569,7 +604,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name=f"Video {i}",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="video_640x480",
+                    format="video_instream_15s",
                     status="approved",
                     data={"duration": 15.0, "assets": {"main": {"url": f"https://example.com/video_{i}.mp4"}}},
                 )
@@ -590,7 +625,7 @@ class TestCreativeLifecycleMCP:
             ),
         ):
             # Test display format filter
-            response = core_list_creatives_tool(format="display_300x250", ctx=mock_context)
+            response = core_list_creatives_tool(format="display_300x250_image", ctx=mock_context)
             assert len(response.creatives) == 2
             # Check format field (may be string, FormatId object, or dict)
             for c in response.creatives:
@@ -605,10 +640,10 @@ class TestCreativeLifecycleMCP:
                     format_id = format_val.get("id")
                 else:
                     format_id = format_val
-                assert format_id == "display_300x250"
+                assert format_id == "display_300x250_image"
 
             # Test video format filter
-            response = core_list_creatives_tool(format="video_640x480", ctx=mock_context)
+            response = core_list_creatives_tool(format="video_instream_15s", ctx=mock_context)
             assert len(response.creatives) == 3
             # Check format field (may be string, FormatId object, or dict)
             for c in response.creatives:
@@ -623,7 +658,7 @@ class TestCreativeLifecycleMCP:
                     format_id = format_val.get("id")
                 else:
                     format_id = format_val
-                assert format_id == "video_640x480"
+                assert format_id == "video_instream_15s"
 
     def test_list_creatives_with_date_filters(self, mock_context):
         """Test list_creatives filters by creation date range."""
@@ -639,7 +674,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name=f"Old Creative {i}",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="display_300x250",
+                    format="display_300x250_image",
                     status="approved",
                     created_at=now - timedelta(days=10 + i),  # 10+ days ago
                     data={"assets": {"main": {"url": f"https://example.com/old_{i}.jpg"}}},
@@ -652,7 +687,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name=f"Recent Creative {i}",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="display_300x250",
+                    format="display_300x250_image",
                     status="approved",
                     created_at=now - timedelta(days=2 + i),  # 2-3 days ago
                     data={"assets": {"main": {"url": f"https://example.com/recent_{i}.jpg"}}},
@@ -695,7 +730,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name="Holiday Banner Ad",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="display_300x250",
+                    format="display_300x250_image",
                     status="approved",
                     data={"assets": {"main": {"url": "https://example.com/holiday_banner.jpg"}}},
                 ),
@@ -705,7 +740,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name="Holiday Video Ad",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="video_pre_roll",
+                    format="video_instream_15s",
                     status="approved",
                     data={"assets": {"main": {"url": "https://example.com/holiday_video.mp4"}}},
                 ),
@@ -715,7 +750,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name="Summer Sale Banner",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="display_728x90",
+                    format="display_728x90_image",
                     status="approved",
                     data={"assets": {"main": {"url": "https://example.com/summer_banner.jpg"}}},
                 ),
@@ -762,7 +797,7 @@ class TestCreativeLifecycleMCP:
                     principal_id=self.test_principal_id,
                     name=f"Creative {i:02d}",
                     agent_url="https://creative.adcontextprotocol.org",
-                    format="display_300x250",
+                    format="display_300x250_image",
                     status="approved",
                     data={"assets": {"main": {"url": f"https://example.com/creative_{i:02d}.jpg"}}},
                 )
@@ -821,7 +856,7 @@ class TestCreativeLifecycleMCP:
                 principal_id=self.test_principal_id,
                 name="Assigned Creative 1",
                 agent_url="https://creative.adcontextprotocol.org",
-                format="display_300x250",
+                format="display_300x250_image",
                 status="approved",
                 data={"assets": {"main": {"url": "https://example.com/assigned_1.jpg"}}},
             )
@@ -831,7 +866,7 @@ class TestCreativeLifecycleMCP:
                 principal_id=self.test_principal_id,
                 name="Unassigned Creative",
                 agent_url="https://creative.adcontextprotocol.org",
-                format="display_300x250",
+                format="display_300x250_image",
                 status="approved",
                 data={"assets": {"main": {"url": "https://example.com/unassigned.jpg"}}},
             )
@@ -994,7 +1029,6 @@ class TestCreativeLifecycleMCP:
             patch("src.core.tools.media_buy_create.get_adapter") as mock_adapter,
             patch("src.core.main.get_product_catalog") as mock_catalog,
             patch("src.core.tools.media_buy_create.validate_setup_complete"),
-            patch("src.core.format_spec_cache.get_cached_format") as mock_cached_format,
             patch(
                 "src.core.tools.media_buy_create._validate_creatives_before_adapter_call"
             ),  # Skip creative validation
@@ -1056,7 +1090,7 @@ class TestCreativeLifecycleMCP:
                 product_id="prod_1",
                 name="Test Product",
                 description="Test",
-                format_ids=["display_300x250"],
+                format_ids=["display_300x250_image"],
                 delivery_type="non_guaranteed",
                 pricing_options=[
                     {
