@@ -332,12 +332,12 @@ class XandrAdapter(AdServerAdapter):
     def get_products(self) -> list[Product]:
         """Get available products (placement groups in Xandr)."""
         try:
-            from adcp.types.generated_poc.cpm_auction_option import (
-                CpmAuctionPricingOption,
-            )
+            # Use stable API per adcp 2.6.0+ recommendation
+            # PriceGuidance is nested in pricing option module
             from adcp.types.generated_poc.cpm_auction_option import (
                 PriceGuidance as AdCPPriceGuidance,
             )
+            from adcp.types.stable import CpmAuctionPricingOption
 
             from src.core.schemas import FormatId, Property, PropertyIdentifier
 

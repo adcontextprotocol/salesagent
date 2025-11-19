@@ -22,9 +22,7 @@ from adcp.types.aliases import (
     UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
 )
 
-# Import Creative-related library types
-from adcp.types.generated_poc.creative_status import CreativeStatus
-from adcp.types.generated_poc.format import Format as LibraryFormat
+# Import types not yet in stable API (using generated_poc for now)
 from adcp.types.generated_poc.format import Type as FormatTypeEnum
 from adcp.types.generated_poc.format_id import FormatId as LibraryFormatId
 from adcp.types.generated_poc.get_products_request import Filters as LibraryFilters
@@ -45,30 +43,34 @@ from adcp.types.generated_poc.list_creatives_request import (
 )
 from adcp.types.generated_poc.list_creatives_request import Pagination as LibraryPagination
 from adcp.types.generated_poc.list_creatives_request import Sort as LibrarySort
-from adcp.types.generated_poc.list_creatives_response import Creative as LibraryCreative
 
 # Import PackageRequest for request handling (Package comes from aliases above)
 from adcp.types.generated_poc.package_request import PackageRequest as LibraryPackageRequest
 
+# Import types from stable API (per adcp 2.6.0+ recommendation)
+from adcp.types.stable import Creative as LibraryCreative
+from adcp.types.stable import CreativeStatus
+from adcp.types.stable import Format as LibraryFormat
+
 # For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)
 LibraryPackage: TypeAlias = AdCPPackage
 
-# Import library Product, Format, and FormatId to ensure we use canonical AdCP schema
-# Import pricing option types from adcp library
-from adcp.types.generated_poc.cpc_option import CpcPricingOption
-from adcp.types.generated_poc.cpcv_option import CpcvPricingOption
-from adcp.types.generated_poc.cpm_auction_option import CpmAuctionPricingOption
-from adcp.types.generated_poc.cpm_fixed_option import CpmFixedRatePricingOption
-from adcp.types.generated_poc.cpp_option import CppPricingOption
-from adcp.types.generated_poc.cpv_option import CpvPricingOption
-from adcp.types.generated_poc.flat_rate_option import FlatRatePricingOption
-from adcp.types.generated_poc.product import Product as LibraryProduct
+# Import Product and pricing options from stable API
+# Import types not yet in stable API
 from adcp.types.generated_poc.push_notification_config import PushNotificationConfig
-
-# Import AffectedPackage for UpdateMediaBuySuccess response
 from adcp.types.generated_poc.update_media_buy_response import AffectedPackage as LibraryAffectedPackage
-from adcp.types.generated_poc.vcpm_auction_option import VcpmAuctionPricingOption
-from adcp.types.generated_poc.vcpm_fixed_option import VcpmFixedRatePricingOption
+from adcp.types.stable import (
+    CpcPricingOption,
+    CpcvPricingOption,
+    CpmAuctionPricingOption,
+    CpmFixedRatePricingOption,
+    CppPricingOption,
+    CpvPricingOption,
+    FlatRatePricingOption,
+    VcpmAuctionPricingOption,
+    VcpmFixedRatePricingOption,
+)
+from adcp.types.stable import Product as LibraryProduct
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 # Type alias for the union of all AdCP pricing option types

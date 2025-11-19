@@ -15,8 +15,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from adcp.types.generated_poc.media_buy_status import MediaBuyStatus
-from adcp.types.generated_poc.package_status import PackageStatus
+from adcp.types.stable import MediaBuyStatus, PackageStatus
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
