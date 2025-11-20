@@ -57,6 +57,9 @@ services:
       - "${ADCP_SALES_PORT:-8092}:8080"
       - "${A2A_PORT:-8094}:8091"
 
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     volumes:
       # Optional: Mount audit logs
       - ./audit_logs:/app/audit_logs

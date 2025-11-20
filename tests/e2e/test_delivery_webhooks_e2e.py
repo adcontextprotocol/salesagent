@@ -65,15 +65,19 @@ def delivery_webhook_server():
     
     # Find an available port
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
+    s.bind(("0.0.0.0", 0))
     port = s.getsockname()[1]
     s.close()
 
-    # Start server on all interfaces so it's reachable
-    server = HTTPServer(("127.0.0.1", port), DeliveryWebhookReceiver)
+    # Start server on all interfaces so it's reachable from Docker container
+    # (via host.docker.internal mapping)
+    server = HTTPServer(("0.0.0.0", port), DeliveryWebhookReceiver)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
+    # We still use localhost in the URL because the MCP server's 
+    # protocol_webhook_service explicitly looks for 'localhost' to rewrite 
+    # it to 'host.docker.internal'
     webhook_url = f"http://localhost:{port}/webhook"
 
     yield {
