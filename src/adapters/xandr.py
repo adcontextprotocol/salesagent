@@ -537,6 +537,7 @@ class XandrAdapter(AdServerAdapter):
                     {
                         "buyer_ref": buyer_ref,
                         "package_id": package.package_id,
+                        "status": "active",
                     }
                 )
 
@@ -641,6 +642,7 @@ class XandrAdapter(AdServerAdapter):
                     {
                         "buyer_ref": buyer_ref,
                         "package_id": package.package_id,
+                        "status": "active",
                     }
                 )
 
