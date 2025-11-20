@@ -2,7 +2,8 @@ import random
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from adcp.types.generated_poc.create_media_buy_response import Package as ResponsePackage
+from adcp.types.aliases import Package as ResponsePackage
+from adcp.types.stable import PackageStatus
 
 from src.adapters.base import AdServerAdapter
 from src.core.schemas import (
@@ -793,11 +794,12 @@ class MockAdServer(AdServerAdapter):
             if request.packages and idx < len(request.packages):
                 buyer_ref = request.packages[idx].buyer_ref or buyer_ref
 
-            # Create minimal AdCP-compliant Package response (only buyer_ref + package_id)
+            # Create AdCP-compliant Package response (package_id + status required per v2.9.0)
             response_packages.append(
                 ResponsePackage(
                     buyer_ref=buyer_ref,
                     package_id=package_id,
+                    status=PackageStatus.active,  # Default to active for created packages
                 )
             )
 

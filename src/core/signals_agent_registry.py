@@ -184,11 +184,11 @@ class SignalsAgentRegistry:
             signal_spec = brief
 
             # Build deliver_to (required in new schema)
-            # Per AdCP spec, deliver_to requires countries and destinations arrays
-            # destinations requires at least 1 item - use a generic "all platforms" destination
+            # Per AdCP spec v2.9.0, deliver_to requires countries and deployments arrays
+            # deployments requires at least 1 item - use a generic "all platforms" deployment
             deliver_to = DeliverTo(
                 countries=[],  # Empty = all countries
-                destinations=[
+                deployments=[
                     PlatformDestination(
                         type="platform",  # Generic platform destination
                         platform="all",  # All platforms

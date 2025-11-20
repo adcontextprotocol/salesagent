@@ -21,12 +21,9 @@ from adcp.types.aliases import (
 from adcp.types.aliases import (
     UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
 )
-from adcp.types.generated_poc.format import (
-    Type as FormatTypeEnum,
-)
 
-# Import types from stable API (per adcp 2.8.0+ - all types now in stable)
-from adcp.types.stable import AffectedPackage as LibraryAffectedPackage
+# Import types from stable API (per adcp 2.9.0+ - all types now in stable)
+# Note: AffectedPackage was removed in 2.9.0, use Package instead
 from adcp.types.stable import Creative as LibraryCreative
 from adcp.types.stable import (
     CreativeStatus,
@@ -45,6 +42,9 @@ from adcp.types.stable import (
 
 # Import main request/response types from stable API
 from adcp.types.stable import Format as LibraryFormat
+from adcp.types.stable import (
+    FormatCategory as FormatTypeEnum,
+)
 
 # Import types from stable API (per adcp 2.7.0+)
 from adcp.types.stable import FormatId as LibraryFormatId
@@ -320,14 +320,15 @@ CreateMediaBuyResponse = CreateMediaBuySuccess | CreateMediaBuyError
 # --- Update Media Buy Response Components ---
 
 
-class AffectedPackage(LibraryAffectedPackage):
+class AffectedPackage(LibraryPackage):
     """Affected package in UpdateMediaBuySuccess response.
 
-    Extends adcp library AffectedPackage with internal tracking fields.
+    Extends adcp library Package with internal tracking fields.
+    Note: In AdCP 2.9.0+, affected_packages uses the full Package type.
 
-    Library AffectedPackage required fields:
-    - buyer_ref: Buyer's reference for the package
+    Library Package required fields:
     - package_id: Publisher's package identifier
+    - status: Package status (draft, active, paused, completed)
     """
 
     # Internal fields for tracking what changed (not in AdCP spec)

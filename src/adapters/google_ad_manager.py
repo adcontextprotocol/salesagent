@@ -17,7 +17,8 @@ import uuid
 from datetime import datetime
 from typing import Any, cast
 
-from adcp.types.generated_poc.create_media_buy_response import Package as ResponsePackage
+from adcp.types.aliases import Package as ResponsePackage
+from adcp.types.stable import PackageStatus
 from flask import Flask
 
 from src.adapters.base import AdServerAdapter
@@ -525,11 +526,12 @@ class GoogleAdManager(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-                # Create minimal AdCP-compliant Package response
+                # Create AdCP-compliant Package response (package_id + status required per v2.9.0)
                 package_responses.append(
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
+                        status=PackageStatus.active,  # Default to active for created packages
                     )
                 )
 
@@ -691,11 +693,12 @@ class GoogleAdManager(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-                # Create minimal AdCP-compliant Package response
+                # Create AdCP-compliant Package response (package_id + status required per v2.9.0)
                 package_responses.append(
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
+                        status=PackageStatus.active,  # Default to active for created packages
                     )
                 )
 
@@ -740,11 +743,12 @@ class GoogleAdManager(AdServerAdapter):
             if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                 buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-            # Create minimal AdCP-compliant Package response
+            # Create AdCP-compliant Package response (package_id + status required per v2.9.0)
             package_responses.append(
                 ResponsePackage(
                     buyer_ref=buyer_ref,
                     package_id=package.package_id,
+                    status=PackageStatus.active,  # Default to active for created packages
                 )
             )
 

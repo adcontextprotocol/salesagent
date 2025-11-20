@@ -1434,16 +1434,18 @@ class TestAdCPContract:
         Per AdCP PR #186, responses use oneOf discriminator for atomic semantics.
         Success responses have media_buy_id + packages, error responses have errors array.
         """
-        from src.core.schemas import CreateMediaBuyError, CreateMediaBuySuccess
-
         # Create success response with domain fields only (per AdCP PR #113)
         # Protocol fields (status, task_id, message) are added by transport layer
         # Note: creative_deadline must be timezone-aware datetime (adcp 2.0.0)
-        # Note: packages in response only have package_id and buyer_ref (adcp 2.0.0)
+        # Note: packages in response require package_id and status (adcp 2.9.0+)
+        from adcp.types.stable import PackageStatus
+
+        from src.core.schemas import CreateMediaBuyError, CreateMediaBuySuccess
+
         successful_response = CreateMediaBuySuccess(
             media_buy_id="mb_12345",
             buyer_ref="br_67890",
-            packages=[{"package_id": "pkg_1", "buyer_ref": "br_67890"}],
+            packages=[{"package_id": "pkg_1", "buyer_ref": "br_67890", "status": PackageStatus.active}],
             creative_deadline=datetime.now(UTC) + timedelta(days=7),
         )
 
@@ -1650,16 +1652,18 @@ class TestAdCPContract:
         Per AdCP PR #186, responses use oneOf discriminator for atomic semantics.
         Success responses have media_buy_id + buyer_ref, error responses have errors array.
         """
-        from src.core.schemas import UpdateMediaBuyError, UpdateMediaBuySuccess
-
         # Create successful update response (oneOf success branch)
         # Note: implementation_date must be timezone-aware datetime (adcp 2.0.0)
-        # Note: packages field removed from response in adcp 2.0.0, only affected_packages remains
+        # Note: affected_packages now uses full Package type with status (adcp 2.9.0+)
+        from adcp.types.stable import PackageStatus
+
+        from src.core.schemas import UpdateMediaBuyError, UpdateMediaBuySuccess
+
         response = UpdateMediaBuySuccess(
             media_buy_id="buy_123",
             buyer_ref="ref_123",
             implementation_date=datetime.now(UTC) + timedelta(hours=1),
-            affected_packages=[{"package_id": "pkg_1", "buyer_ref": "ref_123"}],
+            affected_packages=[{"package_id": "pkg_1", "buyer_ref": "ref_123", "status": PackageStatus.active}],
         )
 
         # Test AdCP-compliant response

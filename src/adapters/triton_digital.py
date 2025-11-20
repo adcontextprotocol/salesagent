@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import requests
-from adcp.types.generated_poc.create_media_buy_response import Package as ResponsePackage
+from adcp.types.aliases import Package as ResponsePackage
+from adcp.types.stable import PackageStatus
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
@@ -271,21 +272,22 @@ class TritonDigital(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-                # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
-                # - buyer_ref (required)
+                # Build package response - Per AdCP spec v2.9.0, CreateMediaBuyResponse.Package contains:
                 # - package_id (required)
+                # - status (required)
+                # - buyer_ref, budget, impressions, etc. (optional)
                 package_responses.append(
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
+                        status=PackageStatus.active,  # Default to active for created packages
                     )
                 )
 
             # Use the actual campaign ID from Triton
             media_buy_id = f"triton_{campaign_id}"
 
-        # For dry_run, build package responses - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
-        # - buyer_ref (required)
+        # For dry_run, build package responses - Per AdCP spec v2.9.0, CreateMediaBuyResponse.Package requires:
         # - package_id (required)
         # - status (required)
         if self.dry_run:
@@ -300,11 +302,12 @@ class TritonDigital(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-                # Create minimal AdCP-compliant Package response
+                # Create AdCP-compliant Package response
                 package_responses.append(
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
+                        status=PackageStatus.active,  # Default to active for created packages
                     )
                 )
 
