@@ -298,6 +298,8 @@ jobs:
         echo '  adcp-server:' >> docker-compose.override.yml
         echo '    extra_hosts:' >> docker-compose.override.yml
         echo '      - "host.docker.internal:host-gateway"' >> docker-compose.override.yml
+        echo '    environment:' >> docker-compose.override.yml
+        echo '      - DELIVERY_WEBHOOK_INTERVAL=5' >> docker-compose.override.yml
         cat docker-compose.override.yml
 
     - name: Run E2E tests
