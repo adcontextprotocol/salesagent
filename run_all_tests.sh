@@ -130,6 +130,7 @@ print(' '.join(map(str, ports)))
     export DATABASE_URL="postgresql://adcp_user:secure_password_change_me@localhost:${POSTGRES_PORT}/adcp_test"
     export ADCP_TESTING=true
     export CREATE_SAMPLE_DATA=true
+    export DELIVERY_WEBHOOK_INTERVAL=5
     export GEMINI_API_KEY="${GEMINI_API_KEY:-test_key}"
 
     # Build and start services
