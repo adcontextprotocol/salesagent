@@ -22,6 +22,15 @@ from adcp.types.aliases import (
     UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
 )
 
+# Import correct Filters type for ListCreativesRequest
+# TODO(adcp-library): Move creative Filters to stable API
+# Currently using generated_poc because stable.Filters is from get_products_request
+# which doesn't have the fields we need (status, format, tags, etc.)
+# This import is at risk if the library removes generated_poc module
+from adcp.types.generated_poc.list_creatives_request import (
+    Filters as LibraryCreativeFilters,
+)
+
 # Import types from stable API (per adcp 2.9.0+ - all types now in stable)
 # Note: AffectedPackage was removed in 2.9.0, use Package instead
 from adcp.types.stable import Creative as LibraryCreative
@@ -34,10 +43,7 @@ from adcp.types.stable import (
     FieldModel as LibraryFieldModel,
 )
 from adcp.types.stable import (
-    Filters as LibraryCreativeFilters,  # Same as LibraryFilters
-)
-from adcp.types.stable import (
-    Filters as LibraryFilters,
+    Filters as LibraryFilters,  # For GetProductsRequest
 )
 
 # Import main request/response types from stable API
@@ -50,7 +56,6 @@ from adcp.types.stable import (
 from adcp.types.stable import FormatId as LibraryFormatId
 from adcp.types.stable import ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest
 from adcp.types.stable import ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse
-from adcp.types.stable import ListCreativesRequest as LibraryListCreativesRequest
 from adcp.types.stable import PackageRequest as LibraryPackageRequest
 from adcp.types.stable import (
     Pagination as LibraryPagination,
@@ -178,8 +183,13 @@ class AdCPBaseModel(BaseModel):
         """Initialize model with environment-aware validation."""
         from src.core.config import is_production
 
+        # Check if child class overrides extra handling
+        child_model_config = getattr(self.__class__, "model_config", {})
+        child_extra_setting = child_model_config.get("extra", "ignore")
+
         # In non-production, validate strictly (forbid extra fields)
-        if not is_production():
+        # UNLESS child class explicitly allows extras
+        if not is_production() and child_extra_setting != "allow":
             # Get all valid field names AND aliases for this model
             valid_fields = set(self.__class__.model_fields.keys())
             # Also add field aliases
@@ -2072,10 +2082,10 @@ class SyncCreativesResponse(AdCPBaseModel):
         return msg
 
 
-class ListCreativesRequest(LibraryListCreativesRequest):
-    """Extends library ListCreativesRequest from AdCP spec.
+class ListCreativesRequest(AdCPBaseModel):
+    """List creatives request (AdCP v2.4 spec compliant).
 
-    Inherits all AdCP-compliant fields from adcp library:
+    AdCP spec fields:
     - filters: LibraryCreativeFilters (structured filter object)
     - pagination: LibraryPagination (structured pagination object)
     - sort: LibrarySort (structured sort object)
@@ -2085,7 +2095,7 @@ class ListCreativesRequest(LibraryListCreativesRequest):
     - include_sub_assets: bool (include sub-assets)
     - context: dict[str, Any] (application-level context)
 
-    Adds internal convenience fields for backward compatibility:
+    Internal convenience fields (use create_list_creatives_request() factory):
     - media_buy_id: Filter by media buy (NOT in spec, mapped to filters internally)
     - buyer_ref: Filter by buyer reference (NOT in spec, mapped to filters internally)
     - status: Flat status filter (mapped to filters.status)
@@ -2099,35 +2109,39 @@ class ListCreativesRequest(LibraryListCreativesRequest):
     - sort_by: Flat sort field (mapped to sort.field)
     - sort_order: Flat sort direction (mapped to sort.direction)
 
-    All internal convenience fields are marked with exclude=True to prevent leaking
-    to AdCP clients.
+    Note: Uses composition instead of inheritance to avoid Pydantic extra='forbid' limitation.
     """
 
-    # Override model_config to allow our convenience fields
-    # Parent has extra="forbid" but we need to accept convenience fields marked with exclude=True
-    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    # Override AdCPBaseModel to allow convenience fields (they're removed by validator before serialization)
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
-    # Override parent fields to accept dict or Pydantic objects (validator handles conversion)
-    filters: LibraryCreativeFilters | dict[str, Any] | None = None  # type: ignore[assignment]
-    pagination: LibraryPagination | dict[str, Any] | None = None  # type: ignore[assignment]
-    sort: LibrarySort | dict[str, Any] | None = None  # type: ignore[assignment]
-    fields: list[LibraryFieldModel] | list[str] | None = None  # type: ignore[assignment]
+    # AdCP spec fields - match library ListCreativesRequest defaults
+    filters: LibraryCreativeFilters | None = None
+    pagination: LibraryPagination | None = None
+    sort: LibrarySort | None = None
+    fields: list[LibraryFieldModel] | None = None
+    include_performance: bool = False  # Library default
+    include_assignments: bool = True  # Library default
+    include_sub_assets: bool = False  # Library default
+    context: dict[str, Any] | None = None
 
-    # Internal convenience fields (NOT in AdCP spec, excluded from serialization)
-    media_buy_id: str | None = Field(None, description="Filter by media buy ID", exclude=True)
-    buyer_ref: str | None = Field(None, description="Filter by buyer reference", exclude=True)
-    status: str | None = Field(
-        None, description="Filter by creative status (pending, approved, rejected)", exclude=True
-    )
-    format: str | None = Field(None, description="Filter by creative format", exclude=True)
-    tags: list[str] | None = Field(None, description="Filter by tags", exclude=True)
-    created_after: datetime | None = Field(None, description="Filter by creation date", exclude=True)
-    created_before: datetime | None = Field(None, description="Filter by creation date", exclude=True)
-    search: str | None = Field(None, description="Search in creative names and descriptions", exclude=True)
-    page: int = Field(1, ge=1, description="Page number for pagination", exclude=True)
-    limit: int = Field(50, ge=1, le=1000, description="Number of results per page", exclude=True)
-    sort_by: str | None = Field("created_date", description="Sort field (created_date, name, status)", exclude=True)
-    sort_order: Literal["asc", "desc"] = Field("desc", description="Sort order", exclude=True)
+    # Convenience fields (optional, excluded from AdCP serialization)
+    # These are mapped to structured fields (filters, pagination, sort) by validator
+    media_buy_id: str | None = Field(None, exclude=True)
+    buyer_ref: str | None = Field(None, exclude=True)
+    status: str | None = Field(None, exclude=True)
+    format: str | None = Field(None, exclude=True)
+    tags: list[str] | None = Field(None, exclude=True)
+    created_after: datetime | None = Field(None, exclude=True)
+    created_before: datetime | None = Field(None, exclude=True)
+    search: str | None = Field(None, exclude=True)
+    page: int | None = Field(None, exclude=True)
+    limit: int | None = Field(None, exclude=True)
+    sort_by: str | None = Field(None, exclude=True)
+    sort_order: Literal["asc", "desc"] | None = Field(None, exclude=True)
+
+    # Note: Convenience fields are automatically excluded from model_dump()
+    # because they're marked with exclude=True. No override needed.
 
     @model_validator(mode="before")
     @classmethod
@@ -2265,12 +2279,187 @@ class ListCreativesRequest(LibraryListCreativesRequest):
 
             values["sort"] = LibrarySort(**sort_dict)
 
+        # NOTE: We do NOT remove convenience fields from values dict
+        # They are kept as dynamic attributes (extra="allow") for backward compatibility
+        # They are excluded from serialization (see model_dump override below)
+        # This allows code to access req.created_after, req.page, etc.
+
         return values
 
 
-# Rebuild model to ensure convenience fields are recognized
-# (parent has extra='forbid' which we need to override for our excluded convenience fields)
-ListCreativesRequest.model_rebuild()
+# Factory function for creating ListCreativesRequest with convenience fields
+def create_list_creatives_request(
+    # Convenience fields (mapped to structured AdCP objects)
+    media_buy_id: str | None = None,
+    buyer_ref: str | None = None,
+    status: str | None = None,
+    format: str | None = None,
+    tags: list[str] | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    search: str | None = None,
+    page: int = 1,
+    limit: int = 50,
+    sort_by: str | None = "created_date",
+    sort_order: Literal["asc", "desc"] = "desc",
+    # AdCP spec fields (pass through)
+    filters: LibraryCreativeFilters | dict[str, Any] | None = None,
+    pagination: LibraryPagination | dict[str, Any] | None = None,
+    sort: LibrarySort | dict[str, Any] | None = None,
+    fields: list[LibraryFieldModel] | list[str] | None = None,
+    include_performance: bool = False,  # Library default
+    include_assignments: bool = True,  # Library default
+    include_sub_assets: bool = False,  # Library default
+    context: dict[str, Any] | None = None,
+) -> ListCreativesRequest:
+    """Create ListCreativesRequest with convenience fields.
+
+    This factory function accepts flat convenience fields and maps them to
+    structured AdCP objects before creating the ListCreativesRequest.
+
+    Convenience fields:
+    - media_buy_id, buyer_ref: Internal filters (NOT in AdCP spec)
+    - status, format, tags, created_after, created_before, search: Mapped to filters
+    - page, limit: Mapped to pagination (page converted to offset)
+    - sort_by, sort_order: Mapped to sort
+
+    Args:
+        media_buy_id: Filter by media buy ID (internal)
+        buyer_ref: Filter by buyer reference (internal)
+        status: Filter by creative status
+        format: Filter by creative format
+        tags: Filter by tags
+        created_after: Filter by creation date (after)
+        created_before: Filter by creation date (before)
+        search: Search in creative names/descriptions
+        page: Page number (1-indexed, converted to 0-indexed offset)
+        limit: Results per page
+        sort_by: Sort field
+        sort_order: Sort direction
+        filters: AdCP filters object (merged with convenience filters)
+        pagination: AdCP pagination object (merged with convenience pagination)
+        sort: AdCP sort object (merged with convenience sort)
+        fields: Fields to return
+        include_performance: Include performance metrics
+        include_assignments: Include package assignments
+        include_sub_assets: Include sub-assets
+        context: Application context
+
+    Returns:
+        ListCreativesRequest with all convenience fields mapped to structured AdCP objects
+    """
+    # Map convenience fields to structured AdCP objects HERE (not in validator)
+    # This avoids Pydantic's extra='forbid' check
+
+    # Build filters from convenience fields
+    filters_dict: dict[str, Any] = {}
+    if status:
+        filters_dict["status"] = status
+    if format:
+        filters_dict["format"] = format
+    if tags:
+        filters_dict["tags"] = tags
+    if created_after:
+        filters_dict["created_after"] = created_after
+    if created_before:
+        filters_dict["created_before"] = created_before
+    if search:
+        filters_dict["name_contains"] = search
+
+    # Merge with existing filters if provided
+    if filters:
+        if isinstance(filters, dict):
+            filters_dict = {**filters, **filters_dict}
+        else:
+            filters_dict = {**filters.model_dump(), **filters_dict}
+
+    # Create structured filters object
+    structured_filters: LibraryCreativeFilters | None
+    if filters_dict:
+        structured_filters = LibraryCreativeFilters(**filters_dict)
+    else:
+        structured_filters = (
+            None if not filters else (LibraryCreativeFilters(**filters) if isinstance(filters, dict) else filters)
+        )
+
+    # Build pagination from convenience fields
+    structured_pagination: LibraryPagination | None
+    if page != 1 or limit != 50 or pagination:
+        offset = (page - 1) * limit
+        pagination_dict: dict[str, int] = {"offset": offset, "limit": limit}
+
+        # Merge with existing pagination if provided
+        if pagination:
+            if isinstance(pagination, dict):
+                pagination_dict = {**pagination, **pagination_dict}  # type: ignore[typeddict-unknown-key]
+            else:
+                pagination_dict = {**pagination.model_dump(), **pagination_dict}  # type: ignore[typeddict-unknown-key]
+
+        structured_pagination = LibraryPagination(**pagination_dict)
+    else:
+        structured_pagination = None
+
+    # Build sort from convenience fields
+    structured_sort: LibrarySort | None
+    if sort_by or sort:
+        field_mapping = {
+            "created_date": "created_date",
+            "updated_date": "updated_date",
+            "name": "name",
+            "status": "status",
+            "assignment_count": "assignment_count",
+            "performance_score": "performance_score",
+        }
+        mapped_field = field_mapping.get(sort_by, "created_date") if sort_by else "created_date"
+        sort_dict: dict[str, str] = {"field": mapped_field, "direction": sort_order}
+
+        # Merge with existing sort if provided
+        if sort:
+            if isinstance(sort, dict):
+                sort_dict = {**sort, **sort_dict}  # type: ignore[dict-item]
+            else:
+                sort_dict = {**sort.model_dump(), **sort_dict}  # type: ignore[dict-item]
+
+        structured_sort = LibrarySort(**sort_dict)  # type: ignore[arg-type]
+    else:
+        structured_sort = None
+
+    # Create request with structured AdCP fields AND convenience fields
+    # Convenience fields are preserved as attributes for backward compatibility
+    # Convert fields list[str] to list[LibraryFieldModel] enum if needed
+    converted_fields: list[LibraryFieldModel] | None = None
+    if fields:
+        if isinstance(fields, list) and fields and isinstance(fields[0], str):
+            # Convert string field names to FieldModel enum values
+            converted_fields = [
+                LibraryFieldModel[str(f)] for f in fields if isinstance(f, str)
+            ]  # type: ignore[arg-type]
+        else:
+            converted_fields = fields  # type: ignore[assignment]
+
+    return ListCreativesRequest(
+        filters=structured_filters,
+        pagination=structured_pagination,
+        sort=structured_sort,
+        fields=converted_fields,
+        include_performance=include_performance,
+        include_assignments=include_assignments,
+        include_sub_assets=include_sub_assets,
+        context=context,
+        # Preserve convenience fields as attributes
+        media_buy_id=media_buy_id,
+        buyer_ref=buyer_ref,
+        status=status,
+        format=format,
+        tags=tags,
+        created_after=created_after,
+        created_before=created_before,
+        search=search,
+        page=page,
+        limit=limit,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
 
 
 class QuerySummary(BaseModel):

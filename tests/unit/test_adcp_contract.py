@@ -34,7 +34,6 @@ from src.core.schemas import (
     ListAuthorizedPropertiesRequest,
     ListAuthorizedPropertiesResponse,
     ListCreativeFormatsResponse,
-    ListCreativesRequest,
     ListCreativesResponse,
     Measurement,
     MediaBuyDeliveryData,
@@ -1240,14 +1239,16 @@ class TestAdCPContract:
     def test_list_creatives_request_adcp_compliance(self):
         """Test that ListCreativesRequest model complies with AdCP list-creatives schema.
 
-        After refactoring to extend library type (EMBEDDED_TYPES_CORRECTIONS.md):
-        - Accepts flat convenience fields (media_buy_id, page, limit, sort_by, etc.)
-        - Maps them to structured AdCP objects via @model_validator(mode="before")
-        - Convenience fields marked with exclude=True (internal only)
+        After refactoring to use composition pattern (adcp 2.9.0):
+        - Uses factory function create_list_creatives_request() for convenience fields
+        - Avoids Pydantic extra='forbid' inheritance limitation
+        - Factory maps convenience fields to structured AdCP objects
         - Serialization outputs structured AdCP-compliant fields (filters, pagination, sort)
         """
-        # Create request using convenience fields
-        request = ListCreativesRequest(
+        from src.core.schemas import create_list_creatives_request
+
+        # Create request using factory function with convenience fields
+        request = create_list_creatives_request(
             media_buy_id="mb_123",  # Internal convenience field
             buyer_ref="buyer_456",  # Internal convenience field
             status="approved",  # Mapped to filters.status
