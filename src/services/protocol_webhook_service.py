@@ -76,8 +76,7 @@ class ProtocolWebhookService:
         error: str | None = None,
         tenant_id: str | None = None,
         principal_id: str | None = None,
-        media_buy_id: str | None = None,
-        notification_type: str | None = None,
+        media_buy_id: str | None = None
     ) -> bool:
         """
         Send a protocol-level push notification to the configured webhook.
@@ -92,7 +91,6 @@ class ProtocolWebhookService:
             tenant_id: Tenant ID for audit logging
             principal_id: Principal ID for audit logging
             media_buy_id: Media buy ID (for delivery_report tasks)
-            notification_type: Notification type for AdCP (scheduled/final/delayed/adjusted)
 
         Returns:
             True if notification sent successfully, False otherwise
@@ -155,20 +153,9 @@ class ProtocolWebhookService:
 
         # Calculate payload size for metrics
         payload_size_bytes = len(json.dumps(payload).encode("utf-8"))
-
-        # Get sequence number for this media buy (if delivery_report)
-        sequence_number = 1
-        if task_type == "delivery_report" and media_buy_id:
-            try:
-                with get_db_session() as session:
-                    stmt = select(func.coalesce(func.max(WebhookDeliveryLog.sequence_number), 0)).where(
-                        WebhookDeliveryLog.media_buy_id == media_buy_id,
-                        WebhookDeliveryLog.task_type == "delivery_report",
-                    )
-                    max_seq = session.scalar(stmt)
-                    sequence_number = (max_seq or 0) + 1
-            except Exception as e:
-                logger.warning(f"Could not get sequence number for media buy {media_buy_id}: {e}")
+        
+        notification_type_from_request = result.get("notification_type") if result is not None else None
+        sequence_number_from_result = result.get("sequence_number") if result is not None else None
 
         # Send notification with retry logic and logging
         return await self._send_with_retry_and_logging(
@@ -180,8 +167,8 @@ class ProtocolWebhookService:
             tenant_id=tenant_id,
             principal_id=principal_id,
             media_buy_id=media_buy_id,
-            notification_type=notification_type,
-            sequence_number=sequence_number,
+            notification_type=notification_type_from_request,
+            sequence_number=sequence_number_from_result if isinstance(sequence_number_from_result, int) else 1,
             payload_size_bytes=payload_size_bytes,
         )
 

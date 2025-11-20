@@ -142,6 +142,30 @@ class TestMCPToolRoundtripMinimal:
         content = result.structured_content if hasattr(result, "structured_content") else result
         assert "deliveries" in content or "aggregated_totals" in content
 
+    async def test_get_media_buy_delivery_invalid_date_range(self, mcp_client):
+        """Test get_media_buy_delivery returns an error for invalid date ranges.
+
+        This exercises the date range validation branch where start_date >= end_date
+        should return an AdCP-compliant error response with zeroed totals.
+        """
+        # Use a start_date that is after end_date to trigger the validation error
+        params = {
+            "start_date": "2025-01-31",
+            "end_date": "2025-01-01",
+        }
+
+        result = await mcp_client.call_tool("get_media_buy_delivery", params)
+
+        assert result is not None
+        content = result.structured_content if hasattr(result, "structured_content") else result
+
+        # Errors array should be present with the invalid_date_range code
+        assert "errors" in content
+        assert isinstance(content["errors"], list)
+        assert len(content["errors"]) >= 1
+        assert content["errors"][0]["code"] == "invalid_date_range"
+
+
     async def test_sync_creatives_minimal(self, mcp_client):
         """Test sync_creatives with minimal required parameters."""
         result = await mcp_client.call_tool(

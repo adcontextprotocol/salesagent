@@ -1632,7 +1632,7 @@ class PublisherPartner(Base, JSONValidatorMixin):
 
 
 class PushNotificationConfig(Base, JSONValidatorMixin):
-    """A2A push notification configuration for async operation callbacks.
+    """Push notification configuration for async operation callbacks.
 
     Stores buyer-provided webhook URLs where the server should POST
     notifications when task status changes (e.g., submitted → completed).
