@@ -303,6 +303,7 @@ jobs:
         # Enable Docker BuildKit for faster builds with caching
         DOCKER_BUILDKIT: 1
         COMPOSE_DOCKER_CLI_BUILD: 1
+        DELIVERY_WEBHOOK_INTERVAL: 5
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
         # Let pytest manage Docker Compose via conftest.py
