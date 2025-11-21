@@ -175,6 +175,9 @@ def create_principal(tenant_id):
                 "enabled": True,
             }
 
+        print('REQUEST.FORM')
+        print(request.form)
+
         with get_db_session() as db_session:
             # Check if principal name already exists
             existing = db_session.scalars(select(Principal).filter_by(tenant_id=tenant_id, name=principal_name)).first()
@@ -374,6 +377,7 @@ def update_mappings(tenant_id, principal_id):
 
             # Update mappings - JSONType handles serialization
             principal.platform_mappings = platform_mappings
+            principal.updated_at = datetime.now(UTC)
             db_session.commit()
 
             return jsonify(
