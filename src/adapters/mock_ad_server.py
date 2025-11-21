@@ -2,8 +2,8 @@ import random
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from adcp.types import PackageStatus
 from adcp.types.aliases import Package as ResponsePackage
-from adcp.types.stable import PackageStatus
 
 from src.adapters.base import AdServerAdapter
 from src.core.schemas import (

@@ -17,8 +17,8 @@ import uuid
 from datetime import datetime
 from typing import Any, cast
 
+from adcp.types import PackageStatus
 from adcp.types.aliases import Package as ResponsePackage
-from adcp.types.stable import PackageStatus
 from flask import Flask
 
 from src.adapters.base import AdServerAdapter

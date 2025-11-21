@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from adcp import GetProductsRequest as GetProductsRequestGenerated
-from adcp.types.stable import PushNotificationConfig
+from adcp.types import PushNotificationConfig
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult

@@ -8,6 +8,39 @@ from enum import Enum
 from typing import Any, Literal, TypeAlias, Union
 
 from adcp import Error
+
+# Import types from stable API (per adcp 2.9.0+ - all types now in stable)
+# Note: AffectedPackage was removed in 2.9.0, use Package instead
+from adcp.types import Creative as LibraryCreative
+from adcp.types import (
+    CreativeStatus,
+    PriceGuidance,  # Replaces local PriceGuidance class
+    PushNotificationConfig,
+)
+from adcp.types import (
+    FieldModel as LibraryFieldModel,
+)
+
+# Import main request/response types from stable API
+from adcp.types import Format as LibraryFormat
+from adcp.types import (
+    FormatCategory as FormatTypeEnum,
+)
+
+# Import types from stable API (per adcp 2.7.0+)
+from adcp.types import FormatId as LibraryFormatId
+from adcp.types import ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest
+from adcp.types import ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse
+from adcp.types import PackageRequest as LibraryPackageRequest
+from adcp.types import (
+    Pagination as LibraryPagination,
+)
+from adcp.types import (
+    ProductFilters as LibraryFilters,  # For GetProductsRequest (was Filters pre-2.11.0)
+)
+from adcp.types import (
+    Sort as LibrarySort,
+)
 from adcp.types.aliases import (
     CreateMediaBuyErrorResponse as AdCPCreateMediaBuyError,
 )
@@ -27,46 +60,13 @@ from adcp.types.aliases import (
 # Currently using generated_poc because stable.Filters is from get_products_request
 # which doesn't have the fields we need (status, format, tags, etc.)
 # This import is at risk if the library removes generated_poc module
-from adcp.types.generated_poc.list_creatives_request import (
-    Filters as LibraryCreativeFilters,
-)
-
-# Import types from stable API (per adcp 2.9.0+ - all types now in stable)
-# Note: AffectedPackage was removed in 2.9.0, use Package instead
-from adcp.types.stable import Creative as LibraryCreative
-from adcp.types.stable import (
-    CreativeStatus,
-    PriceGuidance,  # Replaces local PriceGuidance class
-    PushNotificationConfig,
-)
-from adcp.types.stable import (
-    FieldModel as LibraryFieldModel,
-)
-from adcp.types.stable import (
-    Filters as LibraryFilters,  # For GetProductsRequest
-)
-
-# Import main request/response types from stable API
-from adcp.types.stable import Format as LibraryFormat
-from adcp.types.stable import (
-    FormatCategory as FormatTypeEnum,
-)
-
-# Import types from stable API (per adcp 2.7.0+)
-from adcp.types.stable import FormatId as LibraryFormatId
-from adcp.types.stable import ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest
-from adcp.types.stable import ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse
-from adcp.types.stable import PackageRequest as LibraryPackageRequest
-from adcp.types.stable import (
-    Pagination as LibraryPagination,
-)
-from adcp.types.stable import (
-    Sort as LibrarySort,
+from adcp.types.generated_poc.creative_filters import (
+    CreativeFilters as LibraryCreativeFilters,
 )
 
 # For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)
 LibraryPackage: TypeAlias = AdCPPackage
-from adcp.types.stable import (
+from adcp.types import (
     CpcPricingOption,
     CpcvPricingOption,
     CpmAuctionPricingOption,
@@ -77,7 +77,7 @@ from adcp.types.stable import (
     VcpmAuctionPricingOption,
     VcpmFixedRatePricingOption,
 )
-from adcp.types.stable import Product as LibraryProduct
+from adcp.types import Product as LibraryProduct
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 # Type alias for the union of all AdCP pricing option types

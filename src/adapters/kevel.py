@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import requests
+from adcp.types import PackageStatus
 from adcp.types.aliases import Package as ResponsePackage
-from adcp.types.stable import PackageStatus
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS

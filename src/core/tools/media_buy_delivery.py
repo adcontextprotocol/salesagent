@@ -26,7 +26,7 @@ from src.core.tool_context import ToolContext
 logger = logging.getLogger(__name__)
 console = Console()
 
-from adcp.types.stable import PushNotificationConfig
+from adcp.types import PushNotificationConfig
 
 from src.core.auth import get_principal_object
 from src.core.config_loader import get_current_tenant

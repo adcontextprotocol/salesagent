@@ -333,8 +333,8 @@ class XandrAdapter(AdServerAdapter):
         """Get available products (placement groups in Xandr)."""
         try:
             # Use stable API per adcp 2.7.0+ recommendation
-            from adcp.types.stable import CpmAuctionPricingOption
-            from adcp.types.stable import PriceGuidance as AdCPPriceGuidance
+            from adcp.types import CpmAuctionPricingOption
+            from adcp.types import PriceGuidance as AdCPPriceGuidance
 
             from src.core.schemas import FormatId, Property, PropertyIdentifier
 

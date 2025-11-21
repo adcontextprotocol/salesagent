@@ -33,7 +33,7 @@ from typing import Any
 
 from adcp import ADCPMultiAgentClient, AgentConfig, GetSignalsRequest, PlatformDestination, Protocol
 from adcp.exceptions import ADCPAuthenticationError, ADCPConnectionError, ADCPError, ADCPTimeoutError
-from adcp.types.stable import DeliverTo
+from adcp.types import DeliverTo
 
 logger = logging.getLogger(__name__)
 

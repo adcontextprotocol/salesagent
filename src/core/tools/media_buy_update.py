@@ -21,7 +21,7 @@ from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 
-from adcp.types.stable import Error, PackageStatus
+from adcp.types import Error, PackageStatus
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
@@ -276,7 +276,7 @@ def _update_media_buy_impl(
         ctx_manager.update_workflow_step(
             step.step_id,
             status="failed",
-            response_data=response_data.model_dump(),
+            response_data=response_data.model_dump(mode="json"),
             error_message=error_msg,
         )
         return response_data  # type: ignore[return-value]
@@ -307,7 +307,7 @@ def _update_media_buy_impl(
         ctx_manager.update_workflow_step(
             step.step_id,
             status="requires_approval",
-            response_data=approval_response.model_dump(),
+            response_data=approval_response.model_dump(mode="json"),
             add_comment={"user": "system", "comment": "Publisher requires manual approval for all media buy updates"},
         )
         return approval_response  # type: ignore[return-value]
@@ -353,7 +353,10 @@ def _update_media_buy_impl(
                         context=req.context,
                     )
                     ctx_manager.update_workflow_step(
-                        step.step_id, status="failed", response_data=response_data.model_dump(), error_message=error_msg
+                        step.step_id,
+                        status="failed",
+                        response_data=response_data.model_dump(mode="json"),
+                        error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
 
@@ -419,7 +422,7 @@ def _update_media_buy_impl(
                                 ctx_manager.update_workflow_step(
                                     step.step_id,
                                     status="failed",
-                                    response_data=response_data.model_dump(),
+                                    response_data=response_data.model_dump(mode="json"),
                                     error_message=error_msg,
                                 )
                                 return response_data  # type: ignore[return-value]
@@ -476,7 +479,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_message,
                     )
                     return response_data  # type: ignore[return-value]
@@ -493,7 +496,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -526,7 +529,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_message,
                     )
                     return response_data  # type: ignore[return-value]
@@ -555,7 +558,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -588,7 +591,7 @@ def _update_media_buy_impl(
                         ctx_manager.update_workflow_step(
                             step.step_id,
                             status="failed",
-                            response_data=response_data.model_dump(),
+                            response_data=response_data.model_dump(mode="json"),
                             error_message=error_msg,
                         )
                         return response_data  # type: ignore[return-value]
@@ -614,7 +617,7 @@ def _update_media_buy_impl(
                         ctx_manager.update_workflow_step(
                             step.step_id,
                             status="failed",
-                            response_data=response_data.model_dump(),
+                            response_data=response_data.model_dump(mode="json"),
                             error_message=error_msg,
                         )
                         return response_data  # type: ignore[return-value]
@@ -780,7 +783,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -806,7 +809,7 @@ def _update_media_buy_impl(
                         ctx_manager.update_workflow_step(
                             step.step_id,
                             status="failed",
-                            response_data=response_data.model_dump(),
+                            response_data=response_data.model_dump(mode="json"),
                             error_message=error_msg,
                         )
                         return response_data  # type: ignore[return-value]
@@ -860,7 +863,7 @@ def _update_media_buy_impl(
             ctx_manager.update_workflow_step(
                 step.step_id,
                 status="failed",
-                response_data=response_data.model_dump(),
+                response_data=response_data.model_dump(mode="json"),
                 error_message=error_msg,
             )
             return response_data  # type: ignore[return-value]
@@ -963,7 +966,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -995,7 +998,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -1046,10 +1049,11 @@ def _update_media_buy_impl(
     )
 
     # Persist success with response data, then return
+    # Use mode="json" to ensure enums are serialized as strings for JSONB storage
     ctx_manager.update_workflow_step(
         step.step_id,
         status="completed",
-        response_data=final_response.model_dump(),
+        response_data=final_response.model_dump(mode="json"),
     )
 
     return final_response  # type: ignore[return-value]
