@@ -1439,7 +1439,7 @@ class TestAdCPContract:
         # Protocol fields (status, task_id, message) are added by transport layer
         # Note: creative_deadline must be timezone-aware datetime (adcp 2.0.0)
         # Note: packages in response require package_id and status (adcp 2.9.0+)
-        from adcp.types.stable import PackageStatus
+        from adcp.types import PackageStatus
 
         from src.core.schemas import CreateMediaBuyError, CreateMediaBuySuccess
 
@@ -1656,7 +1656,7 @@ class TestAdCPContract:
         # Create successful update response (oneOf success branch)
         # Note: implementation_date must be timezone-aware datetime (adcp 2.0.0)
         # Note: affected_packages now uses full Package type with status (adcp 2.9.0+)
-        from adcp.types.stable import PackageStatus
+        from adcp.types import PackageStatus
 
         from src.core.schemas import UpdateMediaBuyError, UpdateMediaBuySuccess
 
