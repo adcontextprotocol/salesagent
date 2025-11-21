@@ -5,10 +5,10 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from adcp.types import PlatformDeployment, Signal
 from fastmcp.server.context import Context
 
 from src.core.database.database_session import get_db_session
-from src.core.schemas import Signal
 from src.core.tools.products import get_products_raw
 from tests.fixtures.builders import create_test_tenant_with_principal
 from tests.integration_v2.conftest import create_test_product_with_pricing
@@ -63,8 +63,6 @@ class TestSignalsAgentWorkflow:
     @pytest.fixture
     def mock_signals_response(self):
         """Mock signals response from upstream agent."""
-        from src.core.schemas import SignalDeployment, SignalPricing
-
         return [
             Signal(
                 signal_agent_segment_id="sports_enthusiasts",
@@ -74,16 +72,13 @@ class TestSignalsAgentWorkflow:
                 data_provider="Test Provider",
                 coverage_percentage=85.0,
                 deployments=[
-                    SignalDeployment(
+                    PlatformDeployment(
                         platform="test_platform",
-                        account=None,
                         is_live=True,
-                        scope="platform-wide",
-                        decisioning_platform_segment_id="seg_123",
-                        estimated_activation_duration_minutes=None,
+                        type="platform",
                     )
                 ],
-                pricing=SignalPricing(cpm=2.5, currency="USD"),
+                pricing={"cpm": 2.5, "currency": "USD"},
             ),
             Signal(
                 signal_agent_segment_id="automotive_intenders",
@@ -93,16 +88,13 @@ class TestSignalsAgentWorkflow:
                 data_provider="Test Provider",
                 coverage_percentage=42.0,
                 deployments=[
-                    SignalDeployment(
+                    PlatformDeployment(
                         platform="test_platform",
-                        account=None,
                         is_live=True,
-                        scope="platform-wide",
-                        decisioning_platform_segment_id="seg_456",
-                        estimated_activation_duration_minutes=None,
+                        type="platform",
                     )
                 ],
-                pricing=SignalPricing(cpm=3.0, currency="USD"),
+                pricing={"cpm": 3.0, "currency": "USD"},
             ),
         ]
 

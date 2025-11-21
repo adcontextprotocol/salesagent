@@ -20,8 +20,8 @@ from typing import Any
 
 from adcp import ADCPMultiAgentClient, AgentConfig, ListCreativeFormatsRequest, Protocol
 from adcp.exceptions import ADCPAuthenticationError, ADCPConnectionError, ADCPError, ADCPTimeoutError
-from adcp.types.generated_poc.list_creative_formats_request import AssetType
-from adcp.types.generated_poc.list_creative_formats_request import Type as FormatType
+from adcp.types import AssetContentType as AssetType
+from adcp.types import FormatCategory as FormatType
 
 from src.core.schemas import Format, FormatId
 from src.core.utils.mcp_client import create_mcp_client  # Keep for custom tools (preview, build)

@@ -10,6 +10,7 @@ def test_affected_packages_includes_creative_assignment_details():
         AffectedPackage(
             buyer_ref="buyer_ref_123",  # Required by AdCP
             package_id="pkg_1",  # Required by AdCP
+            status="active",  # Required by AdCP 2.9.0
             buyer_package_ref="pkg_default",  # Internal field (excluded from serialization)
             changes_applied={  # Internal field (excluded from serialization)
                 "creative_ids": {
@@ -68,6 +69,7 @@ def test_affected_packages_shows_replaced_creatives():
         AffectedPackage(
             buyer_ref="buyer_ref_789",  # Required by AdCP
             package_id="pkg_1",  # Required by AdCP
+            status="active",  # Required by AdCP 2.9.0
             buyer_package_ref="pkg_default",  # Internal field
             changes_applied={  # Internal field
                 "creative_ids": {
@@ -100,6 +102,7 @@ def test_response_serialization_includes_affected_packages():
             AffectedPackage(
                 buyer_ref="buyer_ref_serialization",  # Required by AdCP
                 package_id="pkg_1",  # Required by AdCP
+                status="active",  # Required by AdCP 2.9.0
                 buyer_package_ref="pkg_1_buyer_ref",  # Internal field
                 changes_applied={  # Internal field
                     "creative_ids": {

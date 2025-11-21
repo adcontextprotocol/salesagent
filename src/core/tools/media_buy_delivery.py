@@ -9,22 +9,24 @@ Handles delivery metrics reporting including:
 """
 
 import logging
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
-from typing import Any, Sequence
+from math import floor
+from typing import Any
+
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
 from sqlalchemy import select
-from math import floor
 
 from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 console = Console()
 
-from adcp.types.generated_poc.push_notification_config import PushNotificationConfig
+from adcp.types import PushNotificationConfig
 
 from src.core.auth import get_principal_object
 from src.core.config_loader import get_current_tenant
@@ -38,8 +40,8 @@ from src.core.schemas import (
     GetMediaBuyDeliveryRequest,
     MediaBuyDeliveryData,
     PackageDelivery,
+    PricingModel,
     ReportingPeriod,
-    PricingModel
 )
 from src.core.testing_hooks import DeliverySimulator, TimeSimulator, apply_testing_hooks, get_testing_context
 from src.core.validation_helpers import format_validation_error
@@ -139,7 +141,13 @@ def _get_media_buy_delivery_impl(
     tenant = get_current_tenant()
 
     target_media_buys = _get_target_media_buys(req, principal_id, tenant, reference_date)
-    pricing_option_ids = [buy.raw_request.get("pricing_option_id") for _, buy in target_media_buys if buy.raw_request and isinstance(buy.raw_request, dict) and buy.raw_request.get("pricing_option_id") is not None]
+    pricing_option_ids = [
+        buy.raw_request.get("pricing_option_id")
+        for _, buy in target_media_buys
+        if buy.raw_request
+        and isinstance(buy.raw_request, dict)
+        and buy.raw_request.get("pricing_option_id") is not None
+    ]
     pricing_options = _get_pricing_options(pricing_option_ids)
 
     # Collect delivery data for each media buy
@@ -179,8 +187,10 @@ def _get_media_buy_delivery_impl(
             adapter_package_metrics = {}  # Map package_id -> {impressions, spend, clicks}
             total_spend_from_adapter = 0.0
             total_impressions_from_adapter = 0
-            
-            if not any([testing_ctx.dry_run, testing_ctx.mock_time, testing_ctx.jump_to_event, testing_ctx.test_session_id]):
+
+            if not any(
+                [testing_ctx.dry_run, testing_ctx.mock_time, testing_ctx.jump_to_event, testing_ctx.test_session_id]
+            ):
                 # Call adapter to get per-package delivery metrics
                 # Note: Mock adapter returns simulated data, GAM adapter returns real data from Reporting API
                 try:
@@ -199,7 +209,7 @@ def _get_media_buy_delivery_impl(
                         }
                         total_spend_from_adapter += float(adapter_pkg.spend)
                         total_impressions_from_adapter += int(adapter_pkg.impressions)
-                    
+
                     # Use adapter's totals if available
                     if adapter_response.totals:
                         spend = float(adapter_response.totals.spend)
@@ -207,7 +217,7 @@ def _get_media_buy_delivery_impl(
                     else:
                         spend = total_spend_from_adapter
                         impressions = total_impressions_from_adapter
-                        
+
                 except Exception as e:
                     logger.error(f"Error getting delivery for {media_buy_id}: {e}")
                     return GetMediaBuyDeliveryResponse(
@@ -242,7 +252,7 @@ def _get_media_buy_delivery_impl(
 
             # Create package delivery data
             package_deliveries = []
-            
+
             # Get pricing info from MediaPackage.package_config
             package_pricing_map = {}
             with get_db_session() as session:
@@ -253,28 +263,28 @@ def _get_media_buy_delivery_impl(
                     pricing_info = package_config.get("pricing_info")
                     if pricing_info:
                         package_pricing_map[media_pkg.package_id] = pricing_info
-            
+
             # Get packages from raw_request
             if buy.raw_request and isinstance(buy.raw_request, dict):
                 # Try to get packages from raw_request.packages (AdCP v2.2+ format)
                 packages = buy.raw_request.get("packages", [])
-                
+
                 # Fallback: legacy format with product_ids
                 if not packages and "product_ids" in buy.raw_request:
                     product_ids = buy.raw_request.get("product_ids", [])
                     packages = [{"product_id": pid} for pid in product_ids]
-                
+
                 i = -1
                 for pkg_data in packages:
                     i += 1
 
-                    package_id = pkg_data.get("package_id") or f"pkg_{pkg_data.get('product_id', 'unknown')}_{i}" 
+                    package_id = pkg_data.get("package_id") or f"pkg_{pkg_data.get('product_id', 'unknown')}_{i}"
                     pricing_option_id = pkg_data.get("pricing_option_id") or None
-                    
+
                     # Get pricing info for this package
                     pricing_info = package_pricing_map.get(package_id)
                     pricing_option = pricing_options.get(pricing_option_id) if pricing_option_id is not None else None
-                    
+
                     # Get REAL per-package metrics from adapter if available, otherwise divide equally
                     if package_id in adapter_package_metrics:
                         # Use real metrics from adapter
@@ -285,7 +295,6 @@ def _get_media_buy_delivery_impl(
                         # Fallback: divide equally if adapter didn't return this package
                         package_spend = spend / len(packages)
                         package_impressions = impressions / len(packages)
-
 
                     if pricing_option and pricing_option.pricing_model == PricingModel.CPC and pricing_option.rate:
                         package_clicks = floor(spend / (float(pricing_option.rate)))
@@ -303,7 +312,11 @@ def _get_media_buy_delivery_impl(
                             pacing_index=1.0 if status == "active" else 0.0,
                             # Add pricing fields from package_config
                             pricing_model=pricing_info.get("pricing_model") if pricing_info else None,
-                            rate=float(pricing_info.get("rate")) if pricing_info and pricing_info.get("rate") is not None else None,
+                            rate=(
+                                float(pricing_info.get("rate"))
+                                if pricing_info and pricing_info.get("rate") is not None
+                                else None
+                            ),
                             currency=pricing_info.get("currency") if pricing_info else None,
                         )
                     )
@@ -323,7 +336,9 @@ def _get_media_buy_delivery_impl(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
                 status=status_literal,  # type: ignore[arg-type]
-                pricing_model=PricingModel("cpm"), # TODO: @yusuf - remove this from adcp protocol. MediaBuy itself doesn't have pricing model. It is in package level
+                pricing_model=PricingModel(
+                    "cpm"
+                ),  # TODO: @yusuf - remove this from adcp protocol. MediaBuy itself doesn't have pricing model. It is in package level
                 totals=DeliveryTotals(
                     impressions=impressions,
                     spend=spend,
@@ -351,7 +366,7 @@ def _get_media_buy_delivery_impl(
     # Create AdCP-compliant response
     response = GetMediaBuyDeliveryResponse(
         reporting_period=reporting_period,
-        currency="USD", # TODO: @yusuf - This is wrong. Currency should be at the media buy delivery level, not on aggregated totals.
+        currency="USD",  # TODO: @yusuf - This is wrong. Currency should be at the media buy delivery level, not on aggregated totals.
         aggregated_totals={
             "impressions": total_impressions,
             "spend": total_spend,
@@ -458,7 +473,7 @@ def get_media_buy_delivery(
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
         push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
         context: Application level context object
-        ctx: FastMCP context (automatically provided) 
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         ToolResult with GetMediaBuyDeliveryResponse data
@@ -472,14 +487,15 @@ def get_media_buy_delivery(
             start_date=start_date,
             end_date=end_date,
             push_notification_config=push_notification_config,
-            context=context
+            context=context,
         )
-        
+
         response = _get_media_buy_delivery_impl(req, ctx)
-    
+
         return ToolResult(content=str(response), structured_content=response.model_dump())
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="get_media_buy_delivery request"))
+
 
 def get_media_buy_delivery_raw(
     media_buy_ids: list[str] | None = None,
@@ -512,7 +528,7 @@ def get_media_buy_delivery_raw(
         start_date=start_date,
         end_date=end_date,
         push_notification_config=None,
-        context=context
+        context=context,
     )
 
     # Call the implementation
@@ -527,6 +543,7 @@ def _require_admin(context: Context) -> None:
     principal_id = get_principal_id_from_context(context)
     if principal_id != "admin":
         raise PermissionError("This operation requires admin privileges")
+
 
 # -- Helper functions --
 def _get_target_media_buys(
@@ -550,10 +567,10 @@ def _get_target_media_buys(
                 filter_statuses = [status for status in req.status_filter if status in valid_statuses]
         else:
             # Default to active
-            filter_statuses = ["active"]       
-       
+            filter_statuses = ["active"]
+
         fetched_buys: Sequence[MediaBuy] = []
-        target_media_buys: list[tuple[str, MediaBuy]] = [] # list of tuples(media_buy_id, MediaBuy)
+        target_media_buys: list[tuple[str, MediaBuy]] = []  # list of tuples(media_buy_id, MediaBuy)
 
         if req.media_buy_ids:
             # Specific media buy IDs requested
@@ -611,8 +628,9 @@ def _get_target_media_buys(
 
         return target_media_buys
 
+
 def _get_pricing_options(pricing_option_ids: list[Any | None]) -> dict[str, PricingOption]:
     with get_db_session() as session:
         statement = select(PricingOption).where(PricingOption.id.in_(pricing_option_ids))
-        pricing_options =session.scalars(statement).all()
-        return { str(pricing_option.id): pricing_option for pricing_option in pricing_options }
+        pricing_options = session.scalars(statement).all()
+        return {str(pricing_option.id): pricing_option for pricing_option in pricing_options}

@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
+from adcp.types import FormatCategory
 
 from src.core.schemas import Format, FormatId, ListCreativeFormatsRequest
 from src.core.tool_context import ToolContext
@@ -50,9 +51,7 @@ def test_list_creative_formats_request_with_all_params():
     )
     assert req.adcp_version == "1.5.0"
     # Library type uses enum, check both enum and value
-    from adcp.types.generated_poc.format import Type as FormatTypeEnum
-
-    assert req.type == FormatTypeEnum.video or req.type.value == "video"
+    assert req.type == FormatCategory.video or req.type.value == "video"
     assert req.standard_only is True
     assert req.category == "standard"
     assert len(req.format_ids) == 2
@@ -79,13 +78,13 @@ def test_filtering_by_type(integration_db, sample_tenant):
     mock_formats = [
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
-            type="video",
+            type=FormatCategory.video,
             name="Video 16:9",
             is_standard=True,
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-            type="display",
+            type=FormatCategory.display,
             name="Display 300x250",
             is_standard=True,
         ),
@@ -118,7 +117,9 @@ def test_filtering_by_type(integration_db, sample_tenant):
 
         # All returned formats should be video type
         if len(formats) > 0:
-            assert all(f.type == "video" for f in formats), "All formats should be video type"
+            assert all(
+                f.type == FormatCategory.video or f.type == "video" for f in formats
+            ), "All formats should be video type"
         # Note: Test may return empty list if mock registry not working - this is OK for integration test
 
 
@@ -141,13 +142,13 @@ def test_filtering_by_standard_only(integration_db, sample_tenant):
     mock_formats = [
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-            type="display",
+            type=FormatCategory.display,
             name="Display 300x250",
             is_standard=True,
         ),
         Format(
             format_id=FormatId(agent_url="https://custom.example.com", id="custom_banner"),
-            type="display",
+            type=FormatCategory.display,
             name="Custom Banner",
             is_standard=False,
         ),
@@ -202,19 +203,19 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
     mock_formats = [
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-            type="display",
+            type=FormatCategory.display,
             name="Display 300x250",
             is_standard=True,
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
-            type="display",
+            type=FormatCategory.display,
             name="Display 728x90",
             is_standard=True,
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
-            type="video",
+            type=FormatCategory.video,
             name="Video 16:9",
             is_standard=True,
         ),
@@ -275,19 +276,19 @@ def test_filtering_combined(integration_db, sample_tenant):
     mock_formats = [
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-            type="display",
+            type=FormatCategory.display,
             name="Display 300x250",
             is_standard=True,
         ),
         Format(
             format_id=FormatId(agent_url="https://custom.example.com", id="display_custom"),
-            type="display",
+            type=FormatCategory.display,
             name="Display Custom",
             is_standard=False,
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
-            type="video",
+            type=FormatCategory.video,
             name="Video 16:9",
             is_standard=True,
         ),
@@ -320,6 +321,6 @@ def test_filtering_combined(integration_db, sample_tenant):
         # All returned formats should match both filters
         if len(formats) > 0:
             assert all(
-                f.type == "display" and f.is_standard for f in formats
+                (f.type == FormatCategory.display or f.type == "display") and f.is_standard for f in formats
             ), "All formats should be display AND standard"
         # Note: Test may return empty list if mock registry not working - this is OK for integration test

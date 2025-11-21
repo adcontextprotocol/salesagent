@@ -14,11 +14,11 @@ from typing import Any
 
 from adcp import GetProductsRequest, GetProductsResponse, Product
 
-# Filters type - import from get_products_request module
+# Filters type - import from stable API (adcp 2.8.0+)
 try:
-    from adcp.types.generated_poc.get_products_request import Filters
+    from adcp.types import Filters
 except ImportError:
-    # Fallback: Filters might be a nested type or not exported
+    # Fallback: Filters might not be exported in older versions
     Filters = dict[str, Any]  # type: ignore
 
 

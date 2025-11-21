@@ -3,9 +3,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import requests
-from adcp.types.generated_poc.create_media_buy_response import (
-    Package as ResponsePackage,
-)
+from adcp.types import PackageStatus
+from adcp.types.aliases import Package as ResponsePackage
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
@@ -363,13 +362,14 @@ class Kevel(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-                # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
-                # - buyer_ref (required)
+                # Build package response - Per AdCP spec v2.9.0, CreateMediaBuyResponse.Package requires:
                 # - package_id (required)
+                # - status (required)
                 package_responses.append(
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
+                        status=PackageStatus.active,  # Default to active for created packages
                     )
                 )
 
@@ -389,13 +389,14 @@ class Kevel(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-                # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
-                # - buyer_ref (required)
+                # Build package response - Per AdCP spec v2.9.0, CreateMediaBuyResponse.Package requires:
                 # - package_id (required)
+                # - status (required)
                 package_responses.append(
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
+                        status=PackageStatus.active,  # Default to active for created packages
                     )
                 )
 
