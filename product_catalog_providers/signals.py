@@ -172,8 +172,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         product_id = f"signal_{product_id_hash}"
 
         # Create AdCP-compliant Product (without internal fields like tenant_id)
-        from adcp.types import CpmAuctionPricingOption, PriceGuidance, PublisherPropertiesByTag
-        from adcp.types.generated_poc.product import DeliveryMeasurement
+        from adcp.types import CpmAuctionPricingOption, DeliveryMeasurement, PriceGuidance, PublisherPropertiesByTag
         from adcp.types.generated_poc.publisher_property_selector import PropertyTag
 
         from src.core.schemas import FormatId
