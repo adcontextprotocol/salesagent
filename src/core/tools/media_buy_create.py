@@ -3076,11 +3076,21 @@ async def _create_media_buy_impl(
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-            # Build minimal response package per AdCP spec
+            # Build response package per AdCP spec (v2.9.0+ requires status field)
+            # Extract status from adapter response, defaulting to "active" if missing
+            adapter_status = response_package_dict.get("status", "active")
+
+            # Ensure status is a string (handle enum objects from adapters)
+            if isinstance(adapter_status, PackageStatus):
+                adapter_status = adapter_status.value
+            elif not isinstance(adapter_status, str):
+                adapter_status = str(adapter_status)
+
             response_packages.append(
                 {
                     "buyer_ref": package.buyer_ref,
                     "package_id": adapter_package_id,
+                    "status": adapter_status,  # Required by AdCP 2.9.0+
                 }
             )
 
