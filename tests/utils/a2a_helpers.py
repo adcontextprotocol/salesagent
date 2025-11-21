@@ -48,7 +48,7 @@ def create_a2a_message_with_skill(skill_name: str, parameters: dict[str, Any]) -
                 root=DataPart(
                     data={
                         "skill": skill_name,
-                        "parameters": parameters,  # A2A spec also supports "input"
+                        "parameters": parameters,  # Primary field (fallback to "input" for compatibility)
                     }
                 )
             )

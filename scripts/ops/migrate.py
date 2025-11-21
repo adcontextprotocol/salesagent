@@ -4,8 +4,9 @@
 import sys
 from pathlib import Path
 
-from alembic import command  # type: ignore[attr-defined]
 from alembic.config import Config
+
+from alembic import command  # type: ignore[attr-defined]
 
 
 def run_migrations(exit_on_error=True):

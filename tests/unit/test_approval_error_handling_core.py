@@ -65,9 +65,7 @@ class TestCreateMediaBuyErrorHandling:
 
     def test_error_response_with_single_error(self):
         """Test CreateMediaBuyError with single error (AdCP spec requires min_length=1)."""
-        error_response = CreateMediaBuyError(
-            errors=[Error(code="INVALID_REQUEST", message="Single validation error")]
-        )
+        error_response = CreateMediaBuyError(errors=[Error(code="INVALID_REQUEST", message="Single validation error")])
 
         # Verify error response structure
         assert isinstance(error_response, CreateMediaBuyError)

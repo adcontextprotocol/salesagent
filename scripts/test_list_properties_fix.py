@@ -47,7 +47,6 @@ def test_list_properties_import():
     print("\nTesting list_authorized_properties import...")
 
     try:
-
         print("✅ SUCCESS: All list_authorized_properties functions imported")
         return True
     except Exception as e:

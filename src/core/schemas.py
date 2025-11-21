@@ -3070,16 +3070,20 @@ class PackageDelivery(BaseModel):
         None, description="Pricing model for this package during delivery (e.g., 'cpm', 'cpc', 'vpm', 'flat_rate')"
     )
     rate: float | None = Field(
-        None, ge=0, description="Pricing rate for this package during delivery (required if fixed pricing, null for auction-based)"
+        None,
+        ge=0,
+        description="Pricing rate for this package during delivery (required if fixed pricing, null for auction-based)",
     )
     currency: str | None = Field(
-        None, pattern=r"^[A-Z]{3}$", description="ISO 4217 currency code for this package during delivery (e.g., USD, EUR, GBP)"
+        None,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code for this package during delivery (e.g., USD, EUR, GBP)",
     )
 
 
 class DailyBreakdown(BaseModel):
     """Day-by-day delivery metrics."""
-    
+
     # Webhook-specific metadata (only present in webhook deliveries)
     notification_type: str | None = Field(
         None,
@@ -3115,8 +3119,15 @@ class MediaBuyDeliveryData(BaseModel):
     status: Literal["ready", "active", "paused", "completed", "failed", "reporting_delayed"] = Field(
         description="Current media buy status. 'ready' means scheduled to go live at flight start date."
     )
-    expected_availability: str | None = Field(default=None, description="When delayed data is expected to be available (only present when status is reporting_delayed)", pattern=r"^\d{4}-\d{2}-\d{2}$")
-    is_adjusted: bool = Field(description="Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals.", default=False)
+    expected_availability: str | None = Field(
+        default=None,
+        description="When delayed data is expected to be available (only present when status is reporting_delayed)",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    is_adjusted: bool = Field(
+        description="Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals.",
+        default=False,
+    )
     pricing_model: PricingModel | None = Field(default=None, description="Pricing model for this media buy")
     totals: DeliveryTotals = Field(description="Aggregate metrics for this media buy across all packages")
     by_package: list[PackageDelivery] = Field(description="Metrics broken down by package")

@@ -57,7 +57,7 @@ def build_adcp_media_buy_request(
     brand_manifest: dict[str, Any] | str | None = None,  # AdCP spec field (preferred)
     context: dict[str, Any] | None = None,
     creative_ids: list[str] | None = None,
-    pricing_option_id: str = "default"
+    pricing_option_id: str = "default",
 ) -> dict[str, Any]:
     """
     Build a valid AdCP V2.3 create_media_buy request.
@@ -115,7 +115,7 @@ def build_adcp_media_buy_request(
                 ),  # AdCP spec: singular product_id
                 "budget": total_budget,  # Package budget is plain number per AdCP spec
                 "pricing_option_id": pricing_option_id,  # Required per AdCP spec,
-                "creative_ids": creative_ids
+                "creative_ids": creative_ids,
             }
         ],
         "start_time": start_time,

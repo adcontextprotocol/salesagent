@@ -201,7 +201,8 @@ class PropertyDiscoveryService:
                     )
                     existing_properties_objs = session.scalars(stmt).all()  # type: ignore[assignment]
                     existing_properties: dict[str, AuthorizedProperty] = {
-                        p.property_id: p for p in existing_properties_objs  # type: ignore[attr-defined,misc]
+                        p.property_id: p
+                        for p in existing_properties_objs  # type: ignore[attr-defined,misc]
                     }
 
                     # Create/update property records (using batched existence check)

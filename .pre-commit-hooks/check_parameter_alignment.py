@@ -8,6 +8,7 @@ Exit codes:
     0: All signatures aligned
     1: Found signature mismatches
 """
+
 import ast
 import sys
 from pathlib import Path

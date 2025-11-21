@@ -10,7 +10,6 @@ Since GAM doesn't provide a real-time freshness API, we use heuristics based on:
 
 import logging
 from datetime import UTC, datetime, timedelta
-from src.adapters.gam_reporting_service import ReportingData
 
 import pytz
 
@@ -54,32 +53,23 @@ class GAMDataFreshnessValidator:
             message = f"Too early for fresh data (current hour: {now.hour}, need {cls.DAILY_DATA_READY_HOUR_ET}+)"
             logger.error(message)
 
-            return (
-                False,
-                message
-            )
+            return (False, message)
 
         # Check 2: Does the report actually include our target date?
         report_end = reporting_data.end_date
         if report_end.date() < target_date.date():
             message = f"Report ends {report_end.date()}, but we need data through {target_date.date()}"
             logger.error(message)
-            
-            return (
-                False,
-                message
-            )
+
+            return (False, message)
 
         # Check 3: Is the data valid until after our target date?
         data_valid_until = reporting_data.data_valid_until
         if data_valid_until.date() < target_date.date():
             message = f"Data only valid until {data_valid_until.date()}, need {target_date.date()}"
             logger.error(message)
-            
-            return (
-                False,
-                message
-            )
+
+            return (False, message)
 
         # Check 4: Is this month-end data that might still be processing?
         if target_date.day == 1 and target_date.month != (target_date - timedelta(days=1)).month:

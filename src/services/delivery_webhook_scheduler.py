@@ -4,20 +4,21 @@ Delivery Webhook Scheduler
 Sends daily delivery reports via webhooks for media buys that have configured reporting_webhook.
 This runs as a background task and sends reports when GAM data is fresh (after 4 AM PT daily).
 """
+
 import asyncio
 import logging
 import os
 import uuid
-from datetime import UTC, date, datetime, timedelta, time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import pytz
 from sqlalchemy import func, select
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, WebhookDeliveryLog, PushNotificationConfig as DBPushNotificationConfig
-from src.core.schemas import GetMediaBuyDeliveryRequest
+from src.core.database.models import MediaBuy, WebhookDeliveryLog
+from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 from src.core.schema_adapters import GetMediaBuyDeliveryResponse
+from src.core.schemas import GetMediaBuyDeliveryRequest
 from src.core.tool_context import ToolContext
 from src.core.tools.media_buy_delivery import _get_media_buy_delivery_impl
 from src.services.protocol_webhook_service import get_protocol_webhook_service
@@ -139,15 +140,12 @@ class DeliveryWebhookScheduler:
 
             # Check if we've already sent a scheduled delivery_report webhook for this media buy
             # and reporting date. We use created_at::date as the period key.
-            existing_stmt = (
-                select(WebhookDeliveryLog)
-                .where(
-                    WebhookDeliveryLog.media_buy_id == media_buy.media_buy_id,
-                    WebhookDeliveryLog.task_type == "delivery_report",
-                    WebhookDeliveryLog.notification_type == "scheduled",
-                    WebhookDeliveryLog.status == "success",
-                    func.date(WebhookDeliveryLog.created_at) == end_date_obj,
-                )
+            existing_stmt = select(WebhookDeliveryLog).where(
+                WebhookDeliveryLog.media_buy_id == media_buy.media_buy_id,
+                WebhookDeliveryLog.task_type == "delivery_report",
+                WebhookDeliveryLog.notification_type == "scheduled",
+                WebhookDeliveryLog.status == "success",
+                func.date(WebhookDeliveryLog.created_at) == end_date_obj,
             )
             existing_log = session.scalars(existing_stmt).first()
             if existing_log:
@@ -179,11 +177,15 @@ class DeliveryWebhookScheduler:
             delivery_response = _get_media_buy_delivery_impl(req, context)
 
             if not isinstance(delivery_response, GetMediaBuyDeliveryResponse):
-                logger.warning(f"`Couldn't get media_delivery` for {media_buy.media_buy_id}. Result is {delivery_response.model_dump()}")
+                logger.warning(
+                    f"`Couldn't get media_delivery` for {media_buy.media_buy_id}. Result is {delivery_response.model_dump()}"
+                )
                 return
 
             if delivery_response.errors is not None:
-                logger.warning(f"`Couldn't get media_delivery` for {media_buy.media_buy_id}. We have recieved error in the result. Result is {delivery_response.model_dump()}")
+                logger.warning(
+                    f"`Couldn't get media_delivery` for {media_buy.media_buy_id}. We have recieved error in the result. Result is {delivery_response.model_dump()}"
+                )
                 return
 
             # Get sequence number for this webhook (get max sequence + 1)
@@ -267,7 +269,7 @@ class DeliveryWebhookScheduler:
                 result=response_dict,  # Use modified dict with webhook metadata
                 tenant_id=media_buy.tenant_id,
                 principal_id=media_buy.principal_id,
-                media_buy_id=media_buy.media_buy_id
+                media_buy_id=media_buy.media_buy_id,
             )
 
             logger.info(f"Sent delivery report webhook for media buy {media_buy.media_buy_id}")
