@@ -109,7 +109,11 @@ def _sanitize_package_status(status: Any) -> str | None:
         return None
 
     # Convert to string for validation
-    status_str = str(status)
+    # If it's already a PackageStatus enum, extract its value
+    if isinstance(status, PackageStatus):
+        status_str = status.value
+    else:
+        status_str = str(status)
 
     if status_str in VALID_PACKAGE_STATUSES:
         return status_str
