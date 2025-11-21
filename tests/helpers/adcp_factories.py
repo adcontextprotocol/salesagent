@@ -12,9 +12,7 @@ from typing import Any
 
 # Import types from adcp library - use public API when available
 from adcp import BrandManifest, Format, Property
-from adcp.types.generated_poc.creative_asset import CreativeAsset
-from adcp.types.generated_poc.format_id import FormatId
-from adcp.types.generated_poc.product import Product
+from adcp.types import CreativeAsset, FormatId, Product
 
 # Import Package and PackageRequest from our schemas (they extend adcp library)
 from src.core.schemas import Package, PackageRequest, url

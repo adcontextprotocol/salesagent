@@ -12,6 +12,10 @@ from adcp import Error
 # Import types from stable API (per adcp 2.9.0+ - all types now in stable)
 # Note: AffectedPackage was removed in 2.9.0, use Package instead
 from adcp.types import Creative as LibraryCreative
+
+# Import correct Filters type for ListCreativesRequest
+# TODO(adcp-library): Move creative Filters to stable API
+from adcp.types import CreativeFilters as LibraryCreativeFilters
 from adcp.types import (
     CreativeStatus,
     PriceGuidance,  # Replaces local PriceGuidance class
@@ -53,15 +57,6 @@ from adcp.types.aliases import (
 )
 from adcp.types.aliases import (
     UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
-)
-
-# Import correct Filters type for ListCreativesRequest
-# TODO(adcp-library): Move creative Filters to stable API
-# Currently using generated_poc because stable.Filters is from get_products_request
-# which doesn't have the fields we need (status, format, tags, etc.)
-# This import is at risk if the library removes generated_poc module
-from adcp.types.generated_poc.creative_filters import (
-    CreativeFilters as LibraryCreativeFilters,
 )
 
 # For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)

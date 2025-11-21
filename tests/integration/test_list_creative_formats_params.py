@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
-from adcp.types.generated_poc.format_category import FormatCategory
+from adcp.types import FormatCategory
 
 from src.core.schemas import Format, FormatId, ListCreativeFormatsRequest
 from src.core.tool_context import ToolContext
@@ -51,8 +51,6 @@ def test_list_creative_formats_request_with_all_params():
     )
     assert req.adcp_version == "1.5.0"
     # Library type uses enum, check both enum and value
-    from adcp.types.generated_poc.format_category import FormatCategory
-
     assert req.type == FormatCategory.video or req.type.value == "video"
     assert req.standard_only is True
     assert req.category == "standard"
