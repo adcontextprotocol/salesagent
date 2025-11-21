@@ -175,9 +175,6 @@ def create_principal(tenant_id):
                 "enabled": True,
             }
 
-        print('REQUEST.FORM')
-        print(request.form)
-
         with get_db_session() as db_session:
             # Check if principal name already exists
             existing = db_session.scalars(select(Principal).filter_by(tenant_id=tenant_id, name=principal_name)).first()
