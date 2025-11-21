@@ -172,8 +172,9 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         product_id = f"signal_{product_id_hash}"
 
         # Create AdCP-compliant Product (without internal fields like tenant_id)
-        from adcp.types import CpmAuctionPricingOption, PriceGuidance
+        from adcp.types import CpmAuctionPricingOption, PriceGuidance, PublisherPropertiesByTag
         from adcp.types.generated_poc.product import DeliveryMeasurement
+        from adcp.types.generated_poc.publisher_property_selector import PropertyTag
 
         from src.core.schemas import FormatId
 
@@ -192,9 +193,9 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
             publisher_properties=[
-                PublisherProperties5(  # type: ignore[name-defined]  # TODO: Update to PublisherPropertySelector per adcp 2.7.0
+                PublisherPropertiesByTag(
                     selection_type="by_tag",
-                    property_tags=[PropertyTag("all_inventory")],  # type: ignore[name-defined]  # TODO: Update to use correct type from adcp library
+                    property_tags=[PropertyTag("all_inventory")],
                     publisher_domain="publisher.example.com",  # Placeholder domain
                 )
             ],  # Required per AdCP spec
