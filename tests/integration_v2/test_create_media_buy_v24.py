@@ -19,7 +19,7 @@ or with Docker Compose running for PostgreSQL.
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from adcp.types.generated_poc.targeting import TargetingOverlay
+from adcp.types import TargetingOverlay
 from sqlalchemy import delete, select
 
 from src.core.database.database_session import get_db_session

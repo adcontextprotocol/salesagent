@@ -1782,7 +1782,7 @@ def _list_creatives_impl(
     Returns:
         ListCreativesResponse with filtered creative assets and pagination info
     """
-    from src.core.schemas import ListCreativesRequest
+    from src.core.schemas import create_list_creatives_request
 
     # Parse datetime strings if provided
     created_after_dt = None
@@ -1807,7 +1807,7 @@ def _list_creatives_impl(
     )
 
     try:
-        req = ListCreativesRequest(
+        req = create_list_creatives_request(
             media_buy_id=media_buy_id,
             buyer_ref=buyer_ref,
             status=status,
@@ -1915,9 +1915,11 @@ def _list_creatives_impl(
         else:
             stmt = stmt.order_by(sort_column.desc())
 
-        # Apply pagination
-        offset = (req.page - 1) * req.limit
-        db_creatives = session.scalars(stmt.offset(offset).limit(req.limit)).all()
+        # Apply pagination (page and limit have defaults from factory function)
+        page = req.page if req.page is not None else 1
+        limit = req.limit if req.limit is not None else 50
+        offset = (page - 1) * limit
+        db_creatives = session.scalars(stmt.offset(offset).limit(limit)).all()
 
         # Convert to schema objects
         for db_creative in db_creatives:
@@ -1990,8 +1992,8 @@ def _list_creatives_impl(
             )
             creatives.append(creative)
 
-    # Calculate pagination info
-    has_more = (req.page * req.limit) < total_count
+    # Calculate pagination info (page and limit have defaults from factory function)
+    has_more = (page * limit) < total_count
 
     # Audit logging
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -2042,12 +2044,14 @@ def _list_creatives_impl(
     if req.search:
         filters_applied.append(f"search={req.search}")
 
-    # Build sort_applied dict
-    sort_applied = {"field": req.sort_by, "direction": req.sort_order} if req.sort_by else None
+    # Build sort_applied dict (sort_by and sort_order have defaults from factory)
+    sort_by = req.sort_by if req.sort_by is not None else "created_date"
+    sort_order = req.sort_order if req.sort_order is not None else "desc"
+    sort_applied = {"field": sort_by, "direction": sort_order} if sort_by else None
 
-    # Calculate offset and total_pages
-    offset = (req.page - 1) * req.limit
-    total_pages = (total_count + req.limit - 1) // req.limit if req.limit > 0 else 0
+    # Calculate offset and total_pages (page and limit have defaults from factory)
+    offset_calc = (page - 1) * limit
+    total_pages = (total_count + limit - 1) // limit if limit > 0 else 0
 
     # Import required schema classes
     from src.core.schemas import Pagination, QuerySummary
@@ -2060,7 +2064,7 @@ def _list_creatives_impl(
             sort_applied=sort_applied,
         ),
         pagination=Pagination(
-            limit=req.limit, offset=offset, has_more=has_more, total_pages=total_pages, current_page=req.page
+            limit=limit, offset=offset_calc, has_more=has_more, total_pages=total_pages, current_page=page
         ),
         creatives=creatives,
         context=req.context,
