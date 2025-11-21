@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Integration tests for the Tenant Management API - tests with actual database."""
 
-
 import pytest
 from flask import Flask
 from sqlalchemy import delete

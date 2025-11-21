@@ -196,8 +196,7 @@ async def create_mcp_client(
 
                 # Log and retry for this candidate
                 logger.warning(
-                    f"MCP connection attempt {attempt + 1}/{attempts} failed for {current_url}: "
-                    f"{type(e).__name__}: {e}"
+                    f"MCP connection attempt {attempt + 1}/{attempts} failed for {current_url}: {type(e).__name__}: {e}"
                 )
 
                 if attempt < attempts - 1:

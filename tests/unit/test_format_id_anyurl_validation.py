@@ -18,7 +18,8 @@ def test_format_validation_with_anyurl_objects():
     # Create FormatId objects with AnyUrl (matches real usage)
     product_format = FormatId(agent_url="https://creative.adcontextprotocol.org/", id="display_300x250")
     package_format = FormatId(
-        agent_url="https://creative.adcontextprotocol.org", id="display_300x250"  # No trailing slash
+        agent_url="https://creative.adcontextprotocol.org",
+        id="display_300x250",  # No trailing slash
     )
 
     # Verify AnyUrl type

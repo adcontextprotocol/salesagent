@@ -331,12 +331,7 @@ async def _activate_signal_impl(
 
         # Build response with adapter schema fields
         if requires_approval or not activation_success:
-            response = ActivateSignalResponse(
-                task_id=task_id,
-                status=status,
-                errors=errors,
-                context=context
-            )
+            response = ActivateSignalResponse(task_id=task_id, status=status, errors=errors, context=context)
         else:
             response = ActivateSignalResponse(
                 task_id=task_id,
@@ -345,7 +340,7 @@ async def _activate_signal_impl(
                 estimated_activation_duration_minutes=(
                     estimated_activation_duration_minutes if activation_success else None
                 ),
-                context=context
+                context=context,
             )
         return response
 

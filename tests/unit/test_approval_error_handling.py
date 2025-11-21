@@ -6,7 +6,6 @@ This tests the fix for the bug where trying to approve a media buy would crash w
 "'CreateMediaBuyError' object has no attribute 'media_buy_id'"
 """
 
-
 from src.core.schemas import CreateMediaBuyError, CreateMediaBuySuccess, Error
 
 
@@ -67,8 +66,6 @@ class TestApprovalErrorHandling:
         assert "2 error(s)" in error_str
 
         # Single error - AdCP spec requires min_length=1 for errors array
-        error_single = CreateMediaBuyError(
-            errors=[Error(code="INVALID_REQUEST", message="Single error")]
-        )
+        error_single = CreateMediaBuyError(errors=[Error(code="INVALID_REQUEST", message="Single error")])
         error_str_single = str(error_single)
         assert "1 error(s)" in error_str_single or "failed" in error_str_single.lower()

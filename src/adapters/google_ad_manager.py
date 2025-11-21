@@ -34,13 +34,14 @@ from src.adapters.gam.managers import (
     GAMTargetingManager,
     GAMWorkflowManager,
 )
-from src.adapters.gam_data_freshness import validate_and_log_freshness
+
 # Re-export constants for backward compatibility
 from src.adapters.gam.managers.orders import (
     GUARANTEED_LINE_ITEM_TYPES,
     NON_GUARANTEED_LINE_ITEM_TYPES,
 )
 from src.adapters.gam.pricing_compatibility import PricingCompatibility
+from src.adapters.gam_data_freshness import validate_and_log_freshness
 from src.core.audit_logger import AuditLogger
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
@@ -177,7 +178,11 @@ class GoogleAdManager(AdServerAdapter):
             # Only initialize creative manager if we have advertiser_id (required for creative operations)
             if self.advertiser_id and self.trafficker_id:
                 self.creatives_manager = GAMCreativesManager(
-                    None, self.advertiser_id, dry_run=True, log_func=self.log, adapter=self  # type: ignore[arg-type]
+                    None,
+                    self.advertiser_id,
+                    dry_run=True,
+                    log_func=self.log,
+                    adapter=self,  # type: ignore[arg-type]
                 )
             else:
                 self.creatives_manager = None  # type: ignore[assignment]
@@ -187,7 +192,11 @@ class GoogleAdManager(AdServerAdapter):
 
             # Initialize sync manager in dry-run mode
             self.sync_manager = GAMSyncManager(
-                None, self.inventory_manager, self.orders_manager, tenant_id or "", dry_run=True  # type: ignore[arg-type]
+                None,
+                self.inventory_manager,
+                self.orders_manager,
+                tenant_id or "",
+                dry_run=True,  # type: ignore[arg-type]
             )
 
             # Initialize workflow manager (doesn't need client)
@@ -392,7 +401,8 @@ class GoogleAdManager(AdServerAdapter):
 
                     # Load inventory mappings from ProductInventoryMapping table
                     inventory_stmt = select(ProductInventoryMapping).filter_by(
-                        product_id=product.product_id, tenant_id=self.tenant_id  # Use product_id string, not integer id
+                        product_id=product.product_id,
+                        tenant_id=self.tenant_id,  # Use product_id string, not integer id
                     )
                     inventory_mappings = db_session.scalars(inventory_stmt).all()
                     logger.info(f"Found {len(inventory_mappings)} inventory mappings for product {product.product_id}")
@@ -936,7 +946,9 @@ class GoogleAdManager(AdServerAdapter):
         status = self.orders_manager.get_order_status(media_buy_id)
 
         return CheckMediaBuyStatusResponse(
-            buyer_ref="", media_buy_id=media_buy_id, status=status.lower()  # Would need to be retrieved from database
+            buyer_ref="",
+            media_buy_id=media_buy_id,
+            status=status.lower(),  # Would need to be retrieved from database
         )
 
     def get_media_buy_delivery(
@@ -1062,12 +1074,8 @@ class GoogleAdManager(AdServerAdapter):
         # The adapter decides whether to return data or raise error if data is stale
         # Target date is the end of the reporting period
         target_date = dt.fromisoformat(date_range.end.replace("Z", "+00:00"))
-        
-        is_fresh = validate_and_log_freshness(
-            reporting_data, 
-            media_buy_id, 
-            target_date=target_date
-        )
+
+        is_fresh = validate_and_log_freshness(reporting_data, media_buy_id, target_date=target_date)
 
         if not is_fresh:
             raise ValueError(f"GAM data is not fresh enough for media buy {media_buy_id}")

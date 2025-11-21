@@ -165,7 +165,6 @@ class TestMCPToolRoundtripMinimal:
         assert len(content["errors"]) >= 1
         assert content["errors"][0]["code"] == "invalid_date_range"
 
-
     async def test_sync_creatives_minimal(self, mcp_client):
         """Test sync_creatives with minimal required parameters."""
         result = await mcp_client.call_tool(

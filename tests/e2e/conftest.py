@@ -218,20 +218,20 @@ def docker_services_e2e(request):
 
     # Initialize CI test data now that services are healthy
     print("📦 Initializing CI test data (products, principals, etc.)...")
-    
+
     # Setup environment for init script - reuse existing env if available, else create minimal
     init_env = os.environ.copy()
     init_env["ADCP_SALES_PORT"] = str(mcp_port)
     init_env["POSTGRES_PORT"] = str(postgres_port)
     init_env["ADMIN_UI_PORT"] = str(admin_port)
-    
+
     # Use docker-compose exec to run the script inside the container
     # This works for both self-managed (else block) and existing services (if block)
     # provided we are in the correct project context.
-    
+
     # Note: run_all_tests.sh sets COMPOSE_PROJECT_NAME, so we inherit that environment.
     # If running manually without script, it defaults to folder name.
-    
+
     init_result = subprocess.run(
         ["docker-compose", "exec", "-T", "adcp-server", "python", "scripts/setup/init_database_ci.py"],
         env=init_env,
@@ -369,11 +369,11 @@ def live_server(docker_services_e2e):
         "postgres": f"postgresql://adcp_user:secure_password_change_me@localhost:{ports['postgres_port']}/adcp",
         "postgres_params": {
             "host": "localhost",
-            "port": ports['postgres_port'],
+            "port": ports["postgres_port"],
             "user": "adcp_user",
             "password": "secure_password_change_me",
-            "dbname": "adcp"
-        }
+            "dbname": "adcp",
+        },
     }
 
 

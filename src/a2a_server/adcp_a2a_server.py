@@ -434,9 +434,9 @@ class AdCPRequestHandler(RequestHandler):
 
                 # Handle structured data parts (explicit skill invocation)
                 elif hasattr(part, "data") and isinstance(part.data, dict):
-                    # Support both "input" (A2A spec) and "parameters" (legacy) for skill params
+                    # Support both "parameters" (primary) and "input" (fallback) for skill params
                     if "skill" in part.data:
-                        params_data = part.data.get("input") or part.data.get("parameters", {})
+                        params_data = part.data.get("parameters") or part.data.get("input", {})
                         skill_invocations.append({"skill": part.data["skill"], "parameters": params_data})
                         logger.info(
                             f"Found explicit skill invocation: {part.data['skill']} with params: {list(params_data.keys())}"
@@ -446,8 +446,8 @@ class AdCPRequestHandler(RequestHandler):
                 elif hasattr(part, "root") and hasattr(part.root, "data"):
                     data = part.root.data
                     if isinstance(data, dict) and "skill" in data:
-                        # Support both "input" (A2A spec) and "parameters" (legacy) for skill params
-                        params_data = data.get("input") or data.get("parameters", {})
+                        # Support both "parameters" (primary) and "input" (fallback) for skill params
+                        params_data = data.get("parameters") or data.get("input", {})
                         skill_invocations.append({"skill": data["skill"], "parameters": params_data})
                         logger.info(
                             f"Found explicit skill invocation (nested): {data['skill']} with params: {list(params_data.keys())}"
@@ -1523,7 +1523,9 @@ class AdCPRequestHandler(RequestHandler):
             response_data["message"] = (
                 "Creatives synced with errors"
                 if has_errors
-                else str(response) if not isinstance(response, dict) else "Creatives synced successfully"
+                else str(response)
+                if not isinstance(response, dict)
+                else "Creatives synced successfully"
             )
 
             return response_data
@@ -1540,7 +1542,7 @@ class AdCPRequestHandler(RequestHandler):
                 auth_token=auth_token,
                 tool_name="list_creatives",
             )
-            
+
             # Call core function with optional parameters (fixing original validation bug)
             response = core_list_creatives_tool(
                 media_buy_id=parameters.get("media_buy_id"),

@@ -240,7 +240,6 @@ class TestSignalsAgentRegistry:
             patch.object(registry, "_build_adcp_client") as mock_build,
             patch.object(registry, "_get_signals_from_agent") as mock_get_signals,
         ):
-
             mock_build.return_value = Mock()
             mock_get_signals.side_effect = RuntimeError("Authentication failed: Invalid token")
 

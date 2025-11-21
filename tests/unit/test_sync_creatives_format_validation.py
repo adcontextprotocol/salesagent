@@ -59,7 +59,6 @@ class TestSyncCreativesFormatValidation:
             patch("src.core.tools.creatives.get_audit_logger"),
             patch("src.core.tools.creatives.log_tool_activity"),
         ):
-
             # Setup mock registry
             # Note: list_all_formats and get_format are async methods
             async def mock_list_all_formats(tenant_id=None):
@@ -98,7 +97,6 @@ class TestSyncCreativesFormatValidation:
             patch("src.core.tools.creatives.get_audit_logger"),
             patch("src.core.tools.creatives.log_tool_activity"),
         ):
-
             # Setup mock registry - format not found
             async def mock_list_all_formats(tenant_id=None):
                 return []
@@ -139,7 +137,6 @@ class TestSyncCreativesFormatValidation:
             patch("src.core.tools.creatives.get_audit_logger"),
             patch("src.core.tools.creatives.log_tool_activity"),
         ):
-
             # Setup mock registry - agent unreachable
             async def mock_list_all_formats(tenant_id=None):
                 return []
@@ -187,7 +184,6 @@ class TestSyncCreativesFormatValidation:
             patch("src.core.tools.creatives.get_audit_logger"),
             patch("src.core.tools.creatives.log_tool_activity"),
         ):
-
             # Setup mock registry
             # Note: list_all_formats and get_format are async methods
             async def mock_list_all_formats(tenant_id=None):
@@ -247,7 +243,6 @@ class TestSyncCreativesFormatValidation:
             patch("src.core.tools.creatives.get_audit_logger"),
             patch("src.core.tools.creatives.log_tool_activity"),
         ):
-
             # Setup mock registry
             async def mock_list_all_formats(tenant_id=None):
                 return [mock_format_spec]
@@ -304,7 +299,6 @@ class TestSyncCreativesFormatValidation:
             patch("src.core.tools.creatives.get_audit_logger"),
             patch("src.core.tools.creatives.log_tool_activity"),
         ):
-
             # Setup mock registry
             # Note: list_all_formats and get_format are async methods
             async def mock_list_all_formats(tenant_id=None):
@@ -352,7 +346,6 @@ class TestSyncCreativesFormatValidation:
             patch("src.core.tools.creatives.get_audit_logger"),
             patch("src.core.tools.creatives.log_tool_activity"),
         ):
-
             # Setup mock registry (needed for list_all_formats call)
             async def mock_list_all_formats(tenant_id=None):
                 return []
@@ -400,7 +393,6 @@ class TestSyncCreativesFormatValidation:
             patch("src.core.tools.creatives.get_audit_logger"),
             patch("src.core.tools.creatives.log_tool_activity"),
         ):
-
             # Setup mock registry
             async def mock_list_all_formats(tenant_id=None):
                 return []

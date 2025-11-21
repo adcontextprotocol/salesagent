@@ -174,8 +174,7 @@ def convert_pricing_option_to_adcp(
 
     else:
         raise ValueError(
-            f"Unsupported pricing_model '{pricing_model}'. "
-            f"Supported models: cpm, vcpm, cpc, cpcv, cpv, cpp, flat_rate"
+            f"Unsupported pricing_model '{pricing_model}'. Supported models: cpm, vcpm, cpc, cpcv, cpv, cpp, flat_rate"
         )
 
 
