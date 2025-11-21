@@ -40,6 +40,7 @@ from src.adapters.gam.managers.orders import (
     NON_GUARANTEED_LINE_ITEM_TYPES,
 )
 from src.adapters.gam.pricing_compatibility import PricingCompatibility
+from src.adapters.gam_data_freshness import validate_and_log_freshness
 from src.core.audit_logger import AuditLogger
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
@@ -944,24 +945,229 @@ class GoogleAdManager(AdServerAdapter):
     def get_media_buy_delivery(
         self, media_buy_id: str, date_range: ReportingPeriod, today: datetime
     ) -> AdapterGetMediaBuyDeliveryResponse:
-        """Get delivery metrics for a media buy."""
-        # This would be implemented with appropriate manager delegation
-        # For now, returning a basic implementation
-        from src.core.schemas import DeliveryTotals
+        """Get delivery metrics for a media buy from GAM using ReportService.
+
+        Args:
+            media_buy_id: The media buy ID (used to look up GAM order/line items)
+            date_range: Reporting period with start/end dates
+            today: Current date for time-based calculations
+
+        Returns:
+            AdapterGetMediaBuyDeliveryResponse with real metrics from GAM
+        """
+        from datetime import datetime as dt
+
+        from sqlalchemy import select
+
+        from src.adapters.gam_reporting_service import GAMReportingService
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import MediaBuy
+        from src.core.schemas import AdapterPackageDelivery, DeliveryTotals
+
+        # Input validation
+        if not media_buy_id or not isinstance(media_buy_id, str):
+            logger.error(f"Invalid media_buy_id: {media_buy_id}")
+            return AdapterGetMediaBuyDeliveryResponse(
+                media_buy_id=str(media_buy_id) if media_buy_id else "invalid",
+                reporting_period=date_range,
+                by_package=[],
+                totals=DeliveryTotals(
+                    impressions=0, spend=0, clicks=None, ctr=None, video_completions=None, completion_rate=None
+                ),
+                currency="USD",
+            )
+
+        # Sanitize input (basic security check)
+        if len(media_buy_id) > 255 or not media_buy_id.isprintable():
+            logger.error(f"Suspicious media_buy_id format: {media_buy_id}")
+            return AdapterGetMediaBuyDeliveryResponse(
+                media_buy_id=media_buy_id[:50],  # Truncate for safety
+                reporting_period=date_range,
+                by_package=[],
+                totals=DeliveryTotals(
+                    impressions=0, spend=0, clicks=None, ctr=None, video_completions=None, completion_rate=None
+                ),
+                currency="USD",
+            )
+
+        # Get media buy from database to find GAM order/line item IDs
+        with get_db_session() as session:
+            stmt = select(MediaBuy).where(MediaBuy.media_buy_id == media_buy_id)
+            media_buy = session.scalars(stmt).first()
+
+            if not media_buy:
+                logger.error(f"Media buy {media_buy_id} not found in database")
+                return AdapterGetMediaBuyDeliveryResponse(
+                    media_buy_id=media_buy_id,
+                    reporting_period=date_range,
+                    by_package=[],
+                    totals=DeliveryTotals(
+                        impressions=0,
+                        spend=0,
+                        clicks=0,
+                        ctr=0.0,
+                        video_completions=None,
+                        completion_rate=None,
+                    ),
+                    currency="USD",
+                )
+
+            # Extract package information from raw_request
+            raw_request = media_buy.raw_request or {}
+            packages_data = raw_request.get("packages", [])
+
+        # Initialize GAM reporting service
+        if self.dry_run or not self.client:
+            # Dry run mode - return simulated metrics
+            logger.info(f"Dry-run mode: returning simulated metrics for media buy {media_buy_id}")
+            total_budget = float(media_buy.budget) if media_buy.budget else 0.0
+            progress = 0.5  # Simulate 50% delivery
+
+            return AdapterGetMediaBuyDeliveryResponse(
+                media_buy_id=media_buy_id,
+                reporting_period=date_range,
+                by_package=[],
+                totals=DeliveryTotals(
+                    impressions=int(total_budget * 1000 * progress),  # Assume $1 CPM
+                    spend=total_budget * progress,
+                    clicks=int(total_budget * 1000 * progress * 0.01),  # 1% CTR
+                    ctr=1.0,
+                    video_completions=None,
+                    completion_rate=None,
+                ),
+                currency=str(media_buy.currency or "USD"),
+            )
+
+        reporting_service = GAMReportingService(self.client)
+
+        # Parse date range
+        start_dt = dt.fromisoformat(date_range.start.replace("Z", "+00:00"))
+        end_dt = dt.fromisoformat(date_range.end.replace("Z", "+00:00"))
+
+        # Determine date range type for reporting
+        days_diff = (end_dt - start_dt).days
+        if days_diff <= 1:
+            range_type = "today"
+        elif days_diff <= 31:
+            range_type = "this_month"
+        else:
+            range_type = "lifetime"
+
+        # Fetch delivery data from GAM
+        # Note: We'll aggregate across all line items associated with this media buy
+        reporting_data = reporting_service.get_reporting_data(
+            date_range=range_type,  # type: ignore[arg-type]
+            advertiser_id=self.advertiser_id,
+            requested_timezone="America/New_York",
+        )
+
+        # Validate data freshness
+        # The adapter decides whether to return data or raise error if data is stale
+        # Target date is the end of the reporting period
+        target_date = dt.fromisoformat(date_range.end.replace("Z", "+00:00"))
+
+        is_fresh = validate_and_log_freshness(reporting_data, media_buy_id, target_date=target_date)
+
+        if not is_fresh:
+            raise ValueError(f"GAM data is not fresh enough for media buy {media_buy_id}")
+
+        # Aggregate totals across all packages
+        total_impressions = reporting_data.metrics.get("total_impressions", 0)
+        total_clicks = reporting_data.metrics.get("total_clicks", 0)
+        total_spend = reporting_data.metrics.get("total_spend", 0.0)
+        avg_ctr = reporting_data.metrics.get("average_ctr", 0.0)
+
+        # Build daily breakdown from reporting data
+        daily_breakdown = []
+        daily_metrics = {}
+        for row in reporting_data.data:
+            # Extract date from the row (reporting service uses DATE dimension)
+            date_str = row.get("date", row.get("DATE", ""))
+            if date_str:
+                # Ensure date format is YYYY-MM-DD
+                if not isinstance(date_str, str):
+                    date_str = str(date_str)
+
+                # Parse and reformat if needed (handle various date formats)
+                try:
+                    # Try parsing ISO format first
+                    if "T" in date_str:
+                        date_obj = datetime.fromisoformat(date_str.split("T")[0])
+                        date_str = date_obj.strftime("%Y-%m-%d")
+                    # Handle YYYY-MM-DD format (already correct)
+                    elif len(date_str) == 10 and date_str[4] == "-" and date_str[7] == "-":
+                        pass  # Already in correct format
+                except Exception:
+                    # If parsing fails, skip this row
+                    continue
+
+                if date_str not in daily_metrics:
+                    daily_metrics[date_str] = {
+                        "impressions": 0.0,
+                        "spend": 0.0,
+                    }
+                daily_metrics[date_str]["impressions"] += float(row.get("impressions", 0))
+                daily_metrics[date_str]["spend"] += float(row.get("spend", 0.0))
+
+        # Convert daily metrics dict to sorted list of DailyBreakdown objects
+        for date_str in sorted(daily_metrics.keys()):
+            metrics = daily_metrics[date_str]
+            daily_breakdown.append(
+                {
+                    "date": date_str,
+                    "impressions": metrics["impressions"],
+                    "spend": metrics["spend"],
+                }
+            )
+
+        # Build package-level delivery data if we have line item IDs
+        by_package = []
+        if packages_data:
+            # Group reporting data by line item
+            line_item_metrics = {}
+            for row in reporting_data.data:
+                line_item_id = row.get("line_item_id", "")
+                if line_item_id:
+                    if line_item_id not in line_item_metrics:
+                        line_item_metrics[line_item_id] = {
+                            "impressions": 0,
+                            "clicks": 0,
+                            "spend": 0.0,
+                        }
+                    line_item_metrics[line_item_id]["impressions"] += row.get("impressions", 0)
+                    line_item_metrics[line_item_id]["clicks"] += row.get("clicks", 0)
+                    line_item_metrics[line_item_id]["spend"] += row.get("spend", 0.0)
+
+            # Match packages to line items and build delivery data
+            for i, pkg_data in enumerate(packages_data):
+                package_id = pkg_data.get("package_id", f"pkg_{i}")
+                # Try to find platform_line_item_id from the package data
+                platform_line_item_id = pkg_data.get("platform_line_item_id")
+
+                if platform_line_item_id and platform_line_item_id in line_item_metrics:
+                    metrics = line_item_metrics[platform_line_item_id]
+                    by_package.append(
+                        AdapterPackageDelivery(
+                            package_id=package_id,
+                            impressions=int(metrics["impressions"]),
+                            spend=metrics["spend"],
+                        )
+                    )
 
         return AdapterGetMediaBuyDeliveryResponse(
             media_buy_id=media_buy_id,
             reporting_period=date_range,
-            by_package=[],
+            by_package=by_package,
             totals=DeliveryTotals(
-                impressions=0,
-                spend=0,
-                clicks=0,
-                ctr=0.0,
-                video_completions=0,
-                completion_rate=0.0,
+                impressions=total_impressions,
+                spend=total_spend,
+                clicks=total_clicks if total_clicks > 0 else None,
+                ctr=avg_ctr if avg_ctr > 0 else None,
+                video_completions=None,
+                completion_rate=None,
             ),
-            currency="USD",
+            currency=str(media_buy.currency or "USD"),
+            daily_breakdown=daily_breakdown if daily_breakdown else None,
         )
 
     def update_media_buy(

@@ -108,10 +108,41 @@ except (RuntimeError, Exception) as e:
     else:
         raise
 
+from contextlib import asynccontextmanager
+
+
+# Lifespan context manager for FastMCP startup/shutdown
+@asynccontextmanager
+async def lifespan_context(app):
+    """Handle application startup and shutdown."""
+    # Startup: Initialize delivery webhook scheduler
+    from src.services.delivery_webhook_scheduler import start_delivery_webhook_scheduler
+
+    logger.info("Starting delivery webhook scheduler...")
+    try:
+        await start_delivery_webhook_scheduler()
+        logger.info("✅ Delivery webhook scheduler started")
+    except Exception as e:
+        logger.error(f"Failed to start delivery webhook scheduler: {e}", exc_info=True)
+
+    yield
+
+    # Shutdown: Stop delivery webhook scheduler
+    from src.services.delivery_webhook_scheduler import stop_delivery_webhook_scheduler
+
+    logger.info("Stopping delivery webhook scheduler...")
+    try:
+        await stop_delivery_webhook_scheduler()
+        logger.info("✅ Delivery webhook scheduler stopped")
+    except Exception as e:
+        logger.error(f"Failed to stop delivery webhook scheduler: {e}", exc_info=True)
+
+
 mcp = FastMCP(
     name="AdCPSalesAgent",
     # Sessions enabled for HTTP context (tenant detection via headers)
     # Note: stateless_http is now configured at runtime via run() or global settings
+    lifespan=lifespan_context,
 )
 
 # Initialize creative engine with minimal config (will be tenant-specific later)

@@ -542,12 +542,13 @@ The reference implementation deploys to production with an nginx reverse proxy t
 - **Reference Sales Agent**: `fly deploy` → https://adcp-sales-agent.fly.dev
   - This is OUR sales agent (publisher side)
   - Hosted on Fly.io, auto-deploys from main branch
-- **Test Buyer Agent**: https://test-agent.adcontextprotocol.org
-  - This is OUR test advertiser agent (buyer side)
-  - Also hosted on Fly.io by us
-  - Used for E2E testing of the complete AdCP flow
-  - When this is down, it affects our integration tests
-  - Check logs: `fly logs --app test-agent` (exact app name may vary)
+- **Test Agent (Buyer Simulator)**: `https://testing.adcontextprotocol.org/` (Fly app: `adcp-testing`)
+  - ⚠️ **CRITICAL**: This is NOT an external test agent - it's OUR PRODUCTION TENANT
+  - It's a tenant in our production sales agent database with mock adapter
+  - Used to simulate buyer behavior for E2E testing
+  - When debugging "test agent issues", you're debugging OUR CODE, not external infrastructure
+  - Check logs: `fly logs --app adcp-testing`
+  - Admin UI: `https://adcp-sales-agent.fly.dev/tenant/{test_tenant_id}/settings`
 
 ⚠️ **All three are INDEPENDENT** - starting Docker does NOT affect production!
 

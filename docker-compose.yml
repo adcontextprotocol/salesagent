@@ -46,6 +46,9 @@ services:
       # Create sample data for E2E tests (products, etc.)
       CREATE_SAMPLE_DATA: ${CREATE_SAMPLE_DATA:-true}
 
+      # Delivery webhook scheduler interval (default 1 hour)
+      DELIVERY_WEBHOOK_INTERVAL: ${DELIVERY_WEBHOOK_INTERVAL:-3600}
+
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,6 +56,9 @@ services:
     ports:
       - "${ADCP_SALES_PORT:-8092}:8080"
       - "${A2A_PORT:-8094}:8091"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     volumes:
       # Optional: Mount audit logs

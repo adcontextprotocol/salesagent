@@ -2,6 +2,7 @@
 
 import logging
 from decimal import Decimal
+from uuid import uuid4
 
 from sqlalchemy import (
     DECIMAL,
@@ -152,6 +153,26 @@ class Tenant(Base, JSONValidatorMixin):
     def primary_domain(self) -> str | None:
         """Get primary domain for this tenant (virtual_host or subdomain-based)."""
         return self.virtual_host or (f"{self.subdomain}.example.com" if self.subdomain else None)
+
+    @property
+    def is_gam_tenant(self) -> bool:
+        """Check if this tenant is using Google Ad Manager adapter.
+
+        Checks both legacy ad_server field and current adapter_config.adapter_type.
+        This is the single source of truth for GAM tenant detection.
+
+        Returns:
+            bool: True if tenant is using GAM, False otherwise
+        """
+        # Check legacy ad_server field
+        if self.ad_server == "google_ad_manager":
+            return True
+
+        # Check adapter_config relationship
+        if self.adapter_config and self.adapter_config.adapter_type == "google_ad_manager":
+            return True
+
+        return False
 
 
 # CreativeFormat model removed - table dropped in migration f2addf453200 (Oct 13, 2025)
@@ -1611,7 +1632,7 @@ class PublisherPartner(Base, JSONValidatorMixin):
 
 
 class PushNotificationConfig(Base, JSONValidatorMixin):
-    """A2A push notification configuration for async operation callbacks.
+    """Push notification configuration for async operation callbacks.
 
     Stores buyer-provided webhook URLs where the server should POST
     notifications when task status changes (e.g., submitted → completed).
@@ -1712,4 +1733,61 @@ class WebhookDeliveryRecord(Base):
         Index("idx_webhook_deliveries_event_type", "event_type"),
         Index("idx_webhook_deliveries_object_id", "object_id"),
         Index("idx_webhook_deliveries_created", "created_at"),
+    )
+
+
+class WebhookDeliveryLog(Base):
+    """Tracks delivery report webhook sends for AdCP compliance.
+
+    Records each delivery_report webhook notification with sequence tracking,
+    retry history, and performance metrics. Used to demonstrate compliance
+    with buyer webhook notification requirements.
+    """
+
+    __tablename__ = "webhook_delivery_log"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    tenant_id: Mapped[str] = mapped_column(String, nullable=False)
+    principal_id: Mapped[str] = mapped_column(String, nullable=False)
+    media_buy_id: Mapped[str] = mapped_column(
+        String, ForeignKey("media_buys.media_buy_id", ondelete="CASCADE"), nullable=False
+    )
+    webhook_url: Mapped[str] = mapped_column(String, nullable=False)
+    task_type: Mapped[str] = mapped_column(String, nullable=False)  # "delivery_report"
+
+    # AdCP webhook metadata
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    notification_type: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )  # "scheduled", "final", "delayed", "adjusted"
+
+    # Retry tracking
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    status: Mapped[str] = mapped_column(String, nullable=False)  # "success", "failed", "retrying"
+    http_status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Performance metrics
+    payload_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Timestamps
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    completed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_retry_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    tenant = relationship("Tenant")
+    principal = relationship("Principal")
+    media_buy = relationship("MediaBuy")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id"], ["tenants.tenant_id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(
+            ["tenant_id", "principal_id"], ["principals.tenant_id", "principals.principal_id"], ondelete="CASCADE"
+        ),
+        Index("idx_webhook_log_media_buy", "media_buy_id"),
+        Index("idx_webhook_log_tenant", "tenant_id"),
+        Index("idx_webhook_log_status", "status"),
+        Index("idx_webhook_log_created_at", "created_at"),
     )

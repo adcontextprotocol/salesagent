@@ -9,13 +9,17 @@ Handles delivery metrics reporting including:
 """
 
 import logging
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
+from math import floor
+from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
+from sqlalchemy import select
 
 from src.core.tool_context import ToolContext
 
@@ -25,6 +29,9 @@ console = Console()
 from adcp.types.stable import PushNotificationConfig
 
 from src.core.auth import get_principal_object
+from src.core.config_loader import get_current_tenant
+from src.core.database.database_session import get_db_session
+from src.core.database.models import MediaBuy, MediaPackage, PricingOption
 from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schema_adapters import GetMediaBuyDeliveryResponse
@@ -33,6 +40,7 @@ from src.core.schemas import (
     GetMediaBuyDeliveryRequest,
     MediaBuyDeliveryData,
     PackageDelivery,
+    PricingModel,
     ReportingPeriod,
 )
 from src.core.testing_hooks import DeliverySimulator, TimeSimulator, apply_testing_hooks, get_testing_context
@@ -58,6 +66,7 @@ def _get_media_buy_delivery_impl(
     principal_id = get_principal_id_from_context(ctx)
     if not principal_id:
         # Return AdCP-compliant error response
+        # TODO: @yusuf - Should this return only error field and not the other fields? Haven't we updated adcp spec to only return error field on errors??
         return GetMediaBuyDeliveryResponse(
             reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
             currency="USD",
@@ -70,12 +79,14 @@ def _get_media_buy_delivery_impl(
             },
             media_buy_deliveries=[],
             errors=[{"code": "principal_id_missing", "message": "Principal ID not found in context"}],
+            context=req.context or None,
         )
 
     # Get the Principal object
     principal = get_principal_object(principal_id)
     if not principal:
         # Return AdCP-compliant error response
+        # TODO: @yusuf - Should this return only error field and not the other fields? Haven't we updated adcp spec to only return error field on errors??
         return GetMediaBuyDeliveryResponse(
             reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
             currency="USD",
@@ -88,6 +99,7 @@ def _get_media_buy_delivery_impl(
             },
             media_buy_deliveries=[],
             errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
+            context=req.context or None,
         )
 
     # Get the appropriate adapter
@@ -99,6 +111,22 @@ def _get_media_buy_delivery_impl(
         # Use provided date range
         start_dt = datetime.strptime(req.start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(req.end_date, "%Y-%m-%d")
+
+        if start_dt >= end_dt:
+            return GetMediaBuyDeliveryResponse(
+                reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
+                currency="USD",
+                aggregated_totals={
+                    "impressions": 0,
+                    "spend": 0,
+                    "clicks": None,
+                    "video_completions": None,
+                    "media_buy_count": 0,
+                },
+                media_buy_deliveries=[],
+                errors=[{"code": "invalid_date_range", "message": "Start date must be before end date"}],
+                context=req.context or None,
+            )
     else:
         # Default to last 30 days
         end_dt = datetime.now()
@@ -106,95 +134,28 @@ def _get_media_buy_delivery_impl(
 
     reporting_period = ReportingPeriod(start=start_dt.isoformat(), end=end_dt.isoformat())
 
-    # Determine reference date for status calculations (use end_date or current date)
-    reference_date = end_dt.date() if req.end_date else date.today()
+    # Determine reference date for status calculations use end_date, it either will be today or the user provided end_date.
+    reference_date = end_dt.date()
 
     # Determine which media buys to fetch from database
-    from sqlalchemy import select
-
-    from src.core.config_loader import get_current_tenant
-    from src.core.database.database_session import get_db_session
-    from src.core.database.models import MediaBuy
-
     tenant = get_current_tenant()
-    target_media_buys = []
 
-    with get_db_session() as session:
-        if req.media_buy_ids:
-            # Specific media buy IDs requested
-            stmt = select(MediaBuy).where(
-                MediaBuy.tenant_id == tenant["tenant_id"],
-                MediaBuy.principal_id == principal_id,
-                MediaBuy.media_buy_id.in_(req.media_buy_ids),
-            )
-            buys = session.scalars(stmt).all()
-            target_media_buys = [(buy.media_buy_id, buy) for buy in buys]
-
-        elif req.buyer_refs:
-            # Buyer references requested
-            stmt = select(MediaBuy).where(
-                MediaBuy.tenant_id == tenant["tenant_id"],
-                MediaBuy.principal_id == principal_id,
-                MediaBuy.buyer_ref.in_(req.buyer_refs),
-            )
-            buys = session.scalars(stmt).all()
-            target_media_buys = [(buy.media_buy_id, buy) for buy in buys]
-
-        else:
-            # Use status_filter to determine which buys to fetch
-            valid_statuses = ["active", "ready", "paused", "completed", "failed"]
-            filter_statuses = []
-
-            if req.status_filter:
-                if isinstance(req.status_filter, str):
-                    if req.status_filter == "all":
-                        filter_statuses = valid_statuses
-                    else:
-                        filter_statuses = [req.status_filter]
-                elif isinstance(req.status_filter, list):
-                    filter_statuses = req.status_filter
-            else:
-                # Default to active
-                filter_statuses = ["active"]
-
-            # Fetch all media buys for this principal
-            stmt = select(MediaBuy).where(
-                MediaBuy.tenant_id == tenant["tenant_id"],
-                MediaBuy.principal_id == principal_id,
-            )
-            all_buys = session.scalars(stmt).all()
-
-            # Filter by status based on date ranges
-            for buy in all_buys:
-                # Determine current status based on dates
-                # Use start_time/end_time if available, otherwise fall back to start_date/end_date
-                # Note: buy.start_time/end_time are Python datetime objects (not SQLAlchemy DateTime type)
-                # Note: buy.start_date and buy.end_date are Python date objects (not SQLAlchemy Date type)
-                if buy.start_time:
-                    start_compare: date = buy.start_time.date()  # type: ignore[union-attr,attr-defined]
-                else:
-                    start_compare = buy.start_date  # type: ignore[assignment]
-
-                if buy.end_time:
-                    end_compare: date = buy.end_time.date()  # type: ignore[union-attr,attr-defined]
-                else:
-                    end_compare = buy.end_date  # type: ignore[assignment]
-
-                if reference_date < start_compare:
-                    current_status = "ready"
-                elif reference_date > end_compare:
-                    current_status = "completed"
-                else:
-                    current_status = "active"
-
-                if current_status in filter_statuses:
-                    target_media_buys.append((buy.media_buy_id, buy))
+    target_media_buys = _get_target_media_buys(req, principal_id, tenant, reference_date)
+    pricing_option_ids = [
+        buy.raw_request.get("pricing_option_id")
+        for _, buy in target_media_buys
+        if buy.raw_request
+        and isinstance(buy.raw_request, dict)
+        and buy.raw_request.get("pricing_option_id") is not None
+    ]
+    pricing_options = _get_pricing_options(pricing_option_ids)
 
     # Collect delivery data for each media buy
     deliveries = []
     total_spend = 0.0
     total_impressions = 0
     media_buy_count = 0
+    total_clicks = 0
 
     for media_buy_id, buy in target_media_buys:
         try:
@@ -204,7 +165,6 @@ def _get_media_buy_delivery_impl(
                 simulation_datetime = testing_ctx.mock_time
             elif testing_ctx.jump_to_event:
                 # Calculate time based on event
-                # Note: buy.start_date and buy.end_date are Python date objects (not SQLAlchemy Date type)
                 buy_start_date: date = buy.start_date  # type: ignore[assignment]
                 buy_end_date: date = buy.end_date  # type: ignore[assignment]
                 simulation_datetime = TimeSimulator.jump_to_event_time(
@@ -214,7 +174,6 @@ def _get_media_buy_delivery_impl(
                 )
 
             # Determine status
-            # Note: buy.start_date and buy.end_date are Python date objects
             buy_start_date_status: date = buy.start_date  # type: ignore[assignment]
             buy_end_date_status: date = buy.end_date  # type: ignore[assignment]
             if simulation_datetime.date() < buy_start_date_status:
@@ -224,10 +183,58 @@ def _get_media_buy_delivery_impl(
             else:
                 status = "active"
 
-            # Create delivery metrics
-            if any(
+            # Get delivery metrics from adapter
+            adapter_package_metrics = {}  # Map package_id -> {impressions, spend, clicks}
+            total_spend_from_adapter = 0.0
+            total_impressions_from_adapter = 0
+
+            if not any(
                 [testing_ctx.dry_run, testing_ctx.mock_time, testing_ctx.jump_to_event, testing_ctx.test_session_id]
             ):
+                # Call adapter to get per-package delivery metrics
+                # Note: Mock adapter returns simulated data, GAM adapter returns real data from Reporting API
+                try:
+                    adapter_response = adapter.get_media_buy_delivery(
+                        media_buy_id=media_buy_id,
+                        date_range=reporting_period,
+                        today=simulation_datetime,
+                    )
+
+                    # Map adapter's by_package to package_id -> metrics
+                    for adapter_pkg in adapter_response.by_package:
+                        adapter_package_metrics[adapter_pkg.package_id] = {
+                            "impressions": float(adapter_pkg.impressions),
+                            "spend": float(adapter_pkg.spend),
+                            "clicks": None,  # AdapterPackageDelivery doesn't have clicks yet
+                        }
+                        total_spend_from_adapter += float(adapter_pkg.spend)
+                        total_impressions_from_adapter += int(adapter_pkg.impressions)
+
+                    # Use adapter's totals if available
+                    if adapter_response.totals:
+                        spend = float(adapter_response.totals.spend)
+                        impressions = int(adapter_response.totals.impressions)
+                    else:
+                        spend = total_spend_from_adapter
+                        impressions = total_impressions_from_adapter
+
+                except Exception as e:
+                    logger.error(f"Error getting delivery for {media_buy_id}: {e}")
+                    return GetMediaBuyDeliveryResponse(
+                        reporting_period=reporting_period,
+                        currency=buy.currency,
+                        aggregated_totals={
+                            "impressions": 0,
+                            "spend": 0,
+                            "clicks": None,
+                            "video_completions": None,
+                            "media_buy_count": 0,
+                        },
+                        media_buy_deliveries=[],
+                        errors=[{"code": "adapter_error", "message": f"Error getting delivery for {media_buy_id}"}],
+                        context=req.context or None,
+                    )
+            else:
                 # Use simulation for testing
                 # Note: buy.start_date and buy.end_date are Python date objects
                 buy_start_date_sim: date = buy.start_date  # type: ignore[assignment]
@@ -242,60 +249,101 @@ def _get_media_buy_delivery_impl(
 
                 spend = simulated_metrics["spend"]
                 impressions = simulated_metrics["impressions"]
-            else:
-                # Generate realistic delivery metrics
-                # Note: buy.start_date and buy.end_date are Python date objects
-                buy_start_date_metrics: date = buy.start_date  # type: ignore[assignment]
-                buy_end_date_metrics: date = buy.end_date  # type: ignore[assignment]
-                campaign_days = (buy_end_date_metrics - buy_start_date_metrics).days
-                days_elapsed = max(0, (simulation_datetime.date() - buy_start_date_metrics).days)
-
-                if campaign_days > 0:
-                    progress = min(1.0, days_elapsed / campaign_days) if status != "ready" else 0.0
-                else:
-                    progress = 1.0 if status == "completed" else 0.0
-
-                spend = float(buy.budget) * progress if buy.budget else 0.0
-                impressions = int(spend * 1000)  # Assume $1 CPM for simplicity
 
             # Create package delivery data
             package_deliveries = []
-            if buy.raw_request and isinstance(buy.raw_request, dict) and "product_ids" in buy.raw_request:
-                product_ids = buy.raw_request.get("product_ids", [])
-                for i, product_id in enumerate(product_ids):
-                    package_spend = spend / len(product_ids) if product_ids else spend
-                    package_impressions = impressions / len(product_ids) if product_ids else impressions
+
+            # Get pricing info from MediaPackage.package_config
+            package_pricing_map = {}
+            with get_db_session() as session:
+                media_package_stmt = select(MediaPackage).where(MediaPackage.media_buy_id == media_buy_id)
+                media_packages = session.scalars(media_package_stmt).all()
+                for media_pkg in media_packages:
+                    package_config = media_pkg.package_config or {}
+                    pricing_info = package_config.get("pricing_info")
+                    if pricing_info:
+                        package_pricing_map[media_pkg.package_id] = pricing_info
+
+            # Get packages from raw_request
+            if buy.raw_request and isinstance(buy.raw_request, dict):
+                # Try to get packages from raw_request.packages (AdCP v2.2+ format)
+                packages = buy.raw_request.get("packages", [])
+
+                # Fallback: legacy format with product_ids
+                if not packages and "product_ids" in buy.raw_request:
+                    product_ids = buy.raw_request.get("product_ids", [])
+                    packages = [{"product_id": pid} for pid in product_ids]
+
+                i = -1
+                for pkg_data in packages:
+                    i += 1
+
+                    package_id = pkg_data.get("package_id") or f"pkg_{pkg_data.get('product_id', 'unknown')}_{i}"
+                    pricing_option_id = pkg_data.get("pricing_option_id") or None
+
+                    # Get pricing info for this package
+                    pricing_info = package_pricing_map.get(package_id)
+                    pricing_option = pricing_options.get(pricing_option_id) if pricing_option_id is not None else None
+
+                    # Get REAL per-package metrics from adapter if available, otherwise divide equally
+                    if package_id in adapter_package_metrics:
+                        # Use real metrics from adapter
+                        pkg_metrics = adapter_package_metrics[package_id]
+                        package_spend = pkg_metrics["spend"]
+                        package_impressions = pkg_metrics["impressions"]
+                    else:
+                        # Fallback: divide equally if adapter didn't return this package
+                        package_spend = spend / len(packages)
+                        package_impressions = impressions / len(packages)
+
+                    if pricing_option and pricing_option.pricing_model == PricingModel.CPC and pricing_option.rate:
+                        package_clicks = floor(spend / (float(pricing_option.rate)))
+                    else:
+                        package_clicks = None
 
                     package_deliveries.append(
                         PackageDelivery(
-                            package_id=f"pkg_{product_id}_{i}",
-                            buyer_ref=buy.raw_request.get("buyer_ref", None),
-                            impressions=package_impressions,
-                            spend=package_spend,
-                            # TODO: Calculate clicks for CPC pricing - extract pricing model from raw_request
-                            clicks=None,  # Optional field, not calculated in this implementation
+                            package_id=package_id,
+                            buyer_ref=pkg_data.get("buyer_ref") or buy.raw_request.get("buyer_ref", None),
+                            impressions=package_impressions or 0.0,
+                            spend=package_spend or 0.0,
+                            clicks=package_clicks,
                             video_completions=None,  # Optional field, not calculated in this implementation
                             pacing_index=1.0 if status == "active" else 0.0,
+                            # Add pricing fields from package_config
+                            pricing_model=pricing_info.get("pricing_model") if pricing_info else None,
+                            rate=(
+                                float(pricing_info.get("rate"))
+                                if pricing_info and pricing_info.get("rate") is not None
+                                else None
+                            ),
+                            currency=pricing_info.get("currency") if pricing_info else None,
                         )
                     )
 
             # Create delivery data
-            buyer_ref = buy.raw_request.get("buyer_ref", None) if buy.raw_request else None
+            buyer_ref = buy.raw_request.get("buyer_ref", None)
+
+            # Calculate clicks and CTR (click-through rate) where applicable
+
+            clicks = 0
+
+            ctr = (clicks / impressions) if clicks is not None and impressions > 0 else None
+
             # Type cast status to match Literal type
             status_literal: str = status
             delivery_data = MediaBuyDeliveryData(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
                 status=status_literal,  # type: ignore[arg-type]
+                pricing_model=PricingModel(
+                    "cpm"
+                ),  # TODO: @yusuf - remove this from adcp protocol. MediaBuy itself doesn't have pricing model. It is in package level
                 totals=DeliveryTotals(
                     impressions=impressions,
                     spend=spend,
-                    # TODO: Calculate clicks for CPC pricing models - should be required for CPC
-                    # Need to: 1) Extract pricing model from raw_request packages
-                    #          2) Calculate clicks based on spend/CPC rate
-                    #          3) Make clicks required (not None) for CPC pricing
-                    clicks=None,  # Optional field
-                    ctr=None,  # Optional field
+                    clicks=clicks,  # Optional field
+                    ctr=ctr,  # Optional field
                     video_completions=None,  # Optional field
                     completion_rate=None,  # Optional field
                 ),
@@ -307,19 +355,22 @@ def _get_media_buy_delivery_impl(
             total_spend += spend
             total_impressions += impressions
             media_buy_count += 1
+            total_clicks += clicks if clicks is not None else 0
 
         except Exception as e:
+            raise e
             logger.error(f"Error getting delivery for {media_buy_id}: {e}")
+            # TODO: @yusuf - Ask should we attach an error message for this media buy, instead of omitting it from the response?
             # Continue with other media buys
 
     # Create AdCP-compliant response
     response = GetMediaBuyDeliveryResponse(
         reporting_period=reporting_period,
-        currency="USD",
+        currency="USD",  # TODO: @yusuf - This is wrong. Currency should be at the media buy delivery level, not on aggregated totals.
         aggregated_totals={
             "impressions": total_impressions,
             "spend": total_spend,
-            "clicks": None,
+            "clicks": total_clicks,
             "video_completions": None,
             "media_buy_count": media_buy_count,
         },
@@ -372,7 +423,7 @@ def _get_media_buy_delivery_impl(
                 {
                     "impressions": total_impressions,
                     "spend": total_spend,
-                    "clicks": None,
+                    "clicks": clicks,
                     "video_completions": None,
                     "media_buy_count": media_buy_count,
                 },
@@ -421,7 +472,7 @@ def get_media_buy_delivery(
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
         push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
-        context: Application level context per adcp spec
+        context: Application level context object
         ctx: FastMCP context (automatically provided)
 
     Returns:
@@ -438,11 +489,12 @@ def get_media_buy_delivery(
             push_notification_config=push_notification_config,
             context=context,
         )
-    except ValidationError as e:
-        raise ToolError(format_validation_error(e, context="get_media_buy_delivery request")) from e
 
-    response = _get_media_buy_delivery_impl(req, ctx)
-    return ToolResult(content=str(response), structured_content=response.model_dump())
+        response = _get_media_buy_delivery_impl(req, ctx)
+
+        return ToolResult(content=str(response), structured_content=response.model_dump())
+    except ValidationError as e:
+        raise ToolError(format_validation_error(e, context="get_media_buy_delivery request"))
 
 
 def get_media_buy_delivery_raw(
@@ -462,14 +514,13 @@ def get_media_buy_delivery_raw(
         status_filter: Filter by status - single status or array (optional)
         start_date: Start date for reporting period in YYYY-MM-DD format (optional)
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
-        context: Context for authentication
+        context: Application level context
+        ctx: Context for authentication
 
     Returns:
         GetMediaBuyDeliveryResponse with delivery metrics
     """
     # Create request object
-    from src.core.schemas import GetMediaBuyDeliveryRequest
-
     req = GetMediaBuyDeliveryRequest(
         media_buy_ids=media_buy_ids,
         buyer_refs=buyer_refs,
@@ -492,3 +543,94 @@ def _require_admin(context: Context) -> None:
     principal_id = get_principal_id_from_context(context)
     if principal_id != "admin":
         raise PermissionError("This operation requires admin privileges")
+
+
+# -- Helper functions --
+def _get_target_media_buys(
+    req: GetMediaBuyDeliveryRequest,
+    principal_id: str,
+    tenant: dict[str, Any],
+    reference_date: date,
+) -> list[tuple[str, MediaBuy]]:
+    with get_db_session() as session:
+        # Use status_filter to determine which buys to fetch
+        valid_statuses = ["active", "ready", "paused", "completed", "failed"]
+        filter_statuses = []
+
+        if req.status_filter:
+            if isinstance(req.status_filter, str):
+                if req.status_filter == "all":
+                    filter_statuses = valid_statuses
+                else:
+                    filter_statuses = [req.status_filter]
+            elif isinstance(req.status_filter, list):
+                filter_statuses = [status for status in req.status_filter if status in valid_statuses]
+        else:
+            # Default to active
+            filter_statuses = ["active"]
+
+        fetched_buys: Sequence[MediaBuy] = []
+        target_media_buys: list[tuple[str, MediaBuy]] = []  # list of tuples(media_buy_id, MediaBuy)
+
+        if req.media_buy_ids:
+            # Specific media buy IDs requested
+            stmt = select(MediaBuy).where(
+                # TODO: @yusuf- Do we need to filter by tenant_id?
+                MediaBuy.tenant_id == tenant["tenant_id"],
+                MediaBuy.principal_id == principal_id,
+                MediaBuy.media_buy_id.in_(req.media_buy_ids),
+            )
+            fetched_buys = session.scalars(stmt).all()
+
+        elif req.buyer_refs:
+            # Buyer references requested
+            stmt = select(MediaBuy).where(
+                # TODO: @yusuf- Do we need to filter by tenant_id?
+                MediaBuy.tenant_id == tenant["tenant_id"],
+                MediaBuy.principal_id == principal_id,
+                MediaBuy.buyer_ref.in_(req.buyer_refs),
+            )
+            fetched_buys = session.scalars(stmt).all()
+
+        else:
+            # Fetch all media buys for this principal
+            stmt = select(MediaBuy).where(
+                MediaBuy.tenant_id == tenant["tenant_id"],
+                MediaBuy.principal_id == principal_id,
+            )
+            fetched_buys = session.scalars(stmt).all()
+
+        # Filter by status based on date ranges
+        for buy in fetched_buys:
+            # Determine current status based on dates
+            # Use start_time/end_time if available, otherwise fall back to start_date/end_date
+            # Note: buy.start_time/end_time are Python datetime objects (not SQLAlchemy DateTime type)
+            # Note: buy.start_date and buy.end_date are Python date objects (not SQLAlchemy Date type)
+            if buy.start_time:
+                start_compare: date = buy.start_time.date()  # type: ignore[union-attr,attr-defined]
+            else:
+                start_compare = buy.start_date  # type: ignore[assignment]
+
+            if buy.end_time:
+                end_compare: date = buy.end_time.date()  # type: ignore[union-attr,attr-defined]
+            else:
+                end_compare = buy.end_date  # type: ignore[assignment]
+
+            if reference_date < start_compare:
+                current_status = "ready"
+            elif reference_date > end_compare:
+                current_status = "completed"
+            else:
+                current_status = "active"
+
+            if current_status in filter_statuses:
+                target_media_buys.append((buy.media_buy_id, buy))
+
+        return target_media_buys
+
+
+def _get_pricing_options(pricing_option_ids: list[Any | None]) -> dict[str, PricingOption]:
+    with get_db_session() as session:
+        statement = select(PricingOption).where(PricingOption.id.in_(pricing_option_ids))
+        pricing_options = session.scalars(statement).all()
+        return {str(pricing_option.id): pricing_option for pricing_option in pricing_options}

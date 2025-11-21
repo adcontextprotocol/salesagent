@@ -116,6 +116,7 @@ class TestGenerativeCreatives:
 
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.build_creative = AsyncMock(
             return_value={
                 "status": "draft",
@@ -188,6 +189,7 @@ class TestGenerativeCreatives:
 
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.preview_creative = AsyncMock(
             return_value={
                 "previews": [
@@ -250,6 +252,7 @@ class TestGenerativeCreatives:
 
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_get_registry.return_value = mock_registry
 
         # Call sync_creatives - should fail the creative (not raise exception)
@@ -294,6 +297,7 @@ class TestGenerativeCreatives:
 
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.build_creative = AsyncMock(
             return_value={
                 "status": "draft",
@@ -341,6 +345,7 @@ class TestGenerativeCreatives:
 
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.build_creative = AsyncMock(
             return_value={
                 "status": "draft",
@@ -388,6 +393,7 @@ class TestGenerativeCreatives:
 
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.build_creative = AsyncMock(
             return_value={
                 "status": "draft",
@@ -465,6 +471,7 @@ class TestGenerativeCreatives:
 
         mock_registry = MagicMock()
         mock_registry.list_all_formats = AsyncMock(return_value=[mock_format])
+        mock_registry.get_format = AsyncMock(return_value=mock_format)
         mock_registry.build_creative = AsyncMock(
             return_value={
                 "status": "draft",

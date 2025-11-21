@@ -1915,14 +1915,18 @@ class SyncCreativeResult(BaseModel):
     action: Literal["created", "updated", "unchanged", "failed", "deleted"] = Field(
         ..., description="Action taken for this creative"
     )
-    status: str | None = Field(None, description="Current approval status of the creative")
+    status: str | None = Field(
+        None, exclude=True, description="Current approval status of the creative (INTERNAL - excluded from responses)"
+    )
     platform_id: str | None = Field(None, description="Platform-specific ID assigned to the creative")
     changes: list[str] = Field(
         default_factory=list, description="List of field names that were modified (for 'updated' action)"
     )
     errors: list[str] = Field(default_factory=list, description="Validation or processing errors (for 'failed' action)")
     warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings about this creative")
-    review_feedback: str | None = Field(None, description="Feedback from platform review process")
+    review_feedback: str | None = Field(
+        None, exclude=True, description="Feedback from platform review process (INTERNAL - excluded from responses)"
+    )
     assigned_to: list[str] | None = Field(
         None,
         description="Package IDs this creative was successfully assigned to (only present when assignments were requested)",
@@ -3279,10 +3283,45 @@ class PackageDelivery(BaseModel):
     pacing_index: float | None = Field(
         None, ge=0, description="Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)"
     )
+    pricing_model: str | None = Field(
+        None, description="Pricing model for this package during delivery (e.g., 'cpm', 'cpc', 'vpm', 'flat_rate')"
+    )
+    rate: float | None = Field(
+        None,
+        ge=0,
+        description="Pricing rate for this package during delivery (required if fixed pricing, null for auction-based)",
+    )
+    currency: str | None = Field(
+        None,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code for this package during delivery (e.g., USD, EUR, GBP)",
+    )
 
 
 class DailyBreakdown(BaseModel):
     """Day-by-day delivery metrics."""
+
+    # Webhook-specific metadata (only present in webhook deliveries)
+    notification_type: str | None = Field(
+        None,
+        description="Type of webhook notification: scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = resending period with updated data (only present in webhook deliveries)",
+    )
+    partial_data: bool | None = Field(
+        None,
+        description="Indicates if any media buys in this webhook have missing/delayed data (only present in webhook deliveries)",
+    )
+    unavailable_count: int | None = Field(
+        None,
+        description="Number of media buys with reporting_delayed or failed status (only present in webhook deliveries when partial_data is true)",
+        ge=0,
+    )
+    sequence_number: int | None = Field(
+        None, description="Sequential notification number (only present in webhook deliveries, starts at 1)", ge=1
+    )
+    next_expected_at: str | None = Field(
+        None,
+        description="ISO 8601 timestamp for next expected notification (only present in webhook deliveries when notification_type is not 'final')",
+    )
 
     date: str = Field(description="Date (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$")
     impressions: float = Field(ge=0, description="Daily impressions")
@@ -3294,9 +3333,19 @@ class MediaBuyDeliveryData(BaseModel):
 
     media_buy_id: str = Field(description="Publisher's media buy identifier")
     buyer_ref: str | None = Field(None, description="Buyer's reference identifier for this media buy")
-    status: Literal["ready", "active", "paused", "completed", "failed"] = Field(
+    status: Literal["ready", "active", "paused", "completed", "failed", "reporting_delayed"] = Field(
         description="Current media buy status. 'ready' means scheduled to go live at flight start date."
     )
+    expected_availability: str | None = Field(
+        default=None,
+        description="When delayed data is expected to be available (only present when status is reporting_delayed)",
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+    )
+    is_adjusted: bool = Field(
+        description="Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals.",
+        default=False,
+    )
+    pricing_model: PricingModel | None = Field(default=None, description="Pricing model for this media buy")
     totals: DeliveryTotals = Field(description="Aggregate metrics for this media buy across all packages")
     by_package: list[PackageDelivery] = Field(description="Metrics broken down by package")
     daily_breakdown: list[DailyBreakdown] | None = Field(None, description="Day-by-day delivery")
@@ -3545,6 +3594,7 @@ class AdapterGetMediaBuyDeliveryResponse(NestedModelSerializerMixin, AdCPBaseMod
     totals: DeliveryTotals
     by_package: list[AdapterPackageDelivery]
     currency: str
+    daily_breakdown: list[dict] | None = None  # Optional day-by-day delivery metrics
 
 
 # --- Human-in-the-Loop Task Queue ---

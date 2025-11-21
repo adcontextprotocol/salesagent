@@ -29,12 +29,26 @@ def run_async_in_sync_context(coroutine):
     Returns:
         The result of the coroutine
     """
+    # Check if coroutine is actually a coroutine object
+    if not asyncio.iscoroutine(coroutine):
+        raise TypeError(f"Expected coroutine, got {type(coroutine)}")
+
     try:
         # Check if there's already a running event loop
         asyncio.get_running_loop()
+
         # We're in an async context, run in thread pool to avoid nested loop error
+        # Create a new event loop in the thread to run the coroutine
+        def run_in_thread():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(coroutine)
+            finally:
+                loop.close()
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(lambda: asyncio.run(coroutine))
+            future = executor.submit(run_in_thread)
             return future.result()
     except RuntimeError:
         # No running loop, safe to create one

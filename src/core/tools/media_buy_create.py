@@ -297,39 +297,26 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
     for creative in creatives_list:
         creative_data = creative.data or {}
 
-        # Get format specification from cache first, then creative agent
+        # Get format specification from creative agent (uses in-memory cache with 30min TTL)
         format_spec = None
         if creative.format:
-            from src.core.format_spec_cache import get_cached_format
-
-            # Try cache first (fast, works offline)
-            format_spec = get_cached_format(str(creative.format))
-
-            # If not in cache, try fetching from creative agent
-            if not format_spec:
+            try:
+                # Use asyncio event loop to run async registry.get_format() synchronously
+                # registry.get_format() uses in-memory cache (30min TTL) and falls back to agent
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 try:
-                    # Use asyncio event loop to run async registry.get_format() synchronously
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        format_spec = loop.run_until_complete(
-                            registry.get_format(creative.agent_url, str(creative.format))
-                        )
-                        # Cache the fetched format for future use
-                        if format_spec:
-                            from src.core.format_spec_cache import save_format_specs_to_cache
-
-                            save_format_specs_to_cache([format_spec])
-                    finally:
-                        loop.close()
-                except Exception as e:
-                    logger.warning(f"Could not fetch format {creative.format} from {creative.agent_url}: {e}")
+                    format_spec = loop.run_until_complete(registry.get_format(creative.agent_url, str(creative.format)))
+                finally:
+                    loop.close()
+            except Exception as e:
+                logger.warning(f"Could not fetch format {creative.format} from {creative.agent_url}: {e}")
 
         # Fail validation if format spec not found (no skipping!)
         if not format_spec:
             validation_errors.append(
                 f"Creative {creative.creative_id} has unknown format '{creative.format}' "
-                f"(not in cache and could not fetch from agent {creative.agent_url})"
+                f"from agent {creative.agent_url}. Format must be registered with the creative agent."
             )
             continue
 
@@ -1248,6 +1235,18 @@ async def _create_media_buy_impl(
         CreateMediaBuyResponse with media buy details
     """
     request_start_time = time.time()
+
+    # Warn if unsupported reporting_webhook frequency is requested
+    if reporting_webhook and isinstance(reporting_webhook, dict):
+        raw_freq = str(reporting_webhook.get("frequency") or "daily").lower()
+        if raw_freq != "daily":
+            logger.warning(
+                "CreateMediaBuy requested reporting webhook frequency '%s' for buyer_ref '%s', "
+                "but only 'daily' frequency is currently supported. "
+                "Hourly and monthly reporting will be ignored until implemented.",
+                raw_freq,
+                buyer_ref,
+            )
 
     # Create request object from individual parameters (MCP-compliant)
     # Validate early with helpful error messages
@@ -2366,7 +2365,8 @@ async def _create_media_buy_impl(
 
                         if format_id:
                             # Normalize agent_url by removing trailing slash for consistent comparison
-                            normalized_url = agent_url.rstrip("/") if agent_url else None
+                            # Convert AnyUrl to string before calling rstrip()
+                            normalized_url = str(agent_url).rstrip("/") if agent_url else None
                             product_format_keys.add((normalized_url, format_id))
 
                 # Build set of requested format keys for comparison
@@ -2389,7 +2389,8 @@ async def _create_media_buy_impl(
 
                     if format_id:
                         # Normalize agent_url by removing trailing slash for consistent comparison
-                        normalized_url = agent_url.rstrip("/") if agent_url else None
+                        # Convert AnyUrl to string before calling rstrip()
+                        normalized_url = str(agent_url).rstrip("/") if agent_url else None
                         requested_format_keys.add((normalized_url, format_id))
 
                 def format_display(url: str | None, fid: str) -> str:
@@ -2397,7 +2398,8 @@ async def _create_media_buy_impl(
                     if not url:
                         return fid
                     # Remove trailing slash from URL to avoid double slashes
-                    clean_url = url.rstrip("/")
+                    # Convert to string in case it's an AnyUrl object
+                    clean_url = str(url).rstrip("/")
                     return f"{clean_url}/{fid}"
 
                 def _has_supported_key(url: str | None, fid: str, keys: set = product_format_keys) -> bool:
@@ -2418,7 +2420,8 @@ async def _create_media_buy_impl(
 
                     # If URL provided, also try with '/mcp' appended (idempotent if already present)
                     if url:
-                        base = url.rstrip("/")
+                        # Convert to string in case it's an AnyUrl object
+                        base = str(url).rstrip("/")
                         mcp_url = base if base.endswith("/mcp") else f"{base}/mcp"
                         if (mcp_url, fid) in keys:
                             return True
