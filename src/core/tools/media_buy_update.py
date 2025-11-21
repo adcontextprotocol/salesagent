@@ -109,7 +109,7 @@ def _verify_principal(media_buy_id: str, context: Context | ToolContext):
 
 
 def _update_media_buy_impl(
-    media_buy_id: str,
+    media_buy_id: str | None = None,
     buyer_ref: str | None = None,
     active: bool | None = None,
     flight_start_date: str | None = None,
@@ -132,8 +132,8 @@ def _update_media_buy_impl(
     Update a media buy with campaign-level and/or package-level changes.
 
     Args:
-        media_buy_id: Media buy ID to update (required)
-        buyer_ref: Update buyer reference
+        media_buy_id: Media buy ID to update (oneOf with buyer_ref - exactly one required)
+        buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
         active: True to activate, False to pause entire campaign
         flight_start_date: Change start date (if not started)
         flight_end_date: Extend or shorten campaign
@@ -1056,8 +1056,8 @@ def _update_media_buy_impl(
 
 
 def update_media_buy(
-    media_buy_id: str,
-    buyer_ref: str = None,
+    media_buy_id: str | None = None,
+    buyer_ref: str | None = None,
     active: bool = None,
     flight_start_date: str = None,
     flight_end_date: str = None,
@@ -1079,8 +1079,8 @@ def update_media_buy(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        media_buy_id: Media buy ID to update (required)
-        buyer_ref: Update buyer reference
+        media_buy_id: Media buy ID to update (oneOf with buyer_ref - exactly one required)
+        buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
         active: True to activate, False to pause entire campaign
         flight_start_date: Change start date (if not started)
         flight_end_date: Extend or shorten campaign
@@ -1122,8 +1122,8 @@ def update_media_buy(
 
 
 def update_media_buy_raw(
-    media_buy_id: str,
-    buyer_ref: str = None,
+    media_buy_id: str | None = None,
+    buyer_ref: str | None = None,
     active: bool = None,
     flight_start_date: str = None,
     flight_end_date: str = None,
@@ -1145,8 +1145,8 @@ def update_media_buy_raw(
     Delegates to the shared implementation.
 
     Args:
-        media_buy_id: The ID of the media buy to update
-        buyer_ref: Update buyer reference
+        media_buy_id: The ID of the media buy to update (oneOf with buyer_ref - exactly one required)
+        buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
         active: True to activate, False to pause
         flight_start_date: Change start date
         flight_end_date: Change end date
