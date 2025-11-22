@@ -44,6 +44,7 @@ from a2a.types import (
     TaskQueryParams,
     TaskState,
     TaskStatus,
+    TextPart,
     UnsupportedOperationError,
 )
 from a2a.utils.errors import ServerError
@@ -398,6 +399,41 @@ class AdCPRequestHandler(RequestHandler):
         except Exception as e:
             logger.debug(f"Could not reconstruct response object for {skill_name}: {e}")
         return None
+
+    def _create_artifact_with_text_and_data(
+        self,
+        artifact_id: str,
+        name: str,
+        data: dict,
+        description: str | None = None,
+    ) -> Artifact:
+        """Create an artifact with both TextPart (human-readable) and DataPart (structured).
+
+        Follows ADK PR #238 recommendation: responses should include optional TextPart
+        for human-readable messages alongside required DataPart for structured data.
+
+        Args:
+            artifact_id: Unique identifier for the artifact
+            name: Name of the artifact
+            data: Structured response data (goes in DataPart)
+            description: Optional human-readable message (goes in TextPart if provided)
+
+        Returns:
+            Artifact with parts=[TextPart?, DataPart] following ADK pattern
+        """
+        parts = []
+        if description:
+            # Add optional TextPart for human-readable message (ADK pattern)
+            parts.append(Part(root=TextPart(text=description)))
+        # Add required DataPart with structured response data
+        parts.append(Part(root=DataPart(data=data)))
+
+        return Artifact(
+            artifact_id=artifact_id,
+            name=name,
+            description=description,  # Keep for backwards compatibility
+            parts=parts,  # TextPart + DataPart (ADK-aligned)
+        )
 
     async def on_message_send(
         self,
@@ -1540,7 +1576,7 @@ class AdCPRequestHandler(RequestHandler):
                 auth_token=auth_token,
                 tool_name="list_creatives",
             )
-            
+
             # Call core function with optional parameters (fixing original validation bug)
             response = core_list_creatives_tool(
                 media_buy_id=parameters.get("media_buy_id"),
