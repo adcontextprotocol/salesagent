@@ -8,7 +8,6 @@ the in-memory dictionary.
 """
 
 from datetime import date, timedelta
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -177,23 +176,13 @@ def test_update_media_buy_requires_context():
 
 
 @pytest.mark.requires_db
-def test_update_media_buy_requires_media_buy_id():
+def test_update_media_buy_requires_media_buy_id(test_tenant_setup):
     """Test update_media_buy raises error when buyer_ref lookup fails."""
-    # Create minimal mock context
-    context = MagicMock()
-    context.headers = {"x-adcp-auth": "test_token", "host": "test-tenant.test.com"}
-
-    # Set tenant context (required by get_current_tenant)
-    from src.core.config_loader import set_current_tenant
-
-    set_current_tenant(
-        {
-            "tenant_id": "test_tenant_no_mb",
-            "name": "Test Tenant",
-            "subdomain": "test-tenant",
-            "ad_server": "mock",
-            "is_active": True,
-        }
+    # Use valid authentication from fixture (required after auth ordering fix)
+    context = MockContext(
+        tenant_id=test_tenant_setup["tenant_id"],
+        principal_id=test_tenant_setup["principal_id"],
+        token=test_tenant_setup["token"],
     )
 
     # Note: When media_buy_id is None and buyer_ref is provided,
