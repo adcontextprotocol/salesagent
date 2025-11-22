@@ -16,6 +16,7 @@ from src.core.helpers.creative_helpers import (
     _extract_format_namespace,
     _normalize_format_value,
     _validate_creative_assets,
+    validate_creative_format_against_products,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "_validate_creative_assets",
     "_convert_creative_to_adapter_asset",
     "_detect_snippet_type",
+    "validate_creative_format_against_products",
 ]

@@ -270,6 +270,127 @@ def _detect_snippet_type(snippet: str) -> str:
         return "html"  # Default
 
 
+def validate_creative_format_against_products(
+    creative_agent_url: str,
+    creative_format_id: str,
+    products: list[Any],
+    normalize_url: bool = True,
+) -> tuple[bool, list[str], str | None]:
+    """Validate that a creative format is supported by at least one product.
+
+    Args:
+        creative_agent_url: Creative agent URL from creative's format_id
+        creative_format_id: Format ID from creative's format_id
+        products: List of Product objects or dicts with format_ids field
+        normalize_url: Whether to normalize URLs (remove trailing slashes and /mcp)
+
+    Returns:
+        Tuple of (is_valid, matching_product_ids, error_message):
+        - is_valid: True if creative format matches at least one product
+        - matching_product_ids: List of product IDs that support this format
+        - error_message: Descriptive error message if is_valid is False, None otherwise
+
+    Example:
+        >>> is_valid, matching_products, error = validate_creative_format_against_products(
+        ...     "https://creative.adcontextprotocol.org",
+        ...     "display_300x250_image",
+        ...     products
+        ... )
+        >>> if not is_valid:
+        ...     raise ValueError(error)
+    """
+
+    def normalize_url_func(url: str | None) -> str | None:
+        """Normalize URL by removing trailing slashes and /mcp suffix."""
+        if not url:
+            return None
+        if not normalize_url:
+            return url
+        return url.rstrip("/").removesuffix("/mcp")
+
+    normalized_creative_url = normalize_url_func(creative_agent_url)
+    matching_product_ids: list[str] = []
+
+    for product in products:
+        # Extract format_ids from product (handles both dict and object)
+        if isinstance(product, dict):
+            product_format_ids = product.get("format_ids", [])
+            product_id = product.get("product_id", "unknown")
+            product_name = product.get("name", "unknown")
+        else:
+            product_format_ids = getattr(product, "format_ids", [])
+            product_id = getattr(product, "product_id", "unknown")
+            product_name = getattr(product, "name", "unknown")
+
+        # Skip products with no format restrictions
+        if not product_format_ids:
+            matching_product_ids.append(product_id)
+            continue
+
+        # Check if creative format matches any product format
+        for fmt in product_format_ids:
+            if isinstance(fmt, dict):
+                agent_url_val = fmt.get("agent_url")
+                format_id_val = fmt.get("id") or fmt.get("format_id")
+            else:
+                agent_url_val = getattr(fmt, "agent_url", None)
+                format_id_val = getattr(fmt, "id", None)
+
+            if not agent_url_val or not format_id_val:
+                continue
+
+            # Normalize and compare
+            normalized_product_url = normalize_url_func(str(agent_url_val))
+            if normalized_creative_url == normalized_product_url and creative_format_id == format_id_val:
+                matching_product_ids.append(product_id)
+                break  # Found match in this product, move to next product
+
+    # If at least one product matches, validation succeeds
+    if matching_product_ids:
+        return True, matching_product_ids, None
+
+    # Build helpful error message
+    creative_format_display = f"{creative_agent_url}/{creative_format_id}" if creative_agent_url else creative_format_id
+
+    # Collect supported formats for error message
+    supported_formats_display: list[str] = []
+    for product in products:
+        if isinstance(product, dict):
+            product_format_ids = product.get("format_ids", [])
+            product_name = product.get("name", "unknown")
+        else:
+            product_format_ids = getattr(product, "format_ids", [])
+            product_name = getattr(product, "name", "unknown")
+
+        if product_format_ids:
+            for fmt in product_format_ids:
+                if isinstance(fmt, dict):
+                    agent_url_val = fmt.get("agent_url")
+                    format_id_val = fmt.get("id") or fmt.get("format_id")
+                else:
+                    agent_url_val = getattr(fmt, "agent_url", None)
+                    format_id_val = getattr(fmt, "id", None)
+
+                if agent_url_val and format_id_val:
+                    fmt_display = f"{agent_url_val}/{format_id_val}" if agent_url_val else format_id_val
+                    supported_formats_display.append(f"{fmt_display} (product: {product_name})")
+
+    if supported_formats_display:
+        error_msg = (
+            f"Creative format '{creative_format_display}' is not supported by any product. "
+            f"Supported formats: {', '.join(supported_formats_display[:5])}"  # Limit to first 5
+        )
+        if len(supported_formats_display) > 5:
+            error_msg += f" (and {len(supported_formats_display) - 5} more)"
+    else:
+        error_msg = (
+            f"Creative format '{creative_format_display}' is not supported by any product. "
+            f"No products have format restrictions configured."
+        )
+
+    return False, [], error_msg
+
+
 def process_and_upload_package_creatives(
     packages: list["PackageRequest"],
     context: "Context | ToolContext",
