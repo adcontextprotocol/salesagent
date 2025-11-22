@@ -2,9 +2,8 @@ import random
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from adcp.types.generated_poc.create_media_buy_response import (
-    Package as ResponsePackage,
-)
+from adcp.types import PackageStatus
+from adcp.types.aliases import Package as ResponsePackage
 
 from src.adapters.base import AdServerAdapter
 from src.core.schemas import (
@@ -795,11 +794,12 @@ class MockAdServer(AdServerAdapter):
             if request.packages and idx < len(request.packages):
                 buyer_ref = request.packages[idx].buyer_ref or buyer_ref
 
-            # Create minimal AdCP-compliant Package response (only buyer_ref + package_id)
+            # Create AdCP-compliant Package response (package_id + status required per v2.9.0)
             response_packages.append(
                 ResponsePackage(
                     buyer_ref=buyer_ref,
                     package_id=package_id,
+                    status=PackageStatus.active,  # Default to active for created packages
                 )
             )
 
@@ -1202,21 +1202,27 @@ class MockAdServer(AdServerAdapter):
         if media_buy_id in self._media_buys:
             buy = self._media_buys[media_buy_id]
             packages = buy.get("packages", [])
-            
+
             if packages:
                 # Calculate per-package metrics by dividing total spend/impressions proportionally
                 # Use package budget as weight for distribution
                 total_package_budget = sum(
-                    float(pkg.get("budget", {}).get("total", 0) if isinstance(pkg.get("budget"), dict) else pkg.get("budget", 0))
+                    float(
+                        pkg.get("budget", {}).get("total", 0)
+                        if isinstance(pkg.get("budget"), dict)
+                        else pkg.get("budget", 0)
+                    )
                     for pkg in packages
                 )
-                
+
                 for pkg in packages:
                     package_id = pkg.get("package_id", "unknown")
                     package_budget = float(
-                        pkg.get("budget", {}).get("total", 0) if isinstance(pkg.get("budget"), dict) else pkg.get("budget", 0)
+                        pkg.get("budget", {}).get("total", 0)
+                        if isinstance(pkg.get("budget"), dict)
+                        else pkg.get("budget", 0)
                     )
-                    
+
                     if total_package_budget > 0:
                         # Distribute spend/impressions proportionally based on package budget
                         package_spend = spend * (package_budget / total_package_budget)
@@ -1225,7 +1231,7 @@ class MockAdServer(AdServerAdapter):
                         # Equal distribution if no budget info
                         package_spend = spend / len(packages) if packages else spend
                         package_impressions = int(impressions / len(packages) if packages else impressions)
-                    
+
                     by_package.append(
                         AdapterPackageDelivery(
                             package_id=package_id,

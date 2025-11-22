@@ -21,7 +21,7 @@ from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 
-from adcp.types.generated_poc.error import Error
+from adcp.types import Error, PackageStatus
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
@@ -109,7 +109,7 @@ def _verify_principal(media_buy_id: str, context: Context | ToolContext):
 
 
 def _update_media_buy_impl(
-    media_buy_id: str,
+    media_buy_id: str | None = None,
     buyer_ref: str | None = None,
     active: bool | None = None,
     flight_start_date: str | None = None,
@@ -132,8 +132,8 @@ def _update_media_buy_impl(
     Update a media buy with campaign-level and/or package-level changes.
 
     Args:
-        media_buy_id: Media buy ID to update (required)
-        buyer_ref: Update buyer reference
+        media_buy_id: Media buy ID to update (oneOf with buyer_ref - exactly one required)
+        buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
         active: True to activate, False to pause entire campaign
         flight_start_date: Change start date (if not started)
         flight_end_date: Extend or shorten campaign
@@ -207,14 +207,22 @@ def _update_media_buy_impl(
     if ctx is None:
         raise ValueError("Context is required for update_media_buy")
 
+    # CRITICAL: Establish tenant context FIRST by extracting principal from auth token
+    # This must happen before any database queries that need tenant_id
+    principal_id = get_principal_id_from_context(ctx)
+    if principal_id is None:
+        raise ValueError("principal_id is required but was None - authentication required")
+
+    # Now tenant context is set, we can safely call get_current_tenant()
+    tenant = get_current_tenant()
+
     # Resolve media_buy_id from buyer_ref if needed (AdCP oneOf constraint)
     media_buy_id_to_use = req.media_buy_id
     if not media_buy_id_to_use and req.buyer_ref:
-        # Look up media_buy_id by buyer_ref
+        # Look up media_buy_id by buyer_ref (tenant context already set above)
         from src.core.database.database_session import get_db_session
         from src.core.database.models import MediaBuy as MediaBuyModel
 
-        tenant = get_current_tenant()
         with get_db_session() as session:
             stmt = select(MediaBuyModel).where(
                 MediaBuyModel.buyer_ref == req.buyer_ref, MediaBuyModel.tenant_id == tenant["tenant_id"]
@@ -233,14 +241,8 @@ def _update_media_buy_impl(
     # Update req.media_buy_id for downstream processing
     req.media_buy_id = media_buy_id_to_use
 
+    # Verify principal owns this media buy
     _verify_principal(media_buy_id_to_use, ctx)
-    principal_id = get_principal_id_from_context(ctx)  # Already verified by _verify_principal
-
-    # Verify principal_id is not None (get_principal_id_from_context should raise if None)
-    if principal_id is None:
-        raise ValueError("principal_id is required but was None")
-
-    tenant = get_current_tenant()
 
     # Create or get persistent context
     ctx_manager = get_context_manager()
@@ -276,7 +278,7 @@ def _update_media_buy_impl(
         ctx_manager.update_workflow_step(
             step.step_id,
             status="failed",
-            response_data=response_data.model_dump(),
+            response_data=response_data.model_dump(mode="json"),
             error_message=error_msg,
         )
         return response_data  # type: ignore[return-value]
@@ -307,7 +309,7 @@ def _update_media_buy_impl(
         ctx_manager.update_workflow_step(
             step.step_id,
             status="requires_approval",
-            response_data=approval_response.model_dump(),
+            response_data=approval_response.model_dump(mode="json"),
             add_comment={"user": "system", "comment": "Publisher requires manual approval for all media buy updates"},
         )
         return approval_response  # type: ignore[return-value]
@@ -353,7 +355,10 @@ def _update_media_buy_impl(
                         context=req.context,
                     )
                     ctx_manager.update_workflow_step(
-                        step.step_id, status="failed", response_data=response_data.model_dump(), error_message=error_msg
+                        step.step_id,
+                        status="failed",
+                        response_data=response_data.model_dump(mode="json"),
+                        error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
 
@@ -419,7 +424,7 @@ def _update_media_buy_impl(
                                 ctx_manager.update_workflow_step(
                                     step.step_id,
                                     status="failed",
-                                    response_data=response_data.model_dump(),
+                                    response_data=response_data.model_dump(mode="json"),
                                     error_message=error_msg,
                                 )
                                 return response_data  # type: ignore[return-value]
@@ -476,7 +481,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_message,
                     )
                     return response_data  # type: ignore[return-value]
@@ -493,7 +498,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -526,7 +531,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_message,
                     )
                     return response_data  # type: ignore[return-value]
@@ -537,6 +542,7 @@ def _update_media_buy_impl(
                     AffectedPackage(
                         buyer_ref=req.buyer_ref or "",  # Required by AdCP
                         package_id=pkg_update.package_id,  # Required by AdCP (guaranteed str)
+                        status=PackageStatus.active,  # Required by AdCP 2.9.0+
                         buyer_package_ref=pkg_update.package_id,  # Internal field (for backward compat)
                         changes_applied={"budget": {"updated": budget_amount, "currency": currency}},  # Internal field
                     )
@@ -554,7 +560,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -587,7 +593,7 @@ def _update_media_buy_impl(
                         ctx_manager.update_workflow_step(
                             step.step_id,
                             status="failed",
-                            response_data=response_data.model_dump(),
+                            response_data=response_data.model_dump(mode="json"),
                             error_message=error_msg,
                         )
                         return response_data  # type: ignore[return-value]
@@ -613,7 +619,7 @@ def _update_media_buy_impl(
                         ctx_manager.update_workflow_step(
                             step.step_id,
                             status="failed",
-                            response_data=response_data.model_dump(),
+                            response_data=response_data.model_dump(mode="json"),
                             error_message=error_msg,
                         )
                         return response_data  # type: ignore[return-value]
@@ -756,6 +762,7 @@ def _update_media_buy_impl(
                         AffectedPackage(
                             buyer_ref=req.buyer_ref or "",  # Required by AdCP
                             package_id=pkg_update.package_id,  # Required by AdCP
+                            status=PackageStatus.active,  # Required by AdCP 2.9.0+
                             buyer_package_ref=pkg_update.package_id,  # Internal field (for backward compat)
                             changes_applied={  # Internal field
                                 "creative_ids": {
@@ -778,7 +785,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -804,7 +811,7 @@ def _update_media_buy_impl(
                         ctx_manager.update_workflow_step(
                             step.step_id,
                             status="failed",
-                            response_data=response_data.model_dump(),
+                            response_data=response_data.model_dump(mode="json"),
                             error_message=error_msg,
                         )
                         return response_data  # type: ignore[return-value]
@@ -830,6 +837,7 @@ def _update_media_buy_impl(
                         AffectedPackage(
                             buyer_ref=pkg_update.package_id,
                             package_id=pkg_update.package_id,
+                            status=PackageStatus.active,  # Required by AdCP 2.9.0+
                             changes_applied={"targeting": targeting_dict},
                             buyer_package_ref=pkg_update.package_id,  # Legacy compatibility
                         )
@@ -857,7 +865,7 @@ def _update_media_buy_impl(
             ctx_manager.update_workflow_step(
                 step.step_id,
                 status="failed",
-                response_data=response_data.model_dump(),
+                response_data=response_data.model_dump(mode="json"),
                 error_message=error_msg,
             )
             return response_data  # type: ignore[return-value]
@@ -907,6 +915,7 @@ def _update_media_buy_impl(
                             AffectedPackage(
                                 buyer_ref=package_ref_str,  # Required: buyer's package reference
                                 package_id=package_ref_str,  # Required: package identifier
+                                status=PackageStatus.active,  # Required by AdCP 2.9.0+
                                 buyer_package_ref=None,  # Internal field (not applicable for top-level budget updates)
                                 changes_applied={
                                     "budget": {"updated": total_budget, "currency": budget_currency}
@@ -959,7 +968,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -991,7 +1000,7 @@ def _update_media_buy_impl(
                     ctx_manager.update_workflow_step(
                         step.step_id,
                         status="failed",
-                        response_data=response_data.model_dump(),
+                        response_data=response_data.model_dump(mode="json"),
                         error_message=error_msg,
                     )
                     return response_data  # type: ignore[return-value]
@@ -1042,18 +1051,19 @@ def _update_media_buy_impl(
     )
 
     # Persist success with response data, then return
+    # Use mode="json" to ensure enums are serialized as strings for JSONB storage
     ctx_manager.update_workflow_step(
         step.step_id,
         status="completed",
-        response_data=final_response.model_dump(),
+        response_data=final_response.model_dump(mode="json"),
     )
 
     return final_response  # type: ignore[return-value]
 
 
 def update_media_buy(
-    media_buy_id: str,
-    buyer_ref: str = None,
+    media_buy_id: str | None = None,
+    buyer_ref: str | None = None,
     active: bool = None,
     flight_start_date: str = None,
     flight_end_date: str = None,
@@ -1075,8 +1085,8 @@ def update_media_buy(
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
-        media_buy_id: Media buy ID to update (required)
-        buyer_ref: Update buyer reference
+        media_buy_id: Media buy ID to update (oneOf with buyer_ref - exactly one required)
+        buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
         active: True to activate, False to pause entire campaign
         flight_start_date: Change start date (if not started)
         flight_end_date: Extend or shorten campaign
@@ -1118,8 +1128,8 @@ def update_media_buy(
 
 
 def update_media_buy_raw(
-    media_buy_id: str,
-    buyer_ref: str = None,
+    media_buy_id: str | None = None,
+    buyer_ref: str | None = None,
     active: bool = None,
     flight_start_date: str = None,
     flight_end_date: str = None,
@@ -1141,8 +1151,8 @@ def update_media_buy_raw(
     Delegates to the shared implementation.
 
     Args:
-        media_buy_id: The ID of the media buy to update
-        buyer_ref: Update buyer reference
+        media_buy_id: The ID of the media buy to update (oneOf with buyer_ref - exactly one required)
+        buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
         active: True to activate, False to pause
         flight_start_date: Change start date
         flight_end_date: Change end date

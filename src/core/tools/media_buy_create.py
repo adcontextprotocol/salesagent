@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlparse
 
+from adcp.types import MediaBuyStatus, PackageStatus
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -103,8 +104,15 @@ def _sanitize_package_status(status: str | None) -> str | None:
     if status is None:
         return None
 
-    if status in VALID_PACKAGE_STATUSES:
-        return status
+    # Convert to string for validation
+    # If it's already a PackageStatus enum, extract its value
+    if isinstance(status, PackageStatus):
+        status_str = status.value
+    else:
+        status_str = str(status)
+
+    if status_str in VALID_PACKAGE_STATUSES:
+        return status_str
 
     # Log error for non-spec-compliant status - this indicates a bug in our code
     logger.error(
@@ -3096,27 +3104,62 @@ async def _create_media_buy_impl(
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
-            # Validate and convert format_ids (request field) to format_ids_to_provide (response field)
-            if "format_ids" in package_dict and package_dict["format_ids"]:
-                validated_format_ids = await _validate_and_convert_format_ids(
-                    package_dict["format_ids"], tenant["tenant_id"], i
+            # Build full Package response per AdCP 2.9.0 spec
+            # Return all package fields from request, plus package_id and status from adapter
+
+            # Extract status from adapter response, defaulting to "active" if missing
+            adapter_status = response_package_dict.get("status", "active")
+
+            # Ensure status is a string (handle enum objects from adapters)
+            if isinstance(adapter_status, PackageStatus):
+                adapter_status = adapter_status.value
+            elif not isinstance(adapter_status, str):
+                adapter_status = str(adapter_status)
+
+            # Build full package dict with all fields from request
+            full_package_dict = {
+                "package_id": adapter_package_id,  # From adapter (required)
+                "status": adapter_status,  # From adapter (required)
+                "buyer_ref": package.buyer_ref,  # From request
+                "product_id": package.product_id,  # From request
+            }
+
+            # Add optional fields from request if present
+            if package.budget is not None:
+                full_package_dict["budget"] = (
+                    float(package.budget) if isinstance(package.budget, (int, float)) else package.budget
                 )
-                package_dict["format_ids_to_provide"] = validated_format_ids
-                # Remove format_ids from response
-                del package_dict["format_ids"]
 
-            # Determine package status (AdCP expects: "draft", "active", "paused", "completed")
-            # Map internal TaskStatus to AdCP status strings
-            if package.creative_ids and len(package.creative_ids) > 0:
-                package_status = "active"  # Has creatives, so it's active
-            elif hasattr(package, "format_ids_to_provide") and package.format_ids_to_provide:
-                package_status = "active"  # Has format requirements, considered active
-            else:
-                package_status = "draft"  # Default to draft if no creatives or formats
+            if package.impressions is not None:
+                full_package_dict["impressions"] = float(package.impressions)
 
-            # Add status
-            package_dict["status"] = package_status
-            response_packages.append(package_dict)
+            if package.bid_price is not None:
+                full_package_dict["bid_price"] = float(package.bid_price)
+
+            if package.pricing_option_id is not None:
+                full_package_dict["pricing_option_id"] = package.pricing_option_id
+
+            if package.pacing is not None:
+                full_package_dict["pacing"] = (
+                    package.pacing.model_dump() if hasattr(package.pacing, "model_dump") else package.pacing
+                )
+
+            if package.targeting_overlay is not None:
+                full_package_dict["targeting_overlay"] = (
+                    package.targeting_overlay.model_dump()
+                    if hasattr(package.targeting_overlay, "model_dump")
+                    else package.targeting_overlay
+                )
+
+            if hasattr(package, "creative_assignments") and package.creative_assignments:
+                full_package_dict["creative_assignments"] = [
+                    ca.model_dump() if hasattr(ca, "model_dump") else ca for ca in package.creative_assignments
+                ]
+
+            if hasattr(package, "format_ids_to_provide") and package.format_ids_to_provide:
+                full_package_dict["format_ids_to_provide"] = package.format_ids_to_provide
+
+            response_packages.append(full_package_dict)
 
         # Ensure buyer_ref is set (defensive check)
         buyer_ref_value = req.buyer_ref if req.buyer_ref else buyer_ref

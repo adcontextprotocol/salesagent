@@ -17,9 +17,8 @@ import uuid
 from datetime import datetime
 from typing import Any, cast
 
-from adcp.types.generated_poc.create_media_buy_response import (
-    Package as ResponsePackage,
-)
+from adcp.types import PackageStatus
+from adcp.types.aliases import Package as ResponsePackage
 from flask import Flask
 
 from src.adapters.base import AdServerAdapter
@@ -34,13 +33,14 @@ from src.adapters.gam.managers import (
     GAMTargetingManager,
     GAMWorkflowManager,
 )
-from src.adapters.gam_data_freshness import validate_and_log_freshness
+
 # Re-export constants for backward compatibility
 from src.adapters.gam.managers.orders import (
     GUARANTEED_LINE_ITEM_TYPES,
     NON_GUARANTEED_LINE_ITEM_TYPES,
 )
 from src.adapters.gam.pricing_compatibility import PricingCompatibility
+from src.adapters.gam_data_freshness import validate_and_log_freshness
 from src.core.audit_logger import AuditLogger
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
@@ -527,11 +527,12 @@ class GoogleAdManager(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-                # Create minimal AdCP-compliant Package response
+                # Create AdCP-compliant Package response (package_id + status required per v2.9.0)
                 package_responses.append(
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
+                        status=PackageStatus.active,  # Default to active for created packages
                     )
                 )
 
@@ -693,11 +694,12 @@ class GoogleAdManager(AdServerAdapter):
                 if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                     buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-                # Create minimal AdCP-compliant Package response
+                # Create AdCP-compliant Package response (package_id + status required per v2.9.0)
                 package_responses.append(
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
+                        status=PackageStatus.active,  # Default to active for created packages
                     )
                 )
 
@@ -742,11 +744,12 @@ class GoogleAdManager(AdServerAdapter):
             if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
                 buyer_ref = matching_req_package.buyer_ref or buyer_ref
 
-            # Create minimal AdCP-compliant Package response
+            # Create AdCP-compliant Package response (package_id + status required per v2.9.0)
             package_responses.append(
                 ResponsePackage(
                     buyer_ref=buyer_ref,
                     package_id=package.package_id,
+                    status=PackageStatus.active,  # Default to active for created packages
                 )
             )
 
@@ -1062,12 +1065,8 @@ class GoogleAdManager(AdServerAdapter):
         # The adapter decides whether to return data or raise error if data is stale
         # Target date is the end of the reporting period
         target_date = dt.fromisoformat(date_range.end.replace("Z", "+00:00"))
-        
-        is_fresh = validate_and_log_freshness(
-            reporting_data, 
-            media_buy_id, 
-            target_date=target_date
-        )
+
+        is_fresh = validate_and_log_freshness(reporting_data, media_buy_id, target_date=target_date)
 
         if not is_fresh:
             raise ValueError(f"GAM data is not fresh enough for media buy {media_buy_id}")

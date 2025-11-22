@@ -16,10 +16,12 @@ from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 
+from adcp.types import PlatformDeployment, Pricing, Signal, SignalCatalogType
+
 from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import get_current_tenant
 from src.core.schema_adapters import ActivateSignalResponse, GetSignalsResponse
-from src.core.schemas import GetSignalsRequest, Signal, SignalDeployment, SignalPricing
+from src.core.schemas import GetSignalsRequest
 from src.core.testing_hooks import get_testing_context
 
 
@@ -62,139 +64,97 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
             signal_agent_segment_id="auto_intenders_q1_2025",
             name="Auto Intenders Q1 2025",
             description="Users actively researching new vehicles in Q1 2025",
-            signal_type="marketplace",
+            signal_type=SignalCatalogType.marketplace,
             data_provider="Acme Data Solutions",
             coverage_percentage=85.0,
             deployments=[
-                SignalDeployment(
+                PlatformDeployment(
                     platform="google_ad_manager",
-                    account="123456",
                     is_live=True,
-                    scope="account-specific",
-                    decisioning_platform_segment_id="gam_auto_intenders",
-                    estimated_activation_duration_minutes=0,
+                    type="platform",
                 )
             ],
-            pricing=SignalPricing(cpm=3.0, currency="USD"),
-            tenant_id=None,
-            created_at=None,
-            updated_at=None,
-            metadata=None,
+            pricing=Pricing(cpm=3.0, currency="USD"),
         ),
         Signal(
             signal_agent_segment_id="luxury_travel_enthusiasts",
             name="Luxury Travel Enthusiasts",
             description="High-income individuals interested in premium travel experiences",
-            signal_type="marketplace",
+            signal_type=SignalCatalogType.marketplace,
             data_provider="Premium Audience Co",
             coverage_percentage=75.0,
             deployments=[
-                SignalDeployment(
+                PlatformDeployment(
                     platform="google_ad_manager",
-                    account=None,
                     is_live=True,
-                    scope="platform-wide",
-                    decisioning_platform_segment_id=None,
-                    estimated_activation_duration_minutes=15,
+                    type="platform",
                 )
             ],
-            pricing=SignalPricing(cpm=5.0, currency="USD"),
-            tenant_id=None,
-            created_at=None,
-            updated_at=None,
-            metadata=None,
+            pricing=Pricing(cpm=5.0, currency="USD"),
         ),
         Signal(
             signal_agent_segment_id="sports_content",
             name="Sports Content Pages",
             description="Target ads on sports-related content",
-            signal_type="owned",
+            signal_type=SignalCatalogType.owned,
             data_provider="Publisher Sports Network",
             coverage_percentage=95.0,
             deployments=[
-                SignalDeployment(
+                PlatformDeployment(
                     platform="google_ad_manager",
-                    account=None,
                     is_live=True,
-                    scope="account-specific",
-                    decisioning_platform_segment_id="sports_contextual",
-                    estimated_activation_duration_minutes=None,
+                    type="platform",
                 )
             ],
-            pricing=SignalPricing(cpm=1.5, currency="USD"),
-            tenant_id=None,
-            created_at=None,
-            updated_at=None,
-            metadata=None,
+            pricing=Pricing(cpm=1.5, currency="USD"),
         ),
         Signal(
             signal_agent_segment_id="finance_content",
             name="Finance & Business Content",
             description="Target ads on finance and business content",
-            signal_type="owned",
+            signal_type=SignalCatalogType.owned,
             data_provider="Financial News Corp",
             coverage_percentage=88.0,
             deployments=[
-                SignalDeployment(
+                PlatformDeployment(
                     platform="google_ad_manager",
-                    account=None,
                     is_live=True,
-                    scope="platform-wide",
-                    decisioning_platform_segment_id=None,
-                    estimated_activation_duration_minutes=None,
+                    type="platform",
                 )
             ],
-            pricing=SignalPricing(cpm=2.0, currency="USD"),
-            tenant_id=None,
-            created_at=None,
-            updated_at=None,
-            metadata=None,
+            pricing=Pricing(cpm=2.0, currency="USD"),
         ),
         Signal(
             signal_agent_segment_id="urban_millennials",
             name="Urban Millennials",
             description="Millennials living in major metropolitan areas",
-            signal_type="marketplace",
+            signal_type=SignalCatalogType.marketplace,
             data_provider="Demographics Plus",
             coverage_percentage=78.0,
             deployments=[
-                SignalDeployment(
+                PlatformDeployment(
                     platform="google_ad_manager",
-                    account=None,
                     is_live=True,
-                    scope="account-specific",
-                    decisioning_platform_segment_id=None,
-                    estimated_activation_duration_minutes=30,
+                    type="platform",
                 )
             ],
-            pricing=SignalPricing(cpm=1.8, currency="USD"),
-            tenant_id=None,
-            created_at=None,
-            updated_at=None,
-            metadata=None,
+            pricing=Pricing(cpm=1.8, currency="USD"),
         ),
         Signal(
             signal_agent_segment_id="pet_owners",
             name="Pet Owners",
             description="Households with dogs or cats",
-            signal_type="marketplace",
+            signal_type=SignalCatalogType.marketplace,
             data_provider="Lifestyle Data Inc",
             coverage_percentage=92.0,
             deployments=[
-                SignalDeployment(
+                PlatformDeployment(
                     platform="google_ad_manager",
-                    account=None,
                     is_live=True,
-                    scope="platform-wide",
-                    decisioning_platform_segment_id=None,
-                    estimated_activation_duration_minutes=None,
+                    type="platform",
                 )
             ],
-            pricing=SignalPricing(cpm=1.2, currency="USD"),
-            tenant_id=None,
-            created_at=None,
-            updated_at=None,
-            metadata=None,
+            pricing=Pricing(cpm=1.2, currency="USD"),
         ),
     ]
 
@@ -206,7 +166,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
             if (
                 spec_lower not in signal.name.lower()
                 and spec_lower not in signal.description.lower()
-                and spec_lower not in signal.signal_type.lower()
+                and spec_lower not in signal.signal_type.value.lower()
             ):
                 continue
 
@@ -331,12 +291,7 @@ async def _activate_signal_impl(
 
         # Build response with adapter schema fields
         if requires_approval or not activation_success:
-            response = ActivateSignalResponse(
-                task_id=task_id,
-                status=status,
-                errors=errors,
-                context=context
-            )
+            response = ActivateSignalResponse(task_id=task_id, status=status, errors=errors, context=context)
         else:
             response = ActivateSignalResponse(
                 task_id=task_id,
@@ -345,7 +300,7 @@ async def _activate_signal_impl(
                 estimated_activation_duration_minutes=(
                     estimated_activation_duration_minutes if activation_success else None
                 ),
-                context=context
+                context=context,
             )
         return response
 
