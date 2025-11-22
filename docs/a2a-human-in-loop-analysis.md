@@ -109,12 +109,14 @@ event = TaskStatusUpdateEvent(
 ```
 
 **Our Current Implementation:**
-- ✅ We support PushNotificationConfig registration
-- ✅ We send webhooks via `_send_protocol_webhook()`
-- ⚠️ We only send webhooks for "completed" and "failed" states
-- ❌ We don't send webhooks for "input_required" state
+- ✅ We support PushNotificationConfig registration (database model + A2A integration)
+- ✅ We send webhooks via `_send_protocol_webhook()` after task completion
+- ✅ Webhooks sent for "completed" state (line 867 in adcp_a2a_server.py)
+- ✅ Webhooks sent for "failed" state (line 899 in adcp_a2a_server.py)
+- ✅ Webhooks sent for "submitted" state (creatives pending review)
+- ❌ We don't send webhooks for "input_required" state transitions
 
-**Gap:** Missing webhook notifications for approval requests
+**Gap:** We send webhooks after tasks complete, but not when they transition to "input_required" state (which we don't currently use). If we implement "input_required" state, we should also send webhooks at that transition point to notify clients that approval is needed.
 
 ## Current Implementation Analysis
 
@@ -123,13 +125,14 @@ event = TaskStatusUpdateEvent(
 1. **Database State Management**: We properly track `pending_approval` status
 2. **Admin UI Approval Flow**: Working manual approval through UI
 3. **AdCP Status Mapping**: Correctly map to `pending_activation` status
-4. **Webhook Infrastructure**: Have webhook sending capability
+4. **Webhook Infrastructure**: Full webhook support with PushNotificationConfig registration and delivery
+5. **Task Completion Webhooks**: Send webhooks for completed, failed, and submitted states
 
 ### What's Missing for A2A Alignment
 
 1. **No `input_required` State**: Don't use A2A's standard approval state
 2. **No A2A Resume Flow**: Can't approve via A2A message
-3. **No Approval Webhooks**: Don't notify clients when approval needed
+3. **No Intermediate State Webhooks**: Don't send webhooks when tasks transition to "input_required" (though we do send them for completed/failed/submitted)
 4. **No TaskStatus.message**: Don't provide human context in task status
 
 ## Recommended Implementation
@@ -228,7 +231,8 @@ for state in WEBHOOK_STATES:
 | Use `input_required` state | ❌ Not implemented | Critical - breaks ADK/A2A client expectations | High |
 | Use `submitted` state | ✅ Partial - only for creatives | Should extend to other submission flows | Medium |
 | Support approval messages | ❌ Not implemented | Limits A2A-native workflow | Medium |
-| Send approval webhooks | ❌ Not implemented | Clients can't receive notifications | High |
+| Send task completion webhooks | ✅ Implemented for completed/failed/submitted | None - works as expected | - |
+| Send intermediate state webhooks | ❌ Not sent for input_required | Would need if we implement input_required state | High |
 | Provide TaskStatus.message | ❌ Not implemented | Missing human context | High |
 | Use Task.history | ❌ Not implemented | Limits debugging/audit | Low |
 | Support `rejected` state | ❌ Not implemented | Can't signal explicit rejection | Medium |
@@ -241,11 +245,12 @@ for state in WEBHOOK_STATES:
 3. Ability to approve via A2A message (future)
 4. Human-readable context in TaskStatus.message
 
-**Without these:**
-- ADK clients won't know approval is needed
-- No async notification of approval requests
-- Must poll or check Admin UI manually
-- Poor developer experience
+**Current Status:**
+- ✅ Webhook infrastructure works well for task completion
+- ✅ Clients get notified when tasks complete or fail
+- ❌ Clients don't get notified when approval is needed (we don't use input_required state)
+- ❌ Must poll or check Admin UI manually for approval status
+- ⚠️ If we implement input_required state, we'd need to add webhooks for that transition too
 
 ## Recommendations
 
@@ -274,10 +279,12 @@ for state in WEBHOOK_STATES:
 
 ## Conclusion
 
-Our implementation has the **infrastructure** for human-in-the-loop patterns but doesn't fully align with A2A's **standard patterns**. The key gaps are:
+Our implementation has **solid webhook infrastructure** and handles task completion well, but doesn't fully align with A2A's **standard patterns for approval workflows**. The key gaps are:
 
 1. Not using `input_required` state (critical for ADK compatibility)
-2. Not sending approval webhooks (limits async notifications)
+2. Not sending webhooks when approval is needed (we do send them for completion/failure)
 3. Not supporting A2A-based approval messages (future consideration)
+
+**Webhook Status:** Our webhook implementation is solid - we successfully send notifications for completed, failed, and submitted states. The gap is that we don't use `input_required` state in the first place, so there's no intermediate state to send webhooks for.
 
 These should be addressed in a follow-up PR to ensure full A2A/ADK compliance for approval workflows.
