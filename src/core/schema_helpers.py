@@ -14,13 +14,6 @@ from typing import Any
 
 from adcp import GetProductsRequest, GetProductsResponse, Product
 
-# Filters type - import from stable API (adcp 2.8.0+)
-try:
-    from adcp.types import Filters
-except ImportError:
-    # Fallback: Filters might not be exported in older versions
-    Filters = dict[str, Any]  # type: ignore
-
 
 def create_get_products_request(
     brief: str = "",
