@@ -2096,20 +2096,19 @@ async def _create_media_buy_impl(
                                         if creative:
                                             from typing import cast
 
-                                            is_valid, matching_products, error_msg = (
-                                                validate_creative_format_against_products(
-                                                    creative_agent_url=cast(str, creative.agent_url or ""),
-                                                    creative_format_id=cast(str, creative.format or ""),
-                                                    products=[product_for_format_validation],
-                                                    normalize_url=True,
-                                                )
+                                            validation_result = validate_creative_format_against_products(
+                                                creative_agent_url=cast(str, creative.agent_url or ""),
+                                                creative_format_id=cast(str, creative.format or ""),
+                                                products=[product_for_format_validation],
+                                                normalize_url=True,
                                             )
+                                            format_is_valid, format_matches, format_error = validation_result
 
-                                            if not is_valid:
+                                            if not format_is_valid:
                                                 logger.error(
-                                                    f"[CREATIVE_ASSIGN_DEBUG] Format validation failed: {error_msg}"
+                                                    f"[CREATIVE_ASSIGN_DEBUG] Format validation failed: {format_error}"
                                                 )
-                                                raise ToolError(f"Creative format validation failed: {error_msg}")
+                                                raise ToolError(f"Creative format validation failed: {format_error}")
 
                                             logger.info(
                                                 f"[CREATIVE_ASSIGN_DEBUG] Creative {creative_id} format "
@@ -2862,21 +2861,20 @@ async def _create_media_buy_impl(
                                     if creative:
                                         from typing import cast
 
-                                        is_valid, matching_products, error_msg = (
-                                            validate_creative_format_against_products(
-                                                creative_agent_url=cast(str, creative.agent_url or ""),
-                                                creative_format_id=cast(str, creative.format or ""),
-                                                products=[product_format_check],
-                                                normalize_url=True,
-                                            )
+                                        validation_result = validate_creative_format_against_products(
+                                            creative_agent_url=cast(str, creative.agent_url or ""),
+                                            creative_format_id=cast(str, creative.format or ""),
+                                            products=[product_format_check],
+                                            normalize_url=True,
                                         )
+                                        format_is_valid, format_matches, format_error = validation_result
 
-                                        if not is_valid:
-                                            logger.error(f"Format validation failed: {error_msg}")
+                                        if not format_is_valid:
+                                            logger.error(f"Format validation failed: {format_error}")
                                             ctx_manager.update_workflow_step(
-                                                step.step_id, status="failed", error_message=error_msg
+                                                step.step_id, status="failed", error_message=format_error
                                             )
-                                            raise ToolError("CREATIVE_FORMAT_MISMATCH", error_msg)
+                                            raise ToolError("CREATIVE_FORMAT_MISMATCH", format_error)
 
                                         logger.info(
                                             f"Creative {creative_id} format validated against product {package.product_id}"
