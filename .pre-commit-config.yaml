@@ -50,6 +50,15 @@ repos:
         pass_filenames: false
         always_run: false
 
+      # Check tenant context ordering in MCP tools
+      - id: check-tenant-context-order
+        name: Check tenant context auth before get_current_tenant()
+        entry: uv run python .pre-commit-hooks/check_tenant_context_order.py
+        language: system
+        files: '^src/core/tools/.*\.py$'
+        pass_filenames: true
+        always_run: false
+
       # Prevent skipping tests (but allow skip_ci for CI-specific issues)
       - id: no-skip-tests
         name: No @pytest.mark.skip decorators allowed

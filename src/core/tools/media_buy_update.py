@@ -207,14 +207,22 @@ def _update_media_buy_impl(
     if ctx is None:
         raise ValueError("Context is required for update_media_buy")
 
+    # CRITICAL: Establish tenant context FIRST by extracting principal from auth token
+    # This must happen before any database queries that need tenant_id
+    principal_id = get_principal_id_from_context(ctx)
+    if principal_id is None:
+        raise ValueError("principal_id is required but was None - authentication required")
+
+    # Now tenant context is set, we can safely call get_current_tenant()
+    tenant = get_current_tenant()
+
     # Resolve media_buy_id from buyer_ref if needed (AdCP oneOf constraint)
     media_buy_id_to_use = req.media_buy_id
     if not media_buy_id_to_use and req.buyer_ref:
-        # Look up media_buy_id by buyer_ref
+        # Look up media_buy_id by buyer_ref (tenant context already set above)
         from src.core.database.database_session import get_db_session
         from src.core.database.models import MediaBuy as MediaBuyModel
 
-        tenant = get_current_tenant()
         with get_db_session() as session:
             stmt = select(MediaBuyModel).where(
                 MediaBuyModel.buyer_ref == req.buyer_ref, MediaBuyModel.tenant_id == tenant["tenant_id"]
@@ -233,14 +241,8 @@ def _update_media_buy_impl(
     # Update req.media_buy_id for downstream processing
     req.media_buy_id = media_buy_id_to_use
 
+    # Verify principal owns this media buy
     _verify_principal(media_buy_id_to_use, ctx)
-    principal_id = get_principal_id_from_context(ctx)  # Already verified by _verify_principal
-
-    # Verify principal_id is not None (get_principal_id_from_context should raise if None)
-    if principal_id is None:
-        raise ValueError("principal_id is required but was None")
-
-    tenant = get_current_tenant()
 
     # Create or get persistent context
     ctx_manager = get_context_manager()

@@ -32,16 +32,45 @@ current_tenant: ContextVar[dict[str, Any] | None] = ContextVar("current_tenant",
 
 
 def get_current_tenant() -> dict[str, Any]:
-    """Get current tenant from context."""
+    """Get current tenant from context.
+
+    CRITICAL: This function must only be called AFTER tenant context has been established
+    via get_principal_id_from_context() or get_principal_from_context() + set_current_tenant().
+
+    Common mistake: Calling get_current_tenant() before authenticating the request.
+    Correct order:
+        1. principal_id = get_principal_id_from_context(ctx)  # Sets tenant context
+        2. tenant = get_current_tenant()  # Now safe to call
+
+    Raises:
+        RuntimeError: If tenant context is not set (indicates authentication/ordering bug)
+    """
+    import inspect
+
     tenant = current_tenant.get()
     if not tenant:
         # SECURITY: Do NOT fall back to default tenant in production.
         # This would cause tenant isolation breach.
         # Only CLI/testing scripts should call this without context.
+
+        # Get caller information for debugging
+        frame = inspect.currentframe()
+        caller_frame = frame.f_back if frame else None
+        caller_info = ""
+        if caller_frame:
+            caller_file = caller_frame.f_code.co_filename
+            caller_line = caller_frame.f_lineno
+            caller_func = caller_frame.f_code.co_name
+            caller_info = f"\n  Called from: {caller_file}:{caller_line} in {caller_func}()"
+
         raise RuntimeError(
             "No tenant context set. Tenant must be set via set_current_tenant() "
             "before calling this function. This is a critical security error - "
-            "falling back to default tenant would breach tenant isolation."
+            "falling back to default tenant would breach tenant isolation.\n"
+            "\n"
+            "COMMON CAUSE: Calling get_current_tenant() before authenticating the request.\n"
+            "FIX: Ensure get_principal_id_from_context(ctx) is called BEFORE get_current_tenant()."
+            f"{caller_info}"
         )
     return tenant
 
