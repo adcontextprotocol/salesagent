@@ -1,0 +1,201 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                  DUPLICATE TENANT PREVENTION FIX - FLOW DIAGRAM              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ USER LOGS IN WITH GOOGLE OAUTH                                              │
+│ Email: user@weather.com                                                     │
+└─────────────────────────┬───────────────────────────────────────────────────┘
+                          │
+                          ▼
+      ┌───────────────────────────────────────────────────┐
+      │ auth.py: google_callback()                        │
+      │ - OAuth completes successfully                    │
+      │ - Extract email: user@weather.com                 │
+      │ - Extract domain: weather.com                     │
+      └───────────────────────┬───────────────────────────┘
+                              │
+                              ▼
+      ┌───────────────────────────────────────────────────┐
+      │ domain_access.py: get_user_tenant_access()        │
+      │ - Check: Is weather.com in ANY tenant's           │
+      │   authorized_domains?                             │
+      └───────────────────────┬───────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────┴─────────┐
+                    │                   │
+            ┌───────▼────────┐   ┌─────▼──────────┐
+            │ Domain Found   │   │ Domain Not     │
+            │ (weather.com)  │   │ Found          │
+            └───────┬────────┘   └─────┬──────────┘
+                    │                   │
+                    │                   │
+    ┌───────────────▼──────────┐        │
+    │ Set session flag:        │        │
+    │ has_domain_tenant = True │        │
+    └───────────────┬──────────┘        │
+                    │                   │
+    ┌───────────────▼──────────────┐    │
+    │ How many tenants found?      │    │
+    │ (domain + email matches)     │    │
+    └───────────────┬──────────────┘    │
+                    │                   │
+         ┌──────────┴──────────┐        │
+         │                     │        │
+    ┌────▼─────┐        ┌─────▼────┐   │
+    │ Exactly  │        │ Multiple │   │
+    │ 1 Tenant │        │ Tenants  │   │
+    └────┬─────┘        └─────┬────┘   │
+         │                    │        │
+         │                    │        │
+         │              ┌─────▼────────▼─────────────┐
+         │              │ Set session flag:          │
+         │              │ has_domain_tenant = False  │
+         │              └─────┬──────────────────────┘
+         │                    │
+         │                    │
+         │              ┌─────▼──────────────────────┐
+         │              │ Redirect to:               │
+         │              │ /auth/select-tenant        │
+         │              └─────┬──────────────────────┘
+         │                    │
+         │                    ▼
+         │       ┌────────────────────────────────────┐
+         │       │ choose_tenant.html                 │
+         │       │ - Show tenant list                 │
+         │       │ - Check: has_domain_tenant?        │
+         │       └────────────┬───────────────────────┘
+         │                    │
+         │         ┌──────────┴──────────┐
+         │         │                     │
+         │    ┌────▼─────┐        ┌─────▼─────┐
+         │    │ TRUE     │        │ FALSE     │
+         │    └────┬─────┘        └─────┬─────┘
+         │         │                    │
+         │    ┌────▼─────────────┐ ┌────▼──────────────────┐
+         │    │ Hide "Create New"│ │ Show "Create New"     │
+         │    │ Show message     │ │ button                │
+         │    └──────────────────┘ └────┬──────────────────┘
+         │                              │
+         │                              │
+         │                         ┌────▼──────────────────┐
+         │                         │ User clicks           │
+         │                         │ "Create New Account"  │
+         │                         └────┬──────────────────┘
+         │                              │
+         │                              ▼
+         │                    ┌─────────────────────────────┐
+         │                    │ public.py: provision_tenant()│
+         │                    │ - Extract email domain      │
+         │                    │ - find_tenant_by_domain()   │
+         │                    └────┬────────────────────────┘
+         │                         │
+         │                    ┌────┴────┐
+         │                    │         │
+         │               ┌────▼──┐  ┌───▼────┐
+         │               │ Found │  │ Not    │
+         │               │       │  │ Found  │
+         │               └────┬──┘  └───┬────┘
+         │                    │         │
+         │        ┌───────────▼──────┐  │
+         │        │ REJECT REQUEST   │  │
+         │        │ - Flash error    │  │
+         │        │ - Log warning    │  │
+         │        │ - Redirect login │  │
+         │        └──────────────────┘  │
+         │                              │
+         │                     ┌────────▼────────────┐
+         │                     │ CREATE TENANT       │
+         │                     │ - Generate UUID     │
+         │                     │ - Save to database  │
+         │                     │ - Add domain to     │
+         │                     │   authorized_domains│
+         │                     └─────────────────────┘
+         │
+         │
+    ┌────▼─────────────────────────────┐
+    │ AUTO-ROUTE TO DASHBOARD          │
+    │ - Ensure user record exists      │
+    │ - Set session tenant_id          │
+    │ - Redirect to tenant dashboard   │
+    │ - No tenant selector shown       │
+    └──────────────────────────────────┘
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           KEY DECISION POINTS                                 ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+1. DOMAIN LOOKUP (auth.py line 286)
+   ├─ Checks: tenant.authorized_domains contains user's email domain?
+   └─ Result: Sets has_domain_tenant flag
+
+2. TENANT COUNT CHECK (auth.py line 332)
+   ├─ If exactly 1 tenant: Auto-route (better UX)
+   └─ If multiple tenants: Show selector (user choice)
+
+3. UI CONDITIONAL RENDERING (choose_tenant.html line 27)
+   ├─ If has_domain_tenant: Hide "Create New Account" button
+   └─ If !has_domain_tenant: Show "Create New Account" button
+
+4. SERVER VALIDATION (public.py line 130)
+   ├─ Checks: domain already in ANY tenant's authorized_domains?
+   ├─ If found: REJECT with error message
+   └─ If not found: ALLOW tenant creation
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          EXAMPLE SCENARIOS                                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+SCENARIO A: user@weather.com (Single Tenant)
+───────────────────────────────────────────────
+1. Domain lookup: ✓ Found tenant "weather"
+2. Tenant count: 1
+3. Result: ✅ AUTO-ROUTE to "weather" dashboard
+4. UX: Fast, no selector needed
+
+SCENARIO B: user@weather.com (3 Duplicate Tenants)
+───────────────────────────────────────────────
+1. Domain lookup: ✓ Found 3 tenants
+2. Tenant count: 3
+3. Result: ✅ SHOW SELECTOR, HIDE "Create New"
+4. UX: User picks from existing, cannot create 4th
+
+SCENARIO C: user@newcompany.com (No Tenant)
+───────────────────────────────────────────────
+1. Domain lookup: ✗ Not found
+2. has_domain_tenant: False
+3. Result: ✅ SHOW SELECTOR, SHOW "Create New"
+4. UX: Self-service works as before
+
+SCENARIO D: contractor@gmail.com (Email-Only Access)
+───────────────────────────────────────────────
+1. Domain lookup: ✗ gmail.com not in authorized_domains
+2. Email lookup: ✓ Found in authorized_emails
+3. has_domain_tenant: False
+4. Result: ✅ SHOW SELECTOR, SHOW "Create New"
+5. UX: Can access tenant OR create new (gmail.com unclaimed)
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         THREE-LAYER DEFENSE                                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Layer 1: OAuth Callback (Routing Logic)
+├─ Sets session flag for downstream decisions
+├─ Auto-routes single-tenant users
+└─ Improves UX while enforcing policy
+
+Layer 2: UI Conditional Rendering (User Experience)
+├─ Hides button based on session flag
+├─ Shows informative messages
+└─ Prevents accidental duplicate creation
+
+Layer 3: Server Validation (Security Boundary)
+├─ Enforces domain uniqueness server-side
+├─ Cannot be bypassed by client manipulation
+└─ Logs security events for monitoring
+
+
