@@ -625,7 +625,13 @@ class TritonDigital(AdServerAdapter):
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
                     affected_packages=[
-                        AffectedPackage(package_id=package_id, buyer_ref=buyer_ref or package_id, paused=True)
+                        AffectedPackage(
+                            package_id=package_id,
+                            buyer_ref=buyer_ref or package_id,
+                            paused=True,
+                            changes_applied=None,
+                            buyer_package_ref=None,
+                        )
                     ],
                     implementation_date=today,
                 )
@@ -637,7 +643,13 @@ class TritonDigital(AdServerAdapter):
                     media_buy_id=media_buy_id,
                     buyer_ref=buyer_ref,
                     affected_packages=[
-                        AffectedPackage(package_id=package_id, buyer_ref=buyer_ref or package_id, paused=False)
+                        AffectedPackage(
+                            package_id=package_id,
+                            buyer_ref=buyer_ref or package_id,
+                            paused=False,
+                            changes_applied=None,
+                            buyer_package_ref=None,
+                        )
                     ],
                     implementation_date=today,
                 )
@@ -704,6 +716,8 @@ class TritonDigital(AdServerAdapter):
                                 package_id=package_id,
                                 buyer_ref=buyer_ref or package_id,
                                 paused=not is_resume,
+                                changes_applied=None,
+                                buyer_package_ref=None,
                             )
                         ],
                         implementation_date=today,

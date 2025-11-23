@@ -2430,9 +2430,7 @@ def create_list_creatives_request(
     if fields:
         if isinstance(fields, list) and fields and isinstance(fields[0], str):
             # Convert string field names to FieldModel enum values
-            converted_fields = [
-                LibraryFieldModel[str(f)] for f in fields if isinstance(f, str)
-            ]  # type: ignore[arg-type]
+            converted_fields = [LibraryFieldModel[str(f)] for f in fields if isinstance(f, str)]  # type: ignore[arg-type]
         else:
             converted_fields = fields  # type: ignore[assignment]
 

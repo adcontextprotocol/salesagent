@@ -645,8 +645,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
                     # Log conversion results
                     logger.info(
-                        f"[APPROVAL] Package {package_id}: "
-                        f"Successfully converted all {len(format_ids_list)} formats"
+                        f"[APPROVAL] Package {package_id}: Successfully converted all {len(format_ids_list)} formats"
                     )
 
                     media_package = MediaPackage(
@@ -705,7 +704,13 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
         # Execute adapter creation (outside session to avoid conflicts)
         # Type ignore needed because we're passing MediaPackage list as Package list (adapter compatibility)
         response = _execute_adapter_media_buy_creation(
-            request, packages, start_time, end_time, package_pricing_info, principal, testing_ctx  # type: ignore[arg-type]
+            request,
+            packages,
+            start_time,
+            end_time,
+            package_pricing_info,
+            principal,
+            testing_ctx,  # type: ignore[arg-type]
         )
 
         # Check if adapter returned an error response
@@ -1953,7 +1958,9 @@ async def _create_media_buy_impl(
                     for idx, req_pkg in enumerate(req.packages):
                         if idx == pending_packages.index(pkg_obj):
                             # Get pricing info for this package if available
-                            pricing_info_for_package = package_pricing_info.get(pkg_obj.package_id) if pkg_obj.package_id else None  # type: ignore[index]
+                            pricing_info_for_package = (
+                                package_pricing_info.get(pkg_obj.package_id) if pkg_obj.package_id else None
+                            )  # type: ignore[index]
 
                             # Serialize budget: normalize to object format for database storage
                             # ADCP 2.5.0 sends flat numbers, but we normalize to object with currency for DB

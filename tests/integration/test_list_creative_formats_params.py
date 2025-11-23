@@ -117,9 +117,9 @@ def test_filtering_by_type(integration_db, sample_tenant):
 
         # All returned formats should be video type
         if len(formats) > 0:
-            assert all(
-                f.type == FormatCategory.video or f.type == "video" for f in formats
-            ), "All formats should be video type"
+            assert all(f.type == FormatCategory.video or f.type == "video" for f in formats), (
+                "All formats should be video type"
+            )
         # Note: Test may return empty list if mock registry not working - this is OK for integration test
 
 
@@ -252,9 +252,9 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
         # Should only return the requested formats (that exist)
         target_ids = ["display_300x250", "display_728x90"]
         returned_ids = [f.format_id.id if hasattr(f.format_id, "id") else f.format_id for f in formats]
-        assert all(
-            (f.format_id.id if hasattr(f.format_id, "id") else f.format_id) in target_ids for f in formats
-        ), "All formats should be in target list"
+        assert all((f.format_id.id if hasattr(f.format_id, "id") else f.format_id) in target_ids for f in formats), (
+            "All formats should be in target list"
+        )
         # At least one of the target formats should exist
         assert len(formats) > 0, "Should return at least one format if they exist"
 
@@ -320,7 +320,7 @@ def test_filtering_combined(integration_db, sample_tenant):
 
         # All returned formats should match both filters
         if len(formats) > 0:
-            assert all(
-                (f.type == FormatCategory.display or f.type == "display") and f.is_standard for f in formats
-            ), "All formats should be display AND standard"
+            assert all((f.type == FormatCategory.display or f.type == "display") and f.is_standard for f in formats), (
+                "All formats should be display AND standard"
+            )
         # Note: Test may return empty list if mock registry not working - this is OK for integration test

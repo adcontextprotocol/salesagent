@@ -308,9 +308,9 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
     # Check error indicates CPCV/pricing model rejection
     assert response.errors, "Expected error messages in CreateMediaBuyError"
     error_msg = " ".join([err.message.lower() for err in response.errors])
-    assert (
-        "cpcv" in error_msg or "pricing" in error_msg or "not supported" in error_msg or "gam" in error_msg
-    ), f"Expected pricing/GAM error, got: {error_msg}"
+    assert "cpcv" in error_msg or "pricing" in error_msg or "not supported" in error_msg or "gam" in error_msg, (
+        f"Expected pricing/GAM error, got: {error_msg}"
+    )
 
 
 @pytest.mark.requires_db
@@ -357,9 +357,9 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
 
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
-    assert (
-        not hasattr(response, "errors") or response.errors is None or response.errors == []
-    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
+    assert not hasattr(response, "errors") or response.errors is None or response.errors == [], (
+        f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
+    )
     assert response.media_buy_id is not None
 
 
@@ -413,9 +413,9 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
     # Check error indicates CPP/pricing model rejection
     assert response.errors, "Expected error messages in CreateMediaBuyError"
     error_msg = " ".join([err.message.lower() for err in response.errors])
-    assert (
-        "cpp" in error_msg or "pricing" in error_msg or "not supported" in error_msg or "gam" in error_msg
-    ), f"Expected pricing/GAM error, got: {error_msg}"
+    assert "cpp" in error_msg or "pricing" in error_msg or "not supported" in error_msg or "gam" in error_msg, (
+        f"Expected pricing/GAM error, got: {error_msg}"
+    )
 
 
 @pytest.mark.requires_db
@@ -462,7 +462,7 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
 
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
-    assert (
-        not hasattr(response, "errors") or response.errors is None or response.errors == []
-    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
+    assert not hasattr(response, "errors") or response.errors is None or response.errors == [], (
+        f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
+    )
     assert response.media_buy_id is not None

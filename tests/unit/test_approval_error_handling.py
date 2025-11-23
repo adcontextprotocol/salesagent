@@ -6,7 +6,6 @@ This tests the fix for the bug where trying to approve a media buy would crash w
 "'CreateMediaBuyError' object has no attribute 'media_buy_id'"
 """
 
-
 from src.core.schemas import CreateMediaBuyError, CreateMediaBuySuccess, Error
 
 

@@ -1523,7 +1523,9 @@ class AdCPRequestHandler(RequestHandler):
             response_data["message"] = (
                 "Creatives synced with errors"
                 if has_errors
-                else str(response) if not isinstance(response, dict) else "Creatives synced successfully"
+                else str(response)
+                if not isinstance(response, dict)
+                else "Creatives synced successfully"
             )
 
             return response_data

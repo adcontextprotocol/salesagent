@@ -68,8 +68,7 @@ def _verify_principal(media_buy_id: str, context: Context | ToolContext):
     # CRITICAL: principal_id is required for media buy updates
     if not principal_id:
         raise ToolError(
-            "Authentication required: Missing or invalid x-adcp-auth header. "
-            "Media buy updates require authentication."
+            "Authentication required: Missing or invalid x-adcp-auth header. Media buy updates require authentication."
         )
 
     tenant = get_current_tenant()

@@ -771,7 +771,7 @@ class GAMOrdersManager:
 
                 # Validate rate is not None
                 if rate is None:
-                    error_msg = f"Package '{package.package_id}' has no valid rate. " f"Pricing info: {pricing_info}"
+                    error_msg = f"Package '{package.package_id}' has no valid rate. Pricing info: {pricing_info}"
                     log(f"[red]Error: {error_msg}[/red]")
                     raise ValueError(error_msg)
 

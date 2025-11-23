@@ -177,7 +177,11 @@ class GoogleAdManager(AdServerAdapter):
             # Only initialize creative manager if we have advertiser_id (required for creative operations)
             if self.advertiser_id and self.trafficker_id:
                 self.creatives_manager = GAMCreativesManager(
-                    None, self.advertiser_id, dry_run=True, log_func=self.log, adapter=self  # type: ignore[arg-type]
+                    None,
+                    self.advertiser_id,
+                    dry_run=True,
+                    log_func=self.log,
+                    adapter=self,  # type: ignore[arg-type]
                 )
             else:
                 self.creatives_manager = None  # type: ignore[assignment]
@@ -187,7 +191,11 @@ class GoogleAdManager(AdServerAdapter):
 
             # Initialize sync manager in dry-run mode
             self.sync_manager = GAMSyncManager(
-                None, self.inventory_manager, self.orders_manager, tenant_id or "", dry_run=True  # type: ignore[arg-type]
+                None,
+                self.inventory_manager,
+                self.orders_manager,
+                tenant_id or "",
+                dry_run=True,  # type: ignore[arg-type]
             )
 
             # Initialize workflow manager (doesn't need client)
@@ -392,7 +400,8 @@ class GoogleAdManager(AdServerAdapter):
 
                     # Load inventory mappings from ProductInventoryMapping table
                     inventory_stmt = select(ProductInventoryMapping).filter_by(
-                        product_id=product.product_id, tenant_id=self.tenant_id  # Use product_id string, not integer id
+                        product_id=product.product_id,
+                        tenant_id=self.tenant_id,  # Use product_id string, not integer id
                     )
                     inventory_mappings = db_session.scalars(inventory_stmt).all()
                     logger.info(f"Found {len(inventory_mappings)} inventory mappings for product {product.product_id}")
@@ -939,7 +948,9 @@ class GoogleAdManager(AdServerAdapter):
         status = self.orders_manager.get_order_status(media_buy_id)
 
         return CheckMediaBuyStatusResponse(
-            buyer_ref="", media_buy_id=media_buy_id, status=status.lower()  # Would need to be retrieved from database
+            buyer_ref="",
+            media_buy_id=media_buy_id,
+            status=status.lower(),  # Would need to be retrieved from database
         )
 
     def get_media_buy_delivery(
@@ -1466,6 +1477,8 @@ class GoogleAdManager(AdServerAdapter):
                         package_id=package_id,
                         buyer_ref=buyer_ref or package_id,
                         paused=is_pause,  # True if paused, False if resumed
+                        changes_applied=None,
+                        buyer_package_ref=None,
                     )
 
                     return UpdateMediaBuySuccess(
@@ -1537,6 +1550,8 @@ class GoogleAdManager(AdServerAdapter):
                             package_id=pkg.package_id,
                             buyer_ref=buyer_ref or pkg.package_id,
                             paused=is_pause,  # True if paused, False if resumed
+                            changes_applied=None,
+                            buyer_package_ref=None,
                         )
                         for pkg in packages
                     ]

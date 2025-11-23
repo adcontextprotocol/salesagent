@@ -9,7 +9,6 @@ This mapping is required for the GAM adapter to resolve key names to IDs
 when creating line items with custom targeting.
 """
 
-
 from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session

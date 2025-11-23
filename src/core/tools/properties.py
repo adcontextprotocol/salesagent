@@ -57,7 +57,8 @@ def _list_authorized_properties_impl(
     # Authentication is OPTIONAL for discovery endpoints (returns public inventory)
     # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
     principal_id, tenant = get_principal_from_context(
-        context, require_valid_token=False  # type: ignore[arg-type]
+        context,
+        require_valid_token=False,  # type: ignore[arg-type]
     )  # May return (None, tenant) for public discovery
 
     # Set tenant context if returned

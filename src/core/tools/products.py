@@ -555,7 +555,9 @@ async def _get_products_impl(
                         # Use dynamic attribute assignment on discriminated unions
                         option.supported = pricing_model in supported_models  # type: ignore[union-attr]
                         if not getattr(option, "supported", False):
-                            option.unsupported_reason = f"Current adapter does not support {pricing_model.upper()} pricing"  # type: ignore[union-attr]
+                            option.unsupported_reason = (
+                                f"Current adapter does not support {pricing_model.upper()} pricing"  # type: ignore[union-attr]
+                            )
         except Exception as e:
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 

@@ -62,14 +62,20 @@ def _create_test_tenant_and_principal(ad_server: str | None = None) -> tuple[str
 def _create_basic_media_buy_with_webhook(
     tenant_id: str,
     principal_id: str,
-    start_date=datetime.now(UTC).date() - timedelta(days=7),
-    end_date=datetime.now(UTC).date() + timedelta(days=7),
+    start_date=None,
+    end_date=None,
 ) -> str:
     """Create a minimal tenant/principal/media_buy with a daily reporting_webhook.
 
     Returns:
         (tenant_id, principal_id, media_buy_id)
     """
+    # Set defaults inside function (avoid B008)
+    if start_date is None:
+        start_date = datetime.now(UTC).date() - timedelta(days=7)
+    if end_date is None:
+        end_date = datetime.now(UTC).date() + timedelta(days=7)
+
     product_id = "sample_product_id"
     media_buy_id = "mb_integration"
 
@@ -126,7 +132,9 @@ def _create_basic_media_buy_with_webhook(
 
 
 # Create mocked GAM reporting data so we don't hit real GAM APIs
-def get_mock_gam_reporting_delivery_data(base_date=datetime.now(UTC)) -> ReportingData:
+def get_mock_gam_reporting_delivery_data(base_date=None) -> ReportingData:
+    if base_date is None:
+        base_date = datetime.now(UTC)
     return ReportingData(
         data=[
             {
@@ -263,9 +271,7 @@ async def test_delivery_webhook_sends_gam_based_reporting_data_only_on_gam_avail
         # Set time to 3 AM
         with freeze_time("2025-1-1 03:00:00"):
             # Ensure GoogleAdManager.get_media_buy_delivery uses mocked GAM reporting data
-            mocked_reporting_data = get_mock_gam_reporting_delivery_data(
-                datetime(2024, 12, 28, 0, 0, 0, tzinfo=UTC)
-            )
+            mocked_reporting_data = get_mock_gam_reporting_delivery_data(datetime(2024, 12, 28, 0, 0, 0, tzinfo=UTC))
             mock_reporting_instance = mock_reporting_service_class.return_value
             mock_reporting_instance.get_reporting_data.return_value = mocked_reporting_data
 
@@ -375,7 +381,6 @@ async def test_scheduler_uses_simulated_path_in_testing_mode(integration_db):
         patch.object(scheduler.webhook_service, "send_notification", new_callable=AsyncMock) as mock_send,
         patch("src.core.tools.media_buy_delivery.DeliverySimulator.calculate_simulated_metrics") as mock_sim,
     ):
-
         mock_sim.return_value = {"impressions": 1234, "spend": 50.0}
 
         await scheduler._send_reports()
