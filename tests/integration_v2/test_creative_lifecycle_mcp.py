@@ -143,9 +143,9 @@ class TestCreativeLifecycleMCP:
                 raw_request={
                     "test": True,
                     "packages": [
-                        {"package_id": "package_1", "status": "active"},
-                        {"package_id": "package_2", "status": "active"},
-                        {"package_id": "package_buyer_ref", "status": "active"},
+                        {"package_id": "package_1", "paused": False},  # adcp 2.12.0+
+                        {"package_id": "package_2", "paused": False},  # adcp 2.12.0+
+                        {"package_id": "package_buyer_ref", "paused": False},  # adcp 2.12.0+
                     ],
                 },
             )
@@ -1055,7 +1055,7 @@ class TestCreativeLifecycleMCP:
                         buyer_ref="pkg_1",
                         package_id="pkg_123",
                         product_id="prod_1",
-                        status="active",
+                        paused=False,  # adcp 2.12.0+: replaced 'status' with 'paused'
                         budget=5000.0,  # Package.budget is float, not Budget object
                     )
                 ],

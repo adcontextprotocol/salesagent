@@ -191,8 +191,8 @@ class TestCreateMediaBuyErrorPaths:
         assert isinstance(error, Error)
         assert error.code == "authentication_error"
         assert "principal" in error.message.lower() or "not found" in error.message.lower()
-        # Context echoed back
-        assert response.context == {"trace_id": "auth-missing-principal"}
+        # Context echoed back (adcp 2.12.0+: context is ContextObject, not dict)
+        assert response.context.trace_id == "auth-missing-principal"
 
     async def test_start_time_in_past_returns_validation_error(self, test_tenant_with_principal):
         """Test that start_time in past returns Error response with validation_error code.
@@ -241,8 +241,8 @@ class TestCreateMediaBuyErrorPaths:
         error = response.errors[0]
         assert isinstance(error, Error)
         assert error.code == "validation_error"
-        # Context echoed back
-        assert response.context == {"trace_id": "past-start"}
+        # Context echoed back (adcp 2.12.0+: context is ContextObject, not dict)
+        assert response.context.trace_id == "past-start"
         assert "past" in error.message.lower() or "start" in error.message.lower()
 
     async def test_end_time_before_start_returns_validation_error(self, test_tenant_with_principal):

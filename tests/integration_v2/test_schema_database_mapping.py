@@ -50,6 +50,8 @@ class TestSchemaFieldMapping:
             "pricing_options",  # List of PricingOption objects from pricing_options table
             # AdCP library field - mapped from property_tags database column
             "publisher_properties",  # Populated from property_tags database column
+            # AdCP 2.12.0+ protocol extension field - not stored in database
+            "ext",  # Protocol extension field for future protocol additions
         }
 
         # Fields that exist in database but should NOT be in external schema (internal only)
@@ -217,9 +219,9 @@ class TestSchemaFieldMapping:
             db_columns = {column.name for column in model_class.__table__.columns}
 
             for field in required_fields:
-                assert field in db_columns, (
-                    f"Required field '{field}' missing from {model_class.__name__} database model"
-                )
+                assert (
+                    field in db_columns
+                ), f"Required field '{field}' missing from {model_class.__name__} database model"
 
     def test_pydantic_model_field_access_patterns(self):
         """Test patterns for safely accessing Pydantic model fields."""
