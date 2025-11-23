@@ -278,31 +278,42 @@ def google_callback():
             flash(f"Welcome {user.get('name', email)}!", "success")
             return redirect(url_for("public.signup_onboarding"))
 
-        # Unified flow: Always show tenant selector (with option to create new tenant)
-        # No distinction between signup and login - keeps UX simple and consistent
+        # Domain-based tenant routing with automatic login
         from src.admin.domain_access import get_user_tenant_access
 
         # Get all accessible tenants
         tenant_access = get_user_tenant_access(email)
 
-        # Build tenant list for selector (empty list is fine - user can create new tenant)
-        # Use a dict to track tenants by tenant_id to avoid duplicates
-        tenant_dict = {}
-
+        # Priority 1: If user's email domain matches a tenant's authorized_domains,
+        # automatically log them into that tenant (skip selector)
         if tenant_access["domain_tenant"]:
             domain_tenant = tenant_access["domain_tenant"]
-            tenant_dict[domain_tenant.tenant_id] = {
-                "tenant_id": domain_tenant.tenant_id,
-                "name": domain_tenant.name,
-                "subdomain": domain_tenant.subdomain,
-                "is_admin": True,  # Domain users get admin access
-            }
+
+            # Ensure User record exists in the database
+            from src.admin.domain_access import ensure_user_in_tenant
+
+            user_name = session.get("user_name", email.split("@")[0].title())
+
+            try:
+                ensure_user_in_tenant(email, domain_tenant.tenant_id, role="admin", name=user_name)
+                logger.info(f"Auto-routing user {email} to domain-matched tenant {domain_tenant.tenant_id}")
+            except Exception as e:
+                logger.error(f"Failed to create User record for {email} in tenant {domain_tenant.tenant_id}: {e}")
+                flash("Error setting up user access. Please contact support.", "error")
+                return redirect(url_for("auth.login"))
+
+            # Set session variables for tenant access
+            session["tenant_id"] = domain_tenant.tenant_id
+            session["is_tenant_admin"] = True  # Domain users get admin access
+
+            flash(f"Welcome {user.get('name', email)} to {domain_tenant.name}!", "success")
+            return redirect(url_for("tenants.dashboard", tenant_id=domain_tenant.tenant_id))
+
+        # Priority 2: If user only has email-based access (no domain match),
+        # show tenant selector if multiple tenants, or auto-login if single tenant
+        tenant_dict = {}
 
         for tenant in tenant_access["email_tenants"]:
-            # Skip if already added via domain access
-            if tenant.tenant_id in tenant_dict:
-                continue
-
             # Check existing user record for role, default to admin
             with get_db_session() as db_session:
                 from sqlalchemy import select
@@ -323,7 +334,33 @@ def google_callback():
         # Convert dict to list for session
         session["available_tenants"] = list(tenant_dict.values())
 
-        # Always show tenant selector (includes "Create New Tenant" option)
+        # If user has access to exactly one tenant via email, auto-login
+        if len(tenant_dict) == 1:
+            tenant_info = list(tenant_dict.values())[0]
+
+            # Ensure User record exists
+            from src.admin.domain_access import ensure_user_in_tenant
+
+            user_name = session.get("user_name", email.split("@")[0].title())
+            role = "admin" if tenant_info["is_admin"] else "viewer"
+
+            try:
+                ensure_user_in_tenant(email, tenant_info["tenant_id"], role=role, name=user_name)
+                logger.info(f"Auto-routing user {email} to single email-authorized tenant {tenant_info['tenant_id']}")
+            except Exception as e:
+                logger.error(f"Failed to create User record for {email} in tenant {tenant_info['tenant_id']}: {e}")
+                flash("Error setting up user access. Please contact support.", "error")
+                return redirect(url_for("auth.select_tenant"))
+
+            session["tenant_id"] = tenant_info["tenant_id"]
+            session["is_tenant_admin"] = tenant_info["is_admin"]
+            session.pop("available_tenants", None)  # Clean up
+
+            flash(f"Welcome {user.get('name', email)} to {tenant_info['name']}!", "success")
+            return redirect(url_for("tenants.dashboard", tenant_id=tenant_info["tenant_id"]))
+
+        # Priority 3: Multiple tenants or no tenant access - show selector
+        # (selector includes "Create New Tenant" option)
         flash(f"Welcome {user.get('name', email)}!", "success")
         return redirect(url_for("auth.select_tenant"))
 
