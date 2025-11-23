@@ -157,14 +157,14 @@ class TestMCPContractValidation:
         # not in Pydantic model construction. Internal construction is flexible.
 
         # Internal construction works without identifier (protocol boundary would reject)
-        request_no_id = UpdateMediaBuyRequest(active=True)
-        assert request_no_id.active is True
+        request_no_id = UpdateMediaBuyRequest(paused=False)  # adcp 2.12.0+
+        assert request_no_id.paused is False
 
         # Works with minimal identifier
         request = UpdateMediaBuyRequest(media_buy_id="test_buy_123")
         assert request.media_buy_id == "test_buy_123"
         assert request.buyer_ref is None
-        assert request.active is None
+        assert request.paused is None
 
     def test_get_media_buy_delivery_minimal(self):
         """Test get_media_buy_delivery with no filters."""

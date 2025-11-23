@@ -3476,7 +3476,7 @@ class AdCPPackageUpdate(BaseModel):
     package_id: str | None = None
     buyer_ref: str | None = None
     budget: float | None = Field(None, ge=0)  # Budget allocation in the currency specified by the pricing option
-    active: bool | None = None
+    paused: bool | None = None  # adcp 2.12.0+: replaced 'active' with 'paused'
     targeting_overlay: Targeting | None = None
     creative_ids: list[str] | None = None
 
@@ -3500,7 +3500,7 @@ class UpdateMediaBuyRequest(AdCPBaseModel):
     buyer_ref: str | None = None
 
     # Campaign-level updates (all optional per AdCP spec)
-    active: bool | None = None
+    paused: bool | None = None  # adcp 2.12.0+: replaced 'active' with 'paused'
     start_time: datetime | Literal["asap"] | None = None  # AdCP uses datetime or 'asap', not date
     end_time: datetime | None = None  # AdCP uses datetime, not date
     budget: Budget | None = None  # Budget object contains currency/pacing
@@ -3512,6 +3512,7 @@ class UpdateMediaBuyRequest(AdCPBaseModel):
     context: dict[str, Any] | None = Field(
         None, description="Application-level context provided by the client (echoed in responses)"
     )
+    ext: dict[str, Any] | None = Field(None, description="Extension fields for future protocol additions")
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     # NOTE: No Python validator needed for oneOf constraint - AdCP schema enforces media_buy_id/buyer_ref oneOf

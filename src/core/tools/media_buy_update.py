@@ -430,8 +430,9 @@ def _update_media_buy_impl(
                                 return response_data  # type: ignore[return-value]
 
     # Handle campaign-level updates
-    if req.active is not None:
-        action = "resume_media_buy" if req.active else "pause_media_buy"
+    if req.paused is not None:
+        # adcp 2.12.0+: paused=True means pause, paused=False means resume
+        action = "pause_media_buy" if req.paused else "resume_media_buy"
         result = adapter.update_media_buy(
             media_buy_id=req.media_buy_id,
             buyer_ref=req.buyer_ref or "",
@@ -461,9 +462,10 @@ def _update_media_buy_impl(
     # Handle package-level updates
     if req.packages:
         for pkg_update in req.packages:
-            # Handle active/pause state
-            if pkg_update.active is not None:
-                action = "resume_package" if pkg_update.active else "pause_package"
+            # Handle paused state
+            if pkg_update.paused is not None:
+                # adcp 2.12.0+: paused=True means pause, paused=False means resume
+                action = "pause_package" if pkg_update.paused else "resume_package"
                 result = adapter.update_media_buy(
                     media_buy_id=req.media_buy_id,
                     buyer_ref=req.buyer_ref or "",
