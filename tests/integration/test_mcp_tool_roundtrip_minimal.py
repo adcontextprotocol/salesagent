@@ -341,7 +341,7 @@ class TestParameterToSchemaMapping:
         # Updated: Only use valid AdCP fields (start_time/end_time, not flight_start_date/flight_end_date)
         tool_params = {
             "media_buy_id": "test_buy_123",
-            "active": False,
+            "paused": True,  # adcp 2.12.0+: replaced 'active' with 'paused'
         }
 
         # Create request with valid fields only
@@ -349,7 +349,7 @@ class TestParameterToSchemaMapping:
 
         # Valid fields should be set
         assert req.media_buy_id == "test_buy_123"
-        assert req.active is False
+        assert req.paused is True  # adcp 2.12.0+: paused=True means pause
 
         # start_time/end_time should be None since not provided
         assert req.start_time is None
