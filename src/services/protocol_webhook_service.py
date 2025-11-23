@@ -24,7 +24,6 @@ from urllib.parse import urlparse, urlunparse
 from uuid import uuid4
 
 import requests
-from sqlalchemy import func, select
 
 from src.core.audit_logger import get_audit_logger
 from src.core.database.database_session import get_db_session
@@ -76,7 +75,7 @@ class ProtocolWebhookService:
         error: str | None = None,
         tenant_id: str | None = None,
         principal_id: str | None = None,
-        media_buy_id: str | None = None
+        media_buy_id: str | None = None,
     ) -> bool:
         """
         Send a protocol-level push notification to the configured webhook.
@@ -153,7 +152,7 @@ class ProtocolWebhookService:
 
         # Calculate payload size for metrics
         payload_size_bytes = len(json.dumps(payload).encode("utf-8"))
-        
+
         notification_type_from_request = result.get("notification_type") if result is not None else None
         sequence_number_from_result = result.get("sequence_number") if result is not None else None
 

@@ -1540,7 +1540,7 @@ class AdCPRequestHandler(RequestHandler):
                 auth_token=auth_token,
                 tool_name="list_creatives",
             )
-            
+
             # Call core function with optional parameters (fixing original validation bug)
             response = core_list_creatives_tool(
                 media_buy_id=parameters.get("media_buy_id"),

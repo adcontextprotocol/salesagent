@@ -340,7 +340,6 @@ def list_authorized_properties(
         logger.info("MCP list_authorized_properties: No context provided")
         tool_context = ctx
 
-
     response = _list_authorized_properties_impl(req, tool_context)
 
     # Return ToolResult with human-readable text and structured data

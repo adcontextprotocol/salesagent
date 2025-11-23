@@ -4,11 +4,12 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from freezegun import freeze_time
 
 from src.adapters.gam_reporting_service import ReportingData
 from src.adapters.google_ad_manager import GoogleAdManager
 from src.core.schemas import Principal, ReportingPeriod
-from freezegun import freeze_time
+
 
 @pytest.fixture
 def mock_principal():
@@ -102,7 +103,7 @@ def test_get_media_buy_delivery_media_buy_not_found(gam_adapter):
 def test_get_media_buy_delivery_with_real_gam_data(mock_reporting_service_class, mock_db, mock_principal):
     """Test get_media_buy_delivery with real GAM reporting data."""
 
-    with freeze_time("2024-1-15 03:00:00"):            
+    with freeze_time("2024-1-15 03:00:00"):
         # Setup adapter in non-dry-run mode
         config = {
             "network_code": "123456",

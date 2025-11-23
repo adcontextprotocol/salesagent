@@ -63,5 +63,8 @@ def test_product_format_ids_with_custom_agent():
     assert str(serialized["format_ids"][0]["agent_url"]).rstrip("/") == "https://creative.adcontextprotocol.org"
     assert serialized["format_ids"][0]["id"] == "display_300x250"
 
-    assert str(serialized["format_ids"][1]["agent_url"]).rstrip("/") == "https://custom-publisher.com/.well-known/adcp/sales"
+    assert (
+        str(serialized["format_ids"][1]["agent_url"]).rstrip("/")
+        == "https://custom-publisher.com/.well-known/adcp/sales"
+    )
     assert serialized["format_ids"][1]["id"] == "custom_format"
