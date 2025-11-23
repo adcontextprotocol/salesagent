@@ -33,6 +33,7 @@ from src.core.database.database_session import get_db_session
 from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schema_adapters import UpdateMediaBuyResponse
+from src.core.schema_helpers import to_context_object
 from src.core.schemas import (
     AffectedPackage,
     UpdateMediaBuyError,
@@ -272,7 +273,7 @@ def _update_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         response_data = UpdateMediaBuyError(
             errors=[Error(code="principal_not_found", message=error_msg)],  # type: ignore[list-item]
-            context=req.context,
+            context=to_context_object(req.context),
         )
         ctx_manager.update_workflow_step(
             step.step_id,
@@ -303,7 +304,7 @@ def _update_media_buy_impl(
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
             affected_packages=[],  # Internal field for tracking changes
-            context=req.context,
+            context=to_context_object(req.context),
         )
         ctx_manager.update_workflow_step(
             step.step_id,
@@ -351,7 +352,7 @@ def _update_media_buy_impl(
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
                     response_data = UpdateMediaBuyError(
                         errors=[Error(code="currency_not_supported", message=error_msg)],  # type: ignore[list-item]
-                        context=req.context,
+                        context=to_context_object(req.context),
                     )
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -418,7 +419,7 @@ def _update_media_buy_impl(
                                 )
                                 response_data = UpdateMediaBuyError(
                                     errors=[Error(code="budget_limit_exceeded", message=error_msg)],  # type: ignore[list-item]
-                                    context=req.context,
+                                    context=to_context_object(req.context),
                                 )
                                 ctx_manager.update_workflow_step(
                                     step.step_id,
@@ -492,7 +493,7 @@ def _update_media_buy_impl(
                     error_msg = "package_id is required when updating package budget"
                     response_data = UpdateMediaBuyError(
                         errors=[Error(code="missing_package_id", message=error_msg)],  # type: ignore[list-item]
-                        context=req.context,
+                        context=to_context_object(req.context),
                     )
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -554,7 +555,7 @@ def _update_media_buy_impl(
                     error_msg = "package_id is required when updating creative_ids"
                     response_data = UpdateMediaBuyError(
                         errors=[Error(code="missing_package_id", message=error_msg)],  # type: ignore[list-item]
-                        context=req.context,
+                        context=to_context_object(req.context),
                     )
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -587,7 +588,7 @@ def _update_media_buy_impl(
                         error_msg = f"Media buy '{req.media_buy_id}' not found"
                         response_data = UpdateMediaBuyError(
                             errors=[Error(code="media_buy_not_found", message=error_msg)],  # type: ignore[list-item]
-                            context=req.context,
+                            context=to_context_object(req.context),
                         )
                         ctx_manager.update_workflow_step(
                             step.step_id,
@@ -613,7 +614,7 @@ def _update_media_buy_impl(
                         error_msg = f"Creative IDs not found: {', '.join(missing_ids)}"
                         response_data = UpdateMediaBuyError(
                             errors=[Error(code="creatives_not_found", message=error_msg)],  # type: ignore[list-item]
-                            context=req.context,
+                            context=to_context_object(req.context),
                         )
                         ctx_manager.update_workflow_step(
                             step.step_id,
@@ -859,7 +860,7 @@ def _update_media_buy_impl(
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
             response_data = UpdateMediaBuyError(
                 errors=[Error(code="invalid_budget", message=error_msg)],  # type: ignore[list-item]
-                context=req.context,
+                context=to_context_object(req.context),
             )
             ctx_manager.update_workflow_step(
                 step.step_id,
@@ -1046,7 +1047,7 @@ def _update_media_buy_impl(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
         affected_packages=affected_packages_list,
-        context=req.context,
+        context=to_context_object(req.context),
     )
 
     # Persist success with response data, then return

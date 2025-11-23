@@ -191,11 +191,11 @@ class GoogleAdManager(AdServerAdapter):
 
             # Initialize sync manager in dry-run mode
             self.sync_manager = GAMSyncManager(
-                None,
+                None,  # type: ignore[arg-type]
                 self.inventory_manager,
                 self.orders_manager,
                 tenant_id or "",
-                dry_run=True,  # type: ignore[arg-type]
+                dry_run=True,
             )
 
             # Initialize workflow manager (doesn't need client)

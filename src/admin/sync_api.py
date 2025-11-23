@@ -452,9 +452,11 @@ def get_sync_stats() -> tuple[Response, int]:
                         "tenant_id": tenant.tenant_id,
                         "tenant_name": tenant.name,
                         # Type ignore: SQLAlchemy DateTime is datetime at runtime
-                        "last_sync": last_sync.completed_at.isoformat()
-                        if (last_sync and last_sync.completed_at)
-                        else None,  # type: ignore[attr-defined]
+                        "last_sync": (
+                            last_sync.completed_at.isoformat()  # type: ignore[attr-defined]
+                            if (last_sync and last_sync.completed_at)
+                            else None
+                        ),
                     }
                 )
 

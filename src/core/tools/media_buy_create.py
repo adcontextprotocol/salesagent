@@ -59,6 +59,7 @@ from src.core.helpers import get_principal_id_from_context, log_tool_activity
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.helpers.creative_helpers import _convert_creative_to_adapter_asset, process_and_upload_package_creatives
 from src.core.schema_adapters import CreateMediaBuyResponse
+from src.core.schema_helpers import to_context_object
 from src.core.schemas import (
     CreateMediaBuyError,
     CreateMediaBuyRequest,
@@ -680,6 +681,12 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             start_time = media_buy.start_time
             end_time = media_buy.end_time
 
+            # Validate required datetime fields
+            if not start_time or not end_time:
+                error_msg = f"Media buy {media_buy_id} missing required start_time or end_time"
+                logger.error(f"[APPROVAL] {error_msg}")
+                return False, error_msg
+
             # Get the Principal object (needed for adapter)
             from src.core.auth import get_principal_object
 
@@ -705,12 +712,12 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
         # Type ignore needed because we're passing MediaPackage list as Package list (adapter compatibility)
         response = _execute_adapter_media_buy_creation(
             request,
-            packages,
-            start_time,
-            end_time,
+            packages,  # type: ignore[arg-type]
+            start_time,  # type: ignore[arg-type]
+            end_time,  # type: ignore[arg-type]
             package_pricing_info,
             principal,
-            testing_ctx,  # type: ignore[arg-type]
+            testing_ctx,
         )
 
         # Check if adapter returned an error response
@@ -1288,7 +1295,7 @@ async def _create_media_buy_impl(
         # Cannot create context or workflow step without valid principal
         return CreateMediaBuyError(  # type: ignore[return-value]
             errors=[Error(code="authentication_error", message=error_msg, details=None)],
-            context=req.context,
+            context=to_context_object(req.context),
         )
 
     # Context management and workflow step creation - create workflow step FIRST
@@ -1717,7 +1724,7 @@ async def _create_media_buy_impl(
         # Return error response (protocol layer will add status="failed")
         return CreateMediaBuyError(  # type: ignore[return-value]
             errors=[Error(code="validation_error", message=str(e), details=None)],
-            context=req.context,
+            context=to_context_object(req.context),
         )
 
     # Principal already validated earlier (before context creation) to avoid foreign key errors
@@ -2115,7 +2122,7 @@ async def _create_media_buy_impl(
                 creative_deadline=None,
                 packages=pending_packages,  # type: ignore[arg-type]
                 workflow_step_id=step.step_id,  # Client can track approval via this ID
-                context=req.context,
+                context=to_context_object(req.context),
             )
 
         # Get products for the media buy to check product-level auto-creation settings
@@ -2182,7 +2189,7 @@ async def _create_media_buy_impl(
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyError(  # type: ignore[return-value]
                     errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
-                    context=req.context,
+                    context=to_context_object(req.context),
                 )
 
         product_auto_create = all(
@@ -2268,7 +2275,7 @@ async def _create_media_buy_impl(
                 media_buy_id=media_buy_id,
                 packages=response_packages,  # type: ignore[arg-type]
                 workflow_step_id=step.step_id,
-                context=req.context,
+                context=to_context_object(req.context),
             )
 
         # Continue with synchronized media buy creation
@@ -2526,7 +2533,7 @@ async def _create_media_buy_impl(
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyError(  # type: ignore[return-value]
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
-                context=req.context,
+                context=to_context_object(req.context),
             )
 
         # PRE-VALIDATE: Check all creatives have required fields BEFORE calling adapter
@@ -3119,7 +3126,7 @@ async def _create_media_buy_impl(
             media_buy_id=response.media_buy_id,
             packages=response_packages,  # type: ignore[arg-type]
             creative_deadline=response.creative_deadline,
-            context=req.context,
+            context=to_context_object(req.context),
         )
 
         # Log activity
@@ -3188,7 +3195,7 @@ async def _create_media_buy_impl(
             media_buy_id=filtered_data["media_buy_id"],
             packages=filtered_data["packages"],
             creative_deadline=filtered_data.get("creative_deadline"),
-            context=req.context,
+            context=to_context_object(req.context),
         )
 
         # Mark workflow step as completed on success

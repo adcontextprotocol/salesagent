@@ -15,13 +15,6 @@ from typing import Any
 from adcp import GetProductsRequest, GetProductsResponse, Product
 from adcp.types.generated_poc.core.context import ContextObject
 
-# Filters type - import from stable API (adcp 2.8.0+)
-try:
-    from adcp.types import Filters
-except ImportError:
-    # Fallback: Filters might not be exported in older versions
-    Filters = dict[str, Any]  # type: ignore
-
 
 def to_context_object(context: dict[str, Any] | ContextObject | None) -> ContextObject | None:
     """Convert dict context to ContextObject for adcp 2.12.0+ compatibility.

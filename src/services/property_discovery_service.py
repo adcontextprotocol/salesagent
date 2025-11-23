@@ -195,14 +195,15 @@ class PropertyDiscoveryService:
                             properties_data.append((property_id, prop))
 
                     # Batch fetch existing properties
-                    stmt = select(AuthorizedProperty).where(  # type: ignore[assignment]
+                    from sqlalchemy.sql import Select
+
+                    stmt_props: Select[tuple[AuthorizedProperty]] = select(AuthorizedProperty).where(
                         AuthorizedProperty.tenant_id == tenant_id,
                         AuthorizedProperty.property_id.in_(property_ids_to_check),
                     )
-                    existing_properties_objs = session.scalars(stmt).all()  # type: ignore[assignment]
+                    existing_properties_objs = list(session.scalars(stmt_props).all())
                     existing_properties: dict[str, AuthorizedProperty] = {
-                        p.property_id: p
-                        for p in existing_properties_objs  # type: ignore[attr-defined,misc]
+                        p.property_id: p for p in existing_properties_objs
                     }
 
                     # Create/update property records (using batched existence check)
