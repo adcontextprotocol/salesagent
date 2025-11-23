@@ -329,11 +329,11 @@ class AffectedPackage(LibraryPackage):
     """Affected package in UpdateMediaBuySuccess response.
 
     Extends adcp library Package with internal tracking fields.
-    Note: In AdCP 2.9.0+, affected_packages uses the full Package type.
+    Note: In AdCP 2.12.0+, affected_packages uses the full Package type.
 
-    Library Package required fields:
+    Library Package required fields (adcp 2.12.0):
     - package_id: Publisher's package identifier
-    - status: Package status (draft, active, paused, completed)
+    - paused: Boolean indicating whether package is paused (replaces old status enum)
     """
 
     # Internal fields for tracking what changed (not in AdCP spec)

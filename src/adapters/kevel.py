@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import requests
-from adcp.types import PackageStatus
 from adcp.types.aliases import Package as ResponsePackage
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
@@ -369,7 +368,7 @@ class Kevel(AdServerAdapter):
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
-                        status=PackageStatus.active,  # Default to active for created packages
+                        paused=False,  # Default to not paused for created packages
                     )
                 )
 
@@ -396,7 +395,7 @@ class Kevel(AdServerAdapter):
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
-                        status=PackageStatus.active,  # Default to active for created packages
+                        paused=False,  # Default to not paused for created packages
                     )
                 )
 
@@ -691,10 +690,26 @@ class Kevel(AdServerAdapter):
                 self.log(f"Would pause flight '{package_id}' in campaign {media_buy_id}")
                 self.log(f"Would call: PUT {self.base_url}/flight/{package_id}")
                 self.log("  Payload: {'IsActive': false}")
+                return UpdateMediaBuySuccess(
+                    media_buy_id=media_buy_id,
+                    buyer_ref=buyer_ref,
+                    affected_packages=[
+                        AffectedPackage(package_id=package_id, buyer_ref=buyer_ref or package_id, paused=True)
+                    ],
+                    implementation_date=today,
+                )
             elif action == "resume_package" and package_id:
                 self.log(f"Would resume flight '{package_id}' in campaign {media_buy_id}")
                 self.log(f"Would call: PUT {self.base_url}/flight/{package_id}")
                 self.log("  Payload: {'IsActive': true}")
+                return UpdateMediaBuySuccess(
+                    media_buy_id=media_buy_id,
+                    buyer_ref=buyer_ref,
+                    affected_packages=[
+                        AffectedPackage(package_id=package_id, buyer_ref=buyer_ref or package_id, paused=False)
+                    ],
+                    implementation_date=today,
+                )
             elif (
                 action in ["update_package_budget", "update_package_impressions"] and package_id and budget is not None
             ):
@@ -743,11 +758,24 @@ class Kevel(AdServerAdapter):
                         )
 
                     # Update flight status
-                    update_payload = {"IsActive": action == "resume_package"}
+                    is_resume = action == "resume_package"
+                    update_payload = {"IsActive": is_resume}
                     update_response = requests.put(
                         f"{self.base_url}/flight/{flight['Id']}", headers=self.headers, json=update_payload
                     )
                     update_response.raise_for_status()
+
+                    # Return affected package with paused state
+                    return UpdateMediaBuySuccess(
+                        media_buy_id=media_buy_id,
+                        buyer_ref=buyer_ref,
+                        affected_packages=[
+                            AffectedPackage(
+                                package_id=package_id, buyer_ref=buyer_ref or package_id, paused=not is_resume
+                            )
+                        ],
+                        implementation_date=today,
+                    )
 
                 elif (
                     action in ["update_package_budget", "update_package_impressions"]

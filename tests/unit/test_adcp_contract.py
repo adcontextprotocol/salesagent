@@ -770,11 +770,11 @@ class TestAdCPContract:
     def test_package_adcp_compliance(self):
         """Test that Package model complies with AdCP package schema."""
         # Create package with all required AdCP fields and optional fields
-        # Note: Package is response schema - has package_id, status (required)
+        # Note: Package is response schema - has package_id, paused (adcp 2.12.0+)
         # product_id is optional per adcp library (not products plural)
         package = Package(
             package_id="pkg_test_123",
-            status="active",
+            paused=False,  # Changed from status="active" in adcp 2.12.0
             buyer_ref="buyer_ref_abc",
             product_id="product_xyz",  # singular, not plural
             impressions=50000,
@@ -793,7 +793,7 @@ class TestAdCPContract:
         adcp_response = package.model_dump()
 
         # Verify required AdCP fields are present
-        adcp_required_fields = ["package_id", "status"]
+        adcp_required_fields = ["package_id"]  # paused is optional
         for field in adcp_required_fields:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
@@ -822,11 +822,9 @@ class TestAdCPContract:
             assert field not in adcp_response, f"Internal field '{field}' exposed in AdCP response"
 
         # Verify AdCP-specific requirements
-        # status is a PackageStatus enum - get its value for comparison
-        status_value = (
-            adcp_response["status"].value if hasattr(adcp_response["status"], "value") else adcp_response["status"]
-        )
-        assert status_value in ["draft", "active", "paused", "completed"], "status must be valid enum"
+        # paused is a bool field in adcp 2.12.0+
+        if "paused" in adcp_response:
+            assert isinstance(adcp_response["paused"], bool), "paused must be boolean"
         if adcp_response.get("impressions") is not None:
             assert adcp_response["impressions"] >= 0, "impressions must be non-negative"
 
@@ -842,9 +840,9 @@ class TestAdCPContract:
             assert field in internal_response, f"Internal field '{field}' missing from internal response"
 
         # Verify field count expectations (flexible to allow AdCP spec evolution)
-        # Package has 2 required fields (package_id, status) + any optional fields that are set
-        # We set 4 optional fields above, so expect at least 2+4=6 fields
-        assert len(adcp_response) >= 2, f"AdCP response should have at least required fields, got {len(adcp_response)}"
+        # Package has 1 required field (package_id) + any optional fields that are set
+        # We set several optional fields above, so expect at least 1 field
+        assert len(adcp_response) >= 1, f"AdCP response should have at least required fields, got {len(adcp_response)}"
         assert len(internal_response) >= len(
             adcp_response
         ), "Internal response should have at least as many fields as external response"
@@ -1438,15 +1436,13 @@ class TestAdCPContract:
         # Create success response with domain fields only (per AdCP PR #113)
         # Protocol fields (status, task_id, message) are added by transport layer
         # Note: creative_deadline must be timezone-aware datetime (adcp 2.0.0)
-        # Note: packages in response require package_id and status (adcp 2.9.0+)
-        from adcp.types import PackageStatus
-
+        # Note: packages in response require package_id and paused field (adcp 2.12.0+)
         from src.core.schemas import CreateMediaBuyError, CreateMediaBuySuccess
 
         successful_response = CreateMediaBuySuccess(
             media_buy_id="mb_12345",
             buyer_ref="br_67890",
-            packages=[{"package_id": "pkg_1", "buyer_ref": "br_67890", "status": PackageStatus.active}],
+            packages=[{"package_id": "pkg_1", "buyer_ref": "br_67890", "paused": False}],
             creative_deadline=datetime.now(UTC) + timedelta(days=7),
         )
 
@@ -1655,16 +1651,14 @@ class TestAdCPContract:
         """
         # Create successful update response (oneOf success branch)
         # Note: implementation_date must be timezone-aware datetime (adcp 2.0.0)
-        # Note: affected_packages now uses full Package type with status (adcp 2.9.0+)
-        from adcp.types import PackageStatus
-
+        # Note: affected_packages now uses full Package type with paused field (adcp 2.12.0+)
         from src.core.schemas import UpdateMediaBuyError, UpdateMediaBuySuccess
 
         response = UpdateMediaBuySuccess(
             media_buy_id="buy_123",
             buyer_ref="ref_123",
             implementation_date=datetime.now(UTC) + timedelta(hours=1),
-            affected_packages=[{"package_id": "pkg_1", "buyer_ref": "ref_123", "status": PackageStatus.active}],
+            affected_packages=[{"package_id": "pkg_1", "buyer_ref": "ref_123", "paused": False}],
         )
 
         # Test AdCP-compliant response
@@ -2301,7 +2295,7 @@ class TestAdCPContract:
         # Create package with internal fields
         pkg = Package(
             package_id="pkg_test_123",
-            status="active",
+            paused=False,  # Changed from status="active" in adcp 2.12.0
             buyer_ref="test_ref_123",
             # Internal fields (should be excluded from external responses)
             platform_line_item_id="gam_987654321",
@@ -2315,7 +2309,7 @@ class TestAdCPContract:
         # External response (AdCP protocol) - should exclude internal fields
         external_dump = pkg.model_dump()
         assert "package_id" in external_dump
-        assert "status" in external_dump
+        # paused is optional, may or may not be in dump depending on exclude_none
         assert "buyer_ref" in external_dump
         assert "platform_line_item_id" not in external_dump, "platform_line_item_id should NOT be in AdCP response"
         assert "tenant_id" not in external_dump, "tenant_id should NOT be in AdCP response"
@@ -2327,7 +2321,7 @@ class TestAdCPContract:
         # Internal database dump - should include internal fields
         internal_dump = pkg.model_dump_internal()
         assert "package_id" in internal_dump
-        assert "status" in internal_dump
+        assert "paused" in internal_dump  # Changed from status in adcp 2.12.0
         assert "buyer_ref" in internal_dump
         assert "platform_line_item_id" in internal_dump, "platform_line_item_id SHOULD be in internal dump"
         assert internal_dump["platform_line_item_id"] == "gam_987654321"

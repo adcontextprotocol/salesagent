@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from adcp.types import MediaBuyStatus, PackageStatus
+from adcp.types import MediaBuyStatus
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -86,46 +86,9 @@ from src.services.activity_feed import activity_feed
 # --- Helper Functions ---
 
 
-def _sanitize_package_status(status: Any) -> str | None:
-    """Ensure package status matches AdCP spec.
-
-    Per AdCP spec, Package.status must be one of: draft, active, paused, completed.
-    This is DIFFERENT from TaskStatus (input-required, working, completed, etc.)
-    which describes the approval workflow state.
-
-    Common mistake: Setting Package.status to TaskStatus.INPUT_REQUIRED
-    Correct: Package.status should be null until adapter creates it (then draft/active)
-
-    Args:
-        status: The status value from adapter response or database
-
-    Returns:
-        Valid AdCP PackageStatus or None
-    """
-    # Use library enum as source of truth for valid values
-    VALID_PACKAGE_STATUSES = {s.value for s in PackageStatus}
-
-    if status is None:
-        return None
-
-    # Convert to string for validation
-    # If it's already a PackageStatus enum, extract its value
-    if isinstance(status, PackageStatus):
-        status_str = status.value
-    else:
-        status_str = str(status)
-
-    if status_str in VALID_PACKAGE_STATUSES:
-        return status_str
-
-    # Log error for non-spec-compliant status - this indicates a bug in our code
-    logger.error(
-        f"[SPEC-VIOLATION] Package.status='{status_str}' violates AdCP spec! "
-        f"Valid PackageStatus values: {VALID_PACKAGE_STATUSES}. "
-        f"Note: '{status_str}' may be a TaskStatus (workflow state), which should be stored in WorkflowStep.status, NOT Package.status. "
-        f"Setting to None to prevent spec violation."
-    )
-    return None
+# NOTE: _sanitize_package_status() removed in adcp 2.12.0 migration
+# Package.status enum was replaced with Package.paused boolean field
+# See: adcp 2.12.0 changelog
 
 
 def _determine_media_buy_status(
@@ -1978,14 +1941,13 @@ async def _create_media_buy_impl(
                 from src.core.database.models import MediaPackage as DBMediaPackage
 
                 for pkg_obj in pending_packages:
-                    # Sanitize status to ensure AdCP spec compliance
-                    raw_status = pkg_obj.status
-                    sanitized_status = _sanitize_package_status(raw_status)
+                    # Get paused state from package (adcp 2.12.0: replaced status enum with paused bool)
+                    paused = getattr(pkg_obj, "paused", False)  # Default to False (not paused) if not present
 
                     package_config = {
                         "package_id": pkg_obj.package_id,  # type: ignore[index]
                         "name": getattr(pkg_obj, "name", None),
-                        "status": sanitized_status,  # Only store AdCP-compliant status values
+                        "paused": paused,  # Store paused state (adcp 2.12.0)
                     }
                     # Add full package data from raw_request
                     for idx, req_pkg in enumerate(req.packages):
@@ -2698,9 +2660,8 @@ async def _create_media_buy_impl(
                     logger.info(f"[DEBUG] Package {i}: Using package_id = {resp_package_id}")
 
                     # Store full package config as JSON
-                    # Sanitize status to ensure AdCP spec compliance
-                    raw_status = getattr(resp_package, "status", None)  # type: ignore[assignment]
-                    sanitized_status = _sanitize_package_status(raw_status)
+                    # Get paused state from adapter response (adcp 2.12.0: replaced status enum with paused bool)
+                    paused = getattr(resp_package, "paused", False)  # Default to False (not paused) if not present
 
                     # Get pricing info for this package if available
                     pricing_info_for_package = package_pricing_info.get(package_id)
@@ -2718,7 +2679,7 @@ async def _create_media_buy_impl(
                         "creative_ids": getattr(resp_package, "creative_ids", None),
                         "creative_assignments": serialize_for_json(getattr(resp_package, "creative_assignments", None)),
                         "format_ids_to_provide": getattr(resp_package, "format_ids_to_provide", None),
-                        "status": sanitized_status,  # Only store AdCP-compliant status values
+                        "paused": paused,  # Store paused state (adcp 2.12.0)
                         "pricing_info": pricing_info_for_package,  # Store pricing info for UI display
                         "impressions": impressions,  # Store impressions for display
                     }
@@ -3080,18 +3041,21 @@ async def _create_media_buy_impl(
             # Return all package fields from request, plus package_id and status from adapter
 
             # Extract status from adapter response, defaulting to "active" if missing
-            adapter_status = response_package_dict.get("status", "active")
+            # Get paused field from adapter response (adcp 2.12.0: replaced status enum with paused bool)
+            adapter_paused = response_package_dict.get("paused", False)
 
-            # Ensure status is a string (handle enum objects from adapters)
-            if isinstance(adapter_status, PackageStatus):
-                adapter_status = adapter_status.value
-            elif not isinstance(adapter_status, str):
-                adapter_status = str(adapter_status)
+            # Ensure paused is a boolean
+            if not isinstance(adapter_paused, bool):
+                # Convert common values to boolean
+                if isinstance(adapter_paused, str):
+                    adapter_paused = adapter_paused.lower() in ("true", "1", "yes", "active" == False)
+                else:
+                    adapter_paused = bool(adapter_paused)
 
             # Build full package dict with all fields from request
             full_package_dict = {
                 "package_id": adapter_package_id,  # From adapter (required)
-                "status": adapter_status,  # From adapter (required)
+                "paused": adapter_paused,  # From adapter (adcp 2.12.0)
                 "buyer_ref": package.buyer_ref,  # From request
                 "product_id": package.product_id,  # From request
             }

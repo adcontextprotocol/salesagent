@@ -21,7 +21,7 @@ from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 
-from adcp.types import Error, PackageStatus
+from adcp.types import Error
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
@@ -542,7 +542,7 @@ def _update_media_buy_impl(
                     AffectedPackage(
                         buyer_ref=req.buyer_ref or "",  # Required by AdCP
                         package_id=pkg_update.package_id,  # Required by AdCP (guaranteed str)
-                        status=PackageStatus.active,  # Required by AdCP 2.9.0+
+                        paused=False,  # Package not paused (active)
                         buyer_package_ref=pkg_update.package_id,  # Internal field (for backward compat)
                         changes_applied={"budget": {"updated": budget_amount, "currency": currency}},  # Internal field
                     )
@@ -762,7 +762,7 @@ def _update_media_buy_impl(
                         AffectedPackage(
                             buyer_ref=req.buyer_ref or "",  # Required by AdCP
                             package_id=pkg_update.package_id,  # Required by AdCP
-                            status=PackageStatus.active,  # Required by AdCP 2.9.0+
+                            paused=False,  # Package not paused (active)
                             buyer_package_ref=pkg_update.package_id,  # Internal field (for backward compat)
                             changes_applied={  # Internal field
                                 "creative_ids": {
@@ -837,7 +837,7 @@ def _update_media_buy_impl(
                         AffectedPackage(
                             buyer_ref=pkg_update.package_id,
                             package_id=pkg_update.package_id,
-                            status=PackageStatus.active,  # Required by AdCP 2.9.0+
+                            paused=False,  # Package not paused (active)
                             changes_applied={"targeting": targeting_dict},
                             buyer_package_ref=pkg_update.package_id,  # Legacy compatibility
                         )
@@ -915,7 +915,7 @@ def _update_media_buy_impl(
                             AffectedPackage(
                                 buyer_ref=package_ref_str,  # Required: buyer's package reference
                                 package_id=package_ref_str,  # Required: package identifier
-                                status=PackageStatus.active,  # Required by AdCP 2.9.0+
+                                paused=False,  # Package not paused (active)
                                 buyer_package_ref=None,  # Internal field (not applicable for top-level budget updates)
                                 changes_applied={
                                     "budget": {"updated": total_budget, "currency": budget_currency}

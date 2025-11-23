@@ -39,7 +39,7 @@ class TestProtocolEnvelope:
         response = CreateMediaBuySuccess(
             buyer_ref="ref123",
             media_buy_id="mb_456",
-            packages=[{"buyer_ref": "ref123", "package_id": "pkg_1", "status": "active"}],
+            packages=[{"buyer_ref": "ref123", "package_id": "pkg_1", "paused": False}],
         )
 
         # Create push notification config
@@ -145,7 +145,7 @@ class TestProtocolEnvelope:
         response = CreateMediaBuySuccess(
             buyer_ref="ref123",
             media_buy_id="mb_456",
-            packages=[{"buyer_ref": "ref123", "package_id": "pkg_1", "status": "active"}],
+            packages=[{"buyer_ref": "ref123", "package_id": "pkg_1", "paused": False}],
         )
 
         envelope = ProtocolEnvelope.wrap(payload=response, status="completed", add_timestamp=False)
@@ -176,7 +176,7 @@ class TestProtocolEnvelope:
         response = CreateMediaBuySuccess(
             buyer_ref="ref123",
             media_buy_id="mb_456",
-            packages=[{"buyer_ref": "ref123", "package_id": "pkg_1", "status": "active"}],
+            packages=[{"buyer_ref": "ref123", "package_id": "pkg_1", "paused": False}],
         )
 
         envelope = ProtocolEnvelope.wrap(

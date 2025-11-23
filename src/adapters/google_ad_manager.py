@@ -17,7 +17,6 @@ import uuid
 from datetime import datetime
 from typing import Any, cast
 
-from adcp.types import PackageStatus
 from adcp.types.aliases import Package as ResponsePackage
 from flask import Flask
 
@@ -44,6 +43,7 @@ from src.adapters.gam_data_freshness import validate_and_log_freshness
 from src.core.audit_logger import AuditLogger
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
+    AffectedPackage,
     AssetStatus,
     CheckMediaBuyStatusResponse,
     CreateMediaBuyError,
@@ -532,7 +532,7 @@ class GoogleAdManager(AdServerAdapter):
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
-                        status=PackageStatus.active,  # Default to active for created packages
+                        paused=False,  # Default to not paused for created packages
                     )
                 )
 
@@ -699,7 +699,7 @@ class GoogleAdManager(AdServerAdapter):
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
-                        status=PackageStatus.active,  # Default to active for created packages
+                        paused=False,  # Default to not paused for created packages
                     )
                 )
 
@@ -749,7 +749,7 @@ class GoogleAdManager(AdServerAdapter):
                 ResponsePackage(
                     buyer_ref=buyer_ref,
                     package_id=package.package_id,
-                    status=PackageStatus.active,  # Default to active for created packages
+                    paused=False,  # Default to not paused for created packages
                 )
             )
 
@@ -1461,6 +1461,20 @@ class GoogleAdManager(AdServerAdapter):
 
                     self.log(f"✓ {action_verb} package {package_id} in GAM")
 
+                    # Return affected package with paused state
+                    affected_package = AffectedPackage(
+                        package_id=package_id,
+                        buyer_ref=buyer_ref or package_id,
+                        paused=is_pause,  # True if paused, False if resumed
+                    )
+
+                    return UpdateMediaBuySuccess(
+                        media_buy_id=media_buy_id,
+                        buyer_ref=buyer_ref,
+                        affected_packages=[affected_package],
+                        implementation_date=today,
+                    )
+
             # Media buy-level actions (pause/resume all packages)
             elif action in ["pause_media_buy", "resume_media_buy"]:
                 with get_db_session() as session:
@@ -1517,10 +1531,28 @@ class GoogleAdManager(AdServerAdapter):
 
                     self.log(f"✓ {action_verb} all {len(packages)} packages in media buy {media_buy_id}")
 
+                    # Return all affected packages with paused state
+                    affected_packages_list = [
+                        AffectedPackage(
+                            package_id=pkg.package_id,
+                            buyer_ref=buyer_ref or pkg.package_id,
+                            paused=is_pause,  # True if paused, False if resumed
+                        )
+                        for pkg in packages
+                    ]
+
+                    return UpdateMediaBuySuccess(
+                        media_buy_id=media_buy_id,
+                        buyer_ref=buyer_ref,
+                        affected_packages=affected_packages_list,
+                        implementation_date=today,
+                    )
+
+            # Should not reach here - both pause/resume branches return above
             return UpdateMediaBuySuccess(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
-                affected_packages=[],  # Required by AdCP spec
+                affected_packages=[],
                 implementation_date=today,
             )
 
