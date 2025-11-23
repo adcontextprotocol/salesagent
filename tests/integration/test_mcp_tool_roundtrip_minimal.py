@@ -123,7 +123,7 @@ class TestMCPToolRoundtripMinimal:
                     "update_media_buy",
                     {
                         "media_buy_id": create_content["media_buy_id"],
-                        "active": False,  # This triggers datetime.combine at line 2711
+                        "paused": True,  # adcp 2.12.0+: paused=True means pause, paused=False means resume
                     },
                 )
 
@@ -280,7 +280,7 @@ class TestSchemaConstructionValidation:
         req = UpdateMediaBuyRequest(media_buy_id="test_buy_123")
 
         assert req.media_buy_id == "test_buy_123"
-        assert req.active is None
+        assert req.paused is None  # adcp 2.12.0+: replaced 'active' with 'paused'
         assert req.today is None  # Should exist and be None, not raise AttributeError
 
         # Test that today field is accessible even though it's excluded from serialization
