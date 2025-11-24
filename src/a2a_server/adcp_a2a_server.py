@@ -44,6 +44,7 @@ from a2a.types import (
     TaskQueryParams,
     TaskState,
     TaskStatus,
+    TextPart,
     UnsupportedOperationError,
 )
 from a2a.utils.errors import ServerError
@@ -553,26 +554,35 @@ class AdCPRequestHandler(RequestHandler):
                         results.append({"skill": skill_name, "error": str(e), "success": False})
 
                 # Create artifacts for all skill results with human-readable descriptions
+                # Per AdCP PR #238: TextPart for human messages, DataPart for pure AdCP payload
                 for i, res in enumerate(results):
                     artifact_data = res["result"] if res["success"] else {"error": res["error"]}
 
-                    # Generate human-readable description from response __str__()
-                    description = None
+                    # Generate human-readable message from response __str__()
+                    human_message = None
                     if res["success"] and isinstance(artifact_data, dict):
                         try:
                             response_obj = self._reconstruct_response_object(res["skill"], artifact_data)
                             if response_obj and hasattr(response_obj, "__str__"):
-                                description = str(response_obj)
+                                human_message = str(response_obj)
                         except Exception:
-                            pass  # If reconstruction fails, skip description
+                            pass  # If reconstruction fails, skip message
+
+                    # Build parts: TextPart for human message + DataPart for AdCP payload
+                    parts = []
+                    if human_message:
+                        # TextPart contains human-readable message
+                        parts.append(Part(root=TextPart(text=human_message)))
+                    # DataPart contains pure AdCP payload (no protocol fields)
+                    parts.append(Part(root=DataPart(data=artifact_data)))
 
                     task.artifacts = task.artifacts or []
                     task.artifacts.append(
                         Artifact(
                             artifact_id=f"skill_result_{i + 1}",
                             name=f"{'error' if not res['success'] else res['skill']}_result",
-                            description=description,  # Human-readable message
-                            parts=[Part(root=DataPart(data=artifact_data))],
+                            description=human_message,  # Summary in description
+                            parts=parts,  # TextPart + DataPart
                         )
                     )
 

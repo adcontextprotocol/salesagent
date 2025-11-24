@@ -63,7 +63,43 @@ if missing_params:
     raise ServerError(InvalidParamsError(message="..."))  # ✅ CORRECT
 ```
 
-### 2. Fixed Test Validator (`tests/helpers/a2a_response_validator.py`)
+### 2. Added TextPart for Human Messages (`src/a2a_server/adcp_a2a_server.py`)
+
+Per AdCP PR #238, human-readable messages should be in **TextPart**, separate from domain data in **DataPart**.
+
+**Implementation:**
+- Added `TextPart` import from `a2a.types`
+- Updated artifact creation to include both TextPart (message) and DataPart (payload)
+- Extract human message from `response.__str__()` method
+- Structure: `Artifact(description=message, parts=[TextPart, DataPart])`
+
+**Before:**
+```python
+Artifact(
+    description=message,
+    parts=[Part(root=DataPart(data=response_data))]  # Only DataPart
+)
+```
+
+**After:**
+```python
+parts = []
+if human_message:
+    parts.append(Part(root=TextPart(text=human_message)))  # Human message
+parts.append(Part(root=DataPart(data=response_data)))  # AdCP payload
+
+Artifact(
+    description=human_message,  # Also in description
+    parts=parts  # Both TextPart and DataPart
+)
+```
+
+**Benefits:**
+- Clear separation of human-readable content from machine-readable data
+- Clients can display TextPart to users and process DataPart programmatically
+- Aligns with A2A/AdCP canonical structure
+
+### 3. Fixed Test Validator (`tests/helpers/a2a_response_validator.py`)
 
 **Before:**
 ```python
@@ -105,16 +141,24 @@ FORBIDDEN_FIELDS = {"success", "message"}  # ✅ Enforces spec compliance
 # Handler returns pure AdCP response
 response_data = response.model_dump()  # Only spec fields
 
-# Human message goes in Artifact.description or TextPart
+# Generate human message from response
 message = str(response)  # Use __str__() method
 
 # Success determined by Task.status.state
 task.status = TaskStatus(state=TaskState.completed)  # or .failed
 
-# Pure data in DataPart
+# Build parts: TextPart + DataPart
+parts = []
+if message:
+    parts.append(Part(root=TextPart(text=message)))  # Human-readable message
+parts.append(Part(root=DataPart(data=response_data)))  # Pure AdCP data
+
+# Create Artifact with both
 Artifact(
-    description=message,  # Human-readable here
-    parts=[Part(root=DataPart(data=response_data))]  # Pure AdCP data
+    artifact_id="result_1",
+    name="operation_result",
+    description=message,  # Summary in description
+    parts=parts,  # TextPart (human message) + DataPart (AdCP payload)
 )
 ```
 
@@ -191,6 +235,39 @@ async def test_create_media_buy_spec_compliance():
     assert "media_buy_id" in result or "buyer_ref" in result
 ```
 
+## Known Issues / Technical Debt
+
+### Legacy Natural Language Processing Path
+
+**Location**: `src/a2a_server/adcp_a2a_server.py` (lines ~740-770)
+
+**Issue**: The legacy NLP path (when user sends natural language instead of explicit skills) still:
+- Checks `result.get("success")` (expects protocol field)
+- Logs with `result.get("message")`
+- Creates artifacts without TextPart
+
+**Example:**
+```python
+if result.get("success"):  # ❌ Still expects protocol field
+    task.artifacts = [Artifact(...)]
+```
+
+**Why Not Fixed Yet**:
+- This is a separate code path from explicit skill invocation
+- Used for backwards compatibility with natural language queries
+- Needs careful refactoring to avoid breaking existing behavior
+
+**Recommendation**:
+- Deprecate NLP path in favor of explicit skill invocation
+- OR refactor to use same artifact creation pattern (TextPart + DataPart)
+- Document that explicit skills are the preferred/compliant path
+
 ## Conclusion
 
-Our A2A implementation now returns **pure AdCP-compliant payloads** in DataPart.data, with protocol concerns (success/message) properly separated per the spec. This fixes compatibility with Google ADK and ensures we follow the canonical A2A response structure documented in PR #238.
+Our A2A implementation now returns **pure AdCP-compliant payloads** in DataPart.data, with protocol concerns (success/message) properly separated per the spec. Human-readable messages are in **TextPart**, separate from domain data in **DataPart**. This fixes compatibility with Google ADK and ensures we follow the canonical A2A response structure documented in PR #238.
+
+**Complete Structure:**
+1. ✅ **Task.status.state** = Success indicator (completed/failed)
+2. ✅ **Artifact.description** = Human-readable summary
+3. ✅ **TextPart** = Full human-readable message
+4. ✅ **DataPart** = Pure AdCP payload (no protocol fields)
