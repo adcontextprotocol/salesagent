@@ -2075,12 +2075,12 @@ async def _create_media_buy_impl(
                         logger.info(f"[CREATIVE_ASSIGN_DEBUG] Loaded {len(creatives_map)} creatives from database")
 
                         # Validate creative formats against product formats BEFORE creating assignments
-                        # This ensures creatives match at least one format supported by the product
+                        # This ensures creatives match the product's supported formats
                         # Validation happens at assignment time (not sync time) because:
                         # - Creatives may be synced before being assigned to products
                         # - A creative may be valid for product A but not product B
                         # - Same creative can be reused across packages if formats align
-                        from src.core.helpers import validate_creative_format_against_products
+                        from src.core.helpers import validate_creative_format_against_product
 
                         for package in req.packages:
                             if package.creative_ids and package.product_id:
@@ -2098,33 +2098,24 @@ async def _create_media_buy_impl(
                                     for creative_id in package.creative_ids:
                                         creative = creatives_map.get(creative_id)
                                         if creative:
-                                            from typing import cast
-
-                                            validation_result = validate_creative_format_against_products(
-                                                creative_agent_url=cast(str, creative.agent_url or ""),
-                                                creative_format_id=cast(str, creative.format or ""),
-                                                products=[product_for_format_validation],
-                                                normalize_url=True,
+                                            # Simple binary check: does creative's format_id match product?
+                                            format_is_valid, format_error = validate_creative_format_against_product(
+                                                creative_format_id=creative.format,
+                                                product=product_for_format_validation,
                                             )
-                                            format_is_valid, format_matches, format_error = validation_result
 
                                             if not format_is_valid:
-                                                error_detail = (
-                                                    f"Creative {creative_id} format mismatch for product "
-                                                    f"{package.product_id}: {format_error}"
-                                                )
-                                                logger.error(f"[CREATIVE_ASSIGN_DEBUG] {error_detail}")
+                                                logger.error(f"[CREATIVE_ASSIGN_DEBUG] {format_error}")
                                                 logger.warning(
                                                     "Creative format validation failure",
                                                     extra={
                                                         "creative_id": creative_id,
                                                         "product_id": package.product_id,
                                                         "creative_format": creative.format,
-                                                        "creative_agent_url": creative.agent_url,
                                                         "validation_error": format_error,
                                                     },
                                                 )
-                                                raise ToolError(error_detail)
+                                                raise ToolError(format_error)
 
                                             logger.info(
                                                 f"[CREATIVE_ASSIGN_DEBUG] Creative {creative_id} format "
@@ -2856,12 +2847,12 @@ async def _create_media_buy_impl(
                         raise ToolError("CREATIVES_NOT_FOUND", error_msg)
 
                     # Validate creative formats against product formats BEFORE creating assignments
-                    # This ensures creatives match at least one format supported by the product
+                    # This ensures creatives match the product's supported formats
                     # Validation happens at assignment time (not sync time) because:
                     # - Creatives may be synced before being assigned to products
                     # - A creative may be valid for product A but not product B
                     # - Same creative can be reused across packages if formats align
-                    from src.core.helpers import validate_creative_format_against_products
+                    from src.core.helpers import validate_creative_format_against_product
 
                     for package in req.packages:
                         if package.creative_ids and package.product_id:
@@ -2879,36 +2870,27 @@ async def _create_media_buy_impl(
                                 for creative_id in package.creative_ids:
                                     creative = creatives_by_id.get(creative_id)
                                     if creative:
-                                        from typing import cast
-
-                                        validation_result = validate_creative_format_against_products(
-                                            creative_agent_url=cast(str, creative.agent_url or ""),
-                                            creative_format_id=cast(str, creative.format or ""),
-                                            products=[product_format_check],
-                                            normalize_url=True,
+                                        # Simple binary check: does creative's format_id match product?
+                                        format_is_valid, format_error = validate_creative_format_against_product(
+                                            creative_format_id=creative.format,
+                                            product=product_format_check,
                                         )
-                                        format_is_valid, format_matches, format_error = validation_result
 
                                         if not format_is_valid:
-                                            error_detail = (
-                                                f"Creative {creative_id} format mismatch for product "
-                                                f"{package.product_id}: {format_error}"
-                                            )
-                                            logger.error(error_detail)
+                                            logger.error(format_error)
                                             logger.warning(
                                                 "Creative format validation failure",
                                                 extra={
                                                     "creative_id": creative_id,
                                                     "product_id": package.product_id,
                                                     "creative_format": creative.format,
-                                                    "creative_agent_url": creative.agent_url,
                                                     "validation_error": format_error,
                                                 },
                                             )
                                             ctx_manager.update_workflow_step(
-                                                step.step_id, status="failed", error_message=error_detail
+                                                step.step_id, status="failed", error_message=format_error
                                             )
-                                            raise ToolError("CREATIVE_FORMAT_MISMATCH", error_detail)
+                                            raise ToolError("CREATIVE_FORMAT_MISMATCH", format_error)
 
                                         logger.info(
                                             f"Creative {creative_id} format validated against product {package.product_id}"
