@@ -2203,10 +2203,12 @@ def create_agent_card() -> AgentCard:
     from a2a.types import AgentCapabilities, AgentSkill
 
     # Create AdCP extension (AdCP 2.5 spec)
-    # Note: The protocol version is independent of the adcp library version
-    # adcp library version: 2.12.0 (library implementation)
-    # adcp schema version: v1 (from get_adcp_version())
-    # adcp protocol version: 2.5.0 (specification version - what we declare here)
+    # TODO: Report upstream - adcp library should provide get_protocol_version() function
+    # Currently the library only provides:
+    #   - adcp.__version__ = "2.12.0" (library/package version)
+    #   - adcp.get_adcp_version() = "v1" (schema version)
+    # But not the protocol version (2.5.0) needed for the AdCP extension.
+    # Until fixed, we must hardcode the protocol version based on the schema URI.
     ADCP_PROTOCOL_VERSION = "2.5.0"  # AdCP protocol specification version we implement
     adcp_extension = AgentExtension(
         uri=f"https://adcontextprotocol.org/schemas/{ADCP_PROTOCOL_VERSION}/protocols/adcp-extension.json",
