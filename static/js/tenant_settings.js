@@ -568,46 +568,6 @@ function configureGAM() {
     });
 }
 
-// Test GAM connection
-function testGAMConnection() {
-    const networkCodeField = document.getElementById('gam_network_code');
-
-    if (!networkCodeField) {
-        alert('Error: GAM network code field not available. Please select Google Ad Manager adapter first.');
-        return;
-    }
-
-    const button = document.querySelector('button[onclick="testGAMConnection()"]');
-    const originalText = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Testing...';
-
-    fetch(`${config.scriptName}/api/gam/test-connection`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            network_code: networkCodeField.value
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        button.disabled = false;
-        button.textContent = originalText;
-
-        if (data.success) {
-            alert('✅ Connection successful!');
-        } else {
-            alert('❌ Connection failed: ' + (data.error || data.message || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        button.disabled = false;
-        button.textContent = originalText;
-        alert('❌ Error: ' + error.message);
-    });
-}
 
 // Edit GAM configuration (clear existing config to show form)
 function editGAMConfig() {
