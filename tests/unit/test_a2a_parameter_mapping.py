@@ -46,8 +46,8 @@ class TestA2AParameterMapping:
             # Simulate A2A request with AdCP v2.0+ 'packages' field
             parameters = {
                 "media_buy_id": "mb_123",
-                "active": True,
-                "packages": [{"package_id": "pkg_1", "active": True, "status": "active"}],  # AdCP v2.0+ field name
+                "paused": False,  # adcp 2.12.0+: paused=False means resume
+                "packages": [{"package_id": "pkg_1", "paused": False}],  # AdCP v2.12.0+ field name
             }
 
             # Call the skill handler (synchronous wrapper for async method)
@@ -64,16 +64,16 @@ class TestA2AParameterMapping:
 
             # Verify packages data is passed through (may have additional fields from Pydantic serialization)
             assert len(call_kwargs["packages"]) == len(parameters["packages"]), "Package count should match"
-            assert call_kwargs["packages"][0]["package_id"] == parameters["packages"][0]["package_id"], (
-                "Package ID should match"
-            )
+            assert (
+                call_kwargs["packages"][0]["package_id"] == parameters["packages"][0]["package_id"]
+            ), "Package ID should match"
 
             # Should NOT use legacy 'updates' parameter
             assert "updates" not in call_kwargs, "Should not pass legacy 'updates' parameter to core function"
 
-            # Verify other AdCP v2.0+ parameters are passed
+            # Verify other AdCP v2.12.0+ parameters are passed
             assert call_kwargs["media_buy_id"] == "mb_123"
-            assert call_kwargs["active"] is True
+            assert call_kwargs["paused"] is False  # adcp 2.12.0+: paused=False means resume
 
     def test_update_media_buy_backward_compatibility_with_updates(self):
         """
@@ -149,9 +149,9 @@ class TestA2AParameterMapping:
 
             # Error message should mention required parameter
             error_message = str(exc_info.value).lower()
-            assert "media_buy_id" in error_message or "buyer_ref" in error_message, (
-                "Error message should mention required parameter"
-            )
+            assert (
+                "media_buy_id" in error_message or "buyer_ref" in error_message
+            ), "Error message should mention required parameter"
 
     def test_get_media_buy_delivery_uses_plural_media_buy_ids(self):
         """
