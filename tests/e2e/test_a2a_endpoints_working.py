@@ -208,10 +208,9 @@ class TestA2AAgentCardCreation:
         protocols = adcp_ext.params["protocols_supported"]
         assert isinstance(protocols, list)
         assert len(protocols) >= 1
-        # Should support at least media_buy protocol
+        # Currently only media_buy protocol is supported
         assert "media_buy" in protocols
-        # Full implementation should support all three
-        assert set(protocols) == {"media_buy", "creative", "signals"}
+        assert set(protocols) == {"media_buy"}, "Only media_buy protocol is currently supported"
 
     def test_agent_card_skills_coverage(self):
         """Test that agent card includes expected AdCP skills."""

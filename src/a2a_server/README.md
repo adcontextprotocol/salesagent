@@ -114,7 +114,7 @@ The agent card includes the AdCP extension (per AdCP 2.5 spec) in `capabilities.
         "description": "AdCP protocol version and supported domains",
         "params": {
           "adcp_version": "2.5.0",
-          "protocols_supported": ["media_buy", "creative", "signals"]
+          "protocols_supported": ["media_buy"]
         }
       }
     ]
@@ -123,8 +123,8 @@ The agent card includes the AdCP extension (per AdCP 2.5 spec) in `capabilities.
 ```
 
 This extension declares:
-- **adcp_version**: The AdCP specification version implemented by this agent
-- **protocols_supported**: Which AdCP protocol domains are supported (media_buy, creative, signals)
+- **adcp_version**: The AdCP specification version implemented by this agent (currently "2.5.0")
+- **protocols_supported**: Which AdCP protocol domains are supported (currently only "media_buy")
 
 ### Skill Invocation Patterns (AdCP PR #48)
 

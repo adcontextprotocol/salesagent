@@ -2203,12 +2203,17 @@ def create_agent_card() -> AgentCard:
     from a2a.types import AgentCapabilities, AgentSkill
 
     # Create AdCP extension (AdCP 2.5 spec)
+    # Note: The protocol version is independent of the adcp library version
+    # adcp library version: 2.12.0 (library implementation)
+    # adcp schema version: v1 (from get_adcp_version())
+    # adcp protocol version: 2.5.0 (specification version - what we declare here)
+    ADCP_PROTOCOL_VERSION = "2.5.0"  # AdCP protocol specification version we implement
     adcp_extension = AgentExtension(
-        uri="https://adcontextprotocol.org/schemas/2.5.0/protocols/adcp-extension.json",
+        uri=f"https://adcontextprotocol.org/schemas/{ADCP_PROTOCOL_VERSION}/protocols/adcp-extension.json",
         description="AdCP protocol version and supported domains",
         params={
-            "adcp_version": "2.5.0",
-            "protocols_supported": ["media_buy", "creative", "signals"],
+            "adcp_version": ADCP_PROTOCOL_VERSION,
+            "protocols_supported": ["media_buy"],  # Only media_buy protocol is currently supported
         },
     )
 
