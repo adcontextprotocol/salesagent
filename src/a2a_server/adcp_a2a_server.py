@@ -400,6 +400,28 @@ class AdCPRequestHandler(RequestHandler):
             logger.debug(f"Could not reconstruct response object for {skill_name}: {e}")
         return None
 
+    def _build_artifact_with_textpart(
+        self, artifact_id: str, name: str, data: dict, human_message: str | None = None
+    ) -> Artifact:
+        """Build an artifact with TextPart + DataPart per A2A spec.
+
+        Args:
+            artifact_id: Unique artifact identifier
+            name: Artifact name
+            data: Pure AdCP response data (no protocol fields)
+            human_message: Optional human-readable message
+
+        Returns:
+            Artifact with TextPart (if message provided) + DataPart
+        """
+        # Build parts: TextPart for human message + DataPart for AdCP payload
+        parts = []
+        if human_message:
+            parts.append(Part(root=TextPart(text=human_message)))
+        parts.append(Part(root=DataPart(data=data)))
+
+        return Artifact(artifact_id=artifact_id, name=name, description=human_message or name, parts=parts)  # Summary
+
     async def on_message_send(
         self,
         params: MessageSendParams,
@@ -665,12 +687,11 @@ class AdCPRequestHandler(RequestHandler):
                         "product_count": len(result.get("products", [])) if isinstance(result, dict) else 0,
                     },
                 )
+                # Generate human message from response
+                response_obj = self._reconstruct_response_object("get_products", result)
+                human_message = str(response_obj) if response_obj else None
                 task.artifacts = [
-                    Artifact(
-                        artifact_id="product_catalog_1",
-                        name="product_catalog",
-                        parts=[Part(root=DataPart(data=result))],
-                    )
+                    self._build_artifact_with_textpart("product_catalog_1", "product_catalog", result, human_message)
                 ]
             elif any(word in combined_text for word in ["price", "pricing", "cost", "cpm", "budget"]):
                 result = self._get_pricing()
@@ -1922,44 +1943,33 @@ class AdCPRequestHandler(RequestHandler):
             raise ServerError(InternalError(message=f"Unable to update performance index: {str(e)}"))
 
     async def _get_products(self, query: str, auth_token: str | None) -> dict:
-        """Get available advertising products by calling core functions directly.
+        """Get available advertising products via natural language query.
+
+        This is a thin wrapper that maps NL queries to the explicit skill handler.
+        Eliminates duplication and ensures spec compliance.
 
         Args:
             query: User's product query
             auth_token: Bearer token for authentication
 
         Returns:
-            Dictionary containing product information
+            Pure AdCP response dict (no protocol fields)
+
+        Raises:
+            ServerError: If auth_token is missing
         """
-        try:
-            # Create ToolContext from A2A auth info
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="get_products",
-            )
+        if not auth_token:
+            raise ServerError(InvalidParamsError(message="Authentication token required"))
 
-            # Extract brand name from query and create brand_manifest
-            # This provides backward compatibility for natural language queries
-            brand_name = self._extract_brand_name_from_query(query)
-            brand_manifest = {"name": brand_name} if brand_name else None
+        # Extract brand name from NL query for backward compatibility
+        brand_name = self._extract_brand_name_from_query(query)
+        brand_manifest = {"name": brand_name} if brand_name else None
 
-            # Call core function directly using the underlying function
-            response = await core_get_products_tool(
-                brief=query,
-                brand_manifest=brand_manifest,
-                ctx=self._tool_context_to_mcp_context(tool_context),
-            )
+        # Build parameters for skill handler
+        parameters = {"brief": query, "brand_manifest": brand_manifest}
 
-            # Convert to A2A response format
-            return {
-                "products": [product.model_dump() for product in response.products],
-                "message": str(response),  # Use __str__ method for human-readable message
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting products: {e}")
-            # Return empty products list instead of fallback data
-            return {"products": [], "message": f"Unable to retrieve products: {str(e)}"}
+        # Call the skill handler directly (reuses existing spec-compliant logic)
+        return await self._handle_get_products_skill(parameters, auth_token)
 
     def _extract_brand_name_from_query(self, query: str) -> str:
         """Extract or infer brand name from the user query.
