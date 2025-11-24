@@ -4,6 +4,14 @@
 
 Fixed critical spec violations in our A2A implementation where we were adding non-spec fields (`success`, `message`) to AdCP response payloads. Per [AdCP PR #238](https://github.com/adcontextprotocol/adcp/pull/238), DataPart must contain **direct AdCP payload only** - no custom wrappers or protocol fields.
 
+**Completed Work:**
+- ✅ All 6 skill handlers return pure AdCP responses (no protocol fields)
+- ✅ Added TextPart for human-readable messages per A2A spec
+- ✅ Test validator enforces spec compliance (forbids protocol fields)
+- ✅ Refactored NLP path to eliminate code duplication
+- ✅ Standardized artifact creation with helper method
+- ✅ Both explicit skill and NLP paths use TextPart + DataPart structure
+
 ## Root Cause
 
 We were mixing **protocol-level concerns** (success status, human messages) with **domain data** (AdCP payloads):
@@ -235,32 +243,45 @@ async def test_create_media_buy_spec_compliance():
     assert "media_buy_id" in result or "buyer_ref" in result
 ```
 
-## Known Issues / Technical Debt
+## NLP Path Refactoring (COMPLETED)
 
-### Legacy Natural Language Processing Path
+### Natural Language Processing Path
 
-**Location**: `src/a2a_server/adcp_a2a_server.py` (lines ~740-770)
+**Location**: `src/a2a_server/adcp_a2a_server.py` (lines ~687-792)
 
-**Issue**: The legacy NLP path (when user sends natural language instead of explicit skills) still:
-- Checks `result.get("success")` (expects protocol field)
-- Logs with `result.get("message")`
-- Creates artifacts without TextPart
+**Changes Made:**
 
-**Example:**
-```python
-if result.get("success"):  # ❌ Still expects protocol field
-    task.artifacts = [Artifact(...)]
-```
+1. **Added Standardized Helper Method** (lines 403-425):
+   - `_build_artifact_with_textpart()` creates artifacts with TextPart + DataPart structure
+   - Handles both cases: with/without human messages
+   - Used by ALL artifact creation (NLP and explicit skills)
 
-**Why Not Fixed Yet**:
-- This is a separate code path from explicit skill invocation
-- Used for backwards compatibility with natural language queries
-- Needs careful refactoring to avoid breaking existing behavior
+2. **Refactored `_get_products()` NLP Helper** (lines 1945-1972):
+   - ✅ Eliminated code duplication - now calls `_handle_get_products_skill()` directly
+   - ✅ Just maps NL query to skill parameters
+   - ✅ Single source of truth for business logic
+   - ✅ Added auth_token validation
 
-**Recommendation**:
-- Deprecate NLP path in favor of explicit skill invocation
-- OR refactor to use same artifact creation pattern (TextPart + DataPart)
-- Document that explicit skills are the preferred/compliant path
+3. **Updated All NLP Artifact Creation**:
+   - ✅ `get_products` (lines 692-695) - Uses helper with TextPart extracted from response.__str__()
+   - ✅ `get_pricing` (lines 718-723) - Uses helper (DataPart only, no TextPart)
+   - ✅ `get_targeting` (lines 748-753) - Uses helper (DataPart only, no TextPart)
+   - ✅ `get_capabilities` (lines 823-828) - Uses helper (DataPart only, no TextPart)
+   - ✅ `create_media_buy` (lines 781-792) - Uses helper with TextPart from legacy message field
+
+**Remaining Technical Debt:**
+
+- **`_create_media_buy()` Legacy Helper** (lines ~2100+):
+  - Still returns protocol fields (`success`, `message`)
+  - Should be refactored to call `_handle_create_media_buy_skill()` like `_get_products()`
+  - Marked with TODO comment for future refactor
+  - Currently uses helper method for artifact creation (partial compliance)
+
+**Benefits:**
+- ✅ Consistent artifact structure across NLP and explicit skill paths
+- ✅ Eliminated duplication in get_products path
+- ✅ Both paths now use TextPart + DataPart per A2A spec
+- ✅ Clear separation of concerns (helper handles structure)
 
 ## Conclusion
 
