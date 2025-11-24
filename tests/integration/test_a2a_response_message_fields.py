@@ -120,23 +120,25 @@ class TestA2AMessageFieldValidation:
             assert_valid_skill_response(result, "sync_creatives")
 
     @pytest.mark.asyncio
-    async def test_get_products_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test get_products returns a valid message field.
+    async def test_get_products_spec_compliance(self, handler, mock_auth_context, sample_principal):
+        """Test get_products returns spec-compliant A2A response.
 
-        GetProductsResponse DOES have a .message field, but we should use str() consistently
+        Per AdCP spec and PR #238, DataPart.data must NOT contain protocol fields.
         """
         with mock_auth_context(handler):
             params = {"brand_manifest": {"name": "Test product search"}, "brief": "Looking for display ads"}
 
             result = await handler._handle_get_products_skill(params, sample_principal["access_token"])
 
-            # ✅ Validate message field
-            assert "message" in result, "get_products response must include 'message' field"
-            assert isinstance(result["message"], str), "message must be a string"
+            # ✅ Use comprehensive validator to check spec compliance
+            assert_valid_skill_response(result, "get_products")
 
     @pytest.mark.asyncio
-    async def test_list_creatives_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test list_creatives returns a valid message field."""
+    async def test_list_creatives_spec_compliance(self, handler, mock_auth_context, sample_principal):
+        """Test list_creatives returns spec-compliant A2A response.
+
+        Per AdCP spec and PR #238, DataPart.data must NOT contain protocol fields.
+        """
         with mock_auth_context(handler):
             params = {
                 "buyer_ref": "test_creative",
@@ -146,38 +148,41 @@ class TestA2AMessageFieldValidation:
 
             result = await handler._handle_list_creatives_skill(params, sample_principal["access_token"])
 
-            # ✅ Validate message field
-            assert "message" in result, "list_creatives response must include 'message' field"
-            assert isinstance(result["message"], str), "message must be a string"
+            # ✅ Use comprehensive validator to check spec compliance
+            assert_valid_skill_response(result, "list_creatives")
 
     @pytest.mark.asyncio
-    async def test_list_creative_formats_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test list_creative_formats returns a valid message field."""
+    async def test_list_creative_formats_spec_compliance(self, handler, mock_auth_context, sample_principal):
+        """Test list_creative_formats returns spec-compliant A2A response.
+
+        Per AdCP spec and PR #238, DataPart.data must NOT contain protocol fields.
+        """
         with mock_auth_context(handler):
             params = {}
 
             result = await handler._handle_list_creative_formats_skill(params, sample_principal["access_token"])
 
-            # ✅ Validate message field
-            assert "message" in result, "list_creative_formats response must include 'message' field"
-            assert isinstance(result["message"], str), "message must be a string"
+            # ✅ Use comprehensive validator to check spec compliance
+            assert_valid_skill_response(result, "list_creative_formats")
 
 
 @pytest.mark.integration
 class TestA2AResponseDictConstruction:
-    """Test that all response types can be safely converted to A2A response dicts.
+    """Test that all response types can be safely converted to spec-compliant responses.
 
-    This catches the pattern where we try to access an attribute that doesn't exist
-    on a Pydantic model, by testing the dict construction directly.
+    Per AdCP spec and PR #238:
+    - DataPart contains pure AdCP payload (response.model_dump())
+    - TextPart contains human message (str(response))
+    - NO protocol fields (success, message) in DataPart.data
     """
 
-    def test_create_media_buy_response_to_dict(self):
-        """Test CreateMediaBuySuccess can be converted to A2A dict.
+    def test_create_media_buy_response_to_spec_compliant_dict(self):
+        """Test CreateMediaBuySuccess converts to spec-compliant response.
 
-        Protocol fields (status) are added by A2A wrapper, not in domain response.
-
-        NOTE: CreateMediaBuyResponse is a Union type (Success | Error) in adcp v1.2.1,
-        so we test with CreateMediaBuySuccess instead.
+        Per AdCP spec:
+        - DataPart contains ONLY AdCP response fields
+        - TextPart contains human-readable message
+        - NO success/message fields in data
         """
         from src.core.schemas import CreateMediaBuySuccess
 
@@ -187,21 +192,24 @@ class TestA2AResponseDictConstruction:
             packages=[],  # Required field in adcp v1.2.1
         )
 
-        # Simulate what _handle_create_media_buy_skill does
-        # ✅ This should NOT raise AttributeError
-        a2a_dict = {
-            "success": True,
-            "media_buy_id": response.media_buy_id,
-            "message": str(response),  # Safe for all response types
-        }
+        # ✅ CORRECT - Pure AdCP payload for DataPart
+        data_part = response.model_dump()
+        assert "success" not in data_part, "Protocol fields violate AdCP spec"
+        assert "message" not in data_part, "Protocol fields violate AdCP spec"
+        assert "media_buy_id" in data_part, "AdCP field should be present"
 
-        assert a2a_dict["message"] == "Media buy mb-456 created successfully."
+        # ✅ CORRECT - Human message for TextPart
+        text_part = str(response)
+        assert text_part == "Media buy mb-456 created successfully."
+        assert isinstance(text_part, str)
 
-    def test_sync_creatives_response_to_dict(self):
-        """Test SyncCreativesResponse can be converted to A2A dict.
+    def test_sync_creatives_response_to_spec_compliant_dict(self):
+        """Test SyncCreativesResponse converts to spec-compliant response.
 
-        Protocol fields (status, message) are added by A2A wrapper.
-        Domain response uses __str__() to generate message.
+        Per AdCP spec:
+        - DataPart contains ONLY AdCP response fields
+        - TextPart contains human-readable message from __str__()
+        - NO success/message fields in data
         """
         from src.core.schemas import SyncCreativeResult, SyncCreativesResponse
 
@@ -217,34 +225,50 @@ class TestA2AResponseDictConstruction:
             ],
         )
 
-        # ✅ This should NOT raise AttributeError
-        a2a_dict = {
-            "success": True,
-            "message": str(response),  # Safe - uses __str__ method
-        }
+        # ✅ CORRECT - Pure AdCP payload for DataPart
+        data_part = response.model_dump()
+        assert "success" not in data_part, "Protocol fields violate AdCP spec"
+        assert "message" not in data_part, "Protocol fields violate AdCP spec"
+        assert "creatives" in data_part, "AdCP field should be present"
 
-        assert isinstance(a2a_dict["message"], str)
-        assert len(a2a_dict["message"]) > 0
+        # ✅ CORRECT - Human message for TextPart
+        text_part = str(response)
+        assert isinstance(text_part, str)
+        assert len(text_part) > 0
 
-    def test_get_products_response_to_dict(self):
-        """Test GetProductsResponse can be converted to A2A dict."""
+    def test_get_products_response_to_spec_compliant_dict(self):
+        """Test GetProductsResponse converts to spec-compliant response.
+
+        Per AdCP spec:
+        - DataPart contains ONLY AdCP response fields
+        - TextPart contains human-readable message from __str__()
+        - NO success/message fields in data
+        """
         from src.core.schema_adapters import GetProductsResponse
 
         response = GetProductsResponse(products=[])
 
-        # ✅ Uses __str__ method to generate message
-        a2a_dict = {
-            "products": [p.model_dump() if hasattr(p, "model_dump") else p for p in response.products],
-            "message": str(response),  # Uses __str__ method
-        }
+        # ✅ CORRECT - Pure AdCP payload for DataPart
+        data_part = response.model_dump()
+        assert "success" not in data_part, "Protocol fields violate AdCP spec"
+        assert "message" not in data_part, "Protocol fields violate AdCP spec"
+        assert "products" in data_part, "AdCP field should be present"
 
-        assert a2a_dict["message"] == "No products matched your requirements."
+        # ✅ CORRECT - Human message for TextPart
+        text_part = str(response)
+        assert text_part == "No products matched your requirements."
+        assert isinstance(text_part, str)
 
-    def test_all_response_types_have_str_or_message(self):
-        """Test that all response types used in A2A have either __str__ or .message.
+    def test_all_response_types_have_str_method(self):
+        """Test that all response types used in A2A have __str__() methods.
+
+        Per AdCP spec and PR #238:
+        - Response types provide human messages via __str__() method
+        - These messages go in TextPart, separate from DataPart (AdCP payload)
+        - NO .message field in response data (protocol field)
 
         This is a contract test - ensures we don't add response types that
-        can't be safely converted to A2A dicts.
+        can't provide human-readable messages for TextPart.
 
         NOTE: In adcp v1.2.1, some response types are Union types (Success | Error).
         We test both Success and Error variants separately.
@@ -268,16 +292,12 @@ class TestA2AResponseDictConstruction:
         ]
 
         for response_cls in response_types:
-            # Check if it has __str__ method or message field
+            # All response types MUST have __str__() method for TextPart
             has_str_method = hasattr(response_cls, "__str__")
 
-            # Try to create a minimal instance and check for message field
-            # This is tricky because we need to provide required fields
-            # For now, just check the class definition
-            has_message_field = "message" in response_cls.model_fields
-
-            assert has_str_method or has_message_field, (
-                f"{response_cls.__name__} must have either __str__ method or .message field for A2A compatibility"
+            assert has_str_method, (
+                f"{response_cls.__name__} must have __str__() method for A2A TextPart compliance. "
+                f"Human messages come from str(response), not response.message field."
             )
 
 
@@ -290,8 +310,14 @@ class TestA2AErrorHandling:
         return AdCPRequestHandler()
 
     @pytest.mark.asyncio
-    async def test_skill_error_has_message_field(self, handler, sample_principal):
-        """Test that skill errors return proper message fields."""
+    async def test_skill_error_handling_spec_compliance(self, handler, sample_principal):
+        """Test that skill errors use proper exception handling (not protocol fields).
+
+        Per AdCP spec and PR #238:
+        - Errors should raise ServerError exceptions
+        - NOT return dicts with success/message fields
+        - A2A framework converts exceptions to Task.status.state = failed
+        """
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
         with patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal:
@@ -299,16 +325,14 @@ class TestA2AErrorHandling:
 
             # Force an error by passing invalid parameters
             params = {
-                # Missing required fields - should cause validation error
+                # Missing required fields - should cause ServerError to be raised
             }
 
-            try:
-                result = await handler._handle_create_media_buy_skill(params, sample_principal["access_token"])
-                # If it doesn't raise, check the error response structure
-                if not result.get("success", True):
-                    assert "message" in result or "error" in result, "Error response must have message or error field"
-            except Exception as e:
-                # Errors are expected for invalid params
-                assert "message" not in str(e) or "AttributeError" not in str(e), (
-                    "Should not get AttributeError when handling skill errors"
-                )
+            # ✅ CORRECT - Errors should raise exceptions, not return error dicts
+            with pytest.raises(Exception) as exc_info:
+                await handler._handle_create_media_buy_skill(params, sample_principal["access_token"])
+
+            # Verify we don't get AttributeError (original bug this test was catching)
+            assert "AttributeError" not in str(
+                exc_info.value
+            ), "Should not get AttributeError when handling skill errors"
