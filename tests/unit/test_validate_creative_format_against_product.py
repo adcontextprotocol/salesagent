@@ -148,3 +148,48 @@ class TestValidateCreativeFormatAgainstProduct:
 
         assert is_valid is False
         assert error is not None
+
+    def test_product_with_none_format_ids(self):
+        """Test that None format_ids behaves like empty list (accepts all).
+
+        Edge case: Product.model_construct() can bypass validation and set format_ids=None.
+        The function should treat this the same as an empty list (accept all formats).
+        """
+        creative_format_id = FormatId(agent_url="https://creative.adcontextprotocol.org", id="any_format")
+        product = Product.model_construct(
+            product_id="product_1",
+            name="Unrestricted Product",
+            format_ids=None,  # Bypass validation - None should behave like empty list
+        )
+
+        is_valid, error = validate_creative_format_against_product(
+            creative_format_id=creative_format_id,
+            product=product,
+        )
+
+        assert is_valid is True
+        assert error is None
+
+    def test_url_normalization_handled_by_pydantic(self):
+        """Test that Pydantic URL normalization makes URLs match correctly.
+
+        Pydantic normalizes URLs automatically (adds trailing slash to bare domains).
+        This test verifies that normalized URLs match correctly.
+        """
+        # Pydantic normalizes "http://example.com" → "http://example.com/"
+        creative_format_id = FormatId(agent_url="http://example.com", id="banner_300x250")
+        product = Product.model_construct(
+            product_id="product_1",
+            name="Test Product",
+            format_ids=[
+                FormatId(agent_url="http://example.com", id="banner_300x250")  # Same URL, Pydantic normalizes both
+            ],
+        )
+
+        is_valid, error = validate_creative_format_against_product(
+            creative_format_id=creative_format_id,
+            product=product,
+        )
+
+        assert is_valid is True
+        assert error is None
