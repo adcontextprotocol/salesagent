@@ -20,6 +20,7 @@ Benefits:
 from typing import Any
 
 from adcp import GetProductsRequest as _GeneratedGetProductsRequest
+from adcp.types.generated_poc.core.context import ContextObject
 from pydantic import BaseModel, Field, model_validator
 
 from src.core.schemas import AdCPBaseModel, FormatId
@@ -60,7 +61,9 @@ class GetProductsRequest(BaseModel):
     min_exposures: int | None = Field(None, description="Minimum exposures needed for measurement validity")
     strategy_id: str | None = Field(None, description="Optional strategy ID for linking operations")
     webhook_url: str | None = Field(None, description="URL for async task completion notifications")
-    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
+    context: dict[str, Any] | ContextObject | None = Field(
+        None, description="Application-level context echoed from the request"
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -181,7 +184,7 @@ class GetProductsResponse(AdCPBaseModel):
     # Fields from generated schema (flexible - accepts dicts or objects)
     products: list[Any] = Field(..., description="List of matching products")
     errors: list[Any] | None = Field(None, description="Task-specific errors")
-    context: dict[str, Any] | None = None
+    context: dict[str, Any] | ContextObject | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
@@ -300,7 +303,9 @@ class CreateMediaBuyRequest(BaseModel):
     start_time: datetime | str = Field(..., description="Campaign start time or 'asap'")
     end_time: datetime = Field(..., description="Campaign end time")
     budget: dict[str, Any] = Field(..., description="Budget configuration")
-    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
+    context: dict[str, Any] | ContextObject | None = Field(
+        None, description="Application-level context echoed from the request"
+    )
 
     # Optional fields
     promoted_offering: str | None = Field(None, description="DEPRECATED: Use brand_manifest")
@@ -394,7 +399,7 @@ class ListCreativeFormatsResponse(AdCPBaseModel):
     formats: list[Any] = Field(..., description="Full format definitions per AdCP spec")
     creative_agents: list[Any] | None = Field(None, description="Creative agents providing additional formats")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
-    context: dict[str, Any] | None = None
+    context: dict[str, Any] | ContextObject | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
@@ -463,7 +468,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     )
     last_updated: str | None = Field(None, description="ISO 8601 timestamp of when authorization list was last updated")
     errors: list[Any] | None = Field(None, description="Task-specific errors and warnings")
-    context: dict[str, Any] | None = None
+    context: dict[str, Any] | ContextObject | None = None
 
     def dict(self, **kwargs):
         """Override dict to use model_dump with exclude_none=True for AdCP compliance.
@@ -528,7 +533,9 @@ class ListCreativeFormatsRequest(BaseModel):
     format_ids: list[FormatId] | None = Field(
         None, description="Return only these specific format IDs (e.g., from get_products response)"
     )
-    context: dict[str, Any] | None = Field(None, description="Application-level context provided by the client")
+    context: dict[str, Any] | ContextObject | None = Field(
+        None, description="Application-level context provided by the client"
+    )
 
     def to_generated(self) -> _GeneratedListCreativeFormatsRequest:
         """Convert to generated schema for protocol validation."""
@@ -539,7 +546,9 @@ class ListAuthorizedPropertiesRequest(BaseModel):
     """Adapter for ListAuthorizedPropertiesRequest - simple pass-through to generated schema."""
 
     tags: list[str] | None = Field(None, description="Filter properties by specific tags")
-    context: dict[str, Any] | None = Field(None, description="Application-level context provided by the client")
+    context: dict[str, Any] | ContextObject | None = Field(
+        None, description="Application-level context provided by the client"
+    )
 
     def to_generated(self) -> _GeneratedListAuthorizedPropertiesRequest:
         """Convert to generated schema for protocol validation."""
@@ -579,7 +588,9 @@ class CreateMediaBuyResponse(AdCPBaseModel):
     creative_deadline: Any | None = None
     packages: list[Any] = Field(default_factory=list)
     errors: list[Any] | None = None
-    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
+    context: dict[str, Any] | ContextObject | None = Field(
+        None, description="Application-level context echoed from the request"
+    )
 
     # Internal fields (excluded from AdCP responses)
     workflow_step_id: str | None = None
@@ -622,7 +633,9 @@ class UpdateMediaBuyResponse(AdCPBaseModel):
     implementation_date: str | None = Field(None, description="ISO 8601 date when changes will take effect")
     affected_packages: list[Any] | None = Field(default_factory=list)
     errors: list[Any] | None = None
-    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
+    context: dict[str, Any] | ContextObject | None = Field(
+        None, description="Application-level context echoed from the request"
+    )
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
@@ -653,7 +666,9 @@ class SyncCreativesResponse(AdCPBaseModel):
 
     # Optional fields (per official spec)
     dry_run: bool | None = Field(None, description="Whether this was a dry run (no actual changes made)")
-    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
+    context: dict[str, Any] | ContextObject | None = Field(
+        None, description="Application-level context echoed from the request"
+    )
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -711,7 +726,7 @@ class GetMediaBuyDeliveryResponse(AdCPBaseModel):
     sequence_number: int | None = None
     next_expected_at: str | None = None
     errors: list[Any] | None = None
-    context: dict[str, Any] | None = None
+    context: dict[str, Any] | ContextObject | None = None
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
@@ -739,7 +754,7 @@ class GetSignalsResponse(AdCPBaseModel):
 
     signals: list[Any] = Field(..., description="Array of matching signals")
     errors: list[Any] | None = None
-    context: dict[str, Any] | None = None
+    context: dict[str, Any] | ContextObject | None = None
 
     def __str__(self) -> str:
         """Return human-readable summary of signals."""
@@ -768,7 +783,9 @@ class ActivateSignalResponse(AdCPBaseModel):
     estimated_activation_duration_minutes: float | None = None
     deployed_at: str | None = None
     errors: list[Any] | None = None
-    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
+    context: dict[str, Any] | ContextObject | None = Field(
+        None, description="Application-level context echoed from the request"
+    )
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer."""
@@ -803,7 +820,7 @@ class ListCreativesResponse(AdCPBaseModel):
     creatives: list[Any] = Field(..., description="Array of creative assets")
     format_summary: dict[str, int] | None = None
     status_summary: dict[str, int] | None = None
-    context: dict[str, Any] | None = None
+    context: dict[str, Any] | ContextObject | None = None
 
     def __str__(self) -> str:
         """Generate human-readable message from query_summary."""

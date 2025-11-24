@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from adcp.types import MediaBuyStatus, PackageStatus
+from adcp.types import MediaBuyStatus
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -59,6 +59,7 @@ from src.core.helpers import get_principal_id_from_context, log_tool_activity
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.helpers.creative_helpers import _convert_creative_to_adapter_asset, process_and_upload_package_creatives
 from src.core.schema_adapters import CreateMediaBuyResponse
+from src.core.schema_helpers import to_context_object
 from src.core.schemas import (
     CreateMediaBuyError,
     CreateMediaBuyRequest,
@@ -86,46 +87,9 @@ from src.services.activity_feed import activity_feed
 # --- Helper Functions ---
 
 
-def _sanitize_package_status(status: Any) -> str | None:
-    """Ensure package status matches AdCP spec.
-
-    Per AdCP spec, Package.status must be one of: draft, active, paused, completed.
-    This is DIFFERENT from TaskStatus (input-required, working, completed, etc.)
-    which describes the approval workflow state.
-
-    Common mistake: Setting Package.status to TaskStatus.INPUT_REQUIRED
-    Correct: Package.status should be null until adapter creates it (then draft/active)
-
-    Args:
-        status: The status value from adapter response or database
-
-    Returns:
-        Valid AdCP PackageStatus or None
-    """
-    # Use library enum as source of truth for valid values
-    VALID_PACKAGE_STATUSES = {s.value for s in PackageStatus}
-
-    if status is None:
-        return None
-
-    # Convert to string for validation
-    # If it's already a PackageStatus enum, extract its value
-    if isinstance(status, PackageStatus):
-        status_str = status.value
-    else:
-        status_str = str(status)
-
-    if status_str in VALID_PACKAGE_STATUSES:
-        return status_str
-
-    # Log error for non-spec-compliant status - this indicates a bug in our code
-    logger.error(
-        f"[SPEC-VIOLATION] Package.status='{status_str}' violates AdCP spec! "
-        f"Valid PackageStatus values: {VALID_PACKAGE_STATUSES}. "
-        f"Note: '{status_str}' may be a TaskStatus (workflow state), which should be stored in WorkflowStep.status, NOT Package.status. "
-        f"Setting to None to prevent spec violation."
-    )
-    return None
+# NOTE: _sanitize_package_status() removed in adcp 2.12.0 migration
+# Package.status enum was replaced with Package.paused boolean field
+# See: adcp 2.12.0 changelog
 
 
 def _determine_media_buy_status(
@@ -682,8 +646,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
                     # Log conversion results
                     logger.info(
-                        f"[APPROVAL] Package {package_id}: "
-                        f"Successfully converted all {len(format_ids_list)} formats"
+                        f"[APPROVAL] Package {package_id}: Successfully converted all {len(format_ids_list)} formats"
                     )
 
                     media_package = MediaPackage(
@@ -718,6 +681,12 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             start_time = media_buy.start_time
             end_time = media_buy.end_time
 
+            # Validate required datetime fields
+            if not start_time or not end_time:
+                error_msg = f"Media buy {media_buy_id} missing required start_time or end_time"
+                logger.error(f"[APPROVAL] {error_msg}")
+                return False, error_msg
+
             # Get the Principal object (needed for adapter)
             from src.core.auth import get_principal_object
 
@@ -742,7 +711,13 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
         # Execute adapter creation (outside session to avoid conflicts)
         # Type ignore needed because we're passing MediaPackage list as Package list (adapter compatibility)
         response = _execute_adapter_media_buy_creation(
-            request, packages, start_time, end_time, package_pricing_info, principal, testing_ctx  # type: ignore[arg-type]
+            request,
+            packages,  # type: ignore[arg-type]
+            start_time,  # type: ignore[arg-type]
+            end_time,  # type: ignore[arg-type]
+            package_pricing_info,
+            principal,
+            testing_ctx,
         )
 
         # Check if adapter returned an error response
@@ -1320,7 +1295,7 @@ async def _create_media_buy_impl(
         # Cannot create context or workflow step without valid principal
         return CreateMediaBuyError(  # type: ignore[return-value]
             errors=[Error(code="authentication_error", message=error_msg, details=None)],
-            context=req.context,
+            context=to_context_object(req.context),
         )
 
     # Context management and workflow step creation - create workflow step FIRST
@@ -1749,7 +1724,7 @@ async def _create_media_buy_impl(
         # Return error response (protocol layer will add status="failed")
         return CreateMediaBuyError(  # type: ignore[return-value]
             errors=[Error(code="validation_error", message=str(e), details=None)],
-            context=req.context,
+            context=to_context_object(req.context),
         )
 
     # Principal already validated earlier (before context creation) to avoid foreign key errors
@@ -1978,20 +1953,21 @@ async def _create_media_buy_impl(
                 from src.core.database.models import MediaPackage as DBMediaPackage
 
                 for pkg_obj in pending_packages:
-                    # Sanitize status to ensure AdCP spec compliance
-                    raw_status = pkg_obj.status
-                    sanitized_status = _sanitize_package_status(raw_status)
+                    # Get paused state from package (adcp 2.12.0: replaced status enum with paused bool)
+                    paused = getattr(pkg_obj, "paused", False)  # Default to False (not paused) if not present
 
                     package_config = {
                         "package_id": pkg_obj.package_id,  # type: ignore[index]
                         "name": getattr(pkg_obj, "name", None),
-                        "status": sanitized_status,  # Only store AdCP-compliant status values
+                        "paused": paused,  # Store paused state (adcp 2.12.0)
                     }
                     # Add full package data from raw_request
                     for idx, req_pkg in enumerate(req.packages):
                         if idx == pending_packages.index(pkg_obj):
                             # Get pricing info for this package if available
-                            pricing_info_for_package = package_pricing_info.get(pkg_obj.package_id) if pkg_obj.package_id else None  # type: ignore[index]
+                            pricing_info_for_package = (
+                                package_pricing_info.get(pkg_obj.package_id) if pkg_obj.package_id else None
+                            )  # type: ignore[index]
 
                             # Serialize budget: normalize to object format for database storage
                             # ADCP 2.5.0 sends flat numbers, but we normalize to object with currency for DB
@@ -2146,7 +2122,7 @@ async def _create_media_buy_impl(
                 creative_deadline=None,
                 packages=pending_packages,  # type: ignore[arg-type]
                 workflow_step_id=step.step_id,  # Client can track approval via this ID
-                context=req.context,
+                context=to_context_object(req.context),
             )
 
         # Get products for the media buy to check product-level auto-creation settings
@@ -2213,7 +2189,7 @@ async def _create_media_buy_impl(
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return CreateMediaBuyError(  # type: ignore[return-value]
                     errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
-                    context=req.context,
+                    context=to_context_object(req.context),
                 )
 
         product_auto_create = all(
@@ -2299,7 +2275,7 @@ async def _create_media_buy_impl(
                 media_buy_id=media_buy_id,
                 packages=response_packages,  # type: ignore[arg-type]
                 workflow_step_id=step.step_id,
-                context=req.context,
+                context=to_context_object(req.context),
             )
 
         # Continue with synchronized media buy creation
@@ -2557,7 +2533,7 @@ async def _create_media_buy_impl(
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return CreateMediaBuyError(  # type: ignore[return-value]
                 errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
-                context=req.context,
+                context=to_context_object(req.context),
             )
 
         # PRE-VALIDATE: Check all creatives have required fields BEFORE calling adapter
@@ -2698,9 +2674,8 @@ async def _create_media_buy_impl(
                     logger.info(f"[DEBUG] Package {i}: Using package_id = {resp_package_id}")
 
                     # Store full package config as JSON
-                    # Sanitize status to ensure AdCP spec compliance
-                    raw_status = getattr(resp_package, "status", None)  # type: ignore[assignment]
-                    sanitized_status = _sanitize_package_status(raw_status)
+                    # Get paused state from adapter response (adcp 2.12.0: replaced status enum with paused bool)
+                    paused = getattr(resp_package, "paused", False)  # Default to False (not paused) if not present
 
                     # Get pricing info for this package if available
                     pricing_info_for_package = package_pricing_info.get(package_id)
@@ -2718,7 +2693,7 @@ async def _create_media_buy_impl(
                         "creative_ids": getattr(resp_package, "creative_ids", None),
                         "creative_assignments": serialize_for_json(getattr(resp_package, "creative_assignments", None)),
                         "format_ids_to_provide": getattr(resp_package, "format_ids_to_provide", None),
-                        "status": sanitized_status,  # Only store AdCP-compliant status values
+                        "paused": paused,  # Store paused state (adcp 2.12.0)
                         "pricing_info": pricing_info_for_package,  # Store pricing info for UI display
                         "impressions": impressions,  # Store impressions for display
                     }
@@ -3080,18 +3055,21 @@ async def _create_media_buy_impl(
             # Return all package fields from request, plus package_id and status from adapter
 
             # Extract status from adapter response, defaulting to "active" if missing
-            adapter_status = response_package_dict.get("status", "active")
+            # Get paused field from adapter response (adcp 2.12.0: replaced status enum with paused bool)
+            adapter_paused = response_package_dict.get("paused", False)
 
-            # Ensure status is a string (handle enum objects from adapters)
-            if isinstance(adapter_status, PackageStatus):
-                adapter_status = adapter_status.value
-            elif not isinstance(adapter_status, str):
-                adapter_status = str(adapter_status)
+            # Ensure paused is a boolean
+            if not isinstance(adapter_paused, bool):
+                # Convert common values to boolean
+                if isinstance(adapter_paused, str):
+                    adapter_paused = adapter_paused.lower() in ("true", "1", "yes", "active" == False)
+                else:
+                    adapter_paused = bool(adapter_paused)
 
             # Build full package dict with all fields from request
             full_package_dict = {
                 "package_id": adapter_package_id,  # From adapter (required)
-                "status": adapter_status,  # From adapter (required)
+                "paused": adapter_paused,  # From adapter (adcp 2.12.0)
                 "buyer_ref": package.buyer_ref,  # From request
                 "product_id": package.product_id,  # From request
             }
@@ -3148,7 +3126,7 @@ async def _create_media_buy_impl(
             media_buy_id=response.media_buy_id,
             packages=response_packages,  # type: ignore[arg-type]
             creative_deadline=response.creative_deadline,
-            context=req.context,
+            context=to_context_object(req.context),
         )
 
         # Log activity
@@ -3217,7 +3195,7 @@ async def _create_media_buy_impl(
             media_buy_id=filtered_data["media_buy_id"],
             packages=filtered_data["packages"],
             creative_deadline=filtered_data.get("creative_deadline"),
-            context=req.context,
+            context=to_context_object(req.context),
         )
 
         # Mark workflow step as completed on success

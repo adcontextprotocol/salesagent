@@ -13,22 +13,23 @@ All TODOs are left for you to fill in assertions and any spec-specific checks.
 import json
 import socket
 import uuid
-import psycopg2
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 from time import sleep
 from typing import Any
+
+import psycopg2
 import pytest
 from fastmcp.client import Client
 from fastmcp.client.transports import StreamableHttpTransport
 
-from tests.e2e.utils import wait_for_server_readiness, force_approve_media_buy_in_db
 from tests.e2e.adcp_request_builder import (
     build_adcp_media_buy_request,
+    build_creative,
     get_test_date_range,
     parse_tool_result,
-    build_creative,
 )
+from tests.e2e.utils import force_approve_media_buy_in_db, wait_for_server_readiness
 
 
 class DeliveryWebhookReceiver(BaseHTTPRequestHandler):
@@ -62,7 +63,7 @@ class DeliveryWebhookReceiver(BaseHTTPRequestHandler):
 @pytest.fixture
 def delivery_webhook_server():
     """Start a local HTTP server to receive delivery_report webhooks."""
-    
+
     # Find an available port
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("0.0.0.0", 0))
@@ -75,8 +76,8 @@ def delivery_webhook_server():
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
-    # We still use localhost in the URL because the MCP server's 
-    # protocol_webhook_service explicitly looks for 'localhost' to rewrite 
+    # We still use localhost in the URL because the MCP server's
+    # protocol_webhook_service explicitly looks for 'localhost' to rewrite
     # it to 'host.docker.internal'
     webhook_url = f"http://localhost:{port}/webhook"
 
@@ -98,23 +99,26 @@ class TestDailyDeliveryWebhookFlow:
         try:
             conn = psycopg2.connect(live_server["postgres"])
             cursor = conn.cursor()
-            
+
             # Ensure ci-test tenant has mock manual approval disabled
             cursor.execute("SELECT tenant_id FROM tenants WHERE subdomain = 'ci-test'")
             tenant_row = cursor.fetchone()
             if tenant_row:
                 tenant_id = tenant_row[0]
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO adapter_config (tenant_id, adapter_type, mock_manual_approval_required)
                     VALUES (%s, 'mock', false)
-                    ON CONFLICT (tenant_id) 
+                    ON CONFLICT (tenant_id)
                     DO UPDATE SET mock_manual_approval_required = false, adapter_type = 'mock'
-                """, (tenant_id,))
+                """,
+                    (tenant_id,),
+                )
                 conn.commit()
                 print(f"Updated adapter config for tenant {tenant_id}: manual_approval=False")
             else:
                 print("Warning: ci-test tenant not found for adapter config update")
-            
+
             cursor.close()
             conn.close()
         except Exception as e:
@@ -143,11 +147,11 @@ class TestDailyDeliveryWebhookFlow:
         product = products_data["products"][0]
         product_id = product["product_id"]
         pricing_option_id = product["pricing_options"][0]["pricing_option_id"]
-        
-        # Pick formats_ids
-        format_ids = product['format_ids']
 
-        return product_id, pricing_option_id, format_ids 
+        # Pick formats_ids
+        format_ids = product["format_ids"]
+
+        return product_id, pricing_option_id, format_ids
 
     async def build_inline_creative(self, format_id: dict[str, Any]) -> dict[str, Any]:
         """Phase 2: Build inline creative for testing (no external sync)."""
@@ -159,13 +163,7 @@ class TestDailyDeliveryWebhookFlow:
         )
         return creative
 
-    async def create_media_buy(
-        self, 
-        client, 
-        product_id, 
-        pricing_option_id, 
-        delivery_webhook_server
-    ):
+    async def create_media_buy(self, client, product_id, pricing_option_id, delivery_webhook_server):
         """Phase 3: Create media buy with reporting_webhook."""
         _, end_time = get_test_date_range(days_from_now=0, duration_days=7)
         start_time = "asap"
@@ -179,14 +177,14 @@ class TestDailyDeliveryWebhookFlow:
             webhook_url=delivery_webhook_server["url"],
             reporting_frequency="daily",
             context={"e2e": "delivery_webhook_create_media_buy"},
-            pricing_option_id=pricing_option_id
+            pricing_option_id=pricing_option_id,
         )
 
         create_result = await client.call_tool("create_media_buy", media_buy_request)
         create_data = parse_tool_result(create_result)
 
         assert "media_buy_id" in create_data
-        
+
         # Verify context echo
         assert create_data.get("context", {}).get("e2e") == "delivery_webhook_create_media_buy"
 
@@ -194,7 +192,7 @@ class TestDailyDeliveryWebhookFlow:
         buyer_ref = create_data.get("buyer_ref")
 
         assert media_buy_id or buyer_ref  # Blueprint sanity check
-        
+
         return media_buy_id, start_time, end_time
 
     def force_approve_media_buy(self, live_server, media_buy_id):
@@ -228,7 +226,7 @@ class TestDailyDeliveryWebhookFlow:
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 
         # Wait for server readiness
-        wait_for_server_readiness(live_server['mcp'])
+        wait_for_server_readiness(live_server["mcp"])
 
         async with Client(transport=transport) as client:
             # 1. Discover Product
@@ -237,10 +235,7 @@ class TestDailyDeliveryWebhookFlow:
             # 2. Create Media Buy
             # Use approved creatives from init_database_ci.py
             media_buy_id, start_time, end_time = await self.create_media_buy(
-                client, 
-                product_id, 
-                pricing_option_id, 
-                delivery_webhook_server
+                client, product_id, pricing_option_id, delivery_webhook_server
             )
 
             # 3. Force Approve Media Buy
@@ -249,11 +244,12 @@ class TestDailyDeliveryWebhookFlow:
             # 4. Explicit Delivery Check
             start_date_str = start_time
             if start_time == "asap":
-                from datetime import datetime, UTC
+                from datetime import UTC, datetime
+
                 start_date_str = datetime.now(UTC).date().isoformat()
             else:
                 start_date_str = start_time.split("T")[0]
-            
+
             delivery_period = {
                 "start_date": start_date_str,
                 "end_date": end_time.split("T")[0],
@@ -275,9 +271,8 @@ class TestDailyDeliveryWebhookFlow:
             assert delivery_data["media_buy_deliveries"][0]["totals"]["impressions"] > 0
             assert delivery_data.get("context", {}).get("e2e") == "delivery_webhook_get_media_buy_delivery"
 
-
             # 5. Wait for Webhook
-            # The scheduler runs inside the container. 
+            # The scheduler runs inside the container.
             # We configured DELIVERY_WEBHOOK_INTERVAL=5 in conftest.py for E2E tests.
             # It should trigger in 5 seconds.
 
@@ -292,24 +287,25 @@ class TestDailyDeliveryWebhookFlow:
                 sleep(poll_interval)
                 elapsed += poll_interval
 
-            assert received, "Expected at least one delivery report webhook. Check connectivity and DELIVERY_WEBHOOK_INTERVAL."
+            assert received, (
+                "Expected at least one delivery report webhook. Check connectivity and DELIVERY_WEBHOOK_INTERVAL."
+            )
 
             if received:
                 webhook_payload = received[0]
-                
+
                 # # Verify webhook payload structure
                 # # The scheduler uses task_type="media_buy_delivery"
                 assert webhook_payload.get("task_type") == "media_buy_delivery"
                 assert webhook_payload.get("status") == "completed"
-                
+
                 result = webhook_payload.get("result") or {}
 
                 media_buy_deliveries = result.get("media_buy_deliveries")
                 assert len(media_buy_deliveries) > 0
-                assert media_buy_deliveries[0]['media_buy_id'] == media_buy_id
-                
+                assert media_buy_deliveries[0]["media_buy_id"] == media_buy_id
+
                 # # Verify scheduling metadata
                 assert "next_expected_at" in result
                 assert result.get("frequency") == "daily"
                 assert "sequence_number" in result
-

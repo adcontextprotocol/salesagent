@@ -48,12 +48,13 @@ class TestA2AProtocolCompliance:
         Test that AdCP validator can validate update_media_buy requests.
 
         Uses the validator's validate_request method to check schema compliance.
+        Note: adcp 2.12.0+ uses 'paused' boolean instead of 'active' boolean.
         """
         async with AdCPSchemaValidator(offline_mode=False) as validator:
-            # Construct a minimal valid AdCP v2.0+ request
+            # Construct a minimal valid AdCP v2.12.0+ request
             valid_request = {
                 "media_buy_id": "mb_test_123",
-                "active": True,
+                "paused": False,  # adcp 2.12.0+ uses 'paused' instead of 'active'
             }
 
             # Validate request - should not raise exception

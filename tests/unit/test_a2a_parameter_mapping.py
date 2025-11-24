@@ -46,8 +46,8 @@ class TestA2AParameterMapping:
             # Simulate A2A request with AdCP v2.0+ 'packages' field
             parameters = {
                 "media_buy_id": "mb_123",
-                "active": True,
-                "packages": [{"package_id": "pkg_1", "active": True, "status": "active"}],  # AdCP v2.0+ field name
+                "paused": False,  # adcp 2.12.0+: paused=False means resume
+                "packages": [{"package_id": "pkg_1", "paused": False}],  # AdCP v2.12.0+ field name
             }
 
             # Call the skill handler (synchronous wrapper for async method)
@@ -71,9 +71,9 @@ class TestA2AParameterMapping:
             # Should NOT use legacy 'updates' parameter
             assert "updates" not in call_kwargs, "Should not pass legacy 'updates' parameter to core function"
 
-            # Verify other AdCP v2.0+ parameters are passed
+            # Verify other AdCP v2.12.0+ parameters are passed
             assert call_kwargs["media_buy_id"] == "mb_123"
-            assert call_kwargs["active"] is True
+            assert call_kwargs["paused"] is False  # adcp 2.12.0+: paused=False means resume
 
     def test_update_media_buy_backward_compatibility_with_updates(self):
         """

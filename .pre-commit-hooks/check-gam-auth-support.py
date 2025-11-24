@@ -5,6 +5,7 @@ Pre-commit hook to ensure GAM client initialization supports both OAuth and serv
 This hook catches patterns where AdManagerClient is created but only one auth method is checked.
 Prevents regressions like the one where targeting values endpoint only supported OAuth.
 """
+
 import re
 import sys
 from pathlib import Path

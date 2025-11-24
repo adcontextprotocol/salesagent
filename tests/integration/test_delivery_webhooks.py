@@ -9,6 +9,7 @@ from src.services.delivery_webhook_scheduler import DeliveryWebhookScheduler
 # TODO: @yusuf - We actually need to:
 # - Test the scheduler is calling sending webhooks correctly in every correct intervals
 
+
 @pytest.fixture
 def scheduler():
     """Create a delivery webhook scheduler for testing."""

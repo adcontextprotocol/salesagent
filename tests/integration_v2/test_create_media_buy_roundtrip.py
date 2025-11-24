@@ -136,7 +136,7 @@ class TestCreateMediaBuyRoundtrip:
                 {
                     "package_id": "pkg_1",
                     "buyer_ref": "pkg_test",
-                    "status": "active",  # Required by AdCP 2.9.0+
+                    "paused": False,  # adcp 2.12.0+: replaced 'status' with 'paused'
                 }
             ],
         )

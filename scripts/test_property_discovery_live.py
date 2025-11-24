@@ -25,9 +25,9 @@ async def test_domain(domain: str) -> dict:
     Returns:
         Dict with test results
     """
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info(f"Testing domain: {domain}")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
     result = {
         "domain": domain,
@@ -84,9 +84,9 @@ async def main():
         "weather.gov",
     ]
 
-    logger.info(f"\n{'#'*60}")
+    logger.info(f"\n{'#' * 60}")
     logger.info("Testing Property Discovery with Real Publishers")
-    logger.info(f"{'#'*60}\n")
+    logger.info(f"{'#' * 60}\n")
     logger.info(f"Testing {len(domains)} domains: {', '.join(domains)}")
     logger.info(f"Started at: {datetime.now(UTC).isoformat()}\n")
 
@@ -95,9 +95,9 @@ async def main():
     results = await asyncio.gather(*tasks)
 
     # Summary
-    logger.info(f"\n{'='*60}")
+    logger.info(f"\n{'=' * 60}")
     logger.info("SUMMARY")
-    logger.info(f"{'='*60}")
+    logger.info(f"{'=' * 60}")
 
     successful = sum(1 for r in results if r["success"])
     failed = len(results) - successful

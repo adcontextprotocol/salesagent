@@ -2,7 +2,6 @@ import random
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from adcp.types import PackageStatus
 from adcp.types.aliases import Package as ResponsePackage
 
 from src.adapters.base import AdServerAdapter
@@ -799,7 +798,7 @@ class MockAdServer(AdServerAdapter):
                 ResponsePackage(
                     buyer_ref=buyer_ref,
                     package_id=package_id,
-                    status=PackageStatus.active,  # Default to active for created packages
+                    paused=False,  # Default to not paused for created packages
                 )
             )
 

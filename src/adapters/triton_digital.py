@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import requests
-from adcp.types import PackageStatus
 from adcp.types.aliases import Package as ResponsePackage
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
@@ -280,7 +279,7 @@ class TritonDigital(AdServerAdapter):
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
-                        status=PackageStatus.active,  # Default to active for created packages
+                        paused=False,  # Default to not paused for created packages
                     )
                 )
 
@@ -307,7 +306,7 @@ class TritonDigital(AdServerAdapter):
                     ResponsePackage(
                         buyer_ref=buyer_ref,
                         package_id=package.package_id,
-                        status=PackageStatus.active,  # Default to active for created packages
+                        paused=False,  # Default to not paused for created packages
                     )
                 )
 
@@ -622,10 +621,38 @@ class TritonDigital(AdServerAdapter):
                 self.log(f"Would pause flight '{package_id}' in campaign {campaign_id}")
                 self.log(f"Would call: PUT {self.base_url}/flights/{package_id}")
                 self.log("  Payload: {'active': false}")
+                return UpdateMediaBuySuccess(
+                    media_buy_id=media_buy_id,
+                    buyer_ref=buyer_ref,
+                    affected_packages=[
+                        AffectedPackage(
+                            package_id=package_id,
+                            buyer_ref=buyer_ref or package_id,
+                            paused=True,
+                            changes_applied=None,
+                            buyer_package_ref=None,
+                        )
+                    ],
+                    implementation_date=today,
+                )
             elif action == "resume_package" and package_id:
                 self.log(f"Would resume flight '{package_id}' in campaign {campaign_id}")
                 self.log(f"Would call: PUT {self.base_url}/flights/{package_id}")
                 self.log("  Payload: {'active': true}")
+                return UpdateMediaBuySuccess(
+                    media_buy_id=media_buy_id,
+                    buyer_ref=buyer_ref,
+                    affected_packages=[
+                        AffectedPackage(
+                            package_id=package_id,
+                            buyer_ref=buyer_ref or package_id,
+                            paused=False,
+                            changes_applied=None,
+                            buyer_package_ref=None,
+                        )
+                    ],
+                    implementation_date=today,
+                )
             elif (
                 action in ["update_package_budget", "update_package_impressions"] and package_id and budget is not None
             ):
@@ -673,11 +700,28 @@ class TritonDigital(AdServerAdapter):
                         )
 
                     # Update flight status
-                    flight_update_payload: dict[str, Any] = {"active": action == "resume_package"}
+                    is_resume = action == "resume_package"
+                    flight_update_payload: dict[str, Any] = {"active": is_resume}
                     response = requests.put(
                         f"{self.base_url}/flights/{flight['id']}", headers=self.headers, json=flight_update_payload
                     )
                     response.raise_for_status()
+
+                    # Return affected package with paused state
+                    return UpdateMediaBuySuccess(
+                        media_buy_id=media_buy_id,
+                        buyer_ref=buyer_ref,
+                        affected_packages=[
+                            AffectedPackage(
+                                package_id=package_id,
+                                buyer_ref=buyer_ref or package_id,
+                                paused=not is_resume,
+                                changes_applied=None,
+                                buyer_package_ref=None,
+                            )
+                        ],
+                        implementation_date=today,
+                    )
 
                 elif (
                     action in ["update_package_budget", "update_package_impressions"]

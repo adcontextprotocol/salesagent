@@ -77,7 +77,14 @@ class MediaBuyStatus:
 
 
 class PackageStatus:
-    """Temporary stub for PackageStatus until xandr.py is properly refactored."""
+    """Temporary stub for Xandr package status tracking (Xandr-specific, not AdCP).
+
+    NOTE: This is NOT the AdCP PackageStatus enum (which was removed in adcp 2.12.0).
+    This is an internal class for tracking Xandr-specific package state information
+    like delivery percentage and editability.
+
+    Temporary stub until xandr.py is properly refactored to use current schemas.
+    """
 
     state: str
     is_editable: bool
@@ -537,7 +544,7 @@ class XandrAdapter(AdServerAdapter):
                     {
                         "buyer_ref": buyer_ref,
                         "package_id": package.package_id,
-                        "status": "active",
+                        "paused": False,
                     }
                 )
 
@@ -642,7 +649,7 @@ class XandrAdapter(AdServerAdapter):
                     {
                         "buyer_ref": buyer_ref,
                         "package_id": package.package_id,
-                        "status": "active",
+                        "paused": False,
                     }
                 )
 

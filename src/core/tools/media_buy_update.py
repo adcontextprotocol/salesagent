@@ -21,7 +21,7 @@ from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 
-from adcp.types import Error, PackageStatus
+from adcp.types import Error
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
@@ -33,6 +33,7 @@ from src.core.database.database_session import get_db_session
 from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schema_adapters import UpdateMediaBuyResponse
+from src.core.schema_helpers import to_context_object
 from src.core.schemas import (
     AffectedPackage,
     UpdateMediaBuyError,
@@ -68,8 +69,7 @@ def _verify_principal(media_buy_id: str, context: Context | ToolContext):
     # CRITICAL: principal_id is required for media buy updates
     if not principal_id:
         raise ToolError(
-            "Authentication required: Missing or invalid x-adcp-auth header. "
-            "Media buy updates require authentication."
+            "Authentication required: Missing or invalid x-adcp-auth header. Media buy updates require authentication."
         )
 
     tenant = get_current_tenant()
@@ -111,7 +111,7 @@ def _verify_principal(media_buy_id: str, context: Context | ToolContext):
 def _update_media_buy_impl(
     media_buy_id: str | None = None,
     buyer_ref: str | None = None,
-    active: bool | None = None,
+    paused: bool | None = None,
     flight_start_date: str | None = None,
     flight_end_date: str | None = None,
     budget: float | None = None,
@@ -134,7 +134,7 @@ def _update_media_buy_impl(
     Args:
         media_buy_id: Media buy ID to update (oneOf with buyer_ref - exactly one required)
         buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
-        active: True to activate, False to pause entire campaign
+        paused: True to pause campaign, False to resume (adcp 2.12.0+)
         flight_start_date: Change start date (if not started)
         flight_end_date: Extend or shorten campaign
         budget: Update total budget
@@ -185,7 +185,7 @@ def _update_media_buy_impl(
     request_params = {
         "media_buy_id": media_buy_id,
         "buyer_ref": buyer_ref,
-        "active": active,
+        "paused": paused,
         "start_time": start_time,
         "end_time": end_time,
         "budget": budget_obj,
@@ -273,7 +273,7 @@ def _update_media_buy_impl(
         error_msg = f"Principal {principal_id} not found"
         response_data = UpdateMediaBuyError(
             errors=[Error(code="principal_not_found", message=error_msg)],  # type: ignore[list-item]
-            context=req.context,
+            context=to_context_object(req.context),
         )
         ctx_manager.update_workflow_step(
             step.step_id,
@@ -304,7 +304,7 @@ def _update_media_buy_impl(
             media_buy_id=req.media_buy_id or "",
             buyer_ref=req.buyer_ref or "",
             affected_packages=[],  # Internal field for tracking changes
-            context=req.context,
+            context=to_context_object(req.context),
         )
         ctx_manager.update_workflow_step(
             step.step_id,
@@ -352,7 +352,7 @@ def _update_media_buy_impl(
                     error_msg = f"Currency {request_currency} is not supported by this publisher."
                     response_data = UpdateMediaBuyError(
                         errors=[Error(code="currency_not_supported", message=error_msg)],  # type: ignore[list-item]
-                        context=req.context,
+                        context=to_context_object(req.context),
                     )
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -419,7 +419,7 @@ def _update_media_buy_impl(
                                 )
                                 response_data = UpdateMediaBuyError(
                                     errors=[Error(code="budget_limit_exceeded", message=error_msg)],  # type: ignore[list-item]
-                                    context=req.context,
+                                    context=to_context_object(req.context),
                                 )
                                 ctx_manager.update_workflow_step(
                                     step.step_id,
@@ -430,8 +430,9 @@ def _update_media_buy_impl(
                                 return response_data  # type: ignore[return-value]
 
     # Handle campaign-level updates
-    if req.active is not None:
-        action = "resume_media_buy" if req.active else "pause_media_buy"
+    if req.paused is not None:
+        # adcp 2.12.0+: paused=True means pause, paused=False means resume
+        action = "pause_media_buy" if req.paused else "resume_media_buy"
         result = adapter.update_media_buy(
             media_buy_id=req.media_buy_id,
             buyer_ref=req.buyer_ref or "",
@@ -461,9 +462,10 @@ def _update_media_buy_impl(
     # Handle package-level updates
     if req.packages:
         for pkg_update in req.packages:
-            # Handle active/pause state
-            if pkg_update.active is not None:
-                action = "resume_package" if pkg_update.active else "pause_package"
+            # Handle paused state
+            if pkg_update.paused is not None:
+                # adcp 2.12.0+: paused=True means pause, paused=False means resume
+                action = "pause_package" if pkg_update.paused else "resume_package"
                 result = adapter.update_media_buy(
                     media_buy_id=req.media_buy_id,
                     buyer_ref=req.buyer_ref or "",
@@ -493,7 +495,7 @@ def _update_media_buy_impl(
                     error_msg = "package_id is required when updating package budget"
                     response_data = UpdateMediaBuyError(
                         errors=[Error(code="missing_package_id", message=error_msg)],  # type: ignore[list-item]
-                        context=req.context,
+                        context=to_context_object(req.context),
                     )
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -542,7 +544,7 @@ def _update_media_buy_impl(
                     AffectedPackage(
                         buyer_ref=req.buyer_ref or "",  # Required by AdCP
                         package_id=pkg_update.package_id,  # Required by AdCP (guaranteed str)
-                        status=PackageStatus.active,  # Required by AdCP 2.9.0+
+                        paused=False,  # Package not paused (active)
                         buyer_package_ref=pkg_update.package_id,  # Internal field (for backward compat)
                         changes_applied={"budget": {"updated": budget_amount, "currency": currency}},  # Internal field
                     )
@@ -555,7 +557,7 @@ def _update_media_buy_impl(
                     error_msg = "package_id is required when updating creative_ids"
                     response_data = UpdateMediaBuyError(
                         errors=[Error(code="missing_package_id", message=error_msg)],  # type: ignore[list-item]
-                        context=req.context,
+                        context=to_context_object(req.context),
                     )
                     ctx_manager.update_workflow_step(
                         step.step_id,
@@ -588,7 +590,7 @@ def _update_media_buy_impl(
                         error_msg = f"Media buy '{req.media_buy_id}' not found"
                         response_data = UpdateMediaBuyError(
                             errors=[Error(code="media_buy_not_found", message=error_msg)],  # type: ignore[list-item]
-                            context=req.context,
+                            context=to_context_object(req.context),
                         )
                         ctx_manager.update_workflow_step(
                             step.step_id,
@@ -614,7 +616,7 @@ def _update_media_buy_impl(
                         error_msg = f"Creative IDs not found: {', '.join(missing_ids)}"
                         response_data = UpdateMediaBuyError(
                             errors=[Error(code="creatives_not_found", message=error_msg)],  # type: ignore[list-item]
-                            context=req.context,
+                            context=to_context_object(req.context),
                         )
                         ctx_manager.update_workflow_step(
                             step.step_id,
@@ -762,7 +764,7 @@ def _update_media_buy_impl(
                         AffectedPackage(
                             buyer_ref=req.buyer_ref or "",  # Required by AdCP
                             package_id=pkg_update.package_id,  # Required by AdCP
-                            status=PackageStatus.active,  # Required by AdCP 2.9.0+
+                            paused=False,  # Package not paused (active)
                             buyer_package_ref=pkg_update.package_id,  # Internal field (for backward compat)
                             changes_applied={  # Internal field
                                 "creative_ids": {
@@ -837,7 +839,7 @@ def _update_media_buy_impl(
                         AffectedPackage(
                             buyer_ref=pkg_update.package_id,
                             package_id=pkg_update.package_id,
-                            status=PackageStatus.active,  # Required by AdCP 2.9.0+
+                            paused=False,  # Package not paused (active)
                             changes_applied={"targeting": targeting_dict},
                             buyer_package_ref=pkg_update.package_id,  # Legacy compatibility
                         )
@@ -860,7 +862,7 @@ def _update_media_buy_impl(
             error_msg = f"Invalid budget: {total_budget}. Budget must be positive."
             response_data = UpdateMediaBuyError(
                 errors=[Error(code="invalid_budget", message=error_msg)],  # type: ignore[list-item]
-                context=req.context,
+                context=to_context_object(req.context),
             )
             ctx_manager.update_workflow_step(
                 step.step_id,
@@ -915,7 +917,7 @@ def _update_media_buy_impl(
                             AffectedPackage(
                                 buyer_ref=package_ref_str,  # Required: buyer's package reference
                                 package_id=package_ref_str,  # Required: package identifier
-                                status=PackageStatus.active,  # Required by AdCP 2.9.0+
+                                paused=False,  # Package not paused (active)
                                 buyer_package_ref=None,  # Internal field (not applicable for top-level budget updates)
                                 changes_applied={
                                     "budget": {"updated": total_budget, "currency": budget_currency}
@@ -1047,7 +1049,7 @@ def _update_media_buy_impl(
         media_buy_id=req.media_buy_id or "",
         buyer_ref=req.buyer_ref or "",
         affected_packages=affected_packages_list,
-        context=req.context,
+        context=to_context_object(req.context),
     )
 
     # Persist success with response data, then return
@@ -1064,7 +1066,7 @@ def _update_media_buy_impl(
 def update_media_buy(
     media_buy_id: str | None = None,
     buyer_ref: str | None = None,
-    active: bool = None,
+    paused: bool = None,
     flight_start_date: str = None,
     flight_end_date: str = None,
     budget: float = None,
@@ -1087,7 +1089,7 @@ def update_media_buy(
     Args:
         media_buy_id: Media buy ID to update (oneOf with buyer_ref - exactly one required)
         buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
-        active: True to activate, False to pause entire campaign
+        paused: True to pause campaign, False to resume (adcp 2.12.0+)
         flight_start_date: Change start date (if not started)
         flight_end_date: Extend or shorten campaign
         budget: Update total budget
@@ -1108,7 +1110,7 @@ def update_media_buy(
     response = _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
-        active=active,
+        paused=paused,
         flight_start_date=flight_start_date,
         flight_end_date=flight_end_date,
         budget=budget,
@@ -1130,7 +1132,7 @@ def update_media_buy(
 def update_media_buy_raw(
     media_buy_id: str | None = None,
     buyer_ref: str | None = None,
-    active: bool = None,
+    paused: bool = None,
     flight_start_date: str = None,
     flight_end_date: str = None,
     budget: float = None,
@@ -1153,7 +1155,7 @@ def update_media_buy_raw(
     Args:
         media_buy_id: The ID of the media buy to update (oneOf with buyer_ref - exactly one required)
         buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
-        active: True to activate, False to pause
+        paused: True to pause campaign, False to resume (adcp 2.12.0+)
         flight_start_date: Change start date
         flight_end_date: Change end date
         budget: Update total budget
@@ -1175,7 +1177,7 @@ def update_media_buy_raw(
     return _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
-        active=active,
+        paused=paused,
         flight_start_date=flight_start_date,
         flight_end_date=flight_end_date,
         budget=budget,

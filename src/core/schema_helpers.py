@@ -13,13 +13,25 @@ Philosophy:
 from typing import Any
 
 from adcp import GetProductsRequest, GetProductsResponse, Product
+from adcp.types.generated_poc.core.context import ContextObject
 
-# Filters type - import from stable API (adcp 2.8.0+)
-try:
-    from adcp.types import Filters
-except ImportError:
-    # Fallback: Filters might not be exported in older versions
-    Filters = dict[str, Any]  # type: ignore
+
+def to_context_object(context: dict[str, Any] | ContextObject | None) -> ContextObject | None:
+    """Convert dict context to ContextObject for adcp 2.12.0+ compatibility.
+
+    Args:
+        context: Context as dict or ContextObject or None
+
+    Returns:
+        ContextObject or None
+    """
+    if context is None:
+        return None
+    if isinstance(context, ContextObject):
+        return context
+    if isinstance(context, dict):
+        return ContextObject(**context)
+    return None  # Fallback for unexpected types
 
 
 def create_get_products_request(
@@ -67,7 +79,7 @@ def create_get_products_request(
         brand_manifest=brand_manifest_adapted,  # type: ignore[arg-type]
         brief=brief or None,
         filters=filters,  # type: ignore[arg-type]
-        context=context,
+        context=to_context_object(context),
     )
 
 
@@ -91,16 +103,18 @@ def create_get_products_response(
     return GetProductsResponse(
         products=products,  # type: ignore[arg-type]
         errors=errors,
-        context=request_context,
+        context=to_context_object(request_context),
     )
 
 
 # Re-export commonly used generated types for convenience
 __all__ = [
+    "to_context_object",
     "create_get_products_request",
     "create_get_products_response",
     # Re-export types for type hints
     "GetProductsRequest",
     "GetProductsResponse",
     "Product",
+    "ContextObject",
 ]

@@ -123,7 +123,7 @@ class TestMCPToolRoundtripMinimal:
                     "update_media_buy",
                     {
                         "media_buy_id": create_content["media_buy_id"],
-                        "active": False,  # This triggers datetime.combine at line 2711
+                        "paused": True,  # adcp 2.12.0+: paused=True means pause, paused=False means resume
                     },
                 )
 
@@ -164,7 +164,6 @@ class TestMCPToolRoundtripMinimal:
         assert isinstance(content["errors"], list)
         assert len(content["errors"]) >= 1
         assert content["errors"][0]["code"] == "invalid_date_range"
-
 
     async def test_sync_creatives_minimal(self, mcp_client):
         """Test sync_creatives with minimal required parameters."""
@@ -281,7 +280,7 @@ class TestSchemaConstructionValidation:
         req = UpdateMediaBuyRequest(media_buy_id="test_buy_123")
 
         assert req.media_buy_id == "test_buy_123"
-        assert req.active is None
+        assert req.paused is None  # adcp 2.12.0+: replaced 'active' with 'paused'
         assert req.today is None  # Should exist and be None, not raise AttributeError
 
         # Test that today field is accessible even though it's excluded from serialization
@@ -342,7 +341,7 @@ class TestParameterToSchemaMapping:
         # Updated: Only use valid AdCP fields (start_time/end_time, not flight_start_date/flight_end_date)
         tool_params = {
             "media_buy_id": "test_buy_123",
-            "active": False,
+            "paused": True,  # adcp 2.12.0+: replaced 'active' with 'paused'
         }
 
         # Create request with valid fields only
@@ -350,7 +349,7 @@ class TestParameterToSchemaMapping:
 
         # Valid fields should be set
         assert req.media_buy_id == "test_buy_123"
-        assert req.active is False
+        assert req.paused is True  # adcp 2.12.0+: paused=True means pause
 
         # start_time/end_time should be None since not provided
         assert req.start_time is None

@@ -329,11 +329,11 @@ class AffectedPackage(LibraryPackage):
     """Affected package in UpdateMediaBuySuccess response.
 
     Extends adcp library Package with internal tracking fields.
-    Note: In AdCP 2.9.0+, affected_packages uses the full Package type.
+    Note: In AdCP 2.12.0+, affected_packages uses the full Package type.
 
-    Library Package required fields:
+    Library Package required fields (adcp 2.12.0):
     - package_id: Publisher's package identifier
-    - status: Package status (draft, active, paused, completed)
+    - paused: Boolean indicating whether package is paused (replaces old status enum)
     """
 
     # Internal fields for tracking what changed (not in AdCP spec)
@@ -2430,9 +2430,7 @@ def create_list_creatives_request(
     if fields:
         if isinstance(fields, list) and fields and isinstance(fields[0], str):
             # Convert string field names to FieldModel enum values
-            converted_fields = [
-                LibraryFieldModel[str(f)] for f in fields if isinstance(f, str)
-            ]  # type: ignore[arg-type]
+            converted_fields = [LibraryFieldModel[str(f)] for f in fields if isinstance(f, str)]  # type: ignore[arg-type]
         else:
             converted_fields = fields  # type: ignore[assignment]
 
@@ -3478,7 +3476,7 @@ class AdCPPackageUpdate(BaseModel):
     package_id: str | None = None
     buyer_ref: str | None = None
     budget: float | None = Field(None, ge=0)  # Budget allocation in the currency specified by the pricing option
-    active: bool | None = None
+    paused: bool | None = None  # adcp 2.12.0+: replaced 'active' with 'paused'
     targeting_overlay: Targeting | None = None
     creative_ids: list[str] | None = None
 
@@ -3502,7 +3500,7 @@ class UpdateMediaBuyRequest(AdCPBaseModel):
     buyer_ref: str | None = None
 
     # Campaign-level updates (all optional per AdCP spec)
-    active: bool | None = None
+    paused: bool | None = None  # adcp 2.12.0+: replaced 'active' with 'paused'
     start_time: datetime | Literal["asap"] | None = None  # AdCP uses datetime or 'asap', not date
     end_time: datetime | None = None  # AdCP uses datetime, not date
     budget: Budget | None = None  # Budget object contains currency/pacing
@@ -3514,6 +3512,7 @@ class UpdateMediaBuyRequest(AdCPBaseModel):
     context: dict[str, Any] | None = Field(
         None, description="Application-level context provided by the client (echoed in responses)"
     )
+    ext: dict[str, Any] | None = Field(None, description="Extension fields for future protocol additions")
     today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     # NOTE: No Python validator needed for oneOf constraint - AdCP schema enforces media_buy_id/buyer_ref oneOf

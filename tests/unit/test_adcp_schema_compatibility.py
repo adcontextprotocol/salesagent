@@ -118,7 +118,7 @@ class TestADCPSchemaCompatibility:
             },
             "name": "Test Format",
             "type": "display",
-            "renders": [{"role": "primary", "dimensions": {"width": 1920, "height": 1080, "unit": "px"}}],
+            "renders": [{"role": "primary", "dimensions": {"width": 1920, "height": 1080}}],
         }
 
         format_obj = Format(**format_data)
@@ -128,7 +128,7 @@ class TestADCPSchemaCompatibility:
         assert format_obj.renders[0].role == "primary"
         assert format_obj.renders[0].dimensions.width == 1920
         assert format_obj.renders[0].dimensions.height == 1080
-        assert format_obj.renders[0].dimensions.unit.value == "px"  # Unit is an enum
+        # Note: In adcp 2.12.0, Dimensions no longer has a 'unit' field (always pixels)
 
     def test_format_minimal_required_fields(self):
         """Test Format model works with only required fields."""
@@ -212,7 +212,7 @@ class TestADCPSchemaCompatibility:
             },
             "name": "Roundtrip Format",
             "type": "video",
-            "renders": [{"role": "primary", "dimensions": {"width": 1280, "height": 720, "unit": "px"}}],
+            "renders": [{"role": "primary", "dimensions": {"width": 1280, "height": 720}}],
         }
 
         # Create format from data
@@ -236,4 +236,4 @@ class TestADCPSchemaCompatibility:
         assert reconstructed.renders[0].role == "primary"
         assert reconstructed.renders[0].dimensions.width == 1280
         assert reconstructed.renders[0].dimensions.height == 720
-        assert reconstructed.renders[0].dimensions.unit.value == "px"  # Unit is an enum
+        # Note: In adcp 2.12.0, Dimensions no longer has a 'unit' field (always pixels)

@@ -681,7 +681,7 @@ class TestA2ASkillInvocation:
             skill_params = {
                 "media_buy_id": "mb_test_123",
                 "budget": 15000.0,  # Float per AdCP spec, not Budget object
-                "active": True,
+                "paused": False,  # adcp 2.12.0+: replaced 'active' with 'paused'
             }
             message = create_a2a_message_with_skill("update_media_buy", skill_params)
             params = MessageSendParams(message=message)

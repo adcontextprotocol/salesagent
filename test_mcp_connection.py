@@ -56,11 +56,11 @@ async def test_mcp_server(server: TestServer) -> dict:
     }
 
     try:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Testing: {server.name}")
         print(f"URL: {server.url}")
         print(f"Description: {server.description}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Create transport and client
         transport = StreamableHttpTransport(url=server.url)
@@ -154,9 +154,9 @@ async def main():
         else:
             print(f"   Error: {result['error']}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Results: {success_count}/{total_count} servers working")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # Exit with error code if any tests failed
     sys.exit(0 if success_count == total_count else 1)

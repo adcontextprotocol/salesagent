@@ -1540,7 +1540,7 @@ class AdCPRequestHandler(RequestHandler):
                 auth_token=auth_token,
                 tool_name="list_creatives",
             )
-            
+
             # Call core function with optional parameters (fixing original validation bug)
             response = core_list_creatives_tool(
                 media_buy_id=parameters.get("media_buy_id"),
@@ -1883,7 +1883,7 @@ class AdCPRequestHandler(RequestHandler):
             response = core_update_media_buy_tool(
                 media_buy_id=media_buy_id or "",  # Provide default empty string if None
                 buyer_ref=parameters.get("buyer_ref"),
-                active=parameters.get("active"),
+                paused=parameters.get("paused"),
                 start_time=parameters.get("start_time"),
                 end_time=parameters.get("end_time"),
                 budget=parameters.get("budget"),

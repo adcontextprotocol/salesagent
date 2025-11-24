@@ -5,12 +5,15 @@
 ### AdCP Schema Source of Truth & Inheritance Pattern
 **🚨 MANDATORY**: Use adcp library schemas via **inheritance**, not duplication or conversion.
 
-**Current Library Version:** `adcp==2.1.0` (from GitHub)
+**Current Library Version:** `adcp==2.12.0`
 
 **Pattern: Extend Library Schemas**
 ```python
 # ✅ CORRECT - Extend library Product with internal fields
-from adcp.types.generated_poc.product import Product as LibraryProduct
+from adcp.types import Product as LibraryProduct
+# Both paths work in adcp 2.12.0+:
+# from adcp.types import Product as LibraryProduct (recommended)
+# from adcp.types._generated import Product as LibraryProduct (also works)
 
 class Product(LibraryProduct):
     """Extends library Product with internal-only fields."""
