@@ -1523,9 +1523,7 @@ class AdCPRequestHandler(RequestHandler):
             response_data["message"] = (
                 "Creatives synced with errors"
                 if has_errors
-                else str(response)
-                if not isinstance(response, dict)
-                else "Creatives synced successfully"
+                else str(response) if not isinstance(response, dict) else "Creatives synced successfully"
             )
 
             return response_data
@@ -1885,7 +1883,7 @@ class AdCPRequestHandler(RequestHandler):
             response = core_update_media_buy_tool(
                 media_buy_id=media_buy_id or "",  # Provide default empty string if None
                 buyer_ref=parameters.get("buyer_ref"),
-                active=parameters.get("active"),
+                paused=parameters.get("paused"),
                 start_time=parameters.get("start_time"),
                 end_time=parameters.get("end_time"),
                 budget=parameters.get("budget"),

@@ -111,7 +111,7 @@ def _verify_principal(media_buy_id: str, context: Context | ToolContext):
 def _update_media_buy_impl(
     media_buy_id: str | None = None,
     buyer_ref: str | None = None,
-    active: bool | None = None,
+    paused: bool | None = None,
     flight_start_date: str | None = None,
     flight_end_date: str | None = None,
     budget: float | None = None,
@@ -134,7 +134,7 @@ def _update_media_buy_impl(
     Args:
         media_buy_id: Media buy ID to update (oneOf with buyer_ref - exactly one required)
         buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
-        active: True to activate, False to pause entire campaign
+        paused: True to pause campaign, False to resume (adcp 2.12.0+)
         flight_start_date: Change start date (if not started)
         flight_end_date: Extend or shorten campaign
         budget: Update total budget
@@ -185,7 +185,7 @@ def _update_media_buy_impl(
     request_params = {
         "media_buy_id": media_buy_id,
         "buyer_ref": buyer_ref,
-        "active": active,
+        "paused": paused,
         "start_time": start_time,
         "end_time": end_time,
         "budget": budget_obj,
@@ -1066,7 +1066,7 @@ def _update_media_buy_impl(
 def update_media_buy(
     media_buy_id: str | None = None,
     buyer_ref: str | None = None,
-    active: bool = None,
+    paused: bool = None,
     flight_start_date: str = None,
     flight_end_date: str = None,
     budget: float = None,
@@ -1089,7 +1089,7 @@ def update_media_buy(
     Args:
         media_buy_id: Media buy ID to update (oneOf with buyer_ref - exactly one required)
         buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
-        active: True to activate, False to pause entire campaign
+        paused: True to pause campaign, False to resume (adcp 2.12.0+)
         flight_start_date: Change start date (if not started)
         flight_end_date: Extend or shorten campaign
         budget: Update total budget
@@ -1110,7 +1110,7 @@ def update_media_buy(
     response = _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
-        active=active,
+        paused=paused,
         flight_start_date=flight_start_date,
         flight_end_date=flight_end_date,
         budget=budget,
@@ -1132,7 +1132,7 @@ def update_media_buy(
 def update_media_buy_raw(
     media_buy_id: str | None = None,
     buyer_ref: str | None = None,
-    active: bool = None,
+    paused: bool = None,
     flight_start_date: str = None,
     flight_end_date: str = None,
     budget: float = None,
@@ -1155,7 +1155,7 @@ def update_media_buy_raw(
     Args:
         media_buy_id: The ID of the media buy to update (oneOf with buyer_ref - exactly one required)
         buyer_ref: Buyer reference to identify media buy (oneOf with media_buy_id - exactly one required)
-        active: True to activate, False to pause
+        paused: True to pause campaign, False to resume (adcp 2.12.0+)
         flight_start_date: Change start date
         flight_end_date: Change end date
         budget: Update total budget
@@ -1177,7 +1177,7 @@ def update_media_buy_raw(
     return _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
-        active=active,
+        paused=paused,
         flight_start_date=flight_start_date,
         flight_end_date=flight_end_date,
         budget=budget,
