@@ -73,8 +73,8 @@ class PolicySettings:
     # Approval workflow
     approval_mode: str = "auto-approve"
     creative_review_criteria: str = ""
-    auto_approve_threshold: float = 0.9
-    auto_reject_threshold: float = 0.1
+    creative_auto_approve_threshold: float = 0.9
+    creative_auto_reject_threshold: float = 0.1
 
     # AI policy
     ai_policy: dict[str, Any] = field(default_factory=dict)
@@ -104,8 +104,8 @@ class PolicySettings:
             "line_item_name_template": self.line_item_name_template,
             "approval_mode": self.approval_mode,
             "creative_review_criteria": self.creative_review_criteria,
-            "auto_approve_threshold": self.auto_approve_threshold,
-            "auto_reject_threshold": self.auto_reject_threshold,
+            "creative_auto_approve_threshold": self.creative_auto_approve_threshold,
+            "creative_auto_reject_threshold": self.creative_auto_reject_threshold,
             "ai_policy": self.ai_policy,
             "advertising_policy": self.advertising_policy,
             "enable_axe_signals": self.enable_axe_signals,
@@ -285,8 +285,8 @@ class PolicyService:
                 line_item_name_template=tenant.line_item_name_template or PolicySettings.line_item_name_template,
                 approval_mode=tenant.approval_mode or "auto-approve",
                 creative_review_criteria=tenant.creative_review_criteria or "",
-                auto_approve_threshold=tenant.auto_approve_threshold or 0.9,
-                auto_reject_threshold=tenant.auto_reject_threshold or 0.1,
+                creative_auto_approve_threshold=tenant.creative_auto_approve_threshold or 0.9,
+                creative_auto_reject_threshold=tenant.creative_auto_reject_threshold or 0.1,
                 ai_policy=tenant.ai_policy or {},
                 advertising_policy=tenant.advertising_policy or {},
                 enable_axe_signals=tenant.enable_axe_signals or False,
@@ -381,11 +381,11 @@ class PolicyService:
             if "creative_review_criteria" in updates:
                 tenant.creative_review_criteria = updates["creative_review_criteria"]
 
-            if "auto_approve_threshold" in updates:
-                tenant.auto_approve_threshold = updates["auto_approve_threshold"]
+            if "creative_auto_approve_threshold" in updates:
+                tenant.creative_auto_approve_threshold = updates["creative_auto_approve_threshold"]
 
-            if "auto_reject_threshold" in updates:
-                tenant.auto_reject_threshold = updates["auto_reject_threshold"]
+            if "creative_auto_reject_threshold" in updates:
+                tenant.creative_auto_reject_threshold = updates["creative_auto_reject_threshold"]
 
             # Update AI policy
             if "ai_policy" in updates:

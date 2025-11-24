@@ -1411,26 +1411,26 @@ REJECT - Creative cannot be approved:
 
                             <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                                 <div class="form-group">
-                                    <label for="auto_approve_threshold">
+                                    <label for="creative_auto_approve_threshold">
                                         Auto-Approve Threshold
                                         <span style="color: #10b981; font-weight: 600; margin-left: 0.5rem;" id="approve_threshold_value">90%</span>
                                     </label>
-                                    <input type="range" id="auto_approve_threshold" name="auto_approve_threshold"
+                                    <input type="range" id="creative_auto_approve_threshold" name="creative_auto_approve_threshold"
                                            min="0.5" max="1.0" step="0.05"
-                                           value="{{ (tenant.ai_policy.auto_approve_threshold if tenant.ai_policy else 0.90) }}"
+                                           value="{{ (tenant.creative_auto_approve_threshold if tenant.creative_auto_approve_threshold else 0.90) }}"
                                            class="form-control" style="margin-bottom: 0.5rem;"
                                            oninput="document.getElementById('approve_threshold_value').textContent = Math.round(this.value * 100) + '%'">
                                     <small>AI must be at least this confident to auto-approve (default: 90%)</small>
                                 </div>
 
                                 <div class="form-group" style="margin-top: 1rem;">
-                                    <label for="auto_reject_threshold">
+                                    <label for="creative_auto_reject_threshold">
                                         Auto-Reject Threshold
                                         <span style="color: #ef4444; font-weight: 600; margin-left: 0.5rem;" id="reject_threshold_value">90%</span>
                                     </label>
-                                    <input type="range" id="auto_reject_threshold" name="auto_reject_threshold"
+                                    <input type="range" id="creative_auto_reject_threshold" name="creative_auto_reject_threshold"
                                            min="0.5" max="1.0" step="0.05"
-                                           value="{{ (tenant.ai_policy.auto_reject_threshold if tenant.ai_policy else 0.90) }}"
+                                           value="{{ (tenant.creative_auto_reject_threshold if tenant.creative_auto_reject_threshold else 0.90) }}"
                                            class="form-control" style="margin-bottom: 0.5rem;"
                                            oninput="document.getElementById('reject_threshold_value').textContent = Math.round(this.value * 100) + '%'">
                                     <small>AI must be at least this confident to auto-reject (default: 90%)</small>

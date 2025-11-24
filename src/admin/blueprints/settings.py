@@ -764,15 +764,15 @@ def parse_form_data_to_policy_updates(form_data) -> dict[str, Any]:  # type: ign
     if "creative_review_criteria" in form_data:
         updates["creative_review_criteria"] = form_data.get("creative_review_criteria", "")
 
-    if "auto_approve_threshold" in form_data:
+    if "creative_auto_approve_threshold" in form_data:
         try:
-            updates["auto_approve_threshold"] = float(form_data.get("auto_approve_threshold", 0.9))
+            updates["creative_auto_approve_threshold"] = float(form_data.get("creative_auto_approve_threshold", 0.9))
         except (ValueError, TypeError):
             pass
 
-    if "auto_reject_threshold" in form_data:
+    if "creative_auto_reject_threshold" in form_data:
         try:
-            updates["auto_reject_threshold"] = float(form_data.get("auto_reject_threshold", 0.1))
+            updates["creative_auto_reject_threshold"] = float(form_data.get("creative_auto_reject_threshold", 0.1))
         except (ValueError, TypeError):
             pass
 
@@ -793,23 +793,27 @@ def parse_form_data_to_policy_updates(form_data) -> dict[str, Any]:  # type: ign
 
     # Parse AI policy
     ai_policy_fields = [
-        "auto_approve_threshold",
-        "auto_reject_threshold",
+        "creative_auto_approve_threshold",
+        "creative_auto_reject_threshold",
         "sensitive_categories",
         "learn_from_overrides",
     ]
     if any(field in form_data for field in ai_policy_fields):
         ai_policy = {}
 
-        if "auto_approve_threshold" in form_data:
+        if "creative_auto_approve_threshold" in form_data:
             try:
-                ai_policy["auto_approve_threshold"] = float(form_data.get("auto_approve_threshold", 0.9))
+                ai_policy["creative_auto_approve_threshold"] = float(
+                    form_data.get("creative_auto_approve_threshold", 0.9)
+                )
             except (ValueError, TypeError):
                 pass
 
-        if "auto_reject_threshold" in form_data:
+        if "creative_auto_reject_threshold" in form_data:
             try:
-                ai_policy["auto_reject_threshold"] = float(form_data.get("auto_reject_threshold", 0.1))
+                ai_policy["creative_auto_reject_threshold"] = float(
+                    form_data.get("creative_auto_reject_threshold", 0.1)
+                )
             except (ValueError, TypeError):
                 pass
 

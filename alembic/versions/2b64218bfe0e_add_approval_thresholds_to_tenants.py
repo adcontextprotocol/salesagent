@@ -21,17 +21,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Add auto_approve_threshold column with default value 0.9
-    op.add_column("tenants", sa.Column("auto_approve_threshold", sa.Float(), nullable=False, server_default="0.9"))
+    # Add creative_auto_approve_threshold column with default value 0.9
+    op.add_column(
+        "tenants", sa.Column("creative_auto_approve_threshold", sa.Float(), nullable=False, server_default="0.9")
+    )
 
-    # Add auto_reject_threshold column with default value 0.1
-    op.add_column("tenants", sa.Column("auto_reject_threshold", sa.Float(), nullable=False, server_default="0.1"))
+    # Add creative_auto_reject_threshold column with default value 0.1
+    op.add_column(
+        "tenants", sa.Column("creative_auto_reject_threshold", sa.Float(), nullable=False, server_default="0.1")
+    )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    # Remove auto_reject_threshold column
-    op.drop_column("tenants", "auto_reject_threshold")
+    # Remove creative_auto_reject_threshold column
+    op.drop_column("tenants", "creative_auto_reject_threshold")
 
-    # Remove auto_approve_threshold column
-    op.drop_column("tenants", "auto_approve_threshold")
+    # Remove creative_auto_approve_threshold column
+    op.drop_column("tenants", "creative_auto_approve_threshold")
