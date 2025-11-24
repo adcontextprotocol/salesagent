@@ -909,13 +909,15 @@ class TestA2ASkillInvocation:
             message = create_a2a_message_with_skill("update_performance_index", skill_params)
             params = MessageSendParams(message=message)
 
-            # This will likely fail because media_buy doesn't exist, but tests the code path
-            result = await handler.on_message_send(params)
+            # This will fail because media_buy doesn't exist - expect ServerError per spec compliance
+            # Per A2A spec compliance refactoring: validation errors raise ServerError
+            from a2a.utils.errors import ServerError
 
-            # Verify the skill was invoked
-            assert isinstance(result, Task)
-            assert result.metadata["invocation_type"] == "explicit_skill"
-            assert "update_performance_index" in result.metadata["skills_requested"]
+            with pytest.raises(ServerError) as exc_info:
+                result = await handler.on_message_send(params)
+
+            # Verify error message indicates media buy not found
+            assert "Media buy 'mb_test_123' not found" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_get_media_buy_delivery_skill(self, handler, sample_tenant, sample_principal, validator):
