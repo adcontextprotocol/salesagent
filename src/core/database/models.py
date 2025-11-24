@@ -1304,7 +1304,7 @@ class GAMLineItem(Base):
 class SyncJob(Base):
     __tablename__ = "sync_jobs"
 
-    sync_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    sync_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(
         String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
     )
