@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastmcp import Context
 
-    from src.core.schemas import Creative, PackageRequest
+    from src.core.database.models import Product as DBProduct
+    from src.core.schemas import Creative, FormatId, PackageRequest, Product
     from src.core.testing_context import TestingContext
     from src.core.tool_context import ToolContext
 
@@ -271,14 +272,14 @@ def _detect_snippet_type(snippet: str) -> str:
 
 
 def validate_creative_format_against_product(
-    creative_format_id: dict | Any,
-    product: dict | Any,
+    creative_format_id: "FormatId | dict[str, Any]",
+    product: "Product | DBProduct | dict[str, Any]",
 ) -> tuple[bool, str | None]:
     """Validate that a creative's format_id matches the product's supported formats.
 
     Args:
-        creative_format_id: Creative's format_id object with agent_url and id fields
-        product: Product object or dict with format_ids field
+        creative_format_id: FormatId object (or dict) with agent_url and id fields
+        product: Product/DBProduct object (or dict) with format_ids field
 
     Returns:
         Tuple of (is_valid, error_message):
@@ -290,7 +291,8 @@ def validate_creative_format_against_product(
         Format IDs should already be normalized before calling this function.
 
     Example:
-        >>> creative_format = {"agent_url": "https://creative.example.com", "id": "banner_300x250"}
+        >>> from src.core.schemas import FormatId, Product
+        >>> creative_format = FormatId(agent_url="https://creative.example.com", id="banner_300x250")
         >>> is_valid, error = validate_creative_format_against_product(creative_format, product)
         >>> if not is_valid:
         ...     raise ValueError(error)
