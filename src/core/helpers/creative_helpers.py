@@ -272,14 +272,14 @@ def _detect_snippet_type(snippet: str) -> str:
 
 
 def validate_creative_format_against_product(
-    creative_format_id: "FormatId | dict[str, Any]",
-    product: "Product | DBProduct | dict[str, Any]",
+    creative_format_id: "FormatId",
+    product: "Product | DBProduct",
 ) -> tuple[bool, str | None]:
     """Validate that a creative's format_id matches the product's supported formats.
 
     Args:
-        creative_format_id: FormatId object (or dict) with agent_url and id fields
-        product: Product/DBProduct object (or dict) with format_ids field
+        creative_format_id: FormatId object with agent_url and id fields
+        product: Product or DBProduct object with format_ids field
 
     Returns:
         Tuple of (is_valid, error_message):
@@ -297,39 +297,30 @@ def validate_creative_format_against_product(
         >>> if not is_valid:
         ...     raise ValueError(error)
     """
-    # Extract format_ids from product (handles both dict and object)
-    if isinstance(product, dict):
-        product_format_ids = product.get("format_ids", [])
-        product_id = product.get("product_id", "unknown")
-        product_name = product.get("name", "unknown")
-    else:
-        product_format_ids = getattr(product, "format_ids", [])
-        product_id = getattr(product, "product_id", "unknown")
-        product_name = getattr(product, "name", "unknown")
+    # Extract format_ids from product
+    product_format_ids = product.format_ids or []
+    product_id = product.product_id
+    product_name = product.name
 
     # Products with no format restrictions accept all creatives
     if not product_format_ids:
         return True, None
 
     # Extract creative's format_id components
-    if isinstance(creative_format_id, dict):
-        creative_agent_url = creative_format_id.get("agent_url")
-        creative_id = creative_format_id.get("id")
-    else:
-        creative_agent_url = getattr(creative_format_id, "agent_url", None)
-        creative_id = getattr(creative_format_id, "id", None)
+    creative_agent_url = creative_format_id.agent_url
+    creative_id = creative_format_id.id
 
     if not creative_agent_url or not creative_id:
         return False, "Creative format_id is missing agent_url or id"
 
     # Simple equality check: does creative's format_id match any product format_id?
     for product_format in product_format_ids:
-        if isinstance(product_format, dict):
-            product_agent_url = product_format.get("agent_url")
-            product_fmt_id = product_format.get("id")
-        else:
-            product_agent_url = getattr(product_format, "agent_url", None)
-            product_fmt_id = getattr(product_format, "id", None)
+        # Type assertion for mypy - format_ids should be list[FormatId]
+        assert hasattr(product_format, "agent_url"), "product_format must be FormatId object"
+        assert hasattr(product_format, "id"), "product_format must be FormatId object"
+
+        product_agent_url = product_format.agent_url
+        product_fmt_id = product_format.id
 
         if not product_agent_url or not product_fmt_id:
             continue
@@ -341,12 +332,12 @@ def validate_creative_format_against_product(
     # Build error message with supported formats
     supported_formats = []
     for fmt in product_format_ids:
-        if isinstance(fmt, dict):
-            agent_url = fmt.get("agent_url")
-            fmt_id = fmt.get("id")
-        else:
-            agent_url = getattr(fmt, "agent_url", None)
-            fmt_id = getattr(fmt, "id", None)
+        # Type assertion for mypy
+        assert hasattr(fmt, "agent_url"), "format must be FormatId object"
+        assert hasattr(fmt, "id"), "format must be FormatId object"
+
+        agent_url = fmt.agent_url
+        fmt_id = fmt.id
         if agent_url and fmt_id:
             supported_formats.append(f"{agent_url}/{fmt_id}")
 
