@@ -37,8 +37,10 @@ class A2AResponseValidator:
     4. Conform to A2A protocol expectations
     """
 
-    # Required fields for all A2A skill responses
-    REQUIRED_FIELDS = {"success", "message"}
+    # PROTOCOL FIELDS MUST NOT BE IN DATA
+    # Per AdCP spec and PR #238, DataPart.data must contain ONLY AdCP-compliant payload
+    # "success" and "message" are protocol concerns, not domain data
+    FORBIDDEN_FIELDS = {"success", "message"}
 
     # Optional common fields (not required but expected in many responses)
     COMMON_OPTIONAL_FIELDS = {
@@ -49,18 +51,28 @@ class A2AResponseValidator:
         "metadata",
     }
 
-    # Skill-specific required fields (domain fields only - protocol fields added by handlers)
+    # Skill-specific required fields (AdCP spec fields only - domain data)
+    # Per AdCP spec, these are the fields that MUST be present in the response
     SKILL_REQUIRED_FIELDS = {
-        "create_media_buy": set(),  # media_buy_id is optional per schema, removed as required
-        "sync_creatives": {"creatives"},  # Removed 'status' (protocol), 'results' -> 'creatives' per spec
-        "get_products": {"products"},
-        "list_creatives": {"creatives", "query_summary", "pagination"},  # Per AdCP spec structure
-        "list_creative_formats": {"formats"},  # Removed 'total_count' (not in spec)
-        "get_signals": {"signals"},
+        "create_media_buy": set(),  # media_buy_id is optional per schema
+        "sync_creatives": {"creatives"},  # Per AdCP spec
+        "get_products": {"products"},  # Per AdCP spec
+        "list_creatives": {"creatives"},  # Per AdCP spec (query_summary/pagination may be optional)
+        "list_creative_formats": {"formats"},  # Per AdCP spec
+        "get_signals": {"signals"},  # Per AdCP spec
+        "update_media_buy": set(),  # Per AdCP spec, all fields optional in response
+        "get_media_buy_delivery": set(),  # Per AdCP spec
+        "update_performance_index": set(),  # Per AdCP spec
     }
 
     def validate_skill_response(self, response: dict[str, Any], skill_name: str | None = None) -> ValidationResult:
-        """Validate an A2A skill response.
+        """Validate an A2A skill response for AdCP spec compliance.
+
+        Per AdCP spec and PR #238:
+        - DataPart.data MUST contain ONLY AdCP-compliant payload
+        - NO protocol fields ("success", "message") in the data
+        - Success determined by Task.status.state (completed/failed)
+        - Human messages go in Artifact.description or TextPart
 
         Args:
             response: The response dict returned by _handle_*_skill method
@@ -72,48 +84,33 @@ class A2AResponseValidator:
         errors = []
         warnings = []
 
-        # 1. Check required common fields
-        for field in self.REQUIRED_FIELDS:
-            if field not in response:
-                errors.append(f"Missing required field: {field}")
+        # 1. Check for FORBIDDEN protocol fields (spec violation)
+        for field in self.FORBIDDEN_FIELDS:
+            if field in response:
+                errors.append(
+                    f"Protocol field '{field}' found in response data - violates AdCP spec. "
+                    f"Protocol concerns must be in Task.status or Artifact.description, not data."
+                )
 
-        # 2. Validate message field specifically (this catches AttributeError bugs)
-        if "message" in response:
-            if not isinstance(response["message"], str):
-                errors.append(f"Field 'message' must be a string, got {type(response['message']).__name__}")
-            elif len(response["message"]) == 0:
-                warnings.append("Field 'message' is empty")
-        else:
-            # Message is required but missing
-            errors.append("Missing required field: message")
-
-        # 3. Check skill-specific required fields
+        # 2. Check skill-specific required fields (AdCP spec fields)
         if skill_name and skill_name in self.SKILL_REQUIRED_FIELDS:
             required = self.SKILL_REQUIRED_FIELDS[skill_name]
             for field in required:
                 if field not in response:
-                    errors.append(f"Missing required field for {skill_name}: {field}")
+                    errors.append(f"Missing required AdCP field for {skill_name}: {field}")
 
-        # 4. Validate success field
-        if "success" in response:
-            if not isinstance(response["success"], bool):
-                errors.append(f"Field 'success' must be a boolean, got {type(response['success']).__name__}")
-
-        # 5. Check for error information if success=False
-        if response.get("success") is False:
-            if "error" not in response and "message" not in response:
-                warnings.append("Response indicates failure but has no error or message field")
+        # 3. Validate that response is a valid dict
+        if not isinstance(response, dict):
+            errors.append(f"Response must be a dict, got {type(response).__name__}")
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
-    def validate_all_skills_have_message(self, handler: Any) -> ValidationResult:
-        """Check that all skill handler methods properly return message fields.
-
-        This is a meta-validation: we're checking that the handler has all the
-        necessary skill methods and that they're structured correctly.
+    def validate_adcp_schema_compliance(self, response: dict[str, Any], expected_schema: type) -> ValidationResult:
+        """Validate that a response matches AdCP schema expectations.
 
         Args:
-            handler: AdCPRequestHandler instance
+            response: The response dict
+            expected_schema: Expected Pydantic model class (e.g., CreateMediaBuyResponse)
 
         Returns:
             ValidationResult
@@ -121,30 +118,21 @@ class A2AResponseValidator:
         errors = []
         warnings = []
 
-        # List of skill handler methods that should exist
-        expected_methods = [
-            "_handle_create_media_buy_skill",
-            "_handle_sync_creatives_skill",
-            "_handle_get_products_skill",
-            "_handle_list_creatives_skill",
-            "_handle_list_creative_formats_skill",
-            "_handle_get_signals_skill",
-        ]
-
-        for method_name in expected_methods:
-            if not hasattr(handler, method_name):
-                errors.append(f"Handler missing skill method: {method_name}")
-            elif not callable(getattr(handler, method_name)):
-                errors.append(f"Handler method not callable: {method_name}")
+        try:
+            # Try to instantiate the schema with the response data
+            expected_schema(**response)
+        except Exception as e:
+            errors.append(f"Response does not match AdCP schema {expected_schema.__name__}: {str(e)}")
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
     def check_response_type_safety(self, response_class: type) -> ValidationResult:
-        """Check if a response type can be safely used in A2A.
+        """Check if a response type is AdCP-compliant.
 
-        A response type is safe if it has either:
-        - A __str__ method (for generating human-readable messages)
-        - A .message field
+        Per AdCP spec and PR #238:
+        - Response must be a Pydantic model with AdCP-defined fields
+        - Must NOT have "success" or "message" fields (protocol concerns)
+        - Should have model_dump() method for serialization
 
         Args:
             response_class: Response class to check (e.g., CreateMediaBuyResponse)
@@ -157,23 +145,24 @@ class A2AResponseValidator:
 
         class_name = response_class.__name__
 
-        # Check for __str__ method
-        has_str_method = hasattr(response_class, "__str__") and response_class.__str__ is not object.__str__
-
-        # Check for message field
-        has_message_field = False
-        if hasattr(response_class, "model_fields"):
-            has_message_field = "message" in response_class.model_fields
-
-        if not has_str_method and not has_message_field:
+        # Check for model_dump method (Pydantic requirement)
+        if not hasattr(response_class, "model_dump"):
             errors.append(
-                f"{class_name} has neither __str__() method nor .message field. "
-                f"Cannot safely extract human-readable messages for A2A responses."
+                f"{class_name} missing model_dump() method. " f"Must be a Pydantic model for AdCP compliance."
             )
-        elif not has_str_method:
-            warnings.append(
-                f"{class_name} only has .message field, no __str__() method. Consider adding __str__() for consistency."
-            )
+
+        # Check for forbidden protocol fields
+        if hasattr(response_class, "model_fields"):
+            if "success" in response_class.model_fields:
+                errors.append(
+                    f"{class_name} has 'success' field - violates AdCP spec. "
+                    f"Success is protocol-level (Task.status.state), not domain data."
+                )
+            if "message" in response_class.model_fields:
+                errors.append(
+                    f"{class_name} has 'message' field - violates AdCP spec. "
+                    f"Messages belong in Artifact.description or TextPart, not domain data."
+                )
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 

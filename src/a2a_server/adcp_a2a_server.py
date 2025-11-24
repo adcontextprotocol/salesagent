@@ -1360,19 +1360,12 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from GetProductsResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
-            response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Products retrieved successfully"
-            )
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in get_products skill: {e}")
@@ -1407,22 +1400,7 @@ class AdCPRequestHandler(RequestHandler):
             missing_params = [param for param in required_params if param not in parameters]
 
             if missing_params:
-                return {
-                    "success": False,
-                    "message": f"Missing required AdCP parameters: {missing_params}",
-                    "required_parameters": required_params,
-                    "received_parameters": list(parameters.keys()),
-                    "errors": [
-                        {
-                            "code": "validation_error",
-                            "message": f"Missing required AdCP parameters: {missing_params}",
-                            "details": {
-                                "required": required_params,
-                                "received": list(parameters.keys()),
-                            },
-                        }
-                    ],
-                }
+                raise ServerError(InvalidParamsError(message=f"Missing required AdCP parameters: {missing_params}"))
 
             # Call core function with AdCP spec-compliant parameters
             # Note: budget is NOT passed at top level per AdCP v2.2.0 - it's in packages
@@ -1440,43 +1418,16 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict and add A2A success wrapper
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from CreateMediaBuyResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Check if response contains errors (domain errors from validation/ad server)
-            has_errors = response_data.get("errors") and len(response_data.get("errors", [])) > 0
-
-            # A2A wrapper adds success field and message
-            # Success is False if there are domain errors, even if no exception was raised
-            response_data["success"] = not has_errors
-            if has_errors:
-                response_data["message"] = "Media buy creation failed with validation errors"
-            else:
-                response_data["message"] = "Media buy created successfully"
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")
-            # Return error response instead of raising ServerError
-            # This allows tests to check error structure in artifacts
-            return {
-                "success": False,
-                "message": f"Failed to create media buy: {str(e)}",
-                "errors": [
-                    {
-                        "code": (
-                            "authentication_error"
-                            if "foreign key" in str(e).lower() and "principal" in str(e).lower()
-                            else "internal_error"
-                        ),
-                        "message": str(e),
-                    }
-                ],
-            }
+            raise ServerError(InternalError(message=f"Unable to create media buy: {str(e)}"))
 
     async def _handle_sync_creatives_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit sync_creatives skill invocation (AdCP spec endpoint)."""
@@ -1489,12 +1440,7 @@ class AdCPRequestHandler(RequestHandler):
 
             # Map A2A parameters - creatives is required
             if "creatives" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Missing required parameter: 'creatives'",
-                    "required_parameters": ["creatives"],
-                    "received_parameters": list(parameters.keys()),
-                }
+                raise ServerError(InvalidParamsError(message="Missing required parameter: 'creatives'"))
 
             # Call core function with spec-compliant parameters (AdCP v2.4)
             response = core_sync_creatives_tool(
@@ -1509,24 +1455,12 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from SyncCreativesResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Add A2A protocol fields
-            # Check for errors in response
-            has_errors = response_data.get("errors") and len(response_data.get("errors", [])) > 0
-
-            response_data["success"] = not has_errors
-            response_data["message"] = (
-                "Creatives synced with errors"
-                if has_errors
-                else str(response) if not isinstance(response, dict) else "Creatives synced successfully"
-            )
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in sync_creatives skill: {e}")
@@ -1559,19 +1493,12 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from ListCreativesResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
-            response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Creatives listed successfully"
-            )
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in list_creatives skill: {e}")
@@ -1776,19 +1703,12 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function with request
             response = core_list_creative_formats_tool(req=req, ctx=self._tool_context_to_mcp_context(tool_context))
 
-            # Convert response to dict
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from ListCreativeFormatsResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
-            response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Creative formats retrieved successfully"
-            )
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in list_creative_formats skill: {e}")
@@ -1970,12 +1890,7 @@ class AdCPRequestHandler(RequestHandler):
             missing_params = [param for param in required_params if param not in parameters]
 
             if missing_params:
-                return {
-                    "success": False,
-                    "message": f"Missing required parameters: {missing_params}",
-                    "required_parameters": required_params,
-                    "received_parameters": list(parameters.keys()),
-                }
+                raise ServerError(InvalidParamsError(message=f"Missing required parameters: {missing_params}"))
 
             # Call core function directly
             response = core_update_performance_index_tool(
