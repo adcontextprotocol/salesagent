@@ -513,24 +513,88 @@ function testGAMConnection() {
 // Save business rules
 function saveBusinessRules() {
     const form = document.getElementById('business-rules-form');
+
+    // Add measurement provider inputs before creating FormData
+    // This replicates the logic from the form submit event handler
+    const container = document.getElementById('measurement-providers-container');
+    const providerItems = container.querySelectorAll('.measurement-provider-item');
+
+    // Remove any existing hidden provider inputs
+    const existingInputs = form.querySelectorAll('input[name^="provider_name_"]');
+    existingInputs.forEach(input => input.remove());
+
+    // Add provider names as hidden inputs
+    providerItems.forEach((item, index) => {
+        const textInput = item.querySelector('.provider-name-input');
+        const providerName = textInput.value.trim();
+
+        if (providerName) {
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = `provider_name_${index}`;
+            hiddenInput.value = providerName;
+            form.appendChild(hiddenInput);
+        }
+    });
+
+    // Update the default provider radio value
+    const checkedRadio = container.querySelector('input[name="default_measurement_provider"]:checked');
+    if (checkedRadio) {
+        const providerItem = checkedRadio.closest('.measurement-provider-item');
+        const textInput = providerItem.querySelector('.provider-name-input');
+        checkedRadio.value = textInput.value;
+    }
+
+    // Now create FormData with the updated form
     const formData = new FormData(form);
 
     fetch(`${config.scriptName}/tenant/${config.tenantId}/settings/business-rules`, {
         method: 'POST',
         body: formData,
-        redirect: 'manual'  // Don't follow redirects automatically
+        redirect: 'follow'  // Follow redirects to get flash messages
     })
     .then(response => {
-        // Server returns 302 redirect on success, or 200/400 with JSON on error
-        if (response.type === 'opaqueredirect' || response.status === 302) {
-            // Success - redirect was initiated
-            alert('Business rules saved successfully!');
-            window.location.reload();
+        // Check if response is HTML (redirect with flash messages) or JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+            // Server returned HTML (redirect with flash messages)
+            // Parse the HTML to extract flash messages instead of full reload
+            return response.text().then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                // Look for flash messages in the returned HTML (only in .flash-messages container)
+                const flashContainer = doc.querySelector('.flash-messages');
+                if (flashContainer) {
+                    const flashMessages = flashContainer.querySelectorAll('.alert');
+                    if (flashMessages.length > 0) {
+                        // Extract and show flash message without reloading
+                        const messages = Array.from(flashMessages).map(el => {
+                            // Get text content and remove the × close button
+                            const text = el.textContent.trim().replace('×', '').trim();
+                            return text;
+                        }).join('\n\n');
+
+                        // Check if message is a success message
+                        const isSuccess = flashMessages[0].classList.contains('alert-success');
+                        if (isSuccess) {
+                            // Success - reload to show updated data
+                            window.location.reload();
+                        } else {
+                            // Error - show alert and keep form state
+                            alert('⚠️ ' + messages);
+                            // Don't reload - keep form state including unsaved currencies
+                        }
+                        return;
+                    }
+                }
+                // No flash messages means success - reload to show updated data
+                window.location.reload();
+            });
         } else if (response.ok) {
-            // Try to parse as JSON if not a redirect
+            // JSON response
             return response.json().then(data => {
                 if (data.success) {
-                    alert('Business rules saved successfully!');
                     window.location.reload();
                 } else {
                     alert('Error: ' + (data.error || data.message || 'Unknown error'));
@@ -1649,4 +1713,155 @@ function testGAMServiceAccountConnection() {
         button.innerHTML = 'Test Connection';
         alert('Error: ' + error.message);
     });
+}
+
+// Currency Management Functions
+function showAddCurrencyModal() {
+    // Reset form fields
+    document.getElementById('new-currency-code').value = '';
+    document.getElementById('new-currency-min').value = '';
+    document.getElementById('new-currency-max').value = '';
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('addCurrencyModal'));
+    modal.show();
+}
+
+function addCurrencyLimit() {
+    const currencyCode = document.getElementById('new-currency-code').value.trim().toUpperCase();
+    const minBudget = document.getElementById('new-currency-min').value;
+    const maxSpend = document.getElementById('new-currency-max').value;
+
+    // Validate currency code
+    if (!currencyCode || currencyCode.length !== 3) {
+        alert('Please enter a valid 3-letter currency code (e.g., EUR, GBP, CAD)');
+        return;
+    }
+
+    // Check if currency already exists (and is not marked for deletion)
+    const existingCurrency = document.querySelector(`.currency-limit-item[data-currency="${currencyCode}"]`);
+    if (existingCurrency) {
+        // Check if it's marked for deletion
+        const deleteField = existingCurrency.querySelector(`input[name="currency_limits[${currencyCode}][_delete]"]`);
+        const isMarkedForDeletion = deleteField && deleteField.value === 'true';
+
+        if (!isMarkedForDeletion) {
+            alert(`Currency ${currencyCode} already exists. Please edit the existing entry or remove it first.`);
+            return;
+        }
+
+        // If marked for deletion, remove it completely from DOM so we can add fresh
+        existingCurrency.remove();
+    }
+
+    // Create new currency limit item
+    const container = document.getElementById('currency-limits-container');
+    const newItem = document.createElement('div');
+    newItem.className = 'currency-limit-item';
+    newItem.setAttribute('data-currency', currencyCode);
+    newItem.style.cssText = 'display: flex; align-items: start; gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;';
+
+    newItem.innerHTML = `
+        <div style="flex: 1;">
+            <div style="display: grid; grid-template-columns: 150px 1fr 1fr; gap: 1rem; align-items: center;">
+                <div>
+                    <label style="display: block; font-weight: 600; color: #1f2937; margin-bottom: 0.25rem;">Currency</label>
+                    <input type="text" readonly value="${currencyCode}"
+                           style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; background: #f3f4f6; width: 100%; font-weight: 600;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 0.875rem; color: #4b5563; margin-bottom: 0.25rem;">
+                        Min Package Budget
+                    </label>
+                    <input type="number"
+                           name="currency_limits[${currencyCode}][min_package_budget]"
+                           value="${minBudget}"
+                           min="0" step="0.01"
+                           placeholder="No minimum"
+                           style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; width: 100%;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 0.875rem; color: #4b5563; margin-bottom: 0.25rem;">
+                        Max Daily Package Spend
+                    </label>
+                    <input type="number"
+                           name="currency_limits[${currencyCode}][max_daily_package_spend]"
+                           value="${maxSpend}"
+                           min="0" step="0.01"
+                           placeholder="No maximum"
+                           style="padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; width: 100%;">
+                </div>
+            </div>
+            <small style="display: block; color: #6b7280; margin-top: 0.5rem;">
+                Limits apply per package/line item to prevent budget splitting
+            </small>
+        </div>
+        <button type="button" class="btn btn-sm btn-danger" onclick="removeCurrencyLimit('${currencyCode}')" title="Remove Currency">
+            <i class="fas fa-times"></i>
+        </button>
+        <input type="hidden" name="currency_limits[${currencyCode}][_delete]" value="false">
+    `;
+
+    container.appendChild(newItem);
+
+    // Close modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('addCurrencyModal'));
+    modal.hide();
+
+    // Show success message
+    alert(`✅ Currency ${currencyCode} added. Don't forget to save your changes!`);
+}
+
+function removeCurrencyLimit(currencyCode) {
+    if (!confirm(`Are you sure you want to remove ${currencyCode}? This will affect any products using this currency.`)) {
+        return;
+    }
+
+    const item = document.querySelector(`.currency-limit-item[data-currency="${currencyCode}"]`);
+    if (item) {
+        // Mark for deletion by setting the hidden _delete field
+        const deleteField = item.querySelector(`input[name="currency_limits[${currencyCode}][_delete]"]`);
+        if (deleteField) {
+            deleteField.value = 'true';
+        }
+
+        // Hide the item visually
+        item.style.display = 'none';
+    }
+}
+
+// Naming Template Functions
+function useNamingPreset(presetName) {
+    const presets = {
+        'simple': {
+            order: '{campaign_name} - {start_date}',
+            lineItem: '{product_name}'
+        },
+        'campaign': {
+            order: '{campaign_name} - {buyer_ref}',
+            lineItem: '{campaign_name} - {product_name}'
+        },
+        'detailed': {
+            order: '{campaign_name|brand_name} - {buyer_ref} - {date_range}',
+            lineItem: '{order_name} - {product_name}'
+        }
+    };
+
+    const preset = presets[presetName];
+    if (!preset) {
+        console.error('Unknown preset:', presetName);
+        return;
+    }
+
+    // Update the template fields
+    const orderField = document.getElementById('order_name_template');
+    const lineItemField = document.getElementById('line_item_name_template');
+
+    if (orderField) {
+        orderField.value = preset.order;
+    }
+
+    if (lineItemField) {
+        lineItemField.value = preset.lineItem;
+    }
 }

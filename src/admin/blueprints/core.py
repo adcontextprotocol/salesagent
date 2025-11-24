@@ -381,6 +381,8 @@ def create_tenant():
                 admin_token=admin_token,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
+                # Set default measurement provider (Publisher Ad Server)
+                measurement_providers={"providers": ["Publisher Ad Server"], "default": "Publisher Ad Server"},
             )
 
             # Set default configuration based on ad server

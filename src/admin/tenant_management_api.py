@@ -196,6 +196,8 @@ def create_tenant():
                 policy_settings=json.dumps(data.get("policy_settings", {})),
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
+                # Set default measurement provider (Publisher Ad Server)
+                measurement_providers={"providers": ["Publisher Ad Server"], "default": "Publisher Ad Server"},
             )
             db_session.add(new_tenant)
 

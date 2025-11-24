@@ -70,6 +70,8 @@ class Tenant(Base, JSONValidatorMixin):
     creative_review_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
     _gemini_api_key: Mapped[str | None] = mapped_column("gemini_api_key", String(500), nullable=True)
     approval_mode: Mapped[str] = mapped_column(String(50), nullable=False, default="require-human")
+    auto_approve_threshold: Mapped[float] = mapped_column(Float, nullable=False, server_default="0.9")
+    auto_reject_threshold: Mapped[float] = mapped_column(Float, nullable=False, server_default="0.1")
     ai_policy: Mapped[dict | None] = mapped_column(
         JSONType, nullable=True, comment="AI review policy configuration with confidence thresholds"
     )
@@ -90,6 +92,10 @@ class Tenant(Base, JSONValidatorMixin):
     # Measurement providers configuration
     # Structure: {"providers": ["Provider 1", "Provider 2"], "default": "Provider 1"}
     measurement_providers: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+
+    # Brand manifest policy - controls whether brand context is required
+    # Values: "public" (default), "private", or other policy strings
+    brand_manifest_policy: Mapped[str] = mapped_column(String(50), nullable=False, server_default="public")
 
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")

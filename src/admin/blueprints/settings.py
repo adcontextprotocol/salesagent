@@ -10,10 +10,11 @@
 import logging
 import os
 from datetime import UTC, datetime
+from typing import Any
 
+from babel import numbers as babel_numbers
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import select
-from sqlalchemy.orm import attributes
 
 from src.admin.utils import require_auth, require_tenant_access  # type: ignore[attr-defined]
 from src.admin.utils.audit_decorator import log_admin_action
@@ -21,6 +22,26 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 
 logger = logging.getLogger(__name__)
+
+
+def is_valid_currency_code(currency_code: str) -> bool:
+    """Validate currency code using Babel's currency data.
+
+    Args:
+        currency_code: 3-letter ISO 4217 currency code (e.g., "USD", "EUR")
+
+    Returns:
+        bool: True if valid currency code, False otherwise
+    """
+    try:
+        # Get the currency name - if Babel returns the code itself, it's not a real currency
+        # Real currencies have proper names (e.g., "US Dollar" for USD)
+        # Unknown currencies just return the code (e.g., "XYZ" for XYZ)
+        name = babel_numbers.get_currency_name(currency_code, locale="en")
+        return name != currency_code
+    except Exception:
+        return False
+
 
 # Create blueprints - separate for tenant management and tenant settings
 tenant_management_settings_bp = Blueprint("tenant_management_settings", __name__)
@@ -206,6 +227,16 @@ def update_general(tenant_id):
                     if currency_code in existing_limits:
                         db_session.delete(existing_limits[currency_code])
                     continue
+
+                # Validate currency code using Babel
+                is_valid = is_valid_currency_code(currency_code)
+                logger.info(f"Currency validation: {currency_code} -> valid={is_valid}")
+                if not is_valid:
+                    logger.warning(f"Rejecting invalid currency code: {currency_code}")
+                    flash(
+                        f"Invalid currency code: {currency_code}. Please use a valid ISO 4217 currency code.", "error"
+                    )
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="general"))
 
                 # Get min and max values
                 min_key = f"currency_limits[{currency_code}][min_package_budget]"
@@ -650,364 +681,260 @@ def test_domain_access(tenant_id):
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="access"))
 
 
+def parse_form_data_to_policy_updates(form_data) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+    """Parse Flask form data into PolicyService update format.
+
+    Args:
+        form_data: Flask request.form or request.get_json() data
+
+    Returns:
+        Dict suitable for PolicyService.update_policies()
+    """
+    from decimal import Decimal
+
+    from src.services.policy_service import CurrencyLimitData
+
+    updates: dict[str, Any] = {}
+
+    # Parse currency limits
+    currency_data: dict[str, dict[str, Any]] = {}
+    for key in form_data.keys():
+        if key.startswith("currency_limits["):
+            parts = key.split("[")
+            if len(parts) >= 2:
+                currency_code = parts[1].rstrip("]")
+                if currency_code not in currency_data:
+                    currency_data[currency_code] = {}
+
+                if "[min_package_budget]" in key:
+                    val_str = form_data.get(key, "").strip()
+                    currency_data[currency_code]["min"] = Decimal(val_str) if val_str else None
+                elif "[max_daily_package_spend]" in key:
+                    val_str = form_data.get(key, "").strip()
+                    currency_data[currency_code]["max"] = Decimal(val_str) if val_str else None
+                elif "[_delete]" in key:
+                    currency_data[currency_code]["_delete"] = form_data.get(key) in ["true", True]
+
+    if currency_data:
+        updates["currencies"] = [
+            CurrencyLimitData(
+                currency_code=code,
+                min_package_budget=data.get("min"),
+                max_daily_package_spend=data.get("max"),
+                _delete=data.get("_delete", False),
+            )
+            for code, data in currency_data.items()
+        ]
+
+    # Parse measurement providers
+    # Check if measurement providers section is present in the form
+    # Hidden field _measurement_providers_section ensures validation runs even when all providers removed
+    has_provider_section = "_measurement_providers_section" in form_data
+    has_provider_fields = any(
+        key.startswith("provider_name_") or key == "default_measurement_provider" for key in form_data.keys()
+    )
+
+    if has_provider_section or has_provider_fields:
+        providers = []
+        for key in form_data.keys():
+            if key.startswith("provider_name_"):
+                provider_name = form_data.get(key, "").strip()
+                if provider_name:
+                    providers.append(provider_name)
+
+        default_provider = form_data.get("default_measurement_provider", "").strip()
+        if not default_provider and providers:
+            default_provider = providers[0]
+
+        # ALWAYS include measurement_providers in updates if form has provider fields
+        # This ensures validation runs even when removing all providers
+        updates["measurement_providers"] = {"providers": providers, "default": default_provider}
+
+    # Parse naming templates
+    if "order_name_template" in form_data:
+        updates["order_name_template"] = form_data.get("order_name_template", "").strip()
+
+    if "line_item_name_template" in form_data:
+        updates["line_item_name_template"] = form_data.get("line_item_name_template", "").strip()
+
+    # Parse approval settings
+    if "approval_mode" in form_data:
+        updates["approval_mode"] = form_data.get("approval_mode", "auto-approve")
+
+    if "creative_review_criteria" in form_data:
+        updates["creative_review_criteria"] = form_data.get("creative_review_criteria", "")
+
+    if "auto_approve_threshold" in form_data:
+        try:
+            updates["auto_approve_threshold"] = float(form_data.get("auto_approve_threshold", 0.9))
+        except (ValueError, TypeError):
+            pass
+
+    if "auto_reject_threshold" in form_data:
+        try:
+            updates["auto_reject_threshold"] = float(form_data.get("auto_reject_threshold", 0.1))
+        except (ValueError, TypeError):
+            pass
+
+    # Parse feature flags
+    if "enable_axe_signals" in form_data:
+        updates["enable_axe_signals"] = form_data.get("enable_axe_signals") in [True, "true", "on", 1, "1"]
+
+    if "brand_manifest_policy" in form_data:
+        policy_value = form_data.get("brand_manifest_policy", "").strip()
+        logger.info(f"Parsing brand_manifest_policy: received '{policy_value}'")
+        if policy_value in ["public", "require_auth", "require_brand"]:
+            updates["brand_manifest_policy"] = policy_value
+        else:
+            logger.warning(f"Invalid brand_manifest_policy value: '{policy_value}', ignoring")
+            # Still include it so PolicyService can validate and reject if needed
+            if policy_value:
+                updates["brand_manifest_policy"] = policy_value
+
+    # Parse AI policy
+    ai_policy_fields = [
+        "auto_approve_threshold",
+        "auto_reject_threshold",
+        "sensitive_categories",
+        "learn_from_overrides",
+    ]
+    if any(field in form_data for field in ai_policy_fields):
+        ai_policy = {}
+
+        if "auto_approve_threshold" in form_data:
+            try:
+                ai_policy["auto_approve_threshold"] = float(form_data.get("auto_approve_threshold", 0.9))
+            except (ValueError, TypeError):
+                pass
+
+        if "auto_reject_threshold" in form_data:
+            try:
+                ai_policy["auto_reject_threshold"] = float(form_data.get("auto_reject_threshold", 0.1))
+            except (ValueError, TypeError):
+                pass
+
+        if "sensitive_categories" in form_data:
+            ai_policy["sensitive_categories"] = form_data.get("sensitive_categories", "").strip()
+
+        if "learn_from_overrides" in form_data:
+            ai_policy["learn_from_overrides"] = form_data.get("learn_from_overrides") in [True, "true", "on", 1, "1"]
+        elif "learn_from_overrides" not in form_data:
+            # Checkbox not present means unchecked
+            ai_policy["learn_from_overrides"] = False
+
+        if ai_policy:
+            updates["ai_policy"] = ai_policy
+
+    # Parse advertising policy
+    advertising_policy_fields = [
+        "policy_check_enabled",
+        "default_prohibited_categories",
+        "default_prohibited_tactics",
+        "prohibited_categories",
+        "prohibited_tactics",
+        "prohibited_advertisers",
+    ]
+    if any(field in form_data for field in advertising_policy_fields):
+        advertising_policy: dict[str, Any] = {}
+
+        if "policy_check_enabled" in form_data:
+            advertising_policy["enabled"] = form_data.get("policy_check_enabled") in [True, "true", "on", 1, "1"]
+        elif "policy_check_enabled" not in form_data:
+            # Checkbox not present means unchecked
+            advertising_policy["enabled"] = False
+
+        # Parse list fields (newline-separated)
+        for field_name in [
+            "default_prohibited_categories",
+            "default_prohibited_tactics",
+            "prohibited_categories",
+            "prohibited_tactics",
+            "prohibited_advertisers",
+        ]:
+            if field_name in form_data:
+                field_str = form_data.get(field_name, "").strip()
+                if field_str:
+                    items = [line.strip() for line in field_str.split("\n") if line.strip()]
+                    advertising_policy[field_name] = items
+                else:
+                    advertising_policy[field_name] = []
+
+        if advertising_policy:
+            updates["advertising_policy"] = advertising_policy
+
+    return updates
+
+
 @settings_bp.route("/business-rules", methods=["POST"])
 @log_admin_action("update_business_rules")
 @require_tenant_access()
 def update_business_rules(tenant_id):
-    """Update business rules (budget, naming, approvals, features)."""
+    """Update business rules (budget, naming, approvals, features).
+
+    This function uses PolicyService for validation and updates. The service layer
+    provides clean, testable business logic with comprehensive validation.
+    """
+    from src.services.policy_service import PolicyService, ValidationError
+
     try:
         # Get form data
         data = request.get_json() if request.is_json else request.form
 
+        # Parse form data into PolicyService format
+        updates = parse_form_data_to_policy_updates(data)
+
+        # Update policies using service (validates and saves atomically)
+        PolicyService.update_policies(tenant_id, updates)
+
+        # Handle human_review_required separately (syncs to adapter configs)
+        # This is operational config, not policy, so kept in route handler
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-            if not tenant:
-                if request.is_json:
-                    return jsonify({"success": False, "error": "Tenant not found"}), 404
-                flash("Tenant not found", "error")
-                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
+            if tenant:
+                if "human_review_required" in data:
+                    manual_approval_value = data.get("human_review_required") in [True, "true", "on", 1, "1"]
+                    tenant.human_review_required = manual_approval_value
 
-            # Update currency limits (max_daily_budget moved to currency_limits table)
-            from decimal import Decimal, InvalidOperation
-
-            from src.core.database.models import CurrencyLimit
-
-            # Get all existing currency limits
-            stmt = select(CurrencyLimit).filter_by(tenant_id=tenant_id)
-            existing_limits = {limit.currency_code: limit for limit in db_session.scalars(stmt).all()}
-
-            # Process currency_limits form data
-            # Format: currency_limits[USD][min_package_budget], currency_limits[USD][max_daily_package_spend]
-            processed_currencies = set()
-
-            for key in data.keys():
-                if key.startswith("currency_limits["):
-                    # Extract currency code from key like "currency_limits[USD][min_package_budget]"
-                    parts = key.split("[")
-                    if len(parts) >= 2:
-                        currency_code = parts[1].rstrip("]")
-                        processed_currencies.add(currency_code)
-
-            # Update or create currency limits
-            for currency_code in processed_currencies:
-                # Check if marked for deletion
-                delete_key = f"currency_limits[{currency_code}][_delete]"
-                if delete_key in data and data.get(delete_key) in ["true", True]:
-                    # Delete this currency limit
-                    if currency_code in existing_limits:
-                        db_session.delete(existing_limits[currency_code])
-                    continue
-
-                # Get min and max values
-                min_key = f"currency_limits[{currency_code}][min_package_budget]"
-                max_key = f"currency_limits[{currency_code}][max_daily_package_spend]"
-
-                min_value_str = data.get(min_key, "").strip() if data.get(min_key) else ""
-                max_value_str = data.get(max_key, "").strip() if data.get(max_key) else ""
-
-                try:
-                    min_value = Decimal(min_value_str) if min_value_str else None
-                    max_value = Decimal(max_value_str) if max_value_str else None
-                except (ValueError, InvalidOperation):
-                    if request.is_json:
-                        return (
-                            jsonify({"success": False, "error": f"Invalid currency limit values for {currency_code}"}),
-                            400,
-                        )
-                    flash(f"Invalid currency limit values for {currency_code}", "error")
-                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
-
-                # Update or create
-                if currency_code in existing_limits:
-                    # Update existing
-                    limit = existing_limits[currency_code]
-                    limit.min_package_budget = min_value
-                    limit.max_daily_package_spend = max_value
-                    limit.updated_at = datetime.now(UTC)
-                else:
-                    # Create new
-                    limit = CurrencyLimit(
-                        tenant_id=tenant_id,
-                        currency_code=currency_code,
-                        min_package_budget=min_value,
-                        max_daily_package_spend=max_value,
-                    )
-                    db_session.add(limit)
-            # Update naming templates with validation
-            if "order_name_template" in data:
-                order_template = data.get("order_name_template", "").strip()
-                if order_template:
-                    # Validate template
-                    validation_error = validate_naming_template(order_template, "Order name template")
-                    if validation_error:
-                        if request.is_json:
-                            return jsonify({"success": False, "error": validation_error}), 400
-                        flash(validation_error, "error")
-                        return redirect(
-                            url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
-                        )
-                    tenant.order_name_template = order_template
-
-            if "line_item_name_template" in data:
-                line_item_template = data.get("line_item_name_template", "").strip()
-                if line_item_template:
-                    # Validate template
-                    validation_error = validate_naming_template(line_item_template, "Line item name template")
-                    if validation_error:
-                        if request.is_json:
-                            return jsonify({"success": False, "error": validation_error}), 400
-                        flash(validation_error, "error")
-                        return redirect(
-                            url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
-                        )
-                    tenant.line_item_name_template = line_item_template
-
-            # Update measurement providers
-            # Collect all provider names and the default from the form
-            providers = []
-            seen_providers = set()  # Track duplicates
-            default_provider = data.get("default_measurement_provider", "").strip()
-
-            # Get all provider text inputs and deduplicate
-            provider_keys = [k for k in data.keys() if k.startswith("provider_name_")]
-            logger.info(f"Processing {len(provider_keys)} provider inputs for tenant {tenant_id}")
-            for key in data.keys():
-                if key.startswith("provider_name_"):
-                    provider_name = data.get(key, "").strip()
-                    logger.debug(f"Provider input {key}: '{provider_name}' (length: {len(provider_name)})")
-                    if provider_name and provider_name not in seen_providers:  # Only add non-empty, unique providers
-                        providers.append(provider_name)
-                        seen_providers.add(provider_name)
-
-            # If we have providers, save them
-            if providers:
-                # Ensure default is in the list
-                if default_provider and default_provider not in providers:
-                    logger.warning(
-                        f"Default provider '{default_provider}' not in list for tenant {tenant_id}, adding it"
-                    )
-                    providers.append(default_provider)
-
-                # Set default to first provider if not specified
-                if not default_provider and providers:
-                    default_provider = providers[0]
-
-                tenant.measurement_providers = {"providers": providers, "default": default_provider}
-                attributes.flag_modified(tenant, "measurement_providers")
-            else:
-                # Check if GAM is configured (uses centralized tenant.is_gam_tenant property)
-                if tenant.is_gam_tenant:
-                    # For GAM tenants without configured providers, set default
-                    logger.info(f"GAM tenant {tenant_id} has no providers, using GAM default")
-                    tenant.measurement_providers = {"providers": ["Google Ad Manager"], "default": "Google Ad Manager"}
-                    attributes.flag_modified(tenant, "measurement_providers")
-                else:
-                    # Non-GAM tenants must have at least one provider
-                    logger.warning(
-                        f"Tenant {tenant_id} (adapter: {tenant.ad_server or tenant.adapter_config.adapter_type if tenant.adapter_config else 'unknown'}) "
-                        f"submitted business rules with no measurement providers. "
-                        f"Received {len(provider_keys)} provider inputs, all empty or whitespace."
-                    )
-                    flash(
-                        "At least one measurement provider is required. Please add a provider name and try again.",
-                        "error",
-                    )
-                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
-
-            # Update brand manifest policy
-            if "brand_manifest_policy" in data:
-                policy_value = data.get("brand_manifest_policy", "").strip()
-                if policy_value in ["public", "require_auth", "require_brand"]:
-                    tenant.brand_manifest_policy = policy_value
-                else:
-                    if request.is_json:
-                        return (
-                            jsonify({"success": False, "error": f"Invalid brand_manifest_policy: {policy_value}"}),
-                            400,
-                        )
-                    flash(f"Invalid brand manifest policy: {policy_value}", "error")
-                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
-
-            # Update approval workflow
-            if "human_review_required" in data:
-                manual_approval_value = data.get("human_review_required") in [True, "true", "on", 1, "1"]
-                tenant.human_review_required = manual_approval_value
-
-                # Update ALL adapters' manual approval settings
-                if tenant.adapter_config:
-                    adapter_type = tenant.adapter_config.adapter_type
-                    if adapter_type == "google_ad_manager":
-                        tenant.adapter_config.gam_manual_approval_required = manual_approval_value
-                    elif adapter_type == "mock":
-                        tenant.adapter_config.mock_manual_approval_required = manual_approval_value
-                    elif adapter_type == "kevel":
-                        tenant.adapter_config.kevel_manual_approval_required = manual_approval_value
-            elif not request.is_json:
-                # Checkbox not present in form data means unchecked
-                tenant.human_review_required = False
-                # Update ALL adapters' manual approval settings
-                if tenant.adapter_config:
-                    adapter_type = tenant.adapter_config.adapter_type
-                    if adapter_type == "google_ad_manager":
-                        tenant.adapter_config.gam_manual_approval_required = False
-                    elif adapter_type == "mock":
-                        tenant.adapter_config.mock_manual_approval_required = False
-                    elif adapter_type == "kevel":
-                        tenant.adapter_config.kevel_manual_approval_required = False
-
-            # Update creative review settings
-            if "approval_mode" in data:
-                approval_mode = data.get("approval_mode", "").strip()
-                if approval_mode in ["auto-approve", "require-human", "ai-powered"]:
-                    tenant.approval_mode = approval_mode
-                    # NOTE: Creative approval is separate from media buy approval
-                    # Media buy approval is controlled by "human_review_required" field above
-
-            if "creative_review_criteria" in data:
-                creative_review_criteria = data.get("creative_review_criteria")
-                if creative_review_criteria is not None:
-                    creative_review_criteria = creative_review_criteria.strip()
-                    # Allow empty string or set to None if empty
-                    tenant.creative_review_criteria = creative_review_criteria if creative_review_criteria else None
-
-            # Update AI policy configuration
-            if any(
-                key in data
-                for key in [
-                    "auto_approve_threshold",
-                    "auto_reject_threshold",
-                    "sensitive_categories",
-                    "learn_from_overrides",
-                ]
-            ):
-                # Get existing AI policy or create new dict
-                ai_policy = tenant.ai_policy if tenant.ai_policy else {}
-
-                # Update thresholds
-                if "auto_approve_threshold" in data:
-                    try:
-                        threshold = float(data.get("auto_approve_threshold"))
-                        if 0.0 <= threshold <= 1.0:
-                            ai_policy["auto_approve_threshold"] = threshold
-                    except (ValueError, TypeError):
-                        pass  # Keep existing value
-
-                if "auto_reject_threshold" in data:
-                    try:
-                        threshold = float(data.get("auto_reject_threshold"))
-                        if 0.0 <= threshold <= 1.0:
-                            ai_policy["auto_reject_threshold"] = threshold
-                    except (ValueError, TypeError):
-                        pass  # Keep existing value
-
-                # Update sensitive categories
-                if "sensitive_categories" in data:
-                    categories_str = data.get("sensitive_categories", "").strip()
-                    if categories_str:
-                        # Parse comma-separated list
-                        categories = [cat.strip() for cat in categories_str.split(",") if cat.strip()]
-                        ai_policy["always_require_human_for"] = categories
-                    else:
-                        ai_policy["always_require_human_for"] = []
-
-                # Update learn from overrides
-                if "learn_from_overrides" in data:
-                    ai_policy["learn_from_overrides"] = data.get("learn_from_overrides") in [True, "true", "on", 1, "1"]
+                    # Update ALL adapters' manual approval settings
+                    if tenant.adapter_config:
+                        adapter_type = tenant.adapter_config.adapter_type
+                        if adapter_type == "google_ad_manager":
+                            tenant.adapter_config.gam_manual_approval_required = manual_approval_value
+                        elif adapter_type == "mock":
+                            tenant.adapter_config.mock_manual_approval_required = manual_approval_value
+                        elif adapter_type == "kevel":
+                            tenant.adapter_config.kevel_manual_approval_required = manual_approval_value
                 elif not request.is_json:
-                    # Checkbox not present means unchecked
-                    ai_policy["learn_from_overrides"] = False
+                    # Checkbox not present in form data means unchecked
+                    tenant.human_review_required = False
+                    if tenant.adapter_config:
+                        adapter_type = tenant.adapter_config.adapter_type
+                        if adapter_type == "google_ad_manager":
+                            tenant.adapter_config.gam_manual_approval_required = False
+                        elif adapter_type == "mock":
+                            tenant.adapter_config.mock_manual_approval_required = False
+                        elif adapter_type == "kevel":
+                            tenant.adapter_config.kevel_manual_approval_required = False
 
-                # Save updated policy
-                tenant.ai_policy = ai_policy
-                # Mark as modified for JSONB update
-                from sqlalchemy.orm import attributes
+                db_session.commit()
 
-                attributes.flag_modified(tenant, "ai_policy")
+        # Success
+        if request.is_json:
+            return jsonify({"success": True}), 200
 
-            # Update advertising policy configuration
-            if any(
-                key in data
-                for key in [
-                    "policy_check_enabled",
-                    "default_prohibited_categories",
-                    "default_prohibited_tactics",
-                    "prohibited_categories",
-                    "prohibited_tactics",
-                    "prohibited_advertisers",
-                ]
-            ):
-                # Get existing advertising policy or create new dict
-                advertising_policy = tenant.advertising_policy if tenant.advertising_policy else {}
+        flash("Business rules updated successfully", "success")
+        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
-                # Update enabled status
-                if "policy_check_enabled" in data:
-                    advertising_policy["enabled"] = data.get("policy_check_enabled") in [True, "true", "on", 1, "1"]
-                elif not request.is_json:
-                    # Checkbox not present means unchecked
-                    advertising_policy["enabled"] = False
+    except ValidationError as e:
+        logger.warning(f"Validation error updating business rules for tenant {tenant_id}: {e.errors}")
 
-                # Helper function for parsing and validating policy lists
-                def parse_and_validate_policy_field(field_name: str, display_name: str) -> list[str]:
-                    """Parse and validate a policy field from form data."""
-                    field_str = data.get(field_name, "").strip()
-                    if not field_str:
-                        return []
+        if request.is_json:
+            return jsonify({"success": False, "errors": e.errors}), 400
 
-                    # Parse newline-separated list
-                    items = [line.strip() for line in field_str.split("\n") if line.strip()]
-
-                    # Validate
-                    validated, error = validate_policy_list(items, display_name)
-                    if error:
-                        if request.is_json:
-                            raise ValueError(error)
-                        flash(error, "error")
-                        raise ValueError(error)
-
-                    return validated
-
-                # Update all policy fields with validation
-                policy_fields = {
-                    "default_prohibited_categories": "Baseline Protected Categories",
-                    "default_prohibited_tactics": "Baseline Prohibited Tactics",
-                    "prohibited_categories": "Additional Prohibited Categories",
-                    "prohibited_tactics": "Additional Prohibited Tactics",
-                    "prohibited_advertisers": "Blocked Advertisers/Domains",
-                }
-
-                for field_name, display_name in policy_fields.items():
-                    if field_name in data:
-                        try:
-                            advertising_policy[field_name] = parse_and_validate_policy_field(field_name, display_name)
-                        except ValueError as e:
-                            if request.is_json:
-                                return jsonify({"success": False, "error": str(e)}), 400
-                            return redirect(
-                                url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules")
-                            )
-
-                # Save updated policy
-                tenant.advertising_policy = advertising_policy
-                # Mark as modified for JSONB update
-                from sqlalchemy.orm import attributes
-
-                attributes.flag_modified(tenant, "advertising_policy")
-
-            # Update features
-            if "enable_axe_signals" in data:
-                tenant.enable_axe_signals = data.get("enable_axe_signals") in [True, "true", "on", 1, "1"]
-            elif not request.is_json:
-                # Checkbox not present in form data means unchecked
-                tenant.enable_axe_signals = False
-
-            tenant.updated_at = datetime.now(UTC)
-            db_session.commit()
-
-            if request.is_json:
-                return jsonify({"success": True, "message": "Business rules updated successfully"}), 200
-
-            flash("Business rules updated successfully", "success")
-            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
+        # Flash each validation error
+        for field, error in e.errors.items():
+            flash(f"{field}: {error}", "error")
+        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="business-rules"))
 
     except Exception as e:
         logger.error(f"Error updating business rules: {e}", exc_info=True)
