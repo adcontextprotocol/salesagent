@@ -715,11 +715,10 @@ class AdCPRequestHandler(RequestHandler):
                         "pricing_models": len(result.get("pricing_models", [])) if isinstance(result, dict) else 0,
                     },
                 )
+                # Pricing info is a plain dict, no response object to extract human message from
                 task.artifacts = [
-                    Artifact(
-                        artifact_id="pricing_info_1",
-                        name="pricing_information",
-                        parts=[Part(root=DataPart(data=result))],
+                    self._build_artifact_with_textpart(
+                        artifact_id="pricing_info_1", name="pricing_information", data=result, human_message=None
                     )
                 ]
             elif any(word in combined_text for word in ["target", "audience"]):
@@ -746,15 +745,16 @@ class AdCPRequestHandler(RequestHandler):
                         ),
                     },
                 )
+                # Targeting options is a plain dict, no response object to extract human message from
                 task.artifacts = [
-                    Artifact(
-                        artifact_id="targeting_opts_1",
-                        name="targeting_options",
-                        parts=[Part(root=DataPart(data=result))],
+                    self._build_artifact_with_textpart(
+                        artifact_id="targeting_opts_1", name="targeting_options", data=result, human_message=None
                     )
                 ]
             elif any(word in combined_text for word in ["create", "buy", "campaign", "media"]):
+                # NLP create_media_buy - call legacy helper (to be refactored in future)
                 result = await self._create_media_buy(combined_text, auth_token)
+
                 # Extract tenant and principal for logging
                 try:
                     tool_context = self._create_tool_context_from_a2a(auth_token, "create_media_buy")
@@ -765,30 +765,31 @@ class AdCPRequestHandler(RequestHandler):
                     tenant_id = "unknown"
                     principal_id = "unknown"
 
+                # Note: _create_media_buy still returns protocol fields (legacy)
+                # This will be fully refactored to call skill handler in future
+                success = result.get("success", False)
+
                 self._log_a2a_operation(
                     "create_media_buy",
                     tenant_id,
                     principal_id,
-                    result.get("success", False),
-                    {"query": combined_text[:100], "success": result.get("success", False)},
-                    result.get("message") if not result.get("success") else None,
+                    success,
+                    {"query": combined_text[:100], "success": success},
+                    result.get("message") if not success else None,
                 )
-                if result.get("success"):
-                    task.artifacts = [
-                        Artifact(
-                            artifact_id="media_buy_1",
-                            name="media_buy_created",
-                            parts=[Part(root=DataPart(data=result))],
-                        )
-                    ]
-                else:
-                    task.artifacts = [
-                        Artifact(
-                            artifact_id="media_buy_error_1",
-                            name="media_buy_error",
-                            parts=[Part(root=DataPart(data=result))],
-                        )
-                    ]
+
+                # Build artifact with TextPart + DataPart
+                # TODO: When refactoring _create_media_buy to call skill handler,
+                # extract human message from response.__str__() like get_products
+                human_message = result.get("message")  # Legacy: message field exists
+                artifact_name = "media_buy_created" if success else "media_buy_error"
+                artifact_id = "media_buy_1" if success else "media_buy_error_1"
+
+                task.artifacts = [
+                    self._build_artifact_with_textpart(
+                        artifact_id=artifact_id, name=artifact_name, data=result, human_message=human_message
+                    )
+                ]
             else:
                 # General help response
                 capabilities = {
@@ -822,11 +823,10 @@ class AdCPRequestHandler(RequestHandler):
                     True,
                     {"query": combined_text[:100], "response_type": "capabilities"},
                 )
+                # Capabilities is a plain dict, no response object to extract human message from
                 task.artifacts = [
-                    Artifact(
-                        artifact_id="capabilities_1",
-                        name="capabilities",
-                        parts=[Part(root=DataPart(data=capabilities))],
+                    self._build_artifact_with_textpart(
+                        artifact_id="capabilities_1", name="capabilities", data=capabilities, human_message=None
                     )
                 ]
 
