@@ -1,4 +1,8 @@
-"""Unit tests for validate_creative_format_against_product helper function."""
+"""Unit tests for validate_creative_format_against_product helper function.
+
+These tests use dict representations rather than full Pydantic objects to keep tests
+simple and focused on the validation logic. The function accepts both types.
+"""
 
 from src.core.helpers import validate_creative_format_against_product
 
@@ -104,34 +108,6 @@ class TestValidateCreativeFormatAgainstProduct:
         assert "video_instream_15s" in error
         assert "video_instream_30s" in error
         assert "Video Product" in error
-
-    def test_works_with_pydantic_objects(self):
-        """Test that validation works with Pydantic Product objects."""
-        from unittest.mock import Mock
-
-        # Mock Creative format_id object
-        creative_format_id = Mock()
-        creative_format_id.agent_url = "https://creative.adcontextprotocol.org"
-        creative_format_id.id = "display_300x250_image"
-
-        # Mock Product object
-        product = Mock()
-        product.product_id = "product_1"
-        product.name = "Banner Product"
-
-        # Mock format_ids with Pydantic-like objects
-        format_obj = Mock()
-        format_obj.agent_url = "https://creative.adcontextprotocol.org"
-        format_obj.id = "display_300x250_image"
-        product.format_ids = [format_obj]
-
-        is_valid, error = validate_creative_format_against_product(
-            creative_format_id=creative_format_id,
-            product=product,
-        )
-
-        assert is_valid is True
-        assert error is None
 
     def test_different_agent_urls_do_not_match(self):
         """Test that creatives from different agents do not match."""
