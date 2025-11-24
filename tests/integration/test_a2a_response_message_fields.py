@@ -79,11 +79,12 @@ class TestA2AMessageFieldValidation:
                 "packages": [
                     {
                         "buyer_ref": f"pkg_{sample_products[0]}",
-                        "products": [sample_products[0]],
-                        "budget": {"total": 10000.0, "currency": "USD"},
+                        "product_id": sample_products[0],  # AdCP spec: product_id (singular), not products (array)
+                        "budget": 10000.0,  # AdCP spec: budget is a number in packages, not an object
+                        "pricing_option_id": "cpm_usd_fixed",
                     }
                 ],
-                "budget": {"total": 10000.0, "currency": "USD"},
+                # Note: NO top-level budget field per AdCP v2.2.0 spec
                 "start_time": start_date.isoformat(),
                 "end_time": end_date.isoformat(),
             }

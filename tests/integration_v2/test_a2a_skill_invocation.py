@@ -509,8 +509,16 @@ class TestA2ASkillInvocation:
             assert len(result.artifacts) == 2
 
             # Verify both artifacts have data
+            # Per A2A spec compliance (PR #784): artifacts can have TextPart + DataPart
+            # DataPart contains AdCP payload, TextPart contains human message
             for artifact in result.artifacts:
-                assert artifact.parts[0].root.data is not None
+                # Find DataPart in the artifact (may be first or second part)
+                data_part = None
+                for part in artifact.parts:
+                    if hasattr(part.root, "data"):
+                        data_part = part.root.data
+                        break
+                assert data_part is not None, "Artifact must contain DataPart with response data"
 
     # TODO: Add test_missing_authentication once we understand how A2A server handles auth errors
     # TODO: Needs investigation of proper error handling approach (ServerError not in current a2a library)
@@ -886,10 +894,15 @@ class TestA2ASkillInvocation:
 
             adcp_a2a_server._request_headers.set({"host": f"{sample_tenant['subdomain']}.example.com"})
 
-            # Create skill invocation
+            # Create skill invocation with correct parameters
+            # Per AdCP spec: requires media_buy_id and performance_data
             skill_params = {
                 "media_buy_id": "mb_test_123",
-                "performance_index": 1.25,
+                "performance_data": {
+                    "impressions": 10000,
+                    "clicks": 250,
+                    "ctr": 0.025,
+                },
             }
             message = create_a2a_message_with_skill("update_performance_index", skill_params)
             params = MessageSendParams(message=message)
