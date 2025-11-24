@@ -2075,7 +2075,11 @@ async def _create_media_buy_impl(
                         logger.info(f"[CREATIVE_ASSIGN_DEBUG] Loaded {len(creatives_map)} creatives from database")
 
                         # Validate creative formats against product formats BEFORE creating assignments
-                        # This prevents invalid creative-product combinations from being persisted
+                        # This ensures creatives match at least one format supported by the product
+                        # Validation happens at assignment time (not sync time) because:
+                        # - Creatives may be synced before being assigned to products
+                        # - A creative may be valid for product A but not product B
+                        # - Same creative can be reused across packages if formats align
                         from src.core.helpers import validate_creative_format_against_products
 
                         for package in req.packages:
@@ -2105,10 +2109,22 @@ async def _create_media_buy_impl(
                                             format_is_valid, format_matches, format_error = validation_result
 
                                             if not format_is_valid:
-                                                logger.error(
-                                                    f"[CREATIVE_ASSIGN_DEBUG] Format validation failed: {format_error}"
+                                                error_detail = (
+                                                    f"Creative {creative_id} format mismatch for product "
+                                                    f"{package.product_id}: {format_error}"
                                                 )
-                                                raise ToolError(f"Creative format validation failed: {format_error}")
+                                                logger.error(f"[CREATIVE_ASSIGN_DEBUG] {error_detail}")
+                                                logger.warning(
+                                                    "Creative format validation failure",
+                                                    extra={
+                                                        "creative_id": creative_id,
+                                                        "product_id": package.product_id,
+                                                        "creative_format": creative.format,
+                                                        "creative_agent_url": creative.agent_url,
+                                                        "validation_error": format_error,
+                                                    },
+                                                )
+                                                raise ToolError(error_detail)
 
                                             logger.info(
                                                 f"[CREATIVE_ASSIGN_DEBUG] Creative {creative_id} format "
@@ -2840,7 +2856,11 @@ async def _create_media_buy_impl(
                         raise ToolError("CREATIVES_NOT_FOUND", error_msg)
 
                     # Validate creative formats against product formats BEFORE creating assignments
-                    # This prevents invalid creative-product combinations from being persisted
+                    # This ensures creatives match at least one format supported by the product
+                    # Validation happens at assignment time (not sync time) because:
+                    # - Creatives may be synced before being assigned to products
+                    # - A creative may be valid for product A but not product B
+                    # - Same creative can be reused across packages if formats align
                     from src.core.helpers import validate_creative_format_against_products
 
                     for package in req.packages:
@@ -2870,11 +2890,25 @@ async def _create_media_buy_impl(
                                         format_is_valid, format_matches, format_error = validation_result
 
                                         if not format_is_valid:
-                                            logger.error(f"Format validation failed: {format_error}")
-                                            ctx_manager.update_workflow_step(
-                                                step.step_id, status="failed", error_message=format_error
+                                            error_detail = (
+                                                f"Creative {creative_id} format mismatch for product "
+                                                f"{package.product_id}: {format_error}"
                                             )
-                                            raise ToolError("CREATIVE_FORMAT_MISMATCH", format_error)
+                                            logger.error(error_detail)
+                                            logger.warning(
+                                                "Creative format validation failure",
+                                                extra={
+                                                    "creative_id": creative_id,
+                                                    "product_id": package.product_id,
+                                                    "creative_format": creative.format,
+                                                    "creative_agent_url": creative.agent_url,
+                                                    "validation_error": format_error,
+                                                },
+                                            )
+                                            ctx_manager.update_workflow_step(
+                                                step.step_id, status="failed", error_message=error_detail
+                                            )
+                                            raise ToolError("CREATIVE_FORMAT_MISMATCH", error_detail)
 
                                         logger.info(
                                             f"Creative {creative_id} format validated against product {package.product_id}"
