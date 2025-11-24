@@ -11,6 +11,7 @@ import logging
 import os
 from datetime import UTC, datetime
 
+from babel import numbers as babel_numbers
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import func, select
 
@@ -27,6 +28,30 @@ logger = logging.getLogger(__name__)
 
 # Create Blueprint
 tenants_bp = Blueprint("tenants", __name__, url_prefix="/tenant")
+
+
+def get_available_currencies():
+    """Get list of all ISO 4217 currency codes with names from Babel.
+
+    Returns:
+        list: List of dicts with 'code' and 'name' keys, sorted by code
+        Example: [{'code': 'USD', 'name': 'US Dollar'}, ...]
+    """
+    currencies = []
+    # Get all currency codes from Babel's currency data
+    from babel.core import get_global
+
+    currency_data = get_global("currency_names")
+    for code in sorted(currency_data.keys()):
+        try:
+            name = babel_numbers.get_currency_name(code, locale="en")
+            if name:  # Skip if no English name available
+                currencies.append({"code": code, "name": name})
+        except Exception:
+            # Skip currencies that can't be resolved
+            continue
+
+    return currencies
 
 
 @tenants_bp.route("/<tenant_id>")
@@ -342,6 +367,9 @@ def tenant_settings(tenant_id, section=None):
             # Get script_name for production URL handling
             script_name = "/admin" if is_production else ""
 
+            # Get available currencies from Babel
+            available_currencies = get_available_currencies()
+
             return render_template(
                 "tenant_settings.html",
                 tenant=tenant,
@@ -374,6 +402,7 @@ def tenant_settings(tenant_id, section=None):
                 custom_targeting_keys_count=custom_targeting_keys_count,
                 custom_targeting_values_count=custom_targeting_values_count,
                 setup_status=setup_status,
+                available_currencies=available_currencies,  # Currency list from Babel
             )
 
     except Exception as e:

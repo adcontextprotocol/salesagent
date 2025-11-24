@@ -205,6 +205,8 @@ def test_tenant(db_session):
         ad_server="mock",
         created_at=now,
         updated_at=now,
+        # Set default measurement provider (Publisher Ad Server)
+        measurement_providers={"providers": ["Publisher Ad Server"], "default": "Publisher Ad Server"},
     )
     db_session.add(tenant)
     db_session.commit()
