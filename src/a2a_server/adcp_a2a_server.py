@@ -2201,20 +2201,17 @@ def create_agent_card() -> AgentCard:
     server_url = get_a2a_server_url()
 
     from a2a.types import AgentCapabilities, AgentSkill
+    from adcp import get_adcp_version
 
     # Create AdCP extension (AdCP 2.5 spec)
-    # TODO: Report upstream - adcp library should provide get_protocol_version() function
-    # Currently the library only provides:
-    #   - adcp.__version__ = "2.12.0" (library/package version)
-    #   - adcp.get_adcp_version() = "v1" (schema version)
-    # But not the protocol version (2.5.0) needed for the AdCP extension.
-    # Until fixed, we must hardcode the protocol version based on the schema URI.
-    ADCP_PROTOCOL_VERSION = "2.5.0"  # AdCP protocol specification version we implement
+    # As of adcp 2.12.1, get_adcp_version() returns the protocol version (e.g., "2.5.0")
+    # Previously it returned the schema version (e.g., "v1"), but this was fixed upstream
+    protocol_version = get_adcp_version()
     adcp_extension = AgentExtension(
-        uri=f"https://adcontextprotocol.org/schemas/{ADCP_PROTOCOL_VERSION}/protocols/adcp-extension.json",
+        uri=f"https://adcontextprotocol.org/schemas/{protocol_version}/protocols/adcp-extension.json",
         description="AdCP protocol version and supported domains",
         params={
-            "adcp_version": ADCP_PROTOCOL_VERSION,
+            "adcp_version": protocol_version,
             "protocols_supported": ["media_buy"],  # Only media_buy protocol is currently supported
         },
     )
