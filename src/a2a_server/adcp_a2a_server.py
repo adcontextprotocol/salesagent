@@ -752,7 +752,8 @@ class AdCPRequestHandler(RequestHandler):
                     )
                 ]
             elif any(word in combined_text for word in ["create", "buy", "campaign", "media"]):
-                # NLP create_media_buy - call legacy helper (to be refactored in future)
+                # NLP create_media_buy - returns guidance/help information
+                # NOTE: This is a stub that redirects users to explicit skill invocation
                 result = await self._create_media_buy(combined_text, auth_token)
 
                 # Extract tenant and principal for logging
@@ -765,25 +766,21 @@ class AdCPRequestHandler(RequestHandler):
                     tenant_id = "unknown"
                     principal_id = "unknown"
 
-                # Note: _create_media_buy still returns protocol fields (legacy)
-                # This will be fully refactored to call skill handler in future
-                success = result.get("success", False)
-
+                # This is a guidance response (not a media buy creation)
                 self._log_a2a_operation(
                     "create_media_buy",
                     tenant_id,
                     principal_id,
-                    success,
-                    {"query": combined_text[:100], "success": success},
-                    result.get("message") if not success else None,
+                    True,  # Guidance successfully returned
+                    {"query": combined_text[:100], "response_type": "guidance"},
+                    None,
                 )
 
                 # Build artifact with TextPart + DataPart
-                # TODO: When refactoring _create_media_buy to call skill handler,
-                # extract human message from response.__str__() like get_products
-                human_message = result.get("message")  # Legacy: message field exists
-                artifact_name = "media_buy_created" if success else "media_buy_error"
-                artifact_id = "media_buy_1" if success else "media_buy_error_1"
+                # Extract guidance message for TextPart
+                human_message = result.get("guidance")
+                artifact_name = "media_buy_guidance"
+                artifact_id = "media_buy_guidance_1"
 
                 task.artifacts = [
                     self._build_artifact_with_textpart(
@@ -2078,50 +2075,57 @@ class AdCPRequestHandler(RequestHandler):
         }
 
     async def _create_media_buy(self, request: str, auth_token: str | None) -> dict:
-        """Create a media buy based on the request.
+        """Create a media buy based on the request (NLP stub - redirects to explicit skill).
+
+        NOTE: This is a legacy NLP helper that returns guidance information.
+        For actual media buy creation, use the explicit skill handler:
+        `_handle_create_media_buy_skill()`
+
+        Per AdCP spec, this returns a help/guidance response, NOT protocol fields.
 
         Args:
             request: User's media buy request
             auth_token: Bearer token for authentication
 
         Returns:
-            Dictionary containing media buy creation result
-        """
-        # For now, return a mock response indicating authentication is working
-        # but media buy creation needs more implementation
-        try:
-            # Verify authentication works
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="create_media_buy",
-            )
+            Dictionary containing guidance information (spec-compliant)
 
-            return {
-                "success": False,
-                "message": f"Authentication successful for {tool_context.principal_id}. To create a media buy, use explicit skill invocation with AdCP v2.2.0 spec-compliant format.",
-                "required_fields": ["brand_manifest", "packages", "start_time", "end_time"],
-                "note": "Per AdCP v2.2.0 spec, budget is specified at the PACKAGE level, not top level",
-                "authenticated_tenant": tool_context.tenant_id,
-                "authenticated_principal": tool_context.principal_id,
-                "example": {
-                    "brand_manifest": "https://example.com/brand-manifest.json",
-                    "packages": [
-                        {
-                            "buyer_ref": "pkg_1",
-                            "product_id": "video_premium",
-                            "budget": 10000.0,  # Budget is per package (required)
-                            "pricing_option_id": "cpm-fixed",
-                        }
-                    ],
-                    # Note: NO top-level budget field per AdCP v2.2.0 spec
-                    "start_time": "2025-02-01T00:00:00Z",
-                    "end_time": "2025-02-28T23:59:59Z",
-                },
-                "documentation": "https://adcontextprotocol.org/docs/",
-            }
-        except Exception as e:
-            logger.error(f"Error in media buy creation: {e}")
-            raise ServerError(InternalError(message=f"Authentication failed: {str(e)}"))
+        Raises:
+            ServerError: If authentication fails
+        """
+        if not auth_token:
+            raise ServerError(InvalidParamsError(message="Authentication token required"))
+
+        # Verify authentication works
+        tool_context = self._create_tool_context_from_a2a(
+            auth_token=auth_token,
+            tool_name="create_media_buy",
+        )
+
+        # Return guidance information (no protocol fields)
+        # This is a help response, not an actual media buy creation
+        return {
+            "guidance": f"Authentication successful for {tool_context.principal_id}. To create a media buy, use explicit skill invocation with AdCP v2.2.0 spec-compliant format.",
+            "required_fields": ["brand_manifest", "packages", "start_time", "end_time"],
+            "note": "Per AdCP v2.2.0 spec, budget is specified at the PACKAGE level, not top level",
+            "authenticated_tenant": tool_context.tenant_id,
+            "authenticated_principal": tool_context.principal_id,
+            "example": {
+                "brand_manifest": "https://example.com/brand-manifest.json",
+                "packages": [
+                    {
+                        "buyer_ref": "pkg_1",
+                        "product_id": "video_premium",
+                        "budget": 10000.0,  # Budget is per package (required)
+                        "pricing_option_id": "cpm-fixed",
+                    }
+                ],
+                # Note: NO top-level budget field per AdCP v2.2.0 spec
+                "start_time": "2025-02-01T00:00:00Z",
+                "end_time": "2025-02-28T23:59:59Z",
+            },
+            "documentation": "https://adcontextprotocol.org/docs/",
+        }
 
 
 def create_agent_card() -> AgentCard:
