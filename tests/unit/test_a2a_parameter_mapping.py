@@ -258,14 +258,16 @@ class TestA2AParameterMapping:
 
             import asyncio
 
-            result = asyncio.run(
-                handler._handle_create_media_buy_skill(parameters=incomplete_parameters, auth_token="test_token")
-            )
+            import pytest
+            from a2a.utils.errors import ServerError
 
-            # Should reject and list missing required parameters
-            assert result["success"] is False, "Should reject request missing required AdCP parameters"
+            # Should raise ServerError when required parameters are missing
+            with pytest.raises(ServerError) as exc_info:
+                asyncio.run(
+                    handler._handle_create_media_buy_skill(parameters=incomplete_parameters, auth_token="test_token")
+                )
 
-            # ValidationError message includes missing field names
-            error_message = str(result.get("message", "")).lower()
+            # Error message should list missing required parameters
+            error_message = str(exc_info.value).lower()
             assert "brand_manifest" in error_message, "Error message should mention missing 'brand_manifest'"
             assert "packages" in error_message, "Error message should mention missing 'packages'"
