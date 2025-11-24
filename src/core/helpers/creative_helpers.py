@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastmcp import Context
 
-    from src.core.schemas import Creative, PackageRequest
+    from src.core.database.models import Product as DBProduct
+    from src.core.schemas import Creative, FormatId, PackageRequest, Product
     from src.core.testing_context import TestingContext
     from src.core.tool_context import ToolContext
 
@@ -268,6 +269,85 @@ def _detect_snippet_type(snippet: str) -> str:
         return "javascript"
     else:
         return "html"  # Default
+
+
+def validate_creative_format_against_product(
+    creative_format_id: "FormatId",
+    product: "Product | DBProduct",
+) -> tuple[bool, str | None]:
+    """Validate that a creative's format_id matches the product's supported formats.
+
+    Args:
+        creative_format_id: FormatId object with agent_url and id fields
+        product: Product or DBProduct object with format_ids field
+
+    Returns:
+        Tuple of (is_valid, error_message):
+        - is_valid: True if creative format matches the product
+        - error_message: Descriptive error message if is_valid is False, None otherwise
+
+    Note:
+        Packages have exactly one product, so this is a binary check (matches or doesn't).
+        Format IDs should already be normalized before calling this function.
+
+    Example:
+        >>> from src.core.schemas import FormatId, Product
+        >>> creative_format = FormatId(agent_url="https://creative.example.com", id="banner_300x250")
+        >>> is_valid, error = validate_creative_format_against_product(creative_format, product)
+        >>> if not is_valid:
+        ...     raise ValueError(error)
+    """
+    # Extract format_ids from product
+    product_format_ids = product.format_ids or []
+    product_id = product.product_id
+    product_name = product.name
+
+    # Products with no format restrictions accept all creatives
+    if not product_format_ids:
+        return True, None
+
+    # Extract creative's format_id components
+    creative_agent_url = creative_format_id.agent_url
+    creative_id = creative_format_id.id
+
+    if not creative_agent_url or not creative_id:
+        return False, "Creative format_id is missing agent_url or id"
+
+    # Simple equality check: does creative's format_id match any product format_id?
+    for product_format in product_format_ids:
+        # Type assertion for mypy - format_ids should be list[FormatId]
+        assert hasattr(product_format, "agent_url"), "product_format must be FormatId object"
+        assert hasattr(product_format, "id"), "product_format must be FormatId object"
+
+        product_agent_url = product_format.agent_url
+        product_fmt_id = product_format.id
+
+        if not product_agent_url or not product_fmt_id:
+            continue
+
+        # Format IDs match if both agent_url and id are equal
+        if str(creative_agent_url) == str(product_agent_url) and creative_id == product_fmt_id:
+            return True, None
+
+    # Build error message with supported formats
+    supported_formats = []
+    for fmt in product_format_ids:
+        # Type assertion for mypy
+        assert hasattr(fmt, "agent_url"), "format must be FormatId object"
+        assert hasattr(fmt, "id"), "format must be FormatId object"
+
+        agent_url = fmt.agent_url
+        fmt_id = fmt.id
+        if agent_url and fmt_id:
+            supported_formats.append(f"{agent_url}/{fmt_id}")
+
+    creative_format_display = f"{creative_agent_url}/{creative_id}"
+    error_msg = (
+        f"Creative format '{creative_format_display}' does not match product '{product_name}' ({product_id}). "
+        f"Supported formats: {supported_formats}"
+    )
+
+    return False, error_msg
 
 
 def process_and_upload_package_creatives(
