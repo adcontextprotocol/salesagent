@@ -895,14 +895,16 @@ class TestA2ASkillInvocation:
             adcp_a2a_server._request_headers.set({"host": f"{sample_tenant['subdomain']}.example.com"})
 
             # Create skill invocation with correct parameters
-            # Per AdCP spec: requires media_buy_id and performance_data
+            # Per AdCP spec: requires media_buy_id and performance_data (list of ProductPerformance)
             skill_params = {
                 "media_buy_id": "mb_test_123",
-                "performance_data": {
-                    "impressions": 10000,
-                    "clicks": 250,
-                    "ctr": 0.025,
-                },
+                "performance_data": [
+                    {
+                        "product_id": "prod_test_1",
+                        "performance_index": 1.25,  # 25% better than baseline
+                        "confidence_score": 0.85,
+                    }
+                ],
             }
             message = create_a2a_message_with_skill("update_performance_index", skill_params)
             params = MessageSendParams(message=message)
