@@ -233,12 +233,13 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                         },
                     )
 
-            # Run async checks
+            # Run async checks with overall timeout
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
                 tasks = [check_publisher(p.publisher_domain) for p in partners]
-                results = loop.run_until_complete(asyncio.gather(*tasks))
+                # Add 30s overall timeout to prevent infinite hangs (individual checks have 10s timeout)
+                results = loop.run_until_complete(asyncio.wait_for(asyncio.gather(*tasks), timeout=30.0))
                 results_dict = dict(results)
             finally:
                 loop.close()

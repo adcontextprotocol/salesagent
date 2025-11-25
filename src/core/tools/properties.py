@@ -238,23 +238,23 @@ def list_authorized_properties(
     if ctx:
         try:
             # Log ALL headers received for debugging virtual host issues
-            logger.error("🔍 MCP list_authorized_properties called")
-            logger.error(f"🔍 context type={type(ctx)}")
+            logger.debug("🔍 MCP list_authorized_properties called")
+            logger.debug(f"🔍 context type={type(ctx)}")
 
             # Access raw Starlette request headers via context.request_context.request
             # ToolContext doesn't have request_context (A2A path doesn't use Starlette)
             request = None
             if isinstance(ctx, Context) and hasattr(ctx, "request_context"):
                 request = ctx.request_context.request
-            logger.error(f"🔍 request type={type(request) if request else None}")
+            logger.debug(f"🔍 request type={type(request) if request else None}")
 
             if request and hasattr(request, "headers"):
                 headers = dict(request.headers)
-                logger.error(f"🔍 Received {len(headers)} headers:")
+                logger.debug(f"🔍 Received {len(headers)} headers:")
                 for key, value in headers.items():
-                    logger.error(f"🔍   {key}: {value}")
+                    logger.debug(f"🔍   {key}: {value}")
 
-                logger.error(
+                logger.debug(
                     f"🔍 Key headers: Host={headers.get('host')}, Apx-Incoming-Host={headers.get('apx-incoming-host')}"
                 )
 
