@@ -766,6 +766,10 @@
                     {% if adapter_config and adapter_config.get('refresh_token') and adapter_config.get('network_code') %}
                     <!-- Fully configured - show success state -->
                     <div class="status-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
+                        <!-- Hidden fields for JS operations -->
+                        <input type="hidden" id="gam_refresh_token" value="{{ adapter_config.get('refresh_token') }}">
+                        <input type="hidden" id="gam_network_code" value="{{ adapter_config.get('network_code') }}">
+
                         <h4>✅ Configuration Complete</h4>
                         <ul style="list-style: none; padding: 0; margin: 0.5rem 0;">
                             <li>✅ OAuth Token: Configured</li>

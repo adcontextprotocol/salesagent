@@ -391,6 +391,15 @@ def update_adapter(tenant_id):
                         else ""
                     )
                     manual_approval = request.json.get("gam_manual_approval", False)
+
+                    # Special handler for "Edit Configuration" action from UI
+                    # When action == "edit_config", we want to clear the stored GAM network code
+                    # (and associated trafficker ID) so the UI shows the configuration wizard again,
+                    # while preserving the existing refresh token.
+                    action = request.json.get("action")
+                    if action == "edit_config" and adapter_config_obj:
+                        adapter_config_obj.gam_network_code = None
+                        adapter_config_obj.gam_trafficker_id = None
                 else:
                     network_code = request.form.get("gam_network_code", "").strip()
                     refresh_token = request.form.get("gam_refresh_token", "").strip()
