@@ -733,36 +733,33 @@ class TestA2ASkillInvocation:
     @pytest.mark.asyncio
     async def test_list_authorized_properties_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test list_authorized_properties skill invocation."""
-        # Create authorized properties for the tenant
+        # Create verified publisher partner for the tenant
         import uuid
 
         from sqlalchemy import select
 
         from src.core.database.database_session import get_db_session
-        from src.core.database.models import AuthorizedProperty
+        from src.core.database.models import PublisherPartner
 
-        # Generate unique property_id to avoid conflicts
-        unique_property_id = f"test_property_{uuid.uuid4().hex[:8]}"
+        # Generate unique publisher domain to avoid conflicts
+        unique_publisher_domain = f"test-publisher-{uuid.uuid4().hex[:8]}.example.com"
 
         with get_db_session() as session:
-            # Check if property already exists, create if not
-            stmt = select(AuthorizedProperty).filter_by(
-                property_id=unique_property_id, tenant_id=sample_tenant["tenant_id"]
+            # Check if publisher already exists, create if not
+            stmt = select(PublisherPartner).filter_by(
+                publisher_domain=unique_publisher_domain, tenant_id=sample_tenant["tenant_id"]
             )
-            existing_prop = session.scalars(stmt).first()
+            existing_publisher = session.scalars(stmt).first()
 
-            if not existing_prop:
-                prop = AuthorizedProperty(
-                    property_id=unique_property_id,
+            if not existing_publisher:
+                publisher = PublisherPartner(
                     tenant_id=sample_tenant["tenant_id"],
-                    property_type="website",
-                    name="Test Site",
-                    identifiers=[{"type": "domain", "value": "example.com"}],
-                    tags=["test"],
-                    publisher_domain="example.com",
-                    verification_status="verified",
+                    publisher_domain=unique_publisher_domain,
+                    display_name="Test Publisher",
+                    is_verified=True,  # Must be verified for list_authorized_properties
+                    sync_status="success",
                 )
-                session.add(prop)
+                session.add(publisher)
                 session.commit()
 
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])

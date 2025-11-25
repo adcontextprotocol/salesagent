@@ -357,6 +357,7 @@ def add_required_setup_data(session, tenant_id: str):
         GAMInventory,
         Principal,
         PropertyTag,
+        PublisherPartner,
         Tenant,
     )
 
@@ -367,6 +368,20 @@ def add_required_setup_data(session, tenant_id: str):
         # CRITICAL: Mark JSON field as modified so SQLAlchemy persists the change
         attributes.flag_modified(tenant, "authorized_emails")
         session.flush()  # Ensure changes are persisted immediately
+
+    # Create PublisherPartner if not exists (single source of truth for list_authorized_properties)
+    stmt_publisher = select(PublisherPartner).filter_by(
+        tenant_id=tenant_id, publisher_domain="fixture-default.example.com"
+    )
+    if not session.scalars(stmt_publisher).first():
+        publisher_partner = PublisherPartner(
+            tenant_id=tenant_id,
+            publisher_domain="fixture-default.example.com",
+            display_name="Fixture Default Publisher",
+            is_verified=True,  # Must be verified for list_authorized_properties
+            sync_status="success",
+        )
+        session.add(publisher_partner)
 
     # Create AuthorizedProperty if not exists
     stmt_property = select(AuthorizedProperty).filter_by(tenant_id=tenant_id)
