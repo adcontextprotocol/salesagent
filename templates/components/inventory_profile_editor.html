@@ -56,7 +56,7 @@ Then call: window.inventoryProfileEditor.open(profileData)
                         <label class="form-label">Ad Units</label>
                         <div class="d-flex gap-2 mb-2">
                             <input type="text" id="profileAdUnitSearch" class="form-control" placeholder="Search ad units...">
-                            <button type="button" class="btn btn-secondary" onclick="window.inventoryProfileEditor.openInventoryPicker('ad_unit')">
+                            <button type="button" class="btn btn-secondary" onclick="window.inventoryProfileEditor.openInventoryPicker('ad_unit', document.getElementById('profileAdUnitSearch').value)">
                                 <i class="fas fa-folder-open"></i> Browse Ad Units
                             </button>
                         </div>
@@ -70,7 +70,7 @@ Then call: window.inventoryProfileEditor.open(profileData)
                         <label class="form-label">Placements</label>
                         <div class="d-flex gap-2 mb-2">
                             <input type="text" id="profilePlacementSearch" class="form-control" placeholder="Search placements...">
-                            <button type="button" class="btn btn-secondary" onclick="window.inventoryProfileEditor.openInventoryPicker('placement')">
+                            <button type="button" class="btn btn-secondary" onclick="window.inventoryProfileEditor.openInventoryPicker('placement', document.getElementById('profilePlacementSearch').value)">
                                 <i class="fas fa-folder-open"></i> Browse Placements
                             </button>
                         </div>
@@ -169,16 +169,16 @@ Then call: window.inventoryProfileEditor.open(profileData)
             </div>
         </div>
     </div>
+    
+    {% set picker_config = {
+        'tenant_id': editor_config.tenant_id if editor_config else tenant_id,
+        'ad_unit_field_id': 'profileAdUnitIds',
+        'placement_field_id': 'profilePlacementIds',
+        'ad_unit_display_id': 'profileSelectedAdUnits',
+        'placement_display_id': 'profileSelectedPlacements'
+    } %}
+    {% include 'components/inventory_picker.html' %}
 </div>
-
-{% set picker_config = {
-    'tenant_id': editor_config.tenant_id if editor_config else tenant_id,
-    'ad_unit_field_id': 'profileAdUnitIds',
-    'placement_field_id': 'profilePlacementIds',
-    'ad_unit_display_id': 'profileSelectedAdUnits',
-    'placement_display_id': 'profileSelectedPlacements'
-} %}
-{% include 'components/inventory_picker.html' %}
 
 <!-- Format utilities for type-safe format_id handling -->
 <script src="{{ url_for('static', filename='js/format-utils.js') }}"></script>
@@ -211,7 +211,7 @@ Then call: window.inventoryProfileEditor.open(profileData)
         open: openEditor,
         close: closeEditor,
         save: saveProfile,
-        openInventoryPicker: (type) => window.inventoryPicker.open(type),
+        openInventoryPicker: (type, search) => window.inventoryPicker.open(type, search),
         setDefaultProperties: setDefaultProperties,
         selectAllFormats: selectAllFormats,
         deselectAllFormats: deselectAllFormats,
