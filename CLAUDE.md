@@ -1,5 +1,39 @@
 # AdCP Sales Agent - Development Guide
 
+## 🤖 For Claude (AI Assistant)
+
+This guide helps you work effectively with the AdCP sales agent codebase. Key principles:
+
+### Working with This Codebase
+1. **Always read before writing** - Use Read/Glob to understand existing patterns
+2. **Test your changes** - Run `uv run pytest tests/unit/ -x` before committing
+3. **Follow the patterns** - 7 critical patterns below are non-negotiable
+4. **When stuck** - Check `/docs` for detailed explanations
+5. **Pre-commit hooks are your friend** - They catch most issues automatically
+
+### Common Task Patterns
+- **Adding a new AdCP tool**: Extend library schema → Add `_impl()` function → Add MCP wrapper → Add A2A raw function → Add tests
+- **Fixing a route issue**: Check for conflicts with `grep -r "@.*route.*your/path"` → Use `url_for()` in Python, `scriptRoot` in JavaScript
+- **Modifying schemas**: Verify against AdCP spec → Update Pydantic model → Run `pytest tests/unit/test_adcp_contract.py`
+- **Database changes**: Use SQLAlchemy 2.0 `select()` → Use `JSONType` for JSON → Create migration with `alembic revision`
+
+### Key Files to Know
+- `src/core/main.py` - MCP tools and `_impl()` functions
+- `src/core/tools.py` - A2A raw functions
+- `src/core/schemas.py` - Pydantic models (AdCP-compliant)
+- `src/adapters/base.py` - Adapter interface
+- `src/adapters/gam/` - GAM implementation
+- `tests/unit/test_adcp_contract.py` - Schema compliance tests
+
+### What to Avoid
+- ❌ Don't use `session.query()` (use `select()` + `scalars()`)
+- ❌ Don't duplicate library schemas (extend with inheritance)
+- ❌ Don't hardcode URLs in JavaScript (use `scriptRoot`)
+- ❌ Don't bypass pre-commit hooks without good reason
+- ❌ Don't skip tests to make CI pass (fix the underlying issue)
+
+---
+
 ## 🚨 Critical Architecture Patterns
 
 ### 1. AdCP Schema: Extend Library Schemas
@@ -350,6 +384,47 @@ app = create_flask_app(agent)  # Provides all standard endpoints
 ### Admin UI
 - Local: http://localhost:8001
 - Production: Configure based on your hosting
+
+---
+
+## Decision Tree for Claude
+
+**User asks to add a new feature:**
+1. Search existing code: `Glob` for similar features
+2. Read relevant files to understand patterns
+3. Design solution following critical patterns
+4. Write tests first (TDD)
+5. Implement feature
+6. Run tests: `uv run pytest tests/unit/ -x`
+7. Commit with clear message
+
+**User reports a bug:**
+1. Reproduce: Read the code path
+2. Write failing test that demonstrates bug
+3. Fix the code
+4. Verify test passes
+5. Check for similar issues in codebase
+6. Commit fix with test
+
+**User asks "how does X work?"**
+1. Search for X: Use `Grep` to find relevant code
+2. Read the implementation
+3. Check tests for examples: `tests/unit/test_*X*.py`
+4. Explain with code references (file:line)
+5. Link to relevant docs if they exist
+
+**User asks to refactor code:**
+1. Verify tests exist and pass
+2. Make small, incremental changes
+3. Run tests after each change: `uv run pytest tests/unit/ -x`
+4. For import changes, verify: `python -c "from module import thing"`
+5. For shared implementations, run integration tests: `uv run pytest tests/integration/ -x`
+
+**User asks about best practices:**
+1. Check this CLAUDE.md for patterns
+2. Check `/docs` for detailed guidelines
+3. Look at recent code for current conventions
+4. When in doubt, follow the 7 critical patterns above
 
 ---
 
