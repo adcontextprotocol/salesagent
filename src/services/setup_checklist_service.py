@@ -17,6 +17,7 @@ from src.core.database.models import (
     GAMInventory,
     Principal,
     Product,
+    PublisherPartner,
     Tenant,
 )
 
@@ -169,6 +170,17 @@ class SetupChecklistService:
                 tid: count for tid, count in session.execute(principal_stmt).all()
             }
 
+            # Verified publisher partners per tenant
+            verified_publisher_stmt = (
+                select(PublisherPartner.tenant_id, func.count())
+                .where(PublisherPartner.tenant_id.in_(uncached_ids))
+                .where(PublisherPartner.is_verified == True)  # noqa: E712
+                .group_by(PublisherPartner.tenant_id)
+            )
+            verified_publisher_counts: dict[str, int] = {  # noqa: C416
+                tid: count for tid, count in session.execute(verified_publisher_stmt).all()
+            }
+
             # Build status for each uncached tenant using pre-fetched data
             for tenant_id in uncached_ids:
                 tenant = tenants.get(tenant_id)
@@ -182,6 +194,7 @@ class SetupChecklistService:
                     currency_count=currency_counts.get(tenant_id, 0),
                     budget_limit_count=budget_limit_counts.get(tenant_id, 0),
                     property_count=property_counts.get(tenant_id, 0),
+                    verified_publisher_count=verified_publisher_counts.get(tenant_id, 0),
                     gam_inventory_count=gam_inventory_counts.get(tenant_id, 0),
                     product_count=product_counts.get(tenant_id, 0),
                     principal_count=principal_counts.get(tenant_id, 0),
@@ -248,6 +261,7 @@ class SetupChecklistService:
         currency_count: int,
         budget_limit_count: int,
         property_count: int,
+        verified_publisher_count: int,
         gam_inventory_count: int,
         product_count: int,
         principal_count: int,
@@ -259,6 +273,7 @@ class SetupChecklistService:
             currency_count: Number of currency limits
             budget_limit_count: Number of currency limits with budget controls
             property_count: Number of authorized properties
+            verified_publisher_count: Number of verified publisher partners
             gam_inventory_count: Number of GAM inventory items
             product_count: Number of products
             principal_count: Number of principals
@@ -268,7 +283,13 @@ class SetupChecklistService:
         """
         # Build tasks using pre-fetched counts (no session queries)
         critical_tasks = self._build_critical_tasks(
-            tenant, currency_count, property_count, gam_inventory_count, product_count, principal_count
+            tenant,
+            currency_count,
+            property_count,
+            verified_publisher_count,
+            gam_inventory_count,
+            product_count,
+            principal_count,
         )
         recommended_tasks = self._build_recommended_tasks(tenant, budget_limit_count, currency_count)
         optional_tasks = self._build_optional_tasks(tenant, currency_count)
@@ -355,18 +376,36 @@ class SetupChecklistService:
         )
 
         # 3. Authorized Properties
+        # Single source of truth: AuthorizedProperty table
+        # (Populated automatically when syncing verified PublisherPartners)
         stmt = (
             select(func.count()).select_from(AuthorizedProperty).where(AuthorizedProperty.tenant_id == self.tenant_id)
         )
         property_count = session.scalar(stmt) or 0
+
+        # Also check verified publisher count for better messaging
+        stmt_publishers = (
+            select(func.count())
+            .select_from(PublisherPartner)
+            .where(PublisherPartner.tenant_id == self.tenant_id, PublisherPartner.is_verified == True)  # noqa: E712
+        )
+        verified_publisher_count = session.scalar(stmt_publishers) or 0
+
+        is_complete = property_count > 0
+        details = (
+            f"{property_count} properties from {verified_publisher_count} verified publishers"
+            if property_count > 0
+            else "Add publishers and sync to discover properties"
+        )
+
         tasks.append(
             SetupTask(
                 key="authorized_properties",
                 name="Authorized Properties",
                 description="Configure properties with adagents.json for verification",
-                is_complete=property_count > 0,
-                action_url=f"/tenant/{self.tenant_id}/authorized-properties",
-                details=f"{property_count} properties configured" if property_count > 0 else "No properties configured",
+                is_complete=is_complete,
+                action_url=f"/tenant/{self.tenant_id}/inventory#publishers-pane",
+                details=details,
             )
         )
 
@@ -482,11 +521,11 @@ class SetupChecklistService:
         has_emails = bool(tenant.authorized_emails and len(tenant.authorized_emails) > 0)
         access_control_configured = bool(has_domains or has_emails)
 
-        details = []
+        access_details: list[str] = []
         if has_domains and tenant.authorized_domains:
-            details.append(f"{len(tenant.authorized_domains)} domain(s)")
+            access_details.append(f"{len(tenant.authorized_domains)} domain(s)")
         if has_emails and tenant.authorized_emails:
-            details.append(f"{len(tenant.authorized_emails)} email(s)")
+            access_details.append(f"{len(tenant.authorized_emails)} email(s)")
 
         tasks.append(
             SetupTask(
@@ -496,7 +535,9 @@ class SetupChecklistService:
                 is_complete=access_control_configured,
                 action_url=f"/tenant/{self.tenant_id}/settings#account",
                 details=(
-                    ", ".join(details) if details else "No access control configured - only super admins can access"
+                    ", ".join(access_details)
+                    if access_details
+                    else "No access control configured - only super admins can access"
                 ),
             )
         )
@@ -681,6 +722,7 @@ class SetupChecklistService:
         tenant: Tenant,
         currency_count: int,
         property_count: int,
+        verified_publisher_count: int,
         gam_inventory_count: int,
         product_count: int,
         principal_count: int,
@@ -731,14 +773,24 @@ class SetupChecklistService:
         )
 
         # 3. Authorized Properties
+        # Single source of truth: AuthorizedProperty table
+        # (Populated automatically when syncing verified PublisherPartners)
+        # Note: property_count and verified_publisher_count are passed as parameters (pre-fetched)
+        properties_is_complete = property_count > 0
+        properties_details = (
+            f"{property_count} properties from {verified_publisher_count} verified publishers"
+            if property_count > 0
+            else "Add publishers and sync to discover properties"
+        )
+
         tasks.append(
             SetupTask(
                 key="authorized_properties",
                 name="Authorized Properties",
                 description="Configure properties with adagents.json for verification",
-                is_complete=property_count > 0,
-                action_url=f"/tenant/{self.tenant_id}/authorized-properties",
-                details=f"{property_count} properties configured" if property_count > 0 else "No properties configured",
+                is_complete=properties_is_complete,
+                action_url=f"/tenant/{self.tenant_id}/inventory#publishers-pane",
+                details=properties_details,
             )
         )
 
@@ -824,11 +876,11 @@ class SetupChecklistService:
         has_emails = bool(tenant.authorized_emails and len(tenant.authorized_emails) > 0)
         access_control_configured = bool(has_domains or has_emails)
 
-        details = []
+        access_details: list[str] = []
         if has_domains and tenant.authorized_domains:
-            details.append(f"{len(tenant.authorized_domains)} domain(s)")
+            access_details.append(f"{len(tenant.authorized_domains)} domain(s)")
         if has_emails and tenant.authorized_emails:
-            details.append(f"{len(tenant.authorized_emails)} email(s)")
+            access_details.append(f"{len(tenant.authorized_emails)} email(s)")
 
         tasks.append(
             SetupTask(
@@ -838,7 +890,9 @@ class SetupChecklistService:
                 is_complete=access_control_configured,
                 action_url=f"/tenant/{self.tenant_id}/settings#account",
                 details=(
-                    ", ".join(details) if details else "No access control configured - only super admins can access"
+                    ", ".join(access_details)
+                    if access_details
+                    else "No access control configured - only super admins can access"
                 ),
             )
         )
