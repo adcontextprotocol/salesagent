@@ -6,16 +6,18 @@ Centralizes the logic for determining how to route requests based on domain:
 - Admin domains (admin.*) → admin login
 - Unknown domains → fallback
 
-Used by both MCP server and Admin UI to ensure consistent behavior.
+Used by MCP server, Admin UI, and A2A server to ensure consistent behavior.
 """
 
 from dataclasses import dataclass
 from typing import Literal
 
-from sqlalchemy import select
-
-from src.core.database.database_session import get_db_session
-from src.core.database.models import Tenant
+# Import existing tenant lookup functions from config_loader
+# This ensures all servers (MCP, Admin, A2A) use the same lookup logic
+from src.core.config_loader import (
+    get_tenant_by_subdomain,
+    get_tenant_by_virtual_host,
+)
 from src.core.domain_config import extract_subdomain_from_host, is_sales_agent_domain
 
 
@@ -32,52 +34,6 @@ class RoutingResult:
     type: Literal["custom_domain", "subdomain", "admin", "unknown"]
     tenant: dict | None
     effective_host: str
-
-
-def get_tenant_by_virtual_host(virtual_host: str) -> dict | None:
-    """Look up tenant by virtual_host (custom domain).
-
-    Args:
-        virtual_host: Custom domain to look up (e.g., "sales-agent.accuweather.com")
-
-    Returns:
-        Tenant dict with keys: tenant_id, name, subdomain, virtual_host
-        Returns None if no tenant found
-    """
-    with get_db_session() as db_session:
-        stmt = select(Tenant).filter_by(virtual_host=virtual_host, is_active=True)
-        tenant_obj = db_session.scalars(stmt).first()
-        if tenant_obj:
-            return {
-                "tenant_id": tenant_obj.tenant_id,
-                "name": tenant_obj.name,
-                "subdomain": tenant_obj.subdomain,
-                "virtual_host": tenant_obj.virtual_host,
-            }
-    return None
-
-
-def get_tenant_by_subdomain(subdomain: str) -> dict | None:
-    """Look up tenant by subdomain.
-
-    Args:
-        subdomain: Subdomain to look up (e.g., "accuweather")
-
-    Returns:
-        Tenant dict with keys: tenant_id, name, subdomain, virtual_host
-        Returns None if no tenant found
-    """
-    with get_db_session() as db_session:
-        stmt = select(Tenant).filter_by(subdomain=subdomain, is_active=True)
-        tenant_obj = db_session.scalars(stmt).first()
-        if tenant_obj:
-            return {
-                "tenant_id": tenant_obj.tenant_id,
-                "name": tenant_obj.name,
-                "subdomain": tenant_obj.subdomain,
-                "virtual_host": tenant_obj.virtual_host,
-            }
-    return None
 
 
 def route_landing_page(request_headers: dict) -> RoutingResult:

@@ -2,8 +2,6 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from src.core.domain_routing import RoutingResult, route_landing_page
 
 
@@ -143,20 +141,5 @@ class TestRoutingResultDataclass:
         assert result.effective_host == ""
 
 
-@pytest.mark.requires_db
-class TestTenantLookupFunctions:
-    """Integration tests for tenant lookup functions (require database)."""
-
-    def test_get_tenant_by_virtual_host_not_found(self):
-        """get_tenant_by_virtual_host should return None for nonexistent domain."""
-        from src.core.domain_routing import get_tenant_by_virtual_host
-
-        result = get_tenant_by_virtual_host("nonexistent-domain.com")
-        assert result is None
-
-    def test_get_tenant_by_subdomain_not_found(self):
-        """get_tenant_by_subdomain should return None for nonexistent subdomain."""
-        from src.core.domain_routing import get_tenant_by_subdomain
-
-        result = get_tenant_by_subdomain("nonexistent")
-        assert result is None
+# Tenant lookup functions (get_tenant_by_virtual_host, get_tenant_by_subdomain)
+# are imported from config_loader and tested there, so we don't duplicate those tests here.
