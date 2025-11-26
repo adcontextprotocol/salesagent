@@ -18,7 +18,11 @@ from src.core.config_loader import (
     get_tenant_by_subdomain,
     get_tenant_by_virtual_host,
 )
-from src.core.domain_config import extract_subdomain_from_host, is_sales_agent_domain
+from src.core.domain_config import (
+    extract_subdomain_from_host,
+    is_admin_domain,
+    is_sales_agent_domain,
+)
 
 
 @dataclass
@@ -67,13 +71,15 @@ def route_landing_page(request_headers: dict) -> RoutingResult:
     if not effective_host:
         return RoutingResult("unknown", None, "")
 
-    # Admin domain check
-    if effective_host.startswith("admin."):
+    # Admin domain check - must be exact match to prevent spoofing
+    # (e.g., admin.sales-agent.scope3.com, NOT admin.malicious.com)
+    if is_admin_domain(effective_host):
         return RoutingResult("admin", None, effective_host)
 
     # Custom domain check (non-sales-agent domain)
     if not is_sales_agent_domain(effective_host):
         tenant = get_tenant_by_virtual_host(effective_host)
+        # Return custom_domain type even if tenant not found - caller decides how to handle
         return RoutingResult("custom_domain", tenant, effective_host)
 
     # Subdomain check (sales-agent domain with subdomain)

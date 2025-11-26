@@ -10,21 +10,51 @@ class TestRouteLandingPage:
 
     def test_admin_domain_routing(self):
         """Admin domains should route to type=admin."""
-        headers = {"Host": "admin.sales-agent.scope3.com"}
-        result = route_landing_page(headers)
+        from unittest.mock import patch
 
-        assert result.type == "admin"
-        assert result.tenant is None
-        assert result.effective_host == "admin.sales-agent.scope3.com"
+        # Mock is_admin_domain to return True for our test domain
+        with patch("src.core.domain_routing.is_admin_domain") as mock_is_admin:
+            mock_is_admin.return_value = True
+            headers = {"Host": "admin.sales-agent.scope3.com"}
+            result = route_landing_page(headers)
+
+            assert result.type == "admin"
+            assert result.tenant is None
+            assert result.effective_host == "admin.sales-agent.scope3.com"
+            mock_is_admin.assert_called_once_with("admin.sales-agent.scope3.com")
 
     def test_admin_domain_with_approximated_header(self):
         """Admin domains via Approximated should route to type=admin."""
-        headers = {"Host": "backend.example.com", "Apx-Incoming-Host": "admin.sales-agent.scope3.com"}
-        result = route_landing_page(headers)
+        from unittest.mock import patch
 
-        assert result.type == "admin"
-        assert result.tenant is None
-        assert result.effective_host == "admin.sales-agent.scope3.com"
+        with patch("src.core.domain_routing.is_admin_domain") as mock_is_admin:
+            mock_is_admin.return_value = True
+            headers = {"Host": "backend.example.com", "Apx-Incoming-Host": "admin.sales-agent.scope3.com"}
+            result = route_landing_page(headers)
+
+            assert result.type == "admin"
+            assert result.tenant is None
+            assert result.effective_host == "admin.sales-agent.scope3.com"
+
+    def test_admin_domain_spoofing_prevented(self):
+        """Malicious domains starting with 'admin.' should NOT route to admin."""
+        from unittest.mock import patch
+
+        # is_admin_domain will return False for non-matching domains
+        with patch("src.core.domain_routing.is_admin_domain") as mock_is_admin:
+            with patch("src.core.domain_routing.get_tenant_by_virtual_host") as mock_get_tenant:
+                mock_is_admin.return_value = False  # Not a valid admin domain
+                mock_get_tenant.return_value = None
+
+                # Try to spoof with admin.malicious.com
+                headers = {"Host": "admin.malicious.com"}
+                result = route_landing_page(headers)
+
+                # Should be treated as custom domain, NOT admin
+                assert result.type == "custom_domain"
+                assert result.tenant is None
+                assert result.effective_host == "admin.malicious.com"
+                mock_is_admin.assert_called_once_with("admin.malicious.com")
 
     @patch("src.core.domain_routing.get_tenant_by_virtual_host")
     def test_custom_domain_with_tenant(self, mock_get_tenant):
