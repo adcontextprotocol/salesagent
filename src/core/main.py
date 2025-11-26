@@ -193,7 +193,9 @@ context_mgr = ContextManager()
 
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
-SELECTED_ADAPTER = ((config.get("ad_server", {}).get("adapter") or "mock") if config else "mock").lower()  # noqa: F841 - used below for adapter selection
+SELECTED_ADAPTER = (
+    (config.get("ad_server", {}).get("adapter") or "mock") if config else "mock"
+).lower()  # noqa: F841 - used below for adapter selection
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- In-Memory State (already initialized above, just adding context_map) ---
@@ -645,9 +647,8 @@ if unified_mode:
         headers = dict(request.headers)
         apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
 
-        # Check if this is an external domain request
-        if apx_host and apx_host.endswith(".adcontextprotocol.org"):
-            # Look up tenant by virtual host
+        # First, try to look up tenant by virtual host (works for any custom domain)
+        if apx_host:
             tenant = get_tenant_by_virtual_host(apx_host)
 
             if tenant:
@@ -792,9 +793,9 @@ if unified_mode:
                     "type": task.step_type,
                     "tool_name": task.tool_name,
                     "owner": task.owner,
-                    "created_at": task.created_at.isoformat()
-                    if hasattr(task.created_at, "isoformat")
-                    else str(task.created_at),  # type: ignore[union-attr]
+                    "created_at": (
+                        task.created_at.isoformat() if hasattr(task.created_at, "isoformat") else str(task.created_at)
+                    ),  # type: ignore[union-attr]
                     "updated_at": None,  # WorkflowStep doesn't have updated_at field
                     "context_id": task.context_id,
                     "associated_objects": [
@@ -875,9 +876,9 @@ if unified_mode:
                 "type": task.step_type,
                 "tool_name": task.tool_name,
                 "owner": task.owner,
-                "created_at": task.created_at.isoformat()
-                if hasattr(task.created_at, "isoformat")
-                else str(task.created_at),  # type: ignore[union-attr]
+                "created_at": (
+                    task.created_at.isoformat() if hasattr(task.created_at, "isoformat") else str(task.created_at)
+                ),  # type: ignore[union-attr]
                 "updated_at": None,  # WorkflowStep doesn't have updated_at field
                 "request_data": task.request_data,
                 "response_data": task.response_data,
@@ -887,9 +888,9 @@ if unified_mode:
                         "type": m.object_type,  # type: ignore[attr-defined]
                         "id": m.object_id,  # type: ignore[attr-defined]
                         "action": m.action,  # type: ignore[attr-defined]
-                        "created_at": m.created_at.isoformat()
-                        if hasattr(m.created_at, "isoformat")
-                        else str(m.created_at),  # type: ignore[union-attr]
+                        "created_at": (
+                            m.created_at.isoformat() if hasattr(m.created_at, "isoformat") else str(m.created_at)
+                        ),  # type: ignore[union-attr]
                     }
                     for m in mappings
                 ],
