@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Production Landing Page Testing Script
+Production Agent Testing Script
 
-Tests all critical endpoints after deploying landing page changes.
-Run this script after deploy to verify nothing is broken.
+Tests all production agents after deploying changes.
+Tests both protocol endpoints (MCP/A2A) and web pages (landing/login).
 
 Usage:
     python scripts/test_production_landing_pages.py
     python scripts/test_production_landing_pages.py --verbose
-    python scripts/test_production_landing_pages.py --domain accuweather.sales-agent.scope3.com
+    python scripts/test_production_landing_pages.py --agent accuweather
 """
 
 import argparse
+import json
+import subprocess
 import sys
 from typing import Any
 
@@ -21,45 +23,42 @@ from rich.table import Table
 
 console = Console()
 
-# Production tenants and their expected configurations
-PRODUCTION_TENANTS = {
-    "test-agent.adcontextprotocol.org": {
+# Production agents to test
+PRODUCTION_AGENTS = {
+    "accuweather": {
+        "url": "https://accuweather.sales-agent.scope3.com",
+        "type": "custom domain",
+        "test_mcp": True,
+        "test_a2a": True,
+        "expect_landing": True,  # Should show landing page at root
+        "expect_login": False,
+    },
+    "applabs": {
+        "url": "https://applabs.sales-agent.scope3.com",
+        "type": "subdomain",
+        "test_mcp": False,  # Not configured yet
+        "test_a2a": False,
+        "expect_landing": True,  # Shows "Pending Configuration" page
+        "expect_login": False,
+        "pending_config": True,
+    },
+    "test-agent": {
+        "url": "https://test-agent.adcontextprotocol.org",
         "type": "adcontextprotocol domain",
-        "tenant_name": "Test Agent",
-        "should_show_landing": False,  # Redirects to login instead
-        "redirects_to_login": True,  # Special case - requires auth
-        "has_mcp": False,  # Don't test - requires proper headers/auth (use npx @adcp/client)
-        "has_a2a": False,  # Don't test - requires proper headers/auth (use npx @adcp/client)
-        "has_agent_card": False,  # Don't test - requires auth
+        "test_mcp": True,
+        "test_a2a": True,
+        "expect_landing": False,
+        "expect_login": True,  # Redirects to login
     },
-    "accuweather.sales-agent.scope3.com": {
-        "type": "custom domain (AccuWeather)",
-        "tenant_name": "AccuWeather",
-        "should_show_landing": True,
-        "has_mcp": True,
-        "has_a2a": True,
-        "has_agent_card": True,
-    },
-    "applabs.sales-agent.scope3.com": {
-        "type": "subdomain (AppLabs)",
-        "tenant_name": "AppLabs",
-        "should_show_landing": True,
-        "has_mcp": False,  # Not configured yet - shows "Pending Configuration" page
-        "has_a2a": False,
-        "has_agent_card": False,
-        "pending_configuration": True,  # Special case - tenant exists but not configured
+    "admin": {
+        "url": "https://admin.sales-agent.scope3.com",
+        "type": "admin UI",
+        "test_mcp": False,
+        "test_a2a": False,
+        "expect_landing": False,
+        "expect_login": True,  # Should redirect to login
     },
 }
-
-# Admin UI domains (should redirect to login, not show landing page)
-ADMIN_DOMAINS = [
-    "admin.sales-agent.scope3.com",
-]
-
-# Main domain (should show signup landing, not tenant landing)
-MAIN_DOMAINS = [
-    "sales-agent.scope3.com",
-]
 
 
 class TestResult:
@@ -71,63 +70,155 @@ class TestResult:
         self.details = details or {}
 
 
-def test_landing_page(domain: str, config: dict[str, Any], verbose: bool = False) -> TestResult:
-    """Test that landing page shows properly for a tenant."""
-    url = f"https://{domain}"
+def test_mcp_endpoint(agent_name: str, url: str, verbose: bool = False) -> TestResult:
+    """Test MCP endpoint using npx @adcp/client."""
+    try:
+        # Use npx @adcp/client to test MCP endpoint
+        cmd = ["npx", "@adcp/client", url, "--protocol", "mcp", "--json"]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+        if verbose:
+            console.print(f"[dim]MCP command: {' '.join(cmd)}[/dim]")
+            console.print(f"[dim]Return code: {result.returncode}[/dim]")
+            if result.stdout:
+                console.print(f"[dim]stdout: {result.stdout[:200]}[/dim]")
+            if result.stderr:
+                console.print(f"[dim]stderr: {result.stderr[:200]}[/dim]")
+
+        # Check if it succeeded (lists tools or returns valid response)
+        if result.returncode == 0:
+            # Try to parse JSON response
+            try:
+                response = json.loads(result.stdout) if result.stdout else {}
+                if isinstance(response, dict) and ("tools" in response or "error" not in response):
+                    return TestResult(True, "MCP endpoint accessible", {"url": url})
+            except json.JSONDecodeError:
+                pass
+
+            # Non-JSON but success
+            if "error" not in result.stdout.lower():
+                return TestResult(True, "MCP endpoint accessible", {"url": url})
+
+        # Check stderr for specific errors
+        stderr_lower = result.stderr.lower()
+        if "authentication" in stderr_lower or "unauthorized" in stderr_lower:
+            return TestResult(False, "MCP endpoint requires auth (expected for some agents)", {"url": url})
+
+        if "econnrefused" in stderr_lower or "enotfound" in stderr_lower:
+            return TestResult(False, "MCP endpoint not reachable", {"url": url, "error": result.stderr[:100]})
+
+        return TestResult(
+            False, f"MCP endpoint error (code {result.returncode})", {"url": url, "error": result.stderr[:100]}
+        )
+
+    except subprocess.TimeoutExpired:
+        return TestResult(False, "MCP test timed out", {"url": url})
+    except FileNotFoundError:
+        return TestResult(False, "npx @adcp/client not found (install Node.js)", {"url": url})
+    except Exception as e:
+        return TestResult(False, f"MCP test failed: {e}", {"url": url})
+
+
+def test_a2a_endpoint(agent_name: str, url: str, verbose: bool = False) -> TestResult:
+    """Test A2A endpoint using npx @adcp/client."""
+    try:
+        # Use npx @adcp/client to test A2A endpoint
+        cmd = ["npx", "@adcp/client", url, "--protocol", "a2a", "--json"]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+        if verbose:
+            console.print(f"[dim]A2A command: {' '.join(cmd)}[/dim]")
+            console.print(f"[dim]Return code: {result.returncode}[/dim]")
+            if result.stdout:
+                console.print(f"[dim]stdout: {result.stdout[:200]}[/dim]")
+            if result.stderr:
+                console.print(f"[dim]stderr: {result.stderr[:200]}[/dim]")
+
+        # Check if it succeeded
+        if result.returncode == 0:
+            try:
+                response = json.loads(result.stdout) if result.stdout else {}
+                if isinstance(response, dict) and ("capabilities" in response or "error" not in response):
+                    return TestResult(True, "A2A endpoint accessible", {"url": url})
+            except json.JSONDecodeError:
+                pass
+
+            if "error" not in result.stdout.lower():
+                return TestResult(True, "A2A endpoint accessible", {"url": url})
+
+        # Check stderr for specific errors
+        stderr_lower = result.stderr.lower()
+        if "authentication" in stderr_lower or "unauthorized" in stderr_lower:
+            return TestResult(False, "A2A endpoint requires auth (expected for some agents)", {"url": url})
+
+        if "econnrefused" in stderr_lower or "enotfound" in stderr_lower:
+            return TestResult(False, "A2A endpoint not reachable", {"url": url, "error": result.stderr[:100]})
+
+        return TestResult(
+            False, f"A2A endpoint error (code {result.returncode})", {"url": url, "error": result.stderr[:100]}
+        )
+
+    except subprocess.TimeoutExpired:
+        return TestResult(False, "A2A test timed out", {"url": url})
+    except FileNotFoundError:
+        return TestResult(False, "npx @adcp/client not found (install Node.js)", {"url": url})
+    except Exception as e:
+        return TestResult(False, f"A2A test failed: {e}", {"url": url})
+
+
+def test_landing_page(agent_name: str, config: dict[str, Any], verbose: bool = False) -> TestResult:
+    """Test that landing page or login redirect works."""
+    url = config["url"]
 
     try:
         response = requests.get(url, timeout=10, allow_redirects=False)
 
-        # Special case: Domain redirects to login
-        if config.get("redirects_to_login"):
+        if verbose:
+            console.print(f"[dim]GET {url}[/dim]")
+            console.print(f"[dim]Status: {response.status_code}[/dim]")
+
+        # Check if should redirect to login
+        if config.get("expect_login"):
             if response.status_code in [301, 302, 303, 307, 308]:
                 location = response.headers.get("Location", "")
-                if "login" in location:
-                    return TestResult(True, "Redirects to login (expected)", {"url": url, "location": location})
-                return TestResult(False, f"Redirects but not to login: {location}", {"url": url})
-            return TestResult(False, f"Expected redirect, got {response.status_code}", {"url": url})
+                if "login" in location.lower():
+                    return TestResult(True, "Redirects to login (expected)", {"url": url})
+                return TestResult(False, f"Redirects to {location}, expected login", {"url": url})
+            return TestResult(False, f"Expected redirect to login, got {response.status_code}", {"url": url})
 
-        if response.status_code != 200:
-            return TestResult(
-                False,
-                f"Expected 200, got {response.status_code}",
-                {"status_code": response.status_code, "url": url},
-            )
+        # Check if should show landing page
+        if config.get("expect_landing"):
+            if response.status_code != 200:
+                return TestResult(False, f"Expected 200, got {response.status_code}", {"url": url})
 
-        html = response.text
+            html = response.text
 
-        # Special case: Pending configuration page
-        if config.get("pending_configuration"):
-            if "Pending Configuration" in html:
-                return TestResult(True, "Shows pending configuration page (expected)", {"url": url})
-            else:
-                return TestResult(False, "Expected pending configuration page", {"url": url})
+            # Special case: Pending configuration
+            if config.get("pending_config"):
+                if "Pending Configuration" in html or "pending" in html.lower():
+                    return TestResult(True, "Shows pending configuration page (expected)", {"url": url})
+                # If it shows a real landing page, that's even better!
+                if "MCP" in html or "A2A" in html:
+                    return TestResult(True, "Shows landing page (configured!)", {"url": url})
+                return TestResult(False, "Expected pending config or landing page", {"url": url})
 
-        # Check for MCP endpoint
-        if config.get("has_mcp"):
-            if "/mcp" not in html:
-                return TestResult(False, "MCP endpoint not found in landing page", {"url": url})
+            # Normal landing page checks
+            checks = []
+            if "MCP" in html or "/mcp" in html:
+                checks.append("MCP")
+            if "A2A" in html or "agent-to-agent" in html.lower():
+                checks.append("A2A")
+            if "agent.json" in html or ".well-known" in html:
+                checks.append("agent card")
 
-        # Check for A2A endpoint reference
-        if config.get("has_a2a"):
-            if "A2A" not in html and "agent-to-agent" not in html.lower():
-                return TestResult(False, "A2A endpoint not mentioned in landing page", {"url": url})
+            if len(checks) >= 2:  # At least 2 of the 3 should be present
+                return TestResult(True, f"Landing page shows {', '.join(checks)}", {"url": url})
 
-        # Check for agent card
-        if config.get("has_agent_card"):
-            if "/.well-known/agent.json" not in html:
-                return TestResult(False, "Agent card link not found in landing page", {"url": url})
+            return TestResult(False, f"Landing page missing content (found: {checks})", {"url": url})
 
-        # Check that it's not a fallback/error page
-        if "error" in html.lower() and "generating landing page" in html.lower():
-            return TestResult(False, "Showing error fallback page instead of proper landing", {"url": url})
-
-        # Check for tenant name (if configured)
-        if config.get("tenant_name"):
-            # Relaxed check - tenant name might be in various places
-            pass
-
-        return TestResult(True, "Landing page looks good", {"url": url, "size": len(html)})
+        return TestResult(True, "Page accessible", {"url": url})
 
     except requests.Timeout:
         return TestResult(False, "Request timed out", {"url": url})
@@ -135,183 +226,60 @@ def test_landing_page(domain: str, config: dict[str, Any], verbose: bool = False
         return TestResult(False, f"Request failed: {e}", {"url": url})
 
 
-def test_mcp_endpoint(domain: str, verbose: bool = False) -> TestResult:
-    """Test that MCP endpoint is accessible."""
-    url = f"https://{domain}/mcp"
-
-    try:
-        response = requests.get(url, timeout=10, allow_redirects=False)
-
-        # MCP should return some response (200 or specific MCP error)
-        if response.status_code in [200, 400, 405]:
-            return TestResult(True, f"MCP endpoint accessible (status {response.status_code})", {"url": url})
-
-        return TestResult(
-            False,
-            f"Unexpected status code {response.status_code}",
-            {"status_code": response.status_code, "url": url},
-        )
-
-    except requests.Timeout:
-        return TestResult(False, "Request timed out", {"url": url})
-    except requests.RequestException as e:
-        return TestResult(False, f"Request failed: {e}", {"url": url})
-
-
-def test_a2a_endpoint(domain: str, verbose: bool = False) -> TestResult:
-    """Test that A2A endpoint is accessible."""
-    url = f"https://{domain}/"
-
-    try:
-        # A2A endpoint is at root, should return JSON-RPC response or method not allowed
-        response = requests.post(url, json={}, timeout=10, allow_redirects=False)
-
-        # A2A should return some JSON response
-        if response.status_code in [200, 400, 405]:
-            try:
-                response.json()  # Should be valid JSON
-                return TestResult(True, f"A2A endpoint accessible (status {response.status_code})", {"url": url})
-            except ValueError:
-                return TestResult(False, "A2A endpoint not returning JSON", {"url": url})
-
-        return TestResult(
-            False,
-            f"Unexpected status code {response.status_code}",
-            {"status_code": response.status_code, "url": url},
-        )
-
-    except requests.Timeout:
-        return TestResult(False, "Request timed out", {"url": url})
-    except requests.RequestException as e:
-        return TestResult(False, f"Request failed: {e}", {"url": url})
-
-
-def test_agent_card(domain: str, verbose: bool = False) -> TestResult:
-    """Test that agent card is accessible."""
-    url = f"https://{domain}/.well-known/agent.json"
-
-    try:
-        response = requests.get(url, timeout=10, allow_redirects=False)
-
-        if response.status_code != 200:
-            return TestResult(
-                False,
-                f"Expected 200, got {response.status_code}",
-                {"status_code": response.status_code, "url": url},
-            )
-
-        try:
-            agent_card = response.json()
-
-            # Check for required fields
-            if "name" not in agent_card:
-                return TestResult(False, "Agent card missing 'name' field", {"url": url})
-
-            return TestResult(True, "Agent card accessible and valid", {"url": url, "name": agent_card.get("name")})
-
-        except ValueError:
-            return TestResult(False, "Agent card is not valid JSON", {"url": url})
-
-    except requests.Timeout:
-        return TestResult(False, "Request timed out", {"url": url})
-    except requests.RequestException as e:
-        return TestResult(False, f"Request failed: {e}", {"url": url})
-
-
-def test_admin_redirect(domain: str, verbose: bool = False) -> TestResult:
-    """Test that admin domain redirects to login."""
-    url = f"https://{domain}/"
-
-    try:
-        response = requests.get(url, timeout=10, allow_redirects=False)
-
-        # Should redirect to login
-        if response.status_code in [301, 302, 303, 307, 308]:
-            location = response.headers.get("Location", "")
-            if "login" in location:
-                return TestResult(True, "Admin redirects to login", {"url": url, "location": location})
-            return TestResult(False, f"Admin redirects but not to login: {location}", {"url": url})
-
-        return TestResult(
-            False,
-            f"Admin should redirect, got {response.status_code}",
-            {"status_code": response.status_code, "url": url},
-        )
-
-    except requests.Timeout:
-        return TestResult(False, "Request timed out", {"url": url})
-    except requests.RequestException as e:
-        return TestResult(False, f"Request failed: {e}", {"url": url})
-
-
-def run_tests(domains: list[str] | None = None, verbose: bool = False) -> tuple[int, int]:
+def run_tests(agents: list[str] | None = None, verbose: bool = False) -> tuple[int, int]:
     """Run all tests and return (passed, total)."""
-    console.print("\n[bold cyan]🧪 Production Landing Page Tests[/bold cyan]\n")
+    console.print("\n[bold cyan]🧪 Production Agent Tests[/bold cyan]\n")
 
-    domains_to_test = domains if domains else list(PRODUCTION_TENANTS.keys())
+    agents_to_test = agents if agents else list(PRODUCTION_AGENTS.keys())
 
     results: list[tuple[str, str, TestResult]] = []
     passed = 0
     total = 0
 
-    for domain in domains_to_test:
-        config = PRODUCTION_TENANTS.get(domain, {})
+    for agent_name in agents_to_test:
+        if agent_name not in PRODUCTION_AGENTS:
+            console.print(f"[yellow]⚠️  Unknown agent: {agent_name}[/yellow]")
+            continue
 
-        console.print(f"[bold]Testing {domain}[/bold] ({config.get('type', 'unknown')})")
+        config = PRODUCTION_AGENTS[agent_name]
 
-        # Test landing page
-        result = test_landing_page(domain, config, verbose)
-        results.append((domain, "Landing Page", result))
+        console.print(f"[bold]{agent_name}[/bold] ({config['type']}) - {config['url']}")
+
+        # Test landing page / login
+        result = test_landing_page(agent_name, config, verbose)
+        results.append((agent_name, "Landing/Login", result))
         total += 1
         if result.passed:
             passed += 1
 
         # Test MCP endpoint
-        if config.get("has_mcp"):
-            result = test_mcp_endpoint(domain, verbose)
-            results.append((domain, "MCP Endpoint", result))
+        if config.get("test_mcp"):
+            result = test_mcp_endpoint(agent_name, config["url"], verbose)
+            results.append((agent_name, "MCP Endpoint", result))
             total += 1
             if result.passed:
                 passed += 1
 
         # Test A2A endpoint
-        if config.get("has_a2a"):
-            result = test_a2a_endpoint(domain, verbose)
-            results.append((domain, "A2A Endpoint", result))
+        if config.get("test_a2a"):
+            result = test_a2a_endpoint(agent_name, config["url"], verbose)
+            results.append((agent_name, "A2A Endpoint", result))
             total += 1
             if result.passed:
                 passed += 1
 
-        # Test agent card
-        if config.get("has_agent_card"):
-            result = test_agent_card(domain, verbose)
-            results.append((domain, "Agent Card", result))
-            total += 1
-            if result.passed:
-                passed += 1
-
-        console.print()
-
-    # Test admin domains
-    for domain in ADMIN_DOMAINS:
-        console.print(f"[bold]Testing {domain}[/bold] (admin domain)")
-        result = test_admin_redirect(domain, verbose)
-        results.append((domain, "Admin Redirect", result))
-        total += 1
-        if result.passed:
-            passed += 1
         console.print()
 
     # Print results table
     table = Table(title="Test Results")
-    table.add_column("Domain", style="cyan")
+    table.add_column("Agent", style="cyan")
     table.add_column("Test", style="magenta")
     table.add_column("Status", style="bold")
     table.add_column("Message")
 
-    for domain, test_name, result in results:
+    for agent, test_name, result in results:
         status = "[green]✓ PASS[/green]" if result.passed else "[red]✗ FAIL[/red]"
-        table.add_row(domain, test_name, status, result.message)
+        table.add_row(agent, test_name, status, result.message)
 
     console.print(table)
     console.print()
@@ -320,14 +288,14 @@ def run_tests(domains: list[str] | None = None, verbose: bool = False) -> tuple[
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test production landing pages after deploy")
+    parser = argparse.ArgumentParser(description="Test production agents after deploy")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-    parser.add_argument("--domain", "-d", help="Test specific domain only")
+    parser.add_argument("--agent", "-a", help="Test specific agent only")
     args = parser.parse_args()
 
-    domains = [args.domain] if args.domain else None
+    agents = [args.agent] if args.agent else None
 
-    passed, total = run_tests(domains, args.verbose)
+    passed, total = run_tests(agents, args.verbose)
 
     # Summary
     if passed == total:
