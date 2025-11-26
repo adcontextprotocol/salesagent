@@ -10,7 +10,6 @@ Handles property discovery including:
 import logging
 import time
 
-import sqlalchemy as sa
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -24,10 +23,9 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context
 from src.core.config_loader import get_current_tenant, set_current_tenant
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AuthorizedProperty, PropertyTag
+from src.core.database.models import PublisherPartner
 from src.core.helpers import log_tool_activity
 from src.core.schema_adapters import ListAuthorizedPropertiesRequest, ListAuthorizedPropertiesResponse
-from src.core.schemas import Property, PropertyIdentifier, PropertyTagMetadata
 from src.core.testing_hooks import get_testing_context
 from src.core.validation_helpers import safe_parse_json_field
 
@@ -96,64 +94,24 @@ def _list_authorized_properties_impl(
 
     try:
         with get_db_session() as session:
-            # Query authorized properties for this tenant
-            stmt = select(AuthorizedProperty).where(AuthorizedProperty.tenant_id == tenant_id)
+            # Query verified publisher partners for this tenant
+            # list_authorized_properties returns publisher domains we're authorized to represent
+            # This comes from our PublisherPartner table (single source of truth)
+            stmt = select(PublisherPartner).where(
+                PublisherPartner.tenant_id == tenant_id, PublisherPartner.is_verified == True  # noqa: E712
+            )
+            verified_publishers = session.scalars(stmt).all()
 
-            # Apply tag filtering if requested
-            if req.tags:
-                # Filter properties that have any of the requested tags
-                tag_filters = []
-                for tag in req.tags:
-                    tag_filters.append(AuthorizedProperty.tags.contains([tag]))
-                stmt = stmt.where(sa.or_(*tag_filters))
+            # Extract publisher domains
+            publisher_domains = sorted([p.publisher_domain for p in verified_publishers])
 
-            # Get all properties for this tenant (no verification status filter)
-            # Publishers control what properties they add - verification is informational only
-            authorized_properties = session.scalars(stmt).all()
-
-            # Convert database models to Pydantic models
-            properties = []
-            all_tags = set()
-
-            for prop in authorized_properties:
-                # Extract identifiers from JSON
-                identifiers = [
-                    PropertyIdentifier(type=ident["type"], value=ident["value"]) for ident in (prop.identifiers or [])
-                ]
-
-                # Extract tags
-                prop_tags = prop.tags or []
-                all_tags.update(prop_tags)
-
-                # Validate property_type is in allowed set
-                from typing import Literal, cast
-
-                PropertyType = Literal[
-                    "website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"
-                ]
-                property_type: PropertyType = cast(PropertyType, prop.property_type)
-
-                property_obj = Property(
-                    property_type=property_type,
-                    name=prop.name,
-                    identifiers=identifiers,
-                    tags=prop_tags,
-                    publisher_domain=prop.publisher_domain,
+            # If no publishers configured, return error - NO FALLBACK BEHAVIOR
+            if not publisher_domains:
+                raise ToolError(
+                    "NO_PUBLISHERS_CONFIGURED",
+                    f"No verified publisher partnerships configured for tenant '{tenant_id}'. "
+                    f"Please add publishers via the Admin UI at /admin/tenant/{tenant_id}/inventory#publishers-pane",
                 )
-                properties.append(property_obj)
-
-            # Get tag metadata for all referenced tags
-            tag_metadata = {}
-            if all_tags:
-                tags_stmt = select(PropertyTag).where(
-                    PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(all_tags)
-                )
-                property_tags = session.scalars(tags_stmt).all()
-
-                for property_tag in property_tags:
-                    tag_metadata[property_tag.tag_id] = PropertyTagMetadata(
-                        name=property_tag.name, description=property_tag.description if property_tag.description else ""
-                    )
 
             # Generate advertising policies text from tenant configuration
             advertising_policies_text = None
@@ -198,17 +156,6 @@ def _list_authorized_properties_impl(
                         "Violations will result in campaign rejection or require manual review."
                     )
 
-            # Extract unique publisher domains from properties
-            publisher_domains = sorted({prop.publisher_domain for prop in properties if prop.publisher_domain})
-
-            # If no properties configured, return error - NO FALLBACK BEHAVIOR
-            if not publisher_domains:
-                raise ToolError(
-                    "NO_PROPERTIES_CONFIGURED",
-                    f"No authorized properties configured for tenant '{tenant_id}'. "
-                    f"Please add properties via the Admin UI at /admin/tenant/{tenant_id}/authorized-properties",
-                )
-
             # Create response with AdCP spec-compliant fields
             # Note: Optional fields (advertising_policies, errors, etc.) should be omitted if not set,
             # not set to None or empty values. AdCPBaseModel.model_dump() uses exclude_none=True by default.
@@ -236,9 +183,8 @@ def _list_authorized_properties_impl(
                 adapter_id="mcp_server",
                 success=True,
                 details={
-                    "properties_count": len(properties),
-                    "requested_tags": req.tags,
-                    "response_tags_count": len(tag_metadata),
+                    "publisher_count": len(publisher_domains),
+                    "publisher_domains": publisher_domains,
                 },
             )
 
@@ -292,23 +238,23 @@ def list_authorized_properties(
     if ctx:
         try:
             # Log ALL headers received for debugging virtual host issues
-            logger.error("🔍 MCP list_authorized_properties called")
-            logger.error(f"🔍 context type={type(ctx)}")
+            logger.debug("🔍 MCP list_authorized_properties called")
+            logger.debug(f"🔍 context type={type(ctx)}")
 
             # Access raw Starlette request headers via context.request_context.request
             # ToolContext doesn't have request_context (A2A path doesn't use Starlette)
             request = None
             if isinstance(ctx, Context) and hasattr(ctx, "request_context"):
                 request = ctx.request_context.request
-            logger.error(f"🔍 request type={type(request) if request else None}")
+            logger.debug(f"🔍 request type={type(request) if request else None}")
 
             if request and hasattr(request, "headers"):
                 headers = dict(request.headers)
-                logger.error(f"🔍 Received {len(headers)} headers:")
+                logger.debug(f"🔍 Received {len(headers)} headers:")
                 for key, value in headers.items():
-                    logger.error(f"🔍   {key}: {value}")
+                    logger.debug(f"🔍   {key}: {value}")
 
-                logger.error(
+                logger.debug(
                     f"🔍 Key headers: Host={headers.get('host')}, Apx-Incoming-Host={headers.get('apx-incoming-host')}"
                 )
 

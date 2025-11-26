@@ -233,17 +233,19 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                         },
                     )
 
-            # Run async checks
+            # Run async checks with overall timeout
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
                 tasks = [check_publisher(p.publisher_domain) for p in partners]
-                results = loop.run_until_complete(asyncio.gather(*tasks))
+                # Add 30s overall timeout to prevent infinite hangs (individual checks have 10s timeout)
+                results = loop.run_until_complete(asyncio.wait_for(asyncio.gather(*tasks), timeout=30.0))
                 results_dict = dict(results)
             finally:
                 loop.close()
 
             # Update each partner with results
+            verified_domains = []
             for partner in partners:
                 result = results_dict.get(partner.publisher_domain)
 
@@ -255,6 +257,7 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                     synced += 1
                     if result["is_verified"]:
                         verified += 1
+                        verified_domains.append(partner.publisher_domain)
                 elif result:
                     partner.sync_status = "error"
                     partner.sync_error = result["error"]
@@ -262,6 +265,23 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                     errors += 1
 
             session.commit()
+
+            # CRITICAL: Now sync properties from verified publishers
+            # This populates AuthorizedProperty table which is used by Admin UI for building
+            # inventory profiles and products (requires full property details)
+            if verified_domains:
+                logger.info(f"Syncing properties from {len(verified_domains)} verified publishers")
+                from src.services.property_discovery_service import get_property_discovery_service
+
+                discovery_service = get_property_discovery_service()
+                property_stats = discovery_service.sync_properties_from_adagents_sync(
+                    tenant_id, publisher_domains=verified_domains, dry_run=False
+                )
+                logger.info(
+                    f"Property sync completed: {property_stats['properties_created']} created, "
+                    f"{property_stats['properties_updated']} updated, "
+                    f"{property_stats['tags_created']} tags created"
+                )
 
             return jsonify(
                 {

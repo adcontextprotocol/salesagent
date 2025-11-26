@@ -336,11 +336,12 @@ def add_required_setup_data(session, tenant_id: str):
 
     This helper ensures tenants have:
     1. Access control (authorized_emails)
-    2. Authorized property (for AdCP verification)
-    3. Currency limit (for budget validation)
-    4. Property tag (for product configuration)
-    5. Principal (advertiser) (for setup completion validation)
-    6. GAM inventory (for inventory sync status)
+    2. Verified publisher partner (single source of truth for list_authorized_properties)
+    3. Authorized property (for property details)
+    4. Currency limit (for budget validation)
+    5. Property tag (for product configuration)
+    6. Principal (advertiser) (for setup completion validation)
+    7. GAM inventory (for inventory sync status)
 
     Call this in test fixtures to avoid "Setup incomplete" errors.
     """
@@ -357,6 +358,7 @@ def add_required_setup_data(session, tenant_id: str):
         GAMInventory,
         Principal,
         PropertyTag,
+        PublisherPartner,
         Tenant,
     )
 
@@ -367,6 +369,20 @@ def add_required_setup_data(session, tenant_id: str):
         # CRITICAL: Mark JSON field as modified so SQLAlchemy persists the change
         attributes.flag_modified(tenant, "authorized_emails")
         session.flush()  # Ensure changes are persisted immediately
+
+    # Create PublisherPartner if not exists (single source of truth for list_authorized_properties)
+    stmt_publisher = select(PublisherPartner).filter_by(
+        tenant_id=tenant_id, publisher_domain="fixture-default.example.com"
+    )
+    if not session.scalars(stmt_publisher).first():
+        publisher_partner = PublisherPartner(
+            tenant_id=tenant_id,
+            publisher_domain="fixture-default.example.com",
+            display_name="Fixture Default Publisher",
+            is_verified=True,  # Must be verified for list_authorized_properties
+            sync_status="success",
+        )
+        session.add(publisher_partner)
 
     # Create AuthorizedProperty if not exists
     stmt_property = select(AuthorizedProperty).filter_by(tenant_id=tenant_id)
