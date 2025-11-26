@@ -4,6 +4,12 @@
 
 {% block content %}
 <div class="card">
+    <div style="margin-bottom: 1.5rem;">
+        <a href="{{ url_for('inventory_profiles.list_inventory_profiles', tenant_id=tenant_id) }}" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
+            ← Back to Inventory Profiles
+        </a>
+    </div>
+
     <h2>Edit Inventory Profile: {{ profile.name }}</h2>
     <p class="text-muted">Update inventory configuration</p>
 

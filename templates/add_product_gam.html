@@ -4,6 +4,12 @@
 
 {% block content %}
 <div class="card">
+    <div style="margin-bottom: 1.5rem;">
+        <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
+            ← Back to Products
+        </a>
+    </div>
+
     <h2>{{ 'Edit' if product else 'Create' }} Product (Google Ad Manager)</h2>
 
     {% if not inventory_synced %}
