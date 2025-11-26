@@ -5,7 +5,7 @@
 {% block content %}
 <div class="card" style="max-width: 600px; margin: 0 auto;">
     <div style="margin-bottom: 1.5rem;">
-        <a href="/tenant/{{ tenant_id }}" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
+        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
             ← Back to Dashboard
         </a>
     </div>
@@ -78,7 +78,7 @@
 
         <div style="display: flex; gap: 1rem;">
             <button type="submit" class="btn">{{ 'Update Advertiser' if edit_mode else 'Add Advertiser' }}</button>
-            <a href="/tenant/{{ tenant_id }}" class="btn btn-secondary">Cancel</a>
+            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
 </div>
