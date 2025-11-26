@@ -76,33 +76,42 @@ class TestExternalDomainRouting:
                 assert result is None
 
     def test_index_route_external_domain_with_tenant(self):
-        """Test that external domain with configured tenant redirects to login."""
+        """Test that external domain with configured tenant shows agent landing page."""
         from src.admin.app import create_app
 
         app, _ = create_app()
 
         with app.test_client() as client:
             with patch("src.admin.blueprints.core.get_tenant_from_hostname") as mock_get_tenant:
-                # Mock tenant exists for this external domain
-                mock_tenant = Mock()
-                mock_tenant.tenant_id = "accuweather"
-                mock_tenant.name = "AccuWeather"
-                mock_tenant.subdomain = "accuweather"
-                mock_tenant.virtual_host = "sales-agent.accuweather.com"
-                mock_get_tenant.return_value = mock_tenant
+                with patch("src.landing.landing_page.generate_tenant_landing_page") as mock_landing:
+                    # Mock tenant exists for this external domain
+                    mock_tenant = Mock()
+                    mock_tenant.tenant_id = "accuweather"
+                    mock_tenant.name = "AccuWeather"
+                    mock_tenant.subdomain = "accuweather"
+                    mock_tenant.virtual_host = "sales-agent.accuweather.com"
+                    mock_get_tenant.return_value = mock_tenant
 
-                # Make request with Approximated headers
-                response = client.get(
-                    "/",
-                    headers={
-                        "Host": "backend.example.com",
-                        "Apx-Incoming-Host": "sales-agent.accuweather.com",
-                    },
-                )
+                    # Mock landing page generation
+                    mock_landing.return_value = "<html><body>Agent Landing Page</body></html>"
 
-                # Should redirect to login (302) since tenant exists
-                assert response.status_code == 302
-                assert "/login" in response.location
+                    # Make request with Approximated headers
+                    response = client.get(
+                        "/",
+                        headers={
+                            "Host": "backend.example.com",
+                            "Apx-Incoming-Host": "sales-agent.accuweather.com",
+                        },
+                    )
+
+                    # Should show agent landing page (200) with MCP/A2A endpoints
+                    assert response.status_code == 200
+                    assert b"Agent Landing Page" in response.data
+                    # Verify landing page was called with correct parameters
+                    mock_landing.assert_called_once()
+                    call_args = mock_landing.call_args
+                    assert call_args[0][0]["tenant_id"] == "accuweather"
+                    assert call_args[0][1] == "sales-agent.accuweather.com"
 
     def test_index_route_external_domain_no_tenant(self):
         """Test that external domain without configured tenant shows signup landing page."""
