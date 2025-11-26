@@ -7,7 +7,18 @@ import secrets
 import string
 from datetime import UTC, datetime
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import (
+    Blueprint,
+    Response,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+    url_for,
+)
 from sqlalchemy import select, text
 
 from src.admin.utils import require_auth  # type: ignore[attr-defined]
@@ -52,46 +63,33 @@ def index():
     """Main index page - redirects based on authentication and user role."""
     # Check if user is authenticated
     if "user" not in session:
-        # Not authenticated - check domain to decide where to send them
-        host = request.headers.get("Host", "")
-        approximated_host = request.headers.get("Apx-Incoming-Host")
+        # Not authenticated - use centralized routing logic
+        from src.core.domain_routing import route_landing_page
 
-        # Debug logging for troubleshooting
-        logger.info(f"[LANDING DEBUG] Host: {host}, Apx-Incoming-Host: {approximated_host}, Path: {request.path}")
-        logger.info(f"[LANDING DEBUG] All headers: {dict(request.headers)}")
+        result = route_landing_page(dict(request.headers))
+
+        logger.info(
+            f"[LANDING DEBUG] Routing decision: type={result.type}, host={result.effective_host}, "
+            f"tenant={'yes' if result.tenant else 'no'}"
+        )
 
         # Admin domain should go to login
-        if (approximated_host and approximated_host.startswith("admin.")) or host.startswith("admin."):
-            logger.info("[LANDING DEBUG] Detected admin domain, redirecting to login")
+        if result.type == "admin":
+            logger.info("[LANDING DEBUG] Admin domain detected, redirecting to login")
             return redirect(url_for("auth.login"))
 
-        # Check if we're on an external virtual host (via Approximated)
-        if approximated_host and not is_sales_agent_domain(approximated_host):
-            # External domain detected - check if tenant exists for this virtual host
-            logger.info(f"[LANDING DEBUG] External domain detected: {approximated_host}, checking for tenant")
-            tenant = get_tenant_from_hostname()
-            if tenant:
-                # Tenant exists - redirect to login for this tenant
-                logger.info(
-                    f"[LANDING DEBUG] Tenant found for external domain: {tenant.tenant_id}, redirecting to login"
-                )
-                return redirect(url_for("auth.login"))
-            else:
-                # No tenant configured for this external domain - show signup landing page
-                logger.info(
-                    f"[LANDING DEBUG] No tenant found for external domain: {approximated_host}, showing landing page"
-                )
-                return render_template("landing.html")
+        # Custom domain or subdomain with tenant - show agent landing page
+        if result.type in ("custom_domain", "subdomain") and result.tenant:
+            logger.info(f"[LANDING DEBUG] Tenant found ({result.type}), showing agent landing page")
+            from src.landing.landing_page import generate_tenant_landing_page
 
-        # Check if we're on a tenant-specific subdomain
-        tenant = get_tenant_from_hostname()
-        if tenant:
-            # Subdomain tenants redirect to login
-            logger.info(f"[LANDING DEBUG] Tenant subdomain detected: {tenant.tenant_id}, redirecting to login")
-            return redirect(url_for("auth.login"))
+            # The condition above ensures tenant is not None
+            assert result.tenant is not None, "Tenant must be present for custom_domain/subdomain routing"
+            html_content = generate_tenant_landing_page(result.tenant, result.effective_host)
+            return Response(html_content, mimetype="text/html")
 
-        # Main domain - show signup landing
-        logger.info("[LANDING DEBUG] Main domain detected, redirecting to /signup")
+        # No tenant found - show signup landing
+        logger.info("[LANDING DEBUG] No tenant found, redirecting to signup")
         return redirect(url_for("public.landing"))
 
     # Check if we're on a tenant-specific subdomain
