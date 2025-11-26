@@ -3,6 +3,13 @@
 {% block title %}Products - {{ tenant_name }} - Sales Agent Admin{% endblock %}
 
 {% block content %}
+<!-- Back button (consistent positioning) -->
+<div style="margin-bottom: 1rem;">
+    <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
+        ← Back to Dashboard
+    </a>
+</div>
+
 <!-- Product Design Guide -->
 <div class="card" style="margin-bottom: 1rem; background: #f8f9fa; border-left: 4px solid #007bff;">
     <div style="padding: 1rem;">
@@ -45,7 +52,6 @@
                     <i class="fas fa-th-large"></i>
                 </button>
             </div>
-            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">← Back to Dashboard</a>
             <a href="{{ url_for('products.add_product', tenant_id=tenant_id) }}" class="btn btn-primary">Add Product</a>
         </div>
     </div>
