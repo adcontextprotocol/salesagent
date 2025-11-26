@@ -26,7 +26,7 @@ console = Console()
 # Production agents to test
 PRODUCTION_AGENTS = {
     "accuweather": {
-        "url": "https://accuweather.sales-agent.scope3.com",
+        "url": "https://sales-agent.accuweather.com",
         "type": "custom domain",
         "test_mcp": True,
         "test_a2a": True,
