@@ -325,7 +325,7 @@ def add_inventory_profile(tenant_id: str):
                     name=name,
                     description=description if description else None,
                     inventory_config=inventory_config,
-                    formats=formats,
+                    format_ids=formats,
                     publisher_properties=publisher_properties,
                     targeting_template=targeting_template,
                 )
