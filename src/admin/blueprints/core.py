@@ -7,7 +7,18 @@ import secrets
 import string
 from datetime import UTC, datetime
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask import (
+    Blueprint,
+    Response,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+    url_for,
+)
 from sqlalchemy import select, text
 
 from src.admin.utils import require_auth  # type: ignore[attr-defined]
@@ -71,11 +82,22 @@ def index():
             logger.info(f"[LANDING DEBUG] External domain detected: {approximated_host}, checking for tenant")
             tenant = get_tenant_from_hostname()
             if tenant:
-                # Tenant exists - redirect to login for this tenant
+                # Tenant exists - show agent landing page with MCP/A2A links
                 logger.info(
-                    f"[LANDING DEBUG] Tenant found for external domain: {tenant.tenant_id}, redirecting to login"
+                    f"[LANDING DEBUG] Tenant found for external domain: {tenant.tenant_id}, showing agent landing page"
                 )
-                return redirect(url_for("auth.login"))
+                from src.landing.landing_page import generate_tenant_landing_page
+
+                # Generate tenant landing page HTML
+                html_content = generate_tenant_landing_page(
+                    {
+                        "tenant_id": tenant.tenant_id,
+                        "name": tenant.name,
+                        "subdomain": tenant.subdomain,
+                    },
+                    approximated_host,
+                )
+                return Response(html_content, mimetype="text/html")
             else:
                 # No tenant configured for this external domain - show signup landing page
                 logger.info(
