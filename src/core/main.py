@@ -653,6 +653,9 @@ if unified_mode:
         # Use whichever host is available
         effective_host = apx_host or host_header
 
+        # Log host information for debugging
+        logger.info(f"[LANDING] apx_host={apx_host}, host_header={host_header}, effective_host={effective_host}")
+
         if not effective_host:
             # No host information available
             from src.landing.landing_page import generate_fallback_landing_page
