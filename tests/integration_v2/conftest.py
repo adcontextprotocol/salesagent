@@ -336,11 +336,12 @@ def add_required_setup_data(session, tenant_id: str):
 
     This helper ensures tenants have:
     1. Access control (authorized_emails)
-    2. Authorized property (for AdCP verification)
-    3. Currency limit (for budget validation)
-    4. Property tag (for product configuration)
-    5. Principal (advertiser) (for setup completion validation)
-    6. GAM inventory (for inventory sync status)
+    2. Verified publisher partner (single source of truth for list_authorized_properties)
+    3. Authorized property (for property details)
+    4. Currency limit (for budget validation)
+    5. Property tag (for product configuration)
+    6. Principal (advertiser) (for setup completion validation)
+    7. GAM inventory (for inventory sync status)
 
     Call this in test fixtures to avoid "Setup incomplete" errors.
     """
