@@ -645,26 +645,32 @@ if unified_mode:
     async def handle_landing_page(request: Request):
         """Common landing page logic for both root and /landing routes."""
         headers = dict(request.headers)
-        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
 
-        if not apx_host:
-            # No host header provided
+        # Get host from Approximated header (proxied) or regular Host header (direct)
+        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
+        host_header = headers.get("host") or headers.get("Host")
+
+        # Use whichever host is available
+        effective_host = apx_host or host_header
+
+        if not effective_host:
+            # No host information available
             from src.landing.landing_page import generate_fallback_landing_page
 
             return HTMLResponse(content=generate_fallback_landing_page("No host specified"))
 
         # Determine routing strategy based on domain type
-        if is_sales_agent_domain(apx_host):
+        if is_sales_agent_domain(effective_host):
             # This is our sales-agent domain - try subdomain lookup
             pass  # Fall through to subdomain logic below
         else:
             # This is a custom domain - try virtual_host lookup
-            tenant = get_tenant_by_virtual_host(apx_host)
+            tenant = get_tenant_by_virtual_host(effective_host)
 
             if tenant:
                 # Generate tenant landing page for custom domain
                 try:
-                    html_content = generate_tenant_landing_page(tenant, apx_host)
+                    html_content = generate_tenant_landing_page(tenant, effective_host)
                     return HTMLResponse(content=html_content)
                 except Exception as e:
                     logger.error(f"Error generating landing page: {e}", exc_info=True)
@@ -674,16 +680,16 @@ if unified_mode:
                     <body>
                     <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
                     <p>This is a sales agent for advertising inventory.</p>
-                    <p>Domain: {apx_host}</p>
+                    <p>Domain: {effective_host}</p>
                     </body>
                     </html>
                     """
                     )
 
         # Check if this is a subdomain request (sales-agent domain with subdomain)
-        if is_sales_agent_domain(apx_host):
-            # Extract subdomain from apx_host
-            subdomain = extract_subdomain_from_host(apx_host)
+        if is_sales_agent_domain(effective_host):
+            # Extract subdomain from effective_host
+            subdomain = extract_subdomain_from_host(effective_host)
 
             # Look up tenant by subdomain
             try:
@@ -699,7 +705,7 @@ if unified_mode:
                         }
                         # Generate tenant landing page for subdomain
                         try:
-                            html_content = generate_tenant_landing_page(tenant, apx_host)
+                            html_content = generate_tenant_landing_page(tenant, effective_host)
                             return HTMLResponse(content=html_content)
                         except Exception as e:
                             logger.error(f"Error generating subdomain landing page: {e}", exc_info=True)
@@ -708,7 +714,7 @@ if unified_mode:
                             <html>
                             <body>
                             <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
-                            <p>Subdomain: {apx_host}</p>
+                            <p>Subdomain: {effective_host}</p>
                             </body>
                             </html>
                             """
@@ -722,7 +728,7 @@ if unified_mode:
         <html>
         <body>
         <h1>🎉 LANDING PAGE WORKING!</h1>
-        <p>Domain: {apx_host}</p>
+        <p>Domain: {effective_host}</p>
         <p>Success! The landing page is working.</p>
         </body>
         </html>
