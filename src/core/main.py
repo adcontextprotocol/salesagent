@@ -644,92 +644,36 @@ if unified_mode:
 
     async def handle_landing_page(request: Request):
         """Common landing page logic for both root and /landing routes."""
-        headers = dict(request.headers)
+        from src.core.domain_routing import route_landing_page
 
-        # Get host from Approximated header (proxied) or regular Host header (direct)
-        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
-        host_header = headers.get("host") or headers.get("Host")
+        # Use centralized routing logic
+        result = route_landing_page(dict(request.headers))
 
-        # Use whichever host is available
-        effective_host = apx_host or host_header
-
-        # Log host information for debugging
-        logger.info(f"[LANDING] apx_host={apx_host}, host_header={host_header}, effective_host={effective_host}")
-
-        if not effective_host:
-            # No host information available
-            from src.landing.landing_page import generate_fallback_landing_page
-
-            return HTMLResponse(content=generate_fallback_landing_page("No host specified"))
-
-        # Determine routing strategy based on domain type
-        if is_sales_agent_domain(effective_host):
-            # This is our sales-agent domain - try subdomain lookup
-            pass  # Fall through to subdomain logic below
-        else:
-            # This is a custom domain - try virtual_host lookup
-            tenant = get_tenant_by_virtual_host(effective_host)
-
-            if tenant:
-                # Generate tenant landing page for custom domain
-                try:
-                    html_content = generate_tenant_landing_page(tenant, effective_host)
-                    return HTMLResponse(content=html_content)
-                except Exception as e:
-                    logger.error(f"Error generating landing page: {e}", exc_info=True)
-                    from src.landing.landing_page import generate_fallback_landing_page
-
-                    return HTMLResponse(
-                        content=generate_fallback_landing_page(
-                            f"Error generating landing page for {tenant.get('name', 'tenant')}"
-                        )
-                    )
-
-        # Check if this is a subdomain request (sales-agent domain with subdomain)
-        if is_sales_agent_domain(effective_host):
-            # Extract subdomain from effective_host
-            subdomain = extract_subdomain_from_host(effective_host)
-
-            # Look up tenant by subdomain
-            try:
-                with get_db_session() as db_session:
-                    stmt = select(Tenant).filter_by(subdomain=subdomain, is_active=True)
-                    tenant_obj = db_session.scalars(stmt).first()
-                    if tenant_obj:
-                        tenant = {
-                            "tenant_id": tenant_obj.tenant_id,
-                            "name": tenant_obj.name,
-                            "subdomain": tenant_obj.subdomain,
-                            "virtual_host": tenant_obj.virtual_host,
-                        }
-                        # Generate tenant landing page for subdomain
-                        try:
-                            html_content = generate_tenant_landing_page(tenant, effective_host)
-                            return HTMLResponse(content=html_content)
-                        except Exception as e:
-                            logger.error(f"Error generating subdomain landing page: {e}", exc_info=True)
-                            from src.landing.landing_page import generate_fallback_landing_page
-
-                            return HTMLResponse(
-                                content=generate_fallback_landing_page(
-                                    f"Error generating landing page for {tenant.get('name', 'tenant')}"
-                                )
-                            )
-            except Exception as e:
-                logger.error(f"Error looking up subdomain {subdomain}: {e}")
-
-        # Fallback for unrecognized domains
-        return HTMLResponse(
-            content=f"""
-        <html>
-        <body>
-        <h1>🎉 LANDING PAGE WORKING!</h1>
-        <p>Domain: {effective_host}</p>
-        <p>Success! The landing page is working.</p>
-        </body>
-        </html>
-        """
+        logger.info(
+            f"[LANDING] Routing decision: type={result.type}, host={result.effective_host}, "
+            f"tenant={'yes' if result.tenant else 'no'}"
         )
+
+        # Handle routing based on result type
+        if result.type in ("custom_domain", "subdomain") and result.tenant:
+            # Show agent landing page for tenant domains
+            try:
+                html_content = generate_tenant_landing_page(result.tenant, result.effective_host)
+                return HTMLResponse(content=html_content)
+            except Exception as e:
+                logger.error(f"Error generating landing page: {e}", exc_info=True)
+                from src.landing.landing_page import generate_fallback_landing_page
+
+                return HTMLResponse(
+                    content=generate_fallback_landing_page(
+                        f"Error generating landing page for {result.tenant.get('name', 'tenant')}"
+                    )
+                )
+
+        # Fallback for unrecognized domains or errors
+        from src.landing.landing_page import generate_fallback_landing_page
+
+        return HTMLResponse(content=generate_fallback_landing_page("No tenant found"))
 
     # Task Management Tools (for HITL)
 
