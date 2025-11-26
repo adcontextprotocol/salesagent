@@ -76,7 +76,7 @@ class TestExternalDomainRouting:
                 assert result is None
 
     def test_index_route_external_domain_with_tenant(self):
-        """Test that external domain with configured tenant redirects to login."""
+        """Test that external domain with configured tenant shows agent landing page."""
         from src.admin.app import create_app
 
         app, _ = create_app()
@@ -100,9 +100,11 @@ class TestExternalDomainRouting:
                     },
                 )
 
-                # Should redirect to login (302) since tenant exists
-                assert response.status_code == 302
-                assert "/login" in response.location
+                # Should show agent landing page (200) with MCP/A2A links
+                assert response.status_code == 200
+                assert b"AccuWeather" in response.data  # Tenant name should be in landing page
+                # Landing page should contain agent protocol information
+                assert b"MCP" in response.data or b"mcp" in response.data.lower()
 
     def test_index_route_external_domain_no_tenant(self):
         """Test that external domain without configured tenant shows signup landing page."""
