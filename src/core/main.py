@@ -647,12 +647,22 @@ if unified_mode:
         headers = dict(request.headers)
         apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
 
-        # First, try to look up tenant by virtual host (works for any custom domain)
-        if apx_host:
+        if not apx_host:
+            # No host header provided
+            from src.landing.landing_page import generate_fallback_landing_page
+
+            return HTMLResponse(content=generate_fallback_landing_page("No host specified"))
+
+        # Determine routing strategy based on domain type
+        if is_sales_agent_domain(apx_host):
+            # This is our sales-agent domain - try subdomain lookup
+            pass  # Fall through to subdomain logic below
+        else:
+            # This is a custom domain - try virtual_host lookup
             tenant = get_tenant_by_virtual_host(apx_host)
 
             if tenant:
-                # Generate tenant landing page
+                # Generate tenant landing page for custom domain
                 try:
                     html_content = generate_tenant_landing_page(tenant, apx_host)
                     return HTMLResponse(content=html_content)
@@ -670,8 +680,8 @@ if unified_mode:
                     """
                     )
 
-        # Check if this is a subdomain request
-        if apx_host and is_sales_agent_domain(apx_host):
+        # Check if this is a subdomain request (sales-agent domain with subdomain)
+        if is_sales_agent_domain(apx_host):
             # Extract subdomain from apx_host
             subdomain = extract_subdomain_from_host(apx_host)
 
