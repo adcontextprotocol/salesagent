@@ -36,8 +36,8 @@ PRODUCTION_AGENTS = {
     "applabs": {
         "url": "https://applabs.sales-agent.scope3.com",
         "type": "subdomain",
-        "test_mcp": False,  # Not configured yet
-        "test_a2a": False,
+        "test_mcp": True,
+        "test_a2a": True,
         "expect_landing": True,  # Shows "Pending Configuration" page
         "expect_login": False,
         "pending_config": True,
@@ -73,10 +73,11 @@ class TestResult:
 def test_mcp_endpoint(agent_name: str, url: str, verbose: bool = False) -> TestResult:
     """Test MCP endpoint using npx @adcp/client."""
     try:
-        # Use npx @adcp/client to test MCP endpoint
-        cmd = ["npx", "@adcp/client", url, "--protocol", "mcp", "--json"]
+        # Use npx -y to skip install prompt
+        # Timeout is 60s to allow for package download on first run
+        cmd = ["npx", "-y", "@adcp/client@latest", url, "--protocol", "mcp", "--json"]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
         if verbose:
             console.print(f"[dim]MCP command: {' '.join(cmd)}[/dim]")
@@ -123,10 +124,11 @@ def test_mcp_endpoint(agent_name: str, url: str, verbose: bool = False) -> TestR
 def test_a2a_endpoint(agent_name: str, url: str, verbose: bool = False) -> TestResult:
     """Test A2A endpoint using npx @adcp/client."""
     try:
-        # Use npx @adcp/client to test A2A endpoint
-        cmd = ["npx", "@adcp/client", url, "--protocol", "a2a", "--json"]
+        # Use npx -y to skip install prompt
+        # Timeout is 60s to allow for package download on first run
+        cmd = ["npx", "-y", "@adcp/client@latest", url, "--protocol", "a2a", "--json"]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
         if verbose:
             console.print(f"[dim]A2A command: {' '.join(cmd)}[/dim]")
@@ -173,14 +175,14 @@ def test_landing_page(agent_name: str, config: dict[str, Any], verbose: bool = F
     url = config["url"]
 
     try:
-        response = requests.get(url, timeout=10, allow_redirects=False)
-
-        if verbose:
-            console.print(f"[dim]GET {url}[/dim]")
-            console.print(f"[dim]Status: {response.status_code}[/dim]")
-
-        # Check if should redirect to login
+        # For login checks, don't follow redirects
         if config.get("expect_login"):
+            response = requests.get(url, timeout=10, allow_redirects=False)
+
+            if verbose:
+                console.print(f"[dim]GET {url}[/dim]")
+                console.print(f"[dim]Status: {response.status_code}[/dim]")
+
             if response.status_code in [301, 302, 303, 307, 308]:
                 location = response.headers.get("Location", "")
                 if "login" in location.lower():
@@ -188,8 +190,15 @@ def test_landing_page(agent_name: str, config: dict[str, Any], verbose: bool = F
                 return TestResult(False, f"Redirects to {location}, expected login", {"url": url})
             return TestResult(False, f"Expected redirect to login, got {response.status_code}", {"url": url})
 
-        # Check if should show landing page
+        # For landing page checks, follow redirects
         if config.get("expect_landing"):
+            response = requests.get(url, timeout=10, allow_redirects=True)
+
+            if verbose:
+                console.print(f"[dim]GET {url}[/dim]")
+                console.print(f"[dim]Status: {response.status_code}[/dim]")
+                console.print(f"[dim]Final URL: {response.url}[/dim]")
+
             if response.status_code != 200:
                 return TestResult(False, f"Expected 200, got {response.status_code}", {"url": url})
 
