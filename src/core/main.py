@@ -193,7 +193,9 @@ context_mgr = ContextManager()
 
 # --- Adapter Configuration ---
 # Get adapter from config, fallback to mock
-SELECTED_ADAPTER = ((config.get("ad_server", {}).get("adapter") or "mock") if config else "mock").lower()  # noqa: F841 - used below for adapter selection
+SELECTED_ADAPTER = (
+    (config.get("ad_server", {}).get("adapter") or "mock") if config else "mock"
+).lower()  # noqa: F841 - used below for adapter selection
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
 # --- In-Memory State (already initialized above, just adding context_map) ---
@@ -643,36 +645,50 @@ if unified_mode:
     async def handle_landing_page(request: Request):
         """Common landing page logic for both root and /landing routes."""
         headers = dict(request.headers)
-        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
 
-        # Check if this is an external domain request
-        if apx_host and apx_host.endswith(".adcontextprotocol.org"):
-            # Look up tenant by virtual host
-            tenant = get_tenant_by_virtual_host(apx_host)
+        # Get host from Approximated header (proxied) or regular Host header (direct)
+        apx_host = headers.get("apx-incoming-host") or headers.get("Apx-Incoming-Host")
+        host_header = headers.get("host") or headers.get("Host")
+
+        # Use whichever host is available
+        effective_host = apx_host or host_header
+
+        # Log host information for debugging
+        logger.info(f"[LANDING] apx_host={apx_host}, host_header={host_header}, effective_host={effective_host}")
+
+        if not effective_host:
+            # No host information available
+            from src.landing.landing_page import generate_fallback_landing_page
+
+            return HTMLResponse(content=generate_fallback_landing_page("No host specified"))
+
+        # Determine routing strategy based on domain type
+        if is_sales_agent_domain(effective_host):
+            # This is our sales-agent domain - try subdomain lookup
+            pass  # Fall through to subdomain logic below
+        else:
+            # This is a custom domain - try virtual_host lookup
+            tenant = get_tenant_by_virtual_host(effective_host)
 
             if tenant:
-                # Generate tenant landing page
+                # Generate tenant landing page for custom domain
                 try:
-                    html_content = generate_tenant_landing_page(tenant, apx_host)
+                    html_content = generate_tenant_landing_page(tenant, effective_host)
                     return HTMLResponse(content=html_content)
                 except Exception as e:
                     logger.error(f"Error generating landing page: {e}", exc_info=True)
+                    from src.landing.landing_page import generate_fallback_landing_page
+
                     return HTMLResponse(
-                        content=f"""
-                    <html>
-                    <body>
-                    <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
-                    <p>This is a sales agent for advertising inventory.</p>
-                    <p>Domain: {apx_host}</p>
-                    </body>
-                    </html>
-                    """
+                        content=generate_fallback_landing_page(
+                            f"Error generating landing page for {tenant.get('name', 'tenant')}"
+                        )
                     )
 
-        # Check if this is a subdomain request
-        if apx_host and is_sales_agent_domain(apx_host):
-            # Extract subdomain from apx_host
-            subdomain = extract_subdomain_from_host(apx_host)
+        # Check if this is a subdomain request (sales-agent domain with subdomain)
+        if is_sales_agent_domain(effective_host):
+            # Extract subdomain from effective_host
+            subdomain = extract_subdomain_from_host(effective_host)
 
             # Look up tenant by subdomain
             try:
@@ -688,19 +704,16 @@ if unified_mode:
                         }
                         # Generate tenant landing page for subdomain
                         try:
-                            html_content = generate_tenant_landing_page(tenant, apx_host)
+                            html_content = generate_tenant_landing_page(tenant, effective_host)
                             return HTMLResponse(content=html_content)
                         except Exception as e:
                             logger.error(f"Error generating subdomain landing page: {e}", exc_info=True)
+                            from src.landing.landing_page import generate_fallback_landing_page
+
                             return HTMLResponse(
-                                content=f"""
-                            <html>
-                            <body>
-                            <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
-                            <p>Subdomain: {apx_host}</p>
-                            </body>
-                            </html>
-                            """
+                                content=generate_fallback_landing_page(
+                                    f"Error generating landing page for {tenant.get('name', 'tenant')}"
+                                )
                             )
             except Exception as e:
                 logger.error(f"Error looking up subdomain {subdomain}: {e}")
@@ -711,7 +724,7 @@ if unified_mode:
         <html>
         <body>
         <h1>🎉 LANDING PAGE WORKING!</h1>
-        <p>Domain: {apx_host}</p>
+        <p>Domain: {effective_host}</p>
         <p>Success! The landing page is working.</p>
         </body>
         </html>
@@ -792,9 +805,9 @@ if unified_mode:
                     "type": task.step_type,
                     "tool_name": task.tool_name,
                     "owner": task.owner,
-                    "created_at": task.created_at.isoformat()
-                    if hasattr(task.created_at, "isoformat")
-                    else str(task.created_at),  # type: ignore[union-attr]
+                    "created_at": (
+                        task.created_at.isoformat() if hasattr(task.created_at, "isoformat") else str(task.created_at)
+                    ),  # type: ignore[union-attr]
                     "updated_at": None,  # WorkflowStep doesn't have updated_at field
                     "context_id": task.context_id,
                     "associated_objects": [
@@ -875,9 +888,9 @@ if unified_mode:
                 "type": task.step_type,
                 "tool_name": task.tool_name,
                 "owner": task.owner,
-                "created_at": task.created_at.isoformat()
-                if hasattr(task.created_at, "isoformat")
-                else str(task.created_at),  # type: ignore[union-attr]
+                "created_at": (
+                    task.created_at.isoformat() if hasattr(task.created_at, "isoformat") else str(task.created_at)
+                ),  # type: ignore[union-attr]
                 "updated_at": None,  # WorkflowStep doesn't have updated_at field
                 "request_data": task.request_data,
                 "response_data": task.response_data,
@@ -887,9 +900,9 @@ if unified_mode:
                         "type": m.object_type,  # type: ignore[attr-defined]
                         "id": m.object_id,  # type: ignore[attr-defined]
                         "action": m.action,  # type: ignore[attr-defined]
-                        "created_at": m.created_at.isoformat()
-                        if hasattr(m.created_at, "isoformat")
-                        else str(m.created_at),  # type: ignore[union-attr]
+                        "created_at": (
+                            m.created_at.isoformat() if hasattr(m.created_at, "isoformat") else str(m.created_at)
+                        ),  # type: ignore[union-attr]
                     }
                     for m in mappings
                 ],
