@@ -26,7 +26,8 @@ PRODUCTION_TENANTS = {
     "test-agent.adcontextprotocol.org": {
         "type": "adcontextprotocol domain",
         "tenant_name": "Test Agent",
-        "should_show_landing": True,
+        "should_show_landing": False,  # Redirects to login instead
+        "redirects_to_login": True,  # Special case - requires auth
         "has_mcp": True,
         "has_a2a": True,
         "has_agent_card": True,
@@ -43,9 +44,10 @@ PRODUCTION_TENANTS = {
         "type": "subdomain (AppLabs)",
         "tenant_name": "AppLabs",
         "should_show_landing": True,
-        "has_mcp": True,
-        "has_a2a": True,
-        "has_agent_card": True,
+        "has_mcp": False,  # Not configured yet - shows "Pending Configuration" page
+        "has_a2a": False,
+        "has_agent_card": False,
+        "pending_configuration": True,  # Special case - tenant exists but not configured
     },
 }
 
@@ -76,6 +78,15 @@ def test_landing_page(domain: str, config: dict[str, Any], verbose: bool = False
     try:
         response = requests.get(url, timeout=10, allow_redirects=False)
 
+        # Special case: Domain redirects to login
+        if config.get("redirects_to_login"):
+            if response.status_code in [301, 302, 303, 307, 308]:
+                location = response.headers.get("Location", "")
+                if "login" in location:
+                    return TestResult(True, "Redirects to login (expected)", {"url": url, "location": location})
+                return TestResult(False, f"Redirects but not to login: {location}", {"url": url})
+            return TestResult(False, f"Expected redirect, got {response.status_code}", {"url": url})
+
         if response.status_code != 200:
             return TestResult(
                 False,
@@ -84,6 +95,13 @@ def test_landing_page(domain: str, config: dict[str, Any], verbose: bool = False
             )
 
         html = response.text
+
+        # Special case: Pending configuration page
+        if config.get("pending_configuration"):
+            if "Pending Configuration" in html:
+                return TestResult(True, "Shows pending configuration page (expected)", {"url": url})
+            else:
+                return TestResult(False, "Expected pending configuration page", {"url": url})
 
         # Check for MCP endpoint
         if config.get("has_mcp"):
