@@ -125,6 +125,7 @@ def get_targeting_data(tenant_id):
                         "description": metadata.get("description"),
                         "status": row.status or "UNKNOWN",
                         "size": metadata.get("size"),
+                        "type": metadata.get("type", "UNKNOWN"),
                     }
                 )
 
