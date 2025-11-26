@@ -23,9 +23,9 @@ console = Console()
 
 # Production tenants and their expected configurations
 PRODUCTION_TENANTS = {
-    "testing.adcontextprotocol.org": {
+    "test-agent.adcontextprotocol.org": {
         "type": "adcontextprotocol domain",
-        "tenant_name": "Testing",
+        "tenant_name": "Test Agent",
         "should_show_landing": True,
         "has_mcp": True,
         "has_a2a": True,
@@ -39,9 +39,9 @@ PRODUCTION_TENANTS = {
         "has_a2a": True,
         "has_agent_card": True,
     },
-    "testing.sales-agent.scope3.com": {
-        "type": "subdomain",
-        "tenant_name": "Testing",
+    "applabs.sales-agent.scope3.com": {
+        "type": "subdomain (AppLabs)",
+        "tenant_name": "AppLabs",
         "should_show_landing": True,
         "has_mcp": True,
         "has_a2a": True,

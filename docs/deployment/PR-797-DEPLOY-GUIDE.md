@@ -91,14 +91,14 @@ Expected results:
 ✓ accuweather.sales-agent.scope3.com - MCP Endpoint
 ✓ accuweather.sales-agent.scope3.com - A2A Endpoint
 ✓ accuweather.sales-agent.scope3.com - Agent Card
-✓ testing.sales-agent.scope3.com - Landing Page
-✓ testing.sales-agent.scope3.com - MCP Endpoint
-✓ testing.sales-agent.scope3.com - A2A Endpoint
-✓ testing.sales-agent.scope3.com - Agent Card
-✓ testing.adcontextprotocol.org - Landing Page
-✓ testing.adcontextprotocol.org - MCP Endpoint
-✓ testing.adcontextprotocol.org - A2A Endpoint
-✓ testing.adcontextprotocol.org - Agent Card
+✓ applabs.sales-agent.scope3.com - Landing Page
+✓ applabs.sales-agent.scope3.com - MCP Endpoint
+✓ applabs.sales-agent.scope3.com - A2A Endpoint
+✓ applabs.sales-agent.scope3.com - Agent Card
+✓ test-agent.adcontextprotocol.org - Landing Page
+✓ test-agent.adcontextprotocol.org - MCP Endpoint
+✓ test-agent.adcontextprotocol.org - A2A Endpoint
+✓ test-agent.adcontextprotocol.org - Agent Card
 ✓ admin.sales-agent.scope3.com - Admin Redirect
 
 All tests passed (13/13)
@@ -114,8 +114,8 @@ All tests passed (13/13)
 5. Verify: Agent card link present (.well-known/agent.json)
 6. Click MCP link → should go to /mcp endpoint (not 404)
 
-**Test testing.sales-agent.scope3.com:**
-1. Open https://testing.sales-agent.scope3.com
+**Test applabs.sales-agent.scope3.com:**
+1. Open https://applabs.sales-agent.scope3.com
 2. Same checks as above
 
 **Test admin.sales-agent.scope3.com:**
