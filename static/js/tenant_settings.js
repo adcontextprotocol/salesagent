@@ -1791,6 +1791,75 @@ function removeCurrencyLimit(currencyCode) {
 }
 
 // Naming Template Functions
+function resolveTemplate(template, context) {
+    if (!template) return '';
+
+    return template.replace(/\{([^}]+)\}/g, (match, key) => {
+        // Handle fallbacks like {campaign_name|promoted_offering}
+        const options = key.split('|');
+        
+        for (const option of options) {
+            const val = context[option.trim()];
+            if (val !== undefined && val !== null && val !== '') {
+                return val;
+            }
+        }
+        
+        // If no value found, keep the placeholder
+        return match;
+    });
+}
+
+function updateNamingPreview() {
+    const orderTemplate = document.getElementById('order_name_template')?.value || '';
+    const lineItemTemplate = document.getElementById('line_item_name_template')?.value || '';
+    
+    // Sample data matching the HTML description
+    const context = {
+        campaign_name: '', // null/empty
+        promoted_offering: 'Nike Shoes Q1',
+        brand_name: 'Nike', // Added for compatibility with existing preset
+        buyer_ref: 'PO-12345',
+        start_date: '2025-10-07',
+        end_date: '2025-10-14',
+        date_range: 'Oct 7-14, 2025',
+        month_year: 'Oct 2025',
+        package_count: 3,
+        auto_name: 'Nike Shoes Q1 Campaign'
+    };
+    
+    // 1. Resolve Order Name
+    const orderName = resolveTemplate(orderTemplate, context);
+    
+    const orderPreviewEl = document.getElementById('order-preview');
+    if (orderPreviewEl) {
+        orderPreviewEl.textContent = orderName;
+    }
+    
+    // 2. Resolve Line Items
+    const products = [
+        { name: 'Display 300x250', index: 1 },
+        { name: 'Video Pre-roll', index: 2 },
+        { name: 'Native Article', index: 3 }
+    ];
+    
+    const lineItemNames = products.map(p => {
+        const itemContext = {
+            ...context,
+            order_name: orderName,
+            product_name: p.name,
+            package_index: p.index
+        };
+        const name = resolveTemplate(lineItemTemplate, itemContext);
+        return `${p.index}. ${name}`;
+    });
+    
+    const lineItemPreviewEl = document.getElementById('lineitem-preview');
+    if (lineItemPreviewEl) {
+        lineItemPreviewEl.innerHTML = lineItemNames.join('<br>');
+    }
+}
+
 function useNamingPreset(presetName) {
     const presets = {
         'simple': {
@@ -1824,4 +1893,14 @@ function useNamingPreset(presetName) {
     if (lineItemField) {
         lineItemField.value = preset.lineItem;
     }
+    
+    // Update preview immediately
+    updateNamingPreview();
 }
+
+// Initialize naming preview on load
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('order_name_template')) {
+        updateNamingPreview();
+    }
+});
