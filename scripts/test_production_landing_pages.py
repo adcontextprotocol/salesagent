@@ -28,9 +28,9 @@ PRODUCTION_TENANTS = {
         "tenant_name": "Test Agent",
         "should_show_landing": False,  # Redirects to login instead
         "redirects_to_login": True,  # Special case - requires auth
-        "has_mcp": True,
-        "has_a2a": True,
-        "has_agent_card": True,
+        "has_mcp": False,  # Don't test - requires proper headers/auth (use npx @adcp/client)
+        "has_a2a": False,  # Don't test - requires proper headers/auth (use npx @adcp/client)
+        "has_agent_card": False,  # Don't test - requires auth
     },
     "accuweather.sales-agent.scope3.com": {
         "type": "custom domain (AccuWeather)",
