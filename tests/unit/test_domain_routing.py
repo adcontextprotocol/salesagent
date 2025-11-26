@@ -10,8 +10,6 @@ class TestRouteLandingPage:
 
     def test_admin_domain_routing(self):
         """Admin domains should route to type=admin."""
-        from unittest.mock import patch
-
         # Mock is_admin_domain to return True for our test domain
         with patch("src.core.domain_routing.is_admin_domain") as mock_is_admin:
             mock_is_admin.return_value = True

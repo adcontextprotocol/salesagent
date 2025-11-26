@@ -60,6 +60,26 @@ def route_landing_page(request_headers: dict) -> RoutingResult:
     - Custom domains (not sales-agent domain) with tenant → type="custom_domain"
     - Sales-agent subdomains with tenant → type="subdomain"
     - Everything else → type="unknown"
+
+    Examples:
+        Admin domain routing:
+        >>> route_landing_page({"Host": "admin.sales-agent.scope3.com"})
+        RoutingResult(type="admin", tenant=None, effective_host="admin.sales-agent.scope3.com")
+
+        Custom domain with tenant:
+        >>> route_landing_page({"Host": "sales-agent.accuweather.com"})
+        RoutingResult(type="custom_domain", tenant={...}, effective_host="sales-agent.accuweather.com")
+
+        Subdomain with tenant:
+        >>> route_landing_page({"Host": "applabs.sales-agent.scope3.com"})
+        RoutingResult(type="subdomain", tenant={...}, effective_host="applabs.sales-agent.scope3.com")
+
+        Proxied request (Approximated header takes precedence):
+        >>> route_landing_page({
+        ...     "Host": "backend.example.com",
+        ...     "Apx-Incoming-Host": "admin.sales-agent.scope3.com"
+        ... })
+        RoutingResult(type="admin", tenant=None, effective_host="admin.sales-agent.scope3.com")
     """
     # Get host from headers (Approximated proxy or direct)
     apx_host = request_headers.get("apx-incoming-host") or request_headers.get("Apx-Incoming-Host")
@@ -71,15 +91,19 @@ def route_landing_page(request_headers: dict) -> RoutingResult:
     if not effective_host:
         return RoutingResult("unknown", None, "")
 
-    # Admin domain check - must be exact match to prevent spoofing
-    # (e.g., admin.sales-agent.scope3.com, NOT admin.malicious.com)
+    # Admin domain check - uses is_admin_domain() which validates against the
+    # configured admin domain. This prevents spoofing via malicious domains that
+    # start with 'admin.' but aren't our legitimate admin domain
+    # (e.g., admin.sales-agent.scope3.com is valid, admin.malicious.com is not)
     if is_admin_domain(effective_host):
         return RoutingResult("admin", None, effective_host)
 
     # Custom domain check (non-sales-agent domain)
     if not is_sales_agent_domain(effective_host):
         tenant = get_tenant_by_virtual_host(effective_host)
-        # Return custom_domain type even if tenant not found - caller decides how to handle
+        # Return custom_domain type even if tenant not found - this allows the caller
+        # to distinguish between "external domain looking for tenant" (can show signup)
+        # vs "completely unknown request" (show generic fallback). Caller decides how to handle.
         return RoutingResult("custom_domain", tenant, effective_host)
 
     # Subdomain check (sales-agent domain with subdomain)

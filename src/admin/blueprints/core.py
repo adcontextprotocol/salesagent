@@ -83,6 +83,8 @@ def index():
             logger.info(f"[LANDING DEBUG] Tenant found ({result.type}), showing agent landing page")
             from src.landing.landing_page import generate_tenant_landing_page
 
+            # The condition above ensures tenant is not None
+            assert result.tenant is not None, "Tenant must be present for custom_domain/subdomain routing"
             html_content = generate_tenant_landing_page(result.tenant, result.effective_host)
             return Response(html_content, mimetype="text/html")
 
