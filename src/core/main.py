@@ -674,16 +674,12 @@ if unified_mode:
                     return HTMLResponse(content=html_content)
                 except Exception as e:
                     logger.error(f"Error generating landing page: {e}", exc_info=True)
+                    from src.landing.landing_page import generate_fallback_landing_page
+
                     return HTMLResponse(
-                        content=f"""
-                    <html>
-                    <body>
-                    <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
-                    <p>This is a sales agent for advertising inventory.</p>
-                    <p>Domain: {effective_host}</p>
-                    </body>
-                    </html>
-                    """
+                        content=generate_fallback_landing_page(
+                            f"Error generating landing page for {tenant.get('name', 'tenant')}"
+                        )
                     )
 
         # Check if this is a subdomain request (sales-agent domain with subdomain)
@@ -709,15 +705,12 @@ if unified_mode:
                             return HTMLResponse(content=html_content)
                         except Exception as e:
                             logger.error(f"Error generating subdomain landing page: {e}", exc_info=True)
+                            from src.landing.landing_page import generate_fallback_landing_page
+
                             return HTMLResponse(
-                                content=f"""
-                            <html>
-                            <body>
-                            <h1>Welcome to {tenant.get("name", "AdCP Sales Agent")}</h1>
-                            <p>Subdomain: {effective_host}</p>
-                            </body>
-                            </html>
-                            """
+                                content=generate_fallback_landing_page(
+                                    f"Error generating landing page for {tenant.get('name', 'tenant')}"
+                                )
                             )
             except Exception as e:
                 logger.error(f"Error looking up subdomain {subdomain}: {e}")
