@@ -866,7 +866,7 @@ function syncInventory() {
 
 function pollInventorySyncStatus(syncId, btn) {
     const checkStatus = () => {
-        fetch(API_URLS.gamSyncStatus.replace('/{id}/', `/${syncId}/`), {
+        fetch(API_URLS.gamSyncStatus.replace('{id}', syncId), {
             credentials: 'same-origin'
         })
             .then(response => {

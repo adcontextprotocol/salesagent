@@ -4,6 +4,12 @@
 
 {% block content %}
 <div class="card">
+    <div class="back-button-container">
+        <a href="{{ url_for('inventory_profiles.list_inventory_profiles', tenant_id=tenant_id) }}" class="btn btn-secondary btn-back">
+            ← Back to Inventory Profiles
+        </a>
+    </div>
+
     <h2>Create Inventory Profile</h2>
     <p class="text-muted">Create a reusable inventory configuration that can be used across multiple products</p>
 

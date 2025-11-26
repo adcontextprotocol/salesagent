@@ -4,6 +4,12 @@
 
 {% block content %}
 <div class="card">
+    <div class="back-button-container">
+        <a href="{{ url_for('products.list_products', tenant_id=tenant_id) }}" class="btn btn-secondary btn-back">
+            ← Back to Products
+        </a>
+    </div>
+
     <h2>Add New Product</h2>
 
     {% if error %}

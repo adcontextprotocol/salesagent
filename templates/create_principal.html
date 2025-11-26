@@ -4,6 +4,12 @@
 
 {% block content %}
 <div class="card" style="max-width: 600px; margin: 0 auto;">
+    <div class="back-button-container">
+        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary btn-back">
+            ← Back to Dashboard
+        </a>
+    </div>
+
     <h2>{{ 'Edit Advertiser' if edit_mode else 'Add New Advertiser' }}</h2>
 
     {% if error %}
@@ -72,7 +78,7 @@
 
         <div style="display: flex; gap: 1rem;">
             <button type="submit" class="btn">{{ 'Update Advertiser' if edit_mode else 'Add Advertiser' }}</button>
-            <a href="/tenant/{{ tenant_id }}" class="btn btn-secondary">Cancel</a>
+            <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
 </div>
