@@ -4,8 +4,8 @@
 
 {% block content %}
 <div class="card" style="max-width: 600px; margin: 0 auto;">
-    <div style="margin-bottom: 1.5rem;">
-        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
+    <div class="back-button-container">
+        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}" class="btn btn-secondary btn-back">
             ← Back to Dashboard
         </a>
     </div>
