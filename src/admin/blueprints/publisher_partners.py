@@ -87,6 +87,15 @@ def add_publisher_partner(tenant_id: str) -> Response | tuple[Response, int]:
         publisher_domain = publisher_domain.rstrip("/")
 
         with get_db_session() as session:
+            # Check tenant adapter type
+            stmt_tenant = select(Tenant).filter_by(tenant_id=tenant_id)
+            tenant = session.scalars(stmt_tenant).first()
+            if not tenant:
+                return jsonify({"error": "Tenant not found"}), 404
+
+            # For mock adapters, auto-verify publishers (no adagents.json to check)
+            is_mock = tenant.adapter_config and tenant.adapter_config.adapter_type == "mock"
+
             # Check if already exists
             stmt = select(PublisherPartner).filter_by(tenant_id=tenant_id, publisher_domain=publisher_domain)
             existing = session.scalars(stmt).first()
@@ -94,11 +103,14 @@ def add_publisher_partner(tenant_id: str) -> Response | tuple[Response, int]:
                 return jsonify({"error": "Publisher already exists"}), 409
 
             # Create new partner
+            # For mock adapters, auto-verify since there's no real adagents.json to check
             partner = PublisherPartner(
                 tenant_id=tenant_id,
                 publisher_domain=publisher_domain,
                 display_name=display_name or publisher_domain,
-                sync_status="pending",
+                sync_status="success" if is_mock else "pending",
+                is_verified=is_mock,  # Auto-verify for mock tenants
+                last_synced_at=datetime.now(UTC) if is_mock else None,  # type: ignore[assignment]
             )
             session.add(partner)
             session.commit()
@@ -110,7 +122,9 @@ def add_publisher_partner(tenant_id: str) -> Response | tuple[Response, int]:
                         "publisher_domain": partner.publisher_domain,
                         "display_name": partner.display_name,
                         "sync_status": partner.sync_status,
-                        "message": "Publisher added successfully",
+                        "is_verified": partner.is_verified,
+                        "message": "Publisher added successfully"
+                        + (" (auto-verified for mock tenant)" if is_mock else ""),
                     }
                 ),
                 201,
@@ -163,7 +177,32 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
             if not partners:
                 return jsonify({"message": "No publishers to sync"}), 200
 
-            # Fetch authorization for each publisher
+            # For mock adapters, auto-verify all publishers (skip adagents.json fetching)
+            is_mock = tenant.adapter_config and tenant.adapter_config.adapter_type == "mock"
+
+            if is_mock:
+                logger.info(f"Mock adapter detected - auto-verifying {len(partners)} publishers")
+                verified_domains = []
+                for partner in partners:
+                    partner.sync_status = "success"
+                    partner.sync_error = None
+                    partner.is_verified = True
+                    partner.last_synced_at = datetime.now(UTC)  # type: ignore[assignment]
+                    verified_domains.append(partner.publisher_domain)
+
+                session.commit()
+
+                return jsonify(
+                    {
+                        "message": "Sync completed (mock tenant - auto-verified)",
+                        "synced": len(partners),
+                        "verified": len(partners),
+                        "errors": 0,
+                        "total": len(partners),
+                    }
+                )
+
+            # Fetch authorization for each publisher (real verification for non-mock tenants)
             logger.info(f"Fetching authorizations for {len(partners)} publishers")
 
             synced = 0
