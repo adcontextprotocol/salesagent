@@ -45,6 +45,7 @@ from a2a.types import (
     TaskQueryParams,
     TaskState,
     TaskStatus,
+    TextPart,
     UnsupportedOperationError,
 )
 from a2a.utils.errors import ServerError
@@ -400,6 +401,28 @@ class AdCPRequestHandler(RequestHandler):
             logger.debug(f"Could not reconstruct response object for {skill_name}: {e}")
         return None
 
+    def _build_artifact_with_textpart(
+        self, artifact_id: str, name: str, data: dict, human_message: str | None = None
+    ) -> Artifact:
+        """Build an artifact with TextPart + DataPart per A2A spec.
+
+        Args:
+            artifact_id: Unique artifact identifier
+            name: Artifact name
+            data: Pure AdCP response data (no protocol fields)
+            human_message: Optional human-readable message
+
+        Returns:
+            Artifact with TextPart (if message provided) + DataPart
+        """
+        # Build parts: TextPart for human message + DataPart for AdCP payload
+        parts = []
+        if human_message:
+            parts.append(Part(root=TextPart(text=human_message)))
+        parts.append(Part(root=DataPart(data=data)))
+
+        return Artifact(artifact_id=artifact_id, name=name, description=human_message or name, parts=parts)  # Summary
+
     async def on_message_send(
         self,
         params: MessageSendParams,
@@ -554,26 +577,35 @@ class AdCPRequestHandler(RequestHandler):
                         results.append({"skill": skill_name, "error": str(e), "success": False})
 
                 # Create artifacts for all skill results with human-readable descriptions
+                # Per AdCP PR #238: TextPart for human messages, DataPart for pure AdCP payload
                 for i, res in enumerate(results):
                     artifact_data = res["result"] if res["success"] else {"error": res["error"]}
 
-                    # Generate human-readable description from response __str__()
-                    description = None
+                    # Generate human-readable message from response __str__()
+                    human_message = None
                     if res["success"] and isinstance(artifact_data, dict):
                         try:
                             response_obj = self._reconstruct_response_object(res["skill"], artifact_data)
                             if response_obj and hasattr(response_obj, "__str__"):
-                                description = str(response_obj)
+                                human_message = str(response_obj)
                         except Exception:
-                            pass  # If reconstruction fails, skip description
+                            pass  # If reconstruction fails, skip message
+
+                    # Build parts: TextPart for human message + DataPart for AdCP payload
+                    parts = []
+                    if human_message:
+                        # TextPart contains human-readable message
+                        parts.append(Part(root=TextPart(text=human_message)))
+                    # DataPart contains pure AdCP payload (no protocol fields)
+                    parts.append(Part(root=DataPart(data=artifact_data)))
 
                     task.artifacts = task.artifacts or []
                     task.artifacts.append(
                         Artifact(
                             artifact_id=f"skill_result_{i + 1}",
                             name=f"{'error' if not res['success'] else res['skill']}_result",
-                            description=description,  # Human-readable message
-                            parts=[Part(root=DataPart(data=artifact_data))],
+                            description=human_message,  # Summary in description
+                            parts=parts,  # TextPart + DataPart
                         )
                     )
 
@@ -656,12 +688,11 @@ class AdCPRequestHandler(RequestHandler):
                         "product_count": len(result.get("products", [])) if isinstance(result, dict) else 0,
                     },
                 )
+                # Generate human message from response
+                response_obj = self._reconstruct_response_object("get_products", result)
+                human_message = str(response_obj) if response_obj else None
                 task.artifacts = [
-                    Artifact(
-                        artifact_id="product_catalog_1",
-                        name="product_catalog",
-                        parts=[Part(root=DataPart(data=result))],
-                    )
+                    self._build_artifact_with_textpart("product_catalog_1", "product_catalog", result, human_message)
                 ]
             elif any(word in combined_text for word in ["price", "pricing", "cost", "cpm", "budget"]):
                 result = self._get_pricing()
@@ -685,11 +716,10 @@ class AdCPRequestHandler(RequestHandler):
                         "pricing_models": len(result.get("pricing_models", [])) if isinstance(result, dict) else 0,
                     },
                 )
+                # Pricing info is a plain dict, no response object to extract human message from
                 task.artifacts = [
-                    Artifact(
-                        artifact_id="pricing_info_1",
-                        name="pricing_information",
-                        parts=[Part(root=DataPart(data=result))],
+                    self._build_artifact_with_textpart(
+                        artifact_id="pricing_info_1", name="pricing_information", data=result, human_message=None
                     )
                 ]
             elif any(word in combined_text for word in ["target", "audience"]):
@@ -716,15 +746,17 @@ class AdCPRequestHandler(RequestHandler):
                         ),
                     },
                 )
+                # Targeting options is a plain dict, no response object to extract human message from
                 task.artifacts = [
-                    Artifact(
-                        artifact_id="targeting_opts_1",
-                        name="targeting_options",
-                        parts=[Part(root=DataPart(data=result))],
+                    self._build_artifact_with_textpart(
+                        artifact_id="targeting_opts_1", name="targeting_options", data=result, human_message=None
                     )
                 ]
             elif any(word in combined_text for word in ["create", "buy", "campaign", "media"]):
+                # NLP create_media_buy - returns guidance/help information
+                # NOTE: This is a stub that redirects users to explicit skill invocation
                 result = await self._create_media_buy(combined_text, auth_token)
+
                 # Extract tenant and principal for logging
                 try:
                     tool_context = self._create_tool_context_from_a2a(auth_token, "create_media_buy")
@@ -735,30 +767,27 @@ class AdCPRequestHandler(RequestHandler):
                     tenant_id = "unknown"
                     principal_id = "unknown"
 
+                # This is a guidance response (not a media buy creation)
                 self._log_a2a_operation(
                     "create_media_buy",
                     tenant_id,
                     principal_id,
-                    result.get("success", False),
-                    {"query": combined_text[:100], "success": result.get("success", False)},
-                    result.get("message") if not result.get("success") else None,
+                    True,  # Guidance successfully returned
+                    {"query": combined_text[:100], "response_type": "guidance"},
+                    None,
                 )
-                if result.get("success"):
-                    task.artifacts = [
-                        Artifact(
-                            artifact_id="media_buy_1",
-                            name="media_buy_created",
-                            parts=[Part(root=DataPart(data=result))],
-                        )
-                    ]
-                else:
-                    task.artifacts = [
-                        Artifact(
-                            artifact_id="media_buy_error_1",
-                            name="media_buy_error",
-                            parts=[Part(root=DataPart(data=result))],
-                        )
-                    ]
+
+                # Build artifact with TextPart + DataPart
+                # Extract guidance message for TextPart
+                human_message = result.get("guidance")
+                artifact_name = "media_buy_guidance"
+                artifact_id = "media_buy_guidance_1"
+
+                task.artifacts = [
+                    self._build_artifact_with_textpart(
+                        artifact_id=artifact_id, name=artifact_name, data=result, human_message=human_message
+                    )
+                ]
             else:
                 # General help response
                 capabilities = {
@@ -792,11 +821,10 @@ class AdCPRequestHandler(RequestHandler):
                     True,
                     {"query": combined_text[:100], "response_type": "capabilities"},
                 )
+                # Capabilities is a plain dict, no response object to extract human message from
                 task.artifacts = [
-                    Artifact(
-                        artifact_id="capabilities_1",
-                        name="capabilities",
-                        parts=[Part(root=DataPart(data=capabilities))],
+                    self._build_artifact_with_textpart(
+                        artifact_id="capabilities_1", name="capabilities", data=capabilities, human_message=None
                     )
                 ]
 
@@ -1361,19 +1389,12 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from GetProductsResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
-            response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Products retrieved successfully"
-            )
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in get_products skill: {e}")
@@ -1408,22 +1429,7 @@ class AdCPRequestHandler(RequestHandler):
             missing_params = [param for param in required_params if param not in parameters]
 
             if missing_params:
-                return {
-                    "success": False,
-                    "message": f"Missing required AdCP parameters: {missing_params}",
-                    "required_parameters": required_params,
-                    "received_parameters": list(parameters.keys()),
-                    "errors": [
-                        {
-                            "code": "validation_error",
-                            "message": f"Missing required AdCP parameters: {missing_params}",
-                            "details": {
-                                "required": required_params,
-                                "received": list(parameters.keys()),
-                            },
-                        }
-                    ],
-                }
+                raise ServerError(InvalidParamsError(message=f"Missing required AdCP parameters: {missing_params}"))
 
             # Call core function with AdCP spec-compliant parameters
             # Note: budget is NOT passed at top level per AdCP v2.2.0 - it's in packages
@@ -1441,43 +1447,16 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict and add A2A success wrapper
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from CreateMediaBuyResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Check if response contains errors (domain errors from validation/ad server)
-            has_errors = response_data.get("errors") and len(response_data.get("errors", [])) > 0
-
-            # A2A wrapper adds success field and message
-            # Success is False if there are domain errors, even if no exception was raised
-            response_data["success"] = not has_errors
-            if has_errors:
-                response_data["message"] = "Media buy creation failed with validation errors"
-            else:
-                response_data["message"] = "Media buy created successfully"
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")
-            # Return error response instead of raising ServerError
-            # This allows tests to check error structure in artifacts
-            return {
-                "success": False,
-                "message": f"Failed to create media buy: {str(e)}",
-                "errors": [
-                    {
-                        "code": (
-                            "authentication_error"
-                            if "foreign key" in str(e).lower() and "principal" in str(e).lower()
-                            else "internal_error"
-                        ),
-                        "message": str(e),
-                    }
-                ],
-            }
+            raise ServerError(InternalError(message=f"Unable to create media buy: {str(e)}"))
 
     async def _handle_sync_creatives_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit sync_creatives skill invocation (AdCP spec endpoint)."""
@@ -1490,12 +1469,7 @@ class AdCPRequestHandler(RequestHandler):
 
             # Map A2A parameters - creatives is required
             if "creatives" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Missing required parameter: 'creatives'",
-                    "required_parameters": ["creatives"],
-                    "received_parameters": list(parameters.keys()),
-                }
+                raise ServerError(InvalidParamsError(message="Missing required parameter: 'creatives'"))
 
             # Call core function with spec-compliant parameters (AdCP v2.4)
             response = core_sync_creatives_tool(
@@ -1510,24 +1484,12 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from SyncCreativesResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Add A2A protocol fields
-            # Check for errors in response
-            has_errors = response_data.get("errors") and len(response_data.get("errors", [])) > 0
-
-            response_data["success"] = not has_errors
-            response_data["message"] = (
-                "Creatives synced with errors"
-                if has_errors
-                else str(response) if not isinstance(response, dict) else "Creatives synced successfully"
-            )
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in sync_creatives skill: {e}")
@@ -1560,19 +1522,12 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from ListCreativesResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
-            response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Creatives listed successfully"
-            )
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in list_creatives skill: {e}")
@@ -1777,19 +1732,12 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function with request
             response = core_list_creative_formats_tool(req=req, ctx=self._tool_context_to_mcp_context(tool_context))
 
-            # Convert response to dict
+            # Return spec-compliant response (no extra fields)
+            # Per AdCP spec: all fields from ListCreativeFormatsResponse
             if isinstance(response, dict):
-                response_data = response
+                return response
             else:
-                response_data = response.model_dump()
-
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
-            response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Creative formats retrieved successfully"
-            )
-
-            return response_data
+                return response.model_dump()
 
         except Exception as e:
             logger.error(f"Error in list_creative_formats skill: {e}")
@@ -1971,12 +1919,7 @@ class AdCPRequestHandler(RequestHandler):
             missing_params = [param for param in required_params if param not in parameters]
 
             if missing_params:
-                return {
-                    "success": False,
-                    "message": f"Missing required parameters: {missing_params}",
-                    "required_parameters": required_params,
-                    "received_parameters": list(parameters.keys()),
-                }
+                raise ServerError(InvalidParamsError(message=f"Missing required parameters: {missing_params}"))
 
             # Call core function directly
             response = core_update_performance_index_tool(
@@ -1998,44 +1941,33 @@ class AdCPRequestHandler(RequestHandler):
             raise ServerError(InternalError(message=f"Unable to update performance index: {str(e)}"))
 
     async def _get_products(self, query: str, auth_token: str | None) -> dict:
-        """Get available advertising products by calling core functions directly.
+        """Get available advertising products via natural language query.
+
+        This is a thin wrapper that maps NL queries to the explicit skill handler.
+        Eliminates duplication and ensures spec compliance.
 
         Args:
             query: User's product query
             auth_token: Bearer token for authentication
 
         Returns:
-            Dictionary containing product information
+            Pure AdCP response dict (no protocol fields)
+
+        Raises:
+            ServerError: If auth_token is missing
         """
-        try:
-            # Create ToolContext from A2A auth info
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="get_products",
-            )
+        if not auth_token:
+            raise ServerError(InvalidParamsError(message="Authentication token required"))
 
-            # Extract brand name from query and create brand_manifest
-            # This provides backward compatibility for natural language queries
-            brand_name = self._extract_brand_name_from_query(query)
-            brand_manifest = {"name": brand_name} if brand_name else None
+        # Extract brand name from NL query for backward compatibility
+        brand_name = self._extract_brand_name_from_query(query)
+        brand_manifest = {"name": brand_name} if brand_name else None
 
-            # Call core function directly using the underlying function
-            response = await core_get_products_tool(
-                brief=query,
-                brand_manifest=brand_manifest,
-                ctx=self._tool_context_to_mcp_context(tool_context),
-            )
+        # Build parameters for skill handler
+        parameters = {"brief": query, "brand_manifest": brand_manifest}
 
-            # Convert to A2A response format
-            return {
-                "products": [product.model_dump() for product in response.products],
-                "message": str(response),  # Use __str__ method for human-readable message
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting products: {e}")
-            # Return empty products list instead of fallback data
-            return {"products": [], "message": f"Unable to retrieve products: {str(e)}"}
+        # Call the skill handler directly (reuses existing spec-compliant logic)
+        return await self._handle_get_products_skill(parameters, auth_token)
 
     def _extract_brand_name_from_query(self, query: str) -> str:
         """Extract or infer brand name from the user query.
@@ -2144,50 +2076,57 @@ class AdCPRequestHandler(RequestHandler):
         }
 
     async def _create_media_buy(self, request: str, auth_token: str | None) -> dict:
-        """Create a media buy based on the request.
+        """Create a media buy based on the request (NLP stub - redirects to explicit skill).
+
+        NOTE: This is a legacy NLP helper that returns guidance information.
+        For actual media buy creation, use the explicit skill handler:
+        `_handle_create_media_buy_skill()`
+
+        Per AdCP spec, this returns a help/guidance response, NOT protocol fields.
 
         Args:
             request: User's media buy request
             auth_token: Bearer token for authentication
 
         Returns:
-            Dictionary containing media buy creation result
-        """
-        # For now, return a mock response indicating authentication is working
-        # but media buy creation needs more implementation
-        try:
-            # Verify authentication works
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="create_media_buy",
-            )
+            Dictionary containing guidance information (spec-compliant)
 
-            return {
-                "success": False,
-                "message": f"Authentication successful for {tool_context.principal_id}. To create a media buy, use explicit skill invocation with AdCP v2.2.0 spec-compliant format.",
-                "required_fields": ["brand_manifest", "packages", "start_time", "end_time"],
-                "note": "Per AdCP v2.2.0 spec, budget is specified at the PACKAGE level, not top level",
-                "authenticated_tenant": tool_context.tenant_id,
-                "authenticated_principal": tool_context.principal_id,
-                "example": {
-                    "brand_manifest": "https://example.com/brand-manifest.json",
-                    "packages": [
-                        {
-                            "buyer_ref": "pkg_1",
-                            "product_id": "video_premium",
-                            "budget": 10000.0,  # Budget is per package (required)
-                            "pricing_option_id": "cpm-fixed",
-                        }
-                    ],
-                    # Note: NO top-level budget field per AdCP v2.2.0 spec
-                    "start_time": "2025-02-01T00:00:00Z",
-                    "end_time": "2025-02-28T23:59:59Z",
-                },
-                "documentation": "https://adcontextprotocol.org/docs/",
-            }
-        except Exception as e:
-            logger.error(f"Error in media buy creation: {e}")
-            raise ServerError(InternalError(message=f"Authentication failed: {str(e)}"))
+        Raises:
+            ServerError: If authentication fails
+        """
+        if not auth_token:
+            raise ServerError(InvalidParamsError(message="Authentication token required"))
+
+        # Verify authentication works
+        tool_context = self._create_tool_context_from_a2a(
+            auth_token=auth_token,
+            tool_name="create_media_buy",
+        )
+
+        # Return guidance information (no protocol fields)
+        # This is a help response, not an actual media buy creation
+        return {
+            "guidance": f"Authentication successful for {tool_context.principal_id}. To create a media buy, use explicit skill invocation with AdCP v2.2.0 spec-compliant format.",
+            "required_fields": ["brand_manifest", "packages", "start_time", "end_time"],
+            "note": "Per AdCP v2.2.0 spec, budget is specified at the PACKAGE level, not top level",
+            "authenticated_tenant": tool_context.tenant_id,
+            "authenticated_principal": tool_context.principal_id,
+            "example": {
+                "brand_manifest": "https://example.com/brand-manifest.json",
+                "packages": [
+                    {
+                        "buyer_ref": "pkg_1",
+                        "product_id": "video_premium",
+                        "budget": 10000.0,  # Budget is per package (required)
+                        "pricing_option_id": "cpm-fixed",
+                    }
+                ],
+                # Note: NO top-level budget field per AdCP v2.2.0 spec
+                "start_time": "2025-02-01T00:00:00Z",
+                "end_time": "2025-02-28T23:59:59Z",
+            },
+            "documentation": "https://adcontextprotocol.org/docs/",
+        }
 
 
 def create_agent_card() -> AgentCard:

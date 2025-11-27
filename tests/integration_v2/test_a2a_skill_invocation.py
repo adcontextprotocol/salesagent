@@ -509,8 +509,16 @@ class TestA2ASkillInvocation:
             assert len(result.artifacts) == 2
 
             # Verify both artifacts have data
+            # Per A2A spec compliance (PR #784): artifacts can have TextPart + DataPart
+            # DataPart contains AdCP payload, TextPart contains human message
             for artifact in result.artifacts:
-                assert artifact.parts[0].root.data is not None
+                # Find DataPart in the artifact (may be first or second part)
+                data_part = None
+                for part in artifact.parts:
+                    if hasattr(part.root, "data"):
+                        data_part = part.root.data
+                        break
+                assert data_part is not None, "Artifact must contain DataPart with response data"
 
     # TODO: Add test_missing_authentication once we understand how A2A server handles auth errors
     # TODO: Needs investigation of proper error handling approach (ServerError not in current a2a library)
@@ -883,21 +891,30 @@ class TestA2ASkillInvocation:
 
             adcp_a2a_server._request_headers.set({"host": f"{sample_tenant['subdomain']}.example.com"})
 
-            # Create skill invocation
+            # Create skill invocation with correct parameters
+            # Per AdCP spec: requires media_buy_id and performance_data (list of ProductPerformance)
             skill_params = {
                 "media_buy_id": "mb_test_123",
-                "performance_index": 1.25,
+                "performance_data": [
+                    {
+                        "product_id": "prod_test_1",
+                        "performance_index": 1.25,  # 25% better than baseline
+                        "confidence_score": 0.85,
+                    }
+                ],
             }
             message = create_a2a_message_with_skill("update_performance_index", skill_params)
             params = MessageSendParams(message=message)
 
-            # This will likely fail because media_buy doesn't exist, but tests the code path
-            result = await handler.on_message_send(params)
+            # This will fail because media_buy doesn't exist - expect ServerError per spec compliance
+            # Per A2A spec compliance refactoring: validation errors raise ServerError
+            from a2a.utils.errors import ServerError
 
-            # Verify the skill was invoked
-            assert isinstance(result, Task)
-            assert result.metadata["invocation_type"] == "explicit_skill"
-            assert "update_performance_index" in result.metadata["skills_requested"]
+            with pytest.raises(ServerError) as exc_info:
+                result = await handler.on_message_send(params)
+
+            # Verify error message indicates media buy not found
+            assert "Media buy 'mb_test_123' not found" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_get_media_buy_delivery_skill(self, handler, sample_tenant, sample_principal, validator):
