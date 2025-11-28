@@ -319,7 +319,9 @@ def get_principal_from_context(
     # 4. Fallback for localhost in development: use "default" tenant
     if not requested_tenant_id:
         host = _get_header_case_insensitive(headers, "host") or ""
-        if host.startswith("localhost"):
+        # Extract hostname without port (handles localhost:8091, 127.0.0.1:8001, etc)
+        hostname = host.split(":")[0]
+        if hostname in ["localhost", "127.0.0.1", "localhost.localdomain"]:
             console.print("[blue]Localhost detected - checking for 'default' tenant[/blue]")
             tenant_context = get_tenant_by_subdomain("default")
             if tenant_context:
