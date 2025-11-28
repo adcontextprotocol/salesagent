@@ -544,7 +544,13 @@ class AdCPRequestHandler(RequestHandler):
             auth_token = self._get_auth_token()
 
             # List of skills that don't require authentication (public discovery endpoints)
-            public_skills = {"list_authorized_properties"}
+            # Per AdCP spec section 3.2: Discovery endpoints allow optional authentication
+            # IMPORTANT: This must match the discovery_skills set in handle_skill_invocation()
+            public_skills = {
+                "list_creative_formats",  # Creative specifications (always public)
+                "list_authorized_properties",  # Property catalog (always public)
+                "get_products",  # Conditional: depends on tenant brand_manifest_policy
+            }
 
             # Check if any requested skills require authentication
             requires_auth = True
