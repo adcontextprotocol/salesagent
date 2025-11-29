@@ -1507,10 +1507,11 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Add A2A protocol field: success indicator
+            # Add A2A protocol fields: success indicator and message
             # Check if there are domain-level errors (per AdCP spec)
             has_errors = bool(response_data.get("errors"))
             response_data["success"] = not has_errors
+            response_data["message"] = str(response)
 
             # Return A2A-compatible response with protocol fields
             # Domain errors are included in response.errors field per AdCP spec
