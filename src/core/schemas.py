@@ -1229,53 +1229,6 @@ class Product(LibraryProduct):
     # include is_fixed as a required field per AdCP spec.
     # No custom serialization needed - library handles it correctly.
 
-    @property
-    def pricing_summary(self) -> str | None:
-        """Generate human-readable pricing summary for display to buyers (AdCP PR #88).
-
-        Returns string like: "CPM: $8-$15 (auction), CPCV: $0.35 (fixed)"
-        Returns None if no pricing information available.
-
-        Note: Works with discriminated union pricing options (library Product).
-        Fixed rate options have 'rate' field, auction options have 'price_guidance' field.
-        """
-        if not self.pricing_options or len(self.pricing_options) == 0:
-            return None
-
-        summary_parts = []
-        for option in self.pricing_options:
-            # Handle both enum and string pricing_model
-            # pricing_model could be Literal string or enum with .value
-            pricing_model = option.pricing_model
-            if isinstance(pricing_model, str):
-                # It's already a string (Literal)
-                model = pricing_model
-            elif hasattr(pricing_model, "value"):
-                # It's an enum
-                model = pricing_model.value
-            else:
-                # Fallback: convert to string
-                model = str(pricing_model)
-            model_upper = model.upper()
-
-            # Discriminated union: presence of 'rate' means fixed, 'price_guidance' means auction
-            if hasattr(option, "rate") and option.rate:
-                # Fixed pricing: show rate
-                summary_parts.append(f"{model_upper}: ${option.rate:.2f} ({option.currency}, fixed)")
-            elif hasattr(option, "price_guidance") and option.price_guidance:
-                # Auction pricing: show floor-p90 range
-                floor = option.price_guidance.floor
-                p90 = option.price_guidance.p90 if option.price_guidance.p90 else option.price_guidance.p50
-                if p90 and p90 != floor:
-                    summary_parts.append(f"{model_upper}: ${floor:.2f}-${p90:.2f} ({option.currency}, auction)")
-                else:
-                    summary_parts.append(f"{model_upper}: ${floor:.2f}+ ({option.currency}, auction)")
-            else:
-                # Incomplete pricing info
-                summary_parts.append(f"{model_upper} ({option.currency})")
-
-        return ", ".join(summary_parts) if summary_parts else None
-
     def model_dump(self, **kwargs):
         """Return AdCP-compliant model dump with proper field names, excluding internal fields and null values."""
         # Exclude internal/non-spec fields
@@ -1288,10 +1241,6 @@ class Product(LibraryProduct):
         # Convert formats to format_ids per AdCP spec
         if "formats" in data:
             data["format_ids"] = data.pop("formats")
-
-        # Add computed pricing_summary for buyer convenience (AdCP PR #88)
-        if self.pricing_summary:
-            data["pricing_summary"] = self.pricing_summary
 
         # Remove null fields per AdCP spec
         # Only truly required fields should always be present

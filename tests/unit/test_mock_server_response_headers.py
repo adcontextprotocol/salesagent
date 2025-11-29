@@ -165,10 +165,7 @@ class TestMockServerResponseHeaders:
         assert "X-Next-Event-Time" not in headers
 
         # CRITICAL: Test roundtrip conversion - this would catch the "formats field required" bug
-        # Filter out computed fields (pricing_summary is a @property, not a model field)
-        modified_products = [
-            Product(**{k: v for k, v in p.items() if k != "pricing_summary"}) for p in result["products"]
-        ]
+        modified_products = [Product(**p) for p in result["products"]]
 
         # Verify the roundtrip worked correctly
         assert len(modified_products) == 1

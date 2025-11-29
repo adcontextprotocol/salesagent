@@ -45,6 +45,7 @@ from a2a.types import (
     TaskQueryParams,
     TaskState,
     TaskStatus,
+    TextPart,
     UnsupportedOperationError,
 )
 from a2a.utils.errors import ServerError
@@ -560,12 +561,14 @@ class AdCPRequestHandler(RequestHandler):
             auth_token = self._get_auth_token()
 
             # Check if any requested skills require authentication
-            requires_auth = True
+            # Default to not requiring auth - only require if we have non-discovery skills
+            requires_auth = False
             if skill_invocations:
-                # If ALL skills are discovery endpoints, don't require auth
+                # If ANY skill requires auth (not in discovery set), then require auth
                 requested_skills = {inv["skill"] for inv in skill_invocations}
-                if requested_skills.issubset(DISCOVERY_SKILLS):
-                    requires_auth = False
+                non_discovery_skills = requested_skills - DISCOVERY_SKILLS
+                if non_discovery_skills:
+                    requires_auth = True
 
             # Require authentication for non-public skills
             if requires_auth and not auth_token:
@@ -594,27 +597,33 @@ class AdCPRequestHandler(RequestHandler):
                         logger.error(f"Error in explicit skill {skill_name}: {e}")
                         results.append({"skill": skill_name, "error": str(e), "success": False})
 
-                # Create artifacts for all skill results with human-readable descriptions
+                # Create artifacts for all skill results with human-readable text
                 for i, res in enumerate(results):
                     artifact_data = res["result"] if res["success"] else {"error": res["error"]}
 
-                    # Generate human-readable description from response __str__()
-                    description = None
+                    # Generate human-readable text from response __str__()
+                    # Per A2A spec, use TextPart + DataPart pattern (not description field)
+                    text_message = None
                     if res["success"] and isinstance(artifact_data, dict):
                         try:
                             response_obj = self._reconstruct_response_object(res["skill"], artifact_data)
                             if response_obj and hasattr(response_obj, "__str__"):
-                                description = str(response_obj)
+                                text_message = str(response_obj)
                         except Exception:
-                            pass  # If reconstruction fails, skip description
+                            pass  # If reconstruction fails, skip text part
+
+                    # Build parts list per A2A spec: optional TextPart + required DataPart
+                    parts = []
+                    if text_message:
+                        parts.append(Part(root=TextPart(text=text_message)))
+                    parts.append(Part(root=DataPart(data=artifact_data)))
 
                     task.artifacts = task.artifacts or []
                     task.artifacts.append(
                         Artifact(
                             artifact_id=f"skill_result_{i + 1}",
                             name=f"{'error' if not res['success'] else res['skill']}_result",
-                            description=description,  # Human-readable message
-                            parts=[Part(root=DataPart(data=artifact_data))],
+                            parts=parts,
                         )
                     )
 
@@ -1419,12 +1428,11 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
-            response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Products retrieved successfully"
-            )
+            # Add A2A protocol field: message for agent communication
+            # All AdCP response types support __str__() for human-readable messages
+            response_data["message"] = str(response)
 
+            # Return A2A-compatible response with message field
             return response_data
 
         except Exception as e:
@@ -1493,43 +1501,27 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict and add A2A success wrapper
+            # Convert response to dict and add A2A protocol fields
             if isinstance(response, dict):
                 response_data = response
             else:
                 response_data = response.model_dump()
 
-            # Check if response contains errors (domain errors from validation/ad server)
-            has_errors = response_data.get("errors") and len(response_data.get("errors", [])) > 0
-
-            # A2A wrapper adds success field and message
-            # Success is False if there are domain errors, even if no exception was raised
+            # Add A2A protocol fields: success indicator and message
+            # Check if there are domain-level errors (per AdCP spec)
+            has_errors = bool(response_data.get("errors"))
             response_data["success"] = not has_errors
-            if has_errors:
-                response_data["message"] = "Media buy creation failed with validation errors"
-            else:
-                response_data["message"] = "Media buy created successfully"
+            response_data["message"] = str(response)
 
+            # Return A2A-compatible response with protocol fields
+            # Domain errors are included in response.errors field per AdCP spec
             return response_data
 
         except Exception as e:
             logger.error(f"Error in create_media_buy skill: {e}")
-            # Return error response instead of raising ServerError
-            # This allows tests to check error structure in artifacts
-            return {
-                "success": False,
-                "message": f"Failed to create media buy: {str(e)}",
-                "errors": [
-                    {
-                        "code": (
-                            "authentication_error"
-                            if "foreign key" in str(e).lower() and "principal" in str(e).lower()
-                            else "internal_error"
-                        ),
-                        "message": str(e),
-                    }
-                ],
-            }
+            # Raise ServerError for A2A protocol to handle
+            # The protocol layer will convert this to appropriate JSON-RPC error
+            raise ServerError(InternalError(message=f"Failed to create media buy: {str(e)}"))
 
     async def _handle_sync_creatives_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit sync_creatives skill invocation (AdCP spec endpoint)."""
@@ -1568,17 +1560,13 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Add A2A protocol fields
-            # Check for errors in response
-            has_errors = response_data.get("errors") and len(response_data.get("errors", [])) > 0
+            # Add A2A protocol fields for agent communication
+            # Success means the operation completed (even if some creatives had errors)
+            response_data["success"] = True
+            response_data["message"] = str(response)
 
-            response_data["success"] = not has_errors
-            response_data["message"] = (
-                "Creatives synced with errors"
-                if has_errors
-                else str(response) if not isinstance(response, dict) else "Creatives synced successfully"
-            )
-
+            # Return A2A-compatible response with protocol fields
+            # Domain errors are included in response.errors field per AdCP spec
             return response_data
 
         except Exception as e:
@@ -1618,12 +1606,10 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
-            response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Creatives listed successfully"
-            )
+            # Add A2A protocol field: message for agent communication
+            response_data["message"] = str(response)
 
+            # Return A2A-compatible response with message field
             return response_data
 
         except Exception as e:
@@ -1847,12 +1833,10 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Add A2A protocol fields (message for human readability)
-            # Use __str__() method which all response types implement
-            response_data["message"] = (
-                str(response) if not isinstance(response, dict) else "Creative formats retrieved successfully"
-            )
+            # Add A2A protocol field: message for agent communication
+            response_data["message"] = str(response)
 
+            # Return A2A-compatible response with message field
             return response_data
 
         except Exception as e:
