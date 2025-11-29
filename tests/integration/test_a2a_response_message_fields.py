@@ -79,8 +79,9 @@ class TestA2AMessageFieldValidation:
                 "packages": [
                     {
                         "buyer_ref": f"pkg_{sample_products[0]}",
-                        "products": [sample_products[0]],
-                        "budget": {"total": 10000.0, "currency": "USD"},
+                        "product_id": sample_products[0],
+                        "pricing_option_id": "cpm_usd_fixed",
+                        "budget": 10000.0,
                     }
                 ],
                 "budget": {"total": 10000.0, "currency": "USD"},
@@ -276,9 +277,9 @@ class TestA2AResponseDictConstruction:
             # For now, just check the class definition
             has_message_field = "message" in response_cls.model_fields
 
-            assert has_str_method or has_message_field, (
-                f"{response_cls.__name__} must have either __str__ method or .message field for A2A compatibility"
-            )
+            assert (
+                has_str_method or has_message_field
+            ), f"{response_cls.__name__} must have either __str__ method or .message field for A2A compatibility"
 
 
 @pytest.mark.integration
@@ -309,6 +310,6 @@ class TestA2AErrorHandling:
                     assert "message" in result or "error" in result, "Error response must have message or error field"
             except Exception as e:
                 # Errors are expected for invalid params
-                assert "message" not in str(e) or "AttributeError" not in str(e), (
-                    "Should not get AttributeError when handling skill errors"
-                )
+                assert "message" not in str(e) or "AttributeError" not in str(
+                    e
+                ), "Should not get AttributeError when handling skill errors"

@@ -1428,7 +1428,11 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Return AdCP-compliant response (no extra fields for schema validation)
+            # Add A2A protocol field: message for agent communication
+            # All AdCP response types support __str__() for human-readable messages
+            response_data["message"] = str(response)
+
+            # Return A2A-compatible response with message field
             return response_data
 
         except Exception as e:
@@ -1497,13 +1501,18 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert response to dict and add A2A success wrapper
+            # Convert response to dict and add A2A protocol fields
             if isinstance(response, dict):
                 response_data = response
             else:
                 response_data = response.model_dump()
 
-            # Return AdCP-compliant response (no extra protocol fields)
+            # Add A2A protocol field: success indicator
+            # Check if there are domain-level errors (per AdCP spec)
+            has_errors = bool(response_data.get("errors"))
+            response_data["success"] = not has_errors
+
+            # Return A2A-compatible response with protocol fields
             # Domain errors are included in response.errors field per AdCP spec
             return response_data
 
@@ -1550,7 +1559,12 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Return AdCP-compliant response (no extra protocol fields)
+            # Add A2A protocol fields for agent communication
+            # Success means the operation completed (even if some creatives had errors)
+            response_data["success"] = True
+            response_data["message"] = str(response)
+
+            # Return A2A-compatible response with protocol fields
             # Domain errors are included in response.errors field per AdCP spec
             return response_data
 
@@ -1591,7 +1605,10 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Return AdCP-compliant response (no extra protocol fields)
+            # Add A2A protocol field: message for agent communication
+            response_data["message"] = str(response)
+
+            # Return A2A-compatible response with message field
             return response_data
 
         except Exception as e:
@@ -1815,7 +1832,10 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 response_data = response.model_dump()
 
-            # Return AdCP-compliant response (no extra protocol fields)
+            # Add A2A protocol field: message for agent communication
+            response_data["message"] = str(response)
+
+            # Return A2A-compatible response with message field
             return response_data
 
         except Exception as e:
