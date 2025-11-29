@@ -191,6 +191,52 @@ class TestAuthOptionalSkills:
                 # Should not be an auth error
                 assert "Authentication token required" not in str(e)
 
+    @pytest.mark.asyncio
+    async def test_natural_language_without_auth(self):
+        """Natural language requests (empty skill_invocations) should not require auth.
+
+        With the fix, requires_auth defaults to False, so empty skill_invocations
+        (natural language requests) should not trigger authentication requirement.
+        """
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Mock the MessageSendParams with a text-only message (no explicit skill)
+        params = MagicMock()
+        params.message = MagicMock()
+        params.message.message_id = "test_msg_1"
+        params.message.context_id = "test_ctx_1"
+        params.message.role = "user"
+
+        # Create a mock part with text attribute that matches a natural language pattern
+        text_part = MagicMock()
+        text_part.text = "show me available products"
+        # Mock hasattr checks
+        text_part.data = None
+        text_part.root = None
+        params.message.parts = [text_part]
+        params.configuration = None
+
+        # Mock _get_auth_token to return None (no auth)
+        with patch.object(self.handler, "_get_auth_token", return_value=None):
+            # Mock the _get_products method that would be called for natural language
+            with patch.object(self.handler, "_get_products", new_callable=AsyncMock) as mock_products:
+                mock_products.return_value = {"products": []}
+
+                # This should NOT raise auth error for natural language
+                # Before fix: would raise "Authentication token required"
+                # After fix: should proceed to natural language handling
+                try:
+                    result = await self.handler.on_message_send(params)
+                    # Should successfully return a result (even if empty)
+                    assert result is not None
+                except ServerError as e:
+                    # Only auth errors are problematic - let other errors propagate
+                    if "Authentication" in str(e) or "authentication" in str(e):
+                        pytest.fail(f"Natural language request without auth should not require auth: {e}")
+                    else:
+                        # Re-raise non-auth errors to expose actual bugs
+                        raise
+
 
 class TestMinimalContext:
     """Test MinimalContext helper class."""
