@@ -371,32 +371,36 @@ def create_test_property(
 
 def create_test_package(
     package_id: str = "test_package",
-    status: str = "active",
-    products: list[str] | None = None,
+    paused: bool = False,
+    product_id: str | None = None,
     **kwargs,
 ) -> Package:
-    """Create a test Package object.
+    """Create a test Package object (response schema).
 
     Args:
-        package_id: Package identifier
-        status: Package status ("active", "paused", etc.)
-        products: List of product IDs. Defaults to ["test_product"]
-        **kwargs: Additional optional fields (impressions, creative_assignments, etc.)
+        package_id: Package identifier (REQUIRED)
+        paused: Whether package delivery is paused (default False). AdCP 2.12.0+
+        product_id: Product ID for the package (optional per AdCP spec)
+        **kwargs: Additional optional fields (impressions, creative_assignments, format_ids_to_provide, etc.)
 
     Returns:
         AdCP-compliant Package object
 
+    Note:
+        Package is the RESPONSE schema. It does NOT have:
+        - status (use paused boolean instead, since AdCP 2.12.0)
+        - format_ids (use format_ids_to_provide instead)
+        - creative_ids/creatives (use creative_assignments instead)
+
     Example:
         package = create_test_package(
             package_id="pkg_001",
-            products=["prod_1", "prod_2"],
-            impressions=10000
+            product_id="prod_1",
+            impressions=10000,
+            paused=False
         )
     """
-    if products is None:
-        products = ["test_product"]
-
-    return Package(package_id=package_id, status=status, products=products, **kwargs)
+    return Package(package_id=package_id, paused=paused, product_id=product_id, **kwargs)
 
 
 def create_test_package_request(

@@ -117,4 +117,50 @@ def test_validation_error_formatting_extra_field():
     except ValidationError as e:
         error_msg = format_validation_error(e)
 
-        assert "unknown_field: Extra field not allowed by AdCP spec" in error_msg
+        # New format shows value type and preview for unknown fields
+        assert "unknown_field: Field not allowed by AdCP spec" in error_msg
+        assert "received str: some_value" in error_msg
+
+
+def test_validation_error_formatting_known_field_suggestion():
+    """Test formatting provides helpful suggestions for known field mismatches."""
+    try:
+        raise ValidationError.from_exception_data(
+            "Package",
+            [
+                {
+                    "type": "extra_forbidden",
+                    "loc": ("format_ids",),
+                    "msg": "Extra inputs are not permitted",
+                    "input": [{"agent_url": "https://example.com", "id": "display"}],
+                }
+            ],
+        )
+    except ValidationError as e:
+        error_msg = format_validation_error(e, context="Package")
+
+        # Should suggest format_ids_to_provide
+        assert "format_ids" in error_msg
+        assert "format_ids_to_provide" in error_msg
+
+
+def test_validation_error_formatting_status_field_suggestion():
+    """Test formatting provides helpful suggestions for status field."""
+    try:
+        raise ValidationError.from_exception_data(
+            "Package",
+            [
+                {
+                    "type": "extra_forbidden",
+                    "loc": ("status",),
+                    "msg": "Extra inputs are not permitted",
+                    "input": "draft",
+                }
+            ],
+        )
+    except ValidationError as e:
+        error_msg = format_validation_error(e, context="Package")
+
+        # Should explain that Package doesn't have status and suggest paused
+        assert "status" in error_msg
+        assert "paused" in error_msg

@@ -853,6 +853,40 @@ class TestAdCPContract:
             len(internal_only_fields) >= 3
         ), f"Expected at least 3 internal-only fields, got {len(internal_only_fields)}"
 
+    def test_package_rejects_invalid_fields(self):
+        """Test that Package schema rejects fields that don't exist in AdCP spec.
+
+        This prevents regressions where we accidentally try to construct Package
+        objects with PackageRequest-only fields or deprecated fields.
+        """
+        from pydantic import ValidationError
+
+        # Should reject 'status' - removed in AdCP 2.12.0, use 'paused' instead
+        with pytest.raises(ValidationError) as exc_info:
+            Package(package_id="test", status="active")
+        assert "status" in str(exc_info.value)
+        assert "Extra inputs are not permitted" in str(exc_info.value)
+
+        # Should reject 'format_ids' - PackageRequest field, use 'format_ids_to_provide' in Package
+        with pytest.raises(ValidationError) as exc_info:
+            Package(package_id="test", format_ids=[{"agent_url": "https://example.com", "id": "banner"}])
+        assert "format_ids" in str(exc_info.value)
+
+        # Should reject 'creative_ids' - PackageRequest field, use 'creative_assignments' in Package
+        with pytest.raises(ValidationError) as exc_info:
+            Package(package_id="test", creative_ids=["creative_1"])
+        assert "creative_ids" in str(exc_info.value)
+
+        # Should reject 'creatives' - PackageRequest field, use 'creative_assignments' in Package
+        with pytest.raises(ValidationError) as exc_info:
+            Package(package_id="test", creatives=[{"creative_id": "c1"}])
+        assert "creatives" in str(exc_info.value)
+
+        # Should reject 'products' (plural) - incorrect field name
+        with pytest.raises(ValidationError) as exc_info:
+            Package(package_id="test", products=["prod_1"])
+        assert "products" in str(exc_info.value)
+
     def test_targeting_adcp_compliance(self):
         """Test that Targeting model complies with AdCP targeting schema."""
         # Create targeting with both public and managed/internal fields
