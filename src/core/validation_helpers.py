@@ -13,31 +13,6 @@ from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
-# Field suggestions for common mismatches between request/response schemas
-_FIELD_SUGGESTIONS: dict[str, str] = {
-    # PackageRequest fields that don't exist in Package (response)
-    "format_ids": "Did you mean 'format_ids_to_provide'? In Package responses, use 'format_ids_to_provide' instead of 'format_ids'.",
-    "creative_ids": "In Package responses, use 'creative_assignments' to reference creatives.",
-    "creatives": "In Package responses, use 'creative_assignments' to reference creatives.",
-    # Package status - doesn't exist in AdCP Package schema
-    "status": "The Package schema does not have a 'status' field. Use 'paused' (boolean) to indicate delivery state.",
-}
-
-
-def _get_field_suggestion(field_name: str) -> str | None:
-    """Get a helpful suggestion for a field that was rejected."""
-    return _FIELD_SUGGESTIONS.get(field_name)
-
-
-def _truncate_value(value, max_length: int = 80) -> str:
-    """Truncate a value for display in error messages."""
-    if value is None:
-        return "null"
-    str_val = str(value)
-    if len(str_val) > max_length:
-        return str_val[: max_length - 3] + "..."
-    return str_val
-
 
 def run_async_in_sync_context(coroutine):
     """
@@ -157,18 +132,7 @@ def format_validation_error(validation_error: ValidationError, context: str = "r
         elif "missing" in error_type:
             error_details.append(f"  • {field_path}: Required field is missing")
         elif "extra_forbidden" in error_type:
-            # Provide helpful suggestions for common field mismatches
-            field_name = error["loc"][-1] if error["loc"] else field_path
-            suggestions = _get_field_suggestion(str(field_name))
-            if suggestions:
-                error_details.append(f"  • {field_path}: Field '{field_name}' is not allowed. {suggestions}")
-            else:
-                # Show value type to help diagnose the issue
-                val_type = type(input_val).__name__
-                val_preview = _truncate_value(input_val)
-                error_details.append(
-                    f"  • {field_path}: Field not allowed by AdCP spec (received {val_type}: {val_preview})"
-                )
+            error_details.append(f"  • {field_path}: Extra field not allowed by AdCP spec")
         else:
             error_details.append(f"  • {field_path}: {msg}")
 
