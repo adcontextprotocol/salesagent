@@ -1,10 +1,9 @@
 """Unit tests for new AdCP 2.5 product filters.
 
 Tests the filter logic in isolation without requiring a database connection.
+Currently implemented filters: countries, channels.
 """
 
-from datetime import UTC, date, timedelta
-from decimal import Decimal
 from unittest.mock import Mock
 
 from adcp.types import ProductFilters
@@ -16,35 +15,20 @@ class TestNewProductFiltersLogic:
     def _create_mock_product(
         self,
         product_id: str,
-        format_ids: list[str],
-        pricing_rate: float,
-        pricing_currency: str = "USD",
         countries: list[str] | None = None,
-        expires_at=None,
+        channel: str | None = None,
     ):
         """Create a mock product for testing filters."""
         product = Mock()
         product.product_id = product_id
-        product.format_ids = [{"id": fid, "agent_url": "https://test.com"} for fid in format_ids]
         product.countries = countries
-        product.expires_at = expires_at
-
-        # Create mock pricing option
-        pricing_option = Mock()
-        pricing_option.currency = pricing_currency
-        pricing_option.rate = Decimal(str(pricing_rate))
-        pricing_option.floor = None
-        product.pricing_options = [pricing_option]
-
+        product.channel = channel
         return product
 
     def test_countries_filter_includes_matching_country(self):
         """Test that countries filter includes products with matching country."""
-        # This tests the filter logic from products.py
         product = self._create_mock_product(
             product_id="test_product",
-            format_ids=["display_300x250"],
-            pricing_rate=15.0,
             countries=["US", "CA"],
         )
 
@@ -60,8 +44,6 @@ class TestNewProductFiltersLogic:
         """Test that countries filter excludes products without matching country."""
         product = self._create_mock_product(
             product_id="test_product",
-            format_ids=["display_300x250"],
-            pricing_rate=15.0,
             countries=["UK", "FR"],
         )
 
@@ -76,8 +58,6 @@ class TestNewProductFiltersLogic:
         """Test that global products (no country restriction) match any country filter."""
         product = self._create_mock_product(
             product_id="test_product",
-            format_ids=["display_300x250"],
-            pricing_rate=15.0,
             countries=None,  # Global - no country restriction
         )
 
@@ -87,183 +67,96 @@ class TestNewProductFiltersLogic:
         # Empty product_countries means global - should pass through
         assert len(product_countries) == 0
 
-    def test_channels_filter_infers_display_from_format_id(self):
-        """Test that channel is correctly inferred from display_ format prefix."""
+    def test_channels_filter_matches_product_channel(self):
+        """Test that channel filter matches product's channel field."""
         product = self._create_mock_product(
             product_id="test_product",
-            format_ids=["display_300x250", "display_728x90"],
-            pricing_rate=15.0,
+            channel="display",
         )
 
-        # Infer channels from format_ids
-        product_channels = set()
-        for format_id in product.format_ids:
-            fid = format_id.get("id") if isinstance(format_id, dict) else format_id
-            if fid.startswith("display_"):
-                product_channels.add("display")
+        # Test filter logic: request for display should match product with display channel
+        request_channels = {"display"}
+        product_channel = product.channel.lower() if product.channel else None
 
-        assert "display" in product_channels
+        matches = product_channel in request_channels if product_channel else True
+        assert matches is True
 
-    def test_channels_filter_infers_video_from_format_id(self):
-        """Test that channel is correctly inferred from video_ format prefix."""
+    def test_channels_filter_excludes_non_matching_channel(self):
+        """Test that channel filter excludes products with different channel."""
         product = self._create_mock_product(
             product_id="test_product",
-            format_ids=["video_15s", "video_30s"],
-            pricing_rate=25.0,
+            channel="video",
         )
 
-        # Infer channels from format_ids
-        product_channels = set()
-        for format_id in product.format_ids:
-            fid = format_id.get("id") if isinstance(format_id, dict) else format_id
-            if fid.startswith("video_"):
-                product_channels.add("video")
+        # Test filter logic: request for display should NOT match product with video channel
+        request_channels = {"display"}
+        product_channel = product.channel.lower() if product.channel else None
 
-        assert "video" in product_channels
+        matches = product_channel in request_channels if product_channel else True
+        assert matches is False
 
-    def test_channels_filter_infers_audio_from_format_id(self):
-        """Test that channel is correctly inferred from audio_ format prefix."""
+    def test_channels_filter_matches_products_without_channel(self):
+        """Test that products without channel field pass any channel filter."""
         product = self._create_mock_product(
             product_id="test_product",
-            format_ids=["audio_30s"],
-            pricing_rate=20.0,
+            channel=None,  # No channel restriction
         )
 
-        # Infer channels from format_ids
-        product_channels = set()
-        for format_id in product.format_ids:
-            fid = format_id.get("id") if isinstance(format_id, dict) else format_id
-            if fid.startswith("audio_"):
-                product_channels.add("audio")
+        # Products without channel should match any request (not filtered out)
+        product_channel = product.channel.lower() if product.channel else None
 
-        assert "audio" in product_channels
+        # No channel means global - should pass through
+        assert product_channel is None
 
-    def test_budget_range_filter_includes_within_range(self):
-        """Test that budget_range filter includes products within the range."""
+    def test_channels_filter_multiple_channels(self):
+        """Test that channel filter matches when product's channel is in list."""
         product = self._create_mock_product(
             product_id="test_product",
-            format_ids=["display_300x250"],
-            pricing_rate=15.0,
-            pricing_currency="USD",
+            channel="audio",
         )
 
-        # Test filter logic: rate $15 should be within range $10-$20
-        budget_min = 10.0
-        budget_max = 20.0
-        budget_currency = "USD"
+        # Test filter logic: request for display, video, audio should match audio
+        request_channels = {"display", "video", "audio"}
+        product_channel = product.channel.lower() if product.channel else None
 
-        # Check product pricing options
-        for po in product.pricing_options:
-            if po.currency == budget_currency:
-                rate_value = float(po.rate)
-                within_range = budget_min <= rate_value <= budget_max
-                assert within_range is True
+        matches = product_channel in request_channels if product_channel else True
+        assert matches is True
 
-    def test_budget_range_filter_excludes_above_max(self):
-        """Test that budget_range filter excludes products above max."""
-        product = self._create_mock_product(
-            product_id="test_product",
-            format_ids=["display_300x250"],
-            pricing_rate=25.0,  # Above $20 max
-            pricing_currency="USD",
-        )
-
-        budget_min = 10.0
-        budget_max = 20.0
-
-        for po in product.pricing_options:
-            rate_value = float(po.rate)
-            within_range = budget_min <= rate_value <= budget_max
-            assert within_range is False
-
-    def test_budget_range_filter_excludes_below_min(self):
-        """Test that budget_range filter excludes products below min."""
-        product = self._create_mock_product(
-            product_id="test_product",
-            format_ids=["display_300x250"],
-            pricing_rate=5.0,  # Below $10 min
-            pricing_currency="USD",
-        )
-
-        budget_min = 10.0
-        budget_max = 20.0
-
-        for po in product.pricing_options:
-            rate_value = float(po.rate)
-            within_range = budget_min <= rate_value <= budget_max
-            assert within_range is False
-
-    def test_budget_range_filter_requires_matching_currency(self):
-        """Test that budget_range filter only checks products with matching currency."""
-        product = self._create_mock_product(
-            product_id="test_product",
-            format_ids=["display_300x250"],
-            pricing_rate=15.0,  # Would be in range but wrong currency
-            pricing_currency="GBP",
-        )
-
-        budget_currency = "USD"
-
-        # No USD pricing option found
-        has_matching_currency = any(po.currency == budget_currency for po in product.pricing_options)
-        assert has_matching_currency is False
-
-    def test_end_date_filter_excludes_expired_products(self):
-        """Test that end_date filter excludes products that expire before campaign ends."""
-        from datetime import datetime
-
-        # Product expires in 10 days
-        expires_at = datetime.now(UTC) + timedelta(days=10)
-        product = self._create_mock_product(
-            product_id="test_product",
-            format_ids=["display_300x250"],
-            pricing_rate=15.0,
-            expires_at=expires_at,
-        )
-
-        # Campaign ends in 20 days - product should be excluded
-        campaign_end_date = date.today() + timedelta(days=20)
-
-        product_expiry_date = product.expires_at.date() if hasattr(product.expires_at, "date") else None
-        if product_expiry_date:
-            expires_before_campaign_ends = product_expiry_date < campaign_end_date
-            assert expires_before_campaign_ends is True
-
-    def test_end_date_filter_includes_products_without_expiration(self):
-        """Test that end_date filter includes products without expiration."""
-        product = self._create_mock_product(
-            product_id="test_product",
-            format_ids=["display_300x250"],
-            pricing_rate=15.0,
-            expires_at=None,  # No expiration
-        )
-
-        # Products without expires_at should not be filtered out
-        assert product.expires_at is None
-
-    def test_product_filters_schema_has_new_fields(self):
-        """Test that ProductFilters schema includes the new fields."""
-        # Verify the adcp library has the expected fields
+    def test_product_filters_schema_has_countries_and_channels(self):
+        """Test that ProductFilters schema includes countries and channels fields."""
         fields = ProductFilters.model_fields
 
-        assert "start_date" in fields
-        assert "end_date" in fields
-        assert "budget_range" in fields
         assert "countries" in fields
         assert "channels" in fields
 
-    def test_product_filters_can_be_constructed_with_new_fields(self):
-        """Test that ProductFilters can be constructed with new fields."""
+    def test_product_filters_can_be_constructed_with_countries_and_channels(self):
+        """Test that ProductFilters can be constructed with countries and channels."""
         filters = ProductFilters(
             countries=["US", "CA"],
             channels=["display", "video"],
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=30),
-            budget_range={"currency": "USD", "min": 10.0, "max": 100.0},
         )
 
         assert filters.countries is not None
         assert filters.channels is not None
-        assert filters.start_date is not None
-        assert filters.end_date is not None
-        assert filters.budget_range is not None
+
+    def test_combined_countries_and_channels_filter(self):
+        """Test combining countries and channels filters."""
+        # Product in US with display channel
+        product = self._create_mock_product(
+            product_id="test_product",
+            countries=["US"],
+            channel="display",
+        )
+
+        # Request for US and display - should match
+        request_countries = {"US"}
+        request_channels = {"display"}
+
+        product_countries = set(product.countries) if product.countries else set()
+        product_channel = product.channel.lower() if product.channel else None
+
+        countries_match = len(product_countries) == 0 or bool(product_countries.intersection(request_countries))
+        channel_match = product_channel in request_channels if product_channel else True
+
+        assert countries_match is True
+        assert channel_match is True

@@ -484,55 +484,6 @@ async def _get_products_impl(
                 if not has_only_standard:
                     continue
 
-            # Filter by start_date/end_date (availability check)
-            if req.filters.start_date or req.filters.end_date:
-                # Check if product expires before the campaign ends
-                if product.expires_at and req.filters.end_date:
-                    # Product expires_at is a datetime, compare with date
-                    product_expiry_date = product.expires_at.date() if hasattr(product.expires_at, "date") else None
-                    if product_expiry_date and product_expiry_date < req.filters.end_date:
-                        # Product expires before campaign ends
-                        continue
-                # Note: start_date check would require a product "available_from" field
-                # which doesn't exist in the current schema. For now we only check expires_at.
-
-            # Filter by budget_range
-            if req.filters.budget_range:
-                budget_range = req.filters.budget_range
-                budget_currency = budget_range.currency
-                budget_min = getattr(budget_range, "min", None)
-                budget_max = getattr(budget_range, "max", None)
-
-                # Check if product has any pricing option in the requested currency
-                # and if the rate falls within the budget range
-                has_compatible_pricing = False
-                for po in product.pricing_options:
-                    po_currency = getattr(po, "currency", None)
-                    if po_currency != budget_currency:
-                        continue
-
-                    # Get the rate - different pricing options have different rate fields
-                    po_rate = getattr(po, "rate", None)
-                    if po_rate is None:
-                        # Try floor for auction pricing
-                        po_rate = getattr(po, "floor", None)
-                    if po_rate is None:
-                        continue
-
-                    rate_value = float(po_rate)
-
-                    # Check if rate is within budget range
-                    if budget_min is not None and rate_value < budget_min:
-                        continue
-                    if budget_max is not None and rate_value > budget_max:
-                        continue
-
-                    has_compatible_pricing = True
-                    break
-
-                if not has_compatible_pricing:
-                    continue
-
             # Filter by countries
             if req.filters.countries:
                 # Get product's countries from the placements or targeting
@@ -563,51 +514,26 @@ async def _get_products_impl(
 
             # Filter by channels
             if req.filters.channels:
-                # Determine product's channels from format_ids
-                # Channels are inferred from format type prefixes
-                product_channels: set[str] = set()
-                for format_id in product.format_ids:
-                    channel_format_id: str | None = None
-                    if isinstance(format_id, str):
-                        channel_format_id = format_id
-                    elif isinstance(format_id, dict):
-                        channel_format_id = format_id.get("id")
-                    elif hasattr(format_id, "id"):
-                        channel_format_id = format_id.id
+                # Check if product has a channel field
+                product_channel: str | None = None
+                if hasattr(product, "channel") and product.channel:
+                    product_channel = product.channel.lower()
 
-                    if channel_format_id:
-                        # Infer channel from format ID prefix
-                        if channel_format_id.startswith("display_"):
-                            product_channels.add("display")
-                        elif channel_format_id.startswith("video_"):
-                            product_channels.add("video")
-                        elif channel_format_id.startswith("audio_"):
-                            product_channels.add("audio")
-                        elif channel_format_id.startswith("native_"):
-                            product_channels.add("native")
-                        elif channel_format_id.startswith("dooh_"):
-                            product_channels.add("dooh")
-                        elif channel_format_id.startswith("ctv_"):
-                            product_channels.add("ctv")
-                        elif channel_format_id.startswith("podcast_"):
-                            product_channels.add("podcast")
-                        elif channel_format_id.startswith("retail_"):
-                            product_channels.add("retail")
-                        elif channel_format_id.startswith("social_"):
-                            product_channels.add("social")
+                # If product has no channel specified, it passes the filter
+                # (similar to countries - no restriction means matches all)
+                if product_channel:
+                    # Extract channel values from filter (enum values)
+                    request_channels: set[str] = set()
+                    for channel in req.filters.channels:
+                        if isinstance(channel, str):
+                            request_channels.add(channel.lower())
+                        elif hasattr(channel, "value"):
+                            # Enum - access .value
+                            request_channels.add(channel.value.lower())
 
-                # Extract channel values from filter (enum values)
-                request_channels: set[str] = set()
-                for channel in req.filters.channels:
-                    if isinstance(channel, str):
-                        request_channels.add(channel.lower())
-                    elif hasattr(channel, "value"):
-                        # Enum - access .value
-                        request_channels.add(channel.value.lower())
-
-                # Check if any requested channel is in the product's channels
-                if product_channels and not product_channels.intersection(request_channels):
-                    continue
+                    # Check if product's channel is in the requested channels
+                    if product_channel not in request_channels:
+                        continue
 
             # Product passed all filters
             filtered_products.append(product)

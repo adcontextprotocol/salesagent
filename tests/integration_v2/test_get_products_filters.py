@@ -277,7 +277,11 @@ class TestGetProductsFilterBehavior:
 
 @pytest.mark.requires_db
 class TestNewGetProductsFilters:
-    """Test the new AdCP 2.5 filters: start_date, end_date, budget_range, countries, channels."""
+    """Test the new AdCP 2.5 filters: countries and channels.
+
+    Note: start_date/end_date and budget_range filters are not currently implemented
+    as we don't expose capacity data. The channel filter uses the product.channel field.
+    """
 
     def _import_get_products_tool(self):
         """Import get_products tool and extract underlying function."""
@@ -288,8 +292,6 @@ class TestNewGetProductsFilters:
     @pytest.fixture(autouse=True)
     def setup_diverse_filter_products(self, integration_db):
         """Create products with diverse characteristics for new filter testing."""
-        from datetime import UTC, datetime, timedelta
-
         with get_db_session() as session:
             # Create tenant and principal for new filter tests
             tenant = create_tenant_with_timestamps(
@@ -315,15 +317,15 @@ class TestNewGetProductsFilters:
             )
             session.add(principal)
 
-            # Product 1: US only, display, expires in 30 days, CPM $15
-            us_display_expiring = create_test_product_with_pricing(
+            # Product 1: US only, display channel
+            create_test_product_with_pricing(
                 session=session,
                 tenant_id="new_filter_test",
-                product_id="us_display_expiring",
-                name="US Display - Expiring Soon",
-                description="US display product expiring in 30 days",
+                product_id="us_display",
+                name="US Display",
+                description="US display product",
                 format_ids=[
-                    {"agent_url": "https://test.com", "id": "display_300x250"},
+                    {"agent_url": "https://test.com", "id": "300x250"},
                 ],
                 targeting_template={},
                 delivery_type="guaranteed",
@@ -332,12 +334,12 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="USD",
                 countries=["US"],
+                channel="display",
                 is_custom=False,
-                expires_at=datetime.now(UTC) + timedelta(days=30),
             )
 
-            # Product 2: US + CA, video, no expiration, CPM $25
-            us_ca_video = create_test_product_with_pricing(
+            # Product 2: US + CA, video channel
+            create_test_product_with_pricing(
                 session=session,
                 tenant_id="new_filter_test",
                 product_id="us_ca_video",
@@ -345,7 +347,6 @@ class TestNewGetProductsFilters:
                 description="US and Canada video product",
                 format_ids=[
                     {"agent_url": "https://test.com", "id": "video_15s"},
-                    {"agent_url": "https://test.com", "id": "video_30s"},
                 ],
                 targeting_template={},
                 delivery_type="guaranteed",
@@ -354,11 +355,12 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="USD",
                 countries=["US", "CA"],
+                channel="video",
                 is_custom=False,
             )
 
-            # Product 3: Global (no country restriction), audio, CPM $20
-            global_audio = create_test_product_with_pricing(
+            # Product 3: Global (no country restriction), audio channel
+            create_test_product_with_pricing(
                 session=session,
                 tenant_id="new_filter_test",
                 product_id="global_audio",
@@ -374,18 +376,19 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="USD",
                 countries=None,  # No country restriction
+                channel="audio",
                 is_custom=False,
             )
 
-            # Product 4: UK only, display, CPM £10 (GBP)
-            uk_display_gbp = create_test_product_with_pricing(
+            # Product 4: UK only, display channel
+            create_test_product_with_pricing(
                 session=session,
                 tenant_id="new_filter_test",
-                product_id="uk_display_gbp",
-                name="UK Display - GBP",
-                description="UK display product in GBP",
+                product_id="uk_display",
+                name="UK Display",
+                description="UK display product",
                 format_ids=[
-                    {"agent_url": "https://test.com", "id": "display_728x90"},
+                    {"agent_url": "https://test.com", "id": "728x90"},
                 ],
                 targeting_template={},
                 delivery_type="guaranteed",
@@ -394,16 +397,17 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="GBP",
                 countries=["GB"],
+                channel="display",
                 is_custom=False,
             )
 
-            # Product 5: US, native, CPM $8 (low price)
-            us_native_cheap = create_test_product_with_pricing(
+            # Product 5: US, native channel
+            create_test_product_with_pricing(
                 session=session,
                 tenant_id="new_filter_test",
-                product_id="us_native_cheap",
-                name="US Native - Budget",
-                description="Budget-friendly native ads",
+                product_id="us_native",
+                name="US Native",
+                description="Native advertising",
                 format_ids=[
                     {"agent_url": "https://test.com", "id": "native_feed"},
                 ],
@@ -414,18 +418,19 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="USD",
                 countries=["US"],
+                channel="native",
                 is_custom=False,
             )
 
-            # Product 6: US, display, expires yesterday (should be filtered out by end_date)
-            us_display_expired = create_test_product_with_pricing(
+            # Product 6: Global, no channel set (matches all channel filters)
+            create_test_product_with_pricing(
                 session=session,
                 tenant_id="new_filter_test",
-                product_id="us_display_expired",
-                name="US Display - Expired",
-                description="Already expired product",
+                product_id="global_no_channel",
+                name="Global No Channel",
+                description="Product without channel restriction",
                 format_ids=[
-                    {"agent_url": "https://test.com", "id": "display_300x250"},
+                    {"agent_url": "https://test.com", "id": "standard_ad"},
                 ],
                 targeting_template={},
                 delivery_type="guaranteed",
@@ -433,9 +438,9 @@ class TestNewGetProductsFilters:
                 rate="12.0",
                 is_fixed=True,
                 currency="USD",
-                countries=["US"],
+                countries=None,  # No country restriction
+                channel=None,  # No channel restriction
                 is_custom=False,
-                expires_at=datetime.now(UTC) - timedelta(days=1),
             )
 
             session.commit()
@@ -455,15 +460,16 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: us_display_expiring, us_ca_video, global_audio (no restrictions),
-        # us_native_cheap, us_display_expired
-        # Should exclude: uk_display_gbp (UK only)
+        # Should include: us_display, us_ca_video, global_audio (no restrictions),
+        # us_native, global_no_channel (no restrictions)
+        # Should exclude: uk_display (UK only)
         product_ids = {p.product_id for p in result.products}
-        assert "us_display_expiring" in product_ids
+        assert "us_display" in product_ids
         assert "us_ca_video" in product_ids
         assert "global_audio" in product_ids  # No country restriction = matches all
-        assert "us_native_cheap" in product_ids
-        assert "uk_display_gbp" not in product_ids
+        assert "us_native" in product_ids
+        assert "global_no_channel" in product_ids
+        assert "uk_display" not in product_ids
 
     @pytest.mark.asyncio
     async def test_filter_by_countries_multiple_countries(self):
@@ -480,14 +486,16 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: us_ca_video (has CA), uk_display_gbp (has GB), global_audio (no restrictions)
-        # Should exclude: us_display_expiring (US only), us_native_cheap (US only)
+        # Should include: us_ca_video (has CA), uk_display (has GB), global_audio (no restrictions)
+        # global_no_channel (no restrictions)
+        # Should exclude: us_display (US only), us_native (US only)
         product_ids = {p.product_id for p in result.products}
         assert "us_ca_video" in product_ids
-        assert "uk_display_gbp" in product_ids
+        assert "uk_display" in product_ids
         assert "global_audio" in product_ids
-        assert "us_display_expiring" not in product_ids
-        assert "us_native_cheap" not in product_ids
+        assert "global_no_channel" in product_ids
+        assert "us_display" not in product_ids
+        assert "us_native" not in product_ids
 
     @pytest.mark.asyncio
     async def test_filter_by_channels_display(self):
@@ -504,15 +512,15 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: us_display_expiring, uk_display_gbp, us_display_expired
-        # Should exclude: us_ca_video, global_audio, us_native_cheap
+        # Should include: us_display, uk_display, global_no_channel (no channel = matches all)
+        # Should exclude: us_ca_video, global_audio, us_native
         product_ids = {p.product_id for p in result.products}
-        assert "us_display_expiring" in product_ids
-        assert "uk_display_gbp" in product_ids
-        assert "us_display_expired" in product_ids
+        assert "us_display" in product_ids
+        assert "uk_display" in product_ids
+        assert "global_no_channel" in product_ids  # No channel restriction = matches all
         assert "us_ca_video" not in product_ids
         assert "global_audio" not in product_ids
-        assert "us_native_cheap" not in product_ids
+        assert "us_native" not in product_ids
 
     @pytest.mark.asyncio
     async def test_filter_by_channels_video(self):
@@ -529,10 +537,10 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should only include: us_ca_video
+        # Should include: us_ca_video, global_no_channel (no channel = matches all)
         product_ids = {p.product_id for p in result.products}
         assert "us_ca_video" in product_ids
-        assert len(product_ids) == 1
+        assert "global_no_channel" in product_ids
 
     @pytest.mark.asyncio
     async def test_filter_by_channels_multiple(self):
@@ -549,107 +557,11 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: global_audio, us_native_cheap
+        # Should include: global_audio, us_native, global_no_channel (no channel = matches all)
         product_ids = {p.product_id for p in result.products}
         assert "global_audio" in product_ids
-        assert "us_native_cheap" in product_ids
-        assert len(product_ids) == 2
-
-    @pytest.mark.asyncio
-    async def test_filter_by_budget_range_usd(self):
-        """Test filtering products by budget range in USD."""
-        get_products = self._import_get_products_tool()
-
-        context = Mock()
-        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
-
-        result = await get_products(
-            brand_manifest={"name": "Test Brand"},
-            brief="",
-            filters={"budget_range": {"currency": "USD", "min": 10.0, "max": 20.0}},
-            ctx=context,
-        )
-
-        # Should include: us_display_expiring ($15), global_audio ($20), us_display_expired ($12)
-        # Should exclude: us_ca_video ($25), uk_display_gbp (GBP), us_native_cheap ($8)
-        product_ids = {p.product_id for p in result.products}
-        assert "us_display_expiring" in product_ids
-        assert "global_audio" in product_ids
-        assert "us_display_expired" in product_ids
-        assert "us_ca_video" not in product_ids
-        assert "uk_display_gbp" not in product_ids  # Wrong currency
-        assert "us_native_cheap" not in product_ids  # Below min
-
-    @pytest.mark.asyncio
-    async def test_filter_by_budget_range_gbp(self):
-        """Test filtering products by budget range in GBP."""
-        get_products = self._import_get_products_tool()
-
-        context = Mock()
-        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
-
-        result = await get_products(
-            brand_manifest={"name": "Test Brand"},
-            brief="",
-            filters={"budget_range": {"currency": "GBP", "min": 5.0, "max": 15.0}},
-            ctx=context,
-        )
-
-        # Should only include: uk_display_gbp (£10)
-        product_ids = {p.product_id for p in result.products}
-        assert "uk_display_gbp" in product_ids
-        assert len(product_ids) == 1
-
-    @pytest.mark.asyncio
-    async def test_filter_by_end_date_excludes_expired(self):
-        """Test that end_date filter excludes products that expire before campaign ends."""
-        from datetime import date, timedelta
-
-        get_products = self._import_get_products_tool()
-
-        context = Mock()
-        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
-
-        # Campaign ends in 15 days - should exclude product that expires in 30 days
-        # But should definitely exclude the already expired product
-        campaign_end = date.today() + timedelta(days=15)
-
-        result = await get_products(
-            brand_manifest={"name": "Test Brand"},
-            brief="",
-            filters={"end_date": campaign_end.isoformat()},
-            ctx=context,
-        )
-
-        # us_display_expired expires yesterday - should be excluded
-        product_ids = {p.product_id for p in result.products}
-        assert "us_display_expired" not in product_ids
-
-    @pytest.mark.asyncio
-    async def test_filter_by_end_date_includes_non_expiring(self):
-        """Test that end_date filter includes products without expiration."""
-        from datetime import date, timedelta
-
-        get_products = self._import_get_products_tool()
-
-        context = Mock()
-        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
-
-        # Campaign ends in 60 days
-        campaign_end = date.today() + timedelta(days=60)
-
-        result = await get_products(
-            brand_manifest={"name": "Test Brand"},
-            brief="",
-            filters={"end_date": campaign_end.isoformat()},
-            ctx=context,
-        )
-
-        # Products without expires_at should be included
-        product_ids = {p.product_id for p in result.products}
-        assert "us_ca_video" in product_ids  # No expiration
-        assert "global_audio" in product_ids  # No expiration
-        assert "us_display_expiring" in product_ids  # Expires in 30 days, campaign ends in 60
+        assert "us_native" in product_ids
+        assert "global_no_channel" in product_ids
 
     @pytest.mark.asyncio
     async def test_combined_filters_country_and_channel(self):
@@ -669,17 +581,17 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: us_display_expiring, us_display_expired
-        # Should exclude: uk_display_gbp (not US), us_ca_video (not display)
+        # Should include: us_display, global_no_channel (both no restrictions)
+        # Should exclude: uk_display (not US), us_ca_video (not display), global_audio (not display)
         product_ids = {p.product_id for p in result.products}
-        assert "us_display_expiring" in product_ids
-        assert "us_display_expired" in product_ids
-        assert "uk_display_gbp" not in product_ids
+        assert "us_display" in product_ids
+        assert "global_no_channel" in product_ids
+        assert "uk_display" not in product_ids
         assert "us_ca_video" not in product_ids
 
     @pytest.mark.asyncio
-    async def test_combined_filters_country_channel_budget(self):
-        """Test combining country, channel, and budget filters."""
+    async def test_combined_filters_strict_match(self):
+        """Test combining country and channel filters with strict matching."""
         get_products = self._import_get_products_tool()
 
         context = Mock()
@@ -689,16 +601,16 @@ class TestNewGetProductsFilters:
             brand_manifest={"name": "Test Brand"},
             brief="",
             filters={
-                "countries": ["US"],
-                "channels": ["display"],
-                "budget_range": {"currency": "USD", "min": 10.0, "max": 16.0},
+                "countries": ["CA"],
+                "channels": ["video"],
             },
             ctx=context,
         )
 
-        # Should include: us_display_expiring ($15), us_display_expired ($12)
-        # Both are US, display, and within budget
+        # Should include: us_ca_video (CA + video), global_no_channel (no restrictions)
+        # Should exclude: us_display (not CA), uk_display (not CA, not video)
         product_ids = {p.product_id for p in result.products}
-        assert "us_display_expiring" in product_ids
-        assert "us_display_expired" in product_ids
-        assert len(product_ids) == 2
+        assert "us_ca_video" in product_ids
+        assert "global_no_channel" in product_ids
+        # These have video but not CA
+        assert "us_display" not in product_ids
