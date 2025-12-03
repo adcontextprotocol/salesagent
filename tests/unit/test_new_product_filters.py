@@ -8,6 +8,39 @@ from unittest.mock import Mock
 
 from adcp.types import ProductFilters
 
+from src.core.tools.products import ADAPTER_DEFAULT_CHANNELS
+
+
+class TestAdapterDefaultChannels:
+    """Test the adapter default channels mapping."""
+
+    def test_gam_supports_display_video_native(self):
+        """Test that GAM adapter supports display, video, and native."""
+        channels = ADAPTER_DEFAULT_CHANNELS["google_ad_manager"]
+        assert "display" in channels
+        assert "video" in channels
+        assert "native" in channels
+
+    def test_kevel_supports_native_retail(self):
+        """Test that Kevel adapter supports native and retail."""
+        channels = ADAPTER_DEFAULT_CHANNELS["kevel"]
+        assert "native" in channels
+        assert "retail" in channels
+
+    def test_triton_supports_audio_podcast(self):
+        """Test that Triton adapter supports audio and podcast."""
+        channels = ADAPTER_DEFAULT_CHANNELS["triton"]
+        assert "audio" in channels
+        assert "podcast" in channels
+
+    def test_mock_supports_all_common_channels(self):
+        """Test that mock adapter supports all common channels for testing."""
+        channels = ADAPTER_DEFAULT_CHANNELS["mock"]
+        assert "display" in channels
+        assert "video" in channels
+        assert "audio" in channels
+        assert "native" in channels
+
 
 class TestNewProductFiltersLogic:
     """Test the new filter logic in get_products."""
@@ -95,18 +128,28 @@ class TestNewProductFiltersLogic:
         matches = product_channel in request_channels if product_channel else True
         assert matches is False
 
-    def test_channels_filter_matches_products_without_channel(self):
-        """Test that products without channel field pass any channel filter."""
+    def test_channels_filter_with_adapter_defaults(self):
+        """Test that products without channel use adapter default channels.
+
+        When a product has no channel set, the filter should check against
+        the adapter's default channels. A GAM product without channel will
+        match display/video/native requests but not audio/podcast.
+        """
         product = self._create_mock_product(
             product_id="test_product",
-            channel=None,  # No channel restriction
+            channel=None,  # No channel - uses adapter defaults
         )
 
-        # Products without channel should match any request (not filtered out)
-        product_channel = product.channel.lower() if product.channel else None
+        # For GAM adapter, default channels are display, video, native
+        gam_defaults = set(ADAPTER_DEFAULT_CHANNELS["google_ad_manager"])
+        request_display = {"display"}
+        request_audio = {"audio"}
 
-        # No channel means global - should pass through
-        assert product_channel is None
+        # Display request should match GAM defaults
+        assert request_display.intersection(gam_defaults)
+
+        # Audio request should NOT match GAM defaults
+        assert not request_audio.intersection(gam_defaults)
 
     def test_channels_filter_multiple_channels(self):
         """Test that channel filter matches when product's channel is in list."""

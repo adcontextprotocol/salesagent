@@ -34,6 +34,15 @@ from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 
 logger = logging.getLogger(__name__)
 
+# Default advertising channels per adapter type
+# Used when a product doesn't have an explicit channel set
+ADAPTER_DEFAULT_CHANNELS: dict[str, list[str]] = {
+    "google_ad_manager": ["display", "video", "native"],
+    "kevel": ["native", "retail"],
+    "triton": ["audio", "podcast"],
+    "mock": ["display", "video", "audio", "native"],  # Mock supports all for testing
+}
+
 
 def get_recommended_cpm(product: Product) -> float | None:
     """Extract recommended CPM from product's pricing_options.
@@ -519,20 +528,32 @@ async def _get_products_impl(
                 if hasattr(product, "channel") and product.channel:
                     product_channel = product.channel.lower()
 
-                # If product has no channel specified, it passes the filter
-                # (similar to countries - no restriction means matches all)
-                if product_channel:
-                    # Extract channel values from filter (enum values)
-                    request_channels: set[str] = set()
-                    for channel in req.filters.channels:
-                        if isinstance(channel, str):
-                            request_channels.add(channel.lower())
-                        elif hasattr(channel, "value"):
-                            # Enum - access .value
-                            request_channels.add(channel.value.lower())
+                # Extract channel values from filter (enum values)
+                request_channels: set[str] = set()
+                for channel in req.filters.channels:
+                    if isinstance(channel, str):
+                        request_channels.add(channel.lower())
+                    elif hasattr(channel, "value"):
+                        # Enum - access .value
+                        request_channels.add(channel.value.lower())
 
-                    # Check if product's channel is in the requested channels
+                if product_channel:
+                    # Product has explicit channel - must match
                     if product_channel not in request_channels:
+                        continue
+                else:
+                    # Product has no channel - use adapter defaults
+                    # Get adapter type from tenant config
+                    ad_server_config = tenant.get("ad_server", {})
+                    adapter_type = (
+                        ad_server_config.get("adapter", "mock")
+                        if isinstance(ad_server_config, dict)
+                        else ad_server_config
+                    )
+                    adapter_channels = ADAPTER_DEFAULT_CHANNELS.get(adapter_type, [])
+
+                    # Product matches if any of adapter's default channels is in request
+                    if adapter_channels and not request_channels.intersection(set(adapter_channels)):
                         continue
 
             # Product passed all filters

@@ -512,12 +512,13 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: us_display, uk_display, global_no_channel (no channel = matches all)
+        # Should include: us_display, uk_display, global_no_channel
+        # global_no_channel uses mock adapter defaults (display, video, audio, native)
         # Should exclude: us_ca_video, global_audio, us_native
         product_ids = {p.product_id for p in result.products}
         assert "us_display" in product_ids
         assert "uk_display" in product_ids
-        assert "global_no_channel" in product_ids  # No channel restriction = matches all
+        assert "global_no_channel" in product_ids  # Mock adapter includes display
         assert "us_ca_video" not in product_ids
         assert "global_audio" not in product_ids
         assert "us_native" not in product_ids
@@ -537,7 +538,7 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: us_ca_video, global_no_channel (no channel = matches all)
+        # Should include: us_ca_video, global_no_channel (mock adapter includes video)
         product_ids = {p.product_id for p in result.products}
         assert "us_ca_video" in product_ids
         assert "global_no_channel" in product_ids
@@ -557,11 +558,35 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: global_audio, us_native, global_no_channel (no channel = matches all)
+        # Should include: global_audio, us_native, global_no_channel (mock adapter includes audio/native)
         product_ids = {p.product_id for p in result.products}
         assert "global_audio" in product_ids
         assert "us_native" in product_ids
         assert "global_no_channel" in product_ids
+
+    @pytest.mark.asyncio
+    async def test_filter_by_channels_retail_excludes_mock_products(self):
+        """Test that retail channel filter excludes products without explicit retail channel.
+
+        Mock adapter defaults to display, video, audio, native - NOT retail.
+        So products without channel set should NOT match retail filter.
+        """
+        get_products = self._import_get_products_tool()
+
+        context = Mock()
+        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
+
+        result = await get_products(
+            brand_manifest={"name": "Test Brand"},
+            brief="",
+            filters={"channels": ["retail"]},
+            ctx=context,
+        )
+
+        # No products have retail channel, and mock adapter doesn't default to retail
+        # So no products should match
+        product_ids = {p.product_id for p in result.products}
+        assert "global_no_channel" not in product_ids
 
     @pytest.mark.asyncio
     async def test_combined_filters_country_and_channel(self):
@@ -581,7 +606,7 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: us_display, global_no_channel (both no restrictions)
+        # Should include: us_display, global_no_channel (mock adapter includes display, no country restriction)
         # Should exclude: uk_display (not US), us_ca_video (not display), global_audio (not display)
         product_ids = {p.product_id for p in result.products}
         assert "us_display" in product_ids
@@ -607,7 +632,7 @@ class TestNewGetProductsFilters:
             ctx=context,
         )
 
-        # Should include: us_ca_video (CA + video), global_no_channel (no restrictions)
+        # Should include: us_ca_video (CA + video), global_no_channel (no restrictions, mock includes video)
         # Should exclude: us_display (not CA), uk_display (not CA, not video)
         product_ids = {p.product_id for p in result.products}
         assert "us_ca_video" in product_ids
