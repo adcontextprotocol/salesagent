@@ -1855,18 +1855,30 @@ async def _create_media_buy_impl(
                     pkg_name = f"{pkg.buyer_ref} - Package {idx}"
 
                 # Build Package object with complete package data (matching auto-approval path)
-                # NOTE: Do NOT set package status here - Package.status is PackageStatus (draft/active/paused/completed)
-                # The workflow approval state is tracked separately in WorkflowStep.status (TaskStatus)
+                # NOTE: Package schema does NOT have a 'status' field - workflow state is tracked in WorkflowStep
                 from src.core.schemas import Package
 
                 # Create Package object from request package, adding generated fields
+                # Must map PackageRequest fields to Package fields:
+                # - format_ids (request) -> format_ids_to_provide (response)
+                # - creative_ids/creatives (request) -> creative_assignments (response) [handled separately]
                 pkg_data = pkg.model_dump(exclude_none=True)
+
+                # Remove PackageRequest-only fields that aren't in Package schema
+                pkg_data.pop("format_ids", None)  # Use format_ids_to_provide instead
+                pkg_data.pop("creative_ids", None)  # These become creative_assignments
+                pkg_data.pop("creatives", None)  # These become creative_assignments
+
+                # Map format_ids to format_ids_to_provide if present
+                if pkg.format_ids:
+                    pkg_data["format_ids_to_provide"] = pkg.format_ids
+
+                # Add Package-specific fields
                 pkg_data.update(
                     {
                         "package_id": package_id,
                         "buyer_ref": pkg.buyer_ref,  # Include buyer_ref from request package
-                        "status": "draft",  # Set initial status (required by AdCP spec)
-                        # Status will be updated to "active" after approval + adapter creation
+                        "paused": False,  # Initial state is not paused (AdCP 2.12.0)
                     }
                 )
                 pending_packages.append(Package(**pkg_data))
