@@ -1138,6 +1138,18 @@ class Product(LibraryProduct):
         exclude=True,  # Exclude from serialization by default
     )
 
+    # Filter-related fields (not in AdCP Product spec, but needed for filtering)
+    countries: list[str] | None = Field(
+        default=None,
+        description="Internal: Country codes (ISO 3166-1 alpha-2) where this product is available",
+        exclude=True,  # Exclude from serialization by default
+    )
+    channel: str | None = Field(
+        default=None,
+        description="Internal: Advertising channel (display, video, audio, native, dooh, ctv, podcast, retail, social)",
+        exclude=True,  # Exclude from serialization by default
+    )
+
     @model_validator(mode="after")
     def validate_pricing_fields(self) -> "Product":
         """Validate pricing_options per AdCP spec.
