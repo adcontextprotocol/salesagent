@@ -34,14 +34,55 @@ from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 
 logger = logging.getLogger(__name__)
 
-# Default advertising channels per adapter type
-# Used when a product doesn't have an explicit channel set
-ADAPTER_DEFAULT_CHANNELS: dict[str, list[str]] = {
-    "google_ad_manager": ["display", "video", "native"],
-    "kevel": ["native", "retail"],
-    "triton": ["audio", "podcast"],
-    "mock": ["display", "video", "audio", "native"],  # Mock supports all for testing
-}
+
+def get_adapter_default_channels(adapter_type: str) -> list[str]:
+    """Get default advertising channels for an adapter type.
+
+    Default channels are defined on each adapter class's default_channels attribute.
+    This function dynamically loads the adapter class to get its defaults.
+
+    Args:
+        adapter_type: Adapter type name (e.g., "google_ad_manager", "mock", "kevel", "triton")
+
+    Returns:
+        List of default channel names for the adapter
+    """
+    # Import adapter classes lazily to avoid circular imports
+    adapter_classes: dict[str, type] = {}
+
+    try:
+        from src.adapters.google_ad_manager import GoogleAdManager
+
+        adapter_classes["google_ad_manager"] = GoogleAdManager
+    except ImportError:
+        pass
+
+    try:
+        from src.adapters.mock_ad_server import MockAdServer
+
+        adapter_classes["mock"] = MockAdServer
+    except ImportError:
+        pass
+
+    try:
+        from src.adapters.kevel import Kevel
+
+        adapter_classes["kevel"] = Kevel
+    except ImportError:
+        pass
+
+    try:
+        from src.adapters.triton_digital import TritonDigital
+
+        adapter_classes["triton"] = TritonDigital
+    except ImportError:
+        pass
+
+    adapter_class = adapter_classes.get(adapter_type)
+    if adapter_class and hasattr(adapter_class, "default_channels"):
+        return adapter_class.default_channels
+
+    return []
 
 
 def get_recommended_cpm(product: Product) -> float | None:
@@ -550,7 +591,7 @@ async def _get_products_impl(
                         if isinstance(ad_server_config, dict)
                         else ad_server_config
                     )
-                    adapter_channels = ADAPTER_DEFAULT_CHANNELS.get(adapter_type, [])
+                    adapter_channels = get_adapter_default_channels(adapter_type)
 
                     # Product matches if any of adapter's default channels is in request
                     if adapter_channels and not request_channels.intersection(set(adapter_channels)):

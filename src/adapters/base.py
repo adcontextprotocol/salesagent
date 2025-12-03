@@ -30,6 +30,10 @@ class CreativeEngineAdapter(ABC):
 class AdServerAdapter(ABC):
     """Abstract base class for ad server adapters."""
 
+    # Default advertising channels supported by this adapter
+    # Subclasses should override with their supported channels
+    default_channels: list[str] = []
+
     def __init__(
         self,
         config: dict[str, Any],

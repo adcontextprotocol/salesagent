@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 from adcp.types import ProductFilters
 
-from src.core.tools.products import ADAPTER_DEFAULT_CHANNELS
+from src.core.tools.products import get_adapter_default_channels
 
 
 class TestAdapterDefaultChannels:
@@ -16,30 +16,35 @@ class TestAdapterDefaultChannels:
 
     def test_gam_supports_display_video_native(self):
         """Test that GAM adapter supports display, video, and native."""
-        channels = ADAPTER_DEFAULT_CHANNELS["google_ad_manager"]
+        channels = get_adapter_default_channels("google_ad_manager")
         assert "display" in channels
         assert "video" in channels
         assert "native" in channels
 
     def test_kevel_supports_native_retail(self):
         """Test that Kevel adapter supports native and retail."""
-        channels = ADAPTER_DEFAULT_CHANNELS["kevel"]
+        channels = get_adapter_default_channels("kevel")
         assert "native" in channels
         assert "retail" in channels
 
     def test_triton_supports_audio_podcast(self):
         """Test that Triton adapter supports audio and podcast."""
-        channels = ADAPTER_DEFAULT_CHANNELS["triton"]
+        channels = get_adapter_default_channels("triton")
         assert "audio" in channels
         assert "podcast" in channels
 
     def test_mock_supports_all_common_channels(self):
         """Test that mock adapter supports all common channels for testing."""
-        channels = ADAPTER_DEFAULT_CHANNELS["mock"]
+        channels = get_adapter_default_channels("mock")
         assert "display" in channels
         assert "video" in channels
         assert "audio" in channels
         assert "native" in channels
+
+    def test_unknown_adapter_returns_empty_list(self):
+        """Test that unknown adapter type returns empty list."""
+        channels = get_adapter_default_channels("unknown_adapter")
+        assert channels == []
 
 
 class TestNewProductFiltersLogic:
@@ -141,7 +146,7 @@ class TestNewProductFiltersLogic:
         )
 
         # For GAM adapter, default channels are display, video, native
-        gam_defaults = set(ADAPTER_DEFAULT_CHANNELS["google_ad_manager"])
+        gam_defaults = set(get_adapter_default_channels("google_ad_manager"))
         request_display = {"display"}
         request_audio = {"audio"}
 

@@ -28,6 +28,9 @@ class MockAdServer(AdServerAdapter):
     """
 
     adapter_name = "mock"
+
+    # Mock adapter supports all common channels for testing
+    default_channels = ["display", "video", "audio", "native"]
     _media_buys: dict[str, dict[str, Any]] = {}
 
     # Supported targeting dimensions (mock supports everything)
