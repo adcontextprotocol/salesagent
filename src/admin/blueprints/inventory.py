@@ -874,14 +874,48 @@ def get_inventory_tree(tenant_id):
 
     search = request.args.get("search", "").strip()
 
+    # Cache keys for inventory tree
+    cache_key = f"inventory_tree:v2:{tenant_id}"  # v2: added search_active/matching_count fields
+    cache_time_key = f"inventory_tree_time:v2:{tenant_id}"
+
     # Use cache if available (5 minute TTL) - only cache when no search
     cache = getattr(current_app, "cache", None)
     if cache and not search:
-        cache_key = f"inventory_tree:v2:{tenant_id}"  # v2: added search_active/matching_count fields
         cached_result = cache.get(cache_key)
-        if cached_result:
-            logger.info(f"Returning cached inventory tree for tenant: {tenant_id}")
-            return cached_result
+        cached_time = cache.get(cache_time_key)
+
+        if cached_result and cached_time:
+            # Check if a sync completed after the cache was set
+            # If so, invalidate the cache and rebuild
+            from sqlalchemy import desc
+
+            from src.core.database.models import SyncJob
+
+            with get_db_session() as db_session:
+                last_sync = db_session.scalars(
+                    select(SyncJob)
+                    .where(
+                        SyncJob.tenant_id == tenant_id,
+                        SyncJob.sync_type == "inventory",
+                        SyncJob.status == "completed",
+                    )
+                    .order_by(desc(SyncJob.completed_at))
+                ).first()
+
+                if last_sync and last_sync.completed_at:
+                    # Compare timestamps - invalidate if sync completed after cache was set
+                    if last_sync.completed_at.timestamp() > cached_time:
+                        logger.info(
+                            f"Invalidating stale cache for tenant {tenant_id} - sync completed after cache was set"
+                        )
+                        cache.delete(cache_key)
+                        cache.delete(cache_time_key)
+                    else:
+                        logger.info(f"Returning cached inventory tree for tenant: {tenant_id}")
+                        return cached_result
+                else:
+                    logger.info(f"Returning cached inventory tree for tenant: {tenant_id}")
+                    return cached_result
 
     logger.info(f"Building inventory tree for tenant: {tenant_id}, search: '{search}'")
     try:
@@ -1069,7 +1103,10 @@ def get_inventory_tree(tenant_id):
 
             # Cache the result for 5 minutes - only when no search
             if cache and not search:
+                import time
+
                 cache.set(cache_key, result, timeout=300)
+                cache.set(cache_time_key, time.time(), timeout=300)
 
             return result
 
