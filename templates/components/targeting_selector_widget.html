@@ -6,6 +6,11 @@
      - External JavaScript (static/js/targeting_widget.js)
 
      This avoids the RecursionError caused by large template includes in CI.
+
+     Enhanced Features (v2.1):
+     - OR/AND operator support between different keys
+     - Include/Exclude toggle for values
+     - Improved search functionality
 -->
 
 <style>
@@ -64,6 +69,56 @@
     display: block;
 }
 
+/* Operator Toggle */
+.kv-operator-toggle {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.operator-label {
+    font-weight: 500;
+    color: #333;
+}
+
+.operator-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.operator-btn {
+    padding: 0.4rem 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.2s;
+}
+
+.operator-btn:hover {
+    background: #f8f9fa;
+    border-color: #007bff;
+}
+
+.operator-btn.active {
+    background: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+.operator-btn small {
+    font-weight: normal;
+    opacity: 0.8;
+}
+
+/* Key-Value Selector */
 .kv-selector {
     display: grid;
     grid-template-columns: 1fr 2fr;
@@ -94,17 +149,34 @@
     border-radius: 4px;
 }
 
+.search-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+/* Key Items */
 .kv-key-item {
     padding: 0.75rem;
     margin-bottom: 0.5rem;
     background: #f8f9fa;
     border-radius: 4px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.2s;
+    border: 2px solid transparent;
 }
 
 .kv-key-item:hover {
     background: #e9ecef;
+}
+
+.kv-key-item.selected {
+    background: #e7f1ff;
+    border-color: #007bff;
+}
+
+.kv-key-item.has-selections {
+    background: #f0f7ff;
 }
 
 .kv-key-item strong {
@@ -117,31 +189,220 @@
     font-size: 0.85rem;
 }
 
-.kv-values-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+.selection-badge {
+    display: flex;
     gap: 0.5rem;
+    margin-top: 0.5rem;
 }
 
-.value-checkbox {
+.badge-include, .badge-exclude {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.badge-include {
+    background: #d4edda;
+    color: #155724;
+}
+
+.badge-exclude {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Values Legend */
+.values-legend {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
     padding: 0.5rem;
     background: #f8f9fa;
     border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.2s;
+    font-size: 0.85rem;
 }
 
-.value-checkbox:hover {
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #666;
+}
+
+.legend-color {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+}
+
+.legend-color.include {
+    background: #28a745;
+}
+
+.legend-color.exclude {
+    background: #dc3545;
+}
+
+/* Value Items */
+.kv-values-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.5rem;
+}
+
+.value-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.value-item:hover {
     background: #e9ecef;
 }
 
-.value-checkbox input {
-    cursor: pointer;
+.value-item.included {
+    background: #d4edda;
+    border-color: #28a745;
 }
 
+.value-item.excluded {
+    background: #f8d7da;
+    border-color: #dc3545;
+}
+
+.value-name {
+    flex: 1;
+    font-size: 0.9rem;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.value-actions {
+    display: flex;
+    gap: 0.25rem;
+    margin-left: 0.5rem;
+}
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    background: #f8f9fa;
+}
+
+.include-btn:hover {
+    border-color: #28a745;
+    color: #28a745;
+}
+
+.exclude-btn:hover {
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+.include-btn.active {
+    background: #28a745;
+    border-color: #28a745;
+    color: white;
+}
+
+.exclude-btn.active {
+    background: #dc3545;
+    border-color: #dc3545;
+    color: white;
+}
+
+/* Summary Section */
+.selected-summary {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.selected-summary h5 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    color: #666;
+}
+
+.summary-operator {
+    margin-bottom: 0.75rem;
+}
+
+.operator-display {
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.operator-display strong {
+    color: #007bff;
+}
+
+.selected-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.targeting-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.include-tag {
+    background: #d4edda;
+    color: #155724;
+}
+
+.exclude-tag {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.tag-icon {
+    font-weight: bold;
+    font-size: 1rem;
+}
+
+.tag-operator {
+    padding: 0 0.5rem;
+    font-weight: 600;
+    color: #007bff;
+    font-size: 0.85rem;
+}
+
+/* Empty and Status States */
 .empty-state, .error-state, .info-message, .loading {
     padding: 2rem;
     text-align: center;
@@ -156,36 +417,11 @@
     color: #007bff;
 }
 
-.selected-summary {
-    margin-top: 1.5rem;
-    padding: 1rem;
-    background: white;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
+.loading {
+    color: #007bff;
 }
 
-.selected-summary h5 {
-    margin-top: 0;
-    font-size: 0.9rem;
-    text-transform: uppercase;
-    color: #666;
-}
-
-.selected-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.targeting-tag {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    background: #007bff;
-    color: white;
-    border-radius: 12px;
-    font-size: 0.85rem;
-}
-
+/* Device Types */
 .device-types {
     padding: 1rem;
 }
@@ -201,6 +437,7 @@
     margin-right: 0.5rem;
 }
 
+/* Audiences */
 .audience-list {
     padding: 1rem;
 }
@@ -237,10 +474,25 @@
 
 <!-- Minimal HTML Structure -->
 <div class="targeting-widget" id="targeting-widget">
-    <h4>🎯 Targeting Configuration</h4>
-    <p style="margin: 0; color: #666; font-size: 0.9rem;">Select targeting criteria for this product</p>
+    <h4>Targeting Configuration</h4>
+    <p style="margin: 0; color: #666; font-size: 0.9rem;">Select targeting criteria for this product. Use Include to match values, Exclude to filter them out.</p>
     <!-- Content will be populated by JavaScript -->
 </div>
 
 <!-- Load External JavaScript -->
 <script src="{{ url_for('static', filename='js/targeting_widget.js') }}"></script>
+<script>
+// Initialize targeting widget with tenant context and script root for proxy support
+document.addEventListener('DOMContentLoaded', function() {
+    // Get tenant_id from the page context (expected to be defined in parent template)
+    const tenantId = typeof window.TARGETING_WIDGET_TENANT_ID !== 'undefined'
+        ? window.TARGETING_WIDGET_TENANT_ID
+        : '{{ tenant_id }}';
+    const scriptRoot = '{{ request.script_root }}' || '';
+
+    if (tenantId && tenantId !== '{{ tenant_id }}') {
+        // Only initialize if we have a valid tenant_id
+        new TargetingWidget(tenantId, 'targeting-widget', scriptRoot);
+    }
+});
+</script>
