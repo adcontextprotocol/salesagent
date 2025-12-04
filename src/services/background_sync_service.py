@@ -353,9 +353,15 @@ def _run_sync_thread(
                 f"[{sync_id}] Wrote {segments_count} audience segments to database (always full sync - GAM API limitation)"
             )
 
-            # Phase 6: Mark stale inventory
-            update_progress("Marking Stale Inventory", 6 + phase_offset)
-            inventory_service._mark_stale_inventory(tenant_id, sync_time)
+            # Phase 6: Mark stale inventory (ONLY for full sync)
+            # In incremental mode, we intentionally don't fetch unchanged items,
+            # so we can't mark them as stale - they're still valid in GAM.
+            # See GitHub issue #812: Incremental sync incorrectly marks unchanged placements as STALE
+            if sync_mode == "full":
+                update_progress("Marking Stale Inventory", 6 + phase_offset)
+                inventory_service._mark_stale_inventory(tenant_id, sync_time)
+            else:
+                logger.info(f"[{sync_id}] Skipping stale marking for incremental sync")
 
         # Build result summary
         end_time = datetime.now()
