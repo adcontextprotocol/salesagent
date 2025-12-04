@@ -119,6 +119,26 @@ def provision_tenant():
             flash("Publisher name is required", "error")
             return redirect(url_for("public.signup_onboarding"))
 
+        # Get user info from session
+        user_email = session.get("user")
+        email_domain = user_email.split("@")[1] if "@" in user_email else ""
+
+        # NEW: Prevent duplicate tenant creation if email domain is already claimed
+        if email_domain:
+            from src.admin.domain_access import find_tenant_by_authorized_domain
+
+            existing_tenant = find_tenant_by_authorized_domain(email_domain)
+            if existing_tenant:
+                logger.warning(
+                    f"Prevented duplicate tenant creation: {email_domain} already claimed by tenant {existing_tenant.tenant_id}"
+                )
+                flash(
+                    f"Your email domain ({email_domain}) is already associated with an existing account: {existing_tenant.name}. "
+                    "Please contact your organization's administrator for access.",
+                    "error",
+                )
+                return redirect(url_for("auth.login"))
+
         # Generate random subdomain and tenant ID (prevents subdomain squatting)
         # Format: 8 character hex (e.g., "a7f3d92b")
         import uuid
@@ -139,10 +159,8 @@ def provision_tenant():
         # Generate admin token
         admin_token = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(32))
 
-        # Get user info from session
-        user_email = session.get("user")
+        # Get user name from session (email_domain already extracted above)
         user_name = session.get("user_name", user_email.split("@")[0].title())
-        email_domain = user_email.split("@")[1] if "@" in user_email else ""
 
         # Create tenant
         with get_db_session() as db_session:

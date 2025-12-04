@@ -278,14 +278,14 @@ def google_callback():
             flash(f"Welcome {user.get('name', email)}!", "success")
             return redirect(url_for("public.signup_onboarding"))
 
-        # Unified flow: Always show tenant selector (with option to create new tenant)
-        # No distinction between signup and login - keeps UX simple and consistent
+        # Unified flow: Show tenant selector or auto-route to domain tenant
+        # Prevents duplicate tenant creation for existing domain-authorized users
         from src.admin.domain_access import get_user_tenant_access
 
         # Get all accessible tenants
         tenant_access = get_user_tenant_access(email)
 
-        # Build tenant list for selector (empty list is fine - user can create new tenant)
+        # Build tenant list for selector
         # Use a dict to track tenants by tenant_id to avoid duplicates
         tenant_dict = {}
 
@@ -323,7 +323,35 @@ def google_callback():
         # Convert dict to list for session
         session["available_tenants"] = list(tenant_dict.values())
 
-        # Always show tenant selector (includes "Create New Tenant" option)
+        # NEW: Check if user has domain-based tenant access
+        # If yes, prevent tenant creation and auto-route to domain tenant
+        has_domain_tenant = tenant_access["domain_tenant"] is not None
+        session["has_domain_tenant"] = has_domain_tenant
+
+        # If user has exactly one tenant via domain access, auto-route them directly
+        if has_domain_tenant and len(tenant_dict) == 1:
+            domain_tenant = tenant_access["domain_tenant"]
+
+            # Ensure User record exists
+            from src.admin.domain_access import ensure_user_in_tenant
+            user_name = user.get("name", email.split("@")[0].title())
+
+            try:
+                ensure_user_in_tenant(email, domain_tenant.tenant_id, role="admin", name=user_name)
+                logger.info(f"Auto-routing {email} to domain tenant {domain_tenant.tenant_id}")
+            except Exception as e:
+                logger.error(f"Failed to create User record for {email} in tenant {domain_tenant.tenant_id}: {e}")
+                flash("Error setting up user access. Please contact support.", "error")
+                return redirect(url_for("auth.login"))
+
+            # Set session and auto-route
+            session["tenant_id"] = domain_tenant.tenant_id
+            session["is_tenant_admin"] = True
+            session.pop("available_tenants", None)
+            flash(f"Welcome to {domain_tenant.name}!", "success")
+            return redirect(url_for("tenants.dashboard", tenant_id=domain_tenant.tenant_id))
+
+        # Show tenant selector (with conditional "Create New Tenant" option)
         flash(f"Welcome {user.get('name', email)}!", "success")
         return redirect(url_for("auth.select_tenant"))
 

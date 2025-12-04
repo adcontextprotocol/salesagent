@@ -24,6 +24,7 @@
         <button type="submit" class="btn btn-primary btn-lg w-100" style="margin-bottom: 1rem;">Continue to Selected Account</button>
     </form>
 
+    {% if not session.get('has_domain_tenant') %}
     <div style="text-align: center; padding-top: 1rem; border-top: 1px solid #ddd;">
         <p style="margin-bottom: 0.75rem; color: #666; font-size: 0.9rem;">Don't see your account?</p>
         <a href="{{ url_for('public.signup_onboarding') }}" class="btn btn-outline-secondary">
@@ -31,13 +32,26 @@
         </a>
     </div>
     {% else %}
+    <div style="text-align: center; padding-top: 1rem; border-top: 1px solid #ddd;">
+        <p style="color: #666; font-size: 0.9rem; margin: 0;">
+            <em>Your email domain is already associated with an existing account.</em>
+        </p>
+    </div>
+    {% endif %}
+    {% else %}
     <p style="margin-bottom: 2rem; color: #666;">
         You don't have access to any accounts yet.
     </p>
 
+    {% if not session.get('has_domain_tenant') %}
     <a href="{{ url_for('public.signup_onboarding') }}" class="btn btn-primary btn-lg w-100">
         Create New Account
     </a>
+    {% else %}
+    <div class="alert alert-info">
+        <p style="margin: 0;">Your email domain is already associated with an existing account. Please contact your organization's administrator for access.</p>
+    </div>
+    {% endif %}
     {% endif %}
 </div>
 
