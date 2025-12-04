@@ -484,14 +484,10 @@
 <script>
 // Initialize targeting widget with tenant context and script root for proxy support
 document.addEventListener('DOMContentLoaded', function() {
-    // Get tenant_id from the page context (expected to be defined in parent template)
-    const tenantId = typeof window.TARGETING_WIDGET_TENANT_ID !== 'undefined'
-        ? window.TARGETING_WIDGET_TENANT_ID
-        : '{{ tenant_id }}';
+    const tenantId = '{{ tenant_id }}';
     const scriptRoot = '{{ request.script_root }}' || '';
 
-    if (tenantId && tenantId !== '{{ tenant_id }}') {
-        // Only initialize if we have a valid tenant_id
+    if (tenantId) {
         new TargetingWidget(tenantId, 'targeting-widget', scriptRoot);
     }
 });
