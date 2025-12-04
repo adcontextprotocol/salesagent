@@ -3,7 +3,7 @@
 import logging
 
 from src.core.config import validate_configuration
-from src.core.logging_config import setup_oauth_logging
+from src.core.logging_config import setup_oauth_logging, setup_structured_logging
 
 logger = logging.getLogger(__name__)
 
@@ -17,20 +17,24 @@ def initialize_application() -> None:
         SystemExit: If configuration validation fails
     """
     try:
-        logger.info("🚀 Initializing AdCP Sales Agent...")
+        # Setup structured logging FIRST (before any logging calls)
+        # This ensures production environments get JSON logs
+        setup_structured_logging()
 
-        # Setup structured logging
+        logger.info("Initializing AdCP Sales Agent...")
+
+        # Setup OAuth-specific logging
         setup_oauth_logging()
-        logger.info("✅ Structured logging initialized")
+        logger.info("Structured logging initialized")
 
         # Validate all configuration
         validate_configuration()
-        logger.info("✅ Configuration validation passed")
+        logger.info("Configuration validation passed")
 
-        logger.info("🎉 Application initialization completed successfully")
+        logger.info("Application initialization completed successfully")
 
     except Exception as e:
-        logger.error(f"❌ Application initialization failed: {str(e)}")
+        logger.error(f"Application initialization failed: {str(e)}")
         raise SystemExit(1) from e
 
 
@@ -52,8 +56,8 @@ def validate_startup_requirements() -> None:
         if not config.superadmin.emails:
             raise ValueError("SUPER_ADMIN_EMAILS is required")
 
-        logger.info("✅ Startup requirements validation passed")
+        logger.info("Startup requirements validation passed")
 
     except Exception as e:
-        logger.error(f"❌ Startup requirements validation failed: {str(e)}")
+        logger.error(f"Startup requirements validation failed: {str(e)}")
         raise

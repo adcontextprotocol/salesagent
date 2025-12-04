@@ -1,9 +1,107 @@
-"""Structured logging configuration for OAuth and other operations."""
+"""Structured logging configuration for OAuth and other operations.
+
+Supports two modes:
+- Production (Fly.io): JSON format for log aggregation
+- Development: Human-readable format
+"""
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
 from typing import Any
+
+
+class JSONFormatter(logging.Formatter):
+    """JSON log formatter for production environments.
+
+    Outputs single-line JSON that Fly.io and other log aggregators handle correctly.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        log_entry: dict[str, Any] = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+
+        # Add exception info if present
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+
+        # Add extra fields from record (non-standard attributes passed via extra={})
+        # Standard LogRecord attributes to exclude
+        standard_attrs = {
+            "name",
+            "msg",
+            "args",
+            "created",
+            "filename",
+            "funcName",
+            "levelname",
+            "levelno",
+            "lineno",
+            "module",
+            "msecs",
+            "pathname",
+            "process",
+            "processName",
+            "relativeCreated",
+            "stack_info",
+            "exc_info",
+            "exc_text",
+            "thread",
+            "threadName",
+            "taskName",
+            "message",
+        }
+        extra_fields = {k: v for k, v in record.__dict__.items() if k not in standard_attrs}
+        if extra_fields:
+            log_entry["extra"] = extra_fields
+
+        return json.dumps(log_entry)
+
+
+def setup_structured_logging() -> None:
+    """Setup structured JSON logging for production environments.
+
+    In production (Fly.io), configures all loggers to output single-line JSON.
+    This prevents multiline log messages from appearing as separate log entries.
+    """
+    is_production = bool(os.environ.get("FLY_APP_NAME") or os.environ.get("PRODUCTION"))
+
+    if is_production:
+        # Configure root logger with JSON formatter
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+
+        # Remove existing handlers
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+        # Add JSON formatter handler
+        handler = logging.StreamHandler()
+        handler.setFormatter(JSONFormatter())
+        root_logger.addHandler(handler)
+
+        # Also configure common library loggers that might have their own handlers
+        for logger_name in ["uvicorn", "uvicorn.access", "uvicorn.error", "fastmcp", "starlette"]:
+            lib_logger = logging.getLogger(logger_name)
+            lib_logger.handlers = []
+            lib_logger.addHandler(handler)
+            lib_logger.propagate = False
+
+        logging.info("JSON structured logging enabled for production")
+    else:
+        # Development mode - use standard format
+        # force=True ensures configuration is applied even if logging was already configured
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            force=True,
+        )
+
 
 # Create custom logger for OAuth operations
 oauth_logger = logging.getLogger("adcp.oauth")
