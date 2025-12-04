@@ -238,9 +238,14 @@ def convert_product_model_to_schema(product_model) -> Product:
         product_data["creative_policy"] = product_model.creative_policy
     # Note: price_guidance is database metadata, not in AdCP Product schema - omit it
     # Pricing information should be in pricing_options per AdCP spec
-    # Note: countries is NOT in AdCP Product schema - omit it
-    # if product_model.countries:
-    #     product_data["countries"] = product_model.countries
+
+    # Filter-related internal fields (not in AdCP spec, but needed for filtering)
+    # These are marked as exclude=True in our extended Product schema
+    if hasattr(product_model, "countries") and product_model.countries:
+        product_data["countries"] = product_model.countries
+    if hasattr(product_model, "channel") and product_model.channel:
+        product_data["channel"] = product_model.channel
+
     if product_model.product_card:
         product_data["product_card"] = product_model.product_card
     if product_model.product_card_detailed:

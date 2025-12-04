@@ -65,6 +65,11 @@ logger = logging.getLogger(__name__)
 class GoogleAdManager(AdServerAdapter):
     """Google Ad Manager adapter using modular architecture."""
 
+    adapter_name = "google_ad_manager"
+
+    # GAM supports display, video, and native advertising
+    default_channels = ["display", "video", "native"]
+
     def __init__(
         self,
         config: dict[str, Any],

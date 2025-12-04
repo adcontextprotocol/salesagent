@@ -362,9 +362,7 @@ def list_products(tenant_id):
                 formats_data = (
                     product.format_ids
                     if isinstance(product.format_ids, list)
-                    else json.loads(product.format_ids)
-                    if product.format_ids
-                    else []
+                    else json.loads(product.format_ids) if product.format_ids else []
                 )
 
                 # Debug: Log raw formats data
@@ -440,16 +438,12 @@ def list_products(tenant_id):
                     "countries": (
                         product.countries
                         if isinstance(product.countries, list)
-                        else json.loads(product.countries)
-                        if product.countries
-                        else []
+                        else json.loads(product.countries) if product.countries else []
                     ),
                     "implementation_config": (
                         product.implementation_config
                         if isinstance(product.implementation_config, dict)
-                        else json.loads(product.implementation_config)
-                        if product.implementation_config
-                        else {}
+                        else json.loads(product.implementation_config) if product.implementation_config else {}
                     ),
                     "created_at": product.created_at if hasattr(product, "created_at") else None,
                     "inventory_details": inventory_details.get(
@@ -846,6 +840,11 @@ def add_product(tenant_id):
                 # Only add countries if explicitly set
                 if countries is not None:
                     product_kwargs["countries"] = countries
+
+                # Handle channel field (AdCP 2.5 - advertising channel)
+                channel = form_data.get("channel", "").strip()
+                if channel:
+                    product_kwargs["channel"] = channel
 
                 # Handle product detail fields (AdCP compliance)
                 # Delivery measurement (REQUIRED per AdCP spec)
@@ -1306,6 +1305,13 @@ def edit_product(tenant_id, product_id):
 
                     attributes.flag_modified(product, "countries")
 
+                # Handle channel field (AdCP 2.5 - advertising channel)
+                channel = form_data.get("channel", "").strip()
+                if channel:
+                    product.channel = channel
+                else:
+                    product.channel = None
+
                 # Get pricing based on line item type (GAM form) or delivery type (other adapters)
                 line_item_type = form_data.get("line_item_type")
 
@@ -1625,18 +1631,14 @@ def edit_product(tenant_id, product_id):
             implementation_config = (
                 product.implementation_config
                 if isinstance(product.implementation_config, dict)
-                else json.loads(product.implementation_config)
-                if product.implementation_config
-                else {}
+                else json.loads(product.implementation_config) if product.implementation_config else {}
             )
 
             # Parse targeting_template - build from implementation_config if not set
             targeting_template = (
                 product.targeting_template
                 if isinstance(product.targeting_template, dict)
-                else json.loads(product.targeting_template)
-                if product.targeting_template
-                else {}
+                else json.loads(product.targeting_template) if product.targeting_template else {}
             )
 
             # If targeting_template doesn't have key_value_pairs but implementation_config has custom_targeting_keys,
@@ -1655,16 +1657,12 @@ def edit_product(tenant_id, product_id):
                 "formats": (
                     product.format_ids
                     if isinstance(product.format_ids, list)
-                    else json.loads(product.format_ids)
-                    if product.format_ids
-                    else []
+                    else json.loads(product.format_ids) if product.format_ids else []
                 ),
                 "countries": (
                     product.countries
                     if isinstance(product.countries, list)
-                    else json.loads(product.countries)
-                    if product.countries
-                    else []
+                    else json.loads(product.countries) if product.countries else []
                 ),
                 "implementation_config": implementation_config,
                 "targeting_template": targeting_template,
@@ -1674,6 +1672,8 @@ def edit_product(tenant_id, product_id):
                 "product_card_detailed": product.product_card_detailed,
                 "placements": product.placements,
                 "reporting_capabilities": product.reporting_capabilities,
+                # AdCP 2.5 fields
+                "channel": product.channel,
             }
 
             product_dict["pricing_options"] = pricing_options_list

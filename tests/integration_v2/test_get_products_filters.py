@@ -273,3 +273,369 @@ class TestGetProductsFilterBehavior:
 
         # Check formats structure
         assert len(product.format_ids) > 0
+
+
+@pytest.mark.requires_db
+class TestNewGetProductsFilters:
+    """Test the new AdCP 2.5 filters: countries and channels.
+
+    Note: start_date/end_date and budget_range filters are not currently implemented
+    as we don't expose capacity data. The channel filter uses the product.channel field.
+    """
+
+    def _import_get_products_tool(self):
+        """Import get_products tool and extract underlying function."""
+        from src.core.tools.products import get_products_raw
+
+        return get_products_raw
+
+    @pytest.fixture(autouse=True)
+    def setup_diverse_filter_products(self, integration_db):
+        """Create products with diverse characteristics for new filter testing."""
+        with get_db_session() as session:
+            # Create tenant and principal for new filter tests
+            tenant = create_tenant_with_timestamps(
+                tenant_id="new_filter_test",
+                name="New Filter Test Publisher",
+                subdomain="new-filter-test",
+                is_active=True,
+                ad_server="mock",
+            )
+            session.add(tenant)
+            session.flush()
+
+            # Add required setup data for tenant
+            add_required_setup_data(session, "new_filter_test")
+
+            principal = Principal(
+                tenant_id="new_filter_test",
+                principal_id="new_filter_principal",
+                name="New Filter Test Advertiser",
+                access_token="new_filter_test_token",
+                platform_mappings={"mock": {"id": "test_advertiser"}},
+                created_at=get_utc_now(),
+            )
+            session.add(principal)
+
+            # Product 1: US only, display channel
+            create_test_product_with_pricing(
+                session=session,
+                tenant_id="new_filter_test",
+                product_id="us_display",
+                name="US Display",
+                description="US display product",
+                format_ids=[
+                    {"agent_url": "https://test.com", "id": "300x250"},
+                ],
+                targeting_template={},
+                delivery_type="guaranteed",
+                pricing_model="CPM",
+                rate="15.0",
+                is_fixed=True,
+                currency="USD",
+                countries=["US"],
+                channel="display",
+                is_custom=False,
+            )
+
+            # Product 2: US + CA, video channel
+            create_test_product_with_pricing(
+                session=session,
+                tenant_id="new_filter_test",
+                product_id="us_ca_video",
+                name="US/CA Video",
+                description="US and Canada video product",
+                format_ids=[
+                    {"agent_url": "https://test.com", "id": "video_15s"},
+                ],
+                targeting_template={},
+                delivery_type="guaranteed",
+                pricing_model="CPM",
+                rate="25.0",
+                is_fixed=True,
+                currency="USD",
+                countries=["US", "CA"],
+                channel="video",
+                is_custom=False,
+            )
+
+            # Product 3: Global (no country restriction), audio channel
+            create_test_product_with_pricing(
+                session=session,
+                tenant_id="new_filter_test",
+                product_id="global_audio",
+                name="Global Audio",
+                description="Worldwide audio advertising",
+                format_ids=[
+                    {"agent_url": "https://test.com", "id": "audio_30s"},
+                ],
+                targeting_template={},
+                delivery_type="guaranteed",
+                pricing_model="CPM",
+                rate="20.0",
+                is_fixed=True,
+                currency="USD",
+                countries=None,  # No country restriction
+                channel="audio",
+                is_custom=False,
+            )
+
+            # Product 4: UK only, display channel
+            create_test_product_with_pricing(
+                session=session,
+                tenant_id="new_filter_test",
+                product_id="uk_display",
+                name="UK Display",
+                description="UK display product",
+                format_ids=[
+                    {"agent_url": "https://test.com", "id": "728x90"},
+                ],
+                targeting_template={},
+                delivery_type="guaranteed",
+                pricing_model="CPM",
+                rate="10.0",
+                is_fixed=True,
+                currency="GBP",
+                countries=["GB"],
+                channel="display",
+                is_custom=False,
+            )
+
+            # Product 5: US, native channel
+            create_test_product_with_pricing(
+                session=session,
+                tenant_id="new_filter_test",
+                product_id="us_native",
+                name="US Native",
+                description="Native advertising",
+                format_ids=[
+                    {"agent_url": "https://test.com", "id": "native_feed"},
+                ],
+                targeting_template={},
+                delivery_type="non_guaranteed",
+                pricing_model="CPM",
+                rate="8.0",
+                is_fixed=True,
+                currency="USD",
+                countries=["US"],
+                channel="native",
+                is_custom=False,
+            )
+
+            # Product 6: Global, no channel set (matches all channel filters)
+            create_test_product_with_pricing(
+                session=session,
+                tenant_id="new_filter_test",
+                product_id="global_no_channel",
+                name="Global No Channel",
+                description="Product without channel restriction",
+                format_ids=[
+                    {"agent_url": "https://test.com", "id": "standard_ad"},
+                ],
+                targeting_template={},
+                delivery_type="guaranteed",
+                pricing_model="CPM",
+                rate="12.0",
+                is_fixed=True,
+                currency="USD",
+                countries=None,  # No country restriction
+                channel=None,  # No channel restriction
+                is_custom=False,
+            )
+
+            session.commit()
+
+    @pytest.mark.asyncio
+    async def test_filter_by_countries_single_country(self):
+        """Test filtering products by a single country."""
+        get_products = self._import_get_products_tool()
+
+        context = Mock()
+        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
+
+        result = await get_products(
+            brand_manifest={"name": "Test Brand"},
+            brief="",
+            filters={"countries": ["US"]},
+            ctx=context,
+        )
+
+        # Should include: us_display, us_ca_video, global_audio (no restrictions),
+        # us_native, global_no_channel (no restrictions)
+        # Should exclude: uk_display (UK only)
+        product_ids = {p.product_id for p in result.products}
+        assert "us_display" in product_ids
+        assert "us_ca_video" in product_ids
+        assert "global_audio" in product_ids  # No country restriction = matches all
+        assert "us_native" in product_ids
+        assert "global_no_channel" in product_ids
+        assert "uk_display" not in product_ids
+
+    @pytest.mark.asyncio
+    async def test_filter_by_countries_multiple_countries(self):
+        """Test filtering products by multiple countries."""
+        get_products = self._import_get_products_tool()
+
+        context = Mock()
+        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
+
+        result = await get_products(
+            brand_manifest={"name": "Test Brand"},
+            brief="",
+            filters={"countries": ["CA", "GB"]},
+            ctx=context,
+        )
+
+        # Should include: us_ca_video (has CA), uk_display (has GB), global_audio (no restrictions)
+        # global_no_channel (no restrictions)
+        # Should exclude: us_display (US only), us_native (US only)
+        product_ids = {p.product_id for p in result.products}
+        assert "us_ca_video" in product_ids
+        assert "uk_display" in product_ids
+        assert "global_audio" in product_ids
+        assert "global_no_channel" in product_ids
+        assert "us_display" not in product_ids
+        assert "us_native" not in product_ids
+
+    @pytest.mark.asyncio
+    async def test_filter_by_channels_display(self):
+        """Test filtering products by display channel."""
+        get_products = self._import_get_products_tool()
+
+        context = Mock()
+        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
+
+        result = await get_products(
+            brand_manifest={"name": "Test Brand"},
+            brief="",
+            filters={"channels": ["display"]},
+            ctx=context,
+        )
+
+        # Should include: us_display, uk_display, global_no_channel
+        # global_no_channel uses mock adapter defaults (display, video, audio, native)
+        # Should exclude: us_ca_video, global_audio, us_native
+        product_ids = {p.product_id for p in result.products}
+        assert "us_display" in product_ids
+        assert "uk_display" in product_ids
+        assert "global_no_channel" in product_ids  # Mock adapter includes display
+        assert "us_ca_video" not in product_ids
+        assert "global_audio" not in product_ids
+        assert "us_native" not in product_ids
+
+    @pytest.mark.asyncio
+    async def test_filter_by_channels_video(self):
+        """Test filtering products by video channel."""
+        get_products = self._import_get_products_tool()
+
+        context = Mock()
+        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
+
+        result = await get_products(
+            brand_manifest={"name": "Test Brand"},
+            brief="",
+            filters={"channels": ["video"]},
+            ctx=context,
+        )
+
+        # Should include: us_ca_video, global_no_channel (mock adapter includes video)
+        product_ids = {p.product_id for p in result.products}
+        assert "us_ca_video" in product_ids
+        assert "global_no_channel" in product_ids
+
+    @pytest.mark.asyncio
+    async def test_filter_by_channels_multiple(self):
+        """Test filtering products by multiple channels."""
+        get_products = self._import_get_products_tool()
+
+        context = Mock()
+        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
+
+        result = await get_products(
+            brand_manifest={"name": "Test Brand"},
+            brief="",
+            filters={"channels": ["audio", "native"]},
+            ctx=context,
+        )
+
+        # Should include: global_audio, us_native, global_no_channel (mock adapter includes audio/native)
+        product_ids = {p.product_id for p in result.products}
+        assert "global_audio" in product_ids
+        assert "us_native" in product_ids
+        assert "global_no_channel" in product_ids
+
+    @pytest.mark.asyncio
+    async def test_filter_by_channels_retail_excludes_mock_products(self):
+        """Test that retail channel filter excludes products without explicit retail channel.
+
+        Mock adapter defaults to display, video, audio, native - NOT retail.
+        So products without channel set should NOT match retail filter.
+        """
+        get_products = self._import_get_products_tool()
+
+        context = Mock()
+        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
+
+        result = await get_products(
+            brand_manifest={"name": "Test Brand"},
+            brief="",
+            filters={"channels": ["retail"]},
+            ctx=context,
+        )
+
+        # No products have retail channel, and mock adapter doesn't default to retail
+        # So no products should match
+        product_ids = {p.product_id for p in result.products}
+        assert "global_no_channel" not in product_ids
+
+    @pytest.mark.asyncio
+    async def test_combined_filters_country_and_channel(self):
+        """Test combining country and channel filters."""
+        get_products = self._import_get_products_tool()
+
+        context = Mock()
+        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
+
+        result = await get_products(
+            brand_manifest={"name": "Test Brand"},
+            brief="",
+            filters={
+                "countries": ["US"],
+                "channels": ["display"],
+            },
+            ctx=context,
+        )
+
+        # Should include: us_display, global_no_channel (mock adapter includes display, no country restriction)
+        # Should exclude: uk_display (not US), us_ca_video (not display), global_audio (not display)
+        product_ids = {p.product_id for p in result.products}
+        assert "us_display" in product_ids
+        assert "global_no_channel" in product_ids
+        assert "uk_display" not in product_ids
+        assert "us_ca_video" not in product_ids
+
+    @pytest.mark.asyncio
+    async def test_combined_filters_strict_match(self):
+        """Test combining country and channel filters with strict matching."""
+        get_products = self._import_get_products_tool()
+
+        context = Mock()
+        context.meta = {"headers": {"x-adcp-auth": "new_filter_test_token"}}
+
+        result = await get_products(
+            brand_manifest={"name": "Test Brand"},
+            brief="",
+            filters={
+                "countries": ["CA"],
+                "channels": ["video"],
+            },
+            ctx=context,
+        )
+
+        # Should include: us_ca_video (CA + video), global_no_channel (no restrictions, mock includes video)
+        # Should exclude: us_display (not CA), uk_display (not CA, not video)
+        product_ids = {p.product_id for p in result.products}
+        assert "us_ca_video" in product_ids
+        assert "global_no_channel" in product_ids
+        # These have video but not CA
+        assert "us_display" not in product_ids

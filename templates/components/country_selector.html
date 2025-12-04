@@ -1,0 +1,201 @@
+<!-- Country Selector Component
+
+     Reusable multi-select country picker using ISO 3166-1 alpha-2 codes.
+
+     Usage (in parent template):
+     1. Set selected_countries variable before including
+     2. Include this component
+
+     Expects:
+     - selected_countries: list of ISO country codes (optional, defaults to empty)
+-->
+
+{% set selected = selected_countries if selected_countries is defined else [] %}
+
+<select id="countries" name="countries" multiple style="height: 200px; width: 100%;">
+    <option value="ALL" {% if not selected or 'ALL' in selected %}selected{% endif %}>All Countries (No Restriction)</option>
+
+    <!-- North America -->
+    <optgroup label="North America">
+        <option value="US" {% if 'US' in selected %}selected{% endif %}>United States</option>
+        <option value="CA" {% if 'CA' in selected %}selected{% endif %}>Canada</option>
+        <option value="MX" {% if 'MX' in selected %}selected{% endif %}>Mexico</option>
+    </optgroup>
+
+    <!-- Europe -->
+    <optgroup label="Europe">
+        <option value="GB" {% if 'GB' in selected %}selected{% endif %}>United Kingdom</option>
+        <option value="DE" {% if 'DE' in selected %}selected{% endif %}>Germany</option>
+        <option value="FR" {% if 'FR' in selected %}selected{% endif %}>France</option>
+        <option value="IT" {% if 'IT' in selected %}selected{% endif %}>Italy</option>
+        <option value="ES" {% if 'ES' in selected %}selected{% endif %}>Spain</option>
+        <option value="NL" {% if 'NL' in selected %}selected{% endif %}>Netherlands</option>
+        <option value="BE" {% if 'BE' in selected %}selected{% endif %}>Belgium</option>
+        <option value="AT" {% if 'AT' in selected %}selected{% endif %}>Austria</option>
+        <option value="CH" {% if 'CH' in selected %}selected{% endif %}>Switzerland</option>
+        <option value="SE" {% if 'SE' in selected %}selected{% endif %}>Sweden</option>
+        <option value="NO" {% if 'NO' in selected %}selected{% endif %}>Norway</option>
+        <option value="DK" {% if 'DK' in selected %}selected{% endif %}>Denmark</option>
+        <option value="FI" {% if 'FI' in selected %}selected{% endif %}>Finland</option>
+        <option value="IE" {% if 'IE' in selected %}selected{% endif %}>Ireland</option>
+        <option value="PT" {% if 'PT' in selected %}selected{% endif %}>Portugal</option>
+        <option value="PL" {% if 'PL' in selected %}selected{% endif %}>Poland</option>
+        <option value="CZ" {% if 'CZ' in selected %}selected{% endif %}>Czech Republic</option>
+        <option value="RO" {% if 'RO' in selected %}selected{% endif %}>Romania</option>
+        <option value="HU" {% if 'HU' in selected %}selected{% endif %}>Hungary</option>
+        <option value="GR" {% if 'GR' in selected %}selected{% endif %}>Greece</option>
+        <option value="BG" {% if 'BG' in selected %}selected{% endif %}>Bulgaria</option>
+        <option value="HR" {% if 'HR' in selected %}selected{% endif %}>Croatia</option>
+        <option value="SK" {% if 'SK' in selected %}selected{% endif %}>Slovakia</option>
+        <option value="SI" {% if 'SI' in selected %}selected{% endif %}>Slovenia</option>
+        <option value="LT" {% if 'LT' in selected %}selected{% endif %}>Lithuania</option>
+        <option value="LV" {% if 'LV' in selected %}selected{% endif %}>Latvia</option>
+        <option value="EE" {% if 'EE' in selected %}selected{% endif %}>Estonia</option>
+        <option value="LU" {% if 'LU' in selected %}selected{% endif %}>Luxembourg</option>
+        <option value="MT" {% if 'MT' in selected %}selected{% endif %}>Malta</option>
+        <option value="CY" {% if 'CY' in selected %}selected{% endif %}>Cyprus</option>
+        <option value="IS" {% if 'IS' in selected %}selected{% endif %}>Iceland</option>
+        <option value="UA" {% if 'UA' in selected %}selected{% endif %}>Ukraine</option>
+        <option value="RS" {% if 'RS' in selected %}selected{% endif %}>Serbia</option>
+        <option value="BA" {% if 'BA' in selected %}selected{% endif %}>Bosnia and Herzegovina</option>
+        <option value="AL" {% if 'AL' in selected %}selected{% endif %}>Albania</option>
+        <option value="MK" {% if 'MK' in selected %}selected{% endif %}>North Macedonia</option>
+        <option value="ME" {% if 'ME' in selected %}selected{% endif %}>Montenegro</option>
+        <option value="MD" {% if 'MD' in selected %}selected{% endif %}>Moldova</option>
+        <option value="BY" {% if 'BY' in selected %}selected{% endif %}>Belarus</option>
+    </optgroup>
+
+    <!-- Asia Pacific -->
+    <optgroup label="Asia Pacific">
+        <option value="AU" {% if 'AU' in selected %}selected{% endif %}>Australia</option>
+        <option value="NZ" {% if 'NZ' in selected %}selected{% endif %}>New Zealand</option>
+        <option value="JP" {% if 'JP' in selected %}selected{% endif %}>Japan</option>
+        <option value="KR" {% if 'KR' in selected %}selected{% endif %}>South Korea</option>
+        <option value="CN" {% if 'CN' in selected %}selected{% endif %}>China</option>
+        <option value="HK" {% if 'HK' in selected %}selected{% endif %}>Hong Kong</option>
+        <option value="TW" {% if 'TW' in selected %}selected{% endif %}>Taiwan</option>
+        <option value="SG" {% if 'SG' in selected %}selected{% endif %}>Singapore</option>
+        <option value="MY" {% if 'MY' in selected %}selected{% endif %}>Malaysia</option>
+        <option value="TH" {% if 'TH' in selected %}selected{% endif %}>Thailand</option>
+        <option value="ID" {% if 'ID' in selected %}selected{% endif %}>Indonesia</option>
+        <option value="PH" {% if 'PH' in selected %}selected{% endif %}>Philippines</option>
+        <option value="VN" {% if 'VN' in selected %}selected{% endif %}>Vietnam</option>
+        <option value="IN" {% if 'IN' in selected %}selected{% endif %}>India</option>
+        <option value="PK" {% if 'PK' in selected %}selected{% endif %}>Pakistan</option>
+        <option value="BD" {% if 'BD' in selected %}selected{% endif %}>Bangladesh</option>
+        <option value="LK" {% if 'LK' in selected %}selected{% endif %}>Sri Lanka</option>
+        <option value="NP" {% if 'NP' in selected %}selected{% endif %}>Nepal</option>
+        <option value="MM" {% if 'MM' in selected %}selected{% endif %}>Myanmar</option>
+        <option value="KH" {% if 'KH' in selected %}selected{% endif %}>Cambodia</option>
+        <option value="LA" {% if 'LA' in selected %}selected{% endif %}>Laos</option>
+        <option value="BN" {% if 'BN' in selected %}selected{% endif %}>Brunei</option>
+        <option value="MN" {% if 'MN' in selected %}selected{% endif %}>Mongolia</option>
+        <option value="FJ" {% if 'FJ' in selected %}selected{% endif %}>Fiji</option>
+        <option value="PG" {% if 'PG' in selected %}selected{% endif %}>Papua New Guinea</option>
+    </optgroup>
+
+    <!-- Middle East -->
+    <optgroup label="Middle East">
+        <option value="AE" {% if 'AE' in selected %}selected{% endif %}>United Arab Emirates</option>
+        <option value="SA" {% if 'SA' in selected %}selected{% endif %}>Saudi Arabia</option>
+        <option value="IL" {% if 'IL' in selected %}selected{% endif %}>Israel</option>
+        <option value="TR" {% if 'TR' in selected %}selected{% endif %}>Turkey</option>
+        <option value="EG" {% if 'EG' in selected %}selected{% endif %}>Egypt</option>
+        <option value="QA" {% if 'QA' in selected %}selected{% endif %}>Qatar</option>
+        <option value="KW" {% if 'KW' in selected %}selected{% endif %}>Kuwait</option>
+        <option value="BH" {% if 'BH' in selected %}selected{% endif %}>Bahrain</option>
+        <option value="OM" {% if 'OM' in selected %}selected{% endif %}>Oman</option>
+        <option value="JO" {% if 'JO' in selected %}selected{% endif %}>Jordan</option>
+        <option value="LB" {% if 'LB' in selected %}selected{% endif %}>Lebanon</option>
+        <option value="IQ" {% if 'IQ' in selected %}selected{% endif %}>Iraq</option>
+        <option value="IR" {% if 'IR' in selected %}selected{% endif %}>Iran</option>
+        <option value="YE" {% if 'YE' in selected %}selected{% endif %}>Yemen</option>
+        <option value="SY" {% if 'SY' in selected %}selected{% endif %}>Syria</option>
+        <option value="PS" {% if 'PS' in selected %}selected{% endif %}>Palestine</option>
+    </optgroup>
+
+    <!-- Africa -->
+    <optgroup label="Africa">
+        <option value="ZA" {% if 'ZA' in selected %}selected{% endif %}>South Africa</option>
+        <option value="NG" {% if 'NG' in selected %}selected{% endif %}>Nigeria</option>
+        <option value="KE" {% if 'KE' in selected %}selected{% endif %}>Kenya</option>
+        <option value="GH" {% if 'GH' in selected %}selected{% endif %}>Ghana</option>
+        <option value="ET" {% if 'ET' in selected %}selected{% endif %}>Ethiopia</option>
+        <option value="TZ" {% if 'TZ' in selected %}selected{% endif %}>Tanzania</option>
+        <option value="UG" {% if 'UG' in selected %}selected{% endif %}>Uganda</option>
+        <option value="MA" {% if 'MA' in selected %}selected{% endif %}>Morocco</option>
+        <option value="DZ" {% if 'DZ' in selected %}selected{% endif %}>Algeria</option>
+        <option value="TN" {% if 'TN' in selected %}selected{% endif %}>Tunisia</option>
+        <option value="LY" {% if 'LY' in selected %}selected{% endif %}>Libya</option>
+        <option value="CI" {% if 'CI' in selected %}selected{% endif %}>Ivory Coast</option>
+        <option value="CM" {% if 'CM' in selected %}selected{% endif %}>Cameroon</option>
+        <option value="SN" {% if 'SN' in selected %}selected{% endif %}>Senegal</option>
+        <option value="ZW" {% if 'ZW' in selected %}selected{% endif %}>Zimbabwe</option>
+        <option value="ZM" {% if 'ZM' in selected %}selected{% endif %}>Zambia</option>
+        <option value="BW" {% if 'BW' in selected %}selected{% endif %}>Botswana</option>
+        <option value="NA" {% if 'NA' in selected %}selected{% endif %}>Namibia</option>
+        <option value="MZ" {% if 'MZ' in selected %}selected{% endif %}>Mozambique</option>
+        <option value="AO" {% if 'AO' in selected %}selected{% endif %}>Angola</option>
+        <option value="RW" {% if 'RW' in selected %}selected{% endif %}>Rwanda</option>
+        <option value="MU" {% if 'MU' in selected %}selected{% endif %}>Mauritius</option>
+        <option value="CD" {% if 'CD' in selected %}selected{% endif %}>DR Congo</option>
+        <option value="SD" {% if 'SD' in selected %}selected{% endif %}>Sudan</option>
+        <option value="MG" {% if 'MG' in selected %}selected{% endif %}>Madagascar</option>
+        <option value="ML" {% if 'ML' in selected %}selected{% endif %}>Mali</option>
+        <option value="BF" {% if 'BF' in selected %}selected{% endif %}>Burkina Faso</option>
+        <option value="NE" {% if 'NE' in selected %}selected{% endif %}>Niger</option>
+        <option value="TD" {% if 'TD' in selected %}selected{% endif %}>Chad</option>
+        <option value="GA" {% if 'GA' in selected %}selected{% endif %}>Gabon</option>
+        <option value="CG" {% if 'CG' in selected %}selected{% endif %}>Congo</option>
+    </optgroup>
+
+    <!-- Latin America -->
+    <optgroup label="Latin America">
+        <option value="BR" {% if 'BR' in selected %}selected{% endif %}>Brazil</option>
+        <option value="AR" {% if 'AR' in selected %}selected{% endif %}>Argentina</option>
+        <option value="CL" {% if 'CL' in selected %}selected{% endif %}>Chile</option>
+        <option value="CO" {% if 'CO' in selected %}selected{% endif %}>Colombia</option>
+        <option value="PE" {% if 'PE' in selected %}selected{% endif %}>Peru</option>
+        <option value="VE" {% if 'VE' in selected %}selected{% endif %}>Venezuela</option>
+        <option value="EC" {% if 'EC' in selected %}selected{% endif %}>Ecuador</option>
+        <option value="BO" {% if 'BO' in selected %}selected{% endif %}>Bolivia</option>
+        <option value="PY" {% if 'PY' in selected %}selected{% endif %}>Paraguay</option>
+        <option value="UY" {% if 'UY' in selected %}selected{% endif %}>Uruguay</option>
+        <option value="GY" {% if 'GY' in selected %}selected{% endif %}>Guyana</option>
+        <option value="SR" {% if 'SR' in selected %}selected{% endif %}>Suriname</option>
+    </optgroup>
+
+    <!-- Central America & Caribbean -->
+    <optgroup label="Central America & Caribbean">
+        <option value="PA" {% if 'PA' in selected %}selected{% endif %}>Panama</option>
+        <option value="CR" {% if 'CR' in selected %}selected{% endif %}>Costa Rica</option>
+        <option value="GT" {% if 'GT' in selected %}selected{% endif %}>Guatemala</option>
+        <option value="HN" {% if 'HN' in selected %}selected{% endif %}>Honduras</option>
+        <option value="SV" {% if 'SV' in selected %}selected{% endif %}>El Salvador</option>
+        <option value="NI" {% if 'NI' in selected %}selected{% endif %}>Nicaragua</option>
+        <option value="BZ" {% if 'BZ' in selected %}selected{% endif %}>Belize</option>
+        <option value="CU" {% if 'CU' in selected %}selected{% endif %}>Cuba</option>
+        <option value="DO" {% if 'DO' in selected %}selected{% endif %}>Dominican Republic</option>
+        <option value="HT" {% if 'HT' in selected %}selected{% endif %}>Haiti</option>
+        <option value="JM" {% if 'JM' in selected %}selected{% endif %}>Jamaica</option>
+        <option value="TT" {% if 'TT' in selected %}selected{% endif %}>Trinidad and Tobago</option>
+        <option value="PR" {% if 'PR' in selected %}selected{% endif %}>Puerto Rico</option>
+        <option value="BS" {% if 'BS' in selected %}selected{% endif %}>Bahamas</option>
+        <option value="BB" {% if 'BB' in selected %}selected{% endif %}>Barbados</option>
+    </optgroup>
+
+    <!-- Russia & Central Asia -->
+    <optgroup label="Russia & Central Asia">
+        <option value="RU" {% if 'RU' in selected %}selected{% endif %}>Russia</option>
+        <option value="KZ" {% if 'KZ' in selected %}selected{% endif %}>Kazakhstan</option>
+        <option value="UZ" {% if 'UZ' in selected %}selected{% endif %}>Uzbekistan</option>
+        <option value="TM" {% if 'TM' in selected %}selected{% endif %}>Turkmenistan</option>
+        <option value="TJ" {% if 'TJ' in selected %}selected{% endif %}>Tajikistan</option>
+        <option value="KG" {% if 'KG' in selected %}selected{% endif %}>Kyrgyzstan</option>
+        <option value="AZ" {% if 'AZ' in selected %}selected{% endif %}>Azerbaijan</option>
+        <option value="GE" {% if 'GE' in selected %}selected{% endif %}>Georgia</option>
+        <option value="AM" {% if 'AM' in selected %}selected{% endif %}>Armenia</option>
+        <option value="AF" {% if 'AF' in selected %}selected{% endif %}>Afghanistan</option>
+    </optgroup>
+</select>
+<small style="color: #666;">Hold Ctrl/Cmd to select multiple countries. Select "All Countries" for no geographic restriction.</small>

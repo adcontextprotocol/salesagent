@@ -35,6 +35,56 @@ from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 logger = logging.getLogger(__name__)
 
 
+def get_adapter_default_channels(adapter_type: str) -> list[str]:
+    """Get default advertising channels for an adapter type.
+
+    Default channels are defined on each adapter class's default_channels attribute.
+    This function dynamically loads the adapter class to get its defaults.
+
+    Args:
+        adapter_type: Adapter type name (e.g., "google_ad_manager", "mock", "kevel", "triton")
+
+    Returns:
+        List of default channel names for the adapter
+    """
+    # Import adapter classes lazily to avoid circular imports
+    adapter_classes: dict[str, type] = {}
+
+    try:
+        from src.adapters.google_ad_manager import GoogleAdManager
+
+        adapter_classes["google_ad_manager"] = GoogleAdManager
+    except ImportError:
+        pass
+
+    try:
+        from src.adapters.mock_ad_server import MockAdServer
+
+        adapter_classes["mock"] = MockAdServer
+    except ImportError:
+        pass
+
+    try:
+        from src.adapters.kevel import Kevel
+
+        adapter_classes["kevel"] = Kevel
+    except ImportError:
+        pass
+
+    try:
+        from src.adapters.triton_digital import TritonDigital
+
+        adapter_classes["triton"] = TritonDigital
+    except ImportError:
+        pass
+
+    adapter_class = adapter_classes.get(adapter_type)
+    if adapter_class and hasattr(adapter_class, "default_channels"):
+        return adapter_class.default_channels
+
+    return []
+
+
 def get_recommended_cpm(product: Product) -> float | None:
     """Extract recommended CPM from product's pricing_options.
 
@@ -483,6 +533,69 @@ async def _get_products_impl(
 
                 if not has_only_standard:
                     continue
+
+            # Filter by countries
+            if req.filters.countries:
+                # Get product's countries from the placements or targeting
+                product_countries: set[str] = set()
+
+                # Check if product has countries field (from database)
+                # Our extended Product may have a countries field
+                if hasattr(product, "countries") and product.countries:
+                    product_countries.update(product.countries)
+
+                # If no countries specified, product is considered available everywhere
+                if not product_countries:
+                    # Product has no country restrictions, matches any country filter
+                    pass
+                else:
+                    # Extract country codes from filter (Country is a RootModel[str])
+                    request_countries: set[str] = set()
+                    for country in req.filters.countries:
+                        if isinstance(country, str):
+                            request_countries.add(country.upper())
+                        elif hasattr(country, "root"):
+                            # RootModel - access .root for the string value
+                            request_countries.add(country.root.upper())
+
+                    # Check if any requested country is in the product's countries
+                    if not product_countries.intersection(request_countries):
+                        continue
+
+            # Filter by channels
+            if req.filters.channels:
+                # Check if product has a channel field
+                product_channel: str | None = None
+                if hasattr(product, "channel") and product.channel:
+                    product_channel = product.channel.lower()
+
+                # Extract channel values from filter (enum values)
+                request_channels: set[str] = set()
+                for channel in req.filters.channels:
+                    if isinstance(channel, str):
+                        request_channels.add(channel.lower())
+                    elif hasattr(channel, "value"):
+                        # Enum - access .value
+                        request_channels.add(channel.value.lower())
+
+                if product_channel:
+                    # Product has explicit channel - must match
+                    if product_channel not in request_channels:
+                        continue
+                else:
+                    # Product has no channel - use adapter defaults
+                    # Get adapter type from tenant config
+                    ad_server_config = tenant.get("ad_server", {})
+                    adapter_type = (
+                        ad_server_config.get("adapter", "mock")
+                        if isinstance(ad_server_config, dict)
+                        else ad_server_config
+                    )
+                    adapter_channels = get_adapter_default_channels(adapter_type)
+
+                    # Product matches if any of adapter's default channels is in request
+                    if adapter_channels and not request_channels.intersection(set(adapter_channels)):
+                        continue
 
             # Product passed all filters
             filtered_products.append(product)

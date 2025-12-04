@@ -216,16 +216,32 @@ Target users based on local weather conditions for maximum relevance.</div>
             </div>
         </div>
 
-        <div class="form-group">
-            <label for="countries">Countries</label>
-            <select id="countries" name="countries" multiple size="5">
-                <option value="ALL" {% if not product or not product.countries or 'ALL' in product.countries %}selected{% endif %}>All Countries</option>
-                <option value="United States" {% if product and product.countries and 'United States' in product.countries %}selected{% endif %}>United States</option>
-                <option value="Canada" {% if product and product.countries and 'Canada' in product.countries %}selected{% endif %}>Canada</option>
-                <option value="United Kingdom" {% if product and product.countries and 'United Kingdom' in product.countries %}selected{% endif %}>United Kingdom</option>
-                <option value="Australia" {% if product and product.countries and 'Australia' in product.countries %}selected{% endif %}>Australia</option>
-            </select>
-            <small style="color: #666;">Hold Ctrl/Cmd to select multiple, or select "All Countries". For dynamic products, these countries are passed to signals agents.</small>
+        <!-- Channel & Geographic Targeting -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Channel & Geographic Targeting</h3>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="channel">Advertising Channel</label>
+                <select id="channel" name="channel">
+                    <option value="" {% if not product or not product.channel %}selected{% endif %}>Use Adapter Default (display/video/native)</option>
+                    <option value="display" {% if product and product.channel == 'display' %}selected{% endif %}>Display</option>
+                    <option value="video" {% if product and product.channel == 'video' %}selected{% endif %}>Video</option>
+                    <option value="audio" {% if product and product.channel == 'audio' %}selected{% endif %}>Audio</option>
+                    <option value="native" {% if product and product.channel == 'native' %}selected{% endif %}>Native</option>
+                    <option value="dooh" {% if product and product.channel == 'dooh' %}selected{% endif %}>DOOH (Digital Out-of-Home)</option>
+                    <option value="ctv" {% if product and product.channel == 'ctv' %}selected{% endif %}>CTV (Connected TV)</option>
+                    <option value="podcast" {% if product and product.channel == 'podcast' %}selected{% endif %}>Podcast</option>
+                    <option value="retail" {% if product and product.channel == 'retail' %}selected{% endif %}>Retail Media</option>
+                    <option value="social" {% if product and product.channel == 'social' %}selected{% endif %}>Social</option>
+                </select>
+                <small style="color: #666;">Select the advertising channel. GAM defaults to display/video/native.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="countries">Countries</label>
+                {% set selected_countries = product.countries if product and product.countries else [] %}
+                {% include 'components/country_selector.html' %}
+            </div>
         </div>
 
         <!-- Section 2: Inventory Configuration -->
@@ -653,11 +669,14 @@ async function extractSizesFromInventory() {
 
         console.log('extractSizesFromUnit: processing unit', unitId, item);
         console.log('extractSizesFromUnit: item.children =', item.children);
-        console.log('extractSizesFromUnit: item.metadata.sizes =', item.metadata?.sizes);
+        console.log('extractSizesFromUnit: item.sizes =', item.sizes);
+        console.log('extractSizesFromUnit: item.metadata?.sizes =', item.metadata?.sizes);
 
         // Extract sizes from this unit using helper function
-        if (item.metadata && item.metadata.sizes) {
-            addSizesToCache(item.metadata.sizes);
+        // Check both item.sizes (raw API format) and item.metadata.sizes (normalized format)
+        const unitSizes = item.sizes || (item.metadata && item.metadata.sizes) || [];
+        if (unitSizes.length > 0) {
+            addSizesToCache(unitSizes);
         }
 
         // Recursively extract sizes from children (for hierarchical ad units)
@@ -952,7 +971,7 @@ function loadInventory(type, search = '') {
         // Load flat list for placements (keep existing behavior)
         const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=${type}${search ? '&search=' + encodeURIComponent(search) : ''}`;
 
-        fetch(url)
+        fetch(url, { credentials: 'same-origin' })
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
@@ -1027,7 +1046,7 @@ function loadInventoryTree(searchTerm = '') {
         ${searchTerm ? 'Searching...' : 'Loading ad units...'}
     </div>`;
 
-    fetch(url)
+    fetch(url, { credentials: 'same-origin' })
         .then(response => response.json())
         .then(data => {
             if (data.error) {
@@ -1363,8 +1382,12 @@ function updateSelectedDisplay(containerId, names, ids) {
             // Show sizes inline for ad units
             if (isAdUnit) {
                 const item = inventoryCache.adUnits.get(id);
-                if (item && item.metadata && item.metadata.sizes && item.metadata.sizes.length > 0) {
-                    const sizeStrings = item.metadata.sizes
+                console.log('[DEBUG] updateSelectedDisplay: id=', id, 'item=', item);
+                console.log('[DEBUG] inventoryCache.adUnits size:', inventoryCache.adUnits.size);
+                // Check both item.sizes (raw API format) and item.metadata.sizes (normalized format)
+                const itemSizes = item && (item.sizes || (item.metadata && item.metadata.sizes)) || [];
+                if (itemSizes.length > 0) {
+                    const sizeStrings = itemSizes
                         .map(s => `${s.width}×${s.height}`)
                         .join(', ');
                     sizesText = ` <small style="color: #28a745; font-weight: 500;">(${sizeStrings})</small>`;
@@ -1438,7 +1461,7 @@ async function autoSuggestFormats(selectedCheckboxes) {
     if (includeChildren && selectedPaths.length > 0) {
         try {
             const url = `{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=ad_unit`;
-            const response = await fetch(url);
+            const response = await fetch(url, { credentials: 'same-origin' });
             const data = await response.json();
 
             if (data.items) {
@@ -1793,7 +1816,7 @@ function handleProfileChange(profileId) {
 async function loadProfilePreview(profileId) {
     try {
         const url = `{{ url_for('inventory_profiles.preview_inventory_profile', tenant_id=tenant_id, profile_id=0) }}`.replace('/0/', `/${profileId}/`);
-        const response = await fetch(url);
+        const response = await fetch(url, { credentials: 'same-origin' });
         const data = await response.json();
 
         if (data.error) {
@@ -2103,7 +2126,7 @@ function filterGAMFormats() {
 
         // Fetch TREE data (not flat list) to get hierarchical structure with children
         // This is critical for size extraction from child ad units
-        fetch(`{{ url_for('inventory.get_inventory_tree', tenant_id=tenant_id) }}`)
+        fetch(`{{ url_for('inventory.get_inventory_tree', tenant_id=tenant_id) }}`, { credentials: 'same-origin' })
             .then(response => response.json())
             .then(data => {
                 console.log('[DEBUG] Tree API returned', data.root_units ? data.root_units.length : 0, 'root units');
@@ -2161,7 +2184,7 @@ function filterGAMFormats() {
 
         // Fetch specific placement names by ID (bypasses 500-item limit)
         const placementIdsParam = placementIds.join(',');
-        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement&ids=${encodeURIComponent(placementIdsParam)}`)
+        fetch(`{{ url_for('inventory.get_inventory_list', tenant_id=tenant_id) }}?type=placement&ids=${encodeURIComponent(placementIdsParam)}`, { credentials: 'same-origin' })
             .then(response => response.json())
             .then(data => {
                 if (data.items) {
