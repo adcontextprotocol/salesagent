@@ -2,10 +2,20 @@
 
 This module provides middleware-like functionality to automatically handle
 context for MCP tools, similar to how A2A manages context for its handlers.
+
+Provides centralized:
+- Context extraction from FastMCP
+- Context persistence with database
+- Conversation history management
+- Response enhancement with context_id
+
+Note: Error logging is handled separately by the with_error_logging decorator
+in tool_error_logging.py to avoid duplicate logging.
 """
 
 import functools
 import inspect
+import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -22,6 +32,7 @@ from src.core.testing_hooks import get_testing_context
 from src.core.tool_context import ToolContext
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -50,6 +61,9 @@ class MCPContextWrapper:
     - Context persistence with database
     - Conversation history management
     - Response enhancement with context_id
+
+    Note: Error logging is handled by the with_error_logging decorator
+    applied in main.py to avoid duplicate logging.
     """
 
     def __init__(self):
@@ -106,7 +120,8 @@ class MCPContextWrapper:
                 return result
 
             finally:
-                # Log activity
+                # Log activity timing
+                # Note: Error logging is handled by with_error_logging decorator
                 elapsed = time.time() - start_time
                 console.print(f"[dim]Tool {tool_func.__name__} completed in {elapsed:.2f}s[/dim]")
 
@@ -145,7 +160,8 @@ class MCPContextWrapper:
                 return result
 
             finally:
-                # Log activity
+                # Log activity timing
+                # Note: Error logging is handled by with_error_logging decorator
                 elapsed = time.time() - start_time
                 console.print(f"[dim]Tool {tool_func.__name__} completed in {elapsed:.2f}s[/dim]")
 
@@ -154,7 +170,7 @@ class MCPContextWrapper:
     def _extract_fastmcp_context(self, args: tuple, kwargs: dict) -> FastMCPContext | None:
         """Extract FastMCP Context from function arguments."""
         # Check kwargs for any value that is a FastMCPContext (supports 'ctx' or other param names)
-        for k, v in kwargs.items():
+        for v in kwargs.values():
             if isinstance(v, FastMCPContext):
                 return v
 

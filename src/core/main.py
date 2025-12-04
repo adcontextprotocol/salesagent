@@ -991,6 +991,8 @@ if unified_mode:
 
 # Import MCP tools from separate modules at the end to avoid circular imports
 # Tools are imported and then registered with MCP manually (no decorators in tool modules)
+# Import error logging wrapper for centralized error visibility
+from src.core.tool_error_logging import with_error_logging  # noqa: E402
 from src.core.tools.creative_formats import list_creative_formats  # noqa: E402, F401
 from src.core.tools.creatives import list_creatives, sync_creatives  # noqa: E402, F401
 from src.core.tools.media_buy_create import create_media_buy  # noqa: E402, F401
@@ -1003,14 +1005,15 @@ from src.core.tools.signals import activate_signal, get_signals  # noqa: E402, F
 
 # Register tools with MCP (must be done after imports to avoid circular dependency)
 # This breaks the circular import: tool modules no longer import mcp from main.py
-mcp.tool()(get_products)
-mcp.tool()(list_creative_formats)
-mcp.tool()(sync_creatives)
-mcp.tool()(list_creatives)
-mcp.tool()(get_signals)
-mcp.tool()(activate_signal)
-mcp.tool()(list_authorized_properties)
-mcp.tool()(create_media_buy)
-mcp.tool()(update_media_buy)
-mcp.tool()(get_media_buy_delivery)
-mcp.tool()(update_performance_index)
+# Tools are wrapped with error logging to ensure errors appear in activity feed
+mcp.tool()(with_error_logging(get_products))
+mcp.tool()(with_error_logging(list_creative_formats))
+mcp.tool()(with_error_logging(sync_creatives))
+mcp.tool()(with_error_logging(list_creatives))
+mcp.tool()(with_error_logging(get_signals))
+mcp.tool()(with_error_logging(activate_signal))
+mcp.tool()(with_error_logging(list_authorized_properties))
+mcp.tool()(with_error_logging(create_media_buy))
+mcp.tool()(with_error_logging(update_media_buy))
+mcp.tool()(with_error_logging(get_media_buy_delivery))
+mcp.tool()(with_error_logging(update_performance_index))
