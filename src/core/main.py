@@ -125,7 +125,27 @@ async def lifespan_context(app):
     except Exception as e:
         logger.error(f"Failed to start delivery webhook scheduler: {e}", exc_info=True)
 
+    # Startup: Initialize media buy status scheduler
+    from src.services.media_buy_status_scheduler import start_media_buy_status_scheduler
+
+    logger.info("Starting media buy status scheduler...")
+    try:
+        await start_media_buy_status_scheduler()
+        logger.info("✅ Media buy status scheduler started")
+    except Exception as e:
+        logger.error(f"Failed to start media buy status scheduler: {e}", exc_info=True)
+
     yield
+
+    # Shutdown: Stop media buy status scheduler
+    from src.services.media_buy_status_scheduler import stop_media_buy_status_scheduler
+
+    logger.info("Stopping media buy status scheduler...")
+    try:
+        await stop_media_buy_status_scheduler()
+        logger.info("✅ Media buy status scheduler stopped")
+    except Exception as e:
+        logger.error(f"Failed to stop media buy status scheduler: {e}", exc_info=True)
 
     # Shutdown: Stop delivery webhook scheduler
     from src.services.delivery_webhook_scheduler import stop_delivery_webhook_scheduler

@@ -202,21 +202,39 @@ def media_buy_detail(tenant_id, media_buy_id):
                 try:
                     from datetime import UTC, datetime, timedelta
 
+                    from src.core.config_loader import set_current_tenant
+                    from src.core.database.models import Tenant
                     from src.core.helpers.adapter_helpers import get_adapter
+                    from src.core.schemas import Principal as PrincipalSchema
                     from src.core.schemas import ReportingPeriod
 
                     # Get adapter for this principal
                     if principal:
-                        adapter = get_adapter(principal, dry_run=False)
+                        # Set tenant context before calling get_adapter (required for adapter initialization)
+                        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+                        if tenant:
+                            set_current_tenant({
+                                "tenant_id": tenant_id,
+                                "ad_server": tenant.ad_server or "mock",
+                            })
+
+                        # Convert SQLAlchemy model to Pydantic schema (get_adapter expects schema)
+                        principal_schema = PrincipalSchema(
+                            principal_id=principal.principal_id,
+                            name=principal.name,
+                            platform_mappings=principal.platform_mappings or {},
+                        )
+                        adapter = get_adapter(principal_schema, dry_run=False)
 
                         # Calculate date range (last 7 days or campaign duration) - always use UTC
                         end_date = datetime.now(UTC)
                         seven_days_ago = datetime.now(UTC) - timedelta(days=7)
 
-                        # Ensure media_buy.start_date is timezone-aware before comparison
+                        # Convert media_buy.start_date (date) to datetime with UTC timezone
                         mb_start = media_buy.start_date
-                        if mb_start and mb_start.tzinfo is None:
-                            mb_start = mb_start.replace(tzinfo=UTC)
+                        if mb_start:
+                            # Convert date to datetime (start of day) with UTC timezone
+                            mb_start = datetime.combine(mb_start, datetime.min.time()).replace(tzinfo=UTC)
 
                         start_date = max(mb_start if mb_start else seven_days_ago, seven_days_ago)
 
