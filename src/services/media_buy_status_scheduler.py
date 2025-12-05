@@ -118,26 +118,35 @@ class MediaBuyStatusScheduler:
             New status string if change needed, None otherwise.
         """
         # Get start and end times (prefer start_time/end_time over start_date/end_date)
+        # Cast to Python datetime to satisfy mypy (SQLAlchemy returns Python types at runtime)
+        start_time: datetime | None = None
         if media_buy.start_time:
-            start_time = media_buy.start_time
-            if start_time.tzinfo is None:
-                start_time = start_time.replace(tzinfo=UTC)
+            raw_start: datetime = media_buy.start_time  # type: ignore[assignment]
+            if raw_start.tzinfo is None:
+                start_time = raw_start.replace(tzinfo=UTC)
+            else:
+                start_time = raw_start
         elif media_buy.start_date:
             start_time = datetime.combine(
-                media_buy.start_date, datetime.min.time()
+                media_buy.start_date, datetime.min.time()  # type: ignore[arg-type]
             ).replace(tzinfo=UTC)
-        else:
+
+        if start_time is None:
             return None  # No start time defined
 
+        end_time: datetime | None = None
         if media_buy.end_time:
-            end_time = media_buy.end_time
-            if end_time.tzinfo is None:
-                end_time = end_time.replace(tzinfo=UTC)
+            raw_end: datetime = media_buy.end_time  # type: ignore[assignment]
+            if raw_end.tzinfo is None:
+                end_time = raw_end.replace(tzinfo=UTC)
+            else:
+                end_time = raw_end
         elif media_buy.end_date:
             end_time = datetime.combine(
-                media_buy.end_date, datetime.max.time()
+                media_buy.end_date, datetime.max.time()  # type: ignore[arg-type]
             ).replace(tzinfo=UTC)
-        else:
+
+        if end_time is None:
             return None  # No end time defined
 
         current_status = media_buy.status
