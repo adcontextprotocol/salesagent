@@ -196,9 +196,10 @@ def media_buy_detail(tenant_id, media_buy_id):
                     "message": "This media buy is pending. It may be waiting for creatives or other requirements.",
                 }
 
-            # Fetch delivery metrics if media buy is active or completed
+            # Fetch delivery metrics if media buy is active, completed, or in a transitional state
+            # Include pending_activation and scheduled to show metrics while scheduler catches up
             delivery_metrics = None
-            if media_buy.status in ["active", "approved", "completed"]:
+            if media_buy.status in ["active", "approved", "completed", "pending_activation", "scheduled"]:
                 try:
                     from datetime import UTC, datetime, timedelta
 
