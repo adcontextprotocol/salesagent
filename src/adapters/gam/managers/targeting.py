@@ -311,33 +311,50 @@ class GAMTargetingManager:
             logger.error(f"Failed to get/create custom targeting value '{value_name}': {e}", exc_info=True)
             raise ValueError(f"Custom targeting value lookup/creation failed for '{value_name}': {e}")
 
-    def _build_custom_targeting_structure(self, custom_targeting_dict: dict[str, str]) -> dict[str, Any]:
-        """Convert simple custom targeting dict to GAM CustomCriteria structure.
+    def _build_custom_targeting_structure(
+        self, custom_targeting_dict: dict[str, Any], logical_operator: str = "AND"
+    ) -> dict[str, Any]:
+        """Convert custom targeting dict to GAM CustomCriteria structure.
 
         GAM API expects custom targeting in this format:
         {
-            "logicalOperator": "AND",
+            "logicalOperator": "AND" | "OR",
             "children": [
                 {
+                    "xsi_type": "CustomCriteria",
                     "keyId": "123456",
-                    "operator": "IS",
-                    "valueIds": [],
-                    "valueNames": ["value_name"]
+                    "operator": "IS" | "IS_NOT",
+                    "valueIds": [value_id1, value_id2]
                 }
             ]
         }
 
-        Our input dict format: {'key_id': 'value_name', 'NOT_key_id': 'value_name'}
+        Supports two input formats:
+
+        Legacy format (dict[str, str]):
+            {'key_id': 'value_name', 'NOT_key_id': 'value_name'}
+
+        Enhanced format (dict with include/exclude):
+            {
+                'include': {'key_id': ['value1', 'value2']},
+                'exclude': {'key_id': ['value3']},
+                'operator': 'AND' | 'OR'
+            }
 
         Args:
-            custom_targeting_dict: Dict mapping GAM key IDs to value names
-                Keys can have "NOT_" prefix for negative targeting
+            custom_targeting_dict: Custom targeting configuration in either format
+            logical_operator: Default operator for combining criteria (AND/OR)
 
         Returns:
             GAM CustomCriteria structure
         """
         children = []
 
+        # Check if this is the enhanced format with include/exclude
+        if "include" in custom_targeting_dict or "exclude" in custom_targeting_dict:
+            return self._build_enhanced_custom_targeting_structure(custom_targeting_dict)
+
+        # Legacy format: {'key_id': 'value_name', 'NOT_key_id': 'value_name'}
         for key, value_name in custom_targeting_dict.items():
             # Check for negative targeting (NOT_ prefix)
             is_negative = key.startswith("NOT_")
@@ -358,7 +375,77 @@ class GAMTargetingManager:
 
         return {
             "xsi_type": "CustomCriteriaSet",  # Explicit type for zeep
-            "logicalOperator": "AND",
+            "logicalOperator": logical_operator,
+            "children": children,
+        }
+
+    def _build_enhanced_custom_targeting_structure(self, targeting_config: dict[str, Any]) -> dict[str, Any]:
+        """Build GAM targeting structure from enhanced format with include/exclude.
+
+        Enhanced format:
+            {
+                'include': {'key_id': ['value1', 'value2']},  # Multiple values = OR within key
+                'exclude': {'key_id': ['value3']},
+                'operator': 'AND' | 'OR'  # How to combine different keys
+            }
+
+        Args:
+            targeting_config: Enhanced targeting configuration
+
+        Returns:
+            GAM CustomCriteria structure with proper nesting for OR/AND logic
+        """
+        include_dict = targeting_config.get("include", {})
+        exclude_dict = targeting_config.get("exclude", {})
+        operator = targeting_config.get("operator", "AND")
+
+        children = []
+
+        # Process include criteria
+        for key_id, value_names in include_dict.items():
+            if not value_names:
+                continue
+
+            # Multiple values for same key are OR'd together (IS operator with multiple valueIds)
+            value_ids = []
+            for value_name in value_names:
+                value_id = self._get_or_create_custom_targeting_value(key_id, value_name)
+                value_ids.append(value_id)
+
+            criteria = {
+                "xsi_type": "CustomCriteria",
+                "keyId": int(key_id),
+                "operator": "IS",
+                "valueIds": value_ids,  # Multiple values = OR logic in GAM
+            }
+            children.append(criteria)
+
+        # Process exclude criteria
+        for key_id, value_names in exclude_dict.items():
+            if not value_names:
+                continue
+
+            # For exclusions, each value gets IS_NOT
+            # Multiple excluded values for same key means "NOT value1 AND NOT value2"
+            value_ids = []
+            for value_name in value_names:
+                value_id = self._get_or_create_custom_targeting_value(key_id, value_name)
+                value_ids.append(value_id)
+
+            criteria = {
+                "xsi_type": "CustomCriteria",
+                "keyId": int(key_id),
+                "operator": "IS_NOT",
+                "valueIds": value_ids,
+            }
+            children.append(criteria)
+
+        if not children:
+            return {}
+
+        return {
+            "xsi_type": "CustomCriteriaSet",
+            "logicalOperator": operator,
             "children": children,
         }
 

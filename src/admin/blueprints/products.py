@@ -800,8 +800,15 @@ def add_product(tenant_id):
                 if targeting_template.get("key_value_pairs"):
                     if "custom_targeting_keys" not in implementation_config:
                         implementation_config["custom_targeting_keys"] = {}
-                    # Merge key-value pairs into implementation_config for GAM adapter
-                    implementation_config["custom_targeting_keys"].update(targeting_template["key_value_pairs"])
+                    # Enhanced format with include/exclude and operator
+                    # Pass through to GAM adapter which handles both legacy and enhanced formats
+                    kv_pairs = targeting_template["key_value_pairs"]
+                    if isinstance(kv_pairs, dict) and ("include" in kv_pairs or "exclude" in kv_pairs):
+                        # Enhanced format - pass through directly
+                        implementation_config["custom_targeting_keys"] = kv_pairs
+                    else:
+                        # Legacy format - merge as before
+                        implementation_config["custom_targeting_keys"].update(kv_pairs)
 
                 # Build product kwargs, excluding None values for JSON fields that have database constraints
                 product_kwargs = {
@@ -1384,8 +1391,15 @@ def edit_product(tenant_id, product_id):
                     if targeting_template.get("key_value_pairs"):
                         if "custom_targeting_keys" not in base_config:
                             base_config["custom_targeting_keys"] = {}
-                        # Merge key-value pairs into implementation_config for GAM adapter
-                        base_config["custom_targeting_keys"].update(targeting_template["key_value_pairs"])
+                        # Enhanced format with include/exclude and operator
+                        # Pass through to GAM adapter which handles both legacy and enhanced formats
+                        kv_pairs = targeting_template["key_value_pairs"]
+                        if isinstance(kv_pairs, dict) and ("include" in kv_pairs or "exclude" in kv_pairs):
+                            # Enhanced format - pass through directly
+                            base_config["custom_targeting_keys"] = kv_pairs
+                        else:
+                            # Legacy format - merge as before
+                            base_config["custom_targeting_keys"].update(kv_pairs)
 
                     # Store targeting_template in product
                     product.targeting_template = targeting_template

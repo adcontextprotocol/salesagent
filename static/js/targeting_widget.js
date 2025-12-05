@@ -1,17 +1,36 @@
 /**
  * Targeting Widget - Visual selector for product targeting configuration
  *
+ * Enhanced with:
+ * - OR/AND operator support between different keys
+ * - Include/Exclude toggle for values
+ * - Improved search functionality
+ *
+ * Data Structure:
+ * {
+ *   key_value_pairs: {
+ *     include: { "key_id": ["value1", "value2"] },  // Values to include (OR within same key)
+ *     exclude: { "key_id": ["value3"] },             // Values to exclude
+ *     operator: "AND"  // "AND" or "OR" - how to combine different keys
+ *   }
+ * }
+ *
  * Usage:
- *   const widget = new TargetingWidget('tenant_id');
+ *   const widget = new TargetingWidget('tenant_id', 'targeting-widget', '/admin');
  *   // Widget will initialize automatically and populate #targeting-data hidden field
  */
 
 class TargetingWidget {
-    constructor(tenantId, containerId = 'targeting-widget') {
+    constructor(tenantId, containerId = 'targeting-widget', scriptRoot = '') {
         this.tenantId = tenantId;
         this.container = document.getElementById(containerId);
+        this.scriptRoot = scriptRoot;  // Base path for URLs (e.g., '/admin' or '')
         this.selectedTargeting = {
-            key_value_pairs: {},
+            key_value_pairs: {
+                include: {},
+                exclude: {},
+                operator: 'AND'
+            },
             geography: {
                 countries: []
             },
@@ -20,6 +39,8 @@ class TargetingWidget {
             },
             audiences: []
         };
+        this.currentKeyId = null;
+        this.keyMetadata = {};  // Cache key metadata for display names
 
         if (!this.container) {
             console.error(`Targeting widget container '#${containerId}' not found`);
@@ -43,11 +64,20 @@ class TargetingWidget {
     }
 
     async loadTargetingData() {
-        const response = await fetch(`/api/tenant/${this.tenantId}/targeting/all`);
+        const url = `${this.scriptRoot}/api/tenant/${this.tenantId}/targeting/all`;
+        const response = await fetch(url, { credentials: 'same-origin' });
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         this.targetingData = await response.json();
+
+        // Cache key metadata for later use
+        (this.targetingData.custom_targeting_keys || []).forEach(key => {
+            this.keyMetadata[key.id] = {
+                name: key.name,
+                display_name: key.display_name || key.name
+            };
+        });
     }
 
     renderTabs() {
@@ -66,6 +96,7 @@ class TargetingWidget {
             </div>
             <div class="selected-summary" id="targeting-summary" style="display: none;">
                 <h5>Selected Targeting:</h5>
+                <div class="summary-operator" id="summary-operator"></div>
                 <div class="selected-tags" id="targeting-tags"></div>
             </div>
         `;
@@ -87,6 +118,17 @@ class TargetingWidget {
         }
 
         pane.innerHTML = `
+            <div class="kv-operator-toggle">
+                <span class="operator-label">Combine keys with:</span>
+                <div class="operator-buttons">
+                    <button type="button" class="operator-btn ${this.selectedTargeting.key_value_pairs.operator === 'AND' ? 'active' : ''}" data-operator="AND">
+                        AND <small>(match all)</small>
+                    </button>
+                    <button type="button" class="operator-btn ${this.selectedTargeting.key_value_pairs.operator === 'OR' ? 'active' : ''}" data-operator="OR">
+                        OR <small>(match any)</small>
+                    </button>
+                </div>
+            </div>
             <div class="kv-selector">
                 <div class="kv-keys">
                     <h5>Keys</h5>
@@ -107,26 +149,46 @@ class TargetingWidget {
 
     renderKeysList(keys) {
         const keysList = document.getElementById('keys-list');
-        keysList.innerHTML = keys.map(key => `
-            <div class="kv-key-item" data-key-id="${key.id}">
-                <strong>${key.display_name || key.name}</strong>
-                ${key.description ? `<small>${key.description}</small>` : ''}
-            </div>
-        `).join('');
+        keysList.innerHTML = keys.map(key => {
+            const hasInclude = this.selectedTargeting.key_value_pairs.include[key.id]?.length > 0;
+            const hasExclude = this.selectedTargeting.key_value_pairs.exclude[key.id]?.length > 0;
+            const selectedClass = (hasInclude || hasExclude) ? 'has-selections' : '';
+
+            return `
+                <div class="kv-key-item ${selectedClass}" data-key-id="${key.id}">
+                    <strong>${key.display_name || key.name}</strong>
+                    ${key.description ? `<small>${key.description}</small>` : ''}
+                    ${hasInclude || hasExclude ? `
+                        <span class="selection-badge">
+                            ${hasInclude ? `<span class="badge-include">${this.selectedTargeting.key_value_pairs.include[key.id].length} included</span>` : ''}
+                            ${hasExclude ? `<span class="badge-exclude">${this.selectedTargeting.key_value_pairs.exclude[key.id].length} excluded</span>` : ''}
+                        </span>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
     }
 
     async loadValuesForKey(keyId) {
         const valuesContainer = document.getElementById('values-container');
         valuesContainer.innerHTML = '<p class="loading">Loading values...</p>';
+        this.currentKeyId = keyId;
+
+        // Highlight selected key
+        document.querySelectorAll('.kv-key-item').forEach(item => {
+            item.classList.toggle('selected', item.dataset.keyId === keyId);
+        });
 
         try {
-            const response = await fetch(`/api/tenant/${this.tenantId}/targeting/values/${keyId}`);
+            const url = `${this.scriptRoot}/api/tenant/${this.tenantId}/targeting/values/${keyId}`;
+            const response = await fetch(url, { credentials: 'same-origin' });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
-            this.renderValuesList(keyId, data.values || []);
+            this.currentValues = data.values || [];
+            this.renderValuesList(keyId, this.currentValues);
         } catch (error) {
             valuesContainer.innerHTML = `<p class="error-state">Failed to load values: ${error.message}</p>`;
         }
@@ -142,17 +204,37 @@ class TargetingWidget {
 
         valuesContainer.innerHTML = `
             <input type="search" id="value-search" placeholder="Search values..." class="search-input">
+            <div class="values-legend">
+                <span class="legend-item"><span class="legend-color include"></span> Include</span>
+                <span class="legend-item"><span class="legend-color exclude"></span> Exclude</span>
+            </div>
             <div class="kv-values-grid">
-                ${values.map(val => `
-                    <label class="value-checkbox">
-                        <input type="checkbox"
-                               data-key-id="${keyId}"
-                               data-value-id="${val.id}"
-                               data-value-name="${val.name}"
-                               ${this.isValueSelected(keyId, val.id) ? 'checked' : ''}>
-                        <span>${val.display_name || val.name}</span>
-                    </label>
-                `).join('')}
+                ${values.map(val => {
+                    const isIncluded = this.isValueIncluded(keyId, val.id);
+                    const isExcluded = this.isValueExcluded(keyId, val.id);
+                    const stateClass = isIncluded ? 'included' : (isExcluded ? 'excluded' : '');
+
+                    return `
+                        <div class="value-item ${stateClass}" data-key-id="${keyId}" data-value-id="${val.id}" data-value-name="${val.name}">
+                            <span class="value-name">${val.display_name || val.name}</span>
+                            <div class="value-actions">
+                                <button type="button" class="action-btn include-btn ${isIncluded ? 'active' : ''}"
+                                        data-action="include" title="Include this value">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                </button>
+                                <button type="button" class="action-btn exclude-btn ${isExcluded ? 'active' : ''}"
+                                        data-action="exclude" title="Exclude this value">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
             </div>
         `;
     }
@@ -206,18 +288,42 @@ class TargetingWidget {
             tab.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
         });
 
+        // Operator toggle
+        this.container.addEventListener('click', (e) => {
+            const operatorBtn = e.target.closest('.operator-btn');
+            if (operatorBtn) {
+                const operator = operatorBtn.dataset.operator;
+                this.selectedTargeting.key_value_pairs.operator = operator;
+
+                // Update active button
+                this.container.querySelectorAll('.operator-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.operator === operator);
+                });
+
+                this.updateHiddenField();
+                this.updateSummary();
+            }
+        });
+
         // Key selection
         this.container.addEventListener('click', async (e) => {
-            if (e.target.closest('.kv-key-item')) {
-                const keyId = e.target.closest('.kv-key-item').dataset.keyId;
+            const keyItem = e.target.closest('.kv-key-item');
+            if (keyItem && !e.target.closest('.action-btn')) {
+                const keyId = keyItem.dataset.keyId;
                 await this.loadValuesForKey(keyId);
             }
         });
 
-        // Value selection
-        this.container.addEventListener('change', (e) => {
-            if (e.target.type === 'checkbox') {
-                this.handleCheckboxChange(e.target);
+        // Value action buttons (include/exclude)
+        this.container.addEventListener('click', (e) => {
+            const actionBtn = e.target.closest('.action-btn');
+            if (actionBtn) {
+                const valueItem = actionBtn.closest('.value-item');
+                const keyId = valueItem.dataset.keyId;
+                const valueId = valueItem.dataset.valueId;
+                const action = actionBtn.dataset.action;
+
+                this.handleValueAction(keyId, valueId, action);
             }
         });
 
@@ -241,37 +347,83 @@ class TargetingWidget {
         this.container.querySelector(`#tab-${tabName}`).classList.add('active');
     }
 
-    handleCheckboxChange(checkbox) {
-        const keyId = checkbox.dataset.keyId;
-        const valueId = checkbox.dataset.valueId;
-        const valueName = checkbox.dataset.valueName;
+    handleValueAction(keyId, valueId, action) {
+        const include = this.selectedTargeting.key_value_pairs.include;
+        const exclude = this.selectedTargeting.key_value_pairs.exclude;
 
-        if (keyId && valueId) {
-            // Key-value pair
-            if (!this.selectedTargeting.key_value_pairs[keyId]) {
-                this.selectedTargeting.key_value_pairs[keyId] = [];
-            }
+        // Initialize arrays if needed
+        if (!include[keyId]) include[keyId] = [];
+        if (!exclude[keyId]) exclude[keyId] = [];
 
-            if (checkbox.checked) {
-                if (!this.selectedTargeting.key_value_pairs[keyId].includes(valueId)) {
-                    this.selectedTargeting.key_value_pairs[keyId].push(valueId);
-                }
+        const isCurrentlyIncluded = include[keyId].includes(valueId);
+        const isCurrentlyExcluded = exclude[keyId].includes(valueId);
+
+        if (action === 'include') {
+            if (isCurrentlyIncluded) {
+                // Toggle off
+                include[keyId] = include[keyId].filter(id => id !== valueId);
             } else {
-                this.selectedTargeting.key_value_pairs[keyId] =
-                    this.selectedTargeting.key_value_pairs[keyId].filter(id => id !== valueId);
-
-                if (this.selectedTargeting.key_value_pairs[keyId].length === 0) {
-                    delete this.selectedTargeting.key_value_pairs[keyId];
-                }
+                // Add to include, remove from exclude
+                include[keyId].push(valueId);
+                exclude[keyId] = exclude[keyId].filter(id => id !== valueId);
+            }
+        } else if (action === 'exclude') {
+            if (isCurrentlyExcluded) {
+                // Toggle off
+                exclude[keyId] = exclude[keyId].filter(id => id !== valueId);
+            } else {
+                // Add to exclude, remove from include
+                exclude[keyId].push(valueId);
+                include[keyId] = include[keyId].filter(id => id !== valueId);
             }
         }
 
+        // Clean up empty arrays
+        if (include[keyId].length === 0) delete include[keyId];
+        if (exclude[keyId].length === 0) delete exclude[keyId];
+
+        // Update UI
+        this.updateValueItemState(keyId, valueId);
+        this.updateKeySelectionBadges();
         this.updateHiddenField();
         this.updateSummary();
     }
 
-    isValueSelected(keyId, valueId) {
-        return this.selectedTargeting.key_value_pairs[keyId]?.includes(valueId) || false;
+    updateValueItemState(keyId, valueId) {
+        const valueItem = this.container.querySelector(`.value-item[data-key-id="${keyId}"][data-value-id="${valueId}"]`);
+        if (!valueItem) return;
+
+        const isIncluded = this.isValueIncluded(keyId, valueId);
+        const isExcluded = this.isValueExcluded(keyId, valueId);
+
+        valueItem.classList.remove('included', 'excluded');
+        if (isIncluded) valueItem.classList.add('included');
+        if (isExcluded) valueItem.classList.add('excluded');
+
+        valueItem.querySelector('.include-btn').classList.toggle('active', isIncluded);
+        valueItem.querySelector('.exclude-btn').classList.toggle('active', isExcluded);
+    }
+
+    updateKeySelectionBadges() {
+        // Re-render keys list to update badges
+        const keys = this.targetingData.custom_targeting_keys || [];
+        this.renderKeysList(keys);
+
+        // Re-select current key
+        if (this.currentKeyId) {
+            const currentKeyItem = this.container.querySelector(`.kv-key-item[data-key-id="${this.currentKeyId}"]`);
+            if (currentKeyItem) {
+                currentKeyItem.classList.add('selected');
+            }
+        }
+    }
+
+    isValueIncluded(keyId, valueId) {
+        return this.selectedTargeting.key_value_pairs.include[keyId]?.includes(valueId) || false;
+    }
+
+    isValueExcluded(keyId, valueId) {
+        return this.selectedTargeting.key_value_pairs.exclude[keyId]?.includes(valueId) || false;
     }
 
     filterKeys(query) {
@@ -285,21 +437,29 @@ class TargetingWidget {
     }
 
     filterValues(query) {
-        const values = this.container.querySelectorAll('.value-checkbox');
+        const values = this.container.querySelectorAll('.value-item');
         const lowerQuery = query.toLowerCase();
 
         values.forEach(val => {
-            const text = val.textContent.toLowerCase();
+            const text = val.querySelector('.value-name').textContent.toLowerCase();
             val.style.display = text.includes(lowerQuery) ? '' : 'none';
         });
     }
 
     updateHiddenField() {
-        // Only include non-empty targeting
+        // Build clean targeting object
         const cleanTargeting = {};
 
-        if (Object.keys(this.selectedTargeting.key_value_pairs).length > 0) {
-            cleanTargeting.key_value_pairs = this.selectedTargeting.key_value_pairs;
+        const kvPairs = this.selectedTargeting.key_value_pairs;
+        const hasInclude = Object.keys(kvPairs.include).length > 0;
+        const hasExclude = Object.keys(kvPairs.exclude).length > 0;
+
+        if (hasInclude || hasExclude) {
+            cleanTargeting.key_value_pairs = {
+                include: kvPairs.include,
+                exclude: kvPairs.exclude,
+                operator: kvPairs.operator
+            };
         }
 
         if (this.selectedTargeting.geography.countries.length > 0) {
@@ -322,26 +482,61 @@ class TargetingWidget {
 
     updateSummary() {
         const summary = document.getElementById('targeting-summary');
+        const operatorDisplay = document.getElementById('summary-operator');
         const tagsContainer = document.getElementById('targeting-tags');
 
-        const hasSelection = Object.keys(this.selectedTargeting.key_value_pairs).length > 0;
+        const kvPairs = this.selectedTargeting.key_value_pairs;
+        const hasInclude = Object.keys(kvPairs.include).length > 0;
+        const hasExclude = Object.keys(kvPairs.exclude).length > 0;
 
-        if (!hasSelection) {
+        if (!hasInclude && !hasExclude) {
             summary.style.display = 'none';
             return;
         }
 
         summary.style.display = 'block';
 
+        // Show operator
+        operatorDisplay.innerHTML = `
+            <span class="operator-display">
+                Keys combined with: <strong>${kvPairs.operator}</strong>
+            </span>
+        `;
+
         // Build tags HTML
         const tags = [];
-        for (const [keyId, valueIds] of Object.entries(this.selectedTargeting.key_value_pairs)) {
-            valueIds.forEach(valueId => {
-                tags.push(`<span class="targeting-tag">${keyId}: ${valueId}</span>`);
-            });
+
+        // Include tags
+        for (const [keyId, valueIds] of Object.entries(kvPairs.include)) {
+            const keyName = this.keyMetadata[keyId]?.display_name || keyId;
+            const valuesText = valueIds.length > 1
+                ? `(${valueIds.join(' OR ')})`
+                : valueIds[0];
+            tags.push(`
+                <span class="targeting-tag include-tag">
+                    <span class="tag-icon">+</span>
+                    ${keyName} = ${valuesText}
+                </span>
+            `);
         }
 
-        tagsContainer.innerHTML = tags.join('');
+        // Exclude tags
+        for (const [keyId, valueIds] of Object.entries(kvPairs.exclude)) {
+            const keyName = this.keyMetadata[keyId]?.display_name || keyId;
+            const valuesText = valueIds.length > 1
+                ? `(${valueIds.join(' OR ')})`
+                : valueIds[0];
+            tags.push(`
+                <span class="targeting-tag exclude-tag">
+                    <span class="tag-icon">-</span>
+                    ${keyName} != ${valuesText}
+                </span>
+            `);
+        }
+
+        // Add operator between tags
+        const operator = kvPairs.operator;
+        tagsContainer.innerHTML = tags.join(`<span class="tag-operator">${operator}</span>`);
     }
 }
 

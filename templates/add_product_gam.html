@@ -453,8 +453,8 @@ Target users based on local weather conditions for maximum relevance.</div>
             <br><small style="color: #666;">Example: sport=basketball, genre=action, age=18-34</small>
         </div>
 
-        {# Simple targeting selector - matches existing UI patterns #}
-        {% include 'components/targeting_selector_simple.html' %}
+        {# Enhanced targeting selector with OR/AND operators and include/exclude #}
+        {% include 'components/targeting_selector_widget.html' %}
         <input type="hidden" id="targeting-data" name="targeting_template" value='{{ product.targeting_template | tojson if product and product.targeting_template else "{}" }}'>
 
         <!-- Product Details (AdCP Compliance) -->
