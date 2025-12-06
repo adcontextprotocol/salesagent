@@ -533,6 +533,14 @@ class ListCreativeFormatsRequest(BaseModel):
     format_ids: list[FormatId] | None = Field(
         None, description="Return only these specific format IDs (e.g., from get_products response)"
     )
+    # AdCP 2.5 filter fields
+    is_responsive: bool | None = Field(None, description="Filter for responsive formats")
+    name_search: str | None = Field(None, description="Search formats by name (case-insensitive)")
+    asset_types: list[str] | None = Field(None, description="Filter by asset types (e.g., image, video)")
+    min_width: int | None = Field(None, description="Minimum format width in pixels")
+    max_width: int | None = Field(None, description="Maximum format width in pixels")
+    min_height: int | None = Field(None, description="Minimum format height in pixels")
+    max_height: int | None = Field(None, description="Maximum format height in pixels")
     context: dict[str, Any] | ContextObject | None = Field(
         None, description="Application-level context provided by the client"
     )

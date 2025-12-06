@@ -1819,6 +1819,14 @@ class AdCPRequestHandler(RequestHandler):
                 standard_only=parameters.get("standard_only"),
                 category=parameters.get("category"),
                 format_ids=parameters.get("format_ids"),
+                # AdCP 2.5 filter fields
+                is_responsive=parameters.get("is_responsive"),
+                name_search=parameters.get("name_search"),
+                asset_types=parameters.get("asset_types"),
+                min_width=parameters.get("min_width"),
+                max_width=parameters.get("max_width"),
+                min_height=parameters.get("min_height"),
+                max_height=parameters.get("max_height"),
                 context=parameters.get("context"),
             )
 
