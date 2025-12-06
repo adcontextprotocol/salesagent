@@ -102,10 +102,57 @@ def _list_creative_formats_impl(
             f for f in formats if (f.format_id.id if hasattr(f.format_id, "id") else f.format_id) in format_ids_set
         ]
 
+    # Helper functions to extract properties from Format structure per AdCP spec
+    def is_format_responsive(f) -> bool:
+        """Check if format is responsive by examining renders.dimensions.responsive."""
+        if not f.renders:
+            return False
+        for render in f.renders:
+            dims = getattr(render, "dimensions", None)
+            if dims and getattr(dims, "responsive", None):
+                responsive = dims.responsive
+                # Responsive if either width or height is fluid
+                if getattr(responsive, "width", False) or getattr(responsive, "height", False):
+                    return True
+        return False
+
+    def get_format_dimensions(f) -> list[tuple[int | None, int | None]]:
+        """Get all (width, height) pairs from format renders."""
+        dimensions: list[tuple[int | None, int | None]] = []
+        if not f.renders:
+            return dimensions
+        for render in f.renders:
+            dims = getattr(render, "dimensions", None)
+            if dims:
+                w = getattr(dims, "width", None)
+                h = getattr(dims, "height", None)
+                if w is not None or h is not None:
+                    dimensions.append((w, h))
+        return dimensions
+
+    def get_format_asset_types(f) -> set[str]:
+        """Get all asset types from format's assets_required."""
+        types: set[str] = set()
+        if not f.assets_required:
+            return types
+        for asset_req in f.assets_required:
+            # Handle both individual assets and repeatable groups
+            asset_type = getattr(asset_req, "asset_type", None)
+            if asset_type:
+                types.add(asset_type.value if hasattr(asset_type, "value") else str(asset_type))
+            # For repeatable groups, check nested assets
+            assets = getattr(asset_req, "assets", None)
+            if assets:
+                for asset in assets:
+                    at = getattr(asset, "asset_type", None)
+                    if at:
+                        types.add(at.value if hasattr(at, "value") else str(at))
+        return types
+
     # Filter by is_responsive (AdCP filter)
-    # Note: Formats missing is_responsive attribute are treated as non-responsive (False)
+    # Checks renders.dimensions.responsive per AdCP spec
     if req.is_responsive is not None:
-        formats = [f for f in formats if getattr(f, "is_responsive", False) == req.is_responsive]
+        formats = [f for f in formats if is_format_responsive(f) == req.is_responsive]
 
     # Filter by name_search (case-insensitive partial match)
     if req.name_search:
@@ -116,24 +163,19 @@ def _list_creative_formats_impl(
     if req.asset_types:
         # Normalize requested asset types to string values for comparison
         requested_types = {at.value if hasattr(at, "value") else at for at in req.asset_types}
-        formats = [
-            f
-            for f in formats
-            if hasattr(f, "asset_types")
-            and f.asset_types
-            and any((at.value if hasattr(at, "value") else at) in requested_types for at in f.asset_types)
-        ]
+        formats = [f for f in formats if get_format_asset_types(f) & requested_types]
 
     # Filter by dimension constraints
-    # Note: Formats without width/height attributes are excluded when dimension filters are applied
+    # Per AdCP spec, matches if ANY render has dimensions matching the constraints
+    # Formats without dimension info are excluded when dimension filters are applied
     if req.min_width is not None:
-        formats = [f for f in formats if hasattr(f, "width") and f.width and f.width >= req.min_width]
+        formats = [f for f in formats if any(w and w >= req.min_width for w, h in get_format_dimensions(f))]
     if req.max_width is not None:
-        formats = [f for f in formats if hasattr(f, "width") and f.width and f.width <= req.max_width]
+        formats = [f for f in formats if any(w and w <= req.max_width for w, h in get_format_dimensions(f))]
     if req.min_height is not None:
-        formats = [f for f in formats if hasattr(f, "height") and f.height and f.height >= req.min_height]
+        formats = [f for f in formats if any(h and h >= req.min_height for w, h in get_format_dimensions(f))]
     if req.max_height is not None:
-        formats = [f for f in formats if hasattr(f, "height") and f.height and f.height <= req.max_height]
+        formats = [f for f in formats if any(h and h <= req.max_height for w, h in get_format_dimensions(f))]
 
     # Sort formats by type and name for consistent ordering
     # Use .value to convert enum to string for sorting (enums don't support < comparison)

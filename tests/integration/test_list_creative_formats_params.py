@@ -328,6 +328,8 @@ def test_filtering_combined(integration_db, sample_tenant):
 
 def test_filtering_by_is_responsive(integration_db, sample_tenant):
     """Test that is_responsive filter returns only responsive/non-responsive formats."""
+    from adcp.types.generated_poc.core.format import Dimensions, Renders, Responsive
+
     context = ToolContext(
         context_id="test",
         tenant_id=sample_tenant["tenant_id"],
@@ -338,28 +340,39 @@ def test_filtering_by_is_responsive(integration_db, sample_tenant):
         testing_context={},
     )
 
-    # Mock format data with mixed responsive states
+    # Mock format data with mixed responsive states using proper AdCP structure
+    # Responsive formats have renders.dimensions.responsive with width or height = True
     mock_formats = [
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="responsive_banner"),
             type=FormatCategory.display,
             name="Responsive Banner",
             is_standard=True,
-            is_responsive=True,
+            renders=[
+                Renders(
+                    role="primary",
+                    dimensions=Dimensions(
+                        min_width=300,
+                        max_width=970,
+                        height=250,
+                        responsive=Responsive(width=True, height=False),
+                    ),
+                )
+            ],
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="fixed_300x250"),
             type=FormatCategory.display,
             name="Fixed 300x250",
             is_standard=True,
-            is_responsive=False,
+            renders=[Renders(role="primary", dimensions=Dimensions(width=300, height=250))],
         ),
         Format(
-            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="no_responsive_attr"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="no_renders"),
             type=FormatCategory.display,
-            name="No Responsive Attr",
+            name="No Renders",
             is_standard=True,
-            # is_responsive not set - should be treated as False
+            # No renders - should be treated as non-responsive
         ),
     ]
 
@@ -381,15 +394,15 @@ def test_filtering_by_is_responsive(integration_db, sample_tenant):
         assert len(formats) == 1, "Should return only responsive format"
         assert formats[0].name == "Responsive Banner"
 
-        # Test is_responsive=False (should include formats without attribute)
+        # Test is_responsive=False (should include formats without renders or non-responsive)
         req = ListCreativeFormatsRequest(is_responsive=False)
         response = list_creative_formats_raw(req, context)
         formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
 
-        assert len(formats) == 2, "Should return non-responsive formats (including those missing attribute)"
+        assert len(formats) == 2, "Should return non-responsive formats"
         names = [f.name for f in formats]
         assert "Fixed 300x250" in names
-        assert "No Responsive Attr" in names
+        assert "No Renders" in names
 
 
 def test_filtering_by_name_search(integration_db, sample_tenant):
@@ -456,6 +469,7 @@ def test_filtering_by_name_search(integration_db, sample_tenant):
 def test_filtering_by_asset_types(integration_db, sample_tenant):
     """Test that asset_types filter returns formats supporting any of the requested types."""
     from adcp.types import AssetContentType
+    from adcp.types.generated_poc.core.format import AssetsRequired
 
     context = ToolContext(
         context_id="test",
@@ -467,34 +481,42 @@ def test_filtering_by_asset_types(integration_db, sample_tenant):
         testing_context={},
     )
 
+    # Use assets_required to specify asset types per AdCP spec
     mock_formats = [
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="image_banner"),
             type=FormatCategory.display,
             name="Image Banner",
             is_standard=True,
-            asset_types=[AssetContentType.image],
+            assets_required=[
+                AssetsRequired(asset_id="main", asset_type=AssetContentType.image, item_type="individual")
+            ],
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_player"),
             type=FormatCategory.video,
             name="Video Player",
             is_standard=True,
-            asset_types=[AssetContentType.video],
+            assets_required=[
+                AssetsRequired(asset_id="video", asset_type=AssetContentType.video, item_type="individual")
+            ],
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="rich_media"),
             type=FormatCategory.display,
             name="Rich Media",
             is_standard=True,
-            asset_types=[AssetContentType.image, AssetContentType.html],
+            assets_required=[
+                AssetsRequired(asset_id="image", asset_type=AssetContentType.image, item_type="individual"),
+                AssetsRequired(asset_id="code", asset_type=AssetContentType.html, item_type="individual"),
+            ],
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="no_assets"),
             type=FormatCategory.display,
             name="No Asset Types",
             is_standard=True,
-            # asset_types not set
+            # No assets_required
         ),
     ]
 
@@ -531,6 +553,8 @@ def test_filtering_by_asset_types(integration_db, sample_tenant):
 
 def test_filtering_by_dimensions(integration_db, sample_tenant):
     """Test that dimension filters correctly include/exclude formats."""
+    from adcp.types.generated_poc.core.format import Dimensions, Renders
+
     context = ToolContext(
         context_id="test",
         tenant_id=sample_tenant["tenant_id"],
@@ -541,37 +565,35 @@ def test_filtering_by_dimensions(integration_db, sample_tenant):
         testing_context={},
     )
 
+    # Use renders.dimensions to specify format dimensions per AdCP spec
     mock_formats = [
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="medium_rectangle"),
             type=FormatCategory.display,
             name="Medium Rectangle",
             is_standard=True,
-            width=300,
-            height=250,
+            renders=[Renders(role="primary", dimensions=Dimensions(width=300, height=250))],
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="leaderboard"),
             type=FormatCategory.display,
             name="Leaderboard",
             is_standard=True,
-            width=728,
-            height=90,
+            renders=[Renders(role="primary", dimensions=Dimensions(width=728, height=90))],
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="skyscraper"),
             type=FormatCategory.display,
             name="Skyscraper",
             is_standard=True,
-            width=160,
-            height=600,
+            renders=[Renders(role="primary", dimensions=Dimensions(width=160, height=600))],
         ),
         Format(
-            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="responsive"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="no_renders"),
             type=FormatCategory.display,
-            name="Responsive (no dimensions)",
+            name="No Renders",
             is_standard=True,
-            # No width/height - should be excluded by dimension filters
+            # No renders - should be excluded by dimension filters
         ),
     ]
 
@@ -594,7 +616,7 @@ def test_filtering_by_dimensions(integration_db, sample_tenant):
         names = [f.name for f in formats]
         assert "Medium Rectangle" in names
         assert "Leaderboard" in names
-        assert "Responsive (no dimensions)" not in names  # Excluded - no dimensions
+        assert "No Renders" not in names  # Excluded - no dimensions
 
         # Filter by max_width
         req = ListCreativeFormatsRequest(max_width=300)
@@ -628,6 +650,7 @@ def test_filtering_by_dimensions(integration_db, sample_tenant):
 def test_new_filters_combined_with_existing(integration_db, sample_tenant):
     """Test that new filters work correctly with existing filters."""
     from adcp.types import AssetContentType
+    from adcp.types.generated_poc.core.format import AssetsRequired, Dimensions, Renders
 
     context = ToolContext(
         context_id="test",
@@ -639,42 +662,47 @@ def test_new_filters_combined_with_existing(integration_db, sample_tenant):
         testing_context={},
     )
 
+    # Use renders.dimensions and assets_required per AdCP spec
     mock_formats = [
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             type=FormatCategory.display,
             name="Display 300x250",
             is_standard=True,
-            width=300,
-            height=250,
-            asset_types=[AssetContentType.image],
+            renders=[Renders(role="primary", dimensions=Dimensions(width=300, height=250))],
+            assets_required=[
+                AssetsRequired(asset_id="main", asset_type=AssetContentType.image, item_type="individual")
+            ],
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
             type=FormatCategory.display,
             name="Display 728x90",
             is_standard=True,
-            width=728,
-            height=90,
-            asset_types=[AssetContentType.image],
+            renders=[Renders(role="primary", dimensions=Dimensions(width=728, height=90))],
+            assets_required=[
+                AssetsRequired(asset_id="main", asset_type=AssetContentType.image, item_type="individual")
+            ],
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
             type=FormatCategory.video,
             name="Video 16:9",
             is_standard=True,
-            width=640,
-            height=360,
-            asset_types=[AssetContentType.video],
+            renders=[Renders(role="primary", dimensions=Dimensions(width=640, height=360))],
+            assets_required=[
+                AssetsRequired(asset_id="video", asset_type=AssetContentType.video, item_type="individual")
+            ],
         ),
         Format(
             format_id=FormatId(agent_url="https://custom.example.com", id="custom_display"),
             type=FormatCategory.display,
             name="Custom Display",
             is_standard=False,
-            width=300,
-            height=250,
-            asset_types=[AssetContentType.image],
+            renders=[Renders(role="primary", dimensions=Dimensions(width=300, height=250))],
+            assets_required=[
+                AssetsRequired(asset_id="main", asset_type=AssetContentType.image, item_type="individual")
+            ],
         ),
     ]
 
