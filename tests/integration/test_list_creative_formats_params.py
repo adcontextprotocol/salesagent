@@ -117,9 +117,9 @@ def test_filtering_by_type(integration_db, sample_tenant):
 
         # All returned formats should be video type
         if len(formats) > 0:
-            assert all(f.type == FormatCategory.video or f.type == "video" for f in formats), (
-                "All formats should be video type"
-            )
+            assert all(
+                f.type == FormatCategory.video or f.type == "video" for f in formats
+            ), "All formats should be video type"
         # Note: Test may return empty list if mock registry not working - this is OK for integration test
 
 
@@ -252,9 +252,9 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
         # Should only return the requested formats (that exist)
         target_ids = ["display_300x250", "display_728x90"]
         returned_ids = [f.format_id.id if hasattr(f.format_id, "id") else f.format_id for f in formats]
-        assert all((f.format_id.id if hasattr(f.format_id, "id") else f.format_id) in target_ids for f in formats), (
-            "All formats should be in target list"
-        )
+        assert all(
+            (f.format_id.id if hasattr(f.format_id, "id") else f.format_id) in target_ids for f in formats
+        ), "All formats should be in target list"
         # At least one of the target formats should exist
         assert len(formats) > 0, "Should return at least one format if they exist"
 
@@ -320,7 +320,402 @@ def test_filtering_combined(integration_db, sample_tenant):
 
         # All returned formats should match both filters
         if len(formats) > 0:
-            assert all((f.type == FormatCategory.display or f.type == "display") and f.is_standard for f in formats), (
-                "All formats should be display AND standard"
-            )
+            assert all(
+                (f.type == FormatCategory.display or f.type == "display") and f.is_standard for f in formats
+            ), "All formats should be display AND standard"
         # Note: Test may return empty list if mock registry not working - this is OK for integration test
+
+
+def test_filtering_by_is_responsive(integration_db, sample_tenant):
+    """Test that is_responsive filter returns only responsive/non-responsive formats."""
+    context = ToolContext(
+        context_id="test",
+        tenant_id=sample_tenant["tenant_id"],
+        principal_id="test_principal",
+        tool_name="list_creative_formats",
+        request_timestamp=datetime.now(UTC),
+        metadata={},
+        testing_context={},
+    )
+
+    # Mock format data with mixed responsive states
+    mock_formats = [
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="responsive_banner"),
+            type=FormatCategory.display,
+            name="Responsive Banner",
+            is_standard=True,
+            is_responsive=True,
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="fixed_300x250"),
+            type=FormatCategory.display,
+            name="Fixed 300x250",
+            is_standard=True,
+            is_responsive=False,
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="no_responsive_attr"),
+            type=FormatCategory.display,
+            name="No Responsive Attr",
+            is_standard=True,
+            # is_responsive not set - should be treated as False
+        ),
+    ]
+
+    with (
+        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
+        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
+    ):
+
+        async def mock_list_formats(tenant_id):
+            return mock_formats
+
+        mock_registry.return_value.list_all_formats = mock_list_formats
+
+        # Test is_responsive=True
+        req = ListCreativeFormatsRequest(is_responsive=True)
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 1, "Should return only responsive format"
+        assert formats[0].name == "Responsive Banner"
+
+        # Test is_responsive=False (should include formats without attribute)
+        req = ListCreativeFormatsRequest(is_responsive=False)
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 2, "Should return non-responsive formats (including those missing attribute)"
+        names = [f.name for f in formats]
+        assert "Fixed 300x250" in names
+        assert "No Responsive Attr" in names
+
+
+def test_filtering_by_name_search(integration_db, sample_tenant):
+    """Test that name_search filter performs case-insensitive partial match."""
+    context = ToolContext(
+        context_id="test",
+        tenant_id=sample_tenant["tenant_id"],
+        principal_id="test_principal",
+        tool_name="list_creative_formats",
+        request_timestamp=datetime.now(UTC),
+        metadata={},
+        testing_context={},
+    )
+
+    mock_formats = [
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="leaderboard_728x90"),
+            type=FormatCategory.display,
+            name="Leaderboard 728x90",
+            is_standard=True,
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="mobile_leaderboard"),
+            type=FormatCategory.display,
+            name="Mobile LEADERBOARD",  # Different case
+            is_standard=True,
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="skyscraper"),
+            type=FormatCategory.display,
+            name="Skyscraper 160x600",
+            is_standard=True,
+        ),
+    ]
+
+    with (
+        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
+        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
+    ):
+
+        async def mock_list_formats(tenant_id):
+            return mock_formats
+
+        mock_registry.return_value.list_all_formats = mock_list_formats
+
+        # Search for "leaderboard" (case-insensitive)
+        req = ListCreativeFormatsRequest(name_search="leaderboard")
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 2, "Should find both leaderboard formats"
+        names = [f.name for f in formats]
+        assert "Leaderboard 728x90" in names
+        assert "Mobile LEADERBOARD" in names
+
+        # Search with no matches
+        req = ListCreativeFormatsRequest(name_search="nonexistent")
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 0, "Should return empty list for no matches"
+
+
+def test_filtering_by_asset_types(integration_db, sample_tenant):
+    """Test that asset_types filter returns formats supporting any of the requested types."""
+    from adcp.types import AssetContentType
+
+    context = ToolContext(
+        context_id="test",
+        tenant_id=sample_tenant["tenant_id"],
+        principal_id="test_principal",
+        tool_name="list_creative_formats",
+        request_timestamp=datetime.now(UTC),
+        metadata={},
+        testing_context={},
+    )
+
+    mock_formats = [
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="image_banner"),
+            type=FormatCategory.display,
+            name="Image Banner",
+            is_standard=True,
+            asset_types=[AssetContentType.image],
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_player"),
+            type=FormatCategory.video,
+            name="Video Player",
+            is_standard=True,
+            asset_types=[AssetContentType.video],
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="rich_media"),
+            type=FormatCategory.display,
+            name="Rich Media",
+            is_standard=True,
+            asset_types=[AssetContentType.image, AssetContentType.html],
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="no_assets"),
+            type=FormatCategory.display,
+            name="No Asset Types",
+            is_standard=True,
+            # asset_types not set
+        ),
+    ]
+
+    with (
+        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
+        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
+    ):
+
+        async def mock_list_formats(tenant_id):
+            return mock_formats
+
+        mock_registry.return_value.list_all_formats = mock_list_formats
+
+        # Filter for image formats
+        req = ListCreativeFormatsRequest(asset_types=["image"])
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 2, "Should return formats with image asset type"
+        names = [f.name for f in formats]
+        assert "Image Banner" in names
+        assert "Rich Media" in names
+
+        # Filter for multiple asset types (should match formats with ANY of them)
+        req = ListCreativeFormatsRequest(asset_types=["video", "html"])
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 2, "Should return formats with video OR html"
+        names = [f.name for f in formats]
+        assert "Video Player" in names
+        assert "Rich Media" in names
+
+
+def test_filtering_by_dimensions(integration_db, sample_tenant):
+    """Test that dimension filters correctly include/exclude formats."""
+    context = ToolContext(
+        context_id="test",
+        tenant_id=sample_tenant["tenant_id"],
+        principal_id="test_principal",
+        tool_name="list_creative_formats",
+        request_timestamp=datetime.now(UTC),
+        metadata={},
+        testing_context={},
+    )
+
+    mock_formats = [
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="medium_rectangle"),
+            type=FormatCategory.display,
+            name="Medium Rectangle",
+            is_standard=True,
+            width=300,
+            height=250,
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="leaderboard"),
+            type=FormatCategory.display,
+            name="Leaderboard",
+            is_standard=True,
+            width=728,
+            height=90,
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="skyscraper"),
+            type=FormatCategory.display,
+            name="Skyscraper",
+            is_standard=True,
+            width=160,
+            height=600,
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="responsive"),
+            type=FormatCategory.display,
+            name="Responsive (no dimensions)",
+            is_standard=True,
+            # No width/height - should be excluded by dimension filters
+        ),
+    ]
+
+    with (
+        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
+        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
+    ):
+
+        async def mock_list_formats(tenant_id):
+            return mock_formats
+
+        mock_registry.return_value.list_all_formats = mock_list_formats
+
+        # Filter by min_width
+        req = ListCreativeFormatsRequest(min_width=300)
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 2, "Should return formats with width >= 300"
+        names = [f.name for f in formats]
+        assert "Medium Rectangle" in names
+        assert "Leaderboard" in names
+        assert "Responsive (no dimensions)" not in names  # Excluded - no dimensions
+
+        # Filter by max_width
+        req = ListCreativeFormatsRequest(max_width=300)
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 2, "Should return formats with width <= 300"
+        names = [f.name for f in formats]
+        assert "Medium Rectangle" in names
+        assert "Skyscraper" in names
+
+        # Filter by height range
+        req = ListCreativeFormatsRequest(min_height=200, max_height=300)
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 1, "Should return formats with 200 <= height <= 300"
+        assert formats[0].name == "Medium Rectangle"
+
+        # Combine width and height filters
+        req = ListCreativeFormatsRequest(min_width=100, max_width=400, min_height=200, max_height=700)
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 2, "Should return formats matching both width and height constraints"
+        names = [f.name for f in formats]
+        assert "Medium Rectangle" in names
+        assert "Skyscraper" in names
+
+
+def test_new_filters_combined_with_existing(integration_db, sample_tenant):
+    """Test that new filters work correctly with existing filters."""
+    from adcp.types import AssetContentType
+
+    context = ToolContext(
+        context_id="test",
+        tenant_id=sample_tenant["tenant_id"],
+        principal_id="test_principal",
+        tool_name="list_creative_formats",
+        request_timestamp=datetime.now(UTC),
+        metadata={},
+        testing_context={},
+    )
+
+    mock_formats = [
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
+            type=FormatCategory.display,
+            name="Display 300x250",
+            is_standard=True,
+            width=300,
+            height=250,
+            asset_types=[AssetContentType.image],
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
+            type=FormatCategory.display,
+            name="Display 728x90",
+            is_standard=True,
+            width=728,
+            height=90,
+            asset_types=[AssetContentType.image],
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
+            type=FormatCategory.video,
+            name="Video 16:9",
+            is_standard=True,
+            width=640,
+            height=360,
+            asset_types=[AssetContentType.video],
+        ),
+        Format(
+            format_id=FormatId(agent_url="https://custom.example.com", id="custom_display"),
+            type=FormatCategory.display,
+            name="Custom Display",
+            is_standard=False,
+            width=300,
+            height=250,
+            asset_types=[AssetContentType.image],
+        ),
+    ]
+
+    with (
+        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
+        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
+    ):
+
+        async def mock_list_formats(tenant_id):
+            return mock_formats
+
+        mock_registry.return_value.list_all_formats = mock_list_formats
+
+        # Combine type filter with dimension filter
+        req = ListCreativeFormatsRequest(type="display", min_width=500)
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 1, "Should return display formats with width >= 500"
+        assert formats[0].name == "Display 728x90"
+
+        # Combine standard_only with name_search
+        req = ListCreativeFormatsRequest(standard_only=True, name_search="display")
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 2, "Should return standard formats with 'display' in name"
+        names = [f.name for f in formats]
+        assert "Display 300x250" in names
+        assert "Display 728x90" in names
+        assert "Custom Display" not in names  # Not standard
+
+        # Combine type, standard_only, asset_types, and dimensions
+        req = ListCreativeFormatsRequest(
+            type="display",
+            standard_only=True,
+            asset_types=["image"],
+            max_width=400,
+        )
+        response = list_creative_formats_raw(req, context)
+        formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
+
+        assert len(formats) == 1, "Should return only Display 300x250"
+        assert formats[0].name == "Display 300x250"

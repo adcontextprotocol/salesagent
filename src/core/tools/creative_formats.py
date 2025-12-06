@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context
 from src.core.config_loader import get_current_tenant, set_current_tenant
-from src.core.schema_adapters import ListCreativeFormatsRequest, ListCreativeFormatsResponse
+from src.core.schemas import ListCreativeFormatsRequest, ListCreativeFormatsResponse
 from src.core.validation_helpers import format_validation_error
 
 
@@ -35,8 +35,9 @@ def _list_creative_formats_impl(
     start_time = time.time()
 
     # Use default request if none provided
+    # All ListCreativeFormatsRequest fields have defaults (None) per AdCP spec
     if req is None:
-        req = ListCreativeFormatsRequest(type=None, standard_only=None, category=None, format_ids=None, context=None)
+        req = ListCreativeFormatsRequest()  # type: ignore[call-arg]
 
     # For discovery endpoints, authentication is optional
     # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
@@ -101,6 +102,39 @@ def _list_creative_formats_impl(
             f for f in formats if (f.format_id.id if hasattr(f.format_id, "id") else f.format_id) in format_ids_set
         ]
 
+    # Filter by is_responsive (AdCP filter)
+    # Note: Formats missing is_responsive attribute are treated as non-responsive (False)
+    if req.is_responsive is not None:
+        formats = [f for f in formats if getattr(f, "is_responsive", False) == req.is_responsive]
+
+    # Filter by name_search (case-insensitive partial match)
+    if req.name_search:
+        search_term = req.name_search.lower()
+        formats = [f for f in formats if search_term in f.name.lower()]
+
+    # Filter by asset_types - formats must support at least one of the requested types
+    if req.asset_types:
+        # Normalize requested asset types to string values for comparison
+        requested_types = {at.value if hasattr(at, "value") else at for at in req.asset_types}
+        formats = [
+            f
+            for f in formats
+            if hasattr(f, "asset_types")
+            and f.asset_types
+            and any((at.value if hasattr(at, "value") else at) in requested_types for at in f.asset_types)
+        ]
+
+    # Filter by dimension constraints
+    # Note: Formats without width/height attributes are excluded when dimension filters are applied
+    if req.min_width is not None:
+        formats = [f for f in formats if hasattr(f, "width") and f.width and f.width >= req.min_width]
+    if req.max_width is not None:
+        formats = [f for f in formats if hasattr(f, "width") and f.width and f.width <= req.max_width]
+    if req.min_height is not None:
+        formats = [f for f in formats if hasattr(f, "height") and f.height and f.height >= req.min_height]
+    if req.max_height is not None:
+        formats = [f for f in formats if hasattr(f, "height") and f.height and f.height <= req.max_height]
+
     # Sort formats by type and name for consistent ordering
     # Use .value to convert enum to string for sorting (enums don't support < comparison)
     formats.sort(key=lambda f: (f.type.value, f.name))
@@ -122,7 +156,13 @@ def _list_creative_formats_impl(
     )
 
     # Create response (no message/specification_version - not in adapter schema)
-    response = ListCreativeFormatsResponse(formats=formats, creative_agents=None, errors=None, context=req.context)
+    # Format list from registry is compatible with library Format type
+    response = ListCreativeFormatsResponse(
+        formats=formats,  # type: ignore[arg-type]
+        creative_agents=None,
+        errors=None,
+        context=req.context,
+    )
 
     # Always return Pydantic model - MCP wrapper will handle serialization
     # Schema enhancement (if needed) should happen in the MCP wrapper, not here
@@ -134,6 +174,13 @@ def list_creative_formats(
     standard_only: bool | None = None,
     category: str | None = None,
     format_ids: list[str] | None = None,
+    is_responsive: bool | None = None,
+    name_search: str | None = None,
+    asset_types: list[str] | None = None,
+    min_width: int | None = None,
+    max_width: int | None = None,
+    min_height: int | None = None,
+    max_height: int | None = None,
     webhook_url: str | None = None,
     context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
@@ -147,7 +194,15 @@ def list_creative_formats(
         standard_only: Only return IAB standard formats
         category: Filter by format category (standard, custom)
         format_ids: Filter by specific format IDs
+        is_responsive: Filter for responsive formats (True/False)
+        name_search: Search formats by name (case-insensitive partial match)
+        asset_types: Filter by asset content types (e.g., ["image", "video"])
+        min_width: Minimum format width in pixels
+        max_width: Maximum format width in pixels
+        min_height: Minimum format height in pixels
+        max_height: Maximum format height in pixels
         webhook_url: URL for async task completion notifications (AdCP spec, optional)
+        context: Application-level context per AdCP spec
         ctx: FastMCP context (automatically provided)
 
     Returns:
@@ -163,12 +218,21 @@ def list_creative_formats(
             # Use empty string as placeholder since we'll filter by ID only
             format_ids_objects = [FormatId(id=fid, agent_url="") for fid in format_ids]  # type: ignore[arg-type]
 
+        # MCP tool parameters are primitives (str, list[str], dict) that Pydantic
+        # coerces to proper types (enums, typed lists, ContextObject) at runtime
         req = ListCreativeFormatsRequest(
-            type=type,
+            type=type,  # type: ignore[arg-type]
             standard_only=standard_only,
             category=category,
-            format_ids=format_ids_objects,
-            context=context,
+            format_ids=format_ids_objects,  # type: ignore[arg-type]
+            is_responsive=is_responsive,
+            name_search=name_search,
+            asset_types=asset_types,  # type: ignore[arg-type]
+            min_width=min_width,
+            max_width=max_width,
+            min_height=min_height,
+            max_height=max_height,
+            context=context,  # type: ignore[arg-type]
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e
