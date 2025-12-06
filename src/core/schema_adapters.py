@@ -23,7 +23,7 @@ from adcp import GetProductsRequest as _GeneratedGetProductsRequest
 from adcp.types.generated_poc.core.context import ContextObject
 from pydantic import BaseModel, Field, model_validator
 
-from src.core.schemas import AdCPBaseModel, FormatId
+from src.core.schemas import AdCPBaseModel
 
 
 class GetProductsRequest(BaseModel):
@@ -524,43 +524,39 @@ from adcp import (
 )
 
 
-class ListCreativeFormatsRequest(BaseModel):
-    """Adapter for ListCreativeFormatsRequest - simple pass-through to generated schema."""
+class ListCreativeFormatsRequest(_GeneratedListCreativeFormatsRequest):
+    """Extends library ListCreativeFormatsRequest to stay in sync with AdCP spec.
 
-    type: str | None = Field(None, description="Filter by format type")
-    standard_only: bool | None = Field(None, description="Only return IAB standard formats")
-    category: str | None = Field(None, description="Filter by category")
-    format_ids: list[FormatId] | None = Field(
-        None, description="Return only these specific format IDs (e.g., from get_products response)"
-    )
-    # AdCP 2.5 filter fields
-    is_responsive: bool | None = Field(None, description="Filter for responsive formats")
-    name_search: str | None = Field(None, description="Search formats by name (case-insensitive)")
-    asset_types: list[str] | None = Field(None, description="Filter by asset types (e.g., image, video)")
-    min_width: int | None = Field(None, description="Minimum format width in pixels")
-    max_width: int | None = Field(None, description="Maximum format width in pixels")
-    min_height: int | None = Field(None, description="Minimum format height in pixels")
-    max_height: int | None = Field(None, description="Maximum format height in pixels")
-    context: dict[str, Any] | ContextObject | None = Field(
-        None, description="Application-level context provided by the client"
-    )
+    Inherits all fields from adcp library (type, format_ids, is_responsive,
+    name_search, asset_types, min_width, max_width, min_height, max_height, context).
+
+    Adds internal convenience fields not in AdCP spec (excluded from serialization).
+    """
+
+    # Internal convenience fields (not in AdCP spec, excluded from serialization)
+    standard_only: bool | None = Field(None, description="Only return IAB standard formats", exclude=True)
+    category: str | None = Field(None, description="Filter by category (standard, custom)", exclude=True)
 
     def to_generated(self) -> _GeneratedListCreativeFormatsRequest:
         """Convert to generated schema for protocol validation."""
-        return _GeneratedListCreativeFormatsRequest(**self.model_dump())
+        # Exclude internal fields when converting to library type
+        return _GeneratedListCreativeFormatsRequest(**self.model_dump(exclude={"standard_only", "category"}))
 
 
-class ListAuthorizedPropertiesRequest(BaseModel):
-    """Adapter for ListAuthorizedPropertiesRequest - simple pass-through to generated schema."""
+class ListAuthorizedPropertiesRequest(_GeneratedListAuthorizedPropertiesRequest):
+    """Extends library ListAuthorizedPropertiesRequest to stay in sync with AdCP spec.
 
-    tags: list[str] | None = Field(None, description="Filter properties by specific tags")
-    context: dict[str, Any] | ContextObject | None = Field(
-        None, description="Application-level context provided by the client"
-    )
+    Inherits all fields from adcp library (publisher_domains, context).
+
+    Adds internal convenience fields not in AdCP spec (excluded from serialization).
+    """
+
+    # Internal convenience field (legacy, not in AdCP spec)
+    tags: list[str] | None = Field(None, description="Filter properties by specific tags", exclude=True)
 
     def to_generated(self) -> _GeneratedListAuthorizedPropertiesRequest:
         """Convert to generated schema for protocol validation."""
-        return _GeneratedListAuthorizedPropertiesRequest(**self.model_dump())
+        return _GeneratedListAuthorizedPropertiesRequest(**self.model_dump(exclude={"tags"}))
 
 
 # ============================================================================
