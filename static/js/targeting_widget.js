@@ -1,10 +1,10 @@
 /**
- * Targeting Widget - Visual selector for product targeting configuration
+ * Targeting Widget - Custom key-value targeting selector
  *
- * Enhanced with:
+ * Features:
  * - OR/AND operator support between different keys
  * - Include/Exclude toggle for values
- * - Improved search functionality
+ * - Search functionality for keys and values
  *
  * Data Structure:
  * {
@@ -14,33 +14,23 @@
  *     operator: "AND"  // "AND" or "OR" - how to combine different keys
  *   }
  * }
- *
- * Usage:
- *   const widget = new TargetingWidget('tenant_id', 'targeting-widget', '/admin');
- *   // Widget will initialize automatically and populate #targeting-data hidden field
  */
 
 class TargetingWidget {
     constructor(tenantId, containerId = 'targeting-widget', scriptRoot = '') {
         this.tenantId = tenantId;
         this.container = document.getElementById(containerId);
-        this.scriptRoot = scriptRoot;  // Base path for URLs (e.g., '/admin' or '')
+        this.scriptRoot = scriptRoot;
         this.selectedTargeting = {
             key_value_pairs: {
                 include: {},
                 exclude: {},
                 operator: 'AND'
-            },
-            geography: {
-                countries: []
-            },
-            device_platform: {
-                device_types: []
-            },
-            audiences: []
+            }
         };
         this.currentKeyId = null;
-        this.keyMetadata = {};  // Cache key metadata for display names
+        this.keyMetadata = {};
+        this.valueMetadata = {};  // Cache value names: { keyId: { valueId: displayName } }
 
         if (!this.container) {
             console.error(`Targeting widget container '#${containerId}' not found`);
@@ -52,15 +42,136 @@ class TargetingWidget {
 
     async init() {
         try {
-            // Load initial data
             await this.loadTargetingData();
-            this.renderTabs();
+            this.loadExistingTargeting();  // Load from hidden field if present
+            this.render();
             this.attachEventListeners();
             this.updateHiddenField();
         } catch (error) {
             console.error('Error initializing targeting widget:', error);
             this.container.innerHTML = `<div class="alert alert-error">Failed to load targeting options: ${error.message}</div>`;
         }
+    }
+
+    /**
+     * Load existing targeting from the hidden form field.
+     * Handles both legacy format (keyId: value) and enhanced format (include/exclude/operator).
+     */
+    loadExistingTargeting() {
+        const hiddenField = document.getElementById('targeting-data');
+        if (!hiddenField || !hiddenField.value || hiddenField.value === '{}') {
+            return;
+        }
+
+        try {
+            const existingData = JSON.parse(hiddenField.value);
+            const kvPairs = existingData.key_value_pairs;
+
+            if (!kvPairs || Object.keys(kvPairs).length === 0) {
+                return;
+            }
+
+            // Check if this is enhanced format (has include/exclude keys)
+            if ('include' in kvPairs || 'exclude' in kvPairs) {
+                // Enhanced format - use directly
+                this.selectedTargeting.key_value_pairs = {
+                    include: kvPairs.include || {},
+                    exclude: kvPairs.exclude || {},
+                    operator: kvPairs.operator || 'AND'
+                };
+                console.log('[TargetingWidget] Loaded enhanced format targeting:', this.selectedTargeting);
+            } else {
+                // Legacy format: { keyId: value } - convert to enhanced format as includes
+                // Legacy format values are strings, new format uses arrays
+                const include = {};
+                for (const [keyId, value] of Object.entries(kvPairs)) {
+                    // Legacy format has single value as string, convert to array
+                    if (typeof value === 'string') {
+                        include[keyId] = [value];
+                    } else if (Array.isArray(value)) {
+                        include[keyId] = value;
+                    }
+                }
+                this.selectedTargeting.key_value_pairs = {
+                    include: include,
+                    exclude: {},
+                    operator: 'AND'
+                };
+                console.log('[TargetingWidget] Converted legacy format to enhanced:', this.selectedTargeting);
+            }
+
+            // Pre-load value metadata for display names in summary
+            // We need to fetch values for each key that has selections
+            this.preloadValueMetadata();
+
+        } catch (error) {
+            console.error('[TargetingWidget] Error loading existing targeting:', error);
+        }
+    }
+
+    /**
+     * Pre-load value metadata for keys that have existing selections.
+     * This ensures the summary can show value names instead of IDs.
+     * Also handles legacy format by converting value names to IDs.
+     */
+    async preloadValueMetadata() {
+        const kvPairs = this.selectedTargeting.key_value_pairs;
+        const keyIds = new Set([
+            ...Object.keys(kvPairs.include || {}),
+            ...Object.keys(kvPairs.exclude || {})
+        ]);
+
+        for (const keyId of keyIds) {
+            if (!this.valueMetadata[keyId]) {
+                try {
+                    const url = `${this.scriptRoot}/api/tenant/${this.tenantId}/targeting/values/${keyId}`;
+                    const response = await fetch(url, { credentials: 'same-origin' });
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.valueMetadata[keyId] = {};
+
+                        // Build both ID->name and name->ID mappings
+                        const nameToId = {};
+                        (data.values || []).forEach(val => {
+                            this.valueMetadata[keyId][val.id] = val.display_name || val.name || val.id;
+                            // Also map by name for legacy format support
+                            if (val.name) {
+                                nameToId[val.name] = val.id;
+                            }
+                        });
+
+                        // Convert legacy value names to IDs if needed
+                        // Legacy format stores value names, new format stores value IDs
+                        const convertValues = (values) => {
+                            return values.map(v => {
+                                // If value is a name (not numeric), try to find its ID
+                                if (!String(v).match(/^\d+$/) && nameToId[v]) {
+                                    console.log(`[TargetingWidget] Converted legacy value name "${v}" to ID "${nameToId[v]}"`);
+                                    return nameToId[v];
+                                }
+                                return v;
+                            });
+                        };
+
+                        if (kvPairs.include[keyId]) {
+                            kvPairs.include[keyId] = convertValues(kvPairs.include[keyId]);
+                        }
+                        if (kvPairs.exclude && kvPairs.exclude[keyId]) {
+                            kvPairs.exclude[keyId] = convertValues(kvPairs.exclude[keyId]);
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`[TargetingWidget] Failed to preload values for key ${keyId}:`, error);
+                }
+            }
+        }
+
+        // Re-render key list to show selection badges
+        const keys = this.targetingData.custom_targeting_keys || [];
+        this.renderKeysList(keys);
+
+        // Re-render summary now that we have value names
+        this.updateSummary();
     }
 
     async loadTargetingData() {
@@ -71,6 +182,11 @@ class TargetingWidget {
         }
         this.targetingData = await response.json();
 
+        // API returns 'customKeys', normalize to 'custom_targeting_keys'
+        if (this.targetingData.customKeys && !this.targetingData.custom_targeting_keys) {
+            this.targetingData.custom_targeting_keys = this.targetingData.customKeys;
+        }
+
         // Cache key metadata for later use
         (this.targetingData.custom_targeting_keys || []).forEach(key => {
             this.keyMetadata[key.id] = {
@@ -80,44 +196,15 @@ class TargetingWidget {
         });
     }
 
-    renderTabs() {
-        const tabsHTML = `
-            <div class="targeting-tabs">
-                <button class="targeting-tab active" data-tab="key-value">Custom Key-Value Pairs</button>
-                <button class="targeting-tab" data-tab="geography">Geography</button>
-                <button class="targeting-tab" data-tab="device">Device & Platform</button>
-                <button class="targeting-tab" data-tab="audiences">Audiences</button>
-            </div>
-            <div class="targeting-tab-content">
-                <div class="tab-pane active" id="tab-key-value"></div>
-                <div class="tab-pane" id="tab-geography"></div>
-                <div class="tab-pane" id="tab-device"></div>
-                <div class="tab-pane" id="tab-audiences"></div>
-            </div>
-            <div class="selected-summary" id="targeting-summary" style="display: none;">
-                <h5>Selected Targeting:</h5>
-                <div class="summary-operator" id="summary-operator"></div>
-                <div class="selected-tags" id="targeting-tags"></div>
-            </div>
-        `;
-        this.container.innerHTML = tabsHTML;
-
-        this.renderKeyValueTab();
-        this.renderGeographyTab();
-        this.renderDeviceTab();
-        this.renderAudiencesTab();
-    }
-
-    renderKeyValueTab() {
+    render() {
         const keys = this.targetingData.custom_targeting_keys || [];
-        const pane = document.getElementById('tab-key-value');
 
         if (keys.length === 0) {
-            pane.innerHTML = '<p class="empty-state">No custom targeting keys available</p>';
+            this.container.innerHTML = '<p class="empty-state">No custom targeting keys available. Sync inventory to load targeting options.</p>';
             return;
         }
 
-        pane.innerHTML = `
+        this.container.innerHTML = `
             <div class="kv-operator-toggle">
                 <span class="operator-label">Combine keys with:</span>
                 <div class="operator-buttons">
@@ -141,6 +228,11 @@ class TargetingWidget {
                         <p class="empty-state">Select a key to view available values</p>
                     </div>
                 </div>
+            </div>
+            <div class="selected-summary" id="targeting-summary" style="display: none;">
+                <h5>Selected Targeting:</h5>
+                <div class="summary-operator" id="summary-operator"></div>
+                <div class="selected-tags" id="targeting-tags"></div>
             </div>
         `;
 
@@ -188,6 +280,15 @@ class TargetingWidget {
 
             const data = await response.json();
             this.currentValues = data.values || [];
+
+            // Cache value metadata for display names in summary
+            if (!this.valueMetadata[keyId]) {
+                this.valueMetadata[keyId] = {};
+            }
+            this.currentValues.forEach(val => {
+                this.valueMetadata[keyId][val.id] = val.display_name || val.name || val.id;
+            });
+
             this.renderValuesList(keyId, this.currentValues);
         } catch (error) {
             valuesContainer.innerHTML = `<p class="error-state">Failed to load values: ${error.message}</p>`;
@@ -239,55 +340,7 @@ class TargetingWidget {
         `;
     }
 
-    renderGeographyTab() {
-        const pane = document.getElementById('tab-geography');
-        // Simplified for now - full implementation would have country selector
-        pane.innerHTML = '<p class="info-message">Geography targeting coming soon</p>';
-    }
-
-    renderDeviceTab() {
-        const pane = document.getElementById('tab-device');
-        pane.innerHTML = `
-            <div class="device-types">
-                <h5>Device Types</h5>
-                <label><input type="checkbox" value="DESKTOP"> Desktop</label>
-                <label><input type="checkbox" value="MOBILE"> Mobile</label>
-                <label><input type="checkbox" value="TABLET"> Tablet</label>
-                <label><input type="checkbox" value="CONNECTED_TV"> Connected TV</label>
-            </div>
-        `;
-    }
-
-    renderAudiencesTab() {
-        const audiences = this.targetingData.audiences || [];
-        const pane = document.getElementById('tab-audiences');
-
-        if (audiences.length === 0) {
-            pane.innerHTML = '<p class="empty-state">No audiences available</p>';
-            return;
-        }
-
-        pane.innerHTML = `
-            <div class="audience-list">
-                ${audiences.map(aud => `
-                    <label class="audience-item">
-                        <input type="checkbox" value="${aud.id}">
-                        <div>
-                            <strong>${aud.name}</strong>
-                            ${aud.description ? `<small>${aud.description}</small>` : ''}
-                        </div>
-                    </label>
-                `).join('')}
-            </div>
-        `;
-    }
-
     attachEventListeners() {
-        // Tab switching
-        this.container.querySelectorAll('.targeting-tab').forEach(tab => {
-            tab.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
-        });
-
         // Operator toggle
         this.container.addEventListener('click', (e) => {
             const operatorBtn = e.target.closest('.operator-btn');
@@ -295,7 +348,6 @@ class TargetingWidget {
                 const operator = operatorBtn.dataset.operator;
                 this.selectedTargeting.key_value_pairs.operator = operator;
 
-                // Update active button
                 this.container.querySelectorAll('.operator-btn').forEach(btn => {
                     btn.classList.toggle('active', btn.dataset.operator === operator);
                 });
@@ -337,21 +389,10 @@ class TargetingWidget {
         });
     }
 
-    switchTab(tabName) {
-        // Update active tab button
-        this.container.querySelectorAll('.targeting-tab').forEach(t => t.classList.remove('active'));
-        this.container.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-
-        // Update active pane
-        this.container.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-        this.container.querySelector(`#tab-${tabName}`).classList.add('active');
-    }
-
     handleValueAction(keyId, valueId, action) {
         const include = this.selectedTargeting.key_value_pairs.include;
         const exclude = this.selectedTargeting.key_value_pairs.exclude;
 
-        // Initialize arrays if needed
         if (!include[keyId]) include[keyId] = [];
         if (!exclude[keyId]) exclude[keyId] = [];
 
@@ -360,29 +401,23 @@ class TargetingWidget {
 
         if (action === 'include') {
             if (isCurrentlyIncluded) {
-                // Toggle off
                 include[keyId] = include[keyId].filter(id => id !== valueId);
             } else {
-                // Add to include, remove from exclude
                 include[keyId].push(valueId);
                 exclude[keyId] = exclude[keyId].filter(id => id !== valueId);
             }
         } else if (action === 'exclude') {
             if (isCurrentlyExcluded) {
-                // Toggle off
                 exclude[keyId] = exclude[keyId].filter(id => id !== valueId);
             } else {
-                // Add to exclude, remove from include
                 exclude[keyId].push(valueId);
                 include[keyId] = include[keyId].filter(id => id !== valueId);
             }
         }
 
-        // Clean up empty arrays
         if (include[keyId].length === 0) delete include[keyId];
         if (exclude[keyId].length === 0) delete exclude[keyId];
 
-        // Update UI
         this.updateValueItemState(keyId, valueId);
         this.updateKeySelectionBadges();
         this.updateHiddenField();
@@ -405,11 +440,9 @@ class TargetingWidget {
     }
 
     updateKeySelectionBadges() {
-        // Re-render keys list to update badges
         const keys = this.targetingData.custom_targeting_keys || [];
         this.renderKeysList(keys);
 
-        // Re-select current key
         if (this.currentKeyId) {
             const currentKeyItem = this.container.querySelector(`.kv-key-item[data-key-id="${this.currentKeyId}"]`);
             if (currentKeyItem) {
@@ -447,7 +480,6 @@ class TargetingWidget {
     }
 
     updateHiddenField() {
-        // Build clean targeting object
         const cleanTargeting = {};
 
         const kvPairs = this.selectedTargeting.key_value_pairs;
@@ -460,18 +492,6 @@ class TargetingWidget {
                 exclude: kvPairs.exclude,
                 operator: kvPairs.operator
             };
-        }
-
-        if (this.selectedTargeting.geography.countries.length > 0) {
-            cleanTargeting.geography = this.selectedTargeting.geography;
-        }
-
-        if (this.selectedTargeting.device_platform.device_types.length > 0) {
-            cleanTargeting.device_platform = this.selectedTargeting.device_platform;
-        }
-
-        if (this.selectedTargeting.audiences.length > 0) {
-            cleanTargeting.audiences = this.selectedTargeting.audiences;
         }
 
         const hiddenField = document.getElementById('targeting-data');
@@ -496,49 +516,49 @@ class TargetingWidget {
 
         summary.style.display = 'block';
 
-        // Show operator
         operatorDisplay.innerHTML = `
             <span class="operator-display">
                 Keys combined with: <strong>${kvPairs.operator}</strong>
             </span>
         `;
 
-        // Build tags HTML
         const tags = [];
 
-        // Include tags
         for (const [keyId, valueIds] of Object.entries(kvPairs.include)) {
             const keyName = this.keyMetadata[keyId]?.display_name || keyId;
-            const valuesText = valueIds.length > 1
-                ? `(${valueIds.join(' OR ')})`
-                : valueIds[0];
+            // Get display names for values
+            const valueNames = valueIds.map(vid =>
+                this.valueMetadata[keyId]?.[vid] || vid
+            );
+            const valuesText = valueNames.length > 1
+                ? valueNames.join(' or ')
+                : valueNames[0];
             tags.push(`
                 <span class="targeting-tag include-tag">
-                    <span class="tag-icon">+</span>
-                    ${keyName} = ${valuesText}
+                    <strong>Include:</strong> ${keyName} = ${valuesText}
                 </span>
             `);
         }
 
-        // Exclude tags
         for (const [keyId, valueIds] of Object.entries(kvPairs.exclude)) {
             const keyName = this.keyMetadata[keyId]?.display_name || keyId;
-            const valuesText = valueIds.length > 1
-                ? `(${valueIds.join(' OR ')})`
-                : valueIds[0];
+            // Get display names for values
+            const valueNames = valueIds.map(vid =>
+                this.valueMetadata[keyId]?.[vid] || vid
+            );
+            const valuesText = valueNames.length > 1
+                ? valueNames.join(' or ')
+                : valueNames[0];
             tags.push(`
                 <span class="targeting-tag exclude-tag">
-                    <span class="tag-icon">-</span>
-                    ${keyName} != ${valuesText}
+                    <strong>Exclude:</strong> ${keyName} = ${valuesText}
                 </span>
             `);
         }
 
-        // Add operator between tags
         const operator = kvPairs.operator;
         tagsContainer.innerHTML = tags.join(`<span class="tag-operator">${operator}</span>`);
     }
 }
 
-// Export for use in templates
 window.TargetingWidget = TargetingWidget;

@@ -389,6 +389,10 @@ class GAMTargetingManager:
                 'operator': 'AND' | 'OR'  # How to combine different keys
             }
 
+        Values can be either:
+        - Numeric GAM value IDs (e.g., "451005167391") - used directly
+        - Value names (e.g., "sports") - looked up via _get_or_create_custom_targeting_value
+
         Args:
             targeting_config: Enhanced targeting configuration
 
@@ -402,15 +406,20 @@ class GAMTargetingManager:
         children = []
 
         # Process include criteria
-        for key_id, value_names in include_dict.items():
-            if not value_names:
+        for key_id, values in include_dict.items():
+            if not values:
                 continue
 
             # Multiple values for same key are OR'd together (IS operator with multiple valueIds)
             value_ids = []
-            for value_name in value_names:
-                value_id = self._get_or_create_custom_targeting_value(key_id, value_name)
-                value_ids.append(value_id)
+            for value in values:
+                # Check if value is already a numeric GAM ID
+                if str(value).isdigit():
+                    value_ids.append(int(value))
+                else:
+                    # Value is a name, need to look up or create
+                    value_id = self._get_or_create_custom_targeting_value(key_id, value)
+                    value_ids.append(value_id)
 
             criteria = {
                 "xsi_type": "CustomCriteria",
@@ -421,16 +430,21 @@ class GAMTargetingManager:
             children.append(criteria)
 
         # Process exclude criteria
-        for key_id, value_names in exclude_dict.items():
-            if not value_names:
+        for key_id, values in exclude_dict.items():
+            if not values:
                 continue
 
             # For exclusions, each value gets IS_NOT
             # Multiple excluded values for same key means "NOT value1 AND NOT value2"
             value_ids = []
-            for value_name in value_names:
-                value_id = self._get_or_create_custom_targeting_value(key_id, value_name)
-                value_ids.append(value_id)
+            for value in values:
+                # Check if value is already a numeric GAM ID
+                if str(value).isdigit():
+                    value_ids.append(int(value))
+                else:
+                    # Value is a name, need to look up or create
+                    value_id = self._get_or_create_custom_targeting_value(key_id, value)
+                    value_ids.append(value_id)
 
             criteria = {
                 "xsi_type": "CustomCriteria",

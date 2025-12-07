@@ -1,16 +1,9 @@
-<!-- Targeting Selector Widget V2 - Simplified with External JS
+<!-- Targeting Selector Widget - Custom Key-Value Targeting
 
-     This version splits the widget into:
-     - Minimal HTML structure (this file)
-     - External CSS (inline in this file for now)
-     - External JavaScript (static/js/targeting_widget.js)
-
-     This avoids the RecursionError caused by large template includes in CI.
-
-     Enhanced Features (v2.1):
+     Features:
      - OR/AND operator support between different keys
      - Include/Exclude toggle for values
-     - Improved search functionality
+     - Search functionality for keys and values
 -->
 
 <style>
@@ -25,48 +18,8 @@
 
 .targeting-widget h4 {
     margin-top: 0;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
     color: #333;
-}
-
-.targeting-tabs {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-    border-bottom: 2px solid #dee2e6;
-}
-
-.targeting-tab {
-    padding: 0.5rem 1rem;
-    background: none;
-    border: none;
-    border-bottom: 3px solid transparent;
-    cursor: pointer;
-    font-weight: 500;
-    color: #666;
-    transition: all 0.2s;
-}
-
-.targeting-tab:hover {
-    color: #333;
-    background: rgba(0,0,0,0.05);
-}
-
-.targeting-tab.active {
-    color: #007bff;
-    border-bottom-color: #007bff;
-}
-
-.targeting-tab-content {
-    min-height: 300px;
-}
-
-.tab-pane {
-    display: none;
-}
-
-.tab-pane.active {
-    display: block;
 }
 
 /* Operator Toggle */
@@ -123,7 +76,7 @@
     display: grid;
     grid-template-columns: 1fr 2fr;
     gap: 1rem;
-    height: 400px;
+    min-height: 300px;
 }
 
 .kv-keys, .kv-values {
@@ -132,6 +85,7 @@
     padding: 1rem;
     background: white;
     overflow-y: auto;
+    max-height: 350px;
 }
 
 .kv-keys h5, .kv-values h5 {
@@ -249,7 +203,7 @@
 /* Value Items */
 .kv-values-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 0.5rem;
 }
 
@@ -403,7 +357,7 @@
 }
 
 /* Empty and Status States */
-.empty-state, .error-state, .info-message, .loading {
+.empty-state, .error-state, .loading {
     padding: 2rem;
     text-align: center;
     color: #666;
@@ -413,69 +367,15 @@
     color: #dc3545;
 }
 
-.info-message {
-    color: #007bff;
-}
-
 .loading {
     color: #007bff;
-}
-
-/* Device Types */
-.device-types {
-    padding: 1rem;
-}
-
-.device-types label {
-    display: block;
-    margin-bottom: 0.5rem;
-    padding: 0.5rem;
-    cursor: pointer;
-}
-
-.device-types input {
-    margin-right: 0.5rem;
-}
-
-/* Audiences */
-.audience-list {
-    padding: 1rem;
-}
-
-.audience-item {
-    display: flex;
-    align-items: start;
-    gap: 0.75rem;
-    padding: 0.75rem;
-    margin-bottom: 0.5rem;
-    background: #f8f9fa;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.audience-item:hover {
-    background: #e9ecef;
-}
-
-.audience-item input {
-    margin-top: 0.25rem;
-}
-
-.audience-item strong {
-    display: block;
-}
-
-.audience-item small {
-    color: #666;
-    font-size: 0.85rem;
 }
 </style>
 
 <!-- Minimal HTML Structure -->
 <div class="targeting-widget" id="targeting-widget">
-    <h4>Targeting Configuration</h4>
-    <p style="margin: 0; color: #666; font-size: 0.9rem;">Select targeting criteria for this product. Use Include to match values, Exclude to filter them out.</p>
+    <h4>Custom Targeting</h4>
+    <p style="margin: 0 0 1rem 0; color: #666; font-size: 0.9rem;">Select key-value pairs. Use Include to match values, Exclude to filter them out.</p>
     <!-- Content will be populated by JavaScript -->
 </div>
 

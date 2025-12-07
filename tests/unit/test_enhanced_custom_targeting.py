@@ -303,5 +303,67 @@ class TestCustomTargetingLogicalOperatorPassThrough:
         assert result["logicalOperator"] == "OR"
 
 
+class TestEnhancedCustomTargetingNumericValueIds:
+    """Test handling of numeric value IDs vs value names."""
+
+    def test_numeric_value_ids_used_directly(self, targeting_manager):
+        """Test that numeric value IDs are used directly without lookup.
+
+        When values are already GAM IDs (numeric strings), they should be
+        converted to integers and used directly without calling
+        _get_or_create_custom_targeting_value.
+        """
+        enhanced_dict = {
+            "include": {
+                "11111": ["451005167391", "451470637712"],  # Numeric GAM value IDs
+            },
+            "operator": "AND",
+        }
+
+        result = targeting_manager._build_custom_targeting_structure(enhanced_dict)
+
+        assert len(result["children"]) == 1
+        criteria = result["children"][0]
+        assert criteria["keyId"] == 11111
+        # Value IDs should be integers converted from numeric strings
+        assert 451005167391 in criteria["valueIds"]
+        assert 451470637712 in criteria["valueIds"]
+
+    def test_mixed_numeric_and_name_values(self, targeting_manager):
+        """Test handling of mixed numeric IDs and value names."""
+        enhanced_dict = {
+            "include": {
+                "11111": ["451005167391", "sports"],  # Mixed: ID and name
+            },
+            "operator": "AND",
+        }
+
+        result = targeting_manager._build_custom_targeting_structure(enhanced_dict)
+
+        assert len(result["children"]) == 1
+        criteria = result["children"][0]
+        assert criteria["keyId"] == 11111
+        # First value should be the numeric ID, second is looked up
+        assert 451005167391 in criteria["valueIds"]
+        assert len(criteria["valueIds"]) == 2
+
+    def test_numeric_exclude_ids_used_directly(self, targeting_manager):
+        """Test that numeric value IDs work for excludes too."""
+        enhanced_dict = {
+            "exclude": {
+                "22222": ["999888777"],
+            },
+            "operator": "AND",
+        }
+
+        result = targeting_manager._build_custom_targeting_structure(enhanced_dict)
+
+        assert len(result["children"]) == 1
+        criteria = result["children"][0]
+        assert criteria["keyId"] == 22222
+        assert criteria["operator"] == "IS_NOT"
+        assert 999888777 in criteria["valueIds"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
