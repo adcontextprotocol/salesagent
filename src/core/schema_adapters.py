@@ -137,7 +137,7 @@ class GetProductsRequest(BaseModel):
         # Create generated schema instance (only fields that exist in AdCP spec)
         # Note: promoted_offering, min_exposures, strategy_id, webhook_url are adapter-only fields
         return _GeneratedGetProductsRequest(
-            brand_manifest=brand_manifest_obj,
+            brand_manifest=brand_manifest_obj,  # type: ignore[arg-type]
             brief=self.brief or None,
             filters=filters_obj,
         )

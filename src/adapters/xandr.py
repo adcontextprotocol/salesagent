@@ -13,12 +13,15 @@ import requests
 from src.adapters.base import AdServerAdapter
 from src.core.retry_utils import api_retry
 from src.core.schemas import (
+    AdapterGetMediaBuyDeliveryResponse,
     CreateMediaBuyRequest,
     CreateMediaBuyResponse,
     CreateMediaBuySuccess,
     MediaPackage,
     Principal,
     Product,
+    ReportingPeriod,
+    UpdateMediaBuyResponse,
     url,
 )
 
@@ -105,17 +108,6 @@ class MediaBuyDeliveryData:
     creative_delivery: list[Any]
     pacing: Any
     alerts: list[Any]
-
-    def __init__(self, **kwargs: Any) -> None:
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
-
-class ReportingPeriod:
-    """Temporary stub for ReportingPeriod until xandr.py is properly refactored."""
-
-    start: datetime
-    end: datetime
 
     def __init__(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
@@ -340,10 +332,11 @@ class XandrAdapter(AdServerAdapter):
         """Get available products (placement groups in Xandr)."""
         try:
             # Use stable API per adcp 2.7.0+ recommendation
-            from adcp.types import CpmAuctionPricingOption
+            from adcp.types import CpmAuctionPricingOption, DeliveryMeasurement, DeliveryType
             from adcp.types import PriceGuidance as AdCPPriceGuidance
+            from adcp.types.generated_poc.core.publisher_property_selector import PublisherPropertySelector1
 
-            from src.core.schemas import FormatId, Property, PropertyIdentifier
+            from src.core.schemas import FormatId
 
             # In Xandr, products map to placement groups or custom deals
             # For now, return standard IAB formats as products
@@ -357,7 +350,7 @@ class XandrAdapter(AdServerAdapter):
                         FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_300x250"),
                         FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_320x50"),
                     ],
-                    delivery_type="non_guaranteed",
+                    delivery_type=DeliveryType.non_guaranteed,
                     pricing_options=[
                         CpmAuctionPricingOption(
                             pricing_option_id="xandr_display_cpm",
@@ -368,20 +361,12 @@ class XandrAdapter(AdServerAdapter):
                             min_spend_per_package=None,
                         )
                     ],
-                    publisher_properties=[
-                        Property(
-                            property_type="website",
-                            name="All Inventory",
-                            identifiers=[PropertyIdentifier(type="domain", value="*")],
-                            publisher_domain="*",
-                            tags=None,
-                        )
-                    ],
+                    publisher_properties=[PublisherPropertySelector1(selection_type="all", publisher_domain="*")],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=DeliveryMeasurement(provider="Xandr Reporting"),
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -395,7 +380,7 @@ class XandrAdapter(AdServerAdapter):
                         FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="video_16x9"),
                         FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="video_9x16"),
                     ],
-                    delivery_type="non_guaranteed",
+                    delivery_type=DeliveryType.non_guaranteed,
                     pricing_options=[
                         CpmAuctionPricingOption(
                             pricing_option_id="xandr_video_cpm",
@@ -406,20 +391,12 @@ class XandrAdapter(AdServerAdapter):
                             min_spend_per_package=None,
                         )
                     ],
-                    publisher_properties=[
-                        Property(
-                            property_type="website",
-                            name="All Inventory",
-                            identifiers=[PropertyIdentifier(type="domain", value="*")],
-                            publisher_domain="*",
-                            tags=None,
-                        )
-                    ],
+                    publisher_properties=[PublisherPropertySelector1(selection_type="all", publisher_domain="*")],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=DeliveryMeasurement(provider="Xandr Reporting"),
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -433,7 +410,7 @@ class XandrAdapter(AdServerAdapter):
                         FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="native_1x1"),
                         FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="native_1.2x1"),
                     ],
-                    delivery_type="non_guaranteed",
+                    delivery_type=DeliveryType.non_guaranteed,
                     pricing_options=[
                         CpmAuctionPricingOption(
                             pricing_option_id="xandr_native_cpm",
@@ -444,20 +421,12 @@ class XandrAdapter(AdServerAdapter):
                             min_spend_per_package=None,
                         )
                     ],
-                    publisher_properties=[
-                        Property(
-                            property_type="website",
-                            name="All Inventory",
-                            identifiers=[PropertyIdentifier(type="domain", value="*")],
-                            publisher_domain="*",
-                            tags=None,
-                        )
-                    ],
+                    publisher_properties=[PublisherPropertySelector1(selection_type="all", publisher_domain="*")],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=DeliveryMeasurement(provider="Xandr Reporting"),
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -472,7 +441,7 @@ class XandrAdapter(AdServerAdapter):
                         FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="display_728x90"),
                         FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id="video_16x9"),
                     ],
-                    delivery_type="non_guaranteed",
+                    delivery_type=DeliveryType.non_guaranteed,
                     pricing_options=[
                         CpmAuctionPricingOption(
                             pricing_option_id="xandr_deals_cpm",
@@ -483,20 +452,12 @@ class XandrAdapter(AdServerAdapter):
                             min_spend_per_package=None,
                         )
                     ],
-                    publisher_properties=[
-                        Property(
-                            property_type="website",
-                            name="All Inventory",
-                            identifiers=[PropertyIdentifier(type="domain", value="*")],
-                            publisher_domain="*",
-                            tags=None,
-                        )
-                    ],
+                    publisher_properties=[PublisherPropertySelector1(selection_type="all", publisher_domain="*")],
                     measurement=None,
                     creative_policy=None,
                     brief_relevance=None,
                     estimated_exposures=None,
-                    delivery_measurement=None,
+                    delivery_measurement=DeliveryMeasurement(provider="Xandr Reporting"),
                     product_card=None,
                     product_card_detailed=None,
                     placements=None,
@@ -519,6 +480,8 @@ class XandrAdapter(AdServerAdapter):
         package_pricing_info: dict[str, dict] | None = None,
     ) -> CreateMediaBuyResponse:
         """Create insertion order and line items in Xandr."""
+        from adcp.types import Package as AdCPPackage
+
         if self._requires_manual_approval("create_media_buy"):
             task_id = self._create_human_task(
                 "create_media_buy",
@@ -541,11 +504,11 @@ class XandrAdapter(AdServerAdapter):
 
                 # Create minimal AdCP-compliant Package response
                 package_responses.append(
-                    {
-                        "buyer_ref": buyer_ref,
-                        "package_id": package.package_id,
-                        "paused": False,
-                    }
+                    AdCPPackage(
+                        buyer_ref=buyer_ref,
+                        package_id=package.package_id,
+                        paused=False,
+                    )
                 )
 
             return CreateMediaBuySuccess(
@@ -646,17 +609,17 @@ class XandrAdapter(AdServerAdapter):
                 # - buyer_ref (required)
                 # - package_id (required)
                 package_responses.append(
-                    {
-                        "buyer_ref": buyer_ref,
-                        "package_id": package.package_id,
-                        "paused": False,
-                    }
+                    AdCPPackage(
+                        buyer_ref=buyer_ref,
+                        package_id=package.package_id,
+                        paused=False,
+                    )
                 )
 
             return CreateMediaBuySuccess(
                 buyer_ref=request.buyer_ref or "",
                 media_buy_id=f"xandr_io_{io_id}",
-                creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),
+                creative_deadline=datetime.now(UTC) + timedelta(days=2),
                 packages=package_responses,
             )
 
@@ -704,47 +667,18 @@ class XandrAdapter(AdServerAdapter):
         response = self._make_request("POST", "/profile", profile_data)
         return response["response"]["profile"]["id"]
 
-    def update_media_buy(self, media_buy_id: str, updates: MediaBuyDetails) -> MediaBuy:
+    def update_media_buy(
+        self,
+        media_buy_id: str,
+        buyer_ref: str,
+        action: str,
+        package_id: str | None,
+        budget: int | None,
+        today: datetime,
+    ) -> UpdateMediaBuyResponse:
         """Update insertion order in Xandr."""
-        if self._requires_manual_approval("update_media_buy"):
-            task_id = self._create_human_task(
-                "update_media_buy",
-                {"media_buy_id": media_buy_id, "updates": str(updates), "principal": self.principal.name},
-            )
-
-            # Return current state with pending status
-            return MediaBuy(
-                media_buy_id=media_buy_id,
-                platform_id=media_buy_id.replace("xandr_io_", ""),
-                order_name=f"Update pending - {task_id}",
-                status="update_pending",
-                details=None,
-            )
-
-        try:
-            io_id = media_buy_id.replace("xandr_io_", "")
-
-            # Get current IO
-            current = self._make_request("GET", f"/insertion-order?id={io_id}")
-            io = current["response"]["insertion-order"]
-
-            # Apply updates
-            if updates.total_budget:
-                io["budget_intervals"][0]["lifetime_budget"] = float(updates.total_budget)
-
-            if updates.status:
-                io["state"] = "active" if updates.status == "active" else "inactive"
-
-            # Update IO
-            self._make_request("PUT", f"/insertion-order?id={io_id}", {"insertion-order": io})
-
-            return MediaBuy(
-                media_buy_id=media_buy_id, platform_id=io_id, order_name=io["name"], status=io["state"], details=None
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to update Xandr media buy: {e}")
-            raise
+        # NOTE: This is a stub implementation - needs full refactor to match current API
+        raise NotImplementedError("Xandr update_media_buy needs refactor to match current API")
 
     def get_media_buy_status(self, media_buy_id: str) -> MediaBuyStatus:
         """Get insertion order and line item status."""
@@ -792,152 +726,12 @@ class XandrAdapter(AdServerAdapter):
             logger.error(f"Failed to get Xandr media buy status: {e}")
             raise
 
-    def get_media_buy_delivery(self, media_buy_id: str, period: ReportingPeriod) -> MediaBuyDeliveryData:
+    def get_media_buy_delivery(
+        self, media_buy_id: str, date_range: ReportingPeriod, today: datetime
+    ) -> AdapterGetMediaBuyDeliveryResponse:
         """Get delivery data from Xandr reporting."""
-        try:
-            io_id = media_buy_id.replace("xandr_io_", "")
-
-            # Create report request
-            report_data = {
-                "report": {
-                    "report_type": "network_analytics",
-                    "columns": [
-                        "hour",
-                        "imps",
-                        "clicks",
-                        "media_cost",
-                        "booked_revenue",
-                        "line_item_id",
-                        "line_item_name",
-                        "creative_id",
-                        "creative_name",
-                    ],
-                    "filters": [{"insertion_order_id": int(io_id)}],
-                    "start_date": period.start.isoformat(),
-                    "end_date": period.end.isoformat(),
-                    "timezone": "UTC",
-                    "format": "json",
-                }
-            }
-
-            # Request report
-            report_response = self._make_request("POST", "/report", report_data)
-            report_id = report_response["response"]["report_id"]
-
-            # Poll for report completion (simplified - in production would need proper polling)
-            import time
-
-            time.sleep(5)
-
-            # Download report
-            report_data = self._make_request("GET", f"/report-download?id={report_id}")
-
-            # Process report data
-            hourly_data: list[HourlyDelivery] = []
-            creative_data: list[CreativeDelivery] = []
-            total_impressions = 0
-            total_spend = 0.0
-
-            for row in report_data.get("data", []):
-                # Type guard: row should be dict[str, Any]
-                if not isinstance(row, dict):
-                    continue
-                hour_data = HourlyDelivery(
-                    hour=datetime.fromisoformat(row["hour"]), impressions=row["imps"], spend=row["media_cost"]
-                )
-                hourly_data.append(hour_data)
-
-                total_impressions += row["imps"]
-                total_spend += row["media_cost"]
-
-                # Aggregate by creative
-                creative_key = f"{row['creative_id']}_{row['line_item_id']}"
-                creative_found = False
-                for cd in creative_data:
-                    if cd.creative_id == creative_key:
-                        cd.impressions += row["imps"]
-                        cd.spend += row["media_cost"]
-                        creative_found = True
-                        break
-
-                if not creative_found and row["creative_id"]:
-                    creative_data.append(
-                        CreativeDelivery(
-                            creative_id=creative_key,
-                            creative_name=row["creative_name"],
-                            impressions=row["imps"],
-                            clicks=row["clicks"],
-                            spend=row["media_cost"],
-                        )
-                    )
-
-            # Calculate pacing
-            days_elapsed = (period.end - period.start).days
-            days_total = 30  # Assume 30-day campaign for now
-            expected_delivery = (days_elapsed / days_total) * 100
-            actual_delivery = (total_spend / 50000) * 100  # Assume $50k budget
-
-            pacing = PacingAnalysis(
-                daily_target_spend=50000 / 30,
-                actual_daily_spend=total_spend / days_elapsed if days_elapsed > 0 else 0,
-                pacing_index=actual_delivery / expected_delivery if expected_delivery > 0 else 0,
-                projected_delivery=actual_delivery * (days_total / days_elapsed) if days_elapsed > 0 else 0,
-                recommendation="On track" if actual_delivery >= expected_delivery * 0.9 else "Under-pacing",
-            )
-
-            # Check for alerts
-            alerts = []
-            if actual_delivery < expected_delivery * 0.8:
-                alerts.append(
-                    PerformanceAlert(
-                        level="warning",
-                        metric="pacing",
-                        message=f"Campaign pacing at {actual_delivery:.1f}% vs expected {expected_delivery:.1f}%",
-                        recommendation="Consider increasing bids or expanding targeting",
-                    )
-                )
-
-            return MediaBuyDeliveryData(
-                media_buy_id=media_buy_id,
-                reporting_period=period,
-                totals=DeliveryMetrics(
-                    impressions=total_impressions,
-                    clicks=sum(cd.clicks for cd in creative_data),
-                    spend=total_spend,
-                    cpm=total_spend / total_impressions * 1000 if total_impressions > 0 else 0,
-                    ctr=sum(cd.clicks for cd in creative_data) / total_impressions if total_impressions > 0 else 0,
-                ),
-                hourly_delivery=hourly_data,
-                creative_delivery=creative_data,
-                pacing=pacing,
-                alerts=alerts,
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to get Xandr delivery data: {e}")
-            # Return empty data on error
-            return MediaBuyDeliveryData(
-                media_buy_id=media_buy_id,
-                reporting_period=period,
-                totals=DeliveryMetrics(impressions=0, clicks=0, spend=0.0, cpm=0.0, ctr=0.0),
-                hourly_delivery=[],
-                creative_delivery=[],
-                pacing=PacingAnalysis(
-                    daily_target_spend=0,
-                    actual_daily_spend=0,
-                    pacing_index=0,
-                    projected_delivery=0,
-                    recommendation="No data available",
-                ),
-                alerts=[
-                    PerformanceAlert(
-                        level="error",
-                        metric="data",
-                        message="Failed to retrieve delivery data",
-                        recommendation="Contact support",
-                    )
-                ],
-            )
+        # NOTE: This is a stub implementation - needs full refactor to match current API
+        raise NotImplementedError("Xandr get_media_buy_delivery needs refactor to match current API")
 
     def add_creatives(self, media_buy_id: str, assets: list[CreativeAsset]) -> dict[str, str]:
         """Upload creatives to Xandr."""

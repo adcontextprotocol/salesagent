@@ -10,6 +10,7 @@ Handles media buy updates including:
 
 import logging
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -32,7 +33,6 @@ from src.core.context_manager import get_context_manager
 from src.core.database.database_session import get_db_session
 from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
-from src.core.schema_adapters import UpdateMediaBuyResponse
 from src.core.schema_helpers import to_context_object
 from src.core.schemas import (
     AffectedPackage,
@@ -126,7 +126,7 @@ def _update_media_buy_impl(
     push_notification_config: dict | None = None,
     context: dict | None = None,
     ctx: Context | ToolContext | None = None,
-) -> UpdateMediaBuyResponse:
+) -> UpdateMediaBuySuccess | UpdateMediaBuyError:
     """Shared implementation for update_media_buy (used by both MCP and A2A).
 
     Update a media buy with campaign-level and/or package-level changes.
@@ -168,8 +168,12 @@ def _update_media_buy_impl(
         from src.core.schemas import Budget
 
         pacing_val: Literal["even", "asap", "daily_budget"] = "even"
-        if pacing in ("even", "asap", "daily_budget"):
-            pacing_val = pacing
+        if pacing == "even":
+            pacing_val = "even"
+        elif pacing == "asap":
+            pacing_val = "asap"
+        elif pacing == "daily_budget":
+            pacing_val = "daily_budget"
         budget_obj = Budget(
             total=budget,
             currency=currency_param or "USD",  # Use renamed parameter
@@ -182,19 +186,25 @@ def _update_media_buy_impl(
     # Note: flight_start_date, flight_end_date are mapped to start_time/end_time above
     # creatives and targeting_overlay are deprecated - use packages for updates
     # Filter out None values to avoid passing them to the request (strict validation in dev mode)
-    request_params = {
-        "media_buy_id": media_buy_id,
-        "buyer_ref": buyer_ref,
-        "paused": paused,
-        "start_time": start_time,
-        "end_time": end_time,
-        "budget": budget_obj,
-        "packages": packages,
-        "push_notification_config": push_notification_config,
-        "context": context,
-    }
-    # Remove None values to avoid validation errors in strict mode
-    request_params = {k: v for k, v in request_params.items() if v is not None}
+    request_params: dict[str, Any] = {}
+    if media_buy_id is not None:
+        request_params["media_buy_id"] = media_buy_id
+    if buyer_ref is not None:
+        request_params["buyer_ref"] = buyer_ref
+    if paused is not None:
+        request_params["paused"] = paused
+    if start_time is not None:
+        request_params["start_time"] = start_time
+    if end_time is not None:
+        request_params["end_time"] = end_time
+    if budget_obj is not None:
+        request_params["budget"] = budget_obj
+    if packages is not None:
+        request_params["packages"] = packages
+    if push_notification_config is not None:
+        request_params["push_notification_config"] = push_notification_config
+    if context is not None:
+        request_params["context"] = context
 
     try:
         req = UpdateMediaBuyRequest(**request_params)

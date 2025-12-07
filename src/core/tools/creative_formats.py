@@ -37,7 +37,7 @@ def _list_creative_formats_impl(
     # Use default request if none provided
     # All ListCreativeFormatsRequest fields have defaults (None) per AdCP spec
     if req is None:
-        req = ListCreativeFormatsRequest()  # type: ignore[call-arg]
+        req = ListCreativeFormatsRequest()
 
     # For discovery endpoints, authentication is optional
     # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
@@ -242,7 +242,9 @@ def list_creative_formats(
         if format_ids:
             # For MCP tools, format_ids are simple strings, but FormatId requires agent_url
             # Use empty string as placeholder since we'll filter by ID only
-            format_ids_objects = [FormatId(id=fid, agent_url="") for fid in format_ids]
+            from pydantic import AnyUrl
+
+            format_ids_objects = [FormatId(id=fid, agent_url=AnyUrl("http://placeholder")) for fid in format_ids]
 
         # MCP tool parameters are primitives (str, list[str], dict) that Pydantic
         # coerces to proper types (enums, typed lists, ContextObject) at runtime

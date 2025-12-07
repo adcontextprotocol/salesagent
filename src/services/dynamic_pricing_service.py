@@ -153,9 +153,13 @@ class DynamicPricingService:
 
         # Calculate estimated monthly impressions
         # Average daily impressions * 30 days
-        # SQLAlchemy Date fields are Python date objects at runtime
-        period_duration = metrics[0].period_end - metrics[0].period_start
-        period_days = period_duration.days
+        # SQLAlchemy Date fields - convert to timedelta using total_seconds for mypy
+        period_start = metrics[0].period_start
+        period_end = metrics[0].period_end
+        # Use datetime for date subtraction (mypy compatible)
+        from datetime import date as date_type
+
+        period_days = (date_type.fromisoformat(str(period_end)) - date_type.fromisoformat(str(period_start))).days
         if period_days > 0:
             daily_impressions = total_impressions / period_days
             estimated_monthly_impressions = int(daily_impressions * 30)
@@ -245,7 +249,7 @@ class DynamicPricingService:
                 # Set price_guidance on discriminated union using setattr
                 # Not all pricing option types have price_guidance attribute
                 new_guidance = PriceGuidance(floor=updated_floor, p25=None, p50=None, p75=updated_p75, p90=None)
-                cpm_option.price_guidance = new_guidance
+                setattr(cpm_option, "price_guidance", new_guidance)
                 logger.debug(f"Updated existing CPM pricing option for {product.product_id}")
         else:
             # Create new CPM pricing option with price_guidance

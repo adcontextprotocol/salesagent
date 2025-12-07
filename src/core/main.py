@@ -787,7 +787,7 @@ if unified_mode:
                 # Add basic request info if available
                 if task.request_data:
                     if isinstance(task.request_data, dict):
-                        formatted_task["summary"] = {
+                        formatted_task["summary"] = {  # type: ignore[assignment]
                             "operation": task.request_data.get("operation"),
                             "media_buy_id": task.request_data.get("media_buy_id"),
                             "po_number": (
@@ -988,7 +988,7 @@ if unified_mode:
 
         await admin_wsgi(scope, receive, send)
 
-    @mcp.custom_route(
+    @mcp.custom_route(  # type: ignore[arg-type]
         "/tenant/{tenant_id}/admin/{path:path}",
         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
     )
@@ -1003,7 +1003,7 @@ if unified_mode:
 
         await admin_wsgi(scope, receive, send)
 
-    @mcp.custom_route("/tenant/{tenant_id}", methods=["GET"])
+    @mcp.custom_route("/tenant/{tenant_id}", methods=["GET"])  # type: ignore[arg-type]
     async def tenant_root(request: Request, tenant_id: str):
         """Redirect to tenant admin."""
         return RedirectResponse(url=f"/tenant/{tenant_id}/admin/")

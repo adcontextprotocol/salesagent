@@ -2377,7 +2377,7 @@ def create_list_creatives_request(
             else:
                 sort_dict = {**sort.model_dump(), **sort_dict}
 
-        structured_sort = LibrarySort(**sort_dict)
+        structured_sort = LibrarySort(**sort_dict)  # type: ignore[arg-type]
     else:
         structured_sort = None
 
@@ -2390,7 +2390,7 @@ def create_list_creatives_request(
             # Convert string field names to FieldModel enum values
             converted_fields = [LibraryFieldModel[str(f)] for f in fields if isinstance(f, str)]
         else:
-            converted_fields = fields
+            converted_fields = fields  # type: ignore[assignment]
 
     return ListCreativesRequest(
         filters=structured_filters,

@@ -405,7 +405,7 @@ class Kevel(AdServerAdapter):
         return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",
             media_buy_id=media_buy_id,
-            creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),
+            creative_deadline=datetime.now(UTC) + timedelta(days=2),
             packages=package_responses,
         )
 

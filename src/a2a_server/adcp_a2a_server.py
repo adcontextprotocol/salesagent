@@ -935,10 +935,12 @@ class AdCPRequestHandler(RequestHandler):
         """
         # For now, implement non-streaming behavior
         # In production, this would yield events as they occur
-        task = await self.on_message_send(params, context)
+        result = await self.on_message_send(params, context)
 
         # Yield a single event with the complete task
-        yield Event(type="task_update", data=task.model_dump())
+        # result can be Task, Message, or other A2A types - all have model_dump()
+        # mypy doesn't understand that union members all have model_dump()
+        yield Event(type="task_update", data=result.model_dump())  # type: ignore[operator]
 
     async def on_get_task(
         self,
@@ -1347,10 +1349,19 @@ class AdCPRequestHandler(RequestHandler):
             handler = skill_handlers[skill_name]
             if skill_name in ["get_pricing", "get_targeting"]:
                 # These are simple handlers without async
-                return handler(parameters, auth_token)
+                # Handler type is inferred, so we need to cast the call
+                from typing import Any as AnyType
+                from typing import cast
+
+                result = cast(AnyType, handler)(parameters, auth_token)
+                return result
             else:
                 # These are async handlers that call core tools
-                return await handler(parameters, auth_token)
+                from typing import Any as AnyType
+                from typing import cast
+
+                result = await cast(AnyType, handler)(parameters, auth_token)
+                return result
         except ServerError:
             # Re-raise ServerError as-is (already properly formatted)
             raise
@@ -1411,6 +1422,15 @@ class AdCPRequestHandler(RequestHandler):
                 )
 
             # Call core function directly with individual parameters
+            # tool_context can be ToolContext or MinimalContext
+            # _tool_context_to_mcp_context only makes sense for ToolContext
+            if isinstance(tool_context, ToolContext):
+                mcp_ctx = self._tool_context_to_mcp_context(tool_context)
+            else:
+                # MinimalContext works with core tools directly
+                from typing import cast
+
+                mcp_ctx = cast(ToolContext, tool_context)
             response = await core_get_products_tool(
                 brief=brief,
                 brand_manifest=brand_manifest,
@@ -1419,7 +1439,7 @@ class AdCPRequestHandler(RequestHandler):
                 adcp_version=adcp_version,
                 strategy_id=strategy_id,
                 context=context,
-                ctx=self._tool_context_to_mcp_context(tool_context),
+                ctx=mcp_ctx,
             )
 
             # Convert response to dict
@@ -1812,7 +1832,8 @@ class AdCPRequestHandler(RequestHandler):
                 tool_context = MinimalContext.from_request_context()
 
             # Build request from parameters (all optional)
-            from adcp import ListCreativeFormatsRequest
+            # Use local schema (extends library type) for proper type compatibility
+            from src.core.schemas import ListCreativeFormatsRequest
 
             req = ListCreativeFormatsRequest(
                 type=parameters.get("type"),
@@ -1828,7 +1849,15 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Call core function with request
-            response = core_list_creative_formats_tool(req=req, ctx=self._tool_context_to_mcp_context(tool_context))
+            # tool_context can be ToolContext or MinimalContext
+            if isinstance(tool_context, ToolContext):
+                mcp_ctx = self._tool_context_to_mcp_context(tool_context)
+            else:
+                # MinimalContext works with core tools directly
+                from typing import cast
+
+                mcp_ctx = cast(ToolContext, tool_context)
+            response = core_list_creative_formats_tool(req=req, ctx=mcp_ctx)
 
             # Convert response to dict
             if isinstance(response, dict):
@@ -1856,7 +1885,7 @@ class AdCPRequestHandler(RequestHandler):
         """
         try:
             # Create ToolContext from A2A auth info (which sets tenant context as side effect)
-            tool_context = None
+            tool_context: ToolContext | MinimalContext | None = None
 
             if auth_token:
                 # Token provided - authentication MUST succeed (don't silently fall back)
@@ -1884,7 +1913,7 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function directly
             # Context can be None for unauthenticated calls - tenant will be detected from headers
             # MinimalContext is not compatible with ToolContext type, but works at runtime
-            response = core_list_authorized_properties_tool(req=request, ctx=tool_context)
+            response = core_list_authorized_properties_tool(req=request, ctx=tool_context)  # type: ignore[arg-type]
 
             # Return spec-compliant response (no extra fields)
             # Per AdCP v2.4 spec: only publisher_domains, primary_channels, primary_countries,

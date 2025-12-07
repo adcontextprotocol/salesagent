@@ -665,11 +665,14 @@ async def _get_products_impl(
                         # Get pricing model as string (handle both enum and literal)
                         pricing_model = getattr(option.pricing_model, "value", option.pricing_model)
                         # Add supported annotation (will be included in response)
-                        # Use dynamic attribute assignment on discriminated unions
-                        option.supported = pricing_model in supported_models
-                        if not getattr(option, "supported", False):
-                            option.unsupported_reason = (
-                                f"Current adapter does not support {pricing_model.upper()} pricing"
+                        # Use setattr for discriminated unions to satisfy mypy
+                        is_supported = pricing_model in supported_models
+                        setattr(option, "supported", is_supported)
+                        if not is_supported:
+                            setattr(
+                                option,
+                                "unsupported_reason",
+                                f"Current adapter does not support {pricing_model.upper()} pricing",
                             )
         except Exception as e:
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
@@ -685,7 +688,8 @@ async def _get_products_impl(
     # Apply testing hooks to response (after modifications)
     # AdCP library Product uses model_dump(), not model_dump_internal()
     response_data = {"products": [p.model_dump() for p in eligible_products]}
-    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
+    if testing_ctx is not None:
+        response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
 
     # No conversion needed - our Product extends library Product
     # When serialized, Pydantic automatically uses library Product fields

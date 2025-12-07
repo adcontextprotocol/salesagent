@@ -5,11 +5,12 @@ import os
 from typing import Any
 
 import google.generativeai as genai
+from pydantic import AnyUrl
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Product as ProductModel
 from src.core.database.product_pricing import get_product_pricing_options
-from src.core.schemas import PricingOption, Product
+from src.core.schemas import Product
 
 from .base import ProductCatalogProvider
 
@@ -111,10 +112,16 @@ class AIProductCatalog(ProductCatalogProvider):
                     for fmt in formats_raw:
                         if isinstance(fmt, dict):
                             # Database format: {"agent_url": "...", "id": "..."}
-                            formats.append(FormatId(agent_url=fmt.get("agent_url", ""), id=fmt.get("id", "")))
+                            agent_url_str = fmt.get("agent_url", "")
+                            formats.append(
+                                FormatId(
+                                    agent_url=AnyUrl(agent_url_str) if agent_url_str else AnyUrl("http://placeholder"),
+                                    id=fmt.get("id", ""),
+                                )
+                            )
                         elif isinstance(fmt, str):
                             # Legacy string format (backwards compatibility)
-                            formats.append(FormatId(agent_url="", id=fmt))
+                            formats.append(FormatId(agent_url=AnyUrl("http://placeholder"), id=fmt))
 
                 product_data: dict[str, Any] = {
                     "product_id": product_model.product_id,
@@ -146,8 +153,8 @@ class AIProductCatalog(ProductCatalogProvider):
         for product in products:
             # Product schema objects already have pricing_options structure
             # Extract pricing info from first option for AI analysis
-            # Type ignore: discriminated union types are compatible with PricingOption at runtime
-            first_pricing: PricingOption | None = product.pricing_options[0] if product.pricing_options else None
+            # Cast to Any since discriminated union types are compatible with PricingOption at runtime
+            first_pricing: Any = product.pricing_options[0] if product.pricing_options else None
             product_info = {
                 "product_id": product.product_id,
                 "name": product.name,

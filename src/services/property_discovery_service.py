@@ -7,7 +7,7 @@ and caches them in the database for use in inventory profiles and products.
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from adcp import (
     AdagentsNotFoundError,
@@ -104,10 +104,12 @@ class PropertyDiscoveryService:
             fetch_tasks = [fetch_domain_data(domain, i * 0.5) for i, domain in enumerate(publisher_domains)]
 
             # Fetch all domains in parallel
-            fetch_results_list = await asyncio.gather(*fetch_tasks, return_exceptions=False)
+            fetch_results_raw = await asyncio.gather(*fetch_tasks, return_exceptions=False)
+            # mypy doesn't understand that gather returns the right type here
+            fetch_results_list = cast(list[tuple[str, dict[str, Any] | Exception]], list(fetch_results_raw))
 
             # Process results
-            for domain, result in fetch_results_list:
+            for domain, result in fetch_results_list:  # type: ignore[assignment]
                 try:
                     # Check if fetch succeeded
                     if isinstance(result, Exception):
@@ -129,7 +131,8 @@ class PropertyDiscoveryService:
                             logger.error(f"❌ Error syncing {domain}: {result}", exc_info=True)
                         continue
 
-                    adagents_data: dict[str, Any] = result
+                    # At this point, result is guaranteed to be dict[str, Any], not Exception
+                    adagents_data: dict[str, Any] = result  # type: ignore[assignment]
 
                     # Extract all properties from top-level "properties" array
                     # Note: Some adagents.json files list properties at top-level,
@@ -215,8 +218,12 @@ class PropertyDiscoveryService:
                             stats["properties_updated"] += 1
 
                     # Batch-check existing tags
-                    stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(tags))
-                    existing_tags_objs = session.scalars(stmt).all()
+                    from sqlalchemy.sql import Select
+
+                    stmt_tags: Select[tuple[PropertyTag]] = select(PropertyTag).where(
+                        PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(tags)
+                    )
+                    existing_tags_objs = list(session.scalars(stmt_tags).all())
                     existing_tags: dict[str, PropertyTag] = {t.tag_id: t for t in existing_tags_objs}
 
                     # Create tag records (using batched existence check)

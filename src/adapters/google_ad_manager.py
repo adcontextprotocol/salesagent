@@ -15,7 +15,7 @@ __all__ = [
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from adcp.types.aliases import Package as ResponsePackage
 from flask import Flask
@@ -158,7 +158,7 @@ class GoogleAdManager(AdServerAdapter):
                     self.client_manager, self.advertiser_id, dry_run, self.log, self
                 )
             else:
-                self.creatives_manager = None
+                self.creatives_manager = None  # type: ignore[assignment]
 
             # Inventory manager doesn't need advertiser_id
             self.inventory_manager = GAMInventoryManager(self.client_manager, tenant_id or "", dry_run)
@@ -169,7 +169,7 @@ class GoogleAdManager(AdServerAdapter):
             )
             self.workflow_manager = GAMWorkflowManager(tenant_id or "", principal, audit_logger, self.log)
         else:
-            self.client_manager = None
+            self.client_manager = None  # type: ignore[assignment]
             self.client = None
             self.log("[yellow]Running in dry-run mode - GAM client not initialized[/yellow]")
 
@@ -189,14 +189,14 @@ class GoogleAdManager(AdServerAdapter):
                     adapter=self,
                 )
             else:
-                self.creatives_manager = None
+                self.creatives_manager = None  # type: ignore[assignment]
 
             # Initialize inventory manager in dry-run mode
-            self.inventory_manager = GAMInventoryManager(None, tenant_id or "", dry_run=True)
+            self.inventory_manager = GAMInventoryManager(None, tenant_id or "", dry_run=True)  # type: ignore[arg-type]
 
             # Initialize sync manager in dry-run mode
             self.sync_manager = GAMSyncManager(
-                None,
+                None,  # type: ignore[arg-type]
                 self.inventory_manager,
                 self.orders_manager,
                 tenant_id or "",
@@ -1063,7 +1063,7 @@ class GoogleAdManager(AdServerAdapter):
         # Determine date range type for reporting
         days_diff = (end_dt - start_dt).days
         if days_diff <= 1:
-            range_type = "today"
+            range_type: str = "today"
         elif days_diff <= 31:
             range_type = "this_month"
         else:
@@ -1072,7 +1072,7 @@ class GoogleAdManager(AdServerAdapter):
         # Fetch delivery data from GAM
         # Note: We'll aggregate across all line items associated with this media buy
         reporting_data = reporting_service.get_reporting_data(
-            date_range=range_type,
+            date_range=cast("Literal['lifetime', 'this_month', 'today']", range_type),
             advertiser_id=self.advertiser_id,
             requested_timezone="America/New_York",
         )

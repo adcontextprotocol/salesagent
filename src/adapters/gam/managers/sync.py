@@ -403,7 +403,7 @@ class GAMSyncManager:
         if not sync_job:
             return None
 
-        status_info = {
+        status_info: dict[str, Any] = {
             "sync_id": sync_job.sync_id,
             "tenant_id": sync_job.tenant_id,
             "sync_type": sync_job.sync_type,
@@ -461,7 +461,7 @@ class GAMSyncManager:
 
         results = []
         for job in sync_jobs:
-            result = {
+            result: dict[str, Any] = {
                 "sync_id": job.sync_id,
                 "sync_type": job.sync_type,
                 "status": job.status,

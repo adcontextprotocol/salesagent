@@ -12,7 +12,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 from adcp.types import MediaBuyStatus
@@ -58,7 +58,6 @@ from src.core.database.models import Product as ModelProduct
 from src.core.helpers import get_principal_id_from_context, log_tool_activity
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.helpers.creative_helpers import _convert_creative_to_adapter_asset, process_and_upload_package_creatives
-from src.core.schema_adapters import CreateMediaBuyResponse
 from src.core.schema_helpers import to_context_object
 from src.core.schemas import (
     CreateMediaBuyError,
@@ -361,7 +360,9 @@ def _execute_adapter_media_buy_creation(
     # Call adapter with detailed error logging
     try:
         # Type ignore needed because adapter expects MediaPackage but we pass Package (compatible types)
-        response = adapter.create_media_buy(request, packages, start_time, end_time, package_pricing_info)
+        response = adapter.create_media_buy(
+            request, cast(list[MediaPackage], packages), start_time, end_time, package_pricing_info
+        )
 
         # Log based on response type
         if isinstance(response, CreateMediaBuyError):
@@ -453,7 +454,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             try:
                 request = CreateMediaBuyRequest(**media_buy.raw_request)
                 # Mark this request as already approved to skip adapter's approval workflow
-                request._already_approved = True
+                setattr(request, "_already_approved", True)
             except ValidationError as ve:
                 error_msg = f"Failed to reconstruct request: {format_validation_error(ve)}"
                 logger.error(f"[APPROVAL] {error_msg}")
@@ -655,7 +656,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                         delivery_type=delivery_type_str,
                         cpm=cpm,
                         impressions=impressions,
-                        format_ids=format_ids_list,
+                        format_ids=cast(list[Any], format_ids_list),
                         targeting_overlay=targeting_overlay,
                         buyer_ref=package_config.get("buyer_ref"),
                         product_id=product_id,
@@ -706,13 +707,13 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
         # PRE-VALIDATE: Check all creatives have required fields BEFORE calling adapter
         # This prevents GAM order creation when creatives are invalid (all-or-nothing approach)
-        _validate_creatives_before_adapter_call(packages, tenant_id)
+        _validate_creatives_before_adapter_call(cast(list[Package], packages), tenant_id)
 
         # Execute adapter creation (outside session to avoid conflicts)
         # Type ignore needed because we're passing MediaPackage list as Package list (adapter compatibility)
         response = _execute_adapter_media_buy_creation(
             request,
-            packages,
+            cast(list[Package], packages),
             start_time,
             end_time,
             package_pricing_info,
@@ -1183,7 +1184,7 @@ async def _create_media_buy_impl(
     push_notification_config: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,  # Optional application level context per adcp spec
     ctx: Context | ToolContext | None = None,
-) -> CreateMediaBuyResponse:
+) -> CreateMediaBuySuccess | CreateMediaBuyError:
     """Create a media buy with the specified parameters.
 
     Args:
@@ -2178,7 +2179,7 @@ async def _create_media_buy_impl(
                 buyer_ref=response_buyer_ref,
                 media_buy_id=media_buy_id,
                 creative_deadline=None,
-                packages=pending_packages,
+                packages=cast(list[Any], pending_packages),
                 workflow_step_id=step.step_id,  # Client can track approval via this ID
                 context=to_context_object(req.context),
             )
@@ -2198,7 +2199,8 @@ async def _create_media_buy_impl(
             gam_validator = GAMProductConfigService()
             config_errors = []
 
-            for product in products_in_buy:
+            for prod in products_in_buy:
+                product = cast(Product, prod)  # type: ignore[assignment]
                 # Auto-generate default config if missing
                 if not product.implementation_config:
                     logger.info(
@@ -2331,7 +2333,7 @@ async def _create_media_buy_impl(
             return CreateMediaBuySuccess(
                 buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
                 media_buy_id=media_buy_id,
-                packages=response_packages,
+                packages=cast(list[Any], response_packages),
                 workflow_step_id=step.step_id,
                 context=to_context_object(req.context),
             )
@@ -2383,53 +2385,55 @@ async def _create_media_buy_impl(
                 # Build set of (agent_url, format_id) tuples for comparison
                 product_format_keys = set()
                 if pkg_product.format_ids:
-                    for fmt in pkg_product.format_ids:
+                    for fmt in pkg_product.format_ids:  # type: ignore[assignment]
                         agent_url: str | None = None
-                        format_id: str | None = None
+                        format_id_str: str | None = None
 
                         if isinstance(fmt, dict):
                             # Database JSONB: uses "id" per AdCP spec
                             agent_url = fmt.get("agent_url")
-                            format_id = fmt.get("id") or fmt.get(
+                            format_id_str = fmt.get("id") or fmt.get(
                                 "format_id"
                             )  # "id" is AdCP spec, "format_id" is legacy
                         elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
                             # Pydantic object: uses "format_id" attribute (serializes to "id" in JSON)
                             agent_url = fmt.agent_url
-                            format_id = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
+                            format_id_str = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
                         elif isinstance(fmt, str):
                             # Legacy: plain string format ID (no agent_url)
-                            format_id = fmt
+                            format_id_str = fmt
 
-                        if format_id:
+                        if format_id_str:
                             # Normalize agent_url by removing trailing slash for consistent comparison
                             # Convert AnyUrl to string before calling rstrip()
                             normalized_url = str(agent_url).rstrip("/") if agent_url else None
-                            product_format_keys.add((normalized_url, format_id))
+                            product_format_keys.add((normalized_url, format_id_str))
 
                 # Build set of requested format keys for comparison
                 requested_format_keys = set()
-                for fmt in matching_package.format_ids:
+                for fmt in matching_package.format_ids:  # type: ignore[assignment]
                     agent_url = None
-                    format_id = None
+                    format_id_str2: str | None = None
 
                     if isinstance(fmt, dict):
                         # JSON from request: uses "id" per AdCP spec
                         agent_url = fmt.get("agent_url")
-                        format_id = fmt.get("id") or fmt.get("format_id")  # "id" is AdCP spec, "format_id" is legacy
+                        format_id_str2 = fmt.get("id") or fmt.get(
+                            "format_id"
+                        )  # "id" is AdCP spec, "format_id" is legacy
                     elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
                         # Pydantic object: uses "format_id" attribute
                         agent_url = fmt.agent_url
-                        format_id = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
+                        format_id_str2 = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
                     elif isinstance(fmt, str):
                         # Legacy: plain string
-                        format_id = fmt
+                        format_id_str2 = fmt
 
-                    if format_id:
+                    if format_id_str2:
                         # Normalize agent_url by removing trailing slash for consistent comparison
                         # Convert AnyUrl to string before calling rstrip()
                         normalized_url = str(agent_url).rstrip("/") if agent_url else None
-                        requested_format_keys.add((normalized_url, format_id))
+                        requested_format_keys.add((normalized_url, format_id_str2))
 
                 def format_display(url: str | None, fid: str) -> str:
                     """Format a (url, id) pair for display, handling trailing slashes."""
@@ -2479,7 +2483,7 @@ async def _create_media_buy_impl(
                     raise ValueError(error_msg)
 
                 # Preserve original format objects for format_ids_to_use
-                format_ids_to_use = list(matching_package.format_ids)
+                format_ids_to_use = cast(list[FormatId], list(matching_package.format_ids))
 
             # Fallback to product's formats if no request format_ids
             if not format_ids_to_use:
@@ -2487,13 +2491,13 @@ async def _create_media_buy_impl(
                     # Convert product.format_ids to FormatId objects if they're strings
                     # Get default creative agent URL from tenant config (tenant is dict[str, Any])
                     default_agent_url = tenant.get("creative_agent_url") or "https://creative.adcontextprotocol.org"
-                    for fmt in pkg_product.format_ids:
-                        if isinstance(fmt, str):
+                    for fmt_item in pkg_product.format_ids:
+                        if isinstance(fmt_item, str):
                             # Convert legacy string format to FormatId object
-                            format_ids_to_use.append(FormatId(agent_url=make_url(default_agent_url), id=fmt))
+                            format_ids_to_use.append(FormatId(agent_url=make_url(default_agent_url), id=fmt_item))
                         else:
                             # Already a FormatId or FormatReference object
-                            format_ids_to_use.append(fmt)
+                            format_ids_to_use.append(cast(FormatId, fmt_item))
                 else:
                     format_ids_to_use = []
 
@@ -2534,8 +2538,6 @@ async def _create_media_buy_impl(
                             package_budget_value = None
 
             # Extract delivery_type string value from enum (if it's an enum)
-            from typing import cast
-
             if hasattr(pkg_product.delivery_type, "value"):
                 # It's an enum - extract the string value
                 delivery_type_str = pkg_product.delivery_type.value
@@ -2554,7 +2556,7 @@ async def _create_media_buy_impl(
                     delivery_type=delivery_type_value,
                     cpm=cpm,
                     impressions=int(total_budget / cpm * 1000),
-                    format_ids=format_ids_to_use,
+                    format_ids=cast(list[Any], format_ids_to_use),
                     targeting_overlay=(
                         matching_package.targeting_overlay
                         if matching_package and hasattr(matching_package, "targeting_overlay")
@@ -2628,9 +2630,9 @@ async def _create_media_buy_impl(
 
         # Log response packages for debugging
         if response.packages:
-            for i, pkg in enumerate(response.packages):
-                # pkg is dict[str, Any] here (response.packages), different scope from earlier Package usage
-                logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg}")
+            for i, pkg_item in enumerate(response.packages):
+                # pkg_item is dict[str, Any] here (response.packages), different scope from earlier Package usage
+                logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg_item}")
 
         # Store the media buy in memory (for backward compatibility)
         # Lazy import to avoid circular dependency
@@ -3124,7 +3126,7 @@ async def _create_media_buy_impl(
 
                     creative_statuses[status.creative_id] = CreativeApprovalStatus(
                         creative_id=status.creative_id,
-                        status=final_status,
+                        status=cast(Any, final_status),
                         detail=detail,
                     )
 
@@ -3232,7 +3234,7 @@ async def _create_media_buy_impl(
         adcp_response = CreateMediaBuySuccess(
             buyer_ref=buyer_ref_value,
             media_buy_id=response.media_buy_id,
-            packages=response_packages,
+            packages=cast(list[Any], response_packages),
             creative_deadline=response.creative_deadline,
             context=to_context_object(req.context),
         )
@@ -3518,8 +3520,8 @@ async def create_media_buy(
         start_date=start_date,
         end_date=end_date,
         total_budget=total_budget,
-        targeting_overlay=targeting_overlay,
-        pacing=pacing,
+        targeting_overlay=cast(Targeting | None, targeting_overlay),
+        pacing=cast(Literal["even", "asap", "daily_budget"], pacing),
         daily_budget=daily_budget,
         creatives=creatives,
         reporting_webhook=reporting_webhook,
@@ -3599,8 +3601,8 @@ async def create_media_buy_raw(
         start_date=start_date,
         end_date=end_date,
         total_budget=total_budget,
-        targeting_overlay=targeting_overlay,
-        pacing=pacing,
+        targeting_overlay=cast(Targeting | None, targeting_overlay),
+        pacing=cast(Literal["even", "asap", "daily_budget"], pacing),
         daily_budget=daily_budget,
         creatives=creatives,
         reporting_webhook=reporting_webhook,

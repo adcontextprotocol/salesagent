@@ -35,7 +35,7 @@ class EnhancedMCPServer(FastMCP):
         self.context_wrapper = MCPContextWrapper()
         self._original_tool_decorator = super().tool
 
-    def tool(self, func: Callable | None = None, **kwargs) -> Callable[[Callable], FunctionTool] | FunctionTool:
+    def tool(self, func: Callable | None = None, **kwargs) -> Callable[[Callable], FunctionTool] | FunctionTool:  # type: ignore[override]
         """Enhanced tool decorator that adds context management.
 
         This decorator wraps the standard FastMCP tool decorator to add
@@ -60,7 +60,7 @@ class EnhancedMCPServer(FastMCP):
         It's here for potential future protocol-level interception.
         """
         # Call parent's _handle_tool_call if it exists (FastMCP implementation detail)
-        result = await super()._handle_tool_call(tool_name, arguments, context)
+        result = await super()._handle_tool_call(tool_name, arguments, context)  # type: ignore[misc]
 
         # Extract context_id from request headers
         headers = context.meta.get("headers", {}) if hasattr(context, "meta") else {}
@@ -76,8 +76,9 @@ class EnhancedMCPServer(FastMCP):
             # Store context_id as metadata that the transport can use
             # Note: Using setattr to add dynamic metadata to Pydantic models
             if not hasattr(result, "__mcp_metadata__"):
-                result.__mcp_metadata__ = {}
-            result.__mcp_metadata__["context_id"] = context_id
+                setattr(result, "__mcp_metadata__", {})
+            metadata = getattr(result, "__mcp_metadata__")
+            metadata["context_id"] = context_id
 
         return result
 
