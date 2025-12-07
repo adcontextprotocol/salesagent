@@ -800,8 +800,15 @@ def add_product(tenant_id):
                 if targeting_template.get("key_value_pairs"):
                     if "custom_targeting_keys" not in implementation_config:
                         implementation_config["custom_targeting_keys"] = {}
-                    # Merge key-value pairs into implementation_config for GAM adapter
-                    implementation_config["custom_targeting_keys"].update(targeting_template["key_value_pairs"])
+                    # Enhanced format with include/exclude and operator
+                    # Pass through to GAM adapter which handles both legacy and enhanced formats
+                    kv_pairs = targeting_template["key_value_pairs"]
+                    if isinstance(kv_pairs, dict) and ("include" in kv_pairs or "exclude" in kv_pairs):
+                        # Enhanced format - pass through directly
+                        implementation_config["custom_targeting_keys"] = kv_pairs
+                    else:
+                        # Legacy format - merge as before
+                        implementation_config["custom_targeting_keys"].update(kv_pairs)
 
                 # Build product kwargs, excluding None values for JSON fields that have database constraints
                 product_kwargs = {
@@ -1112,20 +1119,51 @@ def add_product(tenant_id):
                     # Save custom targeting key mappings
                     if implementation_config.get("custom_targeting_keys"):
                         custom_keys = implementation_config["custom_targeting_keys"]
-                        logger.info(
-                            f"Creating {len(custom_keys)} custom targeting key mappings for product {product.product_id}"
-                        )
-                        for _idx, (key, value) in enumerate(custom_keys.items()):
-                            # Store as "key=value" format in inventory_id
-                            custom_key_id = f"{key}={value}"
-                            mapping = ProductInventoryMapping(
-                                tenant_id=tenant_id,
-                                product_id=product.product_id,
-                                inventory_type="custom_key",
-                                inventory_id=custom_key_id,
-                                is_primary=False,
+                        # Check if this is enhanced format (has include/exclude keys)
+                        if isinstance(custom_keys, dict) and ("include" in custom_keys or "exclude" in custom_keys):
+                            # Enhanced format: create mappings for each key-value pair
+                            mapping_count = 0
+                            for key_id, value_ids in custom_keys.get("include", {}).items():
+                                for value_id in value_ids:
+                                    mapping = ProductInventoryMapping(
+                                        tenant_id=tenant_id,
+                                        product_id=product.product_id,
+                                        inventory_type="custom_key",
+                                        inventory_id=f"{key_id}={value_id}",
+                                        is_primary=False,
+                                    )
+                                    db_session.add(mapping)
+                                    mapping_count += 1
+                            for key_id, value_ids in custom_keys.get("exclude", {}).items():
+                                for value_id in value_ids:
+                                    mapping = ProductInventoryMapping(
+                                        tenant_id=tenant_id,
+                                        product_id=product.product_id,
+                                        inventory_type="custom_key",
+                                        inventory_id=f"NOT_{key_id}={value_id}",
+                                        is_primary=False,
+                                    )
+                                    db_session.add(mapping)
+                                    mapping_count += 1
+                            logger.info(
+                                f"Created {mapping_count} custom targeting key mappings (enhanced format) for product {product.product_id}"
                             )
-                            db_session.add(mapping)
+                        else:
+                            # Legacy format: {keyId: valueName}
+                            logger.info(
+                                f"Creating {len(custom_keys)} custom targeting key mappings for product {product.product_id}"
+                            )
+                            for _idx, (key, value) in enumerate(custom_keys.items()):
+                                # Store as "key=value" format in inventory_id
+                                custom_key_id = f"{key}={value}"
+                                mapping = ProductInventoryMapping(
+                                    tenant_id=tenant_id,
+                                    product_id=product.product_id,
+                                    inventory_type="custom_key",
+                                    inventory_id=custom_key_id,
+                                    is_primary=False,
+                                )
+                                db_session.add(mapping)
 
                 db_session.commit()
 
@@ -1290,7 +1328,7 @@ def edit_product(tenant_id, product_id):
                     # Flag JSONB column as modified so SQLAlchemy generates UPDATE
                     from sqlalchemy.orm import attributes
 
-                    attributes.flag_modified(product, "formats")
+                    attributes.flag_modified(product, "format_ids")
 
                 # Parse countries - from multi-select
                 countries_list = request.form.getlist("countries")
@@ -1384,8 +1422,15 @@ def edit_product(tenant_id, product_id):
                     if targeting_template.get("key_value_pairs"):
                         if "custom_targeting_keys" not in base_config:
                             base_config["custom_targeting_keys"] = {}
-                        # Merge key-value pairs into implementation_config for GAM adapter
-                        base_config["custom_targeting_keys"].update(targeting_template["key_value_pairs"])
+                        # Enhanced format with include/exclude and operator
+                        # Pass through to GAM adapter which handles both legacy and enhanced formats
+                        kv_pairs = targeting_template["key_value_pairs"]
+                        if isinstance(kv_pairs, dict) and ("include" in kv_pairs or "exclude" in kv_pairs):
+                            # Enhanced format - pass through directly
+                            base_config["custom_targeting_keys"] = kv_pairs
+                        else:
+                            # Legacy format - merge as before
+                            base_config["custom_targeting_keys"].update(kv_pairs)
 
                     # Store targeting_template in product
                     product.targeting_template = targeting_template
@@ -1436,16 +1481,42 @@ def edit_product(tenant_id, product_id):
 
                     # Custom targeting keys
                     if base_config.get("custom_targeting_keys"):
-                        for key, value in base_config["custom_targeting_keys"].items():
-                            custom_key_id = f"{key}={value}"
-                            mapping = ProductInventoryMapping(
-                                tenant_id=tenant_id,
-                                product_id=product_id,
-                                inventory_type="custom_key",
-                                inventory_id=custom_key_id,
-                                is_primary=False,
-                            )
-                            db_session.add(mapping)
+                        custom_keys = base_config["custom_targeting_keys"]
+                        # Check if this is enhanced format (has include/exclude keys)
+                        if isinstance(custom_keys, dict) and ("include" in custom_keys or "exclude" in custom_keys):
+                            # Enhanced format: create mappings for each key-value pair
+                            for key_id, value_ids in custom_keys.get("include", {}).items():
+                                for value_id in value_ids:
+                                    mapping = ProductInventoryMapping(
+                                        tenant_id=tenant_id,
+                                        product_id=product_id,
+                                        inventory_type="custom_key",
+                                        inventory_id=f"{key_id}={value_id}",
+                                        is_primary=False,
+                                    )
+                                    db_session.add(mapping)
+                            for key_id, value_ids in custom_keys.get("exclude", {}).items():
+                                for value_id in value_ids:
+                                    mapping = ProductInventoryMapping(
+                                        tenant_id=tenant_id,
+                                        product_id=product_id,
+                                        inventory_type="custom_key",
+                                        inventory_id=f"NOT_{key_id}={value_id}",
+                                        is_primary=False,
+                                    )
+                                    db_session.add(mapping)
+                        else:
+                            # Legacy format: {keyId: valueName}
+                            for key, value in custom_keys.items():
+                                custom_key_id = f"{key}={value}"
+                                mapping = ProductInventoryMapping(
+                                    tenant_id=tenant_id,
+                                    product_id=product_id,
+                                    inventory_type="custom_key",
+                                    inventory_id=custom_key_id,
+                                    is_primary=False,
+                                )
+                                db_session.add(mapping)
 
                 # Update pricing options (AdCP PR #88)
                 # Note: min_spend is now stored in pricing_options[].min_spend_per_package
