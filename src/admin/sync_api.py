@@ -120,8 +120,7 @@ def trigger_sync(tenant_id: str) -> tuple[Response, int]:
                             {
                                 "message": "Recent sync exists",
                                 "sync_id": recent_sync.sync_id,
-                                # Type ignore: SQLAlchemy DateTime is datetime at runtime
-                                "completed_at": recent_sync.completed_at.isoformat(),  # type: ignore[attr-defined]
+                                "completed_at": recent_sync.completed_at.isoformat(),
                             }
                         ),
                         200,
@@ -208,7 +207,7 @@ def trigger_sync(tenant_id: str) -> tuple[Response, int]:
             try:
                 sync_job.status = "failed"
                 # Type ignore for SQLAlchemy DateTime column assignment
-                sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+                sync_job.completed_at = datetime.now(UTC)
                 sync_job.error_message = str(e)
                 db_session.commit()
             except:
@@ -242,16 +241,16 @@ def get_sync_status(sync_id: str) -> tuple[Response, int]:
             "adapter_type": sync_job.adapter_type,
             "sync_type": sync_job.sync_type,
             "status": sync_job.status,
-            # Type ignore: SQLAlchemy DateTime is datetime at runtime
-            "started_at": sync_job.started_at.isoformat() if sync_job.started_at else None,  # type: ignore[attr-defined]
+            "started_at": sync_job.started_at.isoformat() if sync_job.started_at else None,
             "triggered_by": sync_job.triggered_by,
             "triggered_by_id": sync_job.triggered_by_id,
         }
 
         if sync_job.completed_at:
-            # Type ignore: SQLAlchemy DateTime is datetime at runtime
-            response_dict["completed_at"] = sync_job.completed_at.isoformat()  # type: ignore[attr-defined]
-            response_dict["duration_seconds"] = (sync_job.completed_at - sync_job.started_at).total_seconds()  # type: ignore[operator]
+            response_dict["completed_at"] = sync_job.completed_at.isoformat()
+            # Type narrowing: completed_at is datetime (not None) within this block
+            duration = sync_job.completed_at - sync_job.started_at
+            response_dict["duration_seconds"] = duration.total_seconds()
 
         if sync_job.summary:
             response_dict["summary"] = json.loads(sync_job.summary)
@@ -307,16 +306,16 @@ def get_sync_history(tenant_id: str) -> tuple[Response, int]:
                 "sync_id": job.sync_id,
                 "sync_type": job.sync_type,
                 "status": job.status,
-                # Type ignore: SQLAlchemy DateTime is datetime at runtime
-                "started_at": job.started_at.isoformat() if job.started_at else None,  # type: ignore[attr-defined]
+                "started_at": job.started_at.isoformat() if job.started_at else None,
                 "triggered_by": job.triggered_by,
                 "triggered_by_id": job.triggered_by_id,
             }
 
             if job.completed_at:
-                # Type ignore: SQLAlchemy DateTime is datetime at runtime
-                result["completed_at"] = job.completed_at.isoformat()  # type: ignore[attr-defined]
-                result["duration_seconds"] = (job.completed_at - job.started_at).total_seconds()  # type: ignore[operator]
+                result["completed_at"] = job.completed_at.isoformat()
+                # Type narrowing: completed_at is datetime (not None) within this block
+                duration = job.completed_at - job.started_at
+                result["duration_seconds"] = duration.total_seconds()
 
             if job.summary:
                 result["summary"] = json.loads(job.summary)
@@ -368,8 +367,7 @@ def list_tenants() -> tuple[Response, int]:
                 "last_sync": (
                     {
                         "sync_id": last_sync.sync_id,
-                        # Type ignore: SQLAlchemy DateTime is datetime at runtime
-                        "completed_at": last_sync.completed_at.isoformat() if last_sync.completed_at else None,  # type: ignore[attr-defined]
+                        "completed_at": last_sync.completed_at.isoformat() if last_sync.completed_at else None,
                         "summary": json.loads(last_sync.summary) if last_sync.summary else None,
                     }
                     if last_sync
@@ -426,8 +424,7 @@ def get_sync_stats() -> tuple[Response, int]:
                 {
                     "sync_id": job.sync_id,
                     "tenant_id": job.tenant_id,
-                    # Type ignore: SQLAlchemy DateTime is datetime at runtime
-                    "started_at": job.started_at.isoformat() if job.started_at else None,  # type: ignore[attr-defined]
+                    "started_at": job.started_at.isoformat() if job.started_at else None,
                     "error": job.error_message,
                 }
             )
@@ -445,17 +442,22 @@ def get_sync_stats() -> tuple[Response, int]:
             )
             last_sync = db_session.scalars(tenant_sync_stmt).first()
 
-            # Type ignore: SQLAlchemy DateTime is datetime at runtime
-            if not last_sync or (last_sync.completed_at and (datetime.now(UTC) - last_sync.completed_at).days > 1):  # type: ignore[operator]
+            # Check if tenant needs sync (no sync or last sync > 1 day old)
+            needs_sync = False
+            if not last_sync:
+                needs_sync = True
+            elif last_sync.completed_at:
+                # Type narrowing: completed_at is datetime (not None) within this block
+                days_since_sync = (datetime.now(UTC) - last_sync.completed_at).days
+                needs_sync = days_since_sync > 1
+
+            if needs_sync:
                 stale_tenants.append(
                     {
                         "tenant_id": tenant.tenant_id,
                         "tenant_name": tenant.name,
-                        # Type ignore: SQLAlchemy DateTime is datetime at runtime
                         "last_sync": (
-                            last_sync.completed_at.isoformat()  # type: ignore[attr-defined]
-                            if (last_sync and last_sync.completed_at)
-                            else None
+                            last_sync.completed_at.isoformat() if (last_sync and last_sync.completed_at) else None
                         ),
                     }
                 )
@@ -555,7 +557,7 @@ def sync_tenant_orders(tenant_id: str) -> tuple[Response, int]:
             # Update sync job with results
             sync_job.status = "completed"
             # Type ignore for SQLAlchemy DateTime column assignment
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.summary = json.dumps(summary)
             db_session.commit()
 
@@ -567,7 +569,7 @@ def sync_tenant_orders(tenant_id: str) -> tuple[Response, int]:
             # Update sync job with error
             sync_job.status = "failed"
             # Type ignore for SQLAlchemy DateTime column assignment
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.error_message = str(e)
             db_session.commit()
 

@@ -6,7 +6,7 @@ import logging
 from flask import Blueprint
 from sqlalchemy import select
 
-from src.admin.utils import require_auth, require_tenant_access  # type: ignore[attr-defined]
+from src.admin.utils import require_auth, require_tenant_access
 from src.core.database.models import MediaBuy, MediaPackage, PushNotificationConfig
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
@@ -213,10 +213,12 @@ def media_buy_detail(tenant_id, media_buy_id):
                         # Set tenant context before calling get_adapter (required for adapter initialization)
                         tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
                         if tenant:
-                            set_current_tenant({
-                                "tenant_id": tenant_id,
-                                "ad_server": tenant.ad_server or "mock",
-                            })
+                            set_current_tenant(
+                                {
+                                    "tenant_id": tenant_id,
+                                    "ad_server": tenant.ad_server or "mock",
+                                }
+                            )
 
                         # Convert SQLAlchemy model to Pydantic schema (get_adapter expects schema)
                         principal_schema = PrincipalSchema(

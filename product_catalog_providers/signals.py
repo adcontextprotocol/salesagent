@@ -187,11 +187,11 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             name=product_name,
             description=product_description,
             format_ids=[
-                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),  # type: ignore[arg-type]
-                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),  # type: ignore[arg-type]
-                FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_pre_roll"),  # type: ignore[arg-type]
+                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
+                FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
+                FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_pre_roll"),
             ],
-            delivery_type="non_guaranteed",  # type: ignore[arg-type]  # String matches DeliveryType enum
+            delivery_type="non_guaranteed",  # String matches DeliveryType enum
             measurement=None,  # Optional - signals products don't include measurement
             creative_policy=None,  # Optional - signals products don't include creative policy
             is_custom=True,  # These are custom products created from signals
@@ -261,4 +261,4 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
         except Exception as e:
             logger.error(f"Error fetching database products: {e}")
 
-        return products  # type: ignore[return-value]  # Library Product is compatible with our extended Product
+        return products  # Library Product is compatible with our extended Product

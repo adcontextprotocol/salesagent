@@ -276,7 +276,7 @@ def _mark_approval_complete(
             approval_job = db.scalars(stmt).first()
             if approval_job:
                 approval_job.status = "completed"
-                approval_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+                approval_job.completed_at = datetime.now(UTC)
                 approval_job.summary = json.dumps(summary) if summary else None
                 db.commit()
 
@@ -312,7 +312,7 @@ def _mark_approval_failed(
             approval_job = db.scalars(stmt).first()
             if approval_job:
                 approval_job.status = "failed"
-                approval_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+                approval_job.completed_at = datetime.now(UTC)
                 approval_job.error_message = error_message
                 db.commit()
 

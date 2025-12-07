@@ -132,7 +132,7 @@ class GAMSyncManager:
             # Update sync job with results
             sync_job.status = "completed"
             # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.summary = json.dumps(summary)
             db_session.commit()
 
@@ -149,7 +149,7 @@ class GAMSyncManager:
             # Update sync job with error
             sync_job.status = "failed"
             # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.error_message = str(e)
             db_session.commit()
 
@@ -209,7 +209,7 @@ class GAMSyncManager:
             # Update sync job with results
             sync_job.status = "completed"
             # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.summary = json.dumps(summary)
             db_session.commit()
 
@@ -226,7 +226,7 @@ class GAMSyncManager:
             # Update sync job with error
             sync_job.status = "failed"
             # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.error_message = str(e)
             db_session.commit()
 
@@ -277,7 +277,7 @@ class GAMSyncManager:
             # Update sync job with results
             sync_job.status = "completed"
             # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.summary = json.dumps(combined_summary)
             db_session.commit()
 
@@ -294,7 +294,7 @@ class GAMSyncManager:
             # Update sync job with error
             sync_job.status = "failed"
             # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.error_message = str(e)
             db_session.commit()
 
@@ -364,7 +364,7 @@ class GAMSyncManager:
             # Update sync job with results
             sync_job.status = "completed"
             # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.summary = json.dumps(summary)
             db_session.commit()
 
@@ -381,7 +381,7 @@ class GAMSyncManager:
             # Update sync job with error
             sync_job.status = "failed"
             # TODO: SyncJob.completed_at should use Mapped[datetime] not Mapped[DateTime]
-            sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            sync_job.completed_at = datetime.now(UTC)
             sync_job.error_message = str(e)
             db_session.commit()
 
@@ -408,13 +408,15 @@ class GAMSyncManager:
             "tenant_id": sync_job.tenant_id,
             "sync_type": sync_job.sync_type,
             "status": sync_job.status,
-            "started_at": sync_job.started_at.isoformat(),  # type: ignore[attr-defined]
+            "started_at": sync_job.started_at.isoformat(),
             "triggered_by": sync_job.triggered_by,
         }
 
         if sync_job.completed_at:
-            status_info["completed_at"] = sync_job.completed_at.isoformat()  # type: ignore[attr-defined]
-            status_info["duration_seconds"] = (sync_job.completed_at - sync_job.started_at).total_seconds()  # type: ignore[operator]
+            status_info["completed_at"] = sync_job.completed_at.isoformat()
+            # Type narrowing: completed_at is datetime (not None) within this block
+            duration = sync_job.completed_at - sync_job.started_at
+            status_info["duration_seconds"] = duration.total_seconds()
 
         if sync_job.summary:
             status_info["summary"] = json.loads(sync_job.summary)
@@ -463,13 +465,15 @@ class GAMSyncManager:
                 "sync_id": job.sync_id,
                 "sync_type": job.sync_type,
                 "status": job.status,
-                "started_at": job.started_at.isoformat(),  # type: ignore[attr-defined]
+                "started_at": job.started_at.isoformat(),
                 "triggered_by": job.triggered_by,
             }
 
             if job.completed_at:
-                result["completed_at"] = job.completed_at.isoformat()  # type: ignore[attr-defined]
-                result["duration_seconds"] = (job.completed_at - job.started_at).total_seconds()  # type: ignore[operator]
+                result["completed_at"] = job.completed_at.isoformat()
+                # Type narrowing: completed_at is datetime (not None) within this block
+                duration = job.completed_at - job.started_at
+                result["duration_seconds"] = duration.total_seconds()
 
             if job.summary:
                 result["summary"] = json.loads(job.summary)
@@ -543,7 +547,7 @@ class GAMSyncManager:
             return {
                 "sync_id": recent_sync.sync_id,
                 "status": "completed",
-                "completed_at": recent_sync.completed_at.isoformat() if recent_sync.completed_at else None,  # type: ignore[attr-defined]
+                "completed_at": recent_sync.completed_at.isoformat() if recent_sync.completed_at else None,
                 "summary": summary,
                 "message": "Recent sync exists",
             }
@@ -624,7 +628,7 @@ class GAMSyncManager:
                 {
                     "sync_id": job.sync_id,
                     "sync_type": job.sync_type,
-                    "started_at": job.started_at.isoformat(),  # type: ignore[attr-defined]
+                    "started_at": job.started_at.isoformat(),
                     "error": job.error_message,
                 }
             )

@@ -66,7 +66,7 @@ def start_inventory_sync_background(
             from datetime import timedelta
 
             # Get started_at as datetime (SQLAlchemy returns datetime for DateTime columns)
-            started_at_value: datetime = existing_sync.started_at  # type: ignore[assignment]
+            started_at_value: datetime = existing_sync.started_at
 
             # Make started_at timezone-aware if it's naive (from database)
             if started_at_value.tzinfo is None:
@@ -79,7 +79,7 @@ def start_inventory_sync_background(
                 # Mark stale sync as failed and allow new sync to start
                 existing_sync.status = "failed"
                 # SQLAlchemy DateTime column accepts datetime objects
-                existing_sync.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+                existing_sync.completed_at = datetime.now(UTC)
                 existing_sync.error_message = (
                     "Sync thread died (stale after 1+ hour with no progress) - marked as failed to allow fresh sync"
                 )
@@ -505,7 +505,7 @@ def _mark_sync_complete(sync_id: str, summary: dict[str, Any]):
             if sync_job:
                 sync_job.status = "completed"
                 # SQLAlchemy DateTime column accepts datetime objects
-                sync_job.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+                sync_job.completed_at = datetime.now(UTC)
                 # Convert summary dict to JSON string (summary field is Text, not JSON)
                 sync_job.summary = json.dumps(summary) if summary else None
                 db.commit()
@@ -523,7 +523,7 @@ def _mark_sync_failed(sync_id: str, error_message: str):
                 sync_job.status = "failed"
                 # SQLAlchemy DateTime column accepts datetime objects
                 completed_at = datetime.now(UTC)
-                sync_job.completed_at = completed_at  # type: ignore[assignment]
+                sync_job.completed_at = completed_at
                 sync_job.error_message = error_message
                 # Note: SyncJob doesn't have duration_seconds field - duration is calculated from started_at/completed_at
                 db.commit()

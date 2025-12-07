@@ -50,10 +50,10 @@ def list_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                         "publisher_domain": partner.publisher_domain,
                         "display_name": partner.display_name,
                         "is_verified": partner.is_verified,
-                        "last_synced_at": partner.last_synced_at.isoformat() if partner.last_synced_at else None,  # type: ignore[attr-defined]
+                        "last_synced_at": partner.last_synced_at.isoformat() if partner.last_synced_at else None,
                         "sync_status": partner.sync_status,
                         "sync_error": partner.sync_error,
-                        "created_at": partner.created_at.isoformat(),  # type: ignore[attr-defined]
+                        "created_at": partner.created_at.isoformat(),
                     }
                 )
 
@@ -116,7 +116,7 @@ def add_publisher_partner(tenant_id: str) -> Response | tuple[Response, int]:
                 display_name=display_name or publisher_domain,
                 sync_status="success" if should_auto_verify else "pending",
                 is_verified=should_auto_verify,
-                last_synced_at=datetime.now(UTC) if should_auto_verify else None,  # type: ignore[assignment]
+                last_synced_at=datetime.now(UTC) if should_auto_verify else None,
             )
             session.add(partner)
             session.commit()
@@ -212,7 +212,7 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                     partner.sync_status = "success"
                     partner.sync_error = None
                     partner.is_verified = True
-                    partner.last_synced_at = datetime.now(UTC)  # type: ignore[assignment]
+                    partner.last_synced_at = datetime.now(UTC)
                     verified_domains.append(partner.publisher_domain)
 
                 session.commit()
@@ -317,7 +317,7 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                     partner.sync_status = "success"
                     partner.sync_error = None
                     partner.is_verified = result["is_verified"]
-                    partner.last_synced_at = datetime.now(UTC)  # type: ignore[assignment]
+                    partner.last_synced_at = datetime.now(UTC)
                     synced += 1
                     if result["is_verified"]:
                         verified += 1

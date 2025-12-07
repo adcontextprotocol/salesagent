@@ -16,7 +16,7 @@ from babel import numbers as babel_numbers
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import select
 
-from src.admin.utils import require_auth, require_tenant_access  # type: ignore[attr-defined]
+from src.admin.utils import require_auth, require_tenant_access
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
@@ -296,7 +296,7 @@ def update_general(tenant_id):
 @log_admin_action(
     "update_adapter",
     extract_details=lambda r, **kw: {
-        "adapter": request.json.get("adapter") if request.is_json and request.json else request.form.get("adapter")  # type: ignore[union-attr]
+        "adapter": request.json.get("adapter") if request.is_json and request.json else request.form.get("adapter")
     },
 )
 def update_adapter(tenant_id):
@@ -690,7 +690,7 @@ def test_domain_access(tenant_id):
     return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="access"))
 
 
-def parse_form_data_to_policy_updates(form_data) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+def parse_form_data_to_policy_updates(form_data) -> dict[str, Any]:
     """Parse Flask form data into PolicyService update format.
 
     Args:

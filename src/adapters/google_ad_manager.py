@@ -158,7 +158,7 @@ class GoogleAdManager(AdServerAdapter):
                     self.client_manager, self.advertiser_id, dry_run, self.log, self
                 )
             else:
-                self.creatives_manager = None  # type: ignore[assignment]
+                self.creatives_manager = None
 
             # Inventory manager doesn't need advertiser_id
             self.inventory_manager = GAMInventoryManager(self.client_manager, tenant_id or "", dry_run)
@@ -169,7 +169,7 @@ class GoogleAdManager(AdServerAdapter):
             )
             self.workflow_manager = GAMWorkflowManager(tenant_id or "", principal, audit_logger, self.log)
         else:
-            self.client_manager = None  # type: ignore[assignment]
+            self.client_manager = None
             self.client = None
             self.log("[yellow]Running in dry-run mode - GAM client not initialized[/yellow]")
 
@@ -177,7 +177,7 @@ class GoogleAdManager(AdServerAdapter):
             self.targeting_manager = GAMTargetingManager(tenant_id or "")
 
             # Initialize orders manager in dry-run mode
-            self.orders_manager = GAMOrdersManager(None, self.advertiser_id, self.trafficker_id, dry_run=True)  # type: ignore[arg-type]
+            self.orders_manager = GAMOrdersManager(None, self.advertiser_id, self.trafficker_id, dry_run=True)
 
             # Only initialize creative manager if we have advertiser_id (required for creative operations)
             if self.advertiser_id and self.trafficker_id:
@@ -186,17 +186,17 @@ class GoogleAdManager(AdServerAdapter):
                     self.advertiser_id,
                     dry_run=True,
                     log_func=self.log,
-                    adapter=self,  # type: ignore[arg-type]
+                    adapter=self,
                 )
             else:
-                self.creatives_manager = None  # type: ignore[assignment]
+                self.creatives_manager = None
 
             # Initialize inventory manager in dry-run mode
-            self.inventory_manager = GAMInventoryManager(None, tenant_id or "", dry_run=True)  # type: ignore[arg-type]
+            self.inventory_manager = GAMInventoryManager(None, tenant_id or "", dry_run=True)
 
             # Initialize sync manager in dry-run mode
             self.sync_manager = GAMSyncManager(
-                None,  # type: ignore[arg-type]
+                None,
                 self.inventory_manager,
                 self.orders_manager,
                 tenant_id or "",
@@ -1072,7 +1072,7 @@ class GoogleAdManager(AdServerAdapter):
         # Fetch delivery data from GAM
         # Note: We'll aggregate across all line items associated with this media buy
         reporting_data = reporting_service.get_reporting_data(
-            date_range=range_type,  # type: ignore[arg-type]
+            date_range=range_type,
             advertiser_id=self.advertiser_id,
             requested_timezone="America/New_York",
         )
@@ -1248,7 +1248,7 @@ class GoogleAdManager(AdServerAdapter):
                     return UpdateMediaBuySuccess(
                         media_buy_id=media_buy_id,
                         buyer_ref=buyer_ref,
-                        affected_packages=[],  # type: ignore[arg-type]
+                        affected_packages=[],
                         implementation_date=today,
                         workflow_step_id=step_id,
                     )

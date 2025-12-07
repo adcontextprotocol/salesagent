@@ -104,12 +104,10 @@ class PropertyDiscoveryService:
             fetch_tasks = [fetch_domain_data(domain, i * 0.5) for i, domain in enumerate(publisher_domains)]
 
             # Fetch all domains in parallel
-            fetch_results_list = await asyncio.gather(  # type: ignore[var-annotated]
-                *fetch_tasks, return_exceptions=False
-            )
+            fetch_results_list = await asyncio.gather(*fetch_tasks, return_exceptions=False)
 
             # Process results
-            for domain, result in fetch_results_list:  # type: ignore[assignment]
+            for domain, result in fetch_results_list:
                 try:
                     # Check if fetch succeeded
                     if isinstance(result, Exception):
@@ -131,7 +129,7 @@ class PropertyDiscoveryService:
                             logger.error(f"❌ Error syncing {domain}: {result}", exc_info=True)
                         continue
 
-                    adagents_data: dict[str, Any] = result  # type: ignore[assignment]
+                    adagents_data: dict[str, Any] = result
 
                     # Extract all properties from top-level "properties" array
                     # Note: Some adagents.json files list properties at top-level,
@@ -217,9 +215,9 @@ class PropertyDiscoveryService:
                             stats["properties_updated"] += 1
 
                     # Batch-check existing tags
-                    stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(tags))  # type: ignore[assignment]
-                    existing_tags_objs = session.scalars(stmt).all()  # type: ignore[assignment]
-                    existing_tags: dict[str, PropertyTag] = {t.tag_id: t for t in existing_tags_objs}  # type: ignore[attr-defined,misc]
+                    stmt = select(PropertyTag).where(PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(tags))
+                    existing_tags_objs = session.scalars(stmt).all()
+                    existing_tags: dict[str, PropertyTag] = {t.tag_id: t for t in existing_tags_objs}
 
                     # Create tag records (using batched existence check)
                     for tag in tags:
@@ -313,7 +311,7 @@ class PropertyDiscoveryService:
             existing.name = property_name
             existing.identifiers = identifiers
             existing.tags = property_tags
-            existing.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+            existing.updated_at = datetime.now(UTC)
             logger.debug(f"Updated property: {property_id}")
             return False
         else:
@@ -327,9 +325,9 @@ class PropertyDiscoveryService:
                 identifiers=identifiers,
                 tags=property_tags,
                 verification_status="verified",  # From adagents.json = auto-verified
-                verification_checked_at=datetime.now(UTC),  # type: ignore[assignment]
-                created_at=datetime.now(UTC),  # type: ignore[assignment]
-                updated_at=datetime.now(UTC),  # type: ignore[assignment]
+                verification_checked_at=datetime.now(UTC),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             session.add(new_property)
             logger.debug(f"Created property: {property_id}")
@@ -363,8 +361,8 @@ class PropertyDiscoveryService:
             tag_id=tag_id,
             name=tag_name,
             description="Tag discovered from publisher adagents.json",
-            created_at=datetime.now(UTC),  # type: ignore[assignment]
-            updated_at=datetime.now(UTC),  # type: ignore[assignment]
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         session.add(new_tag)
         logger.debug(f"Created tag: {tag_id}")
@@ -428,7 +426,7 @@ class PropertyDiscoveryService:
             existing.name = property_name
             existing.identifiers = identifiers
             existing.tags = property_tags
-            existing.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+            existing.updated_at = datetime.now(UTC)
             logger.debug(f"Updated property: {property_id}")
             return False
         else:
@@ -442,9 +440,9 @@ class PropertyDiscoveryService:
                 identifiers=identifiers,
                 tags=property_tags,
                 verification_status="verified",  # From adagents.json = auto-verified
-                verification_checked_at=datetime.now(UTC),  # type: ignore[assignment]
-                created_at=datetime.now(UTC),  # type: ignore[assignment]
-                updated_at=datetime.now(UTC),  # type: ignore[assignment]
+                verification_checked_at=datetime.now(UTC),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             session.add(new_property)
             logger.debug(f"Created property: {property_id}")
@@ -478,8 +476,8 @@ class PropertyDiscoveryService:
             tag_id=tag_id,
             name=tag_name,
             description="Tag discovered from publisher adagents.json",
-            created_at=datetime.now(UTC),  # type: ignore[assignment]
-            updated_at=datetime.now(UTC),  # type: ignore[assignment]
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         session.add(new_tag)
         logger.debug(f"Created tag: {tag_id}")

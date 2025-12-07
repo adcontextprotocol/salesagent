@@ -11,7 +11,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from sqlalchemy import select
 from werkzeug.wrappers import Response
 
-from src.admin.utils import require_tenant_access  # type: ignore[attr-defined]
+from src.admin.utils import require_tenant_access
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuthorizedProperty, PropertyTag, Tenant
@@ -168,7 +168,7 @@ def _save_properties_batch(properties_data: list[dict[str, Any]], tenant_id: str
                     existing_property.verification_status = "pending"
                     existing_property.verification_checked_at = None
                     existing_property.verification_error = None
-                    existing_property.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+                    existing_property.updated_at = datetime.now(UTC)
                 else:
                     # Create new property
                     new_property = AuthorizedProperty(
@@ -651,6 +651,8 @@ def sync_properties_from_adagents(tenant_id: str) -> Response:
                 from sqlalchemy.orm import attributes
 
                 # Get or create metadata dict
+                # Note: Tenant.metadata field may not exist in model definition
+                # SQLAlchemy allows dynamic attributes; mypy doesn't recognize this
                 if not isinstance(tenant.metadata, dict):
                     tenant.metadata = {}  # type: ignore[assignment,misc]
 
@@ -924,7 +926,7 @@ def edit_property(tenant_id: str, property_id: str) -> str | Response:
             property_obj.verification_status = "pending"  # Reset verification status
             property_obj.verification_checked_at = None
             property_obj.verification_error = None
-            property_obj.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+            property_obj.updated_at = datetime.now(UTC)
 
             db_session.commit()
 

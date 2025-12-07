@@ -49,7 +49,7 @@ class MockCreativeEngine(CreativeEngineAdapter):
                         CreativeAdaptation(
                             adaptation_id=f"adapt_{creative.creative_id}_vertical",
                             format_id=FormatId(
-                                agent_url="https://creative.adcontextprotocol.org",  # type: ignore[arg-type]
+                                agent_url="https://creative.adcontextprotocol.org",
                                 id="video_vertical_9x16",
                             ),
                             name="Mobile Vertical Version",
@@ -76,7 +76,7 @@ class MockCreativeEngine(CreativeEngineAdapter):
                         CreativeAdaptation(
                             adaptation_id=f"adapt_{creative.creative_id}_6s",
                             format_id=FormatId(
-                                agent_url="https://creative.adcontextprotocol.org",  # type: ignore[arg-type]
+                                agent_url="https://creative.adcontextprotocol.org",
                                 id="video_6s_bumper",
                             ),
                             name="6-Second Bumper Version",

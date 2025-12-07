@@ -707,8 +707,8 @@ def list_inventory_profiles_api(tenant_id: str):
                     "format_summary": _get_format_summary(profile.format_ids, tenant_id),
                     "property_summary": _get_property_summary(profile.publisher_properties),
                     "product_count": product_count,
-                    "created_at": profile.created_at.isoformat() if profile.created_at else None,  # type: ignore[attr-defined]
-                    "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,  # type: ignore[attr-defined]
+                    "created_at": profile.created_at.isoformat() if profile.created_at else None,
+                    "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
                 }
             )
 

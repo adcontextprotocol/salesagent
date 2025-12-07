@@ -105,7 +105,7 @@ def url(value: str) -> AnyUrl:
     Returns:
         AnyUrl instance (auto-validated by Pydantic)
     """
-    return AnyUrl(value)  # type: ignore[return-value]  # Pydantic handles string -> AnyUrl conversion
+    return AnyUrl(value)  # Pydantic handles string -> AnyUrl conversion
 
 
 class CreativeStatusEnum(Enum):
@@ -359,6 +359,7 @@ class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess):
     # Override affected_packages to use our extended AffectedPackage type
     # This allows us to include internal tracking fields (changes_applied, buyer_package_ref)
     # while still being AdCP-compliant (those fields are excluded via exclude=True)
+    # Pydantic allows subclass override at runtime but mypy doesn't recognize this
     affected_packages: list[AffectedPackage] | None = None  # type: ignore[assignment]
 
     # Internal fields (excluded from AdCP responses)
@@ -786,6 +787,7 @@ def convert_format_ids_to_formats(format_ids: list[str], tenant_id: str | None =
             formats.append(format_obj)
         else:
             # For unknown format IDs, create a minimal Format object with FormatId
+            # mypy doesn't recognize Pydantic model kwargs pattern for library types
             formats.append(
                 Format(  # type: ignore[call-arg]
                     format_id=FormatId(agent_url=url("https://creative.adcontextprotocol.org"), id=format_id),
@@ -2346,9 +2348,9 @@ def create_list_creatives_request(
         # Merge with existing pagination if provided
         if pagination:
             if isinstance(pagination, dict):
-                pagination_dict = {**pagination, **pagination_dict}  # type: ignore[typeddict-unknown-key]
+                pagination_dict = {**pagination, **pagination_dict}
             else:
-                pagination_dict = {**pagination.model_dump(), **pagination_dict}  # type: ignore[typeddict-unknown-key]
+                pagination_dict = {**pagination.model_dump(), **pagination_dict}
 
         structured_pagination = LibraryPagination(**pagination_dict)
     else:
@@ -2371,11 +2373,11 @@ def create_list_creatives_request(
         # Merge with existing sort if provided
         if sort:
             if isinstance(sort, dict):
-                sort_dict = {**sort, **sort_dict}  # type: ignore[dict-item]
+                sort_dict = {**sort, **sort_dict}
             else:
-                sort_dict = {**sort.model_dump(), **sort_dict}  # type: ignore[dict-item]
+                sort_dict = {**sort.model_dump(), **sort_dict}
 
-        structured_sort = LibrarySort(**sort_dict)  # type: ignore[arg-type]
+        structured_sort = LibrarySort(**sort_dict)
     else:
         structured_sort = None
 
@@ -2386,9 +2388,9 @@ def create_list_creatives_request(
     if fields:
         if isinstance(fields, list) and fields and isinstance(fields[0], str):
             # Convert string field names to FieldModel enum values
-            converted_fields = [LibraryFieldModel[str(f)] for f in fields if isinstance(f, str)]  # type: ignore[arg-type]
+            converted_fields = [LibraryFieldModel[str(f)] for f in fields if isinstance(f, str)]
         else:
-            converted_fields = fields  # type: ignore[assignment]
+            converted_fields = fields
 
     return ListCreativesRequest(
         filters=structured_filters,
@@ -2806,6 +2808,8 @@ class PackageRequest(LibraryPackageRequest):
     )
 
     impressions: float | None = Field(None, description="Legacy: Impression goal (use budget instead)", exclude=True)
+    # Override creatives type: parent expects CreativeAsset, we use our extended Creative
+    # Pydantic validates at runtime but mypy sees type mismatch
     creatives: list["Creative"] | None = Field(  # type: ignore[assignment]
         None,
         description="Full creative objects to upload and assign at creation time (alternative to creative_ids)",

@@ -210,7 +210,7 @@ class FormatMetricsAggregationService:
                 existing.p75_cpm = Decimal(str(p75_cpm)) if p75_cpm is not None else None
                 existing.p90_cpm = Decimal(str(p90_cpm)) if p90_cpm is not None else None
                 existing.line_item_count = len(line_item_cpms)
-                existing.last_updated = datetime.now()  # type: ignore[assignment]
+                existing.last_updated = datetime.now()
                 rows_updated += 1
             else:
                 # Create new record

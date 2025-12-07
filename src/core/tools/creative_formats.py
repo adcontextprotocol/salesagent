@@ -242,7 +242,7 @@ def list_creative_formats(
         if format_ids:
             # For MCP tools, format_ids are simple strings, but FormatId requires agent_url
             # Use empty string as placeholder since we'll filter by ID only
-            format_ids_objects = [FormatId(id=fid, agent_url="") for fid in format_ids]  # type: ignore[arg-type]
+            format_ids_objects = [FormatId(id=fid, agent_url="") for fid in format_ids]
 
         # MCP tool parameters are primitives (str, list[str], dict) that Pydantic
         # coerces to proper types (enums, typed lists, ContextObject) at runtime

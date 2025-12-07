@@ -126,7 +126,7 @@ def ensure_user_in_tenant(email: str, tenant_id: str, role: str = "admin", name:
             if not user.is_active:
                 user.is_active = True
                 logger.info(f"Reactivated user {email} in tenant {tenant_id}")
-            user.last_login = datetime.now(UTC)  # type: ignore[assignment]
+            user.last_login = datetime.now(UTC)
             session.commit()
             return user
 

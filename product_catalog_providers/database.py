@@ -73,4 +73,4 @@ class DatabaseProductCatalog(ProductCatalogProvider):
                     raise ValueError(error_msg) from e
 
             # Return library Product list - compatible with our extended Product at runtime
-            return loaded_products  # type: ignore[return-value]
+            return loaded_products

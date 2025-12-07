@@ -9,6 +9,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.server.context import Context as FastMCPContext
+from fastmcp.tools.tool import FunctionTool
 from pydantic import BaseModel
 
 from src.core.mcp_context_wrapper import MCPContextWrapper
@@ -34,18 +35,18 @@ class EnhancedMCPServer(FastMCP):
         self.context_wrapper = MCPContextWrapper()
         self._original_tool_decorator = super().tool
 
-    def tool(self, func: Callable | None = None, **kwargs) -> Callable:  # type: ignore[override]
+    def tool(self, func: Callable | None = None, **kwargs) -> Callable[[Callable], FunctionTool] | FunctionTool:
         """Enhanced tool decorator that adds context management.
 
         This decorator wraps the standard FastMCP tool decorator to add
         automatic context management.
         """
 
-        def decorator(f: Callable) -> Callable:
+        def decorator(f: Callable) -> FunctionTool:
             # First wrap with context management
             wrapped = self.context_wrapper.wrap_tool(f)
             # Then apply the FastMCP tool decorator
-            return self._original_tool_decorator(wrapped, **kwargs)  # type: ignore[return-value]
+            return self._original_tool_decorator(wrapped, **kwargs)
 
         if func is None:
             return decorator
@@ -58,8 +59,8 @@ class EnhancedMCPServer(FastMCP):
         Note: This method may not be called by FastMCP in all scenarios.
         It's here for potential future protocol-level interception.
         """
-        # Call the original handler if it exists
-        result = await super()._handle_tool_call(tool_name, arguments, context)  # type: ignore[misc]
+        # Call parent's _handle_tool_call if it exists (FastMCP implementation detail)
+        result = await super()._handle_tool_call(tool_name, arguments, context)
 
         # Extract context_id from request headers
         headers = context.meta.get("headers", {}) if hasattr(context, "meta") else {}
@@ -73,9 +74,10 @@ class EnhancedMCPServer(FastMCP):
         if context_id and isinstance(result, BaseModel):
             # For BaseModel responses, we need to handle this at serialization
             # Store context_id as metadata that the transport can use
+            # Note: Using setattr to add dynamic metadata to Pydantic models
             if not hasattr(result, "__mcp_metadata__"):
-                result.__mcp_metadata__ = {}  # type: ignore[attr-defined]
-            result.__mcp_metadata__["context_id"] = context_id  # type: ignore[attr-defined]
+                result.__mcp_metadata__ = {}
+            result.__mcp_metadata__["context_id"] = context_id
 
         return result
 

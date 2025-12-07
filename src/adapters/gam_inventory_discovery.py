@@ -765,7 +765,7 @@ class GAMInventoryDiscovery:
                 )
 
         # Sort by score descending (score is guaranteed to be int)
-        suggestions.sort(key=lambda x: x["score"], reverse=True)  # type: ignore[arg-type]
+        suggestions.sort(key=lambda x: x["score"], reverse=True)
 
         return suggestions
 

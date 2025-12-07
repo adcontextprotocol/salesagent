@@ -199,7 +199,7 @@ class DeliveryWebhookScheduler:
                 request_timestamp=datetime.now(UTC),
             )
 
-            req = GetMediaBuyDeliveryRequest(  # type: ignore[call-arg]
+            req = GetMediaBuyDeliveryRequest(
                 media_buy_ids=[media_buy.media_buy_id],
                 start_date=start_date_obj.strftime("%Y-%m-%d"),
                 end_date=end_date_obj.strftime("%Y-%m-%d"),

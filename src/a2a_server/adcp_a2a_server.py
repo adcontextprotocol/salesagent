@@ -938,7 +938,7 @@ class AdCPRequestHandler(RequestHandler):
         task = await self.on_message_send(params, context)
 
         # Yield a single event with the complete task
-        yield Event(type="task_update", data=task.model_dump())  # type: ignore[operator]
+        yield Event(type="task_update", data=task.model_dump())
 
     async def on_get_task(
         self,
@@ -1126,7 +1126,7 @@ class AdCPRequestHandler(RequestHandler):
                     existing_config.authentication_token = auth_token_value
                     existing_config.validation_token = validation_token
                     existing_config.session_id = session_id
-                    existing_config.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+                    existing_config.updated_at = datetime.now(UTC)
                     existing_config.is_active = True
                 else:
                     # Create new config
@@ -1214,7 +1214,7 @@ class AdCPRequestHandler(RequestHandler):
                                 else None
                             ),
                             "token": config.validation_token,
-                            "created_at": config.created_at.isoformat() if config.created_at else None,  # type: ignore[attr-defined]
+                            "created_at": config.created_at.isoformat() if config.created_at else None,
                         }
                     )
 
@@ -1270,7 +1270,7 @@ class AdCPRequestHandler(RequestHandler):
 
                 # Soft delete by marking as inactive
                 config.is_active = False
-                config.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+                config.updated_at = datetime.now(UTC)
                 db.commit()
 
                 logger.info(f"Deleted push notification config: {config_id} for tenant {tool_context.tenant_id}")
@@ -1333,8 +1333,8 @@ class AdCPRequestHandler(RequestHandler):
             "get_signals": self._handle_get_signals_skill,
             "search_signals": self._handle_search_signals_skill,
             # Legacy skill names (for backward compatibility)
-            "get_pricing": lambda params, token: self._get_pricing(),  # type: ignore[dict-item]
-            "get_targeting": lambda params, token: self._get_targeting(),  # type: ignore[dict-item]
+            "get_pricing": lambda params, token: self._get_pricing(),
+            "get_targeting": lambda params, token: self._get_targeting(),
         }
 
         if skill_name not in skill_handlers:
@@ -1347,10 +1347,10 @@ class AdCPRequestHandler(RequestHandler):
             handler = skill_handlers[skill_name]
             if skill_name in ["get_pricing", "get_targeting"]:
                 # These are simple handlers without async
-                return handler(parameters, auth_token)  # type: ignore[return-value,arg-type]
+                return handler(parameters, auth_token)
             else:
                 # These are async handlers that call core tools
-                return await handler(parameters, auth_token)  # type: ignore[misc,arg-type]
+                return await handler(parameters, auth_token)
         except ServerError:
             # Re-raise ServerError as-is (already properly formatted)
             raise
@@ -1419,7 +1419,7 @@ class AdCPRequestHandler(RequestHandler):
                 adcp_version=adcp_version,
                 strategy_id=strategy_id,
                 context=context,
-                ctx=self._tool_context_to_mcp_context(tool_context),  # type: ignore[arg-type]
+                ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
             # Convert response to dict
@@ -1828,9 +1828,7 @@ class AdCPRequestHandler(RequestHandler):
             )
 
             # Call core function with request
-            response = core_list_creative_formats_tool(
-                req=req, ctx=self._tool_context_to_mcp_context(tool_context)  # type: ignore[arg-type]
-            )
+            response = core_list_creative_formats_tool(req=req, ctx=self._tool_context_to_mcp_context(tool_context))
 
             # Convert response to dict
             if isinstance(response, dict):
@@ -1869,7 +1867,7 @@ class AdCPRequestHandler(RequestHandler):
             else:
                 # No auth token - create minimal Context-like object with headers for tenant detection
                 # This allows tenant detection via Apx-Incoming-Host, Host, or x-adcp-tenant headers
-                tool_context = MinimalContext.from_request_context()  # type: ignore[assignment]
+                tool_context = MinimalContext.from_request_context()
 
             # Map A2A parameters to ListAuthorizedPropertiesRequest
             from adcp import ListAuthorizedPropertiesRequest
@@ -1886,7 +1884,7 @@ class AdCPRequestHandler(RequestHandler):
             # Call core function directly
             # Context can be None for unauthenticated calls - tenant will be detected from headers
             # MinimalContext is not compatible with ToolContext type, but works at runtime
-            response = core_list_authorized_properties_tool(req=request, ctx=tool_context)  # type: ignore[arg-type]
+            response = core_list_authorized_properties_tool(req=request, ctx=tool_context)
 
             # Return spec-compliant response (no extra fields)
             # Per AdCP v2.4 spec: only publisher_domains, primary_channels, primary_countries,

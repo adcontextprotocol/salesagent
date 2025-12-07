@@ -165,8 +165,8 @@ def _get_media_buy_delivery_impl(
                 simulation_datetime = testing_ctx.mock_time
             elif testing_ctx.jump_to_event:
                 # Calculate time based on event
-                buy_start_date: date = buy.start_date  # type: ignore[assignment]
-                buy_end_date: date = buy.end_date  # type: ignore[assignment]
+                buy_start_date: date = buy.start_date
+                buy_end_date: date = buy.end_date
                 simulation_datetime = TimeSimulator.jump_to_event_time(
                     testing_ctx.jump_to_event,
                     datetime.combine(buy_start_date, datetime.min.time()),
@@ -174,8 +174,8 @@ def _get_media_buy_delivery_impl(
                 )
 
             # Determine status
-            buy_start_date_status: date = buy.start_date  # type: ignore[assignment]
-            buy_end_date_status: date = buy.end_date  # type: ignore[assignment]
+            buy_start_date_status: date = buy.start_date
+            buy_end_date_status: date = buy.end_date
             if simulation_datetime.date() < buy_start_date_status:
                 status = "ready"
             elif simulation_datetime.date() > buy_end_date_status:
@@ -237,8 +237,8 @@ def _get_media_buy_delivery_impl(
             else:
                 # Use simulation for testing
                 # Note: buy.start_date and buy.end_date are Python date objects
-                buy_start_date_sim: date = buy.start_date  # type: ignore[assignment]
-                buy_end_date_sim: date = buy.end_date  # type: ignore[assignment]
+                buy_start_date_sim: date = buy.start_date
+                buy_end_date_sim: date = buy.end_date
                 start_dt = datetime.combine(buy_start_date_sim, datetime.min.time())
                 end_dt_campaign = datetime.combine(buy_end_date_sim, datetime.min.time())
                 progress = TimeSimulator.calculate_campaign_progress(start_dt, end_dt_campaign, simulation_datetime)
@@ -335,7 +335,7 @@ def _get_media_buy_delivery_impl(
             delivery_data = MediaBuyDeliveryData(
                 media_buy_id=media_buy_id,
                 buyer_ref=buyer_ref,
-                status=status_literal,  # type: ignore[arg-type]
+                status=status_literal,
                 pricing_model=PricingModel(
                     "cpm"
                 ),  # TODO: @yusuf - remove this from adcp protocol. MediaBuy itself doesn't have pricing model. It is in package level
@@ -385,8 +385,8 @@ def _get_media_buy_delivery_impl(
         if target_media_buys:
             first_buy = target_media_buys[0][1]
             # Note: first_buy.start_date and first_buy.end_date are Python date objects
-            first_buy_start: date = first_buy.start_date  # type: ignore[assignment]
-            first_buy_end: date = first_buy.end_date  # type: ignore[assignment]
+            first_buy_start: date = first_buy.start_date
+            first_buy_end: date = first_buy.end_date
             campaign_info = {
                 "start_date": datetime.combine(first_buy_start, datetime.min.time()),
                 "end_date": datetime.combine(first_buy_end, datetime.min.time()),
@@ -607,14 +607,14 @@ def _get_target_media_buys(
             # Note: buy.start_time/end_time are Python datetime objects (not SQLAlchemy DateTime type)
             # Note: buy.start_date and buy.end_date are Python date objects (not SQLAlchemy Date type)
             if buy.start_time:
-                start_compare: date = buy.start_time.date()  # type: ignore[union-attr,attr-defined]
+                start_compare: date = buy.start_time.date()
             else:
-                start_compare = buy.start_date  # type: ignore[assignment]
+                start_compare = buy.start_date
 
             if buy.end_time:
-                end_compare: date = buy.end_time.date()  # type: ignore[union-attr,attr-defined]
+                end_compare: date = buy.end_time.date()
             else:
-                end_compare = buy.end_date  # type: ignore[assignment]
+                end_compare = buy.end_date
 
             if reference_date < start_compare:
                 current_status = "ready"

@@ -27,7 +27,7 @@ def get_current_error_count() -> tuple[int, str]:
             ["uv", "run", "mypy", "src/", "--config-file=mypy.ini"],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=120,
         )
 
         # Parse "Found X errors in Y files"
@@ -46,7 +46,7 @@ def get_current_error_count() -> tuple[int, str]:
         return -1, output
 
     except subprocess.TimeoutExpired:
-        print("❌ mypy timed out after 30 seconds")
+        print("❌ mypy timed out after 120 seconds")
         return -1, ""
     except Exception as e:
         print(f"❌ Error running mypy: {e}")

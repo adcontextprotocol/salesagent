@@ -208,7 +208,7 @@ def _mark_approval_complete(workflow_step_id: str, order_id: str, attempts: int,
             workflow_step = db.scalars(stmt).first()
             if workflow_step:
                 workflow_step.status = "completed"
-                workflow_step.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+                workflow_step.completed_at = datetime.now(UTC)
 
                 # Update transaction details
                 if not workflow_step.transaction_details:
@@ -245,7 +245,7 @@ def _mark_approval_failed(workflow_step_id: str, error_message: str) -> None:
             workflow_step = db.scalars(stmt).first()
             if workflow_step:
                 workflow_step.status = "failed"
-                workflow_step.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+                workflow_step.completed_at = datetime.now(UTC)
                 workflow_step.error_message = error_message
 
                 # Update transaction details

@@ -270,7 +270,7 @@ def _sync_creatives_impl(
                         # Update existing creative (respects patch vs full upsert)
                         # Update updated_at timestamp
                         now = datetime.now(UTC)
-                        existing_creative.updated_at = now  # type: ignore[assignment]
+                        existing_creative.updated_at = now
 
                         # Track changes for result
                         changes = []
@@ -1904,11 +1904,11 @@ def _list_creatives_impl(
         # Apply sorting
         sort_column: InstrumentedAttribute
         if req.sort_by == "name":
-            sort_column = DBCreative.name  # type: ignore[assignment]
+            sort_column = DBCreative.name
         elif req.sort_by == "status":
-            sort_column = DBCreative.status  # type: ignore[assignment]
+            sort_column = DBCreative.status
         else:  # Default to created_date
-            sort_column = DBCreative.created_at  # type: ignore[assignment]
+            sort_column = DBCreative.created_at
 
         if req.sort_order == "asc":
             stmt = stmt.order_by(sort_column.asc())

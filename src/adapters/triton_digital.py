@@ -316,7 +316,7 @@ class TritonDigital(AdServerAdapter):
         return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",
             media_buy_id=media_buy_id,
-            creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),  # type: ignore[arg-type]
+            creative_deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat(),
             packages=package_responses,
         )
 

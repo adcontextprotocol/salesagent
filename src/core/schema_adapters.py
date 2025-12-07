@@ -20,7 +20,9 @@ Benefits:
 from typing import Any
 
 from adcp import GetProductsRequest as _GeneratedGetProductsRequest
+from adcp.types.generated_poc.core.brand_manifest import BrandManifest
 from adcp.types.generated_poc.core.context import ContextObject
+from adcp.types.generated_poc.core.product_filters import ProductFilters
 from pydantic import BaseModel, Field, model_validator
 
 from src.core.schemas import AdCPBaseModel
@@ -107,33 +109,37 @@ class GetProductsRequest(BaseModel):
                 ]
 
         # Convert brand_manifest dict to proper BrandManifest object for adcp 2.5.0
-        brand_manifest_converted: dict[str, Any] | str | None = None
+        brand_manifest_obj: BrandManifest | str | None = None
         if self.brand_manifest:
             if isinstance(self.brand_manifest, dict):
                 # Ensure required 'name' field exists (adcp 2.5.0 requirement)
-                if "name" not in self.brand_manifest:
+                brand_manifest_dict = self.brand_manifest.copy()
+                if "name" not in brand_manifest_dict:
                     # If only 'url' provided, use domain as name
-                    if "url" in self.brand_manifest:
+                    if "url" in brand_manifest_dict:
                         from urllib.parse import urlparse
 
-                        url_str = self.brand_manifest["url"]
+                        url_str = brand_manifest_dict["url"]
                         domain = urlparse(url_str).netloc or url_str
-                        self.brand_manifest["name"] = domain
+                        brand_manifest_dict["name"] = domain
                     else:
                         # Fallback: use a placeholder name
-                        self.brand_manifest["name"] = "Brand"
+                        brand_manifest_dict["name"] = "Brand"
 
-                brand_manifest_converted = self.brand_manifest
+                brand_manifest_obj = BrandManifest(**brand_manifest_dict)
             else:
                 # String brand_manifest (URL or name)
-                brand_manifest_converted = self.brand_manifest
+                brand_manifest_obj = self.brand_manifest
+
+        # Convert filters dict to ProductFilters object
+        filters_obj = ProductFilters(**filters_dict) if filters_dict else None
 
         # Create generated schema instance (only fields that exist in AdCP spec)
         # Note: promoted_offering, min_exposures, strategy_id, webhook_url are adapter-only fields
         return _GeneratedGetProductsRequest(
-            brand_manifest=brand_manifest_converted,  # type: ignore[arg-type]
+            brand_manifest=brand_manifest_obj,
             brief=self.brief or None,
-            filters=filters_dict,  # type: ignore[arg-type]
+            filters=filters_obj,
         )
 
     @classmethod
