@@ -83,16 +83,6 @@ def _list_creative_formats_impl(
     if req.type:
         formats = [f for f in formats if f.type == req.type]
 
-    if req.standard_only:
-        formats = [f for f in formats if f.is_standard]
-
-    if req.category:
-        # Category maps to is_standard: "standard" -> True, "custom" -> False
-        if req.category == "standard":
-            formats = [f for f in formats if f.is_standard]
-        elif req.category == "custom":
-            formats = [f for f in formats if not f.is_standard]
-
     if req.format_ids:
         # Filter to only the specified format IDs
         # Extract the 'id' field from each FormatId object
@@ -213,8 +203,6 @@ def _list_creative_formats_impl(
 
 def list_creative_formats(
     type: str | None = None,
-    standard_only: bool | None = None,
-    category: str | None = None,
     format_ids: list[str] | None = None,
     is_responsive: bool | None = None,
     name_search: str | None = None,
@@ -223,7 +211,6 @@ def list_creative_formats(
     max_width: int | None = None,
     min_height: int | None = None,
     max_height: int | None = None,
-    webhook_url: str | None = None,
     context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
@@ -233,8 +220,6 @@ def list_creative_formats(
 
     Args:
         type: Filter by format type (audio, video, display)
-        standard_only: Only return IAB standard formats
-        category: Filter by format category (standard, custom)
         format_ids: Filter by specific format IDs
         is_responsive: Filter for responsive formats (True/False)
         name_search: Search formats by name (case-insensitive partial match)
@@ -243,7 +228,6 @@ def list_creative_formats(
         max_width: Maximum format width in pixels
         min_height: Minimum format height in pixels
         max_height: Maximum format height in pixels
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
         context: Application-level context per AdCP spec
         ctx: FastMCP context (automatically provided)
 
@@ -264,8 +248,6 @@ def list_creative_formats(
         # coerces to proper types (enums, typed lists, ContextObject) at runtime
         req = ListCreativeFormatsRequest(
             type=type,  # type: ignore[arg-type]
-            standard_only=standard_only,
-            category=category,
             format_ids=format_ids_objects,  # type: ignore[arg-type]
             is_responsive=is_responsive,
             name_search=name_search,

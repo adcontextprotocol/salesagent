@@ -27,8 +27,6 @@ def test_list_creative_formats_request_minimal():
     req = ListCreativeFormatsRequest()
     assert req.adcp_version == "1.0.0"
     assert req.type is None
-    assert req.standard_only is None
-    assert req.category is None
     assert req.format_ids is None
 
 
@@ -45,18 +43,22 @@ def test_list_creative_formats_request_with_all_params():
     req = ListCreativeFormatsRequest(
         adcp_version="1.5.0",
         type="video",
-        standard_only=True,
-        category="standard",
         format_ids=format_ids,
+        is_responsive=True,
+        name_search="video",
+        min_width=640,
+        max_height=480,
     )
     assert req.adcp_version == "1.5.0"
     # Library type uses enum, check both enum and value
     assert req.type == FormatCategory.video or req.type.value == "video"
-    assert req.standard_only is True
-    assert req.category == "standard"
     assert len(req.format_ids) == 2
     assert req.format_ids[0].id == "video_16x9"
     assert req.format_ids[1].id == "video_4x3"
+    assert req.is_responsive is True
+    assert req.name_search == "video"
+    assert req.min_width == 640
+    assert req.max_height == 480
 
 
 def test_filtering_by_type(integration_db, sample_tenant):
@@ -120,67 +122,6 @@ def test_filtering_by_type(integration_db, sample_tenant):
             assert all(
                 f.type == FormatCategory.video or f.type == "video" for f in formats
             ), "All formats should be video type"
-        # Note: Test may return empty list if mock registry not working - this is OK for integration test
-
-
-def test_filtering_by_standard_only(integration_db, sample_tenant):
-    """Test that standard_only filter works correctly."""
-    from src.core.schemas import FormatId
-
-    # Create real ToolContext
-    context = ToolContext(
-        context_id="test",
-        tenant_id=sample_tenant["tenant_id"],
-        principal_id="test_principal",
-        tool_name="list_creative_formats",
-        request_timestamp=datetime.now(UTC),
-        metadata={},
-        testing_context={},
-    )
-
-    # Mock format data
-    mock_formats = [
-        Format(
-            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-            type=FormatCategory.display,
-            name="Display 300x250",
-            is_standard=True,
-        ),
-        Format(
-            format_id=FormatId(agent_url="https://custom.example.com", id="custom_banner"),
-            type=FormatCategory.display,
-            name="Custom Banner",
-            is_standard=False,
-        ),
-    ]
-
-    # Mock tenant resolution and format registry
-    with (
-        patch("src.core.main.get_current_tenant", return_value=sample_tenant),
-        patch("src.core.creative_agent_registry.get_creative_agent_registry") as mock_registry,
-    ):
-        # Configure mock registry to return mock formats
-
-        async def mock_list_formats(tenant_id):
-            return mock_formats
-
-        mock_registry.return_value.list_all_formats = mock_list_formats
-
-        # Test filtering by standard_only
-        req = ListCreativeFormatsRequest(standard_only=True)
-        response = list_creative_formats_raw(req, context)
-
-        # Handle both dict and object responses
-        if isinstance(response, dict):
-            formats = response.get("formats", [])
-            if formats and isinstance(formats[0], dict):
-                formats = [Format(**f) for f in formats]
-        else:
-            formats = response.formats
-
-        # All returned formats should be standard
-        if len(formats) > 0:
-            assert all(f.is_standard for f in formats), "All formats should be standard"
         # Note: Test may return empty list if mock registry not working - this is OK for integration test
 
 
@@ -261,6 +202,8 @@ def test_filtering_by_format_ids(integration_db, sample_tenant):
 
 def test_filtering_combined(integration_db, sample_tenant):
     """Test that multiple filters work together."""
+    from adcp.types.generated_poc.core.format import Dimensions, Renders
+
     # Create real ToolContext
     context = ToolContext(
         context_id="test",
@@ -272,25 +215,28 @@ def test_filtering_combined(integration_db, sample_tenant):
         testing_context={},
     )
 
-    # Mock format data
+    # Mock format data with dimensions for filter testing
     mock_formats = [
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             type=FormatCategory.display,
             name="Display 300x250",
             is_standard=True,
+            renders=[Renders(role="primary", dimensions=Dimensions(width=300, height=250))],
         ),
         Format(
-            format_id=FormatId(agent_url="https://custom.example.com", id="display_custom"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_728x90"),
             type=FormatCategory.display,
-            name="Display Custom",
-            is_standard=False,
+            name="Display 728x90",
+            is_standard=True,
+            renders=[Renders(role="primary", dimensions=Dimensions(width=728, height=90))],
         ),
         Format(
             format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_16x9"),
             type=FormatCategory.video,
             name="Video 16:9",
             is_standard=True,
+            renders=[Renders(role="primary", dimensions=Dimensions(width=640, height=360))],
         ),
     ]
 
@@ -306,8 +252,8 @@ def test_filtering_combined(integration_db, sample_tenant):
 
         mock_registry.return_value.list_all_formats = mock_list_formats
 
-        # Test combining type and standard_only filters
-        req = ListCreativeFormatsRequest(type="display", standard_only=True)
+        # Test combining type and dimension filters
+        req = ListCreativeFormatsRequest(type="display", min_width=500)
         response = list_creative_formats_raw(req, context)
 
         # Handle both dict and object responses
@@ -318,12 +264,13 @@ def test_filtering_combined(integration_db, sample_tenant):
         else:
             formats = response.formats
 
-        # All returned formats should match both filters
+        # Should return only display formats with width >= 500 (Display 728x90)
         if len(formats) > 0:
             assert all(
-                (f.type == FormatCategory.display or f.type == "display") and f.is_standard for f in formats
-            ), "All formats should be display AND standard"
-        # Note: Test may return empty list if mock registry not working - this is OK for integration test
+                (f.type == FormatCategory.display or f.type == "display") for f in formats
+            ), "All formats should be display type"
+            assert len(formats) == 1, "Should only return Display 728x90"
+            assert formats[0].name == "Display 728x90"
 
 
 def test_filtering_by_is_responsive(integration_db, sample_tenant):
@@ -724,26 +671,26 @@ def test_new_filters_combined_with_existing(integration_db, sample_tenant):
         assert len(formats) == 1, "Should return display formats with width >= 500"
         assert formats[0].name == "Display 728x90"
 
-        # Combine standard_only with name_search
-        req = ListCreativeFormatsRequest(standard_only=True, name_search="display")
+        # Combine name_search with dimension filter
+        req = ListCreativeFormatsRequest(name_search="display", max_width=400)
         response = list_creative_formats_raw(req, context)
         formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
 
-        assert len(formats) == 2, "Should return standard formats with 'display' in name"
+        assert len(formats) == 2, "Should return formats with 'display' in name and width <= 400"
         names = [f.name for f in formats]
         assert "Display 300x250" in names
-        assert "Display 728x90" in names
-        assert "Custom Display" not in names  # Not standard
+        assert "Custom Display" in names
 
-        # Combine type, standard_only, asset_types, and dimensions
+        # Combine type, asset_types, and dimensions
         req = ListCreativeFormatsRequest(
             type="display",
-            standard_only=True,
             asset_types=["image"],
             max_width=400,
         )
         response = list_creative_formats_raw(req, context)
         formats = response.formats if hasattr(response, "formats") else response.get("formats", [])
 
-        assert len(formats) == 1, "Should return only Display 300x250"
-        assert formats[0].name == "Display 300x250"
+        assert len(formats) == 2, "Should return display formats with image and width <= 400"
+        names = [f.name for f in formats]
+        assert "Display 300x250" in names
+        assert "Custom Display" in names
