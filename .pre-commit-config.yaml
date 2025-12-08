@@ -349,5 +349,9 @@ repos:
           - types-requests
           - types-python-dateutil
           - types-pytz
+          - types-Markdown
+          - adcp
+          - fastmcp
+          - alembic
         files: '^src/'
         exclude: '^src/adapters/google_ad_manager_original\.py$'
