@@ -809,7 +809,7 @@ class MockAdServer(AdServerAdapter):
         return CreateMediaBuySuccess(
             buyer_ref=request.buyer_ref or "unknown",  # Required field per AdCP spec
             media_buy_id=media_buy_id,
-            creative_deadline=datetime.now(UTC) + timedelta(days=2),  # type: ignore[arg-type]
+            creative_deadline=datetime.now(UTC) + timedelta(days=2),
             packages=response_packages,
         )
 
@@ -1297,7 +1297,7 @@ class MockAdServer(AdServerAdapter):
         return UpdateMediaBuySuccess(
             media_buy_id=media_buy_id,
             buyer_ref=buyer_ref,
-            affected_packages=[],  # type: ignore[arg-type]
+            affected_packages=[],
             implementation_date=today,
         )
 

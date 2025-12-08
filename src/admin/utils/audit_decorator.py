@@ -204,7 +204,7 @@ def log_admin_action(
 
                         if extract_details and callable(extract_details):
                             try:
-                                extracted = extract_details(result, **kwargs)  # type: ignore[call-arg]
+                                extracted = extract_details(result, **kwargs)
                                 if isinstance(extracted, dict):
                                     details.update(extracted)
                             except Exception as e:

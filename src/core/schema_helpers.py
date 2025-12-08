@@ -13,7 +13,9 @@ Philosophy:
 from typing import Any
 
 from adcp import GetProductsRequest, GetProductsResponse, Product
+from adcp.types.generated_poc.core.brand_manifest import BrandManifest
 from adcp.types.generated_poc.core.context import ContextObject
+from adcp.types.generated_poc.core.product_filters import ProductFilters
 
 
 def to_context_object(context: dict[str, Any] | ContextObject | None) -> ContextObject | None:
@@ -73,12 +75,15 @@ def create_get_products_request(
                 # Fallback: use a placeholder name
                 brand_manifest_adapted = {**brand_manifest, "name": "Brand"}
 
-    # Create GetProductsRequest directly - adcp library handles validation
-    # Type ignores: dict inputs are validated by Pydantic at runtime
+    # Create GetProductsRequest with proper types
+    # Convert dict inputs to proper Pydantic models
+    brand_manifest_obj = BrandManifest(**brand_manifest_adapted) if brand_manifest_adapted else None
+    filters_obj = ProductFilters(**filters) if filters else None
+
     return GetProductsRequest(
-        brand_manifest=brand_manifest_adapted,  # type: ignore[arg-type]
+        brand_manifest=brand_manifest_obj,
         brief=brief or None,
-        filters=filters,  # type: ignore[arg-type]
+        filters=filters_obj,
         context=to_context_object(context),
     )
 
@@ -94,14 +99,22 @@ def create_get_products_response(
     so this helper mainly just provides defaults and type conversion.
 
     Args:
-        products: List of matching products
+        products: List of matching products (Product objects or dicts)
         errors: List of errors (if any)
 
     Returns:
         GetProductsResponse
     """
+    # Convert dict products to Product objects
+    product_list: list[Product] = []
+    for p in products:
+        if isinstance(p, dict):
+            product_list.append(Product(**p))
+        else:
+            product_list.append(p)
+
     return GetProductsResponse(
-        products=products,  # type: ignore[arg-type]
+        products=product_list,
         errors=errors,
         context=to_context_object(request_context),
     )

@@ -137,9 +137,9 @@ class PropertyVerificationService:
             error: Error message (if any)
         """
         property_obj.verification_status = status
-        property_obj.verification_checked_at = datetime.now(UTC)  # type: ignore[assignment]
+        property_obj.verification_checked_at = datetime.now(UTC)
         property_obj.verification_error = error
-        property_obj.updated_at = datetime.now(UTC)  # type: ignore[assignment]
+        property_obj.updated_at = datetime.now(UTC)
         session.commit()
 
     def verify_all_properties(self, tenant_id: str, agent_url: str) -> dict[str, int | list[str]]:
@@ -152,7 +152,11 @@ class PropertyVerificationService:
         Returns:
             Dictionary with verification results
         """
-        results: dict[str, int | list[str]] = {"total_checked": 0, "verified": 0, "failed": 0, "errors": []}
+        # Use separate counters for type safety
+        total_checked = 0
+        verified = 0
+        failed = 0
+        errors: list[str] = []
 
         try:
             with get_db_session() as session:
@@ -162,27 +166,34 @@ class PropertyVerificationService:
                 )
                 pending_properties = session.scalars(stmt).all()
 
-                results["total_checked"] = len(pending_properties)
+                total_checked = len(pending_properties)
 
                 for property_obj in pending_properties:
                     try:
                         is_verified, error = self.verify_property(tenant_id, property_obj.property_id, agent_url)
 
                         if is_verified:
-                            results["verified"] = results["verified"] + 1  # type: ignore[operator]
+                            verified += 1
                         else:
-                            results["failed"] = results["failed"] + 1  # type: ignore[operator]
+                            failed += 1
                             if error:
-                                results["errors"].append(f"{property_obj.name}: {error}")  # type: ignore[union-attr]
+                                errors.append(f"{property_obj.name}: {error}")
 
                     except Exception as e:
-                        results["failed"] = results["failed"] + 1  # type: ignore[operator]
-                        results["errors"].append(f"{property_obj.name}: {str(e)}")  # type: ignore[union-attr]
+                        failed += 1
+                        errors.append(f"{property_obj.name}: {str(e)}")
                         logger.error(f"Error verifying property {property_obj.property_id}: {e}")
 
         except Exception as e:
             logger.error(f"Error in bulk verification: {e}")
-            results["errors"].append(f"Bulk verification error: {str(e)}")  # type: ignore[union-attr]
+            errors.append(f"Bulk verification error: {str(e)}")
+
+        results: dict[str, int | list[str]] = {
+            "total_checked": total_checked,
+            "verified": verified,
+            "failed": failed,
+            "errors": errors,
+        }
 
         return results
 

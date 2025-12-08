@@ -43,9 +43,7 @@ class MediaBuyStatusScheduler:
 
             self.is_running = True
             self._task = asyncio.create_task(self._run_scheduler())
-            logger.info(
-                f"Media buy status scheduler started (checking every {STATUS_CHECK_INTERVAL_SECONDS}s)"
-            )
+            logger.info(f"Media buy status scheduler started (checking every {STATUS_CHECK_INTERVAL_SECONDS}s)")
 
     async def stop(self) -> None:
         """Stop the scheduler background task."""
@@ -85,9 +83,7 @@ class MediaBuyStatusScheduler:
                 # Find media buys that need status updates
                 # 1. pending_activation or scheduled -> should become active if start_time passed
                 # 2. active -> should become completed if end_time passed
-                stmt = select(MediaBuy).where(
-                    MediaBuy.status.in_(["pending_activation", "scheduled", "active"])
-                )
+                stmt = select(MediaBuy).where(MediaBuy.status.in_(["pending_activation", "scheduled", "active"]))
                 media_buys = session.scalars(stmt).all()
 
                 for media_buy in media_buys:
@@ -98,8 +94,7 @@ class MediaBuyStatusScheduler:
                         media_buy.status = new_status
                         updated_count += 1
                         logger.info(
-                            f"Updated media buy {media_buy.media_buy_id} status: "
-                            f"{old_status} -> {new_status}"
+                            f"Updated media buy {media_buy.media_buy_id} status: " f"{old_status} -> {new_status}"
                         )
 
                 if updated_count > 0:
@@ -109,42 +104,41 @@ class MediaBuyStatusScheduler:
         except Exception as e:
             logger.error(f"Failed to update media buy statuses: {e}", exc_info=True)
 
-    def _compute_new_status(
-        self, media_buy: MediaBuy, now: datetime, session
-    ) -> str | None:
+    def _compute_new_status(self, media_buy: MediaBuy, now: datetime, session) -> str | None:
         """Compute the new status for a media buy based on flight dates.
 
         Returns:
             New status string if change needed, None otherwise.
         """
         # Get start and end times (prefer start_time/end_time over start_date/end_date)
-        # Cast to Python datetime to satisfy mypy (SQLAlchemy returns Python types at runtime)
         start_time: datetime | None = None
         if media_buy.start_time:
-            raw_start: datetime = media_buy.start_time  # type: ignore[assignment]
+            raw_start: datetime = media_buy.start_time
             if raw_start.tzinfo is None:
                 start_time = raw_start.replace(tzinfo=UTC)
             else:
                 start_time = raw_start
         elif media_buy.start_date:
-            start_time = datetime.combine(
-                media_buy.start_date, datetime.min.time()  # type: ignore[arg-type]
-            ).replace(tzinfo=UTC)
+            # datetime.min.time() returns time object, mypy doesn't recognize this
+            start_time = datetime.combine(media_buy.start_date, datetime.min.time()).replace(  # type: ignore[arg-type]
+                tzinfo=UTC
+            )
 
         if start_time is None:
             return None  # No start time defined
 
         end_time: datetime | None = None
         if media_buy.end_time:
-            raw_end: datetime = media_buy.end_time  # type: ignore[assignment]
+            raw_end: datetime = media_buy.end_time
             if raw_end.tzinfo is None:
                 end_time = raw_end.replace(tzinfo=UTC)
             else:
                 end_time = raw_end
         elif media_buy.end_date:
-            end_time = datetime.combine(
-                media_buy.end_date, datetime.max.time()  # type: ignore[arg-type]
-            ).replace(tzinfo=UTC)
+            # datetime.max.time() returns time object, mypy doesn't recognize this
+            end_time = datetime.combine(media_buy.end_date, datetime.max.time()).replace(  # type: ignore[arg-type]
+                tzinfo=UTC
+            )
 
         if end_time is None:
             return None  # No end time defined
@@ -179,9 +173,7 @@ class MediaBuyStatusScheduler:
             True if no creatives assigned OR all creatives are approved.
         """
         # Get creative assignments for this media buy
-        stmt = select(CreativeAssignment).filter_by(
-            tenant_id=media_buy.tenant_id, media_buy_id=media_buy.media_buy_id
-        )
+        stmt = select(CreativeAssignment).filter_by(tenant_id=media_buy.tenant_id, media_buy_id=media_buy.media_buy_id)
         assignments = session.scalars(stmt).all()
 
         if not assignments:
@@ -228,4 +220,3 @@ async def stop_media_buy_status_scheduler() -> None:
     """Stop the global media buy status scheduler."""
     scheduler = get_media_buy_status_scheduler()
     await scheduler.stop()
-

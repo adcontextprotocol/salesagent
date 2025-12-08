@@ -37,7 +37,7 @@ def _list_creative_formats_impl(
     # Use default request if none provided
     # All ListCreativeFormatsRequest fields have defaults (None) per AdCP spec
     if req is None:
-        req = ListCreativeFormatsRequest()  # type: ignore[call-arg]
+        req = ListCreativeFormatsRequest()
 
     # For discovery endpoints, authentication is optional
     # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
@@ -203,7 +203,7 @@ def _list_creative_formats_impl(
 
 def list_creative_formats(
     type: str | None = None,
-    format_ids: list[str] | None = None,
+    format_ids: list[dict] | None = None,
     is_responsive: bool | None = None,
     name_search: str | None = None,
     asset_types: list[str] | None = None,
@@ -220,7 +220,7 @@ def list_creative_formats(
 
     Args:
         type: Filter by format type (audio, video, display)
-        format_ids: Filter by specific format IDs
+        format_ids: Filter by FormatId objects ({"agent_url": "...", "id": "..."})
         is_responsive: Filter for responsive formats (True/False)
         name_search: Search formats by name (case-insensitive partial match)
         asset_types: Filter by asset content types (e.g., ["image", "video"])
@@ -235,14 +235,12 @@ def list_creative_formats(
         ToolResult with ListCreativeFormatsResponse data
     """
     try:
-        # Convert list[str] format_ids to list[FormatId] if provided
+        # Convert format_ids dicts to FormatId objects if provided
         from src.core.schemas import FormatId
 
         format_ids_objects = None
         if format_ids:
-            # For MCP tools, format_ids are simple strings, but FormatId requires agent_url
-            # Use empty string as placeholder since we'll filter by ID only
-            format_ids_objects = [FormatId(id=fid, agent_url="") for fid in format_ids]  # type: ignore[arg-type]
+            format_ids_objects = [FormatId(**fid) for fid in format_ids]
 
         # MCP tool parameters are primitives (str, list[str], dict) that Pydantic
         # coerces to proper types (enums, typed lists, ContextObject) at runtime

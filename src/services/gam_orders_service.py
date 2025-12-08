@@ -91,21 +91,21 @@ class GAMOrdersService:
             existing.salesperson_id = order.salesperson_id
             existing.salesperson_name = order.salesperson_name
             existing.status = order.status.value
-            existing.start_date = cast(Any, order.start_date)  # type: ignore[assignment]
-            existing.end_date = cast(Any, order.end_date)  # type: ignore[assignment]
+            existing.start_date = cast(Any, order.start_date)
+            existing.end_date = cast(Any, order.end_date)
             existing.unlimited_end_date = order.unlimited_end_date
             existing.total_budget = order.total_budget
             existing.currency_code = order.currency_code
             existing.external_order_id = order.external_order_id
             existing.po_number = order.po_number
             existing.notes = order.notes
-            existing.last_modified_date = cast(Any, order.last_modified_date)  # type: ignore[assignment]
+            existing.last_modified_date = cast(Any, order.last_modified_date)
             existing.is_programmatic = order.is_programmatic
             existing.applied_labels = order.applied_labels
             existing.effective_applied_labels = order.effective_applied_labels
             existing.custom_field_values = order.custom_field_values
             existing.order_metadata = order.order_metadata
-            existing.last_synced = cast(Any, sync_time)  # type: ignore[assignment]
+            existing.last_synced = cast(Any, sync_time)
         else:
             # Create new order
             new_order = GAMOrder(
@@ -151,8 +151,8 @@ class GAMOrdersService:
             existing.status = line_item.status.value
             existing.line_item_type = line_item.line_item_type
             existing.priority = line_item.priority
-            existing.start_date = cast(Any, line_item.start_date)  # type: ignore[assignment]
-            existing.end_date = cast(Any, line_item.end_date)  # type: ignore[assignment]
+            existing.start_date = cast(Any, line_item.start_date)
+            existing.end_date = cast(Any, line_item.end_date)
             existing.unlimited_end_date = line_item.unlimited_end_date
             existing.auto_extension_days = line_item.auto_extension_days
             existing.cost_type = line_item.cost_type
@@ -192,10 +192,10 @@ class GAMOrdersService:
             existing.third_party_measurement_settings = line_item.third_party_measurement_settings
             existing.video_max_duration = line_item.video_max_duration
             existing.line_item_metadata = line_item.line_item_metadata
-            existing.last_modified_date = cast(Any, line_item.last_modified_date)  # type: ignore[assignment]
-            existing.creation_date = cast(Any, line_item.creation_date)  # type: ignore[assignment]
+            existing.last_modified_date = cast(Any, line_item.last_modified_date)
+            existing.creation_date = cast(Any, line_item.creation_date)
             existing.external_id = line_item.external_id
-            existing.last_synced = cast(Any, sync_time)  # type: ignore[assignment]
+            existing.last_synced = cast(Any, sync_time)
         else:
             # Create new line item
             new_line_item = GAMLineItem(

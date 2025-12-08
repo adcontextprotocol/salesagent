@@ -15,7 +15,7 @@ __all__ = [
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from adcp.types.aliases import Package as ResponsePackage
 from flask import Flask
@@ -177,7 +177,7 @@ class GoogleAdManager(AdServerAdapter):
             self.targeting_manager = GAMTargetingManager(tenant_id or "")
 
             # Initialize orders manager in dry-run mode
-            self.orders_manager = GAMOrdersManager(None, self.advertiser_id, self.trafficker_id, dry_run=True)  # type: ignore[arg-type]
+            self.orders_manager = GAMOrdersManager(None, self.advertiser_id, self.trafficker_id, dry_run=True)
 
             # Only initialize creative manager if we have advertiser_id (required for creative operations)
             if self.advertiser_id and self.trafficker_id:
@@ -186,7 +186,7 @@ class GoogleAdManager(AdServerAdapter):
                     self.advertiser_id,
                     dry_run=True,
                     log_func=self.log,
-                    adapter=self,  # type: ignore[arg-type]
+                    adapter=self,
                 )
             else:
                 self.creatives_manager = None  # type: ignore[assignment]
@@ -1063,7 +1063,7 @@ class GoogleAdManager(AdServerAdapter):
         # Determine date range type for reporting
         days_diff = (end_dt - start_dt).days
         if days_diff <= 1:
-            range_type = "today"
+            range_type: str = "today"
         elif days_diff <= 31:
             range_type = "this_month"
         else:
@@ -1072,7 +1072,7 @@ class GoogleAdManager(AdServerAdapter):
         # Fetch delivery data from GAM
         # Note: We'll aggregate across all line items associated with this media buy
         reporting_data = reporting_service.get_reporting_data(
-            date_range=range_type,  # type: ignore[arg-type]
+            date_range=cast("Literal['lifetime', 'this_month', 'today']", range_type),
             advertiser_id=self.advertiser_id,
             requested_timezone="America/New_York",
         )
@@ -1248,7 +1248,7 @@ class GoogleAdManager(AdServerAdapter):
                     return UpdateMediaBuySuccess(
                         media_buy_id=media_buy_id,
                         buyer_ref=buyer_ref,
-                        affected_packages=[],  # type: ignore[arg-type]
+                        affected_packages=[],
                         implementation_date=today,
                         workflow_step_id=step_id,
                     )

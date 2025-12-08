@@ -153,8 +153,13 @@ class DynamicPricingService:
 
         # Calculate estimated monthly impressions
         # Average daily impressions * 30 days
-        # SQLAlchemy Date type maps to Python date, which supports subtraction
-        period_days = (metrics[0].period_end - metrics[0].period_start).days  # type: ignore[operator]
+        # SQLAlchemy Date fields - convert to timedelta using total_seconds for mypy
+        period_start = metrics[0].period_start
+        period_end = metrics[0].period_end
+        # Use datetime for date subtraction (mypy compatible)
+        from datetime import date as date_type
+
+        period_days = (date_type.fromisoformat(str(period_end)) - date_type.fromisoformat(str(period_start))).days
         if period_days > 0:
             daily_impressions = total_impressions / period_days
             estimated_monthly_impressions = int(daily_impressions * 30)
@@ -241,10 +246,10 @@ class DynamicPricingService:
             )
 
             if updated_floor is not None:
-                # Set price_guidance on discriminated union
-                cpm_option.price_guidance = PriceGuidance(  # type: ignore[union-attr]
-                    floor=updated_floor, p25=None, p50=None, p75=updated_p75, p90=None
-                )
+                # Set price_guidance on discriminated union using setattr
+                # Not all pricing option types have price_guidance attribute
+                new_guidance = PriceGuidance(floor=updated_floor, p25=None, p50=None, p75=updated_p75, p90=None)
+                setattr(cpm_option, "price_guidance", new_guidance)
                 logger.debug(f"Updated existing CPM pricing option for {product.product_id}")
         else:
             # Create new CPM pricing option with price_guidance
@@ -269,6 +274,7 @@ class DynamicPricingService:
                     supported=None,
                     unsupported_reason=None,
                 )
-                # PricingOption is compatible with discriminated union at runtime
+                # Pydantic validates PricingOption against discriminated union at runtime
+                # mypy doesn't understand this is compatible with CpmFixedRatePricingOption
                 product.pricing_options.append(new_option)  # type: ignore[arg-type]
                 logger.debug(f"Created new CPM pricing option for {product.product_id}")

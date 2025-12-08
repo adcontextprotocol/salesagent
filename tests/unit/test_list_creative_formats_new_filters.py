@@ -116,3 +116,71 @@ class TestListCreativeFormatsNewFilters:
         # New filters should be set
         assert req.is_responsive is True
         assert req.name_search == "banner"
+
+
+class TestListCreativeFormatsMCPToolSignature:
+    """Test that MCP tool accepts AdCP-compliant parameter types.
+
+    MCP tools receive JSON primitives, not Pydantic objects. These tests verify
+    that the tool function signature accepts the types that clients actually send.
+    """
+
+    def test_mcp_tool_accepts_format_ids_as_dicts(self):
+        """Test that list_creative_formats MCP tool accepts format_ids as FormatId dicts.
+
+        This is a regression test for a prod error where the MCP tool rejected
+        FormatId objects sent as dicts:
+
+            Error: 2 validation errors for call[list_creative_formats]
+            format_ids.0
+              Input should be a valid string [type=string_type,
+              input_value={'agent_url': '...', 'id': '...'}, input_type=dict]
+
+        Per AdCP spec, format_ids should be list[FormatId] (objects with agent_url and id).
+        """
+        from unittest.mock import MagicMock, patch
+
+        from src.core.tools.creative_formats import list_creative_formats
+
+        # This is how clients send format_ids - as FormatId dicts
+        format_ids_as_dicts = [
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s_hosted"},
+            {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
+        ]
+
+        # Mock the implementation to avoid needing full context
+        with patch("src.core.tools.creative_formats._list_creative_formats_impl") as mock_impl:
+            mock_response = MagicMock()
+            mock_response.model_dump.return_value = {"formats": []}
+            mock_impl.return_value = mock_response
+
+            # This should NOT raise a validation error
+            result = list_creative_formats(format_ids=format_ids_as_dicts)
+
+            # Verify the impl was called with FormatId objects
+            call_args = mock_impl.call_args
+            req = call_args[0][0]  # First positional arg is the request
+            assert req.format_ids is not None
+            assert len(req.format_ids) == 2
+            # Verify FormatId objects were created from dicts
+            assert req.format_ids[0].id == "video_15s_hosted"
+            assert req.format_ids[1].id == "display_300x250"
+
+    def test_mcp_tool_format_ids_parameter_type_is_list_dict(self):
+        """Verify the MCP tool signature accepts list[dict] for format_ids.
+
+        This ensures we don't accidentally change the signature back to list[str].
+        """
+        import inspect
+
+        from src.core.tools.creative_formats import list_creative_formats
+
+        sig = inspect.signature(list_creative_formats)
+        format_ids_param = sig.parameters["format_ids"]
+
+        # The annotation should be list[dict] | None, not list[str] | None
+        annotation_str = str(format_ids_param.annotation)
+        assert "dict" in annotation_str, f"Expected list[dict], got {annotation_str}"
+        assert (
+            "str" not in annotation_str or "str]" not in annotation_str
+        ), f"Should NOT be list[str], got {annotation_str}"

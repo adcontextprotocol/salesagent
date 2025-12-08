@@ -6,7 +6,7 @@ import logging
 from flask import Blueprint, jsonify, render_template, request, session
 from sqlalchemy import String, func, or_, select
 
-from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access  # type: ignore[attr-defined]
+from src.admin.utils import get_tenant_config_from_db, require_auth, require_tenant_access
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.models import GAMInventory, GAMOrder, MediaBuy, Principal, Tenant

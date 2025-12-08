@@ -695,12 +695,12 @@ class GAMInventoryService:
         try:
             if to_insert:
                 logger.info(f"📝 Starting bulk insert of {len(to_insert)} items...")
-                # Type ignore: bulk_insert_mappings accepts model class, not mapper
+                # SQLAlchemy accepts model class but mypy expects Mapper type
                 self.db.bulk_insert_mappings(GAMInventory, to_insert)  # type: ignore[arg-type]
                 logger.info(f"✅ Batch inserted {len(to_insert)} items")
             if to_update:
                 logger.info(f"📝 Starting bulk update of {len(to_update)} items...")
-                # Type ignore: bulk_update_mappings accepts model class, not mapper
+                # SQLAlchemy accepts model class but mypy expects Mapper type
                 self.db.bulk_update_mappings(GAMInventory, to_update)  # type: ignore[arg-type]
                 logger.info(f"✅ Batch updated {len(to_update)} items")
             logger.info("💾 Committing batch transaction (120s timeout)...")
@@ -801,7 +801,7 @@ class GAMInventoryService:
             existing.status = status
             existing.inventory_metadata = inventory_metadata
             # Properly assign datetime to DateTime column
-            existing.last_synced = last_synced  # type: ignore[assignment]
+            existing.last_synced = last_synced
         else:
             # Insert new
             item = GAMInventory(
@@ -1281,7 +1281,7 @@ class GAMInventoryService:
                 )
 
         # Sort by score and limit
-        suggestions.sort(key=lambda x: int(x["score"]), reverse=True)  # type: ignore[arg-type, return-value]
+        suggestions.sort(key=lambda x: int(x["score"]), reverse=True)
         return suggestions[:limit]
 
     def get_all_targeting_data(self, tenant_id: str) -> dict[str, Any]:

@@ -56,7 +56,7 @@ def _list_authorized_properties_impl(
     # require_valid_token=False means invalid tokens are treated like missing tokens (discovery endpoint behavior)
     principal_id, tenant = get_principal_from_context(
         context,
-        require_valid_token=False,  # type: ignore[arg-type]
+        require_valid_token=False,
     )  # May return (None, tenant) for public discovery
 
     # Set tenant context if returned
@@ -244,7 +244,7 @@ def list_authorized_properties(
             # Access raw Starlette request headers via context.request_context.request
             # ToolContext doesn't have request_context (A2A path doesn't use Starlette)
             request = None
-            if isinstance(ctx, Context) and hasattr(ctx, "request_context"):
+            if isinstance(ctx, Context) and hasattr(ctx, "request_context") and ctx.request_context:
                 request = ctx.request_context.request
             logger.debug(f"🔍 request type={type(request) if request else None}")
 

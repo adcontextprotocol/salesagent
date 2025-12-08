@@ -167,12 +167,12 @@ def generate_variants_from_signals(
 
             if existing:
                 # Update existing variant
-                existing.last_synced_at = datetime.now()  # type: ignore[assignment]
+                existing.last_synced_at = datetime.now()
                 # Extend expiration if still active
                 ttl_days = template.variant_ttl_days or 30
                 new_expiration = datetime.now() + timedelta(days=ttl_days)
                 if not existing.expires_at or existing.expires_at < new_expiration:
-                    existing.expires_at = new_expiration  # type: ignore[assignment]
+                    existing.expires_at = new_expiration
                 variants.append(existing)
                 logger.debug(f"Updated existing variant {variant_id}")
                 continue
@@ -495,7 +495,7 @@ def archive_expired_variants(tenant_id: str | None = None) -> int:
         expired_variants = session.scalars(stmt).all()
 
         for variant in expired_variants:
-            variant.archived_at = datetime.now()  # type: ignore[assignment]
+            variant.archived_at = datetime.now()
             attributes.flag_modified(variant, "archived_at")
             archived_count += 1
             logger.info(f"Archived expired variant {variant.product_id}")

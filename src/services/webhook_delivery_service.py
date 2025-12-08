@@ -281,8 +281,10 @@ class WebhookDeliveryService:
             if next_expected_at:
                 delivery_payload["next_expected_at"] = next_expected_at
 
-            # Get totals dict with type assertion for mypy
-            totals: dict[str, Any] = delivery_payload["media_buy_deliveries"][0]["totals"]  # type: ignore[index]
+            # Add optional metrics to totals dict
+            # We know structure is valid as we just created it above
+            media_buy_delivery = delivery_payload["media_buy_deliveries"][0]  # type: ignore[index]
+            totals: dict[str, Any] = media_buy_delivery["totals"]
             if clicks is not None:
                 totals["clicks"] = clicks
             if ctr is not None:

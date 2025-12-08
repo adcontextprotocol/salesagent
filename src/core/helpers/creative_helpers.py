@@ -249,7 +249,10 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
             url_type = asset_data.get("url_type", "")
             # Per spec: tracker_pixel for impression tracking, tracker_script for SDK
             if url_type in ["tracker_pixel", "tracker_script"]:
-                tracking_urls.setdefault("impression", []).append(asset_data["url"])  # type: ignore[union-attr]
+                # setdefault with [] always returns list, but mypy sees union type
+                impression_list = tracking_urls.setdefault("impression", [])
+                if isinstance(impression_list, list):
+                    impression_list.append(asset_data["url"])
             # Note: clickthrough URLs go to asset["click_url"], not tracking_urls
             # (already extracted above in the click URL extraction section)
 

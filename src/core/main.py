@@ -296,7 +296,7 @@ def get_product_catalog() -> list[Product]:
 
     # convert_product_model_to_schema returns LibraryProduct,
     # which our Product extends - safe cast at runtime
-    return loaded_products  # type: ignore[return-value]
+    return loaded_products
 
 
 # Creative macro support is now simplified to a single creative_macro string
@@ -734,7 +734,7 @@ if unified_mode:
 
         with get_db_session() as session:
             # Base query for workflow steps in this tenant
-            # WorkflowStep links to Context which has tenant_id
+            # WorkflowStep doesn't have tenant_id directly - filter via Context join
             stmt = select(WorkflowStep).join(DBContext).filter(DBContext.tenant_id == tenant["tenant_id"])
 
             # Apply status filter
@@ -772,12 +772,11 @@ if unified_mode:
                     "owner": task.owner,
                     "created_at": (
                         task.created_at.isoformat() if hasattr(task.created_at, "isoformat") else str(task.created_at)
-                    ),  # type: ignore[union-attr]
+                    ),
                     "updated_at": None,  # WorkflowStep doesn't have updated_at field
                     "context_id": task.context_id,
                     "associated_objects": [
-                        {"type": m.object_type, "id": m.object_id, "action": m.action}
-                        for m in mappings  # type: ignore[attr-defined]
+                        {"type": m.object_type, "id": m.object_id, "action": m.action} for m in mappings
                     ],
                 }
 
@@ -788,7 +787,7 @@ if unified_mode:
                 # Add basic request info if available
                 if task.request_data:
                     if isinstance(task.request_data, dict):
-                        formatted_task["summary"] = {
+                        formatted_task["summary"] = {  # type: ignore[assignment]
                             "operation": task.request_data.get("operation"),
                             "media_buy_id": task.request_data.get("media_buy_id"),
                             "po_number": (
@@ -855,19 +854,19 @@ if unified_mode:
                 "owner": task.owner,
                 "created_at": (
                     task.created_at.isoformat() if hasattr(task.created_at, "isoformat") else str(task.created_at)
-                ),  # type: ignore[union-attr]
+                ),
                 "updated_at": None,  # WorkflowStep doesn't have updated_at field
                 "request_data": task.request_data,
                 "response_data": task.response_data,
                 "error_message": task.error_message,
                 "associated_objects": [
                     {
-                        "type": m.object_type,  # type: ignore[attr-defined]
-                        "id": m.object_id,  # type: ignore[attr-defined]
-                        "action": m.action,  # type: ignore[attr-defined]
+                        "type": m.object_type,
+                        "id": m.object_id,
+                        "action": m.action,
                         "created_at": (
                             m.created_at.isoformat() if hasattr(m.created_at, "isoformat") else str(m.created_at)
-                        ),  # type: ignore[union-attr]
+                        ),
                     }
                     for m in mappings
                 ],
@@ -926,7 +925,7 @@ if unified_mode:
             # Update task status
             task.status = status
             completed_time = datetime.now(UTC)
-            task.completed_at = completed_time  # type: ignore[assignment]
+            task.completed_at = completed_time
 
             if status == "completed":
                 task.response_data = response_data or {"manually_completed": True, "completed_by": principal_id}
@@ -974,20 +973,20 @@ if unified_mode:
 
     logger.info("STARTUP: Registered root route")
 
-    @mcp.custom_route(  # type: ignore[arg-type]
+    @mcp.custom_route(
         "/admin/{path:path}",
         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
     )
     async def admin_handler(request: Request, path: str = ""):
         """Handle admin UI requests."""
         # Forward to Flask app
-        scope = dict(request.scope)  # type: ignore[arg-type]
+        scope = dict(request.scope)
         scope["path"] = f"/{path}" if path else "/"
 
         receive = request.receive
-        send = request._send  # type: ignore[attr-defined]
+        send = request._send
 
-        await admin_wsgi(scope, receive, send)  # type: ignore[arg-type]
+        await admin_wsgi(scope, receive, send)
 
     @mcp.custom_route(  # type: ignore[arg-type]
         "/tenant/{tenant_id}/admin/{path:path}",
@@ -996,13 +995,13 @@ if unified_mode:
     async def tenant_admin_handler(request: Request, tenant_id: str, path: str = ""):
         """Handle tenant-specific admin requests."""
         # Forward to Flask app with tenant context
-        scope = dict(request.scope)  # type: ignore[arg-type]
+        scope = dict(request.scope)
         scope["path"] = f"/tenant/{tenant_id}/{path}" if path else f"/tenant/{tenant_id}"
 
         receive = request.receive
-        send = request._send  # type: ignore[attr-defined]
+        send = request._send
 
-        await admin_wsgi(scope, receive, send)  # type: ignore[arg-type]
+        await admin_wsgi(scope, receive, send)
 
     @mcp.custom_route("/tenant/{tenant_id}", methods=["GET"])  # type: ignore[arg-type]
     async def tenant_root(request: Request, tenant_id: str):

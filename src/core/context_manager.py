@@ -126,9 +126,7 @@ class ContextManager(DatabaseManager):
             stmt = select(Context).filter_by(context_id=context_id)
             context = self.session.scalars(stmt).first()
             if context:
-                # TODO: Model uses Mapped[DateTime] but accepts datetime objects at runtime
-                # Should update model annotation to Mapped[datetime] for proper typing
-                context.last_activity_at = datetime.now(UTC)  # type: ignore[assignment]
+                context.last_activity_at = datetime.now(UTC)
                 self.session.commit()
         finally:
             # DatabaseManager handles session cleanup differently
@@ -192,7 +190,7 @@ class ContextManager(DatabaseManager):
         )
 
         if status == "completed":
-            step.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+            step.completed_at = datetime.now(UTC)
 
         session = self.session
         try:
@@ -253,7 +251,7 @@ class ContextManager(DatabaseManager):
                 if status:
                     step.status = status
                     if status in ["completed", "failed"] and not step.completed_at:
-                        step.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+                        step.completed_at = datetime.now(UTC)
 
                 if response_data is not None:
                     step.response_data = response_data
@@ -400,8 +398,8 @@ class ContextManager(DatabaseManager):
                             "status": step.status,
                             "owner": step.owner,
                             "assigned_to": step.assigned_to,
-                            "created_at": step.created_at.isoformat() if step.created_at else None,  # type: ignore[attr-defined]
-                            "completed_at": step.completed_at.isoformat() if step.completed_at else None,  # type: ignore[attr-defined]
+                            "created_at": step.created_at.isoformat() if step.created_at else None,
+                            "completed_at": step.completed_at.isoformat() if step.completed_at else None,
                             "tool_name": step.tool_name,
                             "error_message": step.error_message,
                             "comments": step.comments,
@@ -435,7 +433,7 @@ class ContextManager(DatabaseManager):
                 context.conversation_history.append(
                     {"role": role, "content": content, "timestamp": datetime.now(UTC).isoformat()}
                 )
-                context.last_activity_at = datetime.now(UTC)  # type: ignore[assignment]
+                context.last_activity_at = datetime.now(UTC)
                 session.commit()
         finally:
             session.close()
@@ -616,7 +614,7 @@ class ContextManager(DatabaseManager):
                     f"[cyan]📦 Processing mapping: {mapping.object_type} {mapping.object_id} action={mapping.action}[/cyan]"
                 )
 
-                for webhook_config in webhooks:
+                for _webhook_config in webhooks:
                     # build push notification config from step request data
                     from uuid import uuid4
 
@@ -667,16 +665,14 @@ class ContextManager(DatabaseManager):
                                 )
                             )
 
-                            def _log_task_result(t: asyncio.Task) -> None:
+                            def _log_task_result(
+                                t: asyncio.Task, config_url: str = push_notification_config.url
+                            ) -> None:
                                 try:
                                     t.result()
-                                    console.print(
-                                        f"[green]✅ Webhook sent successfully for {push_notification_config.url}[/green]"
-                                    )
+                                    console.print(f"[green]✅ Webhook sent successfully for {config_url}[/green]")
                                 except Exception as e:  # noqa: BLE001
-                                    console.print(
-                                        f"[red]❌ Webhook failed for {push_notification_config.url}: {str(e)}[/red]"
-                                    )
+                                    console.print(f"[red]❌ Webhook failed for {config_url}: {str(e)}[/red]")
 
                             task.add_done_callback(_log_task_result)
                         except RuntimeError:

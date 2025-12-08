@@ -112,11 +112,12 @@ def get_business_activities(tenant_id: str, limit: int = 50) -> list[dict]:
                 # Handle explicit skill invocation with rich context
                 if "explicit_skill_invocation" in operation:
                     skills = details.get("skills", [])
-                    if not skills:
+                    if not skills or not isinstance(skills, list):
                         continue  # Skip if no skill info
 
                     # Extract the primary skill (first one)
-                    primary_skill = skills[0] if skills else "unknown"  # type: ignore[index]
+                    # Type narrowing: we know skills is non-empty list due to check above
+                    primary_skill = str(skills[0])
 
                     # Make it human-readable based on skill name
                     if "create_media_buy" in primary_skill:

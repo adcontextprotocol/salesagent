@@ -5,7 +5,7 @@ import logging
 import os
 import secrets
 
-import markdown  # type: ignore[import-untyped]
+import markdown
 from flask import Flask, request
 from flask_socketio import SocketIO, join_room
 from markupsafe import Markup

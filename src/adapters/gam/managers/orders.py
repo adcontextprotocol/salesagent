@@ -401,7 +401,7 @@ class GAMOrdersManager:
                 stmt = select(AdapterConfig).filter_by(tenant_id=tenant_id)
                 adapter_config = db_session.scalars(stmt).first()
                 if adapter_config and adapter_config.gam_line_item_name_template:
-                    line_item_name_template = adapter_config.gam_line_item_name_template  # type: ignore[assignment]
+                    line_item_name_template = adapter_config.gam_line_item_name_template
 
         created_line_item_ids: list[str] = []
         flight_duration_days = (end_time - start_time).days

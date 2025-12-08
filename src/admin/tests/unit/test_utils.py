@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, Mock, patch
 
-from src.admin.utils import (  # type: ignore[attr-defined]
+from src.admin.utils import (
     get_tenant_config_from_db,
     parse_json_config,
     require_auth,

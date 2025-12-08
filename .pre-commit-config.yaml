@@ -293,6 +293,15 @@ repos:
         pass_filenames: false
         always_run: false  # Only run when Python files changed
 
+      # Check type: ignore count doesn't increase (ratcheting approach)
+      - id: type-ignore-no-regression
+        name: "Check type: ignore count (no regression)"
+        entry: uv run python .pre-commit-hooks/check_type_ignore_count.py
+        language: system
+        files: '^src/.*\.py$'
+        pass_filenames: false
+        always_run: false  # Only run when Python files in src/ changed
+
       # Suggest factory usage in test files (non-blocking)
       - id: suggest-test-factories
         name: Suggest factory usage in test files
@@ -340,5 +349,9 @@ repos:
           - types-requests
           - types-python-dateutil
           - types-pytz
+          - types-Markdown
+          - adcp
+          - fastmcp
+          - alembic
         files: '^src/'
         exclude: '^src/adapters/google_ad_manager_original\.py$'

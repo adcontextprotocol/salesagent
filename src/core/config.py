@@ -98,6 +98,7 @@ class AppConfig(BaseSettings):
     environment: str = Field(default="development", description="Environment: production, staging, or development")
 
     # Configuration objects
+    # BaseSettings subclasses read from environment; mypy doesn't understand this pattern
     gam_oauth: GAMOAuthConfig = Field(default_factory=GAMOAuthConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
@@ -115,6 +116,7 @@ def get_config() -> AppConfig:
     """Get the global configuration instance."""
     global _config
     if _config is None:
+        # BaseSettings reads from environment; mypy doesn't understand this pattern
         _config = AppConfig()  # type: ignore[call-arg]
     return _config
 

@@ -417,7 +417,7 @@ async def _get_products_impl(
                 # Cast to our extended Product type for mypy compatibility
                 variant_schema = convert_product_model_to_schema(variant_model)
                 # Type: ignore - library Product is compatible with our extended Product at runtime
-                products.append(variant_schema)  # type: ignore[arg-type]
+                products.append(variant_schema)
 
             logger.info(f"[GET_PRODUCTS] Added {len(dynamic_variants)} dynamic product variants")
     except Exception as e:
@@ -665,10 +665,15 @@ async def _get_products_impl(
                         # Get pricing model as string (handle both enum and literal)
                         pricing_model = getattr(option.pricing_model, "value", option.pricing_model)
                         # Add supported annotation (will be included in response)
-                        # Use dynamic attribute assignment on discriminated unions
-                        option.supported = pricing_model in supported_models  # type: ignore[union-attr]
-                        if not getattr(option, "supported", False):
-                            option.unsupported_reason = f"Current adapter does not support {pricing_model.upper()} pricing"  # type: ignore[union-attr]
+                        # Use setattr for discriminated unions to satisfy mypy
+                        is_supported = pricing_model in supported_models
+                        setattr(option, "supported", is_supported)
+                        if not is_supported:
+                            setattr(
+                                option,
+                                "unsupported_reason",
+                                f"Current adapter does not support {pricing_model.upper()} pricing",
+                            )
         except Exception as e:
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 
@@ -683,7 +688,8 @@ async def _get_products_impl(
     # Apply testing hooks to response (after modifications)
     # AdCP library Product uses model_dump(), not model_dump_internal()
     response_data = {"products": [p.model_dump() for p in eligible_products]}
-    response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")  # type: ignore[arg-type]
+    if testing_ctx is not None:
+        response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
 
     # No conversion needed - our Product extends library Product
     # When serialized, Pydantic automatically uses library Product fields
@@ -819,9 +825,9 @@ def get_product_catalog() -> list[Product]:
             try:
                 # convert_product_model_to_schema returns library Product
                 # which is compatible with our extended Product at runtime
-                loaded_products.append(convert_product_model_to_schema(product))  # type: ignore[arg-type]
+                loaded_products.append(convert_product_model_to_schema(product))
             except ValueError as e:
                 logger.warning(f"Skipping product {product.product_id}: {e}")
                 continue
 
-    return loaded_products  # type: ignore[return-value]
+    return loaded_products
