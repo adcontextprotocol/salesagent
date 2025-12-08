@@ -10,7 +10,7 @@ import os
 import sys
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, cast
 
 # Fix import order to avoid local a2a directory conflict
 # Import official a2a-sdk first before adding local paths
@@ -1349,18 +1349,11 @@ class AdCPRequestHandler(RequestHandler):
             handler = skill_handlers[skill_name]
             if skill_name in ["get_pricing", "get_targeting"]:
                 # These are simple handlers without async
-                # Handler type is inferred, so we need to cast the call
-                from typing import Any as AnyType
-                from typing import cast
-
-                result = cast(AnyType, handler)(parameters, auth_token)
+                result = cast(Any, handler)(parameters, auth_token)
                 return result
             else:
                 # These are async handlers that call core tools
-                from typing import Any as AnyType
-                from typing import cast
-
-                result = await cast(AnyType, handler)(parameters, auth_token)
+                result = await cast(Any, handler)(parameters, auth_token)
                 return result
         except ServerError:
             # Re-raise ServerError as-is (already properly formatted)
@@ -1428,8 +1421,6 @@ class AdCPRequestHandler(RequestHandler):
                 mcp_ctx = self._tool_context_to_mcp_context(tool_context)
             else:
                 # MinimalContext works with core tools directly
-                from typing import cast
-
                 mcp_ctx = cast(ToolContext, tool_context)
             response = await core_get_products_tool(
                 brief=brief,
@@ -1855,8 +1846,6 @@ class AdCPRequestHandler(RequestHandler):
                 mcp_ctx = self._tool_context_to_mcp_context(tool_context)
             else:
                 # MinimalContext works with core tools directly
-                from typing import cast
-
                 mcp_ctx = cast(ToolContext, tool_context)
             response = core_list_creative_formats_tool(req=req, ctx=mcp_ctx)
 

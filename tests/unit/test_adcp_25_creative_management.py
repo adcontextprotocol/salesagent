@@ -10,6 +10,7 @@ These tests verify the AdCP 2.5 creative management changes:
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from src.core.schemas import Creative, FormatId, SyncCreativesRequest
 
@@ -46,11 +47,12 @@ class TestSyncCreativesCreativeIdsFilter:
         )
 
         # Should reject patch parameter (removed in AdCP 2.5)
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             SyncCreativesRequest(
                 creatives=[creative],
                 patch=True,  # Deprecated - should fail
             )
+        # ValidationError will mention 'extra' fields are forbidden or 'patch' specifically
         assert "patch" in str(exc_info.value).lower() or "extra" in str(exc_info.value).lower()
 
     @patch("src.core.tools.creatives.get_principal_id_from_context")

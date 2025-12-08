@@ -60,7 +60,10 @@ def _sync_creatives_impl(
     Args:
         creatives: Array of creative assets to sync
         assignments: Bulk assignment map of creative_id to package_ids (spec-compliant)
-        creative_ids: Filter to limit sync scope to specific creatives (AdCP 2.5)
+        creative_ids: Filter to limit sync scope to specific creatives (AdCP 2.5).
+            - None (default): Process all creatives in payload
+            - Empty list []: Process no creatives (filter matches nothing)
+            - List of IDs: Only process creatives whose IDs appear in both payload AND this filter
         delete_missing: Delete creatives not in sync payload (use with caution)
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)

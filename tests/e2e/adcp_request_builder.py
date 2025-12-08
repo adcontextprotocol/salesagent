@@ -6,6 +6,7 @@ All helpers enforce the NEW AdCP V2.3 format with proper schema validation.
 """
 
 import uuid
+import warnings
 from datetime import UTC, datetime
 from typing import Any
 
@@ -166,6 +167,15 @@ def build_sync_creatives_request(
     Returns:
         Valid AdCP V2.5 SyncCreativesRequest dict
     """
+    if patch is not None:
+        warnings.warn(
+            "The 'patch' parameter is deprecated and ignored. "
+            "AdCP 2.5 removed patch semantics in favor of full upsert. "
+            "Use 'creative_ids' to scope which creatives are synced.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     request: dict[str, Any] = {
         "creatives": creatives,
         "dry_run": dry_run,
