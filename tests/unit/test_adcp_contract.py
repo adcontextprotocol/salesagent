@@ -1167,11 +1167,11 @@ class TestAdCPContract:
             updated_at=datetime.now(),
         )
 
-        # Test with spec-compliant fields only
+        # Test with spec-compliant fields only (AdCP 2.5)
         request = SyncCreativesRequest(
             creatives=[creative],
-            patch=False,
             assignments={"creative_123": ["pkg_1", "pkg_2"]},
+            # creative_ids: AdCP 2.5 replaces the deprecated patch parameter
             delete_missing=False,
             dry_run=False,
             validation_mode="strict",
@@ -1186,13 +1186,18 @@ class TestAdCPContract:
             assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
             assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
 
-        # Verify AdCP v2.4 optional fields are present
-        adcp_optional_fields = ["patch", "assignments", "delete_missing", "dry_run", "validation_mode"]
-        for field in adcp_optional_fields:
-            assert field in adcp_response, f"AdCP optional field '{field}' missing from response"
+        # Verify AdCP v2.5 optional fields - some may be excluded when None
+        # Note: 'patch' was removed in AdCP 2.5, replaced by 'creative_ids'
+        # Fields with default values should be present, fields with None defaults may be excluded
+        adcp_fields_with_defaults = ["delete_missing", "dry_run", "validation_mode"]
+        for field in adcp_fields_with_defaults:
+            assert field in adcp_response, f"AdCP field '{field}' missing from response"
+
+        # Optional fields that may be None: creative_ids, assignments, context, push_notification_config
+        # These are correctly excluded from output when None
 
         # Verify non-spec fields are NOT present
-        non_spec_fields = ["media_buy_id", "buyer_ref", "assign_to_packages", "upsert"]
+        non_spec_fields = ["media_buy_id", "buyer_ref", "assign_to_packages", "upsert", "patch"]
         for field in non_spec_fields:
             assert field not in adcp_response, f"Non-spec field '{field}' should not be in response"
 

@@ -1812,12 +1812,12 @@ SubmitCreativesResponse = AddCreativeAssetsResponse
 
 
 class SyncCreativesRequest(AdCPBaseModel):
-    """Request to sync creative assets to centralized library (AdCP v2.4 spec compliant).
+    """Request to sync creative assets to centralized library (AdCP v2.5 spec compliant).
 
     NOTE: Uses Creative instead of library's CreativeAsset due to implementation differences.
     Library uses CreativeAsset which has different structure than our Creative type.
 
-    Supports bulk operations, patch updates, and assignment management.
+    Supports bulk operations, scoped updates via creative_ids, and assignment management.
     Creatives are synced to a central library and can be used across multiple media buys.
     """
 
@@ -1825,12 +1825,12 @@ class SyncCreativesRequest(AdCPBaseModel):
     context: dict[str, Any] | None = Field(
         None, description="Application-level context provided by the client (echoed in responses)"
     )
-    patch: bool = Field(
-        False,
-        description="When true, only provided fields are updated (partial update). When false, entire creative is replaced (full upsert).",
-    )
     assignments: dict[str, list[str]] | None = Field(
         None, description="Optional bulk assignment of creatives to packages. Maps creative_id to array of package IDs."
+    )
+    creative_ids: list[str] | None = Field(
+        None,
+        description="Filter to limit sync scope to specific creatives (AdCP 2.5). When provided, only these creatives are synced.",
     )
     delete_missing: bool = Field(
         False,
@@ -2248,7 +2248,9 @@ class ListCreativesRequest(AdCPBaseModel):
 def create_list_creatives_request(
     # Convenience fields (mapped to structured AdCP objects)
     media_buy_id: str | None = None,
+    media_buy_ids: list[str] | None = None,
     buyer_ref: str | None = None,
+    buyer_refs: list[str] | None = None,
     status: str | None = None,
     format: str | None = None,
     tags: list[str] | None = None,
@@ -2269,20 +2271,23 @@ def create_list_creatives_request(
     include_sub_assets: bool = False,  # Library default
     context: dict[str, Any] | None = None,
 ) -> ListCreativesRequest:
-    """Create ListCreativesRequest with convenience fields.
+    """Create ListCreativesRequest with convenience fields (AdCP v2.5).
 
     This factory function accepts flat convenience fields and maps them to
     structured AdCP objects before creating the ListCreativesRequest.
 
     Convenience fields:
-    - media_buy_id, buyer_ref: Internal filters (NOT in AdCP spec)
+    - media_buy_id, media_buy_ids: Filter by campaign(s) (AdCP 2.5)
+    - buyer_ref, buyer_refs: Filter by buyer reference(s) (AdCP 2.5)
     - status, format, tags, created_after, created_before, search: Mapped to filters
     - page, limit: Mapped to pagination (page converted to offset)
     - sort_by, sort_order: Mapped to sort
 
     Args:
-        media_buy_id: Filter by media buy ID (internal)
-        buyer_ref: Filter by buyer reference (internal)
+        media_buy_id: Filter by single media buy ID (backward compat)
+        media_buy_ids: Filter by multiple media buy IDs (AdCP 2.5)
+        buyer_ref: Filter by single buyer reference (backward compat)
+        buyer_refs: Filter by multiple buyer references (AdCP 2.5)
         status: Filter by creative status
         format: Filter by creative format
         tags: Filter by tags
@@ -2322,6 +2327,20 @@ def create_list_creatives_request(
         filters_dict["created_before"] = created_before
     if search:
         filters_dict["name_contains"] = search
+
+    # AdCP 2.5: Support plural media_buy_ids and buyer_refs filters
+    # Merge singular into plural for consistent handling
+    effective_media_buy_ids = list(media_buy_ids) if media_buy_ids else []
+    if media_buy_id and media_buy_id not in effective_media_buy_ids:
+        effective_media_buy_ids.append(media_buy_id)
+    if effective_media_buy_ids:
+        filters_dict["media_buy_ids"] = effective_media_buy_ids
+
+    effective_buyer_refs = list(buyer_refs) if buyer_refs else []
+    if buyer_ref and buyer_ref not in effective_buyer_refs:
+        effective_buyer_refs.append(buyer_ref)
+    if effective_buyer_refs:
+        filters_dict["buyer_refs"] = effective_buyer_refs
 
     # Merge with existing filters if provided
     if filters:

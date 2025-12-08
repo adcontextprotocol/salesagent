@@ -141,31 +141,33 @@ def build_adcp_media_buy_request(
 
 def build_sync_creatives_request(
     creatives: list[dict[str, Any]],
-    patch: bool = False,
     dry_run: bool = False,
     webhook_url: str | None = None,
     assignments: dict[str, list[str]] | None = None,
+    creative_ids: list[str] | None = None,
     delete_missing: bool = False,
     validation_mode: str = "strict",
+    # Deprecated: patch parameter removed in AdCP 2.5 - kept for backward compat
+    patch: bool | None = None,
 ) -> dict[str, Any]:
     """
-    Build a valid AdCP V2.3 sync_creatives request.
+    Build a valid AdCP V2.5 sync_creatives request.
 
     Args:
         creatives: List of creative objects to sync
-        patch: If True, only update provided fields (default: False)
         dry_run: If True, preview changes without applying (default: False)
         webhook_url: Optional webhook for async notifications
         assignments: Optional dict mapping creative_id to list of package_ids
+        creative_ids: Filter to limit sync scope to specific creatives (AdCP 2.5)
         delete_missing: If True, delete creatives not in the sync list (default: False)
         validation_mode: Validation mode - "strict" or "lenient" (default: strict)
+        patch: DEPRECATED - ignored (AdCP 2.5 removed this parameter)
 
     Returns:
-        Valid AdCP V2.3 SyncCreativesRequest dict
+        Valid AdCP V2.5 SyncCreativesRequest dict
     """
     request: dict[str, Any] = {
         "creatives": creatives,
-        "patch": patch,
         "dry_run": dry_run,
         "validation_mode": validation_mode,
         "delete_missing": delete_missing,
@@ -173,6 +175,9 @@ def build_sync_creatives_request(
 
     if assignments:
         request["assignments"] = assignments
+
+    if creative_ids:
+        request["creative_ids"] = creative_ids
 
     if webhook_url:
         request["push_notification_config"] = {

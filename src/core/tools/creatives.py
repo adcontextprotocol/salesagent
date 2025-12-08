@@ -40,8 +40,8 @@ from src.core.validation_helpers import format_validation_error, run_async_in_sy
 
 def _sync_creatives_impl(
     creatives: list[dict],
-    patch: bool = False,
     assignments: dict | None = None,
+    creative_ids: list[str] | None = None,
     delete_missing: bool = False,
     dry_run: bool = False,
     validation_mode: str = "strict",
@@ -49,18 +49,18 @@ def _sync_creatives_impl(
     context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ) -> SyncCreativesResponse:
-    """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
+    """Sync creative assets to centralized library (AdCP v2.5 spec compliant endpoint).
 
     Primary creative management endpoint that handles:
     - Bulk creative upload/update with upsert semantics
     - Creative assignment to media buy packages via assignments dict
     - Support for both hosted assets (media_url) and third-party tags (snippet)
-    - Patch updates, dry-run mode, and validation options
+    - Scoped updates via creative_ids filter, dry-run mode, and validation options
 
     Args:
         creatives: Array of creative assets to sync
-        patch: When true, only update provided fields (partial update). When false, full upsert.
         assignments: Bulk assignment map of creative_id to package_ids (spec-compliant)
+        creative_ids: Filter to limit sync scope to specific creatives (AdCP 2.5)
         delete_missing: Delete creatives not in sync payload (use with caution)
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
@@ -79,6 +79,13 @@ def _sync_creatives_impl(
     raw_creatives = [
         creative if isinstance(creative, dict) else creative.model_dump(mode="json") for creative in creatives
     ]
+
+    # AdCP 2.5: Filter creatives by creative_ids if provided
+    # This allows scoped updates to specific creatives without affecting others
+    if creative_ids:
+        creative_ids_set = set(creative_ids)
+        raw_creatives = [c for c in raw_creatives if c.get("creative_id") in creative_ids_set]
+        logger.info(f"[sync_creatives] Filtered to {len(raw_creatives)} creatives by creative_ids filter")
 
     start_time = time.time()
 
@@ -267,7 +274,7 @@ def _sync_creatives_impl(
                         existing_creative = session.scalars(stmt).first()
 
                     if existing_creative:
-                        # Update existing creative (respects patch vs full upsert)
+                        # Update existing creative with upsert semantics (AdCP 2.5)
                         # Update updated_at timestamp
                         now = datetime.now(UTC)
                         existing_creative.updated_at = now
@@ -275,37 +282,18 @@ def _sync_creatives_impl(
                         # Track changes for result
                         changes = []
 
-                        # Update fields based on patch mode
-                        if patch:
-                            # Patch mode: only update provided fields
-                            if creative.get("name") is not None and creative.get("name") != existing_creative.name:
-                                name_value = creative.get("name")
-                                if name_value is not None:
-                                    existing_creative.name = str(name_value)
-                                changes.append("name")
-                            if creative.get("format_id") or creative.get("format"):
-                                # Use validated format_value (already auto-upgraded from string)
-                                new_agent_url, new_format = _extract_format_namespace(format_value)
-                                if (
-                                    new_agent_url != existing_creative.agent_url
-                                    or new_format != existing_creative.format
-                                ):
-                                    existing_creative.agent_url = new_agent_url
-                                    existing_creative.format = new_format
-                                    changes.append("format")
-                        else:
-                            # Full upsert mode: replace all fields
-                            if creative.get("name") != existing_creative.name:
-                                name_value = creative.get("name")
-                                if name_value is not None:
-                                    existing_creative.name = str(name_value)
-                                changes.append("name")
-                            # Use validated format_value (already auto-upgraded from string)
-                            new_agent_url, new_format = _extract_format_namespace(format_value)
-                            if new_agent_url != existing_creative.agent_url or new_format != existing_creative.format:
-                                existing_creative.agent_url = new_agent_url
-                                existing_creative.format = new_format
-                                changes.append("format")
+                        # Upsert mode: update provided fields
+                        if creative.get("name") != existing_creative.name:
+                            name_value = creative.get("name")
+                            if name_value is not None:
+                                existing_creative.name = str(name_value)
+                            changes.append("name")
+                        # Use validated format_value (already auto-upgraded from string)
+                        new_agent_url, new_format = _extract_format_namespace(format_value)
+                        if new_agent_url != existing_creative.agent_url or new_format != existing_creative.format:
+                            existing_creative.agent_url = new_agent_url
+                            existing_creative.format = new_format
+                            changes.append("format")
 
                         # Determine creative status based on approval mode
                         creative_format = creative.get("format_id") or creative.get("format")
@@ -362,398 +350,360 @@ def _sync_creatives_impl(
                             needs_approval = False
 
                         # Store creative properties in data field
-                        if patch:
-                            # Patch mode: merge with existing data
-                            data = existing_creative.data or {}
-                            if creative.get("url") is not None and data.get("url") != creative.get("url"):
-                                data["url"] = creative.get("url")
-                                changes.append("url")
-                            if creative.get("click_url") is not None and data.get("click_url") != creative.get(
-                                "click_url"
-                            ):
-                                data["click_url"] = creative.get("click_url")
-                                changes.append("click_url")
-                            if creative.get("width") is not None and data.get("width") != creative.get("width"):
-                                data["width"] = creative.get("width")
-                                changes.append("width")
-                            if creative.get("height") is not None and data.get("height") != creative.get("height"):
-                                data["height"] = creative.get("height")
-                                changes.append("height")
-                            if creative.get("duration") is not None and data.get("duration") != creative.get(
-                                "duration"
-                            ):
-                                data["duration"] = creative.get("duration")
-                                changes.append("duration")
-                            if creative.get("assets") is not None:
-                                data["assets"] = creative.get("assets")
-                                changes.append("assets")
-                            if creative.get("template_variables") is not None:
-                                data["template_variables"] = creative.get("template_variables")
-                                changes.append("template_variables")
-                            # Persist application context
-                            if context is not None:
-                                data["context"] = context
-                        else:
-                            # Full upsert mode: replace all data
-                            # Extract URL from assets if not provided at top level
-                            # Use same priority logic as schema_data above
-                            url = creative.get("url")
-                            if not url and creative.get("assets"):
-                                assets = creative["assets"]
+                        # AdCP 2.5: Full upsert semantics (replace all data, not merge)
+                        # Extract URL from assets if not provided at top level
+                        # Use same priority logic as schema_data above
+                        url = creative.get("url")
+                        if not url and creative.get("assets"):
+                            assets = creative["assets"]
 
-                                # Priority 1: Try common asset_ids
-                                for priority_key in ["main", "image", "video", "creative", "content"]:
-                                    if priority_key in assets and isinstance(assets[priority_key], dict):
-                                        url = assets[priority_key].get("url")
-                                        if url:
-                                            logger.debug(
-                                                f"[sync_creatives] Extracted URL from assets.{priority_key}.url for data storage"
-                                            )
-                                            break
+                            # Priority 1: Try common asset_ids
+                            for priority_key in ["main", "image", "video", "creative", "content"]:
+                                if priority_key in assets and isinstance(assets[priority_key], dict):
+                                    url = assets[priority_key].get("url")
+                                    if url:
+                                        logger.debug(
+                                            f"[sync_creatives] Extracted URL from assets.{priority_key}.url for data storage"
+                                        )
+                                        break
 
-                                # Priority 2: First available asset URL
-                                if not url:
-                                    for asset_id, asset_data in assets.items():
-                                        if isinstance(asset_data, dict) and asset_data.get("url"):
-                                            url = asset_data["url"]
-                                            logger.debug(
-                                                f"[sync_creatives] Extracted URL from assets.{asset_id}.url for data storage (fallback)"
-                                            )
-                                            break
+                            # Priority 2: First available asset URL
+                            if not url:
+                                for asset_id, asset_data in assets.items():
+                                    if isinstance(asset_data, dict) and asset_data.get("url"):
+                                        url = asset_data["url"]
+                                        logger.debug(
+                                            f"[sync_creatives] Extracted URL from assets.{asset_id}.url for data storage (fallback)"
+                                        )
+                                        break
 
-                            data = {
-                                "url": url,
-                                "click_url": creative.get("click_url"),
-                                "width": creative.get("width"),
-                                "height": creative.get("height"),
-                                "duration": creative.get("duration"),
-                            }
-                            if creative.get("assets"):
-                                data["assets"] = creative.get("assets")
-                            if creative.get("template_variables"):
-                                data["template_variables"] = creative.get("template_variables")
-                            if context is not None:
-                                data["context"] = context
+                        data = {
+                            "url": url,
+                            "click_url": creative.get("click_url"),
+                            "width": creative.get("width"),
+                            "height": creative.get("height"),
+                            "duration": creative.get("duration"),
+                        }
+                        if creative.get("assets"):
+                            data["assets"] = creative.get("assets")
+                        if creative.get("template_variables"):
+                            data["template_variables"] = creative.get("template_variables")
+                        if context is not None:
+                            data["context"] = context
 
-                            # ALWAYS validate updates with creative agent
-                            if creative_format:
-                                try:
-                                    # Use pre-fetched formats (fetched outside transaction at function start)
-                                    # This avoids async HTTP calls inside savepoint
+                        # ALWAYS validate updates with creative agent
+                        if creative_format:
+                            try:
+                                # Use pre-fetched formats (fetched outside transaction at function start)
+                                # This avoids async HTTP calls inside savepoint
 
-                                    # Find matching format
-                                    format_obj = None
-                                    for fmt in all_formats:
-                                        if fmt.format_id == creative_format:
-                                            format_obj = fmt
-                                            break
+                                # Find matching format
+                                format_obj = None
+                                for fmt in all_formats:
+                                    if fmt.format_id == creative_format:
+                                        format_obj = fmt
+                                        break
 
-                                    if format_obj and format_obj.agent_url:
-                                        # Check if format is generative (has output_format_ids)
-                                        is_generative = bool(getattr(format_obj, "output_format_ids", None))
+                                if format_obj and format_obj.agent_url:
+                                    # Check if format is generative (has output_format_ids)
+                                    is_generative = bool(getattr(format_obj, "output_format_ids", None))
 
-                                        if is_generative:
-                                            # Generative creative update - rebuild using AI
-                                            logger.info(
-                                                f"[sync_creatives] Detected generative format update: {creative_format}, "
-                                                f"checking for Gemini API key"
-                                            )
-
-                                            # Get Gemini API key from config
-                                            from src.core.config import get_config
-
-                                            config = get_config()
-                                            gemini_api_key = config.gemini_api_key
-
-                                            if not gemini_api_key:
-                                                error_msg = (
-                                                    f"Cannot update generative creative {creative_format}: "
-                                                    f"GEMINI_API_KEY not configured"
-                                                )
-                                                logger.error(f"[sync_creatives] {error_msg}")
-                                                raise ValueError(error_msg)
-
-                                            # Extract message/brief from assets or inputs
-                                            message = None
-                                            if creative.get("assets"):
-                                                assets = creative.get("assets", {})
-                                                for role, asset in assets.items():
-                                                    if role in ["message", "brief", "prompt"] and isinstance(
-                                                        asset, dict
-                                                    ):
-                                                        message = asset.get("content") or asset.get("text")
-                                                        break
-
-                                            if not message and creative.get("inputs"):
-                                                inputs = creative.get("inputs", [])
-                                                if inputs and isinstance(inputs[0], dict):
-                                                    message = inputs[0].get("context_description")
-
-                                            # Extract promoted_offerings from assets if available
-                                            promoted_offerings = None
-                                            if creative.get("assets"):
-                                                assets = creative.get("assets", {})
-                                                for role, asset in assets.items():
-                                                    if role == "promoted_offerings" and isinstance(asset, dict):
-                                                        promoted_offerings = asset
-                                                        break
-
-                                            # Get existing context_id for refinement
-                                            existing_context_id = None
-                                            if existing_creative.data:
-                                                existing_context_id = existing_creative.data.get(
-                                                    "generative_context_id"
-                                                )
-
-                                            # Use provided context_id or existing one
-                                            context_id = creative.get("context_id") or existing_context_id
-
-                                            # Only call build_creative if we have a message (refinement)
-                                            if message:
-                                                logger.info(
-                                                    f"[sync_creatives] Calling build_creative for update: "
-                                                    f"{existing_creative.creative_id} format {creative_format} "
-                                                    f"from agent {format_obj.agent_url}, "
-                                                    f"message_length={len(message) if message else 0}, "
-                                                    f"context_id={context_id}"
-                                                )
-
-                                                build_result = run_async_in_sync_context(
-                                                    registry.build_creative(
-                                                        agent_url=format_obj.agent_url,
-                                                        format_id=creative_format,
-                                                        message=message,
-                                                        gemini_api_key=gemini_api_key,
-                                                        promoted_offerings=promoted_offerings,
-                                                        context_id=context_id,
-                                                        finalize=creative.get("approved", False),
-                                                    )
-                                                )
-
-                                                # Store build result in data
-                                                if build_result:
-                                                    data["generative_build_result"] = build_result
-                                                    data["generative_status"] = build_result.get("status", "draft")
-                                                    data["generative_context_id"] = build_result.get("context_id")
-                                                    changes.append("generative_build_result")
-
-                                                    # Extract creative output if available
-                                                    if build_result.get("creative_output"):
-                                                        creative_output = build_result["creative_output"]
-
-                                                        # Only use generative assets if user didn't provide their own
-                                                        user_provided_assets = creative.get("assets")
-                                                        if creative_output.get("assets") and not user_provided_assets:
-                                                            data["assets"] = creative_output["assets"]
-                                                            changes.append("assets")
-                                                            logger.info(
-                                                                "[sync_creatives] Using assets from generative output (update)"
-                                                            )
-                                                        elif user_provided_assets:
-                                                            logger.info(
-                                                                "[sync_creatives] Preserving user-provided assets in update, "
-                                                                "not overwriting with generative output"
-                                                            )
-
-                                                        if creative_output.get("output_format"):
-                                                            output_format = creative_output["output_format"]
-                                                            data["output_format"] = output_format
-                                                            changes.append("output_format")
-
-                                                            # Only use generative URL if user didn't provide one
-                                                            if isinstance(output_format, dict) and output_format.get(
-                                                                "url"
-                                                            ):
-                                                                if not data.get("url"):
-                                                                    data["url"] = output_format["url"]
-                                                                    changes.append("url")
-                                                                    logger.info(
-                                                                        f"[sync_creatives] Got URL from generative output (update): "
-                                                                        f"{data['url']}"
-                                                                    )
-                                                                else:
-                                                                    logger.info(
-                                                                        "[sync_creatives] Preserving user-provided URL in update, "
-                                                                        "not overwriting with generative output"
-                                                                    )
-
-                                                    logger.info(
-                                                        f"[sync_creatives] Generative creative updated: "
-                                                        f"status={data.get('generative_status')}, "
-                                                        f"context_id={data.get('generative_context_id')}"
-                                                    )
-                                            else:
-                                                logger.info(
-                                                    "[sync_creatives] No message for generative update, "
-                                                    "keeping existing creative data"
-                                                )
-
-                                            # Skip preview_creative call since we already have the output
-                                            preview_result = None
-                                        else:
-                                            # Static creative - use preview_creative
-                                            # Build creative manifest from available data
-                                            # Extract string ID from FormatId object if needed
-                                            format_id_str = (
-                                                creative_format.id
-                                                if hasattr(creative_format, "id")
-                                                else str(creative_format)
-                                            )
-                                            creative_manifest = {
-                                                "creative_id": existing_creative.creative_id,
-                                                "name": creative.get("name") or existing_creative.name,
-                                                "format_id": format_id_str,
-                                            }
-
-                                            # Add any provided asset data for validation
-                                            # Validate assets are in dict format (AdCP v2.4+)
-                                            if creative.get("assets"):
-                                                validated_assets = _validate_creative_assets(creative.get("assets"))
-                                                if validated_assets:
-                                                    creative_manifest["assets"] = validated_assets
-                                            if data.get("url"):
-                                                creative_manifest["url"] = data.get("url")
-
-                                            # Call creative agent's preview_creative for validation + preview
-                                            # Extract string ID from FormatId object if needed
-                                            format_id_str = (
-                                                creative_format.id
-                                                if hasattr(creative_format, "id")
-                                                else str(creative_format)
-                                            )
-                                            logger.info(
-                                                f"[sync_creatives] Calling preview_creative for validation (update): "
-                                                f"{existing_creative.creative_id} format {format_id_str} "
-                                                f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
-                                                f"has_url={bool(data.get('url'))}"
-                                            )
-
-                                            preview_result = run_async_in_sync_context(
-                                                registry.preview_creative(
-                                                    agent_url=format_obj.agent_url,
-                                                    format_id=format_id_str,
-                                                    creative_manifest=creative_manifest,
-                                                )
-                                            )
-
-                                        # Extract preview data and store in data field
-                                        if preview_result and preview_result.get("previews"):
-                                            # Store full preview response for UI (per AdCP PR #119)
-                                            # This preserves all variants and renders for UI display
-                                            data["preview_response"] = preview_result
-                                            changes.append("preview_response")
-
-                                            # Also extract primary preview URL for backward compatibility
-                                            first_preview = preview_result["previews"][0]
-                                            renders = first_preview.get("renders", [])
-                                            if renders:
-                                                first_render = renders[0]
-
-                                                # Store preview URL from render ONLY if we don't already have a URL from assets
-                                                # This preserves user-provided URLs in assets instead of overwriting with preview URLs
-                                                if first_render.get("preview_url") and not data.get("url"):
-                                                    data["url"] = first_render["preview_url"]
-                                                    changes.append("url")
-                                                    logger.info(
-                                                        f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
-                                                    )
-                                                elif data.get("url"):
-                                                    logger.info(
-                                                        "[sync_creatives] Preserving user-provided URL from assets, "
-                                                        "not overwriting with preview URL"
-                                                    )
-
-                                                # Extract dimensions from dimensions object
-                                                # Only use preview dimensions if not already provided by user
-                                                dimensions = first_render.get("dimensions", {})
-                                                if dimensions.get("width") and not data.get("width"):
-                                                    data["width"] = dimensions["width"]
-                                                    changes.append("width")
-                                                if dimensions.get("height") and not data.get("height"):
-                                                    data["height"] = dimensions["height"]
-                                                    changes.append("height")
-                                                if dimensions.get("duration") and not data.get("duration"):
-                                                    data["duration"] = dimensions["duration"]
-                                                    changes.append("duration")
-
+                                    if is_generative:
+                                        # Generative creative update - rebuild using AI
                                         logger.info(
-                                            f"[sync_creatives] Preview data populated for update: "
-                                            f"url={bool(data.get('url'))}, "
-                                            f"width={data.get('width')}, "
-                                            f"height={data.get('height')}, "
-                                            f"variants={len(preview_result.get('previews', []) if preview_result else [])}"
+                                            f"[sync_creatives] Detected generative format update: {creative_format}, "
+                                            f"checking for Gemini API key"
                                         )
-                                    else:
-                                        # Preview generation returned no previews
-                                        # Only acceptable if creative has a media_url (direct URL to creative asset)
-                                        has_media_url = bool(creative.get("url") or data.get("url"))
 
-                                        if has_media_url:
-                                            # Static creatives with media_url don't need previews
-                                            warning_msg = f"Preview generation returned no previews for {existing_creative.creative_id} (static creative with media_url)"
-                                            logger.warning(f"[sync_creatives] {warning_msg}")
-                                            # Continue with update - preview is optional for static creatives
-                                        else:
-                                            # Creative agent should have generated previews but didn't
-                                            error_msg = f"Preview generation failed for {existing_creative.creative_id}: no previews returned and no media_url provided"
-                                            logger.error(f"[sync_creatives] {error_msg}")
-                                            failed_creatives.append(
-                                                {
-                                                    "creative_id": existing_creative.creative_id,
-                                                    "error": error_msg,
-                                                    "format": creative_format,
-                                                }
+                                        # Get Gemini API key from config
+                                        from src.core.config import get_config
+
+                                        config = get_config()
+                                        gemini_api_key = config.gemini_api_key
+
+                                        if not gemini_api_key:
+                                            error_msg = (
+                                                f"Cannot update generative creative {creative_format}: "
+                                                f"GEMINI_API_KEY not configured"
                                             )
-                                            failed_count += 1
-                                            results.append(
-                                                SyncCreativeResult(
-                                                    creative_id=existing_creative.creative_id,
-                                                    action="failed",
-                                                    status=None,
-                                                    platform_id=None,
-                                                    errors=[error_msg],
-                                                    review_feedback=None,
-                                                    assigned_to=None,
-                                                    assignment_errors=None,
+                                            logger.error(f"[sync_creatives] {error_msg}")
+                                            raise ValueError(error_msg)
+
+                                        # Extract message/brief from assets or inputs
+                                        message = None
+                                        if creative.get("assets"):
+                                            assets = creative.get("assets", {})
+                                            for role, asset in assets.items():
+                                                if role in ["message", "brief", "prompt"] and isinstance(asset, dict):
+                                                    message = asset.get("content") or asset.get("text")
+                                                    break
+
+                                        if not message and creative.get("inputs"):
+                                            inputs = creative.get("inputs", [])
+                                            if inputs and isinstance(inputs[0], dict):
+                                                message = inputs[0].get("context_description")
+
+                                        # Extract promoted_offerings from assets if available
+                                        promoted_offerings = None
+                                        if creative.get("assets"):
+                                            assets = creative.get("assets", {})
+                                            for role, asset in assets.items():
+                                                if role == "promoted_offerings" and isinstance(asset, dict):
+                                                    promoted_offerings = asset
+                                                    break
+
+                                        # Get existing context_id for refinement
+                                        existing_context_id = None
+                                        if existing_creative.data:
+                                            existing_context_id = existing_creative.data.get("generative_context_id")
+
+                                        # Use provided context_id or existing one
+                                        context_id = creative.get("context_id") or existing_context_id
+
+                                        # Only call build_creative if we have a message (refinement)
+                                        if message:
+                                            logger.info(
+                                                f"[sync_creatives] Calling build_creative for update: "
+                                                f"{existing_creative.creative_id} format {creative_format} "
+                                                f"from agent {format_obj.agent_url}, "
+                                                f"message_length={len(message) if message else 0}, "
+                                                f"context_id={context_id}"
+                                            )
+
+                                            build_result = run_async_in_sync_context(
+                                                registry.build_creative(
+                                                    agent_url=format_obj.agent_url,
+                                                    format_id=creative_format,
+                                                    message=message,
+                                                    gemini_api_key=gemini_api_key,
+                                                    promoted_offerings=promoted_offerings,
+                                                    context_id=context_id,
+                                                    finalize=creative.get("approved", False),
                                                 )
                                             )
-                                            continue  # Skip this creative, move to next
 
-                                except Exception as validation_error:
-                                    # Creative agent validation failed for update (network error, agent down, etc.)
-                                    # Do NOT update the creative - it needs validation before acceptance
-                                    error_msg = (
-                                        f"Creative agent unreachable or validation error: {str(validation_error)}. "
-                                        f"Retry recommended - creative agent may be temporarily unavailable."
-                                    )
-                                    logger.error(
-                                        f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id}",
-                                        exc_info=True,
-                                    )
-                                    failed_creatives.append(
-                                        {
-                                            "creative_id": existing_creative.creative_id,
-                                            "error": error_msg,
-                                            "format": creative_format,
-                                        }
-                                    )
-                                    failed_count += 1
-                                    results.append(
-                                        SyncCreativeResult(
-                                            creative_id=existing_creative.creative_id,
-                                            action="failed",
-                                            status=None,
-                                            platform_id=None,
-                                            errors=[error_msg],
-                                            review_feedback=None,
-                                            assigned_to=None,
-                                            assignment_errors=None,
+                                            # Store build result in data
+                                            if build_result:
+                                                data["generative_build_result"] = build_result
+                                                data["generative_status"] = build_result.get("status", "draft")
+                                                data["generative_context_id"] = build_result.get("context_id")
+                                                changes.append("generative_build_result")
+
+                                                # Extract creative output if available
+                                                if build_result.get("creative_output"):
+                                                    creative_output = build_result["creative_output"]
+
+                                                    # Only use generative assets if user didn't provide their own
+                                                    user_provided_assets = creative.get("assets")
+                                                    if creative_output.get("assets") and not user_provided_assets:
+                                                        data["assets"] = creative_output["assets"]
+                                                        changes.append("assets")
+                                                        logger.info(
+                                                            "[sync_creatives] Using assets from generative output (update)"
+                                                        )
+                                                    elif user_provided_assets:
+                                                        logger.info(
+                                                            "[sync_creatives] Preserving user-provided assets in update, "
+                                                            "not overwriting with generative output"
+                                                        )
+
+                                                    if creative_output.get("output_format"):
+                                                        output_format = creative_output["output_format"]
+                                                        data["output_format"] = output_format
+                                                        changes.append("output_format")
+
+                                                        # Only use generative URL if user didn't provide one
+                                                        if isinstance(output_format, dict) and output_format.get("url"):
+                                                            if not data.get("url"):
+                                                                data["url"] = output_format["url"]
+                                                                changes.append("url")
+                                                                logger.info(
+                                                                    f"[sync_creatives] Got URL from generative output (update): "
+                                                                    f"{data['url']}"
+                                                                )
+                                                            else:
+                                                                logger.info(
+                                                                    "[sync_creatives] Preserving user-provided URL in update, "
+                                                                    "not overwriting with generative output"
+                                                                )
+
+                                                logger.info(
+                                                    f"[sync_creatives] Generative creative updated: "
+                                                    f"status={data.get('generative_status')}, "
+                                                    f"context_id={data.get('generative_context_id')}"
+                                                )
+                                        else:
+                                            logger.info(
+                                                "[sync_creatives] No message for generative update, "
+                                                "keeping existing creative data"
+                                            )
+
+                                        # Skip preview_creative call since we already have the output
+                                        preview_result = None
+                                    else:
+                                        # Static creative - use preview_creative
+                                        # Build creative manifest from available data
+                                        # Extract string ID from FormatId object if needed
+                                        format_id_str = (
+                                            creative_format.id
+                                            if hasattr(creative_format, "id")
+                                            else str(creative_format)
                                         )
-                                    )
-                                    continue  # Skip this creative update
+                                        creative_manifest = {
+                                            "creative_id": existing_creative.creative_id,
+                                            "name": creative.get("name") or existing_creative.name,
+                                            "format_id": format_id_str,
+                                        }
 
-                            # In full upsert, consider all fields as changed
-                            changes.extend(["url", "click_url", "width", "height", "duration"])
+                                        # Add any provided asset data for validation
+                                        # Validate assets are in dict format (AdCP v2.4+)
+                                        if creative.get("assets"):
+                                            validated_assets = _validate_creative_assets(creative.get("assets"))
+                                            if validated_assets:
+                                                creative_manifest["assets"] = validated_assets
+                                        if data.get("url"):
+                                            creative_manifest["url"] = data.get("url")
+
+                                        # Call creative agent's preview_creative for validation + preview
+                                        # Extract string ID from FormatId object if needed
+                                        format_id_str = (
+                                            creative_format.id
+                                            if hasattr(creative_format, "id")
+                                            else str(creative_format)
+                                        )
+                                        logger.info(
+                                            f"[sync_creatives] Calling preview_creative for validation (update): "
+                                            f"{existing_creative.creative_id} format {format_id_str} "
+                                            f"from agent {format_obj.agent_url}, has_assets={bool(creative.get('assets'))}, "
+                                            f"has_url={bool(data.get('url'))}"
+                                        )
+
+                                        preview_result = run_async_in_sync_context(
+                                            registry.preview_creative(
+                                                agent_url=format_obj.agent_url,
+                                                format_id=format_id_str,
+                                                creative_manifest=creative_manifest,
+                                            )
+                                        )
+
+                                    # Extract preview data and store in data field
+                                    if preview_result and preview_result.get("previews"):
+                                        # Store full preview response for UI (per AdCP PR #119)
+                                        # This preserves all variants and renders for UI display
+                                        data["preview_response"] = preview_result
+                                        changes.append("preview_response")
+
+                                        # Also extract primary preview URL for backward compatibility
+                                        first_preview = preview_result["previews"][0]
+                                        renders = first_preview.get("renders", [])
+                                        if renders:
+                                            first_render = renders[0]
+
+                                            # Store preview URL from render ONLY if we don't already have a URL from assets
+                                            # This preserves user-provided URLs in assets instead of overwriting with preview URLs
+                                            if first_render.get("preview_url") and not data.get("url"):
+                                                data["url"] = first_render["preview_url"]
+                                                changes.append("url")
+                                                logger.info(
+                                                    f"[sync_creatives] Got preview URL from creative agent: {data['url']}"
+                                                )
+                                            elif data.get("url"):
+                                                logger.info(
+                                                    "[sync_creatives] Preserving user-provided URL from assets, "
+                                                    "not overwriting with preview URL"
+                                                )
+
+                                            # Extract dimensions from dimensions object
+                                            # Only use preview dimensions if not already provided by user
+                                            dimensions = first_render.get("dimensions", {})
+                                            if dimensions.get("width") and not data.get("width"):
+                                                data["width"] = dimensions["width"]
+                                                changes.append("width")
+                                            if dimensions.get("height") and not data.get("height"):
+                                                data["height"] = dimensions["height"]
+                                                changes.append("height")
+                                            if dimensions.get("duration") and not data.get("duration"):
+                                                data["duration"] = dimensions["duration"]
+                                                changes.append("duration")
+
+                                    logger.info(
+                                        f"[sync_creatives] Preview data populated for update: "
+                                        f"url={bool(data.get('url'))}, "
+                                        f"width={data.get('width')}, "
+                                        f"height={data.get('height')}, "
+                                        f"variants={len(preview_result.get('previews', []) if preview_result else [])}"
+                                    )
+                                else:
+                                    # Preview generation returned no previews
+                                    # Only acceptable if creative has a media_url (direct URL to creative asset)
+                                    has_media_url = bool(creative.get("url") or data.get("url"))
+
+                                    if has_media_url:
+                                        # Static creatives with media_url don't need previews
+                                        warning_msg = f"Preview generation returned no previews for {existing_creative.creative_id} (static creative with media_url)"
+                                        logger.warning(f"[sync_creatives] {warning_msg}")
+                                        # Continue with update - preview is optional for static creatives
+                                    else:
+                                        # Creative agent should have generated previews but didn't
+                                        error_msg = f"Preview generation failed for {existing_creative.creative_id}: no previews returned and no media_url provided"
+                                        logger.error(f"[sync_creatives] {error_msg}")
+                                        failed_creatives.append(
+                                            {
+                                                "creative_id": existing_creative.creative_id,
+                                                "error": error_msg,
+                                                "format": creative_format,
+                                            }
+                                        )
+                                        failed_count += 1
+                                        results.append(
+                                            SyncCreativeResult(
+                                                creative_id=existing_creative.creative_id,
+                                                action="failed",
+                                                status=None,
+                                                platform_id=None,
+                                                errors=[error_msg],
+                                                review_feedback=None,
+                                                assigned_to=None,
+                                                assignment_errors=None,
+                                            )
+                                        )
+                                        continue  # Skip this creative, move to next
+
+                            except Exception as validation_error:
+                                # Creative agent validation failed for update (network error, agent down, etc.)
+                                # Do NOT update the creative - it needs validation before acceptance
+                                error_msg = (
+                                    f"Creative agent unreachable or validation error: {str(validation_error)}. "
+                                    f"Retry recommended - creative agent may be temporarily unavailable."
+                                )
+                                logger.error(
+                                    f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id}",
+                                    exc_info=True,
+                                )
+                                failed_creatives.append(
+                                    {
+                                        "creative_id": existing_creative.creative_id,
+                                        "error": error_msg,
+                                        "format": creative_format,
+                                    }
+                                )
+                                failed_count += 1
+                                results.append(
+                                    SyncCreativeResult(
+                                        creative_id=existing_creative.creative_id,
+                                        action="failed",
+                                        status=None,
+                                        platform_id=None,
+                                        errors=[error_msg],
+                                        review_feedback=None,
+                                        assigned_to=None,
+                                        assignment_errors=None,
+                                    )
+                                )
+                                continue  # Skip this creative update
+
+                        # In full upsert, consider all fields as changed
+                        changes.extend(["url", "click_url", "width", "height", "duration"])
 
                         existing_creative.data = data
 
@@ -1614,7 +1564,7 @@ def _sync_creatives_impl(
             "synced_count": len(synced_creatives),
             "failed_count": len(failed_creatives),
             "assignment_count": len(assignment_list),
-            "patch_mode": patch,
+            "creative_ids_filter": creative_ids,
             "dry_run": dry_run,
         },
     )
@@ -1669,7 +1619,7 @@ def _sync_creatives_impl(
                         "assignment_count": len(assignment_list) if assignment_list else 0,
                         "approval_required_count": len(creatives_needing_approval),
                         "dry_run": dry_run,
-                        "patch_mode": patch,
+                        "creative_ids_filter": creative_ids,
                     },
                     tenant_id=tenant["tenant_id"],
                 )
@@ -1687,8 +1637,8 @@ def _sync_creatives_impl(
 
 async def sync_creatives(
     creatives: list[dict],
-    patch: bool = False,
     assignments: dict | None = None,
+    creative_ids: list[str] | None = None,
     delete_missing: bool = False,
     dry_run: bool = False,
     validation_mode: str = "strict",
@@ -1696,14 +1646,14 @@ async def sync_creatives(
     context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
-    """Sync creative assets to centralized library (AdCP v2.4 spec compliant endpoint).
+    """Sync creative assets to centralized library (AdCP v2.5 spec compliant endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
 
     Args:
         creatives: List of creative objects to sync
-        patch: When true, only update provided fields (partial update). When false, full upsert.
         assignments: Bulk assignment map of creative_id to package_ids (spec-compliant)
+        creative_ids: Filter to limit sync scope to specific creatives (AdCP 2.5)
         delete_missing: Delete creatives not in sync payload (use with caution)
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
@@ -1716,8 +1666,8 @@ async def sync_creatives(
     """
     response = _sync_creatives_impl(
         creatives=creatives,
-        patch=patch,
         assignments=assignments,
+        creative_ids=creative_ids,
         delete_missing=delete_missing,
         dry_run=dry_run,
         validation_mode=validation_mode,
@@ -1730,7 +1680,9 @@ async def sync_creatives(
 
 def _list_creatives_impl(
     media_buy_id: str | None = None,
+    media_buy_ids: list[str] | None = None,
     buyer_ref: str | None = None,
+    buyer_refs: list[str] | None = None,
     status: str | None = None,
     format: str | None = None,
     tags: list[str] | None = None,
@@ -1751,14 +1703,16 @@ def _list_creatives_impl(
     context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ) -> ListCreativesResponse:
-    """List and search creative library (AdCP spec endpoint).
+    """List and search creative library (AdCP v2.5 spec endpoint).
 
     Advanced filtering and search endpoint for the centralized creative library.
     Supports pagination, sorting, and multiple filter criteria.
 
     Args:
-        media_buy_id: Filter by media buy ID (optional)
-        buyer_ref: Filter by buyer reference (optional)
+        media_buy_id: Filter by single media buy ID (optional, backward compat)
+        media_buy_ids: Filter by multiple media buy IDs (AdCP 2.5, optional)
+        buyer_ref: Filter by single buyer reference (optional, backward compat)
+        buyer_refs: Filter by multiple buyer references (AdCP 2.5, optional)
         status: Filter by creative status (pending, approved, rejected) (optional)
         format: Filter by creative format (optional)
         tags: Filter by tags (optional)
@@ -1809,7 +1763,9 @@ def _list_creatives_impl(
     try:
         req = create_list_creatives_request(
             media_buy_id=media_buy_id,
+            media_buy_ids=media_buy_ids,
             buyer_ref=buyer_ref,
+            buyer_refs=buyer_refs,
             status=status,
             format=format,
             tags=tags or [],
@@ -1858,18 +1814,33 @@ def _list_creatives_impl(
         stmt = select(DBCreative).filter_by(tenant_id=tenant["tenant_id"], principal_id=principal_id)
 
         # Apply filters
-        if req.media_buy_id:
-            # Filter by media buy assignments
+        # AdCP 2.5: Support plural media_buy_ids and buyer_refs filters
+        # Extract from filters object (populated by create_list_creatives_request)
+        media_buy_ids_filter = None
+        buyer_refs_filter = None
+        if req.filters:
+            media_buy_ids_filter = getattr(req.filters, "media_buy_ids", None)
+            buyer_refs_filter = getattr(req.filters, "buyer_refs", None)
+
+        # Also check legacy singular fields on request object for backward compat
+        if not media_buy_ids_filter and hasattr(req, "media_buy_id") and req.media_buy_id:
+            media_buy_ids_filter = [req.media_buy_id]
+        if not buyer_refs_filter and hasattr(req, "buyer_ref") and req.buyer_ref:
+            buyer_refs_filter = [req.buyer_ref]
+
+        if media_buy_ids_filter:
+            # Filter by media buy assignments (OR logic - matches any)
             stmt = stmt.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id).where(
-                DBAssignment.media_buy_id == req.media_buy_id
+                DBAssignment.media_buy_id.in_(media_buy_ids_filter)
             )
 
-        if req.buyer_ref:
-            # Filter by buyer_ref through media buy
-            stmt = (
-                stmt.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id)
-                .join(MediaBuy, DBAssignment.media_buy_id == MediaBuy.media_buy_id)
-                .where(MediaBuy.buyer_ref == req.buyer_ref)
+        if buyer_refs_filter:
+            # Filter by buyer_ref through media buy (OR logic - matches any)
+            # Only join if not already joined for media_buy_ids
+            if not media_buy_ids_filter:
+                stmt = stmt.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id)
+            stmt = stmt.join(MediaBuy, DBAssignment.media_buy_id == MediaBuy.media_buy_id).where(
+                MediaBuy.buyer_ref.in_(buyer_refs_filter)
             )
 
         if req.status:
@@ -2073,7 +2044,9 @@ def _list_creatives_impl(
 
 async def list_creatives(
     media_buy_id: str = None,
+    media_buy_ids: list[str] = None,
     buyer_ref: str = None,
+    buyer_refs: list[str] = None,
     status: str = None,
     format: str = None,
     tags: list[str] = None,
@@ -2095,45 +2068,53 @@ async def list_creatives(
     context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
-    """List and filter creative assets from the centralized library.
+    """List and filter creative assets from the centralized library (AdCP v2.5).
 
     MCP tool wrapper that delegates to the shared implementation.
     Supports both flat parameters (status, format, etc.) and nested objects (filters, sort, pagination)
     for maximum flexibility.
 
+    Args:
+        media_buy_id: Filter by single media buy ID (backward compat)
+        media_buy_ids: Filter by multiple media buy IDs (AdCP 2.5)
+        buyer_ref: Filter by single buyer reference (backward compat)
+        buyer_refs: Filter by multiple buyer references (AdCP 2.5)
+
     Returns:
         ToolResult with ListCreativesResponse data
     """
     response = _list_creatives_impl(
-        media_buy_id,
-        buyer_ref,
-        status,
-        format,
-        tags,
-        created_after,
-        created_before,
-        search,
-        filters,
-        sort,
-        pagination,
-        fields,
-        include_performance,
-        include_assignments,
-        include_sub_assets,
-        page,
-        limit,
-        sort_by,
-        sort_order,
-        context,
-        ctx,
+        media_buy_id=media_buy_id,
+        media_buy_ids=media_buy_ids,
+        buyer_ref=buyer_ref,
+        buyer_refs=buyer_refs,
+        status=status,
+        format=format,
+        tags=tags,
+        created_after=created_after,
+        created_before=created_before,
+        search=search,
+        filters=filters,
+        sort=sort,
+        pagination=pagination,
+        fields=fields,
+        include_performance=include_performance,
+        include_assignments=include_assignments,
+        include_sub_assets=include_sub_assets,
+        page=page,
+        limit=limit,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        context=context,
+        ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 
 def sync_creatives_raw(
     creatives: list[dict],
-    patch: bool = False,
     assignments: dict = None,
+    creative_ids: list[str] = None,
     delete_missing: bool = False,
     dry_run: bool = False,
     validation_mode: str = "strict",
@@ -2147,8 +2128,8 @@ def sync_creatives_raw(
 
     Args:
         creatives: List of creative asset objects
-        patch: When true, only update provided fields (partial update). When false, full upsert.
         assignments: Bulk assignment map of creative_id to package_ids (spec-compliant)
+        creative_ids: Filter to limit sync scope to specific creatives (AdCP 2.5)
         delete_missing: Delete creatives not in sync payload (use with caution)
         dry_run: Preview changes without applying them
         validation_mode: Validation strictness (strict or lenient)
@@ -2161,8 +2142,8 @@ def sync_creatives_raw(
     """
     return _sync_creatives_impl(
         creatives=creatives,
-        patch=patch,
         assignments=assignments,
+        creative_ids=creative_ids,
         delete_missing=delete_missing,
         dry_run=dry_run,
         validation_mode=validation_mode,
@@ -2174,7 +2155,9 @@ def sync_creatives_raw(
 
 def list_creatives_raw(
     media_buy_id: str = None,
+    media_buy_ids: list[str] = None,
     buyer_ref: str = None,
+    buyer_refs: list[str] = None,
     status: str = None,
     format: str = None,
     tags: list[str] = None,
@@ -2188,13 +2171,15 @@ def list_creatives_raw(
     context: dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
-    """List creative assets with filtering and pagination (raw function for A2A server use).
+    """List creative assets with filtering and pagination (raw function for A2A server use, AdCP v2.5).
 
     Delegates to the shared implementation.
 
     Args:
-        media_buy_id: Filter by media buy ID (optional)
-        buyer_ref: Filter by buyer reference (optional)
+        media_buy_id: Filter by single media buy ID (backward compat)
+        media_buy_ids: Filter by multiple media buy IDs (AdCP 2.5)
+        buyer_ref: Filter by single buyer reference (backward compat)
+        buyer_refs: Filter by multiple buyer references (AdCP 2.5)
         status: Filter by status (optional)
         format: Filter by creative format (optional)
         tags: Filter by creative group tags (optional)
@@ -2213,7 +2198,9 @@ def list_creatives_raw(
     """
     return _list_creatives_impl(
         media_buy_id=media_buy_id,
+        media_buy_ids=media_buy_ids,
         buyer_ref=buyer_ref,
+        buyer_refs=buyer_refs,
         status=status,
         format=format,
         tags=tags,

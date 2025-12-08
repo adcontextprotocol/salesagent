@@ -1561,10 +1561,11 @@ class AdCPRequestHandler(RequestHandler):
                     "received_parameters": list(parameters.keys()),
                 }
 
-            # Call core function with spec-compliant parameters (AdCP v2.4)
+            # Call core function with spec-compliant parameters (AdCP v2.5)
             response = core_sync_creatives_tool(
                 creatives=parameters["creatives"],
-                patch=parameters.get("patch", False),
+                # AdCP 2.5: Full upsert semantics (patch parameter removed)
+                creative_ids=parameters.get("creative_ids"),
                 assignments=parameters.get("assignments"),
                 delete_missing=parameters.get("delete_missing", False),
                 dry_run=parameters.get("dry_run", False),
