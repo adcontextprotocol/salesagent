@@ -26,6 +26,9 @@ from src.core.tool_context import ToolContext
 logger = logging.getLogger(__name__)
 console = Console()
 
+from adcp.types import MediaBuyStatus
+from adcp.types.generated_poc.core.context import ContextObject
+
 from src.core.auth import get_principal_object
 from src.core.config_loader import get_current_tenant
 from src.core.database.database_session import get_db_session
@@ -465,10 +468,10 @@ def _get_media_buy_delivery_impl(
 def get_media_buy_delivery(
     media_buy_ids: list[str] | None = None,
     buyer_refs: list[str] | None = None,
-    status_filter: str | list[str] | None = None,
+    status_filter: MediaBuyStatus | list[MediaBuyStatus] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    context: dict | None = None,  # Application level context per adcp spec
+    context: ContextObject | None = None,
     ctx: Context | ToolContext | None = None,
 ):
     """Get delivery data for media buys.
@@ -478,10 +481,10 @@ def get_media_buy_delivery(
     Args:
         media_buy_ids: Array of publisher media buy IDs to get delivery data for (optional)
         buyer_refs: Array of buyer reference IDs to get delivery data for (optional)
-        status_filter: Filter by status - single status or array: 'active', 'pending_activation', 'paused', 'completed' (optional)
+        status_filter: Filter by status - single status or array of MediaBuyStatus enums (optional)
         start_date: Start date for reporting period in YYYY-MM-DD format (optional)
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
-        context: Application level context object
+        context: Application level context object (ContextObject)
         ctx: FastMCP context (automatically provided)
 
     Returns:
@@ -492,10 +495,10 @@ def get_media_buy_delivery(
         req = GetMediaBuyDeliveryRequest(
             media_buy_ids=media_buy_ids,
             buyer_refs=buyer_refs,
-            status_filter=status_filter,  # type: ignore[arg-type]
+            status_filter=status_filter,
             start_date=start_date,
             end_date=end_date,
-            context=context,  # type: ignore[arg-type]
+            context=context,
         )
 
         response = _get_media_buy_delivery_impl(req, ctx)
@@ -508,10 +511,10 @@ def get_media_buy_delivery(
 def get_media_buy_delivery_raw(
     media_buy_ids: list[str] | None = None,
     buyer_refs: list[str] | None = None,
-    status_filter: str | list[str] | None = None,
+    status_filter: MediaBuyStatus | list[MediaBuyStatus] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    context: dict | None = None,  # Application level context per adcp spec
+    context: ContextObject | None = None,
     ctx: Context | ToolContext | None = None,
 ):
     """Get delivery metrics for media buys (raw function for A2A server use).
@@ -519,10 +522,10 @@ def get_media_buy_delivery_raw(
     Args:
         media_buy_ids: Array of publisher media buy IDs to get delivery data for (optional)
         buyer_refs: Array of buyer reference IDs to get delivery data for (optional)
-        status_filter: Filter by status - single status or array (optional)
+        status_filter: Filter by status - single status or array of MediaBuyStatus enums (optional)
         start_date: Start date for reporting period in YYYY-MM-DD format (optional)
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
-        context: Application level context
+        context: Application level context (ContextObject)
         ctx: Context for authentication
 
     Returns:
@@ -532,10 +535,10 @@ def get_media_buy_delivery_raw(
     req = GetMediaBuyDeliveryRequest(
         media_buy_ids=media_buy_ids,
         buyer_refs=buyer_refs,
-        status_filter=status_filter,  # type: ignore[arg-type]
+        status_filter=status_filter,
         start_date=start_date,
         end_date=end_date,
-        context=context,  # type: ignore[arg-type]
+        context=context,
     )
 
     # Call the implementation
