@@ -432,7 +432,7 @@ def process_and_upload_package_creatives(
             # Step 1: Upload creatives to database via sync_creatives
             sync_response = _sync_creatives_impl(
                 creatives=creative_dicts,
-                patch=False,  # Full upsert for new creatives
+                # AdCP 2.5: Full upsert semantics (no patch parameter)
                 assignments=None,  # Assign separately after creation
                 dry_run=testing_ctx.dry_run if testing_ctx else False,
                 validation_mode="strict",

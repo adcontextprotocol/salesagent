@@ -786,6 +786,169 @@ def _update_media_buy_impl(
                         )
                     )
 
+            # Handle creatives (inline upload) - AdCP 2.5
+            if hasattr(pkg_update, "creatives") and pkg_update.creatives:
+                # Validate package_id is provided
+                if not pkg_update.package_id:
+                    error_msg = "package_id is required when uploading creatives"
+                    response_data = UpdateMediaBuyError(
+                        errors=[Error(code="missing_package_id", message=error_msg)],
+                        context=to_context_object(req.context),
+                    )
+                    ctx_manager.update_workflow_step(
+                        step.step_id,
+                        status="failed",
+                        response_data=response_data.model_dump(mode="json"),
+                        error_message=error_msg,
+                    )
+                    return response_data
+
+                from src.core.tools.creatives import _sync_creatives_impl
+
+                # Sync creatives (upload/update)
+                creative_dicts = [
+                    c.model_dump(mode="json") if hasattr(c, "model_dump") else c for c in pkg_update.creatives
+                ]
+                sync_response = _sync_creatives_impl(
+                    creatives=creative_dicts,
+                    assignments={
+                        c.get("creative_id") or c.creative_id: [pkg_update.package_id]
+                        for c in pkg_update.creatives
+                        if hasattr(c, "creative_id") or c.get("creative_id")
+                    },
+                    ctx=ctx,
+                )
+
+                # Check for sync errors
+                failed_creatives = [r for r in sync_response.creatives if r.action == "failed"]
+                if failed_creatives:
+                    error_msgs = [f"{r.creative_id}: {', '.join(r.errors or [])}" for r in failed_creatives]
+                    error_msg = f"Failed to sync creatives: {'; '.join(error_msgs)}"
+                    response_data = UpdateMediaBuyError(
+                        errors=[Error(code="creative_sync_failed", message=error_msg)],
+                        context=to_context_object(req.context),
+                    )
+                    ctx_manager.update_workflow_step(
+                        step.step_id,
+                        status="failed",
+                        response_data=response_data.model_dump(mode="json"),
+                        error_message=error_msg,
+                    )
+                    return response_data
+
+                # Track in affected_packages
+                synced_ids = [r.creative_id for r in sync_response.creatives if r.action in ["created", "updated"]]
+                affected_packages_list.append(
+                    AffectedPackage(
+                        buyer_ref=req.buyer_ref or "",
+                        package_id=pkg_update.package_id,
+                        paused=False,
+                        buyer_package_ref=pkg_update.package_id,
+                        changes_applied={"creatives_uploaded": synced_ids},
+                    )
+                )
+
+            # Handle creative_assignments (weight/placement updates) - AdCP 2.5
+            if hasattr(pkg_update, "creative_assignments") and pkg_update.creative_assignments:
+                # Validate package_id is provided
+                if not pkg_update.package_id:
+                    error_msg = "package_id is required when updating creative_assignments"
+                    response_data = UpdateMediaBuyError(
+                        errors=[Error(code="missing_package_id", message=error_msg)],
+                        context=to_context_object(req.context),
+                    )
+                    ctx_manager.update_workflow_step(
+                        step.step_id,
+                        status="failed",
+                        response_data=response_data.model_dump(mode="json"),
+                        error_message=error_msg,
+                    )
+                    return response_data
+
+                from src.core.database.database_session import get_db_session
+                from src.core.database.models import CreativeAssignment as DBAssignment
+                from src.core.database.models import MediaBuy as MediaBuyModel
+
+                with get_db_session() as session:
+                    # Resolve media_buy_id
+                    mb_stmt = select(MediaBuyModel).where(
+                        MediaBuyModel.media_buy_id == req.media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
+                    )
+                    media_buy_obj = session.scalars(mb_stmt).first()
+                    if not media_buy_obj:
+                        mb_stmt = select(MediaBuyModel).where(
+                            MediaBuyModel.buyer_ref == req.media_buy_id, MediaBuyModel.tenant_id == tenant["tenant_id"]
+                        )
+                        media_buy_obj = session.scalars(mb_stmt).first()
+
+                    if not media_buy_obj:
+                        error_msg = f"Media buy '{req.media_buy_id}' not found"
+                        response_data = UpdateMediaBuyError(
+                            errors=[Error(code="media_buy_not_found", message=error_msg)],
+                            context=to_context_object(req.context),
+                        )
+                        return response_data
+
+                    actual_media_buy_id = media_buy_obj.media_buy_id
+                    updated_assignments = []
+
+                    for assignment in pkg_update.creative_assignments:
+                        creative_id = (
+                            assignment.creative_id
+                            if hasattr(assignment, "creative_id")
+                            else assignment.get("creative_id")
+                        )
+                        weight = assignment.weight if hasattr(assignment, "weight") else assignment.get("weight")
+                        placement_ids = (
+                            assignment.placement_ids
+                            if hasattr(assignment, "placement_ids")
+                            else assignment.get("placement_ids")
+                        )
+
+                        # Find or create assignment record
+                        assign_stmt = select(DBAssignment).where(
+                            DBAssignment.tenant_id == tenant["tenant_id"],
+                            DBAssignment.media_buy_id == actual_media_buy_id,
+                            DBAssignment.package_id == pkg_update.package_id,
+                            DBAssignment.creative_id == creative_id,
+                        )
+                        db_assignment = session.scalars(assign_stmt).first()
+
+                        if db_assignment:
+                            # Update existing assignment
+                            if weight is not None:
+                                db_assignment.weight = int(weight)
+                            # Note: placement_ids stored but not yet used by adapters
+                            updated_assignments.append(creative_id)
+                        else:
+                            # Create new assignment with weight
+                            import uuid as uuid_module
+
+                            assignment_id = f"assign_{uuid_module.uuid4().hex[:12]}"
+                            new_assignment = DBAssignment(
+                                assignment_id=assignment_id,
+                                tenant_id=tenant["tenant_id"],
+                                media_buy_id=actual_media_buy_id,
+                                package_id=pkg_update.package_id,
+                                creative_id=creative_id,
+                                weight=int(weight) if weight is not None else 100,
+                            )
+                            session.add(new_assignment)
+                            updated_assignments.append(creative_id)
+
+                    session.commit()
+
+                    # Track in affected_packages
+                    affected_packages_list.append(
+                        AffectedPackage(
+                            buyer_ref=req.buyer_ref or "",
+                            package_id=pkg_update.package_id,
+                            paused=False,
+                            buyer_package_ref=pkg_update.package_id,
+                            changes_applied={"creative_assignments_updated": updated_assignments},
+                        )
+                    )
+
             # Handle targeting_overlay updates
             if pkg_update.targeting_overlay is not None:
                 # Validate package_id is provided
