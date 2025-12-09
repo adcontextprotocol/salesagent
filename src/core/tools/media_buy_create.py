@@ -454,7 +454,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             try:
                 request = CreateMediaBuyRequest(**media_buy.raw_request)
                 # Mark this request as already approved to skip adapter's approval workflow
-                setattr(request, "_already_approved", True)
+                setattr(request, "_already_approved", True)  # noqa: B010
             except ValidationError as ve:
                 error_msg = f"Failed to reconstruct request: {format_validation_error(ve)}"
                 logger.error(f"[APPROVAL] {error_msg}")
@@ -2475,11 +2475,21 @@ async def _create_media_buy_impl(
                 ]
 
                 if unsupported_formats:
-                    supported_formats_str = ", ".join([format_display(url, fid) for url, fid in product_format_keys])
-                    error_msg = (
-                        f"Product '{pkg_product.name}' ({pkg_product.product_id}) does not support requested format(s): "
-                        f"{', '.join(unsupported_formats)}. Supported formats: {supported_formats_str}"
-                    )
+                    if not product_format_keys:
+                        # Product has no format_ids configured - this is a configuration error
+                        error_msg = (
+                            f"Product '{pkg_product.name}' ({pkg_product.product_id}) has no format_ids configured. "
+                            f"This product is not properly set up for media buys. "
+                            f"Please configure format_ids on the product or contact the publisher."
+                        )
+                    else:
+                        supported_formats_str = ", ".join(
+                            [format_display(url, fid) for url, fid in product_format_keys]
+                        )
+                        error_msg = (
+                            f"Product '{pkg_product.name}' ({pkg_product.product_id}) does not support requested format(s): "
+                            f"{', '.join(unsupported_formats)}. Supported formats: {supported_formats_str}"
+                        )
                     raise ValueError(error_msg)
 
                 # Preserve original format objects for format_ids_to_use

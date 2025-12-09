@@ -197,7 +197,15 @@ def convert_product_model_to_schema(product_model) -> Product:
     product_data["delivery_type"] = product_model.delivery_type
 
     # format_ids: Use effective_format_ids which auto-resolves from profile if set
-    product_data["format_ids"] = product_model.effective_format_ids or []
+    # Products must have at least one format_id to be valid for media buys
+    effective_formats = product_model.effective_format_ids or []
+    if not effective_formats:
+        raise ValueError(
+            f"Product {product_model.product_id} has no format_ids configured. "
+            f"Products must specify supported creative formats to be available for purchase. "
+            f"Configure format_ids on the product or its inventory profile."
+        )
+    product_data["format_ids"] = effective_formats
 
     # publisher_properties: Use effective_properties which returns AdCP 2.0.0 discriminated union format
     effective_props = product_model.effective_properties

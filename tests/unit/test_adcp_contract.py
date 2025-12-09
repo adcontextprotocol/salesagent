@@ -389,6 +389,46 @@ class TestAdCPContract:
                 # Missing publisher_properties
             )
 
+    def test_product_format_ids_required_in_conversion(self):
+        """Test that product conversion fails when format_ids is missing.
+
+        Products without format_ids configured are invalid for media buys because
+        we cannot validate creative compatibility. Per AdCP spec, products must
+        specify supported formats to be available for purchase.
+        """
+        from unittest.mock import MagicMock
+
+        from src.core.product_conversion import convert_product_model_to_schema
+
+        # Create a mock product with no format_ids
+        product_model = MagicMock()
+        product_model.product_id = "prod_no_formats"
+        product_model.name = "Product Without Formats"
+        product_model.description = "This product has no format_ids configured"
+        product_model.delivery_type = "guaranteed"
+        product_model.effective_format_ids = []  # Empty - no formats configured
+        product_model.effective_properties = [{"publisher_domain": "example.com", "property_tags": ["test"]}]
+        product_model.pricing_options = [
+            MagicMock(
+                pricing_model="cpm",
+                is_fixed=True,
+                currency="USD",
+                rate=10.0,
+                price_guidance=None,
+                min_spend_per_package=None,
+                parameters=None,
+            )
+        ]
+
+        # Conversion should fail with a clear error message
+        with pytest.raises(ValueError, match="has no format_ids configured"):
+            convert_product_model_to_schema(product_model)
+
+        # Also test with None (another way format_ids might be missing)
+        product_model.effective_format_ids = None
+        with pytest.raises(ValueError, match="has no format_ids configured"):
+            convert_product_model_to_schema(product_model)
+
     def test_adcp_create_media_buy_request(self):
         """Test AdCP create_media_buy request structure."""
         start_date = datetime.now() + timedelta(days=1)
