@@ -36,6 +36,7 @@ class A2AAdCPValidator:
     """Helper class to validate A2A responses against AdCP schemas."""
 
     # Map A2A skill names to AdCP schema task names
+    # Note: signals skills removed - should come from dedicated signals agents
     SKILL_TO_SCHEMA_MAP = {
         "get_products": "get-products",
         "create_media_buy": "create-media-buy",
@@ -44,8 +45,6 @@ class A2AAdCPValidator:
         "sync_creatives": "sync-creatives",  # New AdCP spec endpoint
         "list_creatives": "list-creatives",  # New AdCP spec endpoint
         "approve_creative": "approve-creative",  # When schema becomes available
-        "get_signals": "get-signals",
-        "search_signals": "search-signals",  # When schema becomes available
         # Legacy skills don't have AdCP schemas
         "get_pricing": None,
         "get_targeting": None,
@@ -503,7 +502,7 @@ class TestA2ASkillInvocation:
             assert result.metadata["invocation_type"] == "explicit_skill"
             assert len(result.metadata["skills_requested"]) == 2
             assert "get_products" in result.metadata["skills_requested"]
-            assert "get_signals" in result.metadata["skills_requested"]
+            assert "list_creative_formats" in result.metadata["skills_requested"]
             assert len(result.artifacts) == 2
 
             # Verify both artifacts have data
@@ -606,8 +605,7 @@ class TestA2ASkillInvocation:
                     "approve_creative",
                     "get_media_buy_status",
                     "optimize_media_buy",
-                    "get_signals",
-                    "search_signals",
+                    # Note: signals skills removed - should come from dedicated signals agents
                     "get_pricing",
                     "get_targeting",
                     "list_creative_formats",  # Keep existing creative format endpoint
