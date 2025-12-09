@@ -1208,76 +1208,91 @@ def edit_product(tenant_id, product_id):
     # Pre-validate formats BEFORE opening database session to avoid session conflicts
     validated_formats = None
     if request.method == "POST":
-        formats_raw = request.form.getlist("formats")
-        if formats_raw:
-            import asyncio
-
-            from src.core.creative_agent_registry import get_creative_agent_registry
-
-            try:
-                registry = get_creative_agent_registry()
-                # Run async list_all_formats
-                try:
-                    loop = asyncio.get_running_loop()
-                    # Already in async context, run in thread pool
-                    import concurrent.futures
-
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(lambda: asyncio.run(registry.list_all_formats(tenant_id=tenant_id)))
-                        available_formats = future.result()
-                except RuntimeError:
-                    # No running loop, safe to create one
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        available_formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant_id))
-                    finally:
-                        loop.close()
-
-                # Build set of valid format IDs for quick lookup
-                # Use Format.get_form_value() for consistent format ID construction
-                valid_format_ids = {fmt.get_form_value() for fmt in available_formats}
-                logger.info(f"[DEBUG] Found {len(valid_format_ids)} valid formats for tenant {tenant_id}")
-                logger.info(f"[DEBUG] Sample valid format IDs: {list(valid_format_ids)[:5]}")
-
-                # Validate and convert formats
+        # Parse formats - expecting JSON string with FormatReference objects
+        formats_json = request.form.get("formats", "[]")
+        try:
+            formats_parsed = json.loads(formats_json) if formats_json else []
+            if isinstance(formats_parsed, list) and formats_parsed:
+                # JSON format: [{"agent_url": "...", "format_id": "..."}]
                 validated_formats = []
-                invalid_formats = []
-                for fmt_str in formats_raw:
-                    if "|" not in fmt_str:
-                        logger.error(f"Invalid format value (missing agent_url): {fmt_str}")
-                        continue
+                for fmt in formats_parsed:
+                    if isinstance(fmt, dict) and fmt.get("agent_url") and fmt.get("format_id"):
+                        validated_formats.append({"agent_url": fmt["agent_url"], "id": fmt["format_id"]})
+                logger.info(f"[DEBUG] Parsed {len(validated_formats)} formats from JSON")
+        except json.JSONDecodeError:
+            # Fallback to checkbox format: "agent_url|format_id"
+            formats_raw = request.form.getlist("formats")
+            if formats_raw:
+                import asyncio
 
-                    agent_url, format_id = fmt_str.split("|", 1)
+                from src.core.creative_agent_registry import get_creative_agent_registry
 
-                    # No normalization needed - use exact match
-                    # Both form submission and valid_format_ids now use fmt.agent_url consistently
-                    # Validate format exists
-                    if fmt_str not in valid_format_ids:
-                        invalid_formats.append(format_id)
-                        logger.warning(f"Invalid format ID: {format_id} from {agent_url}")
-                        logger.warning(f"Looking for: {fmt_str} in valid_format_ids")
-                        logger.warning(f"Available format IDs (first 10): {list(valid_format_ids)[:10]}")
-                        continue
+                try:
+                    registry = get_creative_agent_registry()
+                    # Run async list_all_formats
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # Already in async context, run in thread pool
+                        import concurrent.futures
 
-                    validated_formats.append({"agent_url": agent_url, "id": format_id})
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                lambda: asyncio.run(registry.list_all_formats(tenant_id=tenant_id))
+                            )
+                            available_formats = future.result()
+                    except RuntimeError:
+                        # No running loop, safe to create one
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            available_formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant_id))
+                        finally:
+                            loop.close()
 
-                if invalid_formats:
-                    flash(
-                        f"Invalid format IDs: {', '.join(invalid_formats)}. "
-                        f"These formats are not available for this tenant.",
-                        "error",
-                    )
+                    # Build set of valid format IDs for quick lookup
+                    # Use Format.get_form_value() for consistent format ID construction
+                    valid_format_ids = {fmt.get_form_value() for fmt in available_formats}
+                    logger.info(f"[DEBUG] Found {len(valid_format_ids)} valid formats for tenant {tenant_id}")
+                    logger.info(f"[DEBUG] Sample valid format IDs: {list(valid_format_ids)[:5]}")
+
+                    # Validate and convert formats
+                    validated_formats = []
+                    invalid_formats = []
+                    for fmt_str in formats_raw:
+                        if "|" not in fmt_str:
+                            logger.error(f"Invalid format value (missing agent_url): {fmt_str}")
+                            continue
+
+                        agent_url, format_id = fmt_str.split("|", 1)
+
+                        # No normalization needed - use exact match
+                        # Both form submission and valid_format_ids now use fmt.agent_url consistently
+                        # Validate format exists
+                        if fmt_str not in valid_format_ids:
+                            invalid_formats.append(format_id)
+                            logger.warning(f"Invalid format ID: {format_id} from {agent_url}")
+                            logger.warning(f"Looking for: {fmt_str} in valid_format_ids")
+                            logger.warning(f"Available format IDs (first 10): {list(valid_format_ids)[:10]}")
+                            continue
+
+                        validated_formats.append({"agent_url": agent_url, "id": format_id})
+
+                    if invalid_formats:
+                        flash(
+                            f"Invalid format IDs: {', '.join(invalid_formats)}. "
+                            f"These formats are not available for this tenant.",
+                            "error",
+                        )
+                        return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
+
+                except Exception as e:
+                    logger.error(f"Failed to fetch available formats: {e}")
+                    flash("Unable to validate formats. Please try again.", "error")
                     return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
 
-                if not validated_formats:
-                    flash("No valid formats selected", "error")
-                    return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
-
-            except Exception as e:
-                logger.error(f"Failed to fetch available formats: {e}")
-                flash("Unable to validate formats. Please try again.", "error")
-                return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
+        if validated_formats is not None and not validated_formats:
+            flash("No valid formats selected", "error")
+            return redirect(url_for("products.edit_product", tenant_id=tenant_id, product_id=product_id))
 
     try:
         with get_db_session() as db_session:
