@@ -125,7 +125,6 @@ headers = {"X-Simulated-Spend": "true"}
 
 ### MCP Tools Tested
 - ✅ `get_products` - Product discovery with brief/promoted offering
-- ✅ `get_signals` - Signal discovery (optional)
 - ✅ `create_media_buy` - Campaign creation with targeting
 - ✅ `check_media_buy_status` - Status verification
 - ✅ `add_creative_assets` - Creative upload

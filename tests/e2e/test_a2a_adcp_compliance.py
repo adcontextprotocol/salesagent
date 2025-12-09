@@ -136,18 +136,17 @@ class A2AAdCPComplianceClient:
         }
 
         # Map skill to AdCP schema
+        # Note: signals skills removed - should come from dedicated signals agents
         skill_to_schema = {
             "get_products": "get-products",
             "create_media_buy": "create-media-buy",
             "add_creative_assets": "add-creative-assets",
-            "get_signals": "get-signals",
             # Skills without AdCP schemas
             "get_pricing": None,
             "get_targeting": None,
             "approve_creative": None,  # Schema may not be available yet
             "get_media_buy_status": None,
             "optimize_media_buy": None,
-            "search_signals": None,
         }
 
         schema_task = skill_to_schema.get(skill_name)
@@ -344,22 +343,11 @@ class TestA2AAdCPCompliance:
         assert payload and payload.get("context") == {"e2e": "create_media_buy"}
 
     @pytest.mark.asyncio
-    async def test_explicit_skill_get_signals(self, compliance_client, compliance_report):
-        """Test explicit get_signals skill invocation."""
-        response = await compliance_client.send_explicit_skill_message(
-            "get_signals", {"signal_types": ["audience"], "categories": ["demographics"]}
-        )
-
-        validation_result = await compliance_client.validate_skill_response("get_signals", response)
-        compliance_report.add_result(validation_result)
-
-        assert "skill" in validation_result
-
-    @pytest.mark.asyncio
     async def test_all_adcp_skills_compliance(self, compliance_client, compliance_report):
         """Test all AdCP skills for compliance in a single comprehensive test."""
 
         # Define skill tests
+        # Note: signals skills removed - should come from dedicated signals agents
         skill_tests = [
             ("get_products", {"brief": "Display ads", "brand_manifest": {"name": "Test brand"}}),
             (
@@ -378,7 +366,6 @@ class TestA2AAdCPCompliance:
                     "assets": {"main": {"asset_type": "image", "url": "https://example.com/creative.jpg"}},
                 },
             ),
-            ("get_signals", {"signal_types": ["contextual"]}),
             # Legacy skills (no schema validation expected)
             ("get_pricing", {}),
             ("get_targeting", {}),

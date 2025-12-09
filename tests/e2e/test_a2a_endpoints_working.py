@@ -220,12 +220,12 @@ class TestA2AAgentCardCreation:
         skill_names = [skill.name for skill in agent_card.skills]
 
         # Should include core AdCP skills
+        # Note: get_signals removed - should come from dedicated signals agents
         expected_skills = [
             "get_products",
             "create_media_buy",
             "sync_creatives",
             "list_creatives",
-            "get_signals",
         ]
 
         for expected_skill in expected_skills:
@@ -285,12 +285,12 @@ class TestA2ARequestHandler:
 
     def test_handler_has_skill_methods(self):
         """Test that handler has skill-specific methods."""
+        # Note: get_signals removed - should come from dedicated signals agents
         skill_methods = [
             "_handle_get_products_skill",
             "_handle_create_media_buy_skill",
             "_handle_sync_creatives_skill",
             "_handle_list_creatives_skill",
-            "_handle_get_signals_skill",
         ]
 
         for method_name in skill_methods:
@@ -387,9 +387,10 @@ def test_a2a_regression_summary():
         assert handler is not None, "REGRESSION: Cannot create A2A handler"
 
         # Test 3: Core functions are callable
-        from src.a2a_server.adcp_a2a_server import core_get_signals_tool
+        # Note: signals tools removed - using get_products as core function check instead
+        from src.a2a_server.adcp_a2a_server import core_get_products_tool
 
-        assert callable(core_get_signals_tool), "REGRESSION: Core function not callable"
+        assert callable(core_get_products_tool), "REGRESSION: Core function not callable"
     except ImportError as e:
         if "a2a" in str(e):
             pytest.skip("a2a library not available in CI environment")
