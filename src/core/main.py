@@ -1021,7 +1021,8 @@ from src.core.tools.media_buy_update import update_media_buy  # noqa: E402, F401
 from src.core.tools.performance import update_performance_index  # noqa: E402, F401
 from src.core.tools.products import get_products  # noqa: E402, F401
 from src.core.tools.properties import list_authorized_properties  # noqa: E402, F401
-from src.core.tools.signals import activate_signal, get_signals  # noqa: E402, F401
+
+# Signals tools removed - should come from dedicated signals agents, not sales agent
 
 # Register tools with MCP (must be done after imports to avoid circular dependency)
 # This breaks the circular import: tool modules no longer import mcp from main.py
@@ -1030,8 +1031,6 @@ mcp.tool()(with_error_logging(get_products))
 mcp.tool()(with_error_logging(list_creative_formats))
 mcp.tool()(with_error_logging(sync_creatives))
 mcp.tool()(with_error_logging(list_creatives))
-mcp.tool()(with_error_logging(get_signals))
-mcp.tool()(with_error_logging(activate_signal))
 mcp.tool()(with_error_logging(list_authorized_properties))
 mcp.tool()(with_error_logging(create_media_buy))
 mcp.tool()(with_error_logging(update_media_buy))

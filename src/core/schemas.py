@@ -19,7 +19,6 @@ from adcp.types import CreativeFilters as LibraryCreativeFilters
 from adcp.types import (
     CreativeStatus,
     PriceGuidance,  # Replaces local PriceGuidance class
-    PushNotificationConfig,
 )
 from adcp.types import (
     FieldModel as LibraryFieldModel,
@@ -33,6 +32,8 @@ from adcp.types import (
 
 # Import types from stable API (per adcp 2.7.0+)
 from adcp.types import FormatId as LibraryFormatId
+from adcp.types import GetMediaBuyDeliveryRequest as LibraryGetMediaBuyDeliveryRequest
+from adcp.types import GetProductsResponse as LibraryGetProductsResponse
 from adcp.types import ListCreativeFormatsRequest as LibraryListCreativeFormatsRequest
 from adcp.types import ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse
 from adcp.types import PackageRequest as LibraryPackageRequest
@@ -61,6 +62,9 @@ from adcp.types.aliases import (
 
 # For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)
 LibraryPackage: TypeAlias = AdCPPackage
+# Simple types that match library exactly
+from adcp.types import AggregatedTotals as LibraryAggregatedTotals
+from adcp.types import BrandManifest as LibraryBrandManifest
 from adcp.types import (
     CpcPricingOption,
     CpcvPricingOption,
@@ -72,7 +76,11 @@ from adcp.types import (
     VcpmAuctionPricingOption,
     VcpmFixedRatePricingOption,
 )
+from adcp.types import DeliveryMeasurement as LibraryDeliveryMeasurement
+from adcp.types import Identifier as LibraryIdentifier
+from adcp.types import Measurement as LibraryMeasurement
 from adcp.types import Product as LibraryProduct
+from adcp.types import Property as LibraryProperty
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 # Type alias for the union of all AdCP pricing option types
@@ -992,19 +1000,13 @@ def extract_budget_amount(budget: "Budget | float | dict | None", default_curren
 
 
 # AdCP Compliance Models
-class Measurement(BaseModel):
-    """Measurement capabilities included with a product per AdCP spec."""
+class Measurement(LibraryMeasurement):
+    """Measurement capabilities included with a product per AdCP spec.
 
-    type: str = Field(
-        ..., description="Type of measurement", examples=["incremental_sales_lift", "brand_lift", "foot_traffic"]
-    )
-    attribution: str = Field(
-        ..., description="Attribution methodology", examples=["deterministic_purchase", "probabilistic"]
-    )
-    window: str | None = Field(None, description="Attribution window", examples=["30_days", "7_days"])
-    reporting: str = Field(
-        ..., description="Reporting frequency and format", examples=["weekly_dashboard", "real_time_api"]
-    )
+    Extends library type - all fields inherited from AdCP spec.
+    """
+
+    pass  # All fields inherited from library
 
 
 class CreativePolicy(BaseModel):
@@ -1048,26 +1050,14 @@ class AIReviewPolicy(BaseModel):
     )
 
 
-class DeliveryMeasurement(BaseModel):
+class DeliveryMeasurement(LibraryDeliveryMeasurement):
     """Measurement provider and methodology for delivery metrics per AdCP spec.
 
+    Extends library type - all fields inherited from AdCP spec.
     The buyer accepts the declared provider as the source of truth for the buy.
-    REQUIRED for all products per AdCP v1 spec.
     """
 
-    provider: str = Field(
-        ...,
-        description="Measurement provider(s) used for this product",
-        examples=["Google Ad Manager with IAS viewability", "Nielsen DAR", "Geopath for DOOH impressions"],
-    )
-    notes: str | None = Field(
-        None,
-        description="Additional details about measurement methodology in plain language",
-        examples=[
-            "MRC-accredited viewability. 50% in-view for 1s display / 2s video",
-            "Panel-based demographic measurement updated monthly",
-        ],
-    )
+    pass  # All fields inherited from library
 
 
 class ProductCard(BaseModel):
@@ -1437,21 +1427,13 @@ class GetProductsRequest(AdCPBaseModel):
     )
 
 
-class GetProductsResponse(NestedModelSerializerMixin, AdCPBaseModel):
-    """Response for get_products tool (AdCP v2.4 spec compliant).
+class GetProductsResponse(NestedModelSerializerMixin, LibraryGetProductsResponse):
+    """Extends library GetProductsResponse - all fields inherited from AdCP spec.
 
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
-
-    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
-
-    # Required AdCP domain fields
-    products: list[Product] = Field(..., description="List of available advertising products")
-
-    # Optional AdCP domain fields
-    errors: list[Error] | None = Field(None, description="Task-specific errors and warnings")
 
     def __str__(self) -> str:
         """Return human-readable message for protocol layer.
@@ -2426,22 +2408,25 @@ class QuerySummary(BaseModel):
     sort_applied: dict[str, str] | None = None
 
 
-class Pagination(BaseModel):
-    """Pagination information for navigating results."""
+class Pagination(LibraryPagination):
+    """Pagination information for navigating results.
 
-    limit: int = Field(..., ge=1)
-    offset: int = Field(..., ge=0)
-    has_more: bool = Field(...)
-    total_pages: int | None = Field(None, ge=0)
-    current_page: int | None = Field(None, ge=1)
+    Extends library type with additional computed fields for navigation.
+    Library provides: limit (default=50), offset (default=0)
+    Local extensions: has_more, total_pages, current_page
+    """
+
+    # Local extensions for richer pagination info
+    has_more: bool = Field(..., description="Whether there are more results after this page")
+    total_pages: int | None = Field(None, ge=0, description="Total number of pages available")
+    current_page: int | None = Field(None, ge=1, description="Current page number (1-indexed)")
 
 
-class ListCreativesResponse(AdCPBaseModel):
+class ListCreativesResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response from listing creative assets (AdCP v2.4 spec compliant).
 
-    NOTE: Does not extend library type because our Creative extends library Creative with
-    internal fields. The nested Creative serialization ensures internal fields are properly
-    excluded via Field(exclude=True) pattern.
+    NOTE: Does not extend library type yet because local Pagination, QuerySummary,
+    and Creative types differ from library types. Migration tracked in issue #824.
 
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
@@ -2458,39 +2443,6 @@ class ListCreativesResponse(AdCPBaseModel):
     # Optional AdCP domain fields
     format_summary: dict[str, int] | None = Field(None, description="Breakdown by format type")
     status_summary: dict[str, int] | None = Field(None, description="Breakdown by creative status")
-
-    @model_serializer(mode="wrap")
-    def _serialize_nested_models(self, serializer, info):
-        """Ensure nested Pydantic models use their custom model_dump().
-
-        Pydantic's default serialization doesn't automatically call custom model_dump()
-        on nested models. This serializer introspects all fields and explicitly calls
-        model_dump() on any nested BaseModel instances (like Creative), ensuring internal
-        fields are properly excluded.
-
-        This approach is resilient to schema changes - no hardcoded field names.
-        """
-        data = serializer(self)
-
-        # Introspect and re-serialize nested Pydantic models
-        for field_name, _ in self.__class__.model_fields.items():
-            if field_name not in data:
-                continue
-
-            field_value = getattr(self, field_name, None)
-            if field_value is None:
-                continue
-
-            # Handle list of Pydantic models
-            if isinstance(field_value, list) and field_value:
-                if isinstance(field_value[0], BaseModel):
-                    data[field_name] = [item.model_dump() for item in field_value]
-
-            # Handle single Pydantic model
-            elif isinstance(field_value, BaseModel):
-                data[field_name] = field_value.model_dump()
-
-        return data
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -2720,33 +2672,8 @@ class ProductCatalog(BaseModel):
     format: str | None = Field(None, description="Feed format (e.g., 'google_merchant', 'json', 'xml')")
 
 
-class BrandManifest(BaseModel):
-    """Standardized brand information manifest for creative generation and media buying.
-
-    Per AdCP spec, either url OR name is required (at least one must be present).
-    This is a legacy model - prefer using generated schemas from schemas_generated/.
-    """
-
-    # At least one required (enforced by anyOf in AdCP spec)
-    url: str | None = Field(None, description="Brand website URL")
-    name: str | None = Field(None, description="Brand/business name")
-
-    # Optional fields
-    logos: list[LogoAsset] | None = Field(None, description="Brand logo assets")
-    colors: BrandColors | None = Field(None, description="Brand color palette")
-    fonts: FontGuidance | None = Field(None, description="Typography guidelines")
-    tone: str | None = Field(None, description="Brand voice and tone description")
-    tagline: str | None = Field(None, description="Brand tagline or slogan")
-    assets: list[BrandAsset] | None = Field(None, description="Additional brand assets")
-    product_catalog: ProductCatalog | None = Field(None, description="Product catalog information")
-    disclaimers: list[str] | None = Field(None, description="Required legal disclaimers")
-    industry: str | None = Field(None, description="Industry/category")
-    target_audience: str | None = Field(None, description="Target audience description")
-    contact_info: dict[str, Any] | None = Field(None, description="Contact information")
-    metadata: dict[str, Any] | None = Field(None, description="Creation/update metadata")
-
-    # NOTE: Legacy model kept for backward compatibility with tests
-    # For new code, use generated schemas which properly handle anyOf constraints
+# Use library BrandManifest directly - all fields inherited from AdCP spec
+BrandManifest: TypeAlias = LibraryBrandManifest
 
 
 class BrandManifestRef(BaseModel):
@@ -3175,10 +3102,10 @@ class LegacyUpdateMediaBuyRequest(AdCPBaseModel):
     creative_assignments: dict[str, list[str]] | None = None
 
 
-class GetMediaBuyDeliveryRequest(AdCPBaseModel):
+class GetMediaBuyDeliveryRequest(LibraryGetMediaBuyDeliveryRequest):
     """Request delivery data for one or more media buys.
 
-    AdCP-compliant request matching official get-media-buy-delivery-request schema.
+    Extends library GetMediaBuyDeliveryRequest - all fields inherited from AdCP spec.
 
     Examples:
     - Single buy: media_buy_ids=["buy_123"]
@@ -3186,28 +3113,12 @@ class GetMediaBuyDeliveryRequest(AdCPBaseModel):
     - All active buys: status_filter="active"
     - All buys: status_filter="all"
     - Date range: start_date="2025-01-01", end_date="2025-01-31"
+
+    Note: push_notification_config support pending upstream (adcp issue #276).
+    Use ext field for extensions until spec is updated.
     """
 
-    media_buy_ids: list[str] | None = Field(
-        None, description="Array of publisher media buy IDs to get delivery data for"
-    )
-    buyer_refs: list[str] | None = Field(None, description="Array of buyer reference IDs to get delivery data for")
-    status_filter: str | list[str] | None = Field(
-        None,
-        description="Filter by status. Can be a single status or array of statuses: 'active', 'pending', 'paused', 'completed', 'failed', 'all'",
-    )
-    start_date: str | None = Field(
-        None, description="Start date for reporting period (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$"
-    )
-    end_date: str | None = Field(
-        None, description="End date for reporting period (YYYY-MM-DD)", pattern=r"^\d{4}-\d{2}-\d{2}$"
-    )
-    push_notification_config: PushNotificationConfig | None = Field(
-        None, description="Push notification configuration for async task updates."
-    )
-    context: dict[str, Any] | None = Field(
-        None, description="Application-level context provided by the client (echoed in responses)"
-    )
+    pass  # All fields inherited from library
 
 
 # AdCP-compliant delivery models
@@ -3311,16 +3222,13 @@ class ReportingPeriod(BaseModel):
     end: str = Field(description="ISO 8601 end timestamp")
 
 
-class AggregatedTotals(BaseModel):
-    """Combined metrics across all returned media buys."""
+class AggregatedTotals(LibraryAggregatedTotals):
+    """Combined metrics across all returned media buys.
 
-    impressions: float = Field(ge=0, description="Total impressions delivered across all media buys")
-    spend: float = Field(ge=0, description="Total amount spent across all media buys")
-    clicks: float | None = Field(None, ge=0, description="Total clicks across all media buys (if applicable)")
-    video_completions: float | None = Field(
-        None, ge=0, description="Total video completions across all media buys (if applicable)"
-    )
-    media_buy_count: int = Field(ge=0, description="Number of media buys included in the response")
+    Extends library type - all fields inherited from AdCP spec.
+    """
+
+    pass  # All fields inherited from library
 
 
 class GetMediaBuyDeliveryResponse(NestedModelSerializerMixin, AdCPBaseModel):
@@ -3849,6 +3757,9 @@ class SignalFilters(BaseModel):
 class GetSignalsRequest(AdCPBaseModel):
     """AdCP-compliant request to discover available signals per get-signals-request schema.
 
+    NOTE: Does not extend library type yet because local SignalDeliverTo and SignalFilters
+    types differ from library types. Migration tracked in issue #824.
+
     Fully compliant with AdCP specification:
     - Required: signal_spec (natural language description)
     - Required: deliver_to (delivery requirements)
@@ -3877,8 +3788,11 @@ class GetSignalsRequest(AdCPBaseModel):
         return self.max_results
 
 
-class GetSignalsResponse(AdCPBaseModel):
+class GetSignalsResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response containing available signals (AdCP v2.4 spec compliant).
+
+    NOTE: Does not extend library type yet because local Signal type differs
+    from library type. Migration tracked in issue #824.
 
     Per AdCP PR #113, this response contains ONLY domain data.
     Protocol fields (status, task_id, message, context_id) are added by the
@@ -3887,31 +3801,6 @@ class GetSignalsResponse(AdCPBaseModel):
 
     signals: list[Signal] = Field(..., description="Array of available signals")
     context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
-
-    @model_serializer(mode="wrap")
-    def _serialize_nested_models(self, serializer, info):
-        """Ensure nested Pydantic models use their custom model_dump().
-
-        This approach is resilient to schema changes - introspects all fields
-        instead of hardcoding specific field names.
-        """
-        data = serializer(self)
-
-        for field_name, _ in self.__class__.model_fields.items():
-            if field_name not in data:
-                continue
-
-            field_value = getattr(self, field_name, None)
-            if field_value is None:
-                continue
-
-            if isinstance(field_value, list) and field_value:
-                if isinstance(field_value[0], BaseModel):
-                    data[field_name] = [item.model_dump() for item in field_value]
-            elif isinstance(field_value, BaseModel):
-                data[field_name] = field_value.model_dump()
-
-        return data
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -4031,44 +3920,9 @@ PROPERTY_ERROR_MESSAGES = {
 
 
 # --- Authorized Properties (AdCP Spec) ---
-class PropertyIdentifier(BaseModel):
-    """Identifier for an advertising property."""
-
-    type: str = Field(
-        ..., description="Type of identifier (e.g., 'domain', 'bundle_id', 'roku_store_id', 'podcast_guid')"
-    )
-    value: str = Field(
-        ...,
-        description="The identifier value. For domain type: 'example.com' matches www.example.com and m.example.com only; 'subdomain.example.com' matches that specific subdomain; '*.example.com' matches all subdomains",
-    )
-
-
-class Property(BaseModel):
-    """An advertising property that can be validated via adagents.json (AdCP spec)."""
-
-    property_type: Literal["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"] = Field(
-        ..., description="Type of advertising property"
-    )
-    name: str = Field(..., description="Human-readable property name")
-    identifiers: list[PropertyIdentifier] = Field(
-        ..., min_length=1, description="Array of identifiers for this property"
-    )
-    tags: list[str] | None = Field(
-        None, description="Tags for categorization and grouping (e.g., network membership, content categories)"
-    )
-    publisher_domain: str = Field(
-        ..., description="Domain where adagents.json should be checked for authorization validation"
-    )
-
-    def model_dump(self, **kwargs) -> dict[str, Any]:
-        """Return AdCP-compliant property representation.
-
-        Per AdCP spec, optional fields with None values should be omitted.
-        Set exclude_none=True by default to match AdCP spec behavior.
-        """
-        if "exclude_none" not in kwargs:
-            kwargs["exclude_none"] = True
-        return super().model_dump(**kwargs)
+# Use library types directly - all fields inherited from AdCP spec
+PropertyIdentifier: TypeAlias = LibraryIdentifier  # Library calls this 'Identifier'
+Property: TypeAlias = LibraryProperty
 
 
 class PropertyTagMetadata(BaseModel):
@@ -4103,11 +3957,14 @@ class ListAuthorizedPropertiesRequest(AdCPBaseModel):
         return data
 
 
-class ListAuthorizedPropertiesResponse(AdCPBaseModel):
+class ListAuthorizedPropertiesResponse(NestedModelSerializerMixin, AdCPBaseModel):
     """Response payload for list_authorized_properties task (AdCP v2.4 spec compliant).
 
-    Per official AdCP v2.4 spec at https://adcontextprotocol.org/schemas/v1/media-buy/list-authorized-properties-response.json,
-    this response lists publisher domains. Buyers fetch property definitions from each publisher's adagents.json file.
+    NOTE: Does not extend library type yet because local publisher_domains type
+    (list[str]) differs from library type (list[PublisherDomain]). Migration tracked in issue #824.
+
+    Per official AdCP v2.4 spec, this response lists publisher domains.
+    Buyers fetch property definitions from each publisher's adagents.json file.
 
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
@@ -4136,7 +3993,7 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
     )
     last_updated: str | None = Field(
         None,
-        description="ISO 8601 timestamp of when the agent's publisher authorization list was last updated. Buyers can use this to determine if their cached publisher adagents.json files might be stale.",
+        description="ISO 8601 timestamp of when the agent's publisher authorization list was last updated.",
     )
     errors: list[dict[str, Any]] | None = Field(
         None, description="Task-specific errors and warnings (e.g., property availability issues)"
@@ -4155,11 +4012,3 @@ class ListAuthorizedPropertiesResponse(AdCPBaseModel):
             return "Found 1 authorized publisher domain."
         else:
             return f"Found {count} authorized publisher domains."
-
-    def model_dump(self, **kwargs) -> dict[str, Any]:
-        """Return AdCP-compliant response.
-
-        Per AdCP spec, optional fields with None values should be omitted, not set to empty values.
-        The parent AdCPBaseModel.model_dump() already handles this with exclude_none=True by default.
-        """
-        return super().model_dump(**kwargs)

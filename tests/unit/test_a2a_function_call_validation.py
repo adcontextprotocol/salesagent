@@ -104,12 +104,12 @@ class TestA2AHandlerMethodCalls:
 
     def test_handler_skill_methods_exist(self):
         """Test that all skill handler methods exist."""
+        # Note: Signals skills removed - should come from dedicated signals agents
         required_methods = [
             "_handle_get_products_skill",
             "_handle_create_media_buy_skill",
             "_handle_sync_creatives_skill",
             "_handle_list_creatives_skill",
-            "_handle_get_signals_skill",
         ]
 
         for method_name in required_methods:
@@ -127,9 +127,9 @@ class TestA2AHandlerMethodCalls:
             content = f.read()
 
         # Patterns that indicate correct function calls
+        # Note: Signals tools removed - should come from dedicated signals agents
         correct_patterns = [
             "await core_get_products_tool(",
-            "await core_get_signals_tool(",
             "core_create_media_buy_tool(",
             "core_sync_creatives_tool(",
             "core_list_creatives_tool(",
@@ -138,7 +138,6 @@ class TestA2AHandlerMethodCalls:
         # Patterns that indicate incorrect function calls (the bug we fixed)
         incorrect_patterns = [
             "core_get_products_tool.fn(",
-            "core_get_signals_tool.fn(",
             "core_create_media_buy_tool.fn(",
             "core_sync_creatives_tool.fn(",
             "core_list_creatives_tool.fn(",
@@ -154,10 +153,10 @@ class TestA2AHandlerMethodCalls:
 
     def test_skill_handler_method_parameters(self):
         """Test that skill handler methods have expected parameter signatures."""
+        # Note: Signals skills removed - should come from dedicated signals agents
         method_signatures = {
             "_handle_get_products_skill": ["parameters", "auth_token"],
             "_handle_create_media_buy_skill": ["parameters", "auth_token"],
-            "_handle_get_signals_skill": ["parameters", "auth_token"],
         }
 
         for method_name, expected_params in method_signatures.items():
@@ -188,9 +187,7 @@ class TestFunctionCallIntegration:
         # This tests the integration without mocking everything
         try:
             # Mock only the external dependencies, not the function calls themselves
-            with (
-                pytest.MonkeyPatch().context() as m,
-            ):
+            with (pytest.MonkeyPatch().context() as m,):
                 # Mock external auth functions (updated signature: token, tenant_id)
                 m.setattr(
                     "src.a2a_server.adcp_a2a_server.get_principal_from_token",
@@ -221,8 +218,9 @@ class TestFunctionCallIntegration:
         """Test that core functions can actually be called (verifies imports work)."""
         from datetime import UTC, datetime
 
-        from src.a2a_server.adcp_a2a_server import core_get_signals_tool
-        from src.core.schemas import GetSignalsRequest
+        # Note: Signals tools removed - now testing get_products instead
+        from src.a2a_server.adcp_a2a_server import core_get_products_tool
+        from src.core.schemas import GetProductsRequest
         from src.core.tool_context import ToolContext
 
         # Create minimal ToolContext
@@ -230,17 +228,15 @@ class TestFunctionCallIntegration:
             context_id="test",
             tenant_id="test_tenant",
             principal_id="test_principal",
-            tool_name="get_signals",
+            tool_name="get_products",
             request_timestamp=datetime.now(UTC),
             metadata={},
             testing_context={},
         )
 
         # Create minimal AdCP-compliant request
-        from src.core.schemas import SignalDeliverTo
-
-        deliver_to = SignalDeliverTo(platforms="all", countries=["US"])
-        request = GetSignalsRequest(signal_spec="test signal description", deliver_to=deliver_to)
+        # Library BrandManifest requires 'name' field
+        request = GetProductsRequest(brief="test product search", brand_manifest={"name": "Test Brand"})
 
         # This should not fail with import/call errors
         # We're not testing the business logic, just that the function can be called
@@ -250,15 +246,13 @@ class TestFunctionCallIntegration:
 
             async def test_call():
                 # Mock the database and other external dependencies
-                with (
-                    pytest.MonkeyPatch().context() as m,
-                ):
+                with (pytest.MonkeyPatch().context() as m,):
                     # Mock database session and queries
                     m.setattr("src.core.main.get_db_session", lambda: Mock())
 
                     # Try to call the function
                     # If this fails with 'FunctionTool' object is not callable, we caught the bug
-                    result = await core_get_signals_tool(request, tool_context)
+                    result = await core_get_products_tool(request, tool_context)
                     return result
 
             # Run the async test
@@ -290,11 +284,11 @@ class TestImportValidation:
             content = f.read()
 
         # Should import core functions directly (now from tools module to avoid FastMCP decorators)
+        # Note: Signals tools removed - should come from dedicated signals agents
         expected_imports = [
             "from src.core.tools import (",
             "create_media_buy_raw as core_create_media_buy_tool,",
             "get_products_raw as core_get_products_tool,",
-            "get_signals_raw as core_get_signals_tool,",
             "list_creatives_raw as core_list_creatives_tool,",
             "sync_creatives_raw as core_sync_creatives_tool,",
         ]
@@ -323,11 +317,12 @@ class TestImportValidation:
 
 if __name__ == "__main__":
     # Run a quick validation when executed directly
+    # Note: Signals tools removed - now testing get_products instead
     print("🔍 Running function call validation...")
 
     # Test 1: Can import core tools
     try:
-        from src.a2a_server.adcp_a2a_server import core_get_signals_tool
+        from src.a2a_server.adcp_a2a_server import core_get_products_tool
 
         print("✅ Core tool import succeeded")
     except Exception as e:
@@ -335,7 +330,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Test 2: Function is callable
-    if callable(core_get_signals_tool):
+    if callable(core_get_products_tool):
         print("✅ Core tool is callable")
     else:
         print("❌ Core tool is not callable")
@@ -346,7 +341,7 @@ if __name__ == "__main__":
     with open(file_path) as f:
         content = f.read()
 
-    if "core_get_signals_tool.fn(" in content:
+    if "core_get_products_tool.fn(" in content:
         print("❌ Found .fn() call pattern in source")
         sys.exit(1)
     else:
