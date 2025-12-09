@@ -13,12 +13,11 @@ from pathlib import Path
 import pytest
 
 # Actual tools that exist (keep this updated with src/core/main.py)
+# Note: signals tools (get_signals, activate_signal) removed - should come from dedicated signals agents
 ACTUAL_MCP_TOOLS = {
-    "activate_signal",
     "create_media_buy",
     "get_media_buy_delivery",
     "get_products",
-    "get_signals",
     "list_authorized_properties",
     "list_creative_formats",
     "list_creatives",

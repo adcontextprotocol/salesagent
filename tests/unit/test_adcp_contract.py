@@ -1760,17 +1760,16 @@ class TestAdCPContract:
             assert isinstance(adcp_request["buyer_refs"], list), "buyer_refs must be array"
 
         if adcp_request.get("status_filter") is not None:
-            # Can be string or array according to spec
-            valid_statuses = ["active", "pending", "paused", "completed", "failed", "all"]
+            # Can be string or array according to AdCP spec
+            # AdCP MediaBuyStatus enum: pending_activation, active, paused, completed
+            valid_statuses = ["pending_activation", "active", "paused", "completed"]
             if isinstance(adcp_request["status_filter"], str):
                 assert (
                     adcp_request["status_filter"] in valid_statuses
                 ), f"Invalid status: {adcp_request['status_filter']}"
             elif isinstance(adcp_request["status_filter"], list):
                 for status in adcp_request["status_filter"]:
-                    assert (
-                        status in valid_statuses[:-1]
-                    ), f"Invalid status in array: {status}"  # 'all' not valid in array
+                    assert status in valid_statuses, f"Invalid status in array: {status}"
 
         # Verify date format if provided
         if adcp_request.get("start_date") is not None:
@@ -1792,8 +1791,8 @@ class TestAdCPContract:
         # Should work with no fields set
         assert isinstance(minimal_adcp_request, dict), "Minimal request should be valid"
 
-        # Test array status_filter
-        array_request = GetMediaBuyDeliveryRequest(status_filter=["active", "ready"])
+        # Test array status_filter (using valid AdCP MediaBuyStatus values)
+        array_request = GetMediaBuyDeliveryRequest(status_filter=["active", "completed"])
         array_adcp_request = array_request.model_dump()
         assert isinstance(array_adcp_request["status_filter"], list), "status_filter should support array format"
 
@@ -1968,21 +1967,23 @@ class TestAdCPContract:
             publisher_domain="example.com",
         )
 
-        # Test AdCP-compliant response
-        adcp_response = property_obj.model_dump()
+        # Test AdCP-compliant response (mode="json" serializes enums to strings)
+        adcp_response = property_obj.model_dump(mode="json")
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["property_type", "name", "identifiers", "publisher_domain"]
+        # Note: library Property has publisher_domain as optional
+        required_fields = ["property_type", "name", "identifiers"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
-        # Verify optional AdCP fields present (can be null)
-        optional_fields = ["tags"]
-        for field in optional_fields:
-            assert field in adcp_response
+        # Verify optional AdCP fields present when set
+        # Note: Library Property excludes None values by default
+        assert "tags" in adcp_response  # Set in test
+        assert "publisher_domain" in adcp_response  # Set in test
+        # property_id is optional and None by default, excluded from output
 
-        # Verify property type is valid enum value
+        # Verify property type is valid enum value (as string after json serialization)
         valid_types = ["website", "mobile_app", "ctv_app", "dooh", "podcast", "radio", "streaming_audio"]
         assert adcp_response["property_type"] in valid_types
 
@@ -1993,7 +1994,7 @@ class TestAdCPContract:
         # Verify tags is array when present
         assert isinstance(adcp_response["tags"], list)
 
-        # Verify field count expectations
+        # Verify field count expectations - 5 fields (property_id excluded when None)
         assert len(adcp_response) == 5
 
     def test_property_tag_metadata_adcp_compliance(self):

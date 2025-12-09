@@ -336,25 +336,6 @@ class TestAdCPSchemaCompliance:
                 )
 
     @pytest.mark.asyncio
-    async def test_signals_protocol_compliance(
-        self, schema_validator: AdCPSchemaValidator, compliance_report: AdCPComplianceReport
-    ):
-        """Test signals protocol compliance (if supported)."""
-
-        # Test get-signals request
-        get_signals_request = {"description": "users interested in electric vehicles"}
-
-        try:
-            await schema_validator.validate_request("get-signals", get_signals_request)
-            compliance_report.add_result("get-signals", "request", "pass", "Valid signals request")
-        except SchemaValidationError as e:
-            compliance_report.add_result("get-signals", "request", "fail", str(e))
-        except Exception as e:
-            compliance_report.add_result(
-                "get-signals", "request", "warning", f"Signals protocol may not be supported: {e}"
-            )
-
-    @pytest.mark.asyncio
     async def test_save_compliance_report(self, compliance_report: AdCPComplianceReport):
         """Save the compliance report to a file."""
         report_path = Path(__file__).parent / "schemas" / "compliance_report.json"

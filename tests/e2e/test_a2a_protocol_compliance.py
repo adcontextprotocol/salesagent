@@ -78,6 +78,7 @@ class TestA2AProtocolCompliance:
         3. Validate their request/response formats
         """
         # Define which skills are AdCP-compliant (should have schemas)
+        # Note: signals skills removed - should come from dedicated signals agents
         adcp_skills = {
             "get_products",
             "create_media_buy",
@@ -87,7 +88,6 @@ class TestA2AProtocolCompliance:
             "list_creatives",
             "list_creative_formats",
             "list_authorized_properties",
-            "get_signals",
         }
 
         async with AdCPSchemaValidator(offline_mode=False) as validator:

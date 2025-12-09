@@ -4,7 +4,7 @@ A2A Regression Prevention Tests
 
 These tests specifically target the bugs that slipped through our test coverage:
 1. Agent card URLs with trailing slashes causing redirect/auth issues
-2. Function call issues like core_get_signals_tool.fn()
+2. Function call issues with core tools
 
 The goal is to have focused, non-mocked tests that would have caught these issues.
 """
@@ -113,15 +113,15 @@ class TestAgentCardURLRegression:
 
 
 class TestFunctionCallRegression:
-    """Tests to prevent function call/import issues like core_get_signals_tool.fn()."""
+    """Tests to prevent function call/import issues with core tools."""
 
     def test_core_function_imports_are_callable(self):
         """Test that imported core functions are actually callable."""
         try:
+            # Note: signals tools removed - should come from dedicated signals agents
             from src.a2a_server.adcp_a2a_server import (
                 core_create_media_buy_tool,
                 core_get_products_tool,
-                core_get_signals_tool,
                 core_list_creatives_tool,
                 core_sync_creatives_tool,
             )
@@ -133,7 +133,6 @@ class TestFunctionCallRegression:
         # These should be callable functions, not FunctionTool objects
         assert callable(core_get_products_tool), "core_get_products_tool should be callable"
         assert callable(core_create_media_buy_tool), "core_create_media_buy_tool should be callable"
-        assert callable(core_get_signals_tool), "core_get_signals_tool should be callable"
         assert callable(core_list_creatives_tool), "core_list_creatives_tool should be callable"
         assert callable(core_sync_creatives_tool), "core_sync_creatives_tool should be callable"
 
@@ -146,10 +145,10 @@ class TestFunctionCallRegression:
             content = f.read()
 
         # Should not have .fn() calls on core tools
+        # Note: signals tools removed - should come from dedicated signals agents
         problematic_patterns = [
             "core_get_products_tool.fn(",
             "core_create_media_buy_tool.fn(",
-            "core_get_signals_tool.fn(",
             "core_list_creatives_tool.fn(",
             "core_sync_creatives_tool.fn(",
         ]
@@ -162,12 +161,12 @@ class TestFunctionCallRegression:
         handler = AdCPRequestHandler()
 
         # All these methods should exist and be callable
+        # Note: get_signals removed - should come from dedicated signals agents
         required_skill_methods = [
             "_handle_get_products_skill",
             "_handle_create_media_buy_skill",
             "_handle_sync_creatives_skill",
             "_handle_list_creatives_skill",
-            "_handle_get_signals_skill",
         ]
 
         for method_name in required_skill_methods:
@@ -180,15 +179,16 @@ class TestFunctionCallRegression:
         import inspect
 
         try:
-            from src.a2a_server.adcp_a2a_server import core_get_products_tool, core_get_signals_tool
+            # Note: signals tools removed - should come from dedicated signals agents
+            from src.a2a_server.adcp_a2a_server import core_create_media_buy_tool, core_get_products_tool
         except ImportError as e:
             if "a2a" in str(e):
                 pytest.skip("a2a library not available in CI environment")
             raise
 
         # These should be async functions
-        assert inspect.iscoroutinefunction(core_get_signals_tool), "core_get_signals_tool should be async"
         assert inspect.iscoroutinefunction(core_get_products_tool), "core_get_products_tool should be async"
+        assert inspect.iscoroutinefunction(core_create_media_buy_tool), "core_create_media_buy_tool should be async"
 
 
 class TestAuthenticationFlow:
@@ -207,9 +207,9 @@ class TestAuthenticationFlow:
         handler = AdCPRequestHandler()
 
         # Method should exist
-        assert hasattr(handler, "_create_tool_context_from_a2a"), (
-            "Handler should have _create_tool_context_from_a2a method"
-        )
+        assert hasattr(
+            handler, "_create_tool_context_from_a2a"
+        ), "Handler should have _create_tool_context_from_a2a method"
         assert callable(handler._create_tool_context_from_a2a), "_create_tool_context_from_a2a should be callable"
 
 
@@ -242,9 +242,9 @@ class TestHTTPBehaviorRegression:
 
                 if response.status_code == 200:
                     # Should be 200, not a redirect (301, 302, etc.)
-                    assert 200 <= response.status_code < 300, (
-                        f"Endpoint {endpoint} returned redirect: {response.status_code}"
-                    )
+                    assert (
+                        200 <= response.status_code < 300
+                    ), f"Endpoint {endpoint} returned redirect: {response.status_code}"
 
                     # Should return JSON
                     assert response.headers.get("content-type", "").startswith("application/json")
@@ -272,13 +272,14 @@ def test_regression_prevention_summary():
         assert not agent_card.url.endswith("/"), "REGRESSION: Agent card URL has trailing slash"
 
         # 2. Function imports are callable
-        from src.a2a_server.adcp_a2a_server import core_get_signals_tool
+        # Note: signals tools removed - using get_products as core function check
+        from src.a2a_server.adcp_a2a_server import core_get_products_tool
 
-        assert callable(core_get_signals_tool), "REGRESSION: Core function not callable"
+        assert callable(core_get_products_tool), "REGRESSION: Core function not callable"
 
         # 3. Handler has required methods
         handler = AdCPRequestHandler()
-        assert hasattr(handler, "_handle_get_signals_skill"), "REGRESSION: Handler missing skill method"
+        assert hasattr(handler, "_handle_get_products_skill"), "REGRESSION: Handler missing skill method"
     except ImportError as e:
         if "a2a" in str(e):
             pytest.skip("a2a library not available in CI environment")
@@ -288,7 +289,7 @@ def test_regression_prevention_summary():
     file_path = os.path.join(os.path.dirname(__file__), "..", "..", "src", "a2a_server", "adcp_a2a_server.py")
     with open(file_path) as f:
         content = f.read()
-    assert "core_get_signals_tool.fn(" not in content, "REGRESSION: Found .fn() call pattern"
+    assert "core_get_products_tool.fn(" not in content, "REGRESSION: Found .fn() call pattern"
 
     logger.info("✅ All regression prevention checks passed")
 

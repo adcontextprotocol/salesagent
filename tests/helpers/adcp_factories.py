@@ -486,15 +486,15 @@ def create_test_creative_asset(
 
 def create_test_brand_manifest(
     name: str = "Test Brand",
-    promoted_offering: str | None = None,
+    tagline: str | None = None,
     **kwargs,
 ) -> BrandManifest:
     """Create a test BrandManifest object.
 
     Args:
-        name: Brand name
-        promoted_offering: What is being promoted. Defaults to name
-        **kwargs: Additional optional fields (tagline, category, etc.)
+        name: Brand name (required by library BrandManifest)
+        tagline: Optional brand tagline
+        **kwargs: Additional optional fields (tone, industry, url, etc.)
 
     Returns:
         AdCP-compliant BrandManifest object
@@ -502,14 +502,16 @@ def create_test_brand_manifest(
     Example:
         brand = create_test_brand_manifest(
             name="Acme Corp",
-            promoted_offering="Premium Widget Pro",
-            tagline="Best widgets in the world"
+            tagline="Best widgets in the world",
+            industry="technology"
         )
     """
-    if promoted_offering is None:
-        promoted_offering = name
+    manifest_kwargs: dict[str, Any] = {"name": name}
+    if tagline:
+        manifest_kwargs["tagline"] = tagline
+    manifest_kwargs.update(kwargs)
 
-    return BrandManifest(name=name, promoted_offering=promoted_offering, **kwargs)
+    return BrandManifest(**manifest_kwargs)
 
 
 def create_test_cpm_pricing_option(

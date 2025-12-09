@@ -65,7 +65,7 @@ from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
 from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 from src.core.domain_config import get_a2a_server_url, get_sales_agent_domain
-from src.core.schemas import CreativeStatusEnum, GetSignalsRequest
+from src.core.schemas import CreativeStatusEnum
 from src.core.testing_hooks import AdCPTestContext
 from src.core.tool_context import ToolContext
 from src.core.tools import (
@@ -77,9 +77,8 @@ from src.core.tools import (
 from src.core.tools import (
     get_products_raw as core_get_products_tool,
 )
-from src.core.tools import (
-    get_signals_raw as core_get_signals_tool,
-)
+
+# Signals tools removed - should come from dedicated signals agents, not sales agent
 from src.core.tools import (
     list_authorized_properties_raw as core_list_authorized_properties_tool,
 )
@@ -1331,9 +1330,7 @@ class AdCPRequestHandler(RequestHandler):
             "approve_creative": self._handle_approve_creative_skill,
             "get_media_buy_status": self._handle_get_media_buy_status_skill,
             "optimize_media_buy": self._handle_optimize_media_buy_skill,
-            # Core AdCP Signals Skills
-            "get_signals": self._handle_get_signals_skill,
-            "search_signals": self._handle_search_signals_skill,
+            # Signals skills removed - should come from dedicated signals agents
             # Legacy skill names (for backward compatibility)
             "get_pricing": lambda params, token: self._get_pricing(),
             "get_targeting": lambda params, token: self._get_targeting(),
@@ -1737,62 +1734,7 @@ class AdCPRequestHandler(RequestHandler):
             "parameters_received": parameters,
         }
 
-    async def _handle_get_signals_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit get_signals skill invocation."""
-        try:
-            # Create ToolContext from A2A auth info
-            tool_context = self._create_tool_context_from_a2a(
-                auth_token=auth_token,
-                tool_name="get_signals",
-            )
-
-            # Map A2A parameters to GetSignalsRequest (per AdCP spec: signal_spec and deliver_to required)
-            if "signal_spec" not in parameters or "deliver_to" not in parameters:
-                return {
-                    "success": False,
-                    "message": "Missing required parameters: 'signal_spec' and 'deliver_to'",
-                    "required_parameters": ["signal_spec", "deliver_to"],
-                    "received_parameters": list(parameters.keys()),
-                }
-
-            request = GetSignalsRequest(
-                signal_spec=parameters["signal_spec"],
-                deliver_to=parameters["deliver_to"],
-                filters=parameters.get("filters"),
-                max_results=parameters.get("max_results"),
-                context=parameters.get("context") or None,
-            )
-
-            # Call core function directly
-            response = await core_get_signals_tool(request, self._tool_context_to_mcp_context(tool_context))
-
-            # Handle both dict and object responses (defensive pattern)
-            if isinstance(response, dict):
-                signals = response.get("signals", [])
-                signals_list = signals
-            else:
-                signals = response.signals
-                signals_list = [signal.model_dump() for signal in signals]
-
-            # Convert response to A2A format
-            return {
-                "signals": signals_list,
-                "message": "Signals retrieved successfully",
-                "total_count": len(signals_list),
-            }
-
-        except Exception as e:
-            logger.error(f"Error in get_signals skill: {e}")
-            raise ServerError(InternalError(message=f"Unable to retrieve signals: {str(e)}"))
-
-    async def _handle_search_signals_skill(self, parameters: dict, auth_token: str) -> dict:
-        """Handle explicit search_signals skill invocation."""
-        # TODO: Implement full search_signals skill handler
-        return {
-            "signals": [],
-            "message": "search_signals skill not yet implemented in explicit invocation",
-            "parameters_received": parameters,
-        }
+    # Signals skill handlers removed - should come from dedicated signals agents
 
     async def _handle_get_media_buy_status_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit get_media_buy_status skill invocation."""
@@ -2381,19 +2323,7 @@ def create_agent_card() -> AgentCard:
                 description="Optimize media buy performance and targeting",
                 tags=["optimization", "performance", "targeting", "adcp"],
             ),
-            # Core AdCP Signals Skills (2 total)
-            AgentSkill(
-                id="get_signals",
-                name="get_signals",
-                description="Discover available targeting signals (audiences, contextual, etc.)",
-                tags=["signals", "targeting", "discovery", "adcp"],
-            ),
-            AgentSkill(
-                id="search_signals",
-                name="search_signals",
-                description="Search and filter targeting signals by criteria",
-                tags=["signals", "search", "targeting", "adcp"],
-            ),
+            # Signals skills removed - should come from dedicated signals agents
             # Legacy Skills (for backward compatibility)
             AgentSkill(
                 id="get_pricing",

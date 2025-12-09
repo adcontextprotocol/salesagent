@@ -36,6 +36,7 @@ class A2AAdCPValidator:
     """Helper class to validate A2A responses against AdCP schemas."""
 
     # Map A2A skill names to AdCP schema task names
+    # Note: signals skills removed - should come from dedicated signals agents
     SKILL_TO_SCHEMA_MAP = {
         "get_products": "get-products",
         "create_media_buy": "create-media-buy",
@@ -44,8 +45,6 @@ class A2AAdCPValidator:
         "sync_creatives": "sync-creatives",  # New AdCP spec endpoint
         "list_creatives": "list-creatives",  # New AdCP spec endpoint
         "approve_creative": "approve-creative",  # When schema becomes available
-        "get_signals": "get-signals",
-        "search_signals": "search-signals",  # When schema becomes available
         # Legacy skills don't have AdCP schemas
         "get_pricing": None,
         "get_targeting": None,
@@ -467,6 +466,7 @@ class TestA2ASkillInvocation:
             adcp_a2a_server._request_headers.set({"host": f"{sample_tenant['subdomain']}.example.com"})
 
             # Create message with multiple skill invocations
+            # Note: get_signals removed - should come from dedicated signals agents
             message = Message(
                 message_id="msg_multi",
                 context_id="ctx_multi",
@@ -485,11 +485,8 @@ class TestA2ASkillInvocation:
                         root=DataPart(
                             kind="data",
                             data={
-                                "skill": "get_signals",
-                                "parameters": {
-                                    "signal_spec": "audience signals for targeting",
-                                    "deliver_to": {"platforms": ["mock"], "formats": ["display_300x250"]},
-                                },
+                                "skill": "list_creative_formats",
+                                "parameters": {},
                             },
                         )
                     ),
@@ -505,7 +502,7 @@ class TestA2ASkillInvocation:
             assert result.metadata["invocation_type"] == "explicit_skill"
             assert len(result.metadata["skills_requested"]) == 2
             assert "get_products" in result.metadata["skills_requested"]
-            assert "get_signals" in result.metadata["skills_requested"]
+            assert "list_creative_formats" in result.metadata["skills_requested"]
             assert len(result.artifacts) == 2
 
             # Verify both artifacts have data
@@ -608,8 +605,7 @@ class TestA2ASkillInvocation:
                     "approve_creative",
                     "get_media_buy_status",
                     "optimize_media_buy",
-                    "get_signals",
-                    "search_signals",
+                    # Note: signals skills removed - should come from dedicated signals agents
                     "get_pricing",
                     "get_targeting",
                     "list_creative_formats",  # Keep existing creative format endpoint
@@ -989,37 +985,6 @@ class TestA2ASkillInvocation:
             assert result.artifacts is not None
 
     @pytest.mark.asyncio
-    async def test_search_signals_skill(self, handler, sample_tenant, sample_principal, validator):
-        """Test search_signals skill invocation."""
-        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-
-        # Mock tenant detection - provide Host header so real functions can find tenant in database
-        # Use actual tenant subdomain from fixture
-        with (patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,):
-            mock_get_principal.return_value = sample_principal["principal_id"]
-            # Mock request headers to provide Host header for subdomain detection
-            # Use actual subdomain from sample_tenant so get_tenant_by_subdomain() can find it in DB
-            from src.a2a_server import adcp_a2a_server
-
-            adcp_a2a_server._request_headers.set({"host": f"{sample_tenant['subdomain']}.example.com"})
-
-            # Create skill invocation
-            skill_params = {
-                "query": "audience targeting signals",
-            }
-            message = create_a2a_message_with_skill("search_signals", skill_params)
-            params = MessageSendParams(message=message)
-
-            # Process the message - executes real code path
-            result = await handler.on_message_send(params)
-
-            # Verify result
-            assert isinstance(result, Task)
-            assert result.metadata["invocation_type"] == "explicit_skill"
-            assert "search_signals" in result.metadata["skills_requested"]
-            assert result.artifacts is not None
-
-    @pytest.mark.asyncio
     async def test_approve_creative_skill(self, handler, sample_tenant, sample_principal, validator):
         """Test approve_creative skill invocation."""
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
@@ -1108,38 +1073,6 @@ class TestA2ASkillInvocation:
             assert isinstance(result, Task)
             assert result.metadata["invocation_type"] == "explicit_skill"
             assert "optimize_media_buy" in result.metadata["skills_requested"]
-
-    @pytest.mark.asyncio
-    async def test_get_signals_explicit_skill(self, handler, sample_tenant, sample_principal, validator):
-        """Test get_signals skill invocation with explicit parameters."""
-        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-
-        # Mock tenant detection - provide Host header so real functions can find tenant in database
-        # Use actual tenant subdomain from fixture
-        with (patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,):
-            mock_get_principal.return_value = sample_principal["principal_id"]
-            # Mock request headers to provide Host header for subdomain detection
-            # Use actual subdomain from sample_tenant so get_tenant_by_subdomain() can find it in DB
-            from src.a2a_server import adcp_a2a_server
-
-            adcp_a2a_server._request_headers.set({"host": f"{sample_tenant['subdomain']}.example.com"})
-
-            # Create skill invocation with proper AdCP parameters
-            skill_params = {
-                "signal_spec": "audience targeting signals for premium inventory",
-                "deliver_to": {"platforms": ["mock"], "formats": ["display_300x250"]},
-            }
-            message = create_a2a_message_with_skill("get_signals", skill_params)
-            params = MessageSendParams(message=message)
-
-            # Process the message - executes real code path
-            result = await handler.on_message_send(params)
-
-            # Verify result
-            assert isinstance(result, Task)
-            assert result.metadata["invocation_type"] == "explicit_skill"
-            assert "get_signals" in result.metadata["skills_requested"]
-            assert result.artifacts is not None
 
 
 if __name__ == "__main__":

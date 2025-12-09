@@ -1,6 +1,7 @@
 """Unit tests for authorized properties functionality."""
 
 import pytest
+from adcp.types import PropertyIdentifierTypes, PropertyType
 
 from src.core.schemas import (
     ListAuthorizedPropertiesRequest,
@@ -62,10 +63,11 @@ class TestProperty:
             publisher_domain="example.com",
         )
 
-        assert property_obj.property_type == "website"
+        # Library Property uses enums for property_type and identifier type
+        assert property_obj.property_type == PropertyType.website
         assert property_obj.name == "Example Site"
         assert len(property_obj.identifiers) == 1
-        assert property_obj.identifiers[0].type == "domain"
+        assert property_obj.identifiers[0].type == PropertyIdentifierTypes.domain
         assert property_obj.identifiers[0].value == "example.com"
         assert property_obj.publisher_domain == "example.com"
         assert property_obj.tags is None
@@ -77,16 +79,17 @@ class TestProperty:
             name="Example App",
             identifiers=[
                 PropertyIdentifier(type="bundle_id", value="com.example.app"),
-                PropertyIdentifier(type="app_store_id", value="123456789"),
+                PropertyIdentifier(type="apple_app_store_id", value="123456789"),
             ],
             tags=["mobile", "entertainment"],
             publisher_domain="example.com",
         )
 
-        assert property_obj.property_type == "mobile_app"
+        assert property_obj.property_type == PropertyType.mobile_app
         assert property_obj.name == "Example App"
         assert len(property_obj.identifiers) == 2
-        assert property_obj.tags == ["mobile", "entertainment"]
+        # Library uses PropertyTag type which wraps strings
+        assert len(property_obj.tags) == 2
         assert property_obj.publisher_domain == "example.com"
 
     def test_property_model_dump_omits_none_tags(self):
@@ -146,22 +149,22 @@ class TestProperty:
             publisher_domain="example.com",
         )
 
-        # Test AdCP-compliant response
-        adcp_response = property_obj.model_dump()
+        # Test AdCP-compliant response (mode="json" serializes enums to strings)
+        adcp_response = property_obj.model_dump(mode="json")
 
         # Verify required AdCP fields present and non-null
-        required_fields = ["property_type", "name", "identifiers", "publisher_domain"]
+        # Note: publisher_domain is optional in library Property
+        required_fields = ["property_type", "name", "identifiers"]
         for field in required_fields:
             assert field in adcp_response
             assert adcp_response[field] is not None
 
-        # Verify optional AdCP fields present (can be null)
-        optional_fields = ["tags"]
-        for field in optional_fields:
-            assert field in adcp_response
+        # Verify optional AdCP fields present when set
+        assert "tags" in adcp_response  # Set in test
+        assert "publisher_domain" in adcp_response  # Set in test
 
-        # Verify field count expectations
-        assert len(adcp_response) == 5  # 4 required + 1 optional
+        # Verify field count expectations - 5 fields (property_id excluded when None)
+        assert len(adcp_response) == 5
 
 
 class TestListAuthorizedPropertiesResponse:
@@ -267,7 +270,8 @@ class TestPropertyIdentifier:
         """Test basic identifier creation."""
         identifier = PropertyIdentifier(type="domain", value="example.com")
 
-        assert identifier.type == "domain"
+        # Library Identifier uses enum for type
+        assert identifier.type == PropertyIdentifierTypes.domain
         assert identifier.value == "example.com"
 
     def test_identifier_requires_all_fields(self):

@@ -26,7 +26,8 @@ from src.core.tool_context import ToolContext
 logger = logging.getLogger(__name__)
 console = Console()
 
-from adcp.types import PushNotificationConfig
+from adcp.types import MediaBuyStatus
+from adcp.types.generated_poc.core.context import ContextObject
 
 from src.core.auth import get_principal_object
 from src.core.config_loader import get_current_tenant
@@ -467,12 +468,10 @@ def _get_media_buy_delivery_impl(
 def get_media_buy_delivery(
     media_buy_ids: list[str] | None = None,
     buyer_refs: list[str] | None = None,
-    status_filter: str | None = None,
+    status_filter: MediaBuyStatus | list[MediaBuyStatus] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    context: dict | None = None,  # Application level context per adcp spec
-    webhook_url: str | None = None,
-    push_notification_config: PushNotificationConfig | None = None,
+    context: ContextObject | None = None,
     ctx: Context | ToolContext | None = None,
 ):
     """Get delivery data for media buys.
@@ -482,12 +481,10 @@ def get_media_buy_delivery(
     Args:
         media_buy_ids: Array of publisher media buy IDs to get delivery data for (optional)
         buyer_refs: Array of buyer reference IDs to get delivery data for (optional)
-        status_filter: Filter by status - single status or array: 'active', 'pending', 'paused', 'completed', 'failed', 'all' (optional)
+        status_filter: Filter by status - single status or array of MediaBuyStatus enums (optional)
         start_date: Start date for reporting period in YYYY-MM-DD format (optional)
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
-        webhook_url: URL for async task completion notifications (AdCP spec, optional)
-        push_notification_config: Optional webhook configuration (accepted, ignored by this operation)
-        context: Application level context object
+        context: Application level context object (ContextObject)
         ctx: FastMCP context (automatically provided)
 
     Returns:
@@ -501,7 +498,6 @@ def get_media_buy_delivery(
             status_filter=status_filter,
             start_date=start_date,
             end_date=end_date,
-            push_notification_config=push_notification_config,
             context=context,
         )
 
@@ -515,10 +511,10 @@ def get_media_buy_delivery(
 def get_media_buy_delivery_raw(
     media_buy_ids: list[str] | None = None,
     buyer_refs: list[str] | None = None,
-    status_filter: str | None = None,
+    status_filter: MediaBuyStatus | list[MediaBuyStatus] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    context: dict | None = None,  # Application level context per adcp spec
+    context: ContextObject | None = None,
     ctx: Context | ToolContext | None = None,
 ):
     """Get delivery metrics for media buys (raw function for A2A server use).
@@ -526,10 +522,10 @@ def get_media_buy_delivery_raw(
     Args:
         media_buy_ids: Array of publisher media buy IDs to get delivery data for (optional)
         buyer_refs: Array of buyer reference IDs to get delivery data for (optional)
-        status_filter: Filter by status - single status or array (optional)
+        status_filter: Filter by status - single status or array of MediaBuyStatus enums (optional)
         start_date: Start date for reporting period in YYYY-MM-DD format (optional)
         end_date: End date for reporting period in YYYY-MM-DD format (optional)
-        context: Application level context
+        context: Application level context (ContextObject)
         ctx: Context for authentication
 
     Returns:
@@ -542,7 +538,6 @@ def get_media_buy_delivery_raw(
         status_filter=status_filter,
         start_date=start_date,
         end_date=end_date,
-        push_notification_config=None,
         context=context,
     )
 
@@ -569,17 +564,34 @@ def _get_target_media_buys(
 ) -> list[tuple[str, MediaBuy]]:
     with get_db_session() as session:
         # Use status_filter to determine which buys to fetch
-        valid_statuses = ["active", "ready", "paused", "completed", "failed"]
-        filter_statuses = []
+        # Internal statuses: ready, active, paused, completed, failed
+        # AdCP MediaBuyStatus: pending_activation, active, paused, completed
+        # Map: pending_activation -> ready (internal)
+        valid_internal_statuses = ["active", "ready", "paused", "completed", "failed"]
+        filter_statuses: list[str] = []
+
+        def normalize_status(status: str) -> str:
+            """Convert AdCP status to internal status."""
+            # AdCP 'pending_activation' maps to internal 'ready'
+            if status == "pending_activation":
+                return "ready"
+            return status
 
         if req.status_filter:
-            if isinstance(req.status_filter, str):
-                if req.status_filter == "all":
-                    filter_statuses = valid_statuses
+            # Handle both enum values and strings (enum has .value attribute)
+            if isinstance(req.status_filter, list):
+                for s in req.status_filter:
+                    status_str = s.value if hasattr(s, "value") else str(s)
+                    normalized = normalize_status(status_str)
+                    if normalized in valid_internal_statuses:
+                        filter_statuses.append(normalized)
+            else:
+                status_str = req.status_filter.value if hasattr(req.status_filter, "value") else str(req.status_filter)
+                if status_str == "all":
+                    filter_statuses = valid_internal_statuses
                 else:
-                    filter_statuses = [req.status_filter]
-            elif isinstance(req.status_filter, list):
-                filter_statuses = [status for status in req.status_filter if status in valid_statuses]
+                    normalized = normalize_status(status_str)
+                    filter_statuses = [normalized]
         else:
             # Default to active
             filter_statuses = ["active"]

@@ -5,6 +5,7 @@ import pytest
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 # All MCP tools - unified mode is now enabled by default
+# Note: signals tools (get_signals, activate_signal) removed - should come from dedicated signals agents
 ALL_TOOLS = [
     # Core AdCP tools
     "get_products",
@@ -16,8 +17,6 @@ ALL_TOOLS = [
     "list_creative_formats",
     "list_authorized_properties",
     "update_performance_index",
-    "get_signals",
-    "activate_signal",
     # Task management tools (HITL - Human-in-the-loop)
     "list_tasks",
     "get_task",
