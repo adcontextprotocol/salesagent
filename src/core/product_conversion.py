@@ -276,7 +276,6 @@ def convert_product_model_to_schema(product_model) -> Product:
         product_data["implementation_config"] = None
 
     # Principal access control (internal field)
-    if hasattr(product_model, "allowed_principal_ids"):
-        product_data["allowed_principal_ids"] = product_model.allowed_principal_ids
+    product_data["allowed_principal_ids"] = getattr(product_model, "allowed_principal_ids", None)
 
     return Product(**product_data)

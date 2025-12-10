@@ -489,7 +489,14 @@ def _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_d
     Returns:
         Rendered template response
     """
-    from src.core.database.models import AuthorizedProperty, GAMInventory, InventoryProfile, PropertyTag, SignalsAgent
+    from src.core.database.models import (
+        AuthorizedProperty,
+        GAMInventory,
+        InventoryProfile,
+        Principal,
+        PropertyTag,
+        SignalsAgent,
+    )
 
     with get_db_session() as db_session:
         # Load authorized properties
@@ -505,6 +512,10 @@ def _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_d
         property_tags = db_session.scalars(
             select(PropertyTag).filter_by(tenant_id=tenant_id).order_by(PropertyTag.name)
         ).all()
+
+        # Load principals for access control dropdown
+        principals = db_session.scalars(select(Principal).filter_by(tenant_id=tenant_id).order_by(Principal.name)).all()
+        principals_list = [{"principal_id": p.principal_id, "name": p.name} for p in principals]
 
         if adapter_type == "google_ad_manager":
             # Check if inventory has been synced
@@ -533,6 +544,7 @@ def _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_d
                 currencies=currencies,
                 signals_agents=signals_agents,
                 inventory_profiles=inventory_profiles,
+                principals=principals_list,
                 form_data=form_data,  # Preserve form data on error
             )
         else:
@@ -545,6 +557,7 @@ def _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_d
                 authorized_properties=properties_list,
                 property_tags=property_tags,
                 currencies=currencies,
+                principals=principals_list,
                 form_data=form_data,  # Preserve form data on error
             )
 
@@ -852,6 +865,12 @@ def add_product(tenant_id):
                 channel = form_data.get("channel", "").strip()
                 if channel:
                     product_kwargs["channel"] = channel
+
+                # Handle principal access control (allowed_principal_ids)
+                # Empty list or no selection means visible to all (default)
+                allowed_principals = request.form.getlist("allowed_principal_ids")
+                if allowed_principals:
+                    product_kwargs["allowed_principal_ids"] = allowed_principals
 
                 # Handle product detail fields (AdCP compliance)
                 # Delivery measurement (REQUIRED per AdCP spec)
@@ -1367,17 +1386,14 @@ def edit_product(tenant_id, product_id):
 
                 # Handle principal access control (allowed_principal_ids)
                 # Empty list or no selection means visible to all (default)
+                from sqlalchemy.orm import attributes
+
                 allowed_principals = request.form.getlist("allowed_principal_ids")
                 if allowed_principals:
                     product.allowed_principal_ids = allowed_principals
-                    from sqlalchemy.orm import attributes
-
-                    attributes.flag_modified(product, "allowed_principal_ids")
                 else:
                     product.allowed_principal_ids = None
-                    from sqlalchemy.orm import attributes
-
-                    attributes.flag_modified(product, "allowed_principal_ids")
+                attributes.flag_modified(product, "allowed_principal_ids")
 
                 # Get pricing based on line item type (GAM form) or delivery type (other adapters)
                 line_item_type = form_data.get("line_item_type")

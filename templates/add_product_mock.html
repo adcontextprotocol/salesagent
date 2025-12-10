@@ -627,6 +627,32 @@
         {% include 'components/targeting_selector_widget.html' %}
         <input type="hidden" id="targeting-data" name="targeting_template" value="">
 
+        <!-- Principal Access Control -->
+        <h3 style="margin-top: 2rem;">
+            <i class="fas fa-lock"></i> Principal Access Control
+        </h3>
+        <p style="color: #666; margin-bottom: 1rem;">
+            Restrict which advertisers/principals can see this product. Leave empty to show to all principals.
+        </p>
+
+        <div class="form-group">
+            <label for="allowed_principal_ids">Allowed Principals (Advertisers)</label>
+            <select id="allowed_principal_ids" name="allowed_principal_ids" multiple style="height: 120px;">
+                {% if principals %}
+                    {% for principal in principals %}
+                    <option value="{{ principal.principal_id }}">
+                        {{ principal.name }} ({{ principal.principal_id }})
+                    </option>
+                    {% endfor %}
+                {% else %}
+                    <option disabled>No principals configured</option>
+                {% endif %}
+            </select>
+            <small style="color: #666;">
+                Hold Ctrl/Cmd to select multiple. If none selected, product is visible to all principals.
+            </small>
+        </div>
+
         <!-- Product Details (AdCP Compliance) -->
         <h3 style="margin-top: 2rem;">
             <i class="fas fa-info-circle"></i> Product Details
