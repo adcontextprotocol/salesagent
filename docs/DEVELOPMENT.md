@@ -248,7 +248,7 @@ uv run pytest tests/integration/
 uv run pytest --cov=. --cov-report=html
 
 # Inside Docker
-docker exec -it adcp-server pytest
+docker-compose exec adcp-server pytest
 ```
 
 ### Test Categories
@@ -552,7 +552,7 @@ class MyClass:
 docker-compose logs -f adcp-server
 
 # Execute commands in container
-docker exec -it adcp-buy-server-adcp-server-1 bash
+docker-compose exec adcp-server bash
 
 # Check container health
 docker ps
@@ -594,7 +594,7 @@ curl -H "x-adcp-auth: your_token" \
 
 ```bash
 # Connect to PostgreSQL
-docker exec -it adcp-buy-server-postgres-1 psql -U adcp_user -d adcp
+docker-compose exec postgres psql -U adcp_user -d adcp
 
 # Common queries
 SELECT * FROM tenants;

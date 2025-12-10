@@ -73,7 +73,7 @@ Via Admin UI or product configuration:
 
 ```bash
 # Inside Docker container
-docker exec -it adcp-server python setup_tenant.py "Test Publisher" \
+docker-compose exec adcp-server python setup_tenant.py "Test Publisher" \
   --adapter mock \
   --subdomain test-pub
 
@@ -93,7 +93,7 @@ docker exec -it adcp-server python setup_tenant.py "Test Publisher" \
 
 **Via Database:**
 ```bash
-docker exec -it adcp-postgres psql -U adcp_user -d adcp_sales_agent
+docker-compose exec postgres psql -U adcp_user -d adcp
 SELECT access_token FROM principals WHERE tenant_id = 'test-pub';
 ```
 
@@ -402,7 +402,7 @@ The mock adapter enforces realistic validation:
 **Check:**
 ```bash
 # Verify tenant has mock adapter enabled
-docker exec -it adcp-postgres psql -U adcp_user -d adcp_sales_agent \
+docker-compose exec postgres psql -U adcp_user -d adcp \
   -c "SELECT tenant_id, adapter_config FROM tenants WHERE tenant_id = 'your-tenant';"
 ```
 
@@ -435,7 +435,7 @@ docker-compose logs -f adcp-server | grep "📊\|📤\|🚀"
 
 **Check principal configuration:**
 ```bash
-docker exec -it adcp-postgres psql -U adcp_user -d adcp_sales_agent \
+docker-compose exec postgres psql -U adcp_user -d adcp \
   -c "SELECT platform_mappings FROM principals WHERE principal_id = 'your-principal';"
 ```
 
@@ -559,10 +559,10 @@ For questions or issues:
 
 ```bash
 # Create test tenant with mock adapter
-docker exec -it adcp-server python setup_tenant.py "Test" --adapter mock
+docker-compose exec adcp-server python setup_tenant.py "Test" --adapter mock
 
 # Get access token
-docker exec -it adcp-postgres psql -U adcp_user -d adcp_sales_agent \
+docker-compose exec postgres psql -U adcp_user -d adcp \
   -c "SELECT access_token FROM principals WHERE tenant_id = 'test';"
 
 # Test with curl (MCP)

@@ -154,14 +154,14 @@ echo $GOOGLE_CLIENT_SECRET
 # Go to Advertisers tab → Copy token
 
 # Or check database
-docker exec -it postgres psql -U adcp_user adcp -c \
+docker-compose exec postgres psql -U adcp_user adcp -c \
   "SELECT principal_id, access_token FROM principals;"
 ```
 
 #### MCP Returns Empty Products Array
 ```bash
 # Check if products exist for the tenant
-docker exec -it postgres psql -U adcp_user adcp -c \
+docker-compose exec postgres psql -U adcp_user adcp -c \
   "SELECT COUNT(*) FROM products WHERE tenant_id='your_tenant_id';"
 
 # Create products using Admin UI or database script
@@ -171,7 +171,7 @@ docker exec -it postgres psql -U adcp_user adcp -c \
 #### "Missing or invalid x-adcp-auth header" with Valid Token
 ```bash
 # Verify tenant is active
-docker exec -it postgres psql -U adcp_user adcp -c \
+docker-compose exec postgres psql -U adcp_user adcp -c \
   "SELECT is_active FROM tenants WHERE tenant_id='your_tenant_id';"
 
 # Check if using SSE transport (may not forward headers properly)
@@ -183,10 +183,10 @@ docker exec -it postgres psql -U adcp_user adcp -c \
 #### "Column doesn't exist" Error
 ```bash
 # Run migrations
-docker exec -it adcp-server python migrate.py
+docker-compose exec adcp-server python migrate.py
 
 # Check migration status
-docker exec -it adcp-server python migrate.py status
+docker-compose exec adcp-server python migrate.py status
 
 # If migrations fail, check for overlapping revisions
 grep -r "revision = " alembic/versions/
@@ -198,7 +198,7 @@ grep -r "revision = " alembic/versions/
 docker ps | grep postgres
 
 # Test connection
-docker exec -it postgres psql -U adcp_user adcp -c "SELECT 1;"
+docker-compose exec postgres psql -U adcp_user adcp -c "SELECT 1;"
 
 # Check environment variable
 echo $DATABASE_URL
@@ -225,7 +225,7 @@ lsof -i :8001
 #### Permission Denied Errors
 ```bash
 # Fix volume permissions
-docker exec -it adcp-server chown -R $(id -u):$(id -g) /app
+docker-compose exec adcp-server chown -R $(id -u):$(id -g) /app
 
 # Or run with user ID
 docker-compose run --user $(id -u):$(id -g) adcp-server
@@ -242,14 +242,14 @@ python setup_tenant.py "Publisher" \
   --gam-refresh-token NEW_TOKEN
 
 # Verify in database
-docker exec -it postgres psql -U adcp_user adcp -c \
+docker-compose exec postgres psql -U adcp_user adcp -c \
   "SELECT gam_refresh_token FROM adapter_configs;"
 ```
 
 #### Network Code Mismatch
 ```bash
 # Update network code
-docker exec -it postgres psql -U adcp_user adcp -c \
+docker-compose exec postgres psql -U adcp_user adcp -c \
   "UPDATE adapter_configs SET gam_network_code='123456' WHERE tenant_id='tenant_id';"
 ```
 
@@ -361,7 +361,7 @@ environment:
   - FLASK_ENV=development
 
 # Check templates
-docker exec -it admin-ui python -c \
+docker-compose exec admin-ui python -c \
   "from admin_ui import app; app.jinja_env.compile('template.html')"
 ```
 
@@ -382,11 +382,11 @@ echo $FLASK_SECRET_KEY
 #### Slow Database Queries
 ```bash
 # Check query performance
-docker exec -it postgres psql -U adcp_user adcp -c \
+docker-compose exec postgres psql -U adcp_user adcp -c \
   "EXPLAIN ANALYZE SELECT * FROM media_buys WHERE tenant_id='test';"
 
 # Add indexes if needed
-docker exec -it postgres psql -U adcp_user adcp -c \
+docker-compose exec postgres psql -U adcp_user adcp -c \
   "CREATE INDEX idx_media_buys_tenant ON media_buys(tenant_id);"
 ```
 
@@ -420,10 +420,10 @@ curl http://localhost:8080/health
 curl http://localhost:8001/health
 
 # Database health
-docker exec postgres pg_isready
+docker-compose exec postgres pg_isready
 
 # Container health
-docker inspect adcp-server | grep Health
+docker-compose ps adcp-server
 ```
 
 ## Getting Help
@@ -468,7 +468,7 @@ docker-compose logs -f adcp-server
 docker-compose logs -f admin-ui
 
 # Inside container
-docker exec -it adcp-server tail -f /tmp/mcp_server.log
+docker-compose exec adcp-server tail -f /tmp/mcp_server.log
 ```
 
 ### Audit Logs
@@ -490,10 +490,10 @@ curl http://localhost:8080/health
 curl http://localhost:8001/health
 
 # Database status
-docker exec postgres pg_isready
+docker-compose exec postgres pg_isready
 
 # Container status
-docker ps
+docker-compose ps
 ```
 
 ## Operations Troubleshooting
