@@ -294,18 +294,19 @@ def test_principal_model_exists_for_access_control(integration_db):
         session.add(tenant)
 
         # Create principals (with required fields)
+        # platform_mappings must have at least one platform (google_ad_manager, kevel, or mock)
         principal1 = Principal(
             principal_id="adv_001",
             tenant_id=tenant_id,
             name="Advertiser One",
-            platform_mappings={},
+            platform_mappings={"mock": {"advertiser_id": "mock_adv_001"}},
             access_token="test_token_adv_001",
         )
         principal2 = Principal(
             principal_id="adv_002",
             tenant_id=tenant_id,
             name="Advertiser Two",
-            platform_mappings={},
+            platform_mappings={"mock": {"advertiser_id": "mock_adv_002"}},
             access_token="test_token_adv_002",
         )
         session.add_all([principal1, principal2])
