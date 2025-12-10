@@ -1214,11 +1214,66 @@ def edit_product(tenant_id, product_id):
             formats_parsed = json.loads(formats_json) if formats_json else []
             if isinstance(formats_parsed, list) and formats_parsed:
                 # JSON format: [{"agent_url": "...", "format_id": "..."}]
-                validated_formats = []
-                for fmt in formats_parsed:
-                    if isinstance(fmt, dict) and fmt.get("agent_url") and fmt.get("format_id"):
-                        validated_formats.append({"agent_url": fmt["agent_url"], "id": fmt["format_id"]})
-                logger.info(f"[DEBUG] Parsed {len(validated_formats)} formats from JSON")
+                # Validate formats against creative agent registry (defense in depth)
+                import asyncio
+
+                from src.core.creative_agent_registry import get_creative_agent_registry
+
+                try:
+                    registry = get_creative_agent_registry()
+                    try:
+                        loop = asyncio.get_running_loop()
+                        import concurrent.futures
+
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(
+                                lambda: asyncio.run(registry.list_all_formats(tenant_id=tenant_id))
+                            )
+                            available_formats = future.result()
+                    except RuntimeError:
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            available_formats = loop.run_until_complete(registry.list_all_formats(tenant_id=tenant_id))
+                        finally:
+                            loop.close()
+
+                    # Build lookup of valid format IDs
+                    valid_format_ids = set()
+                    for fmt in available_formats:
+                        format_id_str = fmt.format_id.id if hasattr(fmt.format_id, "id") else str(fmt.format_id)
+                        valid_format_ids.add(format_id_str)
+
+                    validated_formats = []
+                    invalid_formats = []
+                    for fmt in formats_parsed:
+                        if isinstance(fmt, dict) and fmt.get("agent_url") and fmt.get("format_id"):
+                            format_id = fmt["format_id"]
+                            if format_id in valid_format_ids:
+                                validated_formats.append({"agent_url": fmt["agent_url"], "id": format_id})
+                            else:
+                                invalid_formats.append(format_id)
+
+                    if invalid_formats:
+                        flash(
+                            f"Invalid format IDs removed: {', '.join(invalid_formats)}. "
+                            f"These formats do not exist in the creative agent.",
+                            "warning",
+                        )
+                        logger.warning(f"Stripped invalid formats from product edit: {invalid_formats}")
+
+                    logger.info(
+                        f"[DEBUG] Validated {len(validated_formats)} formats from JSON, rejected {len(invalid_formats)}"
+                    )
+
+                except Exception as e:
+                    logger.error(f"Failed to validate formats against creative agent: {e}")
+                    # Fall back to accepting formats without validation (graceful degradation)
+                    validated_formats = []
+                    for fmt in formats_parsed:
+                        if isinstance(fmt, dict) and fmt.get("agent_url") and fmt.get("format_id"):
+                            validated_formats.append({"agent_url": fmt["agent_url"], "id": fmt["format_id"]})
+                    logger.info(f"[DEBUG] Parsed {len(validated_formats)} formats from JSON (unvalidated due to error)")
         except json.JSONDecodeError:
             # Fallback to checkbox format: "agent_url|format_id"
             formats_raw = request.form.getlist("formats")
