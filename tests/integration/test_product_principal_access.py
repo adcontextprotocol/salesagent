@@ -293,16 +293,20 @@ def test_principal_model_exists_for_access_control(integration_db):
         )
         session.add(tenant)
 
-        # Create principals
+        # Create principals (with required fields)
         principal1 = Principal(
             principal_id="adv_001",
             tenant_id=tenant_id,
             name="Advertiser One",
+            platform_mappings={},
+            access_token="test_token_adv_001",
         )
         principal2 = Principal(
             principal_id="adv_002",
             tenant_id=tenant_id,
             name="Advertiser Two",
+            platform_mappings={},
+            access_token="test_token_adv_002",
         )
         session.add_all([principal1, principal2])
         session.commit()
