@@ -1365,6 +1365,20 @@ def edit_product(tenant_id, product_id):
                 else:
                     product.channel = None
 
+                # Handle principal access control (allowed_principal_ids)
+                # Empty list or no selection means visible to all (default)
+                allowed_principals = request.form.getlist("allowed_principal_ids")
+                if allowed_principals:
+                    product.allowed_principal_ids = allowed_principals
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "allowed_principal_ids")
+                else:
+                    product.allowed_principal_ids = None
+                    from sqlalchemy.orm import attributes
+
+                    attributes.flag_modified(product, "allowed_principal_ids")
+
                 # Get pricing based on line item type (GAM form) or delivery type (other adapters)
                 line_item_type = form_data.get("line_item_type")
 
@@ -1760,9 +1774,19 @@ def edit_product(tenant_id, product_id):
                 "reporting_capabilities": product.reporting_capabilities,
                 # AdCP 2.5 fields
                 "channel": product.channel,
+                # Principal access control
+                "allowed_principal_ids": product.allowed_principal_ids or [],
             }
 
             product_dict["pricing_options"] = pricing_options_list
+
+            # Get all principals for this tenant (for access control dropdown)
+            from src.core.database.models import Principal
+
+            principals = db_session.scalars(
+                select(Principal).filter_by(tenant_id=tenant_id).order_by(Principal.name)
+            ).all()
+            principals_list = [{"principal_id": p.principal_id, "name": p.name} for p in principals]
 
             # Show adapter-specific form
             if adapter_type == "google_ad_manager":
@@ -1848,6 +1872,7 @@ def edit_product(tenant_id, product_id):
                     currencies=currencies,
                     assigned_inventory=assigned_inventory,
                     inventory_profiles=inventory_profiles,
+                    principals=principals_list,
                 )
             else:
                 return render_template(
@@ -1856,6 +1881,7 @@ def edit_product(tenant_id, product_id):
                     product=product_dict,
                     tenant_adapter=adapter_type,
                     currencies=currencies,
+                    principals=principals_list,
                 )
 
     except Exception as e:

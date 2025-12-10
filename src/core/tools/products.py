@@ -401,6 +401,40 @@ async def _get_products_impl(
     )
     logger.info(f"[GET_PRODUCTS] Got {len(products)} static products from provider")
 
+    # Filter products by principal access control
+    # Products with allowed_principal_ids set are only visible to those specific principals
+    # Products with null/empty allowed_principal_ids are visible to all (default)
+    if principal_id:
+        filtered_by_access = []
+        for product in products:
+            # Check if product has access restrictions
+            allowed_ids = getattr(product, "allowed_principal_ids", None)
+            if allowed_ids is None or len(allowed_ids) == 0:
+                # No restrictions - visible to all
+                filtered_by_access.append(product)
+            elif principal_id in allowed_ids:
+                # Principal is in the allowed list
+                filtered_by_access.append(product)
+            else:
+                # Principal not in allowed list - skip this product
+                logger.debug(f"Product {product.product_id} hidden from principal {principal_id} (not in allowed list)")
+        products = filtered_by_access
+        logger.info(f"[GET_PRODUCTS] After principal access filtering: {len(products)} products")
+    else:
+        # No principal authenticated - only show unrestricted products
+        # This handles anonymous/discovery requests
+        filtered_by_access = []
+        for product in products:
+            allowed_ids = getattr(product, "allowed_principal_ids", None)
+            if allowed_ids is None or len(allowed_ids) == 0:
+                # No restrictions - visible to anonymous users
+                filtered_by_access.append(product)
+            else:
+                # Product has restrictions - hide from anonymous users
+                logger.debug(f"Product {product.product_id} hidden from anonymous user (has access restrictions)")
+        products = filtered_by_access
+        logger.info(f"[GET_PRODUCTS] After anonymous access filtering: {len(products)} products")
+
     # Generate dynamic product variants from signals agents
     try:
         from src.services.dynamic_products import generate_variants_for_brief
@@ -667,13 +701,9 @@ async def _get_products_impl(
                         # Add supported annotation (will be included in response)
                         # Use setattr for discriminated unions to satisfy mypy
                         is_supported = pricing_model in supported_models
-                        setattr(option, "supported", is_supported)
+                        option.supported = is_supported
                         if not is_supported:
-                            setattr(
-                                option,
-                                "unsupported_reason",
-                                f"Current adapter does not support {pricing_model.upper()} pricing",
-                            )
+                            option.unsupported_reason = f"Current adapter does not support {pricing_model.upper()} pricing"
         except Exception as e:
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 

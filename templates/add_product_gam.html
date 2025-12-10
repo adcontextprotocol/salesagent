@@ -244,6 +244,32 @@ Target users based on local weather conditions for maximum relevance.</div>
             </div>
         </div>
 
+        <!-- Principal Access Control -->
+        <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Principal Access Control</h3>
+        <p style="color: #666; margin-bottom: 1rem;">
+            Restrict which advertisers/principals can see this product. Leave empty to show to all principals.
+        </p>
+
+        <div class="form-group">
+            <label for="allowed_principal_ids">Allowed Principals (Advertisers)</label>
+            {% set selected_principals = product.allowed_principal_ids if product and product.allowed_principal_ids else [] %}
+            <select id="allowed_principal_ids" name="allowed_principal_ids" multiple style="height: 120px;">
+                {% if principals %}
+                    {% for principal in principals %}
+                    <option value="{{ principal.principal_id }}"
+                            {% if principal.principal_id in selected_principals %}selected{% endif %}>
+                        {{ principal.name }} ({{ principal.principal_id }})
+                    </option>
+                    {% endfor %}
+                {% else %}
+                    <option disabled>No principals configured</option>
+                {% endif %}
+            </select>
+            <small style="color: #666;">
+                Hold Ctrl/Cmd to select multiple. If none selected, product is visible to all principals.
+            </small>
+        </div>
+
         <!-- Section 2: Inventory Configuration -->
         <h3 style="margin-top: 2rem; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Inventory Configuration *</h3>
         <p style="color: #666; margin-bottom: 1rem;">

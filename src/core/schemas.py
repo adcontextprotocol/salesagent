@@ -1142,6 +1142,13 @@ class Product(LibraryProduct):
         exclude=True,  # Exclude from serialization by default
     )
 
+    # Principal access control
+    allowed_principal_ids: list[str] | None = Field(
+        default=None,
+        description="Internal: Principal IDs that can see this product. NULL/empty means visible to all.",
+        exclude=True,  # Exclude from serialization by default
+    )
+
     @model_validator(mode="after")
     def validate_pricing_fields(self) -> "Product":
         """Validate pricing_options per AdCP spec.
