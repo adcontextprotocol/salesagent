@@ -246,13 +246,13 @@ def clean_db():
 
 ```bash
 # Run tests in container
-docker exec -it adcp-server pytest tests/unit/
+docker-compose exec adcp-server pytest tests/unit/
 
 # Run with coverage
-docker exec -it adcp-server pytest --cov=. --cov-report=term-missing
+docker-compose exec adcp-server pytest --cov=. --cov-report=term-missing
 
 # Run specific test file
-docker exec -it adcp-server pytest tests/integration/test_main.py -v
+docker-compose exec adcp-server pytest tests/integration/test_main.py -v
 ```
 
 ## Performance Testing

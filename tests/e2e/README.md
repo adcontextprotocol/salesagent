@@ -266,7 +266,7 @@ curl http://localhost:8003/health  # Admin
 ### Database Access
 ```bash
 # Connect to PostgreSQL
-docker exec -it set-up-production-tenants-postgres-1 psql -U adcp_user -d adcp
+docker-compose exec postgres psql -U adcp_user -d adcp
 
 # View test data
 SELECT * FROM tenants WHERE subdomain = 'e2e-test';
@@ -331,7 +331,7 @@ docker-compose up -d
 #### Authentication Errors
 ```bash
 # Create new test principal
-docker exec -it set-up-production-tenants-adcp-server-1 \
+docker-compose exec adcp-server \
   python setup_tenant.py "Test Publisher" --adapter mock
 ```
 
@@ -341,7 +341,7 @@ docker exec -it set-up-production-tenants-adcp-server-1 \
 docker-compose ps postgres
 
 # Verify connection
-docker exec -it set-up-production-tenants-adcp-server-1 \
+docker-compose exec adcp-server \
   python -c "from src.core.database.connection import get_db_session; print('Connected')"
 ```
 

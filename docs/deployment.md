@@ -45,8 +45,8 @@ The reference implementation at https://adcp-sales-agent.fly.dev is hosted on Fl
 
 3. **Initialize database:**
    ```bash
-   docker exec -it adcp-buy-server-adcp-server-1 python migrate.py
-   docker exec -it adcp-buy-server-adcp-server-1 python init_database.py
+   docker-compose exec adcp-server python migrate.py
+   docker-compose exec adcp-server python init_database.py
    ```
 
 4. **Access services:**
@@ -91,11 +91,10 @@ docker-compose down
 docker-compose down -v
 
 # Enter container
-docker exec -it adcp-buy-server-adcp-server-1 bash
+docker-compose exec adcp-server bash
 
 # Backup database
-docker exec adcp-buy-server-postgres-1 \
-  pg_dump -U adcp_user adcp > backup.sql
+docker-compose exec postgres pg_dump -U adcp_user adcp > backup.sql
 ```
 
 ## Fly.io Deployment (Reference Implementation)
@@ -278,7 +277,7 @@ DB_TYPE=sqlite
 
 ```bash
 # Docker deployment
-docker exec -it adcp-buy-server-adcp-server-1 python setup_tenant.py \
+docker-compose exec adcp-server python setup_tenant.py \
   "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456 \
@@ -290,7 +289,7 @@ fly ssh console -C "python setup_tenant.py 'Publisher Name' \
   --gam-network-code 123456"
 
 # Mock adapter for testing
-python setup_tenant.py "Test Publisher" --adapter mock
+docker-compose exec adcp-server python setup_tenant.py "Test Publisher" --adapter mock
 ```
 
 ### Managing Principals (Advertisers)
@@ -342,7 +341,7 @@ curl http://localhost:8080/health
 curl http://localhost:8001/health
 
 # PostgreSQL health (Docker)
-docker exec adcp-buy-server-postgres-1 pg_isready
+docker-compose exec postgres pg_isready
 ```
 
 ### Monitoring Metrics
@@ -397,7 +396,7 @@ server {
 #### PostgreSQL Backup
 ```bash
 # Docker
-docker exec adcp-buy-server-postgres-1 \
+docker-compose exec postgres \
   pg_dump -U adcp_user adcp > backup_$(date +%Y%m%d).sql
 
 # Fly.io
@@ -407,7 +406,7 @@ fly postgres backup create --app adcp-db
 #### PostgreSQL Restore
 ```bash
 # Docker
-docker exec -i adcp-buy-server-postgres-1 \
+docker-compose exec -T postgres \
   psql -U adcp_user adcp < backup.sql
 
 # Fly.io
@@ -600,13 +599,13 @@ To enable maintenance mode:
 
 ```bash
 # Full backup
-docker exec postgres pg_dump -U adcp_user adcp > backup.sql
+docker-compose exec postgres pg_dump -U adcp_user adcp > backup.sql
 
 # Compressed backup
-docker exec postgres pg_dump -U adcp_user adcp | gzip > backup.sql.gz
+docker-compose exec postgres pg_dump -U adcp_user adcp | gzip > backup.sql.gz
 
 # Restore
-docker exec -i postgres psql -U adcp_user adcp < backup.sql
+docker-compose exec -T postgres psql -U adcp_user adcp < backup.sql
 ```
 
 ### SQLite Backup

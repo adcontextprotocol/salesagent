@@ -146,14 +146,14 @@ DB_TYPE=sqlite
 
 ```bash
 # Create publisher/tenant with access control
-docker exec -it adcp-server python setup_tenant.py "Publisher Name" \
+docker-compose exec adcp-server python setup_tenant.py "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456 \
   --domain publisher.com \
   --admin-email admin@publisher.com
 
 # Create with mock adapter for testing
-docker exec -it adcp-server python setup_tenant.py "Test Publisher" \
+docker-compose exec adcp-server python setup_tenant.py "Test Publisher" \
   --adapter mock \
   --admin-email test@example.com
 ```
@@ -330,10 +330,10 @@ docker-compose up -d
 docker-compose logs -f
 
 # Enter container
-docker exec -it adcp-server bash
+docker-compose exec adcp-server bash
 
 # Backup database
-docker exec postgres pg_dump -U adcp_user adcp > backup.sql
+docker-compose exec postgres pg_dump -U adcp_user adcp > backup.sql
 ```
 
 ## Test Authentication Mode
@@ -461,5 +461,5 @@ curl http://localhost:8080/health
 curl http://localhost:8001/health
 
 # Database
-docker exec postgres pg_isready
+docker-compose exec postgres pg_isready
 ```
