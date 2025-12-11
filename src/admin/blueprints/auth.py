@@ -153,17 +153,23 @@ def google_auth():
     if redirect_uri:
         logger.info(f"Using GOOGLE_OAUTH_REDIRECT_URI from env: {redirect_uri}")
     else:
-        # Build the URL with /admin prefix for nginx routing
+        # Build the URL
         base_url = url_for("auth.google_callback", _external=True)
         logger.info(f"Generated base URL: {base_url}")
 
-        # If the base URL doesn't already have /admin, prepend it
-        if "/admin/" not in base_url:
+        # Only add /admin prefix in production mode with nginx (not in Docker standalone)
+        # SKIP_NGINX=true indicates Docker standalone mode without nginx reverse proxy
+        skip_nginx = os.environ.get("SKIP_NGINX", "").lower() == "true"
+        production = os.environ.get("PRODUCTION", "").lower() == "true"
+
+        if not skip_nginx and production and "/admin/" not in base_url:
+            # Production with nginx: add /admin prefix for nginx routing
             redirect_uri = base_url.replace("/auth/google/callback", "/admin/auth/google/callback")
-            logger.info(f"Added /admin prefix, final URI: {redirect_uri}")
+            logger.info(f"Added /admin prefix for nginx, final URI: {redirect_uri}")
         else:
+            # Docker standalone or development: use the base URL as-is
             redirect_uri = base_url
-            logger.info(f"URL already has /admin prefix: {redirect_uri}")
+            logger.info(f"Using base URL without /admin prefix: {redirect_uri}")
 
     logger.warning(f"========== FINAL OAuth redirect URI: {redirect_uri} ==========")
 
