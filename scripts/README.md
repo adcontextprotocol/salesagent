@@ -57,7 +57,7 @@ scripts/setup/setup_conductor_workspace.sh
 python scripts/setup/init_database.py
 
 # 3. Create a tenant
-python scripts/setup/setup_tenant.py "Publisher Name" \
+python -m scripts.setup.setup_tenant "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456
 

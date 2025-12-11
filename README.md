@@ -13,29 +13,41 @@ The AdCP Sales Agent is a server that:
 
 ## Quick Start
 
-### Standard Setup
+### Docker Setup (Recommended)
 
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/adcontextprotocol/salesagent.git
 cd salesagent
 
-# Configure secrets (choose one method)
-# Method 1: .env.secrets file (recommended)
+# 2. Configure secrets (REQUIRED - app won't start without these)
 cp .env.secrets.template .env.secrets
-# Edit .env.secrets with your API keys and OAuth credentials
+# Edit .env.secrets with your values:
+#   - GEMINI_API_KEY (required) - get from https://aistudio.google.com/apikey
+#   - SUPER_ADMIN_EMAILS (required) - your email address
+#   - GOOGLE_CLIENT_ID/SECRET (required for login) - from Google Cloud Console
 
-# Method 2: Environment variables
-export GEMINI_API_KEY="your-api-key"
-export GOOGLE_CLIENT_ID="your-client-id"
-export GOOGLE_CLIENT_SECRET="your-client-secret"
-export SUPER_ADMIN_EMAILS="your-email@example.com"
+# 3. Configure Google OAuth redirect URI
+# In Google Cloud Console, add this authorized redirect URI:
+#   http://localhost:8001/auth/google/callback
 
-# Start with Docker Compose
-docker-compose up -d
+# 4. Start with Docker Compose (source secrets first)
+source .env.secrets && docker-compose up -d
 
-# Access services
-open http://localhost:8001  # Admin UI
+# 5. Wait for containers to be healthy
+docker-compose ps
+
+# 6. Access the Admin UI
+open http://localhost:8001
+```
+
+### Creating Your First Tenant
+
+```bash
+# Create a test tenant with mock adapter (no ad server needed)
+docker-compose exec adcp-server python -m scripts.setup.setup_tenant "My Publisher" \
+  --adapter mock \
+  --admin-email your-email@example.com
 ```
 
 ### Conductor Setup
@@ -51,13 +63,38 @@ cp .env.secrets.template .env.secrets
 ```
 
 **Standard Setup** starts services on:
-- PostgreSQL database (port 5432)
-- MCP server (port 8080)
+- PostgreSQL database (port 5435)
+- MCP server (port 8092)
 - Admin UI (port 8001)
 
 **Conductor Setup** uses unique ports per workspace:
 - Check `.env` file for your workspace's assigned ports
 - Example: PostgreSQL (5486), MCP (8134), Admin UI (8055)
+
+### Common Issues
+
+**Connection reset on Admin UI (port 8001)**
+```bash
+# Check container logs for startup errors
+docker-compose logs admin-ui | head -50
+
+# Most common cause: missing required env vars
+# Make sure .env.secrets exists and contains:
+#   GEMINI_API_KEY=your-key
+#   SUPER_ADMIN_EMAILS=your-email@example.com
+```
+
+**OAuth callback 404 error**
+- If redirected to `/admin/auth/google/callback` and getting 404
+- Your Google OAuth redirect URI should be `http://localhost:8001/auth/google/callback` (no `/admin` prefix for Docker)
+
+**Script not found errors**
+```bash
+# Use -m flag to run scripts as modules
+docker-compose exec adcp-server python -m scripts.setup.setup_tenant ...
+```
+
+See [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for more solutions.
 
 ## Documentation
 

@@ -144,9 +144,17 @@ echo $SUPER_ADMIN_DOMAINS
 echo $GOOGLE_CLIENT_ID
 echo $GOOGLE_CLIENT_SECRET
 
-# Check redirect URI matches exactly
-# Must be: http://localhost:8001/auth/google/callback
+# Check redirect URI matches your deployment mode:
+# - Docker standalone (docker-compose): http://localhost:8001/auth/google/callback
+# - Production with nginx: https://your-domain.com/admin/auth/google/callback
 ```
+
+#### OAuth Callback 404 in Docker Standalone
+If you get redirected to `/admin/auth/google/callback` but get a 404, your Google OAuth
+credentials are configured with the production path but you're running Docker standalone.
+
+**Fix**: Update your Google OAuth credentials to use `http://localhost:8001/auth/google/callback`
+(without the `/admin` prefix).
 
 #### Invalid Token for MCP API
 ```bash
@@ -236,7 +244,7 @@ docker-compose run --user $(id -u):$(id -g) adcp-server
 #### OAuth Token Invalid
 ```bash
 # Refresh OAuth token
-python setup_tenant.py "Publisher" \
+python -m scripts.setup.setup_tenant "Publisher" \
   --adapter google_ad_manager \
   --gam-network-code YOUR_CODE \
   --gam-refresh-token NEW_TOKEN

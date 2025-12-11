@@ -277,19 +277,19 @@ DB_TYPE=sqlite
 
 ```bash
 # Docker deployment
-docker-compose exec adcp-server python setup_tenant.py \
+docker-compose exec adcp-server python -m scripts.setup.setup_tenant \
   "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456 \
   --gam-refresh-token YOUR_REFRESH_TOKEN
 
 # Fly.io deployment
-fly ssh console -C "python setup_tenant.py 'Publisher Name' \
+fly ssh console -C "python -m scripts.setup.setup_tenant 'Publisher Name' \
   --adapter google_ad_manager \
   --gam-network-code 123456"
 
 # Mock adapter for testing
-docker-compose exec adcp-server python setup_tenant.py "Test Publisher" --adapter mock
+docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publisher" --adapter mock
 ```
 
 ### Managing Principals (Advertisers)
