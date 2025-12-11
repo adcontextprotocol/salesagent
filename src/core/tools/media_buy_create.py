@@ -2533,6 +2533,10 @@ async def _create_media_buy_impl(
             import secrets
 
             package_id = f"pkg_{pkg_product.product_id}_{secrets.token_hex(4)}_{idx}"
+            logger.info(
+                f"[PACKAGE_ID_DEBUG] idx={idx}, pkg.product_id={pkg.product_id}, "
+                f"pkg_product.product_id={pkg_product.product_id}, package_id={package_id}"
+            )
 
             # Get buyer_ref and budget from matching request package if available
             package_buyer_ref: str | None = None
@@ -2751,13 +2755,14 @@ async def _create_media_buy_impl(
                         raise ValueError(error_msg)
 
                     logger.info(f"[DEBUG] Package {i}: Using package_id = {resp_package_id}")
+                    logger.info(f"[DEBUG] Package {i}: product_id = {getattr(resp_package, 'product_id', 'N/A')}")
 
                     # Store full package config as JSON
                     # Get paused state from adapter response (adcp 2.12.0: replaced status enum with paused bool)
                     paused = getattr(resp_package, "paused", False)  # Default to False (not paused) if not present
 
                     # Get pricing info for this package if available
-                    pricing_info_for_package = package_pricing_info.get(package_id)
+                    pricing_info_for_package = package_pricing_info.get(resp_package_id)
 
                     # Get impressions from request package if available
                     request_pkg: PackageRequest | None = req.packages[i] if i < len(req.packages) else None
