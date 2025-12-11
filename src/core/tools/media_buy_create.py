@@ -2594,6 +2594,11 @@ async def _create_media_buy_impl(
                 )
             )
 
+        # Log the final packages list before passing to adapter
+        logger.info(f"[PACKAGE_ID_DEBUG] Final packages list has {len(packages)} packages:")
+        for i, p in enumerate(packages):
+            logger.info(f"[PACKAGE_ID_DEBUG]   packages[{i}]: package_id={p.package_id}, product_id={p.product_id}")
+
         # Remap package_pricing_info from index-based keys to actual package IDs
         # Note: packages loop used enumerate(products_in_buy, 1) but pricing used enumerate(req.packages) starting at 0
         remapped_package_pricing_info: dict[str, dict[str, Any]] = {}

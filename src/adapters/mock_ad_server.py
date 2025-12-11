@@ -799,10 +799,12 @@ class MockAdServer(AdServerAdapter):
                 buyer_ref = request.packages[idx].buyer_ref or buyer_ref
 
             # Create AdCP-compliant Package response (package_id + status required per v2.9.0)
+            # Include product_id to ensure it's preserved in database storage
             response_packages.append(
                 ResponsePackage(
                     buyer_ref=buyer_ref,
                     package_id=package_id,
+                    product_id=pkg.product_id,  # Preserve product_id from input package
                     paused=False,  # Default to not paused for created packages
                 )
             )
