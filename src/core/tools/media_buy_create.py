@@ -2533,10 +2533,6 @@ async def _create_media_buy_impl(
             import secrets
 
             package_id = f"pkg_{pkg_product.product_id}_{secrets.token_hex(4)}_{idx}"
-            logger.info(
-                f"[PACKAGE_ID_DEBUG] idx={idx}, pkg.product_id={pkg.product_id}, "
-                f"pkg_product.product_id={pkg_product.product_id}, package_id={package_id}"
-            )
 
             # Get buyer_ref and budget from matching request package if available
             package_buyer_ref: str | None = None
@@ -2593,11 +2589,6 @@ async def _create_media_buy_impl(
                     ),  # Include creative_ids from uploaded creatives
                 )
             )
-
-        # Log the final packages list before passing to adapter
-        logger.info(f"[PACKAGE_ID_DEBUG] Final packages list has {len(packages)} packages:")
-        for i, p in enumerate(packages):
-            logger.info(f"[PACKAGE_ID_DEBUG]   packages[{i}]: package_id={p.package_id}, product_id={p.product_id}")
 
         # Remap package_pricing_info from index-based keys to actual package IDs
         # Note: packages loop used enumerate(products_in_buy, 1) but pricing used enumerate(req.packages) starting at 0
@@ -2750,7 +2741,6 @@ async def _create_media_buy_impl(
 
                     # Extract package_id from response - MUST be present, no fallback allowed
                     resp_package_id: str | None = resp_package.package_id
-                    logger.info(f"[DEBUG] Package {i}: package_id = {resp_package_id}")
 
                     if not resp_package_id:
                         error_msg = (
@@ -2758,9 +2748,6 @@ async def _create_media_buy_impl(
                         )
                         logger.error(error_msg)
                         raise ValueError(error_msg)
-
-                    logger.info(f"[DEBUG] Package {i}: Using package_id = {resp_package_id}")
-                    logger.info(f"[DEBUG] Package {i}: product_id = {getattr(resp_package, 'product_id', 'N/A')}")
 
                     # Store full package config as JSON
                     # Get paused state from adapter response (adcp 2.12.0: replaced status enum with paused bool)

@@ -780,11 +780,9 @@ class MockAdServer(AdServerAdapter):
         # - buyer_ref (required)
         # - package_id (required)
         response_packages = []
-        self.log(f"[PACKAGE_RESPONSE_DEBUG] Building response for {len(packages)} packages")
         for idx, pkg in enumerate(packages):
             # Get package_id from MediaPackage
             package_id = pkg.package_id
-            self.log(f"[PACKAGE_RESPONSE_DEBUG] Package {idx}: package_id={package_id}, product_id={pkg.product_id}")
 
             # If package doesn't have package_id yet, generate one
             if not package_id:
