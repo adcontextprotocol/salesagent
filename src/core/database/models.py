@@ -277,6 +277,11 @@ class Product(Base, JSONValidatorMixin):
     # Type hint: days until variant expires (null = use tenant default)
     variant_ttl_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Principal access control
+    # Type hint: list of principal IDs that can see this product
+    # NULL or empty means visible to all principals (default)
+    allowed_principal_ids: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
+
     # Relationships
     tenant = relationship("Tenant", back_populates="products")
     inventory_profile = relationship("InventoryProfile", back_populates="products")
