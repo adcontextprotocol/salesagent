@@ -2199,47 +2199,43 @@ async def _create_media_buy_impl(
             gam_validator = GAMProductConfigService()
             config_errors = []
 
-            for prod in products_in_buy:
-                product = cast(Product, prod)  # type: ignore[assignment]
+            for schema_product in products_in_buy:
                 # Auto-generate default config if missing
-                if not product.implementation_config:
+                if not schema_product.implementation_config:
                     logger.info(
-                        f"Product '{product.name}' ({product.product_id}) is missing GAM configuration. "
+                        f"Product '{schema_product.name}' ({schema_product.product_id}) is missing GAM configuration. "
                         f"Auto-generating defaults based on product type."
                     )
                     # Generate defaults based on product delivery type and formats
-                    delivery_type = product.delivery_type if hasattr(product, "delivery_type") else "non_guaranteed"
+                    delivery_type_str = (
+                        str(schema_product.delivery_type)
+                        if hasattr(schema_product, "delivery_type") and schema_product.delivery_type
+                        else "non_guaranteed"
+                    )
                     # Extract format IDs as strings for config generation
                     formats_list: list[str] | None = None
-                    if hasattr(product, "formats") and product.format_ids:
-                        formats_list = []
-                        for fmt in product.format_ids:
-                            if isinstance(fmt, str):
-                                formats_list.append(fmt)
-                            elif isinstance(fmt, dict):
-                                formats_list.append(fmt.get("id") or fmt.get("format_id", ""))
-                            elif hasattr(fmt, "format_id"):
-                                formats_list.append(fmt.format_id)
-                    product.implementation_config = gam_validator.generate_default_config(
-                        delivery_type=delivery_type, formats=formats_list
+                    if schema_product.format_ids:
+                        formats_list = [fmt.id for fmt in schema_product.format_ids]
+                    schema_product.implementation_config = gam_validator.generate_default_config(
+                        delivery_type=delivery_type_str, formats=formats_list
                     )
 
                     # Persist the auto-generated config to database
                     with get_db_session() as db_session:
-                        product_stmt = select(ModelProduct).filter_by(product_id=product.product_id)
+                        product_stmt = select(ModelProduct).filter_by(product_id=schema_product.product_id)
                         db_product = db_session.scalars(product_stmt).first()
                         if db_product:
-                            db_product.implementation_config = product.implementation_config
+                            db_product.implementation_config = schema_product.implementation_config
                             db_session.commit()
-                            logger.info(f"Saved auto-generated GAM config for product {product.product_id}")
+                            logger.info(f"Saved auto-generated GAM config for product {schema_product.product_id}")
 
                 # Validate the config (whether existing or auto-generated)
-                impl_config = product.implementation_config if product.implementation_config else {}
+                impl_config = schema_product.implementation_config if schema_product.implementation_config else {}
                 is_valid, error_msg_temp = gam_validator.validate_config(impl_config)
                 error_msg = error_msg_temp if error_msg_temp else "Unknown error"
                 if not is_valid:
                     config_errors.append(
-                        f"Product '{product.name}' ({product.product_id}) has invalid GAM configuration: {error_msg}"
+                        f"Product '{schema_product.name}' ({schema_product.product_id}) has invalid GAM configuration: {error_msg}"
                     )
 
             if config_errors:
@@ -2380,60 +2376,21 @@ async def _create_media_buy_impl(
             # If found and has format_ids, validate and use those
             if matching_package and hasattr(matching_package, "format_ids") and matching_package.format_ids:
                 # Validate that requested formats are supported by product
-                # Format is composite key: (agent_url, format_id) per AdCP spec
-                # Note: AdCP JSON uses "id" field, but Pydantic object uses "format_id" attribute
-                # Build set of (agent_url, format_id) tuples for comparison
-                product_format_keys = set()
+                # Format is composite key: (agent_url, id) per AdCP spec
+                # FormatId objects have agent_url (AnyUrl) and id (str) fields
+                product_format_keys: set[tuple[str | None, str]] = set()
                 if pkg_product.format_ids:
-                    for fmt in pkg_product.format_ids:  # type: ignore[assignment]
-                        agent_url: str | None = None
-                        format_id_str: str | None = None
-
-                        if isinstance(fmt, dict):
-                            # Database JSONB: uses "id" per AdCP spec
-                            agent_url = fmt.get("agent_url")
-                            format_id_str = fmt.get("id") or fmt.get(
-                                "format_id"
-                            )  # "id" is AdCP spec, "format_id" is legacy
-                        elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
-                            # Pydantic object: uses "format_id" attribute (serializes to "id" in JSON)
-                            agent_url = fmt.agent_url
-                            format_id_str = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
-                        elif isinstance(fmt, str):
-                            # Legacy: plain string format ID (no agent_url)
-                            format_id_str = fmt
-
-                        if format_id_str:
-                            # Normalize agent_url by removing trailing slash for consistent comparison
-                            # Convert AnyUrl to string before calling rstrip()
-                            normalized_url = str(agent_url).rstrip("/") if agent_url else None
-                            product_format_keys.add((normalized_url, format_id_str))
+                    for fmt in pkg_product.format_ids:
+                        # Normalize agent_url by removing trailing slash for consistent comparison
+                        normalized_url = str(fmt.agent_url).rstrip("/") if fmt.agent_url else None
+                        product_format_keys.add((normalized_url, fmt.id))
 
                 # Build set of requested format keys for comparison
-                requested_format_keys = set()
-                for fmt in matching_package.format_ids:  # type: ignore[assignment]
-                    agent_url = None
-                    format_id_str2: str | None = None
-
-                    if isinstance(fmt, dict):
-                        # JSON from request: uses "id" per AdCP spec
-                        agent_url = fmt.get("agent_url")
-                        format_id_str2 = fmt.get("id") or fmt.get(
-                            "format_id"
-                        )  # "id" is AdCP spec, "format_id" is legacy
-                    elif hasattr(fmt, "agent_url") and (hasattr(fmt, "format_id") or hasattr(fmt, "id")):
-                        # Pydantic object: uses "format_id" attribute
-                        agent_url = fmt.agent_url
-                        format_id_str2 = getattr(fmt, "format_id", None) or getattr(fmt, "id", None)
-                    elif isinstance(fmt, str):
-                        # Legacy: plain string
-                        format_id_str2 = fmt
-
-                    if format_id_str2:
-                        # Normalize agent_url by removing trailing slash for consistent comparison
-                        # Convert AnyUrl to string before calling rstrip()
-                        normalized_url = str(agent_url).rstrip("/") if agent_url else None
-                        requested_format_keys.add((normalized_url, format_id_str2))
+                requested_format_keys: set[tuple[str | None, str]] = set()
+                for fmt in matching_package.format_ids:
+                    # Normalize agent_url by removing trailing slash for consistent comparison
+                    normalized_url = str(fmt.agent_url).rstrip("/") if fmt.agent_url else None
+                    requested_format_keys.add((normalized_url, fmt.id))
 
                 def format_display(url: str | None, fid: str) -> str:
                     """Format a (url, id) pair for display, handling trailing slashes."""
