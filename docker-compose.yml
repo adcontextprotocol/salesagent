@@ -17,9 +17,6 @@ services:
 
   adcp-server:
     build: .
-    env_file:
-      - path: .env.secrets
-        required: false
     environment:
       # Database configuration
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
@@ -79,9 +76,6 @@ services:
   admin-ui:
     build: .
     command: python -m src.admin.server
-    env_file:
-      - path: .env.secrets
-        required: false
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8001}

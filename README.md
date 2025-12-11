@@ -31,8 +31,8 @@ cp .env.secrets.template .env.secrets
 # In Google Cloud Console, add this authorized redirect URI:
 #   http://localhost:8001/auth/google/callback
 
-# 4. Start with Docker Compose
-docker-compose up -d
+# 4. Start with Docker Compose (source secrets first)
+source .env.secrets && docker-compose up -d
 
 # 5. Wait for containers to be healthy
 docker-compose ps
