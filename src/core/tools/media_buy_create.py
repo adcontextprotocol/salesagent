@@ -2698,7 +2698,6 @@ async def _create_media_buy_impl(
 
                     # Extract package_id from response - MUST be present, no fallback allowed
                     resp_package_id: str | None = resp_package.package_id
-                    logger.info(f"[DEBUG] Package {i}: package_id = {resp_package_id}")
 
                     if not resp_package_id:
                         error_msg = (
@@ -2707,14 +2706,12 @@ async def _create_media_buy_impl(
                         logger.error(error_msg)
                         raise ValueError(error_msg)
 
-                    logger.info(f"[DEBUG] Package {i}: Using package_id = {resp_package_id}")
-
                     # Store full package config as JSON
                     # Get paused state from adapter response (adcp 2.12.0: replaced status enum with paused bool)
                     paused = getattr(resp_package, "paused", False)  # Default to False (not paused) if not present
 
                     # Get pricing info for this package if available
-                    pricing_info_for_package = package_pricing_info.get(package_id)
+                    pricing_info_for_package = package_pricing_info.get(resp_package_id)
 
                     # Get impressions from request package if available
                     request_pkg: PackageRequest | None = req.packages[i] if i < len(req.packages) else None
