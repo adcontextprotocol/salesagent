@@ -73,7 +73,7 @@ Via Admin UI or product configuration:
 
 ```bash
 # Inside Docker container
-docker-compose exec adcp-server python setup_tenant.py "Test Publisher" \
+docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publisher" \
   --adapter mock \
   --subdomain test-pub
 
@@ -559,7 +559,7 @@ For questions or issues:
 
 ```bash
 # Create test tenant with mock adapter
-docker-compose exec adcp-server python setup_tenant.py "Test" --adapter mock
+docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Test" --adapter mock
 
 # Get access token
 docker-compose exec postgres psql -U adcp_user -d adcp \

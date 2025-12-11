@@ -146,14 +146,14 @@ DB_TYPE=sqlite
 
 ```bash
 # Create publisher/tenant with access control
-docker-compose exec adcp-server python setup_tenant.py "Publisher Name" \
+docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456 \
   --domain publisher.com \
   --admin-email admin@publisher.com
 
 # Create with mock adapter for testing
-docker-compose exec adcp-server python setup_tenant.py "Test Publisher" \
+docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publisher" \
   --adapter mock \
   --admin-email test@example.com
 ```

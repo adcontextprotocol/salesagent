@@ -332,7 +332,7 @@ docker-compose up -d
 ```bash
 # Create new test principal
 docker-compose exec adcp-server \
-  python setup_tenant.py "Test Publisher" --adapter mock
+  python -m scripts.setup.setup_tenant "Test Publisher" --adapter mock
 ```
 
 #### Database Connection Issues

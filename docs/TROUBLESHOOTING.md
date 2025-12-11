@@ -244,7 +244,7 @@ docker-compose run --user $(id -u):$(id -g) adcp-server
 #### OAuth Token Invalid
 ```bash
 # Refresh OAuth token
-python setup_tenant.py "Publisher" \
+python -m scripts.setup.setup_tenant "Publisher" \
   --adapter google_ad_manager \
   --gam-network-code YOUR_CODE \
   --gam-refresh-token NEW_TOKEN
