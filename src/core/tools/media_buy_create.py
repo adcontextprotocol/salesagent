@@ -2006,6 +2006,15 @@ async def _create_media_buy_impl(
                                         else {"total": float(req_pkg.budget), "currency": request_currency}
                                     )
 
+                            # Serialize format_ids to dicts for JSON storage
+                            # Use mode='json' to convert AnyUrl to string
+                            format_ids_serialized = None
+                            if hasattr(req_pkg, "format_ids") and req_pkg.format_ids:
+                                format_ids_serialized = [
+                                    fmt.model_dump(mode="json") if hasattr(fmt, "model_dump") else fmt
+                                    for fmt in req_pkg.format_ids
+                                ]
+
                             package_config.update(
                                 {
                                     "product_id": req_pkg.product_id,
@@ -2014,7 +2023,7 @@ async def _create_media_buy_impl(
                                         req_pkg.targeting_overlay.model_dump() if req_pkg.targeting_overlay else None
                                     ),
                                     "creative_ids": req_pkg.creative_ids,
-                                    "format_ids": req_pkg.format_ids if hasattr(req_pkg, "format_ids") else None,
+                                    "format_ids": format_ids_serialized,
                                     "pricing_info": pricing_info_for_package,  # Store pricing info for UI display
                                     "impressions": req_pkg.impressions,  # Store impressions for display
                                 }
