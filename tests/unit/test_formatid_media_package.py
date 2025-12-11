@@ -116,3 +116,65 @@ class TestFormatFormatIdFields:
         assert all(isinstance(fmt, FormatId) for fmt in format_obj.output_format_ids)
         assert format_obj.output_format_ids[0].id == "display_300x250"
         assert format_obj.output_format_ids[1].id == "display_728x90"
+
+
+class TestFormatIdJsonSerialization:
+    """Tests for FormatId JSON serialization (for database storage)."""
+
+    def test_format_id_serializes_to_json(self):
+        """FormatId.model_dump(mode='json') produces JSON-serializable dict.
+
+        This tests the fix for the error:
+        'Object of type FormatId is not JSON serializable'
+        when inserting into media_packages.package_config JSONB column.
+
+        Note: mode='json' is required because agent_url is AnyUrl type.
+        """
+        import json
+
+        format_id = make_format_id("display_300x250")
+
+        # This is what the fix does - serialize FormatId before storing in package_config
+        # mode='json' converts AnyUrl to string
+        serialized = format_id.model_dump(mode="json")
+
+        # Must be a dict
+        assert isinstance(serialized, dict)
+        assert "id" in serialized
+        assert "agent_url" in serialized
+        # agent_url must be a string (not AnyUrl object)
+        assert isinstance(serialized["agent_url"], str)
+
+        # Must be JSON serializable (this is what failed before the fix)
+        json_str = json.dumps(serialized)
+        assert "display_300x250" in json_str
+
+    def test_format_ids_list_serializes_to_json(self):
+        """List of FormatIds must serialize for JSONB storage.
+
+        Reproduces the exact error scenario: storing format_ids in package_config.
+        """
+        import json
+
+        format_ids = [
+            make_format_id("display_300x250"),
+            make_format_id("video_preroll"),
+        ]
+
+        # This is what media_buy_create.py does now
+        # mode='json' is required to convert AnyUrl to string
+        format_ids_serialized = [
+            fmt.model_dump(mode="json") if hasattr(fmt, "model_dump") else fmt for fmt in format_ids
+        ]
+
+        # Build package_config as in the real code
+        package_config = {
+            "package_id": "test_pkg",
+            "product_id": "prod_1",
+            "format_ids": format_ids_serialized,
+        }
+
+        # Must be JSON serializable (this would fail before the fix)
+        json_str = json.dumps(package_config)
+        assert "display_300x250" in json_str
+        assert "video_preroll" in json_str
