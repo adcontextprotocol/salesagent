@@ -420,6 +420,77 @@
     box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
 }
 
+/* Key Search and List */
+.key-search-input {
+    width: 100%;
+    padding: 0.6rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    font-size: 0.95rem;
+}
+
+.key-search-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+}
+
+.key-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: white;
+}
+
+.key-option {
+    padding: 0.6rem 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f3f4;
+    transition: background 0.15s;
+    font-size: 0.95rem;
+    color: #333;
+}
+
+.key-option:last-child {
+    border-bottom: none;
+}
+
+.key-option:hover {
+    background: #e7f5ff;
+    color: #1971c2;
+}
+
+/* Selected Key Display */
+.selected-key-display {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.75rem;
+    background: #e7f5ff;
+    border: 1px solid #a5d8ff;
+    border-radius: 4px;
+    color: #1971c2;
+    font-weight: 500;
+}
+
+.change-key-btn {
+    padding: 0.25rem 0.75rem;
+    border: 1px solid #a5d8ff;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: #1971c2;
+    transition: all 0.2s;
+}
+
+.change-key-btn:hover {
+    background: #f8f9fa;
+    border-color: #1971c2;
+}
+
 .values-section {
     margin-top: 1rem;
 }

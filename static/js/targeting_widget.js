@@ -289,6 +289,12 @@ class TargetingWidget {
 
     renderValueSelector() {
         const keys = this.targetingData.custom_targeting_keys || [];
+        // Sort keys alphabetically by display name
+        const sortedKeys = [...keys].sort((a, b) => {
+            const nameA = (a.display_name || a.name || '').toLowerCase();
+            const nameB = (b.display_name || b.name || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
 
         return `
             <div class="value-selector-modal" id="value-selector-modal" style="display: none;">
@@ -300,10 +306,19 @@ class TargetingWidget {
                     <div class="value-selector-body">
                         <div class="key-selector-section">
                             <label>Key:</label>
-                            <select id="key-selector" class="key-dropdown">
-                                <option value="">Select a key...</option>
-                                ${keys.map(k => `<option value="${k.id}">${k.display_name || k.name}</option>`).join('')}
-                            </select>
+                            <input type="search" id="key-search" placeholder="Search keys..." class="key-search-input">
+                            <div class="key-list" id="key-list">
+                                ${sortedKeys.map(k => `
+                                    <div class="key-option" data-key-id="${k.id}" data-key-name="${(k.display_name || k.name).toLowerCase()}">
+                                        ${k.display_name || k.name}
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <input type="hidden" id="key-selector" value="">
+                            <div id="selected-key-display" class="selected-key-display" style="display: none;">
+                                <span id="selected-key-name"></span>
+                                <button type="button" id="change-key-btn" class="change-key-btn">Change</button>
+                            </div>
                         </div>
                         <div class="operator-selector-section" id="operator-section" style="display: none; margin-top: 1rem;">
                             <label>Operator:</label>
@@ -401,15 +416,27 @@ class TargetingWidget {
             }
         });
 
-        // Key selector change
-        this.container.addEventListener('change', async (e) => {
-            if (e.target.id === 'key-selector') {
-                const keyId = e.target.value;
-                if (keyId) {
-                    await this.loadValuesForKey(keyId);
-                } else {
-                    document.getElementById('values-section').style.display = 'none';
-                }
+        // Key search filter
+        this.container.addEventListener('input', (e) => {
+            if (e.target.id === 'key-search') {
+                this.filterKeys(e.target.value);
+            }
+        });
+
+        // Key option click
+        this.container.addEventListener('click', async (e) => {
+            const keyOption = e.target.closest('.key-option');
+            if (keyOption) {
+                const keyId = keyOption.dataset.keyId;
+                const keyName = keyOption.textContent.trim();
+                await this.selectKey(keyId, keyName);
+            }
+        });
+
+        // Change key button
+        this.container.addEventListener('click', (e) => {
+            if (e.target.id === 'change-key-btn') {
+                this.resetKeySelection();
             }
         });
 
@@ -521,24 +548,42 @@ class TargetingWidget {
         this.editingCriterion = { groupIndex, criterionIndex };
         const modal = document.getElementById('value-selector-modal');
         const keySelector = document.getElementById('key-selector');
+        const keySearch = document.getElementById('key-search');
+        const keyList = document.getElementById('key-list');
+        const selectedKeyDisplay = document.getElementById('selected-key-display');
+        const selectedKeyName = document.getElementById('selected-key-name');
         const operatorSelector = document.getElementById('operator-selector');
         const title = document.getElementById('value-selector-title');
 
-        // Reset state
+        // Reset state - show key search, hide selected key display
         keySelector.value = '';
+        keySearch.value = '';
+        keySearch.style.display = '';
+        keyList.style.display = '';
+        selectedKeyDisplay.style.display = 'none';
         operatorSelector.value = 'is';
         document.getElementById('values-section').style.display = 'none';
         document.getElementById('operator-section').style.display = 'none';
         document.getElementById('apply-selector-btn').disabled = true;
+
+        // Reset key filter to show all keys
+        this.filterKeys('');
 
         // If editing existing criterion, pre-select the key and operator
         if (criterionIndex !== null) {
             const groups = this.selectedTargeting.key_value_pairs.groups;
             const criterion = groups[groupIndex]?.criteria[criterionIndex];
             if (criterion) {
+                const keyName = this.keyMetadata[criterion.keyId]?.display_name || criterion.keyId;
+                // Set the key as selected
                 keySelector.value = criterion.keyId;
+                selectedKeyName.textContent = keyName;
+                keySearch.style.display = 'none';
+                keyList.style.display = 'none';
+                selectedKeyDisplay.style.display = 'flex';
+
                 operatorSelector.value = criterion.exclude ? 'is_not' : 'is';
-                title.textContent = `Add values to ${this.keyMetadata[criterion.keyId]?.display_name || criterion.keyId}`;
+                title.textContent = `Add values to ${keyName}`;
                 // Load values for this key
                 this.loadValuesForKey(criterion.keyId);
             }
@@ -625,6 +670,56 @@ class TargetingWidget {
             const text = item.textContent.toLowerCase();
             item.style.display = text.includes(lowerQuery) ? '' : 'none';
         });
+    }
+
+    filterKeys(query) {
+        const items = this.container.querySelectorAll('.key-option');
+        const lowerQuery = query.toLowerCase();
+
+        items.forEach(item => {
+            const keyName = item.dataset.keyName || item.textContent.toLowerCase();
+            item.style.display = keyName.includes(lowerQuery) ? '' : 'none';
+        });
+    }
+
+    async selectKey(keyId, keyName) {
+        const keySelector = document.getElementById('key-selector');
+        const keySearch = document.getElementById('key-search');
+        const keyList = document.getElementById('key-list');
+        const selectedKeyDisplay = document.getElementById('selected-key-display');
+        const selectedKeyName = document.getElementById('selected-key-name');
+
+        // Update hidden input and display
+        keySelector.value = keyId;
+        selectedKeyName.textContent = keyName;
+        keySearch.style.display = 'none';
+        keyList.style.display = 'none';
+        selectedKeyDisplay.style.display = 'flex';
+
+        // Load values for the selected key
+        await this.loadValuesForKey(keyId);
+    }
+
+    resetKeySelection() {
+        const keySelector = document.getElementById('key-selector');
+        const keySearch = document.getElementById('key-search');
+        const keyList = document.getElementById('key-list');
+        const selectedKeyDisplay = document.getElementById('selected-key-display');
+        const valuesSection = document.getElementById('values-section');
+        const operatorSection = document.getElementById('operator-section');
+
+        // Reset state
+        keySelector.value = '';
+        keySearch.value = '';
+        keySearch.style.display = '';
+        keyList.style.display = '';
+        selectedKeyDisplay.style.display = 'none';
+        valuesSection.style.display = 'none';
+        operatorSection.style.display = 'none';
+
+        // Show all keys again
+        this.filterKeys('');
+        this.updateApplyButton();
     }
 
     updateApplyButton() {
