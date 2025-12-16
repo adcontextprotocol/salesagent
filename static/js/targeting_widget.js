@@ -148,10 +148,16 @@ class TargetingWidget {
         }
 
         (this.targetingData.custom_targeting_keys || []).forEach(key => {
-            this.keyMetadata[key.id] = {
+            const metadata = {
                 name: key.name,
                 display_name: key.display_name || key.name
             };
+            // Index by GAM ID (for new data)
+            this.keyMetadata[key.id] = metadata;
+            // Also index by key name (for legacy data migration)
+            if (key.name && key.name !== key.id) {
+                this.keyMetadata[key.name] = metadata;
+            }
         });
     }
 
