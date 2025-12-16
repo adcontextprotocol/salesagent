@@ -690,10 +690,10 @@ def add_product(tenant_id):
 
             with get_db_session() as db_session:
                 # Parse formats - expecting JSON string with FormatReference objects
-                formats_json = form_data.get("formats", "[]")
+                formats_json = form_data.get("formats", "[]") or "[]"
                 formats = []
                 try:
-                    formats_parsed = json.loads(formats_json) if formats_json else []
+                    formats_parsed = json.loads(formats_json)
                     if isinstance(formats_parsed, list) and formats_parsed:
                         # Validate formats against creative agent registry
                         from src.core.creative_agent_registry import get_creative_agent_registry
@@ -1262,9 +1262,9 @@ def edit_product(tenant_id, product_id):
     validated_formats = None
     if request.method == "POST":
         # Parse formats - expecting JSON string with FormatReference objects
-        formats_json = request.form.get("formats", "[]")
+        formats_json = request.form.get("formats", "[]") or "[]"
         try:
-            formats_parsed = json.loads(formats_json) if formats_json else []
+            formats_parsed = json.loads(formats_json)
             if isinstance(formats_parsed, list) and formats_parsed:
                 # JSON format: [{"agent_url": "...", "format_id": "..."}]
                 # Validate formats against creative agent registry
