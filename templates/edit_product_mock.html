@@ -16,7 +16,7 @@
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
 
-    <form method="POST" onsubmit="debugFormSubmission(event)">
+    <form method="POST" onsubmit="prepareFormSubmission(event)">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label for="name">Product Name *</label>
@@ -152,7 +152,7 @@
         </div>
 
         <!-- Hidden input to store selected format data -->
-        <input type="hidden" id="formats-data" name="formats" value="">
+        <input type="hidden" id="formats-data" name="formats" value="[]">
 
         <!-- Format Preview Modal -->
         <div id="format-preview-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
@@ -328,8 +328,8 @@
 </div>
 
 <script>
-// Debug form submission to diagnose targeting persistence issue
-function debugFormSubmission(event) {
+// Prepare form data and validate before submission
+function prepareFormSubmission(event) {
     // Block submission if there are unknown formats
     if (typeof unknownFormats !== 'undefined' && unknownFormats.size > 0) {
         event.preventDefault();
