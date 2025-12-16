@@ -30,27 +30,11 @@ from src.core.database.models import (
 from src.core.schemas import CreateMediaBuyRequest
 from src.core.tool_context import ToolContext
 from tests.helpers.adcp_factories import create_test_package_request
+from tests.helpers.external_service import is_external_service_response_error
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # Tests are now AdCP 2.4 compliant (removed status field, using errors field)
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
-
-
-def _is_external_service_error(response) -> bool:
-    """Check if response errors are due to external creative agent unavailability."""
-    if not hasattr(response, "errors") or not response.errors:
-        return False
-
-    for error in response.errors:
-        error_msg = str(error.message).lower() if hasattr(error, "message") else str(error).lower()
-        # Check for common external service failure patterns
-        if "format lookup failed" in error_msg and "creative.adcontextprotocol.org" in error_msg:
-            return True
-        if "connection" in error_msg and ("refused" in error_msg or "error" in error_msg):
-            return True
-        if any(code in error_msg for code in ["523", "502", "503", "504"]):
-            return True
-    return False
 
 
 @pytest.fixture
@@ -424,7 +408,7 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
     # Skip if external creative agent is unavailable
-    if _is_external_service_error(response):
+    if is_external_service_response_error(response):
         pytest.skip(f"External creative agent unavailable: {response.errors}")
 
     assert (
@@ -484,7 +468,7 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
     # Skip if external creative agent is unavailable
-    if _is_external_service_error(response):
+    if is_external_service_response_error(response):
         pytest.skip(f"External creative agent unavailable: {response.errors}")
 
     assert (
@@ -545,7 +529,7 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
     # Skip if external creative agent is unavailable
-    if _is_external_service_error(response):
+    if is_external_service_response_error(response):
         pytest.skip(f"External creative agent unavailable: {response.errors}")
 
     assert (
@@ -607,7 +591,7 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
     # Skip if external creative agent is unavailable
-    if _is_external_service_error(response):
+    if is_external_service_response_error(response):
         pytest.skip(f"External creative agent unavailable: {response.errors}")
 
     assert (
@@ -680,7 +664,7 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
     # Skip if external creative agent is unavailable
-    if _is_external_service_error(response):
+    if is_external_service_response_error(response):
         pytest.skip(f"External creative agent unavailable: {response.errors}")
 
     assert (

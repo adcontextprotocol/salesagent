@@ -14,33 +14,14 @@ If these services are unavailable (HTTP 5xx, connection errors), tests will skip
 rather than fail, since external service availability is outside our control.
 """
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from tests.helpers.a2a_response_validator import assert_valid_skill_response
-
-
-def _is_external_service_error(exc: Exception) -> bool:
-    """Check if exception is due to external service unavailability."""
-    error_str = str(exc).lower()
-    # Check for common external service failure patterns
-    if isinstance(exc, (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)):
-        return True
-    if isinstance(exc, asyncio.CancelledError):
-        return True
-    if "523" in error_str or "502" in error_str or "503" in error_str or "504" in error_str:
-        return True
-    if "connection" in error_str and ("refused" in error_str or "error" in error_str):
-        return True
-    if "timeout" in error_str or "timed out" in error_str:
-        return True
-    return False
-
+from tests.helpers.external_service import is_external_service_exception
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -145,7 +126,7 @@ class TestA2AMessageFieldValidation:
             try:
                 result = await handler._handle_sync_creatives_skill(params, sample_principal["access_token"])
             except Exception as e:
-                if _is_external_service_error(e):
+                if is_external_service_exception(e):
                     pytest.skip(f"External creative agent unavailable: {e}")
                 raise
 
@@ -197,7 +178,7 @@ class TestA2AMessageFieldValidation:
             try:
                 result = await handler._handle_list_creative_formats_skill(params, sample_principal["access_token"])
             except Exception as e:
-                if _is_external_service_error(e):
+                if is_external_service_exception(e):
                     pytest.skip(f"External creative agent unavailable: {e}")
                 raise
 
