@@ -183,7 +183,7 @@ def _list_creative_formats_impl(
             "format_count": len(formats),
             "standard_formats": len([f for f in formats if f.is_standard]),
             "custom_formats": len([f for f in formats if not f.is_standard]),
-            "format_types": list({f.type for f in formats}),
+            "format_types": list({f.type.value for f in formats}),
         },
     )
 
