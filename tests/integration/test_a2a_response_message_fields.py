@@ -8,15 +8,39 @@ Key principle: Test the ACTUAL dict construction that happens in _handle_*_skill
 methods, not just the response object structure.
 
 Regression prevention: https://github.com/adcontextprotocol/salesagent/pull/337
+
+NOTE: Some tests connect to external creative agents (creative.adcontextprotocol.org).
+If these services are unavailable (HTTP 5xx, connection errors), tests will skip
+rather than fail, since external service availability is outside our control.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from tests.helpers.a2a_response_validator import assert_valid_skill_response
+
+
+def _is_external_service_error(exc: Exception) -> bool:
+    """Check if exception is due to external service unavailability."""
+    error_str = str(exc).lower()
+    # Check for common external service failure patterns
+    if isinstance(exc, (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)):
+        return True
+    if isinstance(exc, asyncio.CancelledError):
+        return True
+    if "523" in error_str or "502" in error_str or "503" in error_str or "504" in error_str:
+        return True
+    if "connection" in error_str and ("refused" in error_str or "error" in error_str):
+        return True
+    if "timeout" in error_str or "timed out" in error_str:
+        return True
+    return False
+
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -100,6 +124,9 @@ class TestA2AMessageFieldValidation:
         """Test sync_creatives returns a valid message field.
 
         SyncCreativesResponse also doesn't have a .message field, uses __str__
+
+        NOTE: This test connects to external creative agents for format validation.
+        If the external service is unavailable, the test will be skipped.
         """
         with mock_auth_context(handler):
             params = {
@@ -114,8 +141,13 @@ class TestA2AMessageFieldValidation:
                 "validation_mode": "strict",
             }
 
-            # Call handler directly
-            result = await handler._handle_sync_creatives_skill(params, sample_principal["access_token"])
+            # Call handler directly - may fail if external creative agent is unavailable
+            try:
+                result = await handler._handle_sync_creatives_skill(params, sample_principal["access_token"])
+            except Exception as e:
+                if _is_external_service_error(e):
+                    pytest.skip(f"External creative agent unavailable: {e}")
+                raise
 
             # ✅ Use validator
             assert_valid_skill_response(result, "sync_creatives")
@@ -153,11 +185,21 @@ class TestA2AMessageFieldValidation:
 
     @pytest.mark.asyncio
     async def test_list_creative_formats_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test list_creative_formats returns a valid message field."""
+        """Test list_creative_formats returns a valid message field.
+
+        NOTE: This test connects to external creative agents to list formats.
+        If the external service is unavailable, the test will be skipped.
+        """
         with mock_auth_context(handler):
             params = {}
 
-            result = await handler._handle_list_creative_formats_skill(params, sample_principal["access_token"])
+            # Call handler directly - may fail if external creative agent is unavailable
+            try:
+                result = await handler._handle_list_creative_formats_skill(params, sample_principal["access_token"])
+            except Exception as e:
+                if _is_external_service_error(e):
+                    pytest.skip(f"External creative agent unavailable: {e}")
+                raise
 
             # ✅ Validate message field
             assert "message" in result, "list_creative_formats response must include 'message' field"

@@ -10,11 +10,16 @@ requests according to the official AdCP specification, catching issues like:
 
 CRITICAL: These tests use real AdCP schemas and validate the full request/response
 cycle to ensure protocol compliance.
+
+NOTE: These tests require the external AdCP schema server (adcontextprotocol.org)
+to be available. If the server is unreachable (e.g., HTTP 5xx errors), tests will
+be skipped rather than failing, since external service availability is outside
+our control.
 """
 
 import pytest
 
-from tests.e2e.adcp_schema_validator import AdCPSchemaValidator
+from tests.e2e.adcp_schema_validator import AdCPSchemaValidator, SchemaDownloadError
 
 
 class TestA2AProtocolCompliance:
@@ -61,11 +66,15 @@ class TestA2AProtocolCompliance:
             try:
                 await validator.validate_request(task_name="update-media-buy", request_data=valid_request)
                 validation_passed = True
+                error_msg = ""
+            except SchemaDownloadError as e:
+                # External schema server unavailable - skip test
+                pytest.skip(f"AdCP schema server unavailable: {e}")
             except Exception as e:
                 validation_passed = False
                 error_msg = str(e)
 
-            assert validation_passed, f"Valid request should pass: {error_msg if not validation_passed else ''}"
+            assert validation_passed, f"Valid request should pass: {error_msg}"
 
     @pytest.mark.asyncio
     async def test_all_adcp_skills_have_schemas(self):
