@@ -103,6 +103,7 @@ jobs:
   integration-tests:
     name: Integration Tests (Legacy - 174 passing)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -166,7 +167,7 @@ jobs:
         ADCP_TESTING: true
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
-        uv run pytest tests/integration/ -v --tb=short --cov=. --cov-report=term-missing -m "not requires_server and not skip_ci" \
+        uv run pytest tests/integration/ -v --tb=short --cov=. --cov-report=term-missing --timeout=60 -m "not requires_server and not skip_ci" \
           --ignore=tests/integration/test_a2a_error_responses.py \
           --ignore=tests/integration/test_a2a_skill_invocation.py \
           --ignore=tests/integration/test_get_products_format_id_filter.py
@@ -242,6 +243,7 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Run E2E tests on PRs and main branch pushes - catch issues early!
     if: github.event_name == 'push' || github.event_name == 'pull_request'
 
@@ -306,7 +308,7 @@ jobs:
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"
         # Let pytest manage Docker Compose via conftest.py
-        uv run pytest tests/e2e/ -v --tb=short
+        uv run pytest tests/e2e/ -v --tb=short --timeout=120
 
     - name: Cleanup Docker services
       if: always()
