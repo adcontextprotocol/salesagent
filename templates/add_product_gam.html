@@ -22,7 +22,7 @@
     </div>
     {% endif %}
 
-    <form id="product-form" method="POST" onsubmit="debugFormSubmission(event)">
+    <form id="product-form" method="POST" onsubmit="prepareFormSubmission(event)">
         <!-- Section 1: Product Basics -->
         <h3 style="margin-top: 0; border-bottom: 2px solid #007bff; padding-bottom: 0.5rem;">Product Information</h3>
         <p style="color: #666; margin-bottom: 1.5rem;">Basic product details that buyers will see</p>
@@ -1983,7 +1983,7 @@ function removePricingOption(index) {
 }
 
 // Populate formats JSON before form submission
-function debugFormSubmission(event) {
+function prepareFormSubmission(event) {
     // Convert checked format checkboxes to JSON for backend
     const formatCheckboxes = document.querySelectorAll('.format-checkbox:checked');
     const formatsJson = Array.from(formatCheckboxes).map(cb => ({

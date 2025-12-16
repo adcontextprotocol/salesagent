@@ -683,11 +683,11 @@ class TargetingWidget {
     }
 
     async selectKey(keyId, keyName) {
-        const keySelector = document.getElementById('key-selector');
-        const keySearch = document.getElementById('key-search');
-        const keyList = document.getElementById('key-list');
-        const selectedKeyDisplay = document.getElementById('selected-key-display');
-        const selectedKeyName = document.getElementById('selected-key-name');
+        const keySelector = this.container.querySelector('#key-selector');
+        const keySearch = this.container.querySelector('#key-search');
+        const keyList = this.container.querySelector('#key-list');
+        const selectedKeyDisplay = this.container.querySelector('#selected-key-display');
+        const selectedKeyName = this.container.querySelector('#selected-key-name');
 
         // Update hidden input and display
         keySelector.value = keyId;
@@ -701,12 +701,12 @@ class TargetingWidget {
     }
 
     resetKeySelection() {
-        const keySelector = document.getElementById('key-selector');
-        const keySearch = document.getElementById('key-search');
-        const keyList = document.getElementById('key-list');
-        const selectedKeyDisplay = document.getElementById('selected-key-display');
-        const valuesSection = document.getElementById('values-section');
-        const operatorSection = document.getElementById('operator-section');
+        const keySelector = this.container.querySelector('#key-selector');
+        const keySearch = this.container.querySelector('#key-search');
+        const keyList = this.container.querySelector('#key-list');
+        const selectedKeyDisplay = this.container.querySelector('#selected-key-display');
+        const valuesSection = this.container.querySelector('#values-section');
+        const operatorSection = this.container.querySelector('#operator-section');
 
         // Reset state
         keySelector.value = '';
