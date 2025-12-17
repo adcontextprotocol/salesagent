@@ -444,6 +444,7 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                         ).all()
 
                         create_media_buy_approved_result = CreateMediaBuySuccessResponse(
+                            media_buy_id=media_buy_id,
                             buyer_ref=media_buy.buyer_ref,
                             packages=[Package(package_id=x.package_id) for x in all_packages],
                             context={}, # TODO: @yusuf - please fix this, like we've fixed in the creative approval
@@ -528,6 +529,7 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                     all_packages = db_session.scalars(select(MediaPackage).filter_by(media_buy_id=media_buy_id)).all()
 
                     create_media_buy_rejected_result = CreateMediaBuySuccessResponse(
+                        media_buy_id=media_buy_id,
                         buyer_ref=media_buy.buyer_ref,
                         packages=[Package(package_id=x.package_id) for x in all_packages],
                         context={}, # TODO: @yusuf - please fix this, like we've fixed in the creative approval
