@@ -50,6 +50,7 @@ class TargetingWidget {
         try {
             await this.loadTargetingData();
             this.loadExistingTargeting();
+            await this.loadValueMetadataForExistingCriteria();
             this.render();
             this.attachEventListeners();
             this.updateHiddenField();
@@ -159,6 +160,59 @@ class TargetingWidget {
                 this.keyMetadata[key.name] = metadata;
             }
         });
+    }
+
+    /**
+     * Load value metadata (display names) for all keys used in existing targeting criteria.
+     * This ensures values are displayed with human-readable names instead of IDs.
+     */
+    async loadValueMetadataForExistingCriteria() {
+        const groups = this.selectedTargeting.key_value_pairs.groups;
+        if (!groups || groups.length === 0) {
+            return;
+        }
+
+        // Collect unique key IDs from all criteria
+        const keyIds = new Set();
+        groups.forEach(group => {
+            (group.criteria || []).forEach(criterion => {
+                if (criterion.keyId) {
+                    keyIds.add(criterion.keyId);
+                }
+            });
+        });
+
+        if (keyIds.size === 0) {
+            return;
+        }
+
+        // Load values for each key in parallel
+        const loadPromises = Array.from(keyIds).map(async (keyId) => {
+            try {
+                const url = `${this.scriptRoot}/api/tenant/${this.tenantId}/targeting/values/${keyId}`;
+                const response = await fetch(url, { credentials: 'same-origin' });
+                if (!response.ok) {
+                    console.warn(`[TargetingWidget] Failed to load values for key ${keyId}: HTTP ${response.status}`);
+                    return;
+                }
+                const data = await response.json();
+
+                this.loadedValuesByKey[keyId] = data.values || [];
+
+                // Cache value metadata (id -> display_name mapping)
+                if (!this.valueMetadata[keyId]) {
+                    this.valueMetadata[keyId] = {};
+                }
+                (data.values || []).forEach(val => {
+                    this.valueMetadata[keyId][val.id] = val.display_name || val.name || val.id;
+                });
+            } catch (error) {
+                console.warn(`[TargetingWidget] Error loading values for key ${keyId}:`, error);
+            }
+        });
+
+        await Promise.all(loadPromises);
+        console.log('[TargetingWidget] Loaded value metadata for existing criteria:', this.valueMetadata);
     }
 
     render() {
