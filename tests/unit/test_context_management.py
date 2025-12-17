@@ -38,10 +38,8 @@ class MockSetup:
             "X-Force-Error": "none",
         }
 
+        # FastMCP Context uses meta dict to store headers
         context.meta = {"headers": headers}
-        mock_request = Mock()
-        mock_request.headers = headers
-        context.get_http_request.return_value = mock_request
 
         return context
 
