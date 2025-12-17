@@ -61,6 +61,9 @@ services:
       - "host.docker.internal:host-gateway"
 
     volumes:
+      # Mount local adcp library directly into venv (replaces installed package)
+      - ../adcp-client-python/src/adcp:/app/.venv/lib/python3.12/site-packages/adcp:ro
+
       # Optional: Mount audit logs
       - ./audit_logs:/app/audit_logs
 
@@ -113,6 +116,9 @@ services:
       - "${ADMIN_UI_PORT:-8001}:${ADMIN_UI_PORT:-8001}"
 
     volumes:
+      # Mount local adcp library directly into venv (replaces installed package)
+      - ../adcp-client-python/src/adcp:/app/.venv/lib/python3.12/site-packages/adcp:ro
+
       # Mount OAuth credentials file
       # - ./client_secret.json:/app/client_secret.json:ro
       - ./audit_logs:/app/audit_logs
