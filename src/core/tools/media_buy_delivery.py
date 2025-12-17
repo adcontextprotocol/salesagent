@@ -468,10 +468,10 @@ def _get_media_buy_delivery_impl(
 def get_media_buy_delivery(
     media_buy_ids: list[str] | None = None,
     buyer_refs: list[str] | None = None,
-    status_filter: MediaBuyStatus | list[MediaBuyStatus] | str | list[str] | None = None,
+    status_filter: MediaBuyStatus | list[MediaBuyStatus] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    context: ContextObject | dict | None = None,
+    context: ContextObject | None = None,
     ctx: Context | ToolContext | None = None,
 ):
     """Get delivery data for media buys.
@@ -511,10 +511,10 @@ def get_media_buy_delivery(
 def get_media_buy_delivery_raw(
     media_buy_ids: list[str] | None = None,
     buyer_refs: list[str] | None = None,
-    status_filter: MediaBuyStatus | list[MediaBuyStatus] | str | list[str] | None = None,
+    status_filter: MediaBuyStatus | list[MediaBuyStatus] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    context: ContextObject | dict | None = None,
+    context: ContextObject | None = None,
     ctx: Context | ToolContext | None = None,
 ):
     """Get delivery metrics for media buys (raw function for A2A server use).

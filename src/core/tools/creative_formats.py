@@ -206,21 +206,22 @@ def _list_creative_formats_impl(
 
 
 def list_creative_formats(
-    type: FormatCategory | str | None = None,
-    format_ids: list[FormatId | dict] | None = None,
+    type: FormatCategory | None = None,
+    format_ids: list[FormatId] | None = None,
     is_responsive: bool | None = None,
     name_search: str | None = None,
-    asset_types: list[AssetContentType | str] | None = None,
+    asset_types: list[AssetContentType] | None = None,
     min_width: int | None = None,
     max_width: int | None = None,
     min_height: int | None = None,
     max_height: int | None = None,
-    context: ContextObject | dict | None = None,  # Application level context per adcp spec
+    context: ContextObject | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """List all available creative formats (AdCP spec endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
+    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
 
     Args:
         type: Filter by format type (audio, video, display)
@@ -239,26 +240,15 @@ def list_creative_formats(
         ToolResult with ListCreativeFormatsResponse data
     """
     try:
-        # Convert inputs for the request - handle both typed objects and raw values
-        type_str = type.value if type and hasattr(type, "value") else type
-        format_ids_dicts = (
-            [fid.model_dump(mode="json") if hasattr(fid, "model_dump") else fid for fid in format_ids]
-            if format_ids
-            else None
-        )
-        asset_types_strs = [at.value if hasattr(at, "value") else at for at in asset_types] if asset_types else None
-        context_dict = context.model_dump(mode="json") if context and hasattr(context, "model_dump") else context
-
-        # Convert format_ids dicts to FormatId objects if provided
-        from src.core.schemas import FormatId as SchemaFormatId
-
-        format_ids_objects = None
-        if format_ids_dicts:
-            format_ids_objects = [SchemaFormatId(**fid) for fid in format_ids_dicts]
+        # Convert typed Pydantic models to values for the request
+        # FastMCP already coerced JSON inputs to these types
+        type_str = type.value if type else None
+        asset_types_strs = [at.value for at in asset_types] if asset_types else None
+        context_dict = context.model_dump(mode="json") if context else None
 
         req = ListCreativeFormatsRequest(
             type=type_str,  # type: ignore[arg-type]
-            format_ids=format_ids_objects,  # type: ignore[arg-type]
+            format_ids=format_ids,
             is_responsive=is_responsive,
             name_search=name_search,
             asset_types=asset_types_strs,  # type: ignore[arg-type]

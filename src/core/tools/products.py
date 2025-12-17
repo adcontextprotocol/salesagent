@@ -735,11 +735,11 @@ async def _get_products_impl(
 
 
 async def get_products(
-    brand_manifest: BrandManifest | dict | None = None,
+    brand_manifest: BrandManifest | None = None,
     brief: str = "",
-    filters: ProductFilters | dict | None = None,
-    push_notification_config: PushNotificationConfig | dict | None = None,
-    context: ContextObject | dict | None = None,  # payload-level context
+    filters: ProductFilters | None = None,
+    push_notification_config: PushNotificationConfig | None = None,
+    context: ContextObject | None = None,  # payload-level context
     ctx: Context | ToolContext | None = None,
 ):
     """Get available products matching the brief.

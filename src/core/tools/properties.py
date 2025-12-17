@@ -211,10 +211,10 @@ def _list_authorized_properties_impl(
 
 
 def list_authorized_properties(
-    req: ListAuthorizedPropertiesRequest | dict | None = None,
+    req: ListAuthorizedPropertiesRequest | None = None,
     webhook_url: str | None = None,
     ctx: Context | ToolContext | None = None,
-    context: ContextObject | dict | None = None,  # payload-level context
+    context: ContextObject | None = None,  # payload-level context
 ):
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 

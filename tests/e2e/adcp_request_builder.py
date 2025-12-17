@@ -128,10 +128,16 @@ def build_adcp_media_buy_request(
         request["packages"][0]["targeting_overlay"] = targeting_overlay
 
     if webhook_url:
+        # AdCP-compliant ReportingWebhook authentication requires:
+        # - credentials: string with minLength 32 (shared secret or bearer token)
+        # - schemes: array of authentication schemes ["Bearer" or "HMAC-SHA256"]
         request["reporting_webhook"] = {
             "url": webhook_url,
             "reporting_frequency": reporting_frequency,
-            "authentication": {"type": "none"},
+            "authentication": {
+                "credentials": "test-webhook-bearer-token-at-least-32-chars-long",
+                "schemes": ["Bearer"],
+            },
         }
 
     if context:
