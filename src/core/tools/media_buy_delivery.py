@@ -12,7 +12,7 @@ import logging
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from math import floor
-from typing import Any
+from typing import Any, cast
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -495,10 +495,10 @@ def get_media_buy_delivery(
         req = GetMediaBuyDeliveryRequest(
             media_buy_ids=media_buy_ids,
             buyer_refs=buyer_refs,
-            status_filter=status_filter,
+            status_filter=cast(MediaBuyStatus | list[MediaBuyStatus] | None, status_filter),
             start_date=start_date,
             end_date=end_date,
-            context=context,
+            context=cast(ContextObject | None, context),
         )
 
         response = _get_media_buy_delivery_impl(req, ctx)
@@ -535,10 +535,10 @@ def get_media_buy_delivery_raw(
     req = GetMediaBuyDeliveryRequest(
         media_buy_ids=media_buy_ids,
         buyer_refs=buyer_refs,
-        status_filter=status_filter,
+        status_filter=cast(MediaBuyStatus | list[MediaBuyStatus] | None, status_filter),
         start_date=start_date,
         end_date=end_date,
-        context=context,
+        context=cast(ContextObject | None, context),
     )
 
     # Call the implementation

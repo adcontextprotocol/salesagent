@@ -7,6 +7,7 @@ implementation pattern from CLAUDE.md.
 import logging
 from typing import Any
 
+from adcp.types.generated_poc.core.context import ContextObject
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -103,12 +104,13 @@ def update_performance_index(
     media_buy_id: str,
     performance_data: list[dict[str, Any]],
     webhook_url: str | None = None,
-    context: dict | None = None,
+    context: ContextObject | None = None,
     ctx: Context | ToolContext | None = None,
 ):
     """Update performance index data for a media buy.
 
     MCP tool wrapper that delegates to the shared implementation.
+    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
 
     Args:
         media_buy_id: ID of the media buy to update
@@ -119,7 +121,10 @@ def update_performance_index(
     Returns:
         ToolResult with UpdatePerformanceIndexResponse data
     """
-    response = _update_performance_index_impl(media_buy_id, performance_data, context, ctx)
+    # Convert typed Pydantic models to dicts for the impl
+    # FastMCP already coerced JSON inputs to these types
+    context_dict = context.model_dump(mode="json") if context else None
+    response = _update_performance_index_impl(media_buy_id, performance_data, context_dict, ctx)
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 

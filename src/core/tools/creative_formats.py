@@ -7,6 +7,10 @@ implementation pattern from CLAUDE.md.
 import logging
 import time
 
+from adcp import FormatId
+from adcp.types.generated_poc.core.context import ContextObject
+from adcp.types.generated_poc.enums.asset_content_type import AssetContentType
+from adcp.types.generated_poc.enums.format_category import FormatCategory
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -202,25 +206,26 @@ def _list_creative_formats_impl(
 
 
 def list_creative_formats(
-    type: str | None = None,
-    format_ids: list[dict] | None = None,
+    type: FormatCategory | None = None,
+    format_ids: list[FormatId] | None = None,
     is_responsive: bool | None = None,
     name_search: str | None = None,
-    asset_types: list[str] | None = None,
+    asset_types: list[AssetContentType] | None = None,
     min_width: int | None = None,
     max_width: int | None = None,
     min_height: int | None = None,
     max_height: int | None = None,
-    context: dict | None = None,  # Application level context per adcp spec
+    context: ContextObject | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """List all available creative formats (AdCP spec endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
+    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
 
     Args:
         type: Filter by format type (audio, video, display)
-        format_ids: Filter by FormatId objects ({"agent_url": "...", "id": "..."})
+        format_ids: Filter by FormatId objects
         is_responsive: Filter for responsive formats (True/False)
         name_search: Search formats by name (case-insensitive partial match)
         asset_types: Filter by asset content types (e.g., ["image", "video"])
@@ -235,26 +240,23 @@ def list_creative_formats(
         ToolResult with ListCreativeFormatsResponse data
     """
     try:
-        # Convert format_ids dicts to FormatId objects if provided
-        from src.core.schemas import FormatId
+        # Convert typed Pydantic models to values for the request
+        # FastMCP already coerced JSON inputs to these types
+        type_str = type.value if type else None
+        asset_types_strs = [at.value for at in asset_types] if asset_types else None
+        context_dict = context.model_dump(mode="json") if context else None
 
-        format_ids_objects = None
-        if format_ids:
-            format_ids_objects = [FormatId(**fid) for fid in format_ids]
-
-        # MCP tool parameters are primitives (str, list[str], dict) that Pydantic
-        # coerces to proper types (enums, typed lists, ContextObject) at runtime
         req = ListCreativeFormatsRequest(
-            type=type,  # type: ignore[arg-type]
-            format_ids=format_ids_objects,  # type: ignore[arg-type]
+            type=type_str,  # type: ignore[arg-type]
+            format_ids=format_ids,
             is_responsive=is_responsive,
             name_search=name_search,
-            asset_types=asset_types,  # type: ignore[arg-type]
+            asset_types=asset_types_strs,  # type: ignore[arg-type]
             min_width=min_width,
             max_width=max_width,
             min_height=min_height,
             max_height=max_height,
-            context=context,  # type: ignore[arg-type]
+            context=context_dict,  # type: ignore[arg-type]
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creative_formats request")) from e

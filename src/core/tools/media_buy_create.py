@@ -15,7 +15,13 @@ from datetime import UTC, datetime
 from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
+from adcp import BrandManifest, PushNotificationConfig
 from adcp.types import MediaBuyStatus
+from adcp.types.generated_poc.core.context import ContextObject
+from adcp.types.generated_poc.core.creative_asset import CreativeAsset
+from adcp.types.generated_poc.core.targeting import TargetingOverlay
+from adcp.types.generated_poc.media_buy.create_media_buy_request import ReportingWebhook
+from adcp.types.generated_poc.media_buy.package_request import PackageRequest as AdcpPackageRequest
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -3427,32 +3433,33 @@ async def _create_media_buy_impl(
 
 async def create_media_buy(
     buyer_ref: str,
-    brand_manifest: Any,  # BrandManifest | str - REQUIRED per AdCP v2.2.0 spec
-    packages: list[dict[str, Any]],  # REQUIRED per AdCP spec - Package objects as dicts with all fields
-    start_time: Any,  # datetime | Literal["asap"] | str - REQUIRED per AdCP spec
-    end_time: Any,  # datetime | str - REQUIRED per AdCP spec
+    brand_manifest: BrandManifest | str,  # BrandManifest or URL string - REQUIRED per AdCP v2.2.0 spec
+    packages: list[AdcpPackageRequest],  # REQUIRED per AdCP spec - Package objects with all fields
+    start_time: str,  # datetime ISO 8601 or 'asap' - REQUIRED per AdCP spec
+    end_time: str,  # datetime ISO 8601 - REQUIRED per AdCP spec
     budget: Any | None = None,  # DEPRECATED: Budget is package-level only per AdCP v2.2.0
     po_number: str | None = None,
     product_ids: list[str] | None = None,  # Legacy format conversion
     start_date: Any | None = None,  # Legacy format conversion
     end_date: Any | None = None,  # Legacy format conversion
     total_budget: float | None = None,  # Legacy format conversion
-    targeting_overlay: dict[str, Any] | None = None,
+    targeting_overlay: TargetingOverlay | None = None,
     pacing: str = "even",
     daily_budget: float | None = None,
-    creatives: list[Any] | None = None,
-    reporting_webhook: dict[str, Any] | None = None,
+    creatives: list[CreativeAsset] | None = None,
+    reporting_webhook: ReportingWebhook | None = None,
     required_axe_signals: list[str] | None = None,
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
-    push_notification_config: dict[str, Any] | None = None,
-    context: dict[str, Any] | None = None,  # payload-level context
+    push_notification_config: PushNotificationConfig | None = None,
+    context: ContextObject | None = None,  # payload-level context
     webhook_url: str | None = None,
     ctx: Context | ToolContext | None = None,
 ):
     """Create a media buy with the specified parameters.
 
     MCP tool wrapper that delegates to the shared implementation.
+    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
 
     Args:
         buyer_ref: Buyer reference for tracking (REQUIRED per AdCP spec)
@@ -3481,11 +3488,23 @@ async def create_media_buy(
     Returns:
         ToolResult with CreateMediaBuyResponse data
     """
+    # Convert typed Pydantic models to dicts for the impl
+    # FastMCP already coerced JSON inputs to these types
+    brand_manifest_val = (
+        brand_manifest.model_dump(mode="json") if isinstance(brand_manifest, BrandManifest) else brand_manifest
+    )
+    packages_dicts = [p.model_dump(mode="json") for p in packages]
+    targeting_overlay_dict = targeting_overlay.model_dump(mode="json") if targeting_overlay else None
+    creatives_dicts = [c.model_dump(mode="json") for c in creatives] if creatives else None
+    reporting_webhook_dict = reporting_webhook.model_dump(mode="json") if reporting_webhook else None
+    push_config_dict = push_notification_config.model_dump(mode="json") if push_notification_config else None
+    context_dict = context.model_dump(mode="json") if context else None
+
     response = await _create_media_buy_impl(
         buyer_ref=buyer_ref,
-        brand_manifest=brand_manifest,
+        brand_manifest=brand_manifest_val,
         po_number=po_number,
-        packages=packages,
+        packages=packages_dicts,
         start_time=start_time,
         end_time=end_time,
         budget=budget,
@@ -3493,16 +3512,16 @@ async def create_media_buy(
         start_date=start_date,
         end_date=end_date,
         total_budget=total_budget,
-        targeting_overlay=cast(Targeting | None, targeting_overlay),
+        targeting_overlay=cast(Targeting | None, targeting_overlay_dict),
         pacing=cast(Literal["even", "asap", "daily_budget"], pacing),
         daily_budget=daily_budget,
-        creatives=creatives,
-        reporting_webhook=reporting_webhook,
+        creatives=creatives_dicts,
+        reporting_webhook=reporting_webhook_dict,
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
-        push_notification_config=push_notification_config,
-        context=context,
+        push_notification_config=push_config_dict,
+        context=context_dict,
         ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())

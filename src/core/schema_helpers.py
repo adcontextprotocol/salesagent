@@ -38,18 +38,19 @@ def to_context_object(context: dict[str, Any] | ContextObject | None) -> Context
 
 def create_get_products_request(
     brief: str = "",
-    brand_manifest: dict[str, Any] | None = None,
-    filters: dict[str, Any] | None = None,
-    context: dict[str, Any] | None = None,
+    brand_manifest: dict[str, Any] | BrandManifest | None = None,
+    filters: dict[str, Any] | ProductFilters | None = None,
+    context: dict[str, Any] | ContextObject | None = None,
 ) -> GetProductsRequest:
     """Create GetProductsRequest aligned with adcp v1.2.1 spec.
 
     Args:
         brief: Natural language description of campaign requirements
-        brand_manifest: Brand information as dict. Must follow AdCP BrandManifest schema.
+        brand_manifest: Brand information as dict or BrandManifest. Must follow AdCP BrandManifest schema.
                        Example: {"name": "Acme", "url": "https://acme.com"}
                        Or: {"url": "https://acme.com"}
-        filters: Structured filters for product discovery
+        filters: Structured filters for product discovery (dict or ProductFilters)
+        context: Application-level context (dict or ContextObject)
 
     Returns:
         GetProductsRequest
@@ -60,25 +61,34 @@ def create_get_products_request(
         ...     brief="Display ads"
         ... )
     """
-    # Adapt brand_manifest to ensure 'name' field exists (adcp 2.5.0 requirement)
-    brand_manifest_adapted = brand_manifest
-    if brand_manifest and isinstance(brand_manifest, dict):
-        if "name" not in brand_manifest:
-            # If only 'url' provided, use domain as name
-            if "url" in brand_manifest:
-                from urllib.parse import urlparse
+    # Handle brand_manifest - can be dict, BrandManifest, or None
+    brand_manifest_obj: BrandManifest | None = None
+    if brand_manifest is not None:
+        if isinstance(brand_manifest, BrandManifest):
+            brand_manifest_obj = brand_manifest
+        elif isinstance(brand_manifest, dict):
+            # Adapt brand_manifest to ensure 'name' field exists (adcp 2.5.0 requirement)
+            brand_manifest_adapted = brand_manifest
+            if "name" not in brand_manifest:
+                # If only 'url' provided, use domain as name
+                if "url" in brand_manifest:
+                    from urllib.parse import urlparse
 
-                url_str = brand_manifest["url"]
-                domain = urlparse(url_str).netloc or url_str
-                brand_manifest_adapted = {**brand_manifest, "name": domain}
-            else:
-                # Fallback: use a placeholder name
-                brand_manifest_adapted = {**brand_manifest, "name": "Brand"}
+                    url_str = brand_manifest["url"]
+                    domain = urlparse(url_str).netloc or url_str
+                    brand_manifest_adapted = {**brand_manifest, "name": domain}
+                else:
+                    # Fallback: use a placeholder name
+                    brand_manifest_adapted = {**brand_manifest, "name": "Brand"}
+            brand_manifest_obj = BrandManifest(**brand_manifest_adapted)
 
-    # Create GetProductsRequest with proper types
-    # Convert dict inputs to proper Pydantic models
-    brand_manifest_obj = BrandManifest(**brand_manifest_adapted) if brand_manifest_adapted else None
-    filters_obj = ProductFilters(**filters) if filters else None
+    # Handle filters - can be dict, ProductFilters, or None
+    filters_obj: ProductFilters | None = None
+    if filters is not None:
+        if isinstance(filters, ProductFilters):
+            filters_obj = filters
+        elif isinstance(filters, dict):
+            filters_obj = ProductFilters(**filters)
 
     return GetProductsRequest(
         brand_manifest=brand_manifest_obj,

@@ -11,7 +11,17 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
+from typing import cast
 
+from adcp import CreativeFilters, PushNotificationConfig
+from adcp.types.generated_poc.core.context import ContextObject
+from adcp.types.generated_poc.core.creative_asset import CreativeAsset
+from adcp.types.generated_poc.enums.validation_mode import ValidationMode
+from adcp.types.generated_poc.media_buy.list_creatives_request import (
+    FieldModel,
+    Pagination,
+    Sort,
+)
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -1639,22 +1649,23 @@ def _sync_creatives_impl(
 
 
 async def sync_creatives(
-    creatives: list[dict],
-    assignments: dict | None = None,
+    creatives: list[CreativeAsset],
+    assignments: dict[str, list[str]] | None = None,
     creative_ids: list[str] | None = None,
     delete_missing: bool = False,
     dry_run: bool = False,
-    validation_mode: str = "strict",
-    push_notification_config: dict | None = None,
-    context: dict | None = None,  # Application level context per adcp spec
+    validation_mode: ValidationMode | None = None,
+    push_notification_config: PushNotificationConfig | None = None,
+    context: ContextObject | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """Sync creative assets to centralized library (AdCP v2.5 spec compliant endpoint).
 
     MCP tool wrapper that delegates to the shared implementation.
+    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
 
     Args:
-        creatives: List of creative objects to sync
+        creatives: List of creative assets to sync
         assignments: Bulk assignment map of creative_id to package_ids (spec-compliant)
         creative_ids: Filter to limit sync scope to specific creatives (AdCP 2.5)
         delete_missing: Delete creatives not in sync payload (use with caution)
@@ -1667,15 +1678,22 @@ async def sync_creatives(
     Returns:
         ToolResult with SyncCreativesResponse data
     """
+    # Convert typed Pydantic models to dicts for the impl
+    # FastMCP already coerced JSON inputs to these types
+    creatives_dicts = [c.model_dump(mode="json") for c in creatives]
+    push_config_dict = push_notification_config.model_dump(mode="json") if push_notification_config else None
+    context_dict = context.model_dump(mode="json") if context else None
+    validation_mode_str = validation_mode.value if validation_mode else "strict"
+
     response = _sync_creatives_impl(
-        creatives=creatives,
+        creatives=creatives_dicts,
         assignments=assignments,
         creative_ids=creative_ids,
         delete_missing=delete_missing,
         dry_run=dry_run,
-        validation_mode=validation_mode,
-        push_notification_config=push_notification_config,
-        context=context,
+        validation_mode=validation_mode_str,
+        push_notification_config=push_config_dict,
+        context=context_dict,
         ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
@@ -1757,7 +1775,7 @@ def _list_creatives_impl(
 
     # Create request object from individual parameters (MCP-compliant)
     # Validate sort_order is valid Literal
-    from typing import Literal, cast
+    from typing import Literal
 
     valid_sort_order: Literal["asc", "desc"] = cast(
         Literal["asc", "desc"], sort_order if sort_order in ["asc", "desc"] else "desc"
@@ -2056,10 +2074,10 @@ async def list_creatives(
     created_after: str = None,
     created_before: str = None,
     search: str = None,
-    filters: dict = None,
-    sort: dict = None,
-    pagination: dict = None,
-    fields: list[str] = None,
+    filters: CreativeFilters | None = None,
+    sort: Sort | None = None,
+    pagination: Pagination | None = None,
+    fields: list[FieldModel | str] | None = None,
     include_performance: bool = False,
     include_assignments: bool = False,
     include_sub_assets: bool = False,
@@ -2068,12 +2086,13 @@ async def list_creatives(
     sort_by: str = "created_date",
     sort_order: str = "desc",
     webhook_url: str | None = None,
-    context: dict | None = None,  # Application level context per adcp spec
+    context: ContextObject | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """List and filter creative assets from the centralized library (AdCP v2.5).
 
     MCP tool wrapper that delegates to the shared implementation.
+    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
     Supports both flat parameters (status, format, etc.) and nested objects (filters, sort, pagination)
     for maximum flexibility.
 
@@ -2086,6 +2105,14 @@ async def list_creatives(
     Returns:
         ToolResult with ListCreativesResponse data
     """
+    # Convert typed Pydantic models to dicts for the impl
+    # FastMCP already coerced JSON inputs to these types
+    filters_dict = filters.model_dump(mode="json") if filters else None
+    sort_dict = sort.model_dump(mode="json") if sort else None
+    pagination_dict = pagination.model_dump(mode="json") if pagination else None
+    fields_list = [f.value if isinstance(f, FieldModel) else f for f in fields] if fields else None
+    context_dict = context.model_dump(mode="json") if context else None
+
     response = _list_creatives_impl(
         media_buy_id=media_buy_id,
         media_buy_ids=media_buy_ids,
@@ -2097,10 +2124,10 @@ async def list_creatives(
         created_after=created_after,
         created_before=created_before,
         search=search,
-        filters=filters,
-        sort=sort,
-        pagination=pagination,
-        fields=fields,
+        filters=filters_dict,
+        sort=sort_dict,
+        pagination=pagination_dict,
+        fields=fields_list,
         include_performance=include_performance,
         include_assignments=include_assignments,
         include_sub_assets=include_sub_assets,
@@ -2108,7 +2135,7 @@ async def list_creatives(
         limit=limit,
         sort_by=sort_by,
         sort_order=sort_order,
-        context=context,
+        context=context_dict,
         ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())

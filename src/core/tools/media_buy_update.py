@@ -12,6 +12,11 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from adcp import PushNotificationConfig
+from adcp.types import Error
+from adcp.types.generated_poc.core.context import ContextObject
+from adcp.types.generated_poc.core.targeting import TargetingOverlay
+from adcp.types.generated_poc.media_buy.update_media_buy_request import Packages as UpdatePackage
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -21,8 +26,6 @@ from sqlalchemy import select
 from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
-
-from adcp.types import Error
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import (
@@ -1244,20 +1247,21 @@ def update_media_buy(
     flight_end_date: str = None,
     budget: float = None,
     currency: str = None,
-    targeting_overlay: dict = None,
+    targeting_overlay: TargetingOverlay | None = None,
     start_time: str = None,
     end_time: str = None,
     pacing: str = None,
     daily_budget: float = None,
-    packages: list = None,
+    packages: list[UpdatePackage] | None = None,
     creatives: list = None,
-    push_notification_config: dict | None = None,
-    context: dict | None = None,  # payload-level context
+    push_notification_config: PushNotificationConfig | None = None,
+    context: ContextObject | None = None,  # payload-level context
     ctx: Context | ToolContext | None = None,
 ):
     """Update a media buy with campaign-level and/or package-level changes.
 
     MCP tool wrapper that delegates to the shared implementation.
+    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
 
     Args:
         media_buy_id: Media buy ID to update (oneOf with buyer_ref - exactly one required)
@@ -1280,6 +1284,13 @@ def update_media_buy(
     Returns:
         ToolResult with UpdateMediaBuyResponse data
     """
+    # Convert typed Pydantic models to dicts for the impl
+    # FastMCP already coerced JSON inputs to these types
+    targeting_overlay_dict = targeting_overlay.model_dump(mode="json") if targeting_overlay else None
+    packages_dicts = [p.model_dump(mode="json") for p in packages] if packages else None
+    push_config_dict = push_notification_config.model_dump(mode="json") if push_notification_config else None
+    context_dict = context.model_dump(mode="json") if context else None
+
     response = _update_media_buy_impl(
         media_buy_id=media_buy_id,
         buyer_ref=buyer_ref,
@@ -1288,15 +1299,15 @@ def update_media_buy(
         flight_end_date=flight_end_date,
         budget=budget,
         currency_param=currency,  # Pass as currency_param
-        targeting_overlay=targeting_overlay,
+        targeting_overlay=targeting_overlay_dict,
         start_time=start_time,
         end_time=end_time,
         pacing=pacing,
         daily_budget=daily_budget,
-        packages=packages,
+        packages=packages_dicts,
         creatives=creatives,
-        push_notification_config=push_notification_config,
-        context=context,
+        push_notification_config=push_config_dict,
+        context=context_dict,
         ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())

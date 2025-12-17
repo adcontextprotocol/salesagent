@@ -166,17 +166,35 @@ class TestMCPToolRoundtripMinimal:
         assert content["errors"][0]["code"] == "invalid_date_range"
 
     async def test_sync_creatives_minimal(self, mcp_client):
-        """Test sync_creatives with minimal required parameters."""
+        """Test sync_creatives with minimal required parameters.
+
+        Uses AdCP-compliant CreativeAsset schema which requires:
+        - creative_id: Unique identifier
+        - name: Human-readable name
+        - format_id: FormatId object (not just a string)
+        - assets: CreativeAssets object with the actual asset data
+        """
         result = await mcp_client.call_tool(
             "sync_creatives",
             {
                 "creatives": [
                     {
                         "creative_id": "test_creative_001",
-                        "format_id": "display_300x250",
-                        "preview_url": "https://example.com/preview.jpg",
-                        "click_url": "https://example.com",
-                        "status": "active",
+                        "name": "Test Display Creative",
+                        "format_id": {
+                            "agent_url": "https://creatives.adcontextprotocol.org",
+                            "id": "display_static",
+                            "width": 300,
+                            "height": 250,
+                        },
+                        "assets": {
+                            "image": {
+                                "url": "https://example.com/preview.jpg",
+                                "width": 300,
+                                "height": 250,
+                            },
+                            "click_url": {"url": "https://example.com"},
+                        },
                     }
                 ]
             },
