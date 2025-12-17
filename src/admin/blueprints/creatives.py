@@ -210,10 +210,8 @@ async def _call_webhook_for_creative_status(
 
         creatives: list[SyncCreativeResult] = [
             SyncCreativeResult(
-                creative_id="c.creative_id",
+                creative_id=c.creative_id,
                 platform_id="", # we need to populate this. Currently not storing any internal id of our own per creative
-                name=c.name,
-                format=c.format,
                 action=CreativeAction.failed if c.status != "approved" else CreativeAction.created,
                 errors=[c.data.get("rejection_reason")] if c.data else None  
             )

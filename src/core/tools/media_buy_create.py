@@ -16,7 +16,7 @@ from typing import Any, Literal, TypedDict, cast
 from urllib.parse import urlparse
 
 from adcp import BrandManifest, PushNotificationConfig
-from adcp.types import MediaBuyStatus
+from adcp.types import GeneratedTaskStatus as AdcpTaskStatus, MediaBuyStatus
 from adcp.types.generated_poc.core.context import ContextObject
 from adcp.types.generated_poc.core.creative_asset import CreativeAsset
 from adcp.types.generated_poc.core.targeting import TargetingOverlay
@@ -185,7 +185,7 @@ def _extract_creative_url_and_dimensions(
     if creative_data.get("assets") and format_spec and format_spec.assets_required:
         # Use format spec to find the correct asset_id for image/video/url assets
         for asset_req in format_spec.assets_required:
-            asset_type = asset_req.asset_type.lower()
+            asset_type = str(asset_req.asset_type).lower()
             if asset_type in ["image", "video", "url"]:
                 asset_id = asset_req.asset_id
                 if asset_id in creative_data["assets"]:
@@ -200,7 +200,7 @@ def _extract_creative_url_and_dimensions(
     if creative_data.get("assets") and format_spec and format_spec.assets_required:
         # Use format spec to find the correct asset_id for image/video assets
         for asset_req in format_spec.assets_required:
-            asset_type = asset_req.asset_type.lower()
+            asset_type = str(asset_req.asset_type).lower()
             if asset_type in ["image", "video"]:
                 asset_id = asset_req.asset_id
                 if asset_id in creative_data["assets"]:
@@ -225,6 +225,48 @@ def _extract_creative_url_and_dimensions(
                                 )
                         if width and height:
                             break
+
+    # Fallback: If format spec didn't work, iterate through all assets
+    if not url or not width or not height:
+        if creative_data.get("assets"):
+            for asset_id, asset_obj in creative_data["assets"].items():
+                if isinstance(asset_obj, dict):
+                    # Extract URL if not found yet
+                    if not url and asset_obj.get("url"):
+                        url = asset_obj["url"]
+
+                    # Extract dimensions if not found yet
+                    if (not width or not height):
+                        raw_width = asset_obj.get("width")
+                        raw_height = asset_obj.get("height")
+                        if raw_width is not None and not width:
+                            try:
+                                width = int(raw_width)
+                            except (ValueError, TypeError):
+                                pass
+                        if raw_height is not None and not height:
+                            try:
+                                height = int(raw_height)
+                            except (ValueError, TypeError):
+                                pass
+
+                    # Stop if we found everything
+                    if url and width and height:
+                        break
+
+    # Last resort: Check top-level fields
+    if not url:
+        url = creative_data.get("url")
+    if not width:
+        try:
+            width = int(creative_data["width"]) if creative_data.get("width") else None
+        except (ValueError, TypeError):
+            pass
+    if not height:
+        try:
+            height = int(creative_data["height"]) if creative_data.get("height") else None
+        except (ValueError, TypeError):
+            pass
 
     return url, width, height
 
@@ -1220,7 +1262,7 @@ async def _create_media_buy_impl(
     push_notification_config: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,  # Optional application level context per adcp spec
     ctx: Context | ToolContext | None = None,
-) -> CreateMediaBuySuccess | CreateMediaBuyError:
+) -> tuple[CreateMediaBuySuccess | CreateMediaBuyError, AdcpTaskStatus]:
     """Create a media buy with the specified parameters.
 
     Args:
@@ -1316,9 +1358,12 @@ async def _create_media_buy_impl(
     if not principal:
         error_msg = f"Principal {principal_id} not found"
         # Cannot create context or workflow step without valid principal
-        return CreateMediaBuyError(
-            errors=[Error(code="authentication_error", message=error_msg, details=None)],
-            context=to_context_object(req.context),
+        return (
+            CreateMediaBuyError(
+                errors=[Error(code="authentication_error", message=error_msg, details=None)],
+                context=to_context_object(req.context),
+            ),
+            AdcpTaskStatus.failed,
         )
 
     # Context management and workflow step creation - create workflow step FIRST
@@ -1791,10 +1836,13 @@ async def _create_media_buy_impl(
         # Update workflow step as failed
         ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
 
-        # Return error response (protocol layer will add status="failed")
-        return CreateMediaBuyError(
-            errors=[Error(code="validation_error", message=str(e), details=None)],
-            context=to_context_object(req.context),
+        # Return error response with failed status
+        return (
+            CreateMediaBuyError(
+                errors=[Error(code="validation_error", message=str(e), details=None)],
+                context=to_context_object(req.context),
+            ),
+            AdcpTaskStatus.failed,
         )
 
     # Principal already validated earlier (before context creation) to avoid foreign key errors
@@ -2262,13 +2310,16 @@ async def _create_media_buy_impl(
             # The workflow_step_id in packages indicates approval is required
             # buyer_ref is required by schema, but mypy needs explicit check
             response_buyer_ref = req.buyer_ref if req.buyer_ref else "unknown"
-            return CreateMediaBuySuccess(
-                buyer_ref=response_buyer_ref,
-                media_buy_id=media_buy_id,
-                creative_deadline=None,
-                packages=cast(list[Any], pending_packages),
-                workflow_step_id=step.step_id,  # Client can track approval via this ID
-                context=to_context_object(req.context),
+            return (
+                CreateMediaBuySuccess(
+                    buyer_ref=response_buyer_ref,
+                    media_buy_id=media_buy_id,
+                    creative_deadline=None,
+                    packages=cast(list[Any], pending_packages),
+                    workflow_step_id=step.step_id,  # Client can track approval via this ID
+                    context=to_context_object(req.context),
+                ),
+                AdcpTaskStatus.submitted,
             )
 
         # Get products for the media buy to check product-level auto-creation settings
@@ -2330,9 +2381,12 @@ async def _create_media_buy_impl(
                     f"  • {err}" for err in config_errors
                 )
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
-                return CreateMediaBuyError(
-                    errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
-                    context=to_context_object(req.context),
+                return (
+                    CreateMediaBuyError(
+                        errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
+                        context=to_context_object(req.context),
+                    ),
+                    AdcpTaskStatus.failed,
                 )
 
         product_auto_create = all(
@@ -2413,12 +2467,15 @@ async def _create_media_buy_impl(
             except Exception as e:
                 logger.warning(f"⚠️ Failed to send configuration approval Slack notification: {e}")
 
-            return CreateMediaBuySuccess(
-                buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
-                media_buy_id=media_buy_id,
-                packages=cast(list[Any], response_packages),
-                workflow_step_id=step.step_id,
-                context=to_context_object(req.context),
+            return (
+                CreateMediaBuySuccess(
+                    buyer_ref=req.buyer_ref if req.buyer_ref else "unknown",
+                    media_buy_id=media_buy_id,
+                    packages=cast(list[Any], response_packages),
+                    workflow_step_id=step.step_id,
+                    context=to_context_object(req.context),
+                ),
+                AdcpTaskStatus.submitted,
             )
 
         # Continue with synchronized media buy creation
@@ -2645,9 +2702,12 @@ async def _create_media_buy_impl(
         if not req.start_time or not req.end_time:
             error_msg = "start_time and end_time are required but were not properly set"
             ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
-            return CreateMediaBuyError(
-                errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
-                context=to_context_object(req.context),
+            return (
+                CreateMediaBuyError(
+                    errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
+                    context=to_context_object(req.context),
+                ),
+                AdcpTaskStatus.failed,
             )
 
         # PRE-VALIDATE: Check all creatives have required fields BEFORE calling adapter
@@ -2676,7 +2736,7 @@ async def _create_media_buy_impl(
             error_msg = response.errors[0].message if response.errors else "Unknown error"
             error_code = response.errors[0].code if response.errors else "UNKNOWN"
             logger.error(f"[ADAPTER] Adapter returned error response: {error_code} - {error_msg}")
-            return response
+            return (response, AdcpTaskStatus.failed)
 
         # At this point, response is CreateMediaBuySuccess - safe to access success-specific fields
         # Type narrowing: media_buy_id must be present in successful response
@@ -3433,7 +3493,7 @@ async def _create_media_buy_impl(
             },
         )
 
-        return modified_response
+        return (modified_response, AdcpTaskStatus.completed)
 
     except Exception as e:
         # Update workflow step as failed on any error during execution
@@ -3565,6 +3625,7 @@ async def create_media_buy(
     Returns:
         ToolResult with CreateMediaBuyResponse data
     """
+<<<<<<< HEAD
     # Convert typed Pydantic models to dicts for the impl
     # FastMCP already coerced JSON inputs to these types
     brand_manifest_val = (
@@ -3578,6 +3639,9 @@ async def create_media_buy(
     context_dict = context.model_dump(mode="json") if context else None
 
     response = await _create_media_buy_impl(
+=======
+    response, status = await _create_media_buy_impl(
+>>>>>>> 4bb56958 (feat: wip)
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest_val,
         po_number=po_number,
@@ -3588,7 +3652,10 @@ async def create_media_buy(
         context=context_dict,
         ctx=ctx,
     )
-    return ToolResult(content=str(response), structured_content=response.model_dump())
+    return ToolResult(
+        content=str(response),
+        structured_content={"status": status.value, **response.model_dump()},
+    )
 
 
 async def create_media_buy_raw(
@@ -3643,9 +3710,9 @@ async def create_media_buy_raw(
         ctx:  FastMCP context (automatically provided) (automatically provided)
 
     Returns:
-        CreateMediaBuyResponse with media buy details
+        Dict with status and CreateMediaBuyResponse data
     """
-    return await _create_media_buy_impl(
+    response, status = await _create_media_buy_impl(
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest,
         po_number=po_number,
@@ -3656,6 +3723,7 @@ async def create_media_buy_raw(
         context=context,
         ctx=ctx,
     )
+    return {"status": status.value, **response.model_dump()}
 
 
 # Unified update tools

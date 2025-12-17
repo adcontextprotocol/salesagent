@@ -927,6 +927,12 @@ class AdCPRequestHandler(RequestHandler):
                                         task_state = TaskState.submitted
                                         task_status_str = "submitted"
 
+                                    # Check for explicit status field (e.g., create_media_buy returns this)
+                                    result_status = part.data.get("status")
+                                    if result_status == "submitted":
+                                        task_state = TaskState.submitted
+                                        task_status_str = "submitted"
+
             # Mark task with appropriate status
             task.status = TaskStatus(state=task_state)
 
