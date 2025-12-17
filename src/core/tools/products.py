@@ -10,8 +10,10 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+from adcp import BrandManifest, ProductFilters
 from adcp import GetProductsRequest as GetProductsRequestGenerated
 from adcp.types import PushNotificationConfig
+from adcp.types.generated_poc.core.context import ContextObject
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -733,11 +735,11 @@ async def _get_products_impl(
 
 
 async def get_products(
-    brand_manifest: dict[str, Any] | None = None,
+    brand_manifest: BrandManifest | None = None,
     brief: str = "",
-    filters: dict | None = None,
+    filters: ProductFilters | None = None,
     push_notification_config: PushNotificationConfig | None = None,
-    context: dict | None = None,  # payload-level context
+    context: ContextObject | None = None,  # payload-level context
     ctx: Context | ToolContext | None = None,
 ):
     """Get available products matching the brief.
@@ -745,8 +747,7 @@ async def get_products(
     MCP tool wrapper aligned with adcp v1.2.1 spec.
 
     Args:
-        brand_manifest: Brand information as dict following AdCP BrandManifest schema.
-                       Example: {"name": "Acme", "url": "https://acme.com"}
+        brand_manifest: Brand information following AdCP BrandManifest schema
         brief: Brief description of the advertising campaign or requirements (optional)
         filters: Structured filters for product discovery (optional)
         context: Application level context per adcp spec
