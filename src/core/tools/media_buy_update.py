@@ -10,7 +10,7 @@ Handles media buy updates including:
 
 import logging
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from adcp import PushNotificationConfig
 from adcp.types import Error
@@ -1247,15 +1247,15 @@ def update_media_buy(
     flight_end_date: str = None,
     budget: float = None,
     currency: str = None,
-    targeting_overlay: TargetingOverlay | None = None,
+    targeting_overlay: TargetingOverlay | dict | None = None,
     start_time: str = None,
     end_time: str = None,
     pacing: str = None,
     daily_budget: float = None,
-    packages: list[UpdatePackage] | None = None,
+    packages: list[UpdatePackage | dict] | None = None,
     creatives: list = None,
-    push_notification_config: PushNotificationConfig | None = None,
-    context: ContextObject | None = None,  # payload-level context
+    push_notification_config: PushNotificationConfig | dict | None = None,
+    context: ContextObject | dict | None = None,  # payload-level context
     ctx: Context | ToolContext | None = None,
 ):
     """Update a media buy with campaign-level and/or package-level changes.
@@ -1283,11 +1283,21 @@ def update_media_buy(
     Returns:
         ToolResult with UpdateMediaBuyResponse data
     """
-    # Convert typed inputs to dicts for the impl - MCP validates types, so we can rely on them
-    targeting_overlay_dict = targeting_overlay.model_dump(mode="json") if targeting_overlay else None
-    packages_dicts = [p.model_dump(mode="json") for p in packages] if packages else None
-    push_config_dict = push_notification_config.model_dump(mode="json") if push_notification_config else None
-    context_dict = context.model_dump(mode="json") if context else None
+    # Convert inputs to dicts for the impl - handle both typed objects and raw dicts
+    targeting_overlay_dict = (
+        targeting_overlay.model_dump(mode="json")
+        if targeting_overlay and hasattr(targeting_overlay, "model_dump")
+        else targeting_overlay
+    )
+    packages_dicts = (
+        [p.model_dump(mode="json") if hasattr(p, "model_dump") else p for p in packages] if packages else None
+    )
+    push_config_dict = (
+        push_notification_config.model_dump(mode="json")
+        if push_notification_config and hasattr(push_notification_config, "model_dump")
+        else push_notification_config
+    )
+    context_dict = context.model_dump(mode="json") if context and hasattr(context, "model_dump") else context
 
     response = _update_media_buy_impl(
         media_buy_id=media_buy_id,
@@ -1297,15 +1307,15 @@ def update_media_buy(
         flight_end_date=flight_end_date,
         budget=budget,
         currency_param=currency,  # Pass as currency_param
-        targeting_overlay=targeting_overlay_dict,
+        targeting_overlay=cast(dict[Any, Any] | None, targeting_overlay_dict),
         start_time=start_time,
         end_time=end_time,
         pacing=pacing,
         daily_budget=daily_budget,
         packages=packages_dicts,
         creatives=creatives,
-        push_notification_config=push_config_dict,
-        context=context_dict,
+        push_notification_config=cast(dict[Any, Any] | None, push_config_dict),
+        context=cast(dict[Any, Any] | None, context_dict),
         ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())

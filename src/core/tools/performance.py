@@ -5,7 +5,7 @@ implementation pattern from CLAUDE.md.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from adcp.types.generated_poc.core.context import ContextObject
 from fastmcp.exceptions import ToolError
@@ -104,7 +104,7 @@ def update_performance_index(
     media_buy_id: str,
     performance_data: list[dict[str, Any]],
     webhook_url: str | None = None,
-    context: ContextObject | None = None,
+    context: ContextObject | dict | None = None,
     ctx: Context | ToolContext | None = None,
 ):
     """Update performance index data for a media buy.
@@ -120,9 +120,11 @@ def update_performance_index(
     Returns:
         ToolResult with UpdatePerformanceIndexResponse data
     """
-    # Convert typed input to dict for the impl
-    context_dict = context.model_dump(mode="json") if context else None
-    response = _update_performance_index_impl(media_buy_id, performance_data, context_dict, ctx)
+    # Convert input to dict for the impl - handle both typed objects and raw dicts
+    context_dict = context.model_dump(mode="json") if context and hasattr(context, "model_dump") else context
+    response = _update_performance_index_impl(
+        media_buy_id, performance_data, cast(dict[Any, Any] | None, context_dict), ctx
+    )
     return ToolResult(content=str(response), structured_content=response.model_dump())
 
 

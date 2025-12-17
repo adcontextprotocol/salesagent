@@ -9,6 +9,7 @@ Handles property discovery including:
 
 import logging
 import time
+from typing import cast
 
 from adcp import ListAuthorizedPropertiesRequest
 from adcp.types.generated_poc.core.context import ContextObject
@@ -210,10 +211,10 @@ def _list_authorized_properties_impl(
 
 
 def list_authorized_properties(
-    req: ListAuthorizedPropertiesRequest | None = None,
+    req: ListAuthorizedPropertiesRequest | dict | None = None,
     webhook_url: str | None = None,
     ctx: Context | ToolContext | None = None,
-    context: ContextObject | None = None,  # payload-level context
+    context: ContextObject | dict | None = None,  # payload-level context
 ):
     """List all properties this agent is authorized to represent (AdCP spec endpoint).
 
@@ -288,7 +289,7 @@ def list_authorized_properties(
         logger.info("MCP list_authorized_properties: No context provided")
         tool_context = ctx
 
-    response = _list_authorized_properties_impl(req, tool_context)
+    response = _list_authorized_properties_impl(cast(ListAuthorizedPropertiesRequest | None, req), tool_context)
 
     # Return ToolResult with human-readable text and structured data
     # The __str__() method provides the human-readable message

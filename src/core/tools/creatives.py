@@ -11,6 +11,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
+from typing import cast
 
 from adcp import CreativeFilters, PushNotificationConfig
 from adcp.types.generated_poc.core.context import ContextObject
@@ -1648,14 +1649,14 @@ def _sync_creatives_impl(
 
 
 async def sync_creatives(
-    creatives: list[CreativeAsset],
+    creatives: list[CreativeAsset | dict],
     assignments: dict[str, list[str]] | None = None,
     creative_ids: list[str] | None = None,
     delete_missing: bool = False,
     dry_run: bool = False,
-    validation_mode: ValidationMode | None = None,
-    push_notification_config: PushNotificationConfig | None = None,
-    context: ContextObject | None = None,  # Application level context per adcp spec
+    validation_mode: ValidationMode | str | None = None,
+    push_notification_config: PushNotificationConfig | dict | None = None,
+    context: ContextObject | dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """Sync creative assets to centralized library (AdCP v2.5 spec compliant endpoint).
@@ -1676,11 +1677,19 @@ async def sync_creatives(
     Returns:
         ToolResult with SyncCreativesResponse data
     """
-    # Convert typed inputs to dicts for the impl - MCP validates types, so we can rely on them
-    creatives_dicts = [c.model_dump(mode="json") for c in creatives]
-    push_config_dict = push_notification_config.model_dump(mode="json") if push_notification_config else None
-    context_dict = context.model_dump(mode="json") if context else None
-    validation_mode_str = validation_mode.value if validation_mode else "strict"
+    # Convert inputs to dicts for the impl - handle both typed objects and raw dicts
+    creatives_dicts = [c.model_dump(mode="json") if hasattr(c, "model_dump") else c for c in creatives]
+    push_config_dict = (
+        push_notification_config.model_dump(mode="json")
+        if push_notification_config and hasattr(push_notification_config, "model_dump")
+        else push_notification_config
+    )
+    context_dict = context.model_dump(mode="json") if context and hasattr(context, "model_dump") else context
+    validation_mode_str = (
+        validation_mode.value
+        if validation_mode and hasattr(validation_mode, "value")
+        else (validation_mode or "strict")
+    )
 
     response = _sync_creatives_impl(
         creatives=creatives_dicts,
@@ -1689,8 +1698,8 @@ async def sync_creatives(
         delete_missing=delete_missing,
         dry_run=dry_run,
         validation_mode=validation_mode_str,
-        push_notification_config=push_config_dict,
-        context=context_dict,
+        push_notification_config=cast(dict | None, push_config_dict),
+        context=cast(dict | None, context_dict),
         ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
@@ -2071,10 +2080,10 @@ async def list_creatives(
     created_after: str = None,
     created_before: str = None,
     search: str = None,
-    filters: CreativeFilters | None = None,
-    sort: Sort | None = None,
-    pagination: Pagination | None = None,
-    fields: list[FieldModel] | None = None,
+    filters: CreativeFilters | dict | None = None,
+    sort: Sort | dict | None = None,
+    pagination: Pagination | dict | None = None,
+    fields: list[FieldModel | str] | None = None,
     include_performance: bool = False,
     include_assignments: bool = False,
     include_sub_assets: bool = False,
@@ -2083,7 +2092,7 @@ async def list_creatives(
     sort_by: str = "created_date",
     sort_order: str = "desc",
     webhook_url: str | None = None,
-    context: ContextObject | None = None,  # Application level context per adcp spec
+    context: ContextObject | dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """List and filter creative assets from the centralized library (AdCP v2.5).
@@ -2101,12 +2110,14 @@ async def list_creatives(
     Returns:
         ToolResult with ListCreativesResponse data
     """
-    # Convert typed inputs to dicts for the impl - MCP validates types, so we can rely on them
-    filters_dict = filters.model_dump(mode="json") if filters else None
-    sort_dict = sort.model_dump(mode="json") if sort else None
-    pagination_dict = pagination.model_dump(mode="json") if pagination else None
-    fields_list = [f.value for f in fields] if fields else None
-    context_dict = context.model_dump(mode="json") if context else None
+    # Convert inputs to dicts for the impl - handle both typed objects and raw dicts
+    filters_dict = filters.model_dump(mode="json") if filters and hasattr(filters, "model_dump") else filters
+    sort_dict = sort.model_dump(mode="json") if sort and hasattr(sort, "model_dump") else sort
+    pagination_dict = (
+        pagination.model_dump(mode="json") if pagination and hasattr(pagination, "model_dump") else pagination
+    )
+    fields_list = [f.value if hasattr(f, "value") else f for f in fields] if fields else None
+    context_dict = context.model_dump(mode="json") if context and hasattr(context, "model_dump") else context
 
     response = _list_creatives_impl(
         media_buy_id=media_buy_id,
@@ -2119,9 +2130,9 @@ async def list_creatives(
         created_after=created_after,
         created_before=created_before,
         search=search,
-        filters=filters_dict,
-        sort=sort_dict,
-        pagination=pagination_dict,
+        filters=cast(dict | None, filters_dict),
+        sort=cast(dict | None, sort_dict),
+        pagination=cast(dict | None, pagination_dict),
         fields=fields_list,
         include_performance=include_performance,
         include_assignments=include_assignments,
@@ -2130,7 +2141,7 @@ async def list_creatives(
         limit=limit,
         sort_by=sort_by,
         sort_order=sort_order,
-        context=context_dict,
+        context=cast(dict | None, context_dict),
         ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())

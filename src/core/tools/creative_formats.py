@@ -206,16 +206,16 @@ def _list_creative_formats_impl(
 
 
 def list_creative_formats(
-    type: FormatCategory | None = None,
-    format_ids: list[FormatId] | None = None,
+    type: FormatCategory | str | None = None,
+    format_ids: list[FormatId | dict] | None = None,
     is_responsive: bool | None = None,
     name_search: str | None = None,
-    asset_types: list[AssetContentType] | None = None,
+    asset_types: list[AssetContentType | str] | None = None,
     min_width: int | None = None,
     max_width: int | None = None,
     min_height: int | None = None,
     max_height: int | None = None,
-    context: ContextObject | None = None,  # Application level context per adcp spec
+    context: ContextObject | dict | None = None,  # Application level context per adcp spec
     ctx: Context | ToolContext | None = None,
 ):
     """List all available creative formats (AdCP spec endpoint).
@@ -239,11 +239,15 @@ def list_creative_formats(
         ToolResult with ListCreativeFormatsResponse data
     """
     try:
-        # Convert typed inputs for the request - MCP validates types, so we can rely on them
-        type_str = type.value if type else None
-        format_ids_dicts = [fid.model_dump(mode="json") for fid in format_ids] if format_ids else None
-        asset_types_strs = [at.value for at in asset_types] if asset_types else None
-        context_dict = context.model_dump(mode="json") if context else None
+        # Convert inputs for the request - handle both typed objects and raw values
+        type_str = type.value if type and hasattr(type, "value") else type
+        format_ids_dicts = (
+            [fid.model_dump(mode="json") if hasattr(fid, "model_dump") else fid for fid in format_ids]
+            if format_ids
+            else None
+        )
+        asset_types_strs = [at.value if hasattr(at, "value") else at for at in asset_types] if asset_types else None
+        context_dict = context.model_dump(mode="json") if context and hasattr(context, "model_dump") else context
 
         # Convert format_ids dicts to FormatId objects if provided
         from src.core.schemas import FormatId as SchemaFormatId

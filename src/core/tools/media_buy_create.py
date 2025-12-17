@@ -3433,8 +3433,8 @@ async def _create_media_buy_impl(
 
 async def create_media_buy(
     buyer_ref: str,
-    brand_manifest: BrandManifest | str,  # BrandManifest or URL string - REQUIRED per AdCP v2.2.0 spec
-    packages: list[AdcpPackageRequest],  # REQUIRED per AdCP spec - Package objects with all fields
+    brand_manifest: BrandManifest | dict | str,  # BrandManifest, dict, or URL string - REQUIRED per AdCP v2.2.0 spec
+    packages: list[AdcpPackageRequest | dict],  # REQUIRED per AdCP spec - Package objects with all fields
     start_time: str,  # datetime ISO 8601 or 'asap' - REQUIRED per AdCP spec
     end_time: str,  # datetime ISO 8601 - REQUIRED per AdCP spec
     budget: Any | None = None,  # DEPRECATED: Budget is package-level only per AdCP v2.2.0
@@ -3443,16 +3443,16 @@ async def create_media_buy(
     start_date: Any | None = None,  # Legacy format conversion
     end_date: Any | None = None,  # Legacy format conversion
     total_budget: float | None = None,  # Legacy format conversion
-    targeting_overlay: TargetingOverlay | None = None,
+    targeting_overlay: TargetingOverlay | dict | None = None,
     pacing: str = "even",
     daily_budget: float | None = None,
-    creatives: list[CreativeAsset] | None = None,
-    reporting_webhook: ReportingWebhook | None = None,
+    creatives: list[CreativeAsset | dict] | None = None,
+    reporting_webhook: ReportingWebhook | dict | None = None,
     required_axe_signals: list[str] | None = None,
     enable_creative_macro: bool = False,
     strategy_id: str | None = None,
-    push_notification_config: PushNotificationConfig | None = None,
-    context: ContextObject | None = None,  # payload-level context
+    push_notification_config: PushNotificationConfig | dict | None = None,
+    context: ContextObject | dict | None = None,  # payload-level context
     webhook_url: str | None = None,
     ctx: Context | ToolContext | None = None,
 ):
@@ -3487,17 +3487,31 @@ async def create_media_buy(
     Returns:
         ToolResult with CreateMediaBuyResponse data
     """
-    # Convert typed inputs to dicts for the impl - MCP validates types, so we can rely on them
-    # brand_manifest can be BrandManifest or str (URL)
+    # Convert inputs to dicts for the impl - handle both typed objects and raw dicts
+    # brand_manifest can be BrandManifest, dict, or str (URL)
     brand_manifest_val = (
-        brand_manifest.model_dump(mode="json") if isinstance(brand_manifest, BrandManifest) else brand_manifest
+        brand_manifest.model_dump(mode="json") if hasattr(brand_manifest, "model_dump") else brand_manifest
     )
-    packages_dicts = [p.model_dump(mode="json") for p in packages]
-    targeting_overlay_dict = targeting_overlay.model_dump(mode="json") if targeting_overlay else None
-    creatives_dicts = [c.model_dump(mode="json") for c in creatives] if creatives else None
-    reporting_webhook_dict = reporting_webhook.model_dump(mode="json") if reporting_webhook else None
-    push_config_dict = push_notification_config.model_dump(mode="json") if push_notification_config else None
-    context_dict = context.model_dump(mode="json") if context else None
+    packages_dicts = [p.model_dump(mode="json") if hasattr(p, "model_dump") else p for p in packages]
+    targeting_overlay_dict = (
+        targeting_overlay.model_dump(mode="json")
+        if targeting_overlay and hasattr(targeting_overlay, "model_dump")
+        else targeting_overlay
+    )
+    creatives_dicts = (
+        [c.model_dump(mode="json") if hasattr(c, "model_dump") else c for c in creatives] if creatives else None
+    )
+    reporting_webhook_dict = (
+        reporting_webhook.model_dump(mode="json")
+        if reporting_webhook and hasattr(reporting_webhook, "model_dump")
+        else reporting_webhook
+    )
+    push_config_dict = (
+        push_notification_config.model_dump(mode="json")
+        if push_notification_config and hasattr(push_notification_config, "model_dump")
+        else push_notification_config
+    )
+    context_dict = context.model_dump(mode="json") if context and hasattr(context, "model_dump") else context
 
     response = await _create_media_buy_impl(
         buyer_ref=buyer_ref,
@@ -3515,12 +3529,12 @@ async def create_media_buy(
         pacing=cast(Literal["even", "asap", "daily_budget"], pacing),
         daily_budget=daily_budget,
         creatives=creatives_dicts,
-        reporting_webhook=reporting_webhook_dict,
+        reporting_webhook=cast(dict[str, Any] | None, reporting_webhook_dict),
         required_axe_signals=required_axe_signals,
         enable_creative_macro=enable_creative_macro,
         strategy_id=strategy_id,
-        push_notification_config=push_config_dict,
-        context=context_dict,
+        push_notification_config=cast(dict[str, Any] | None, push_config_dict),
+        context=cast(dict[str, Any] | None, context_dict),
         ctx=ctx,
     )
     return ToolResult(content=str(response), structured_content=response.model_dump())
