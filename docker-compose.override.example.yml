@@ -6,31 +6,39 @@ version: '3.8'
 services:
   admin-ui:
     environment:
+      # REQUIRED for hot reloading: Add container's venv site-packages to PYTHONPATH
+      # When mounting local code over /app, Python can't find installed packages
+      # unless we explicitly add site-packages to PYTHONPATH
+      # Note: Version must match Dockerfile (currently python3.12)
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages:${PYTHONPATH:-}"
+
       # Enable test authentication mode for automated testing
       # ⚠️ NEVER use this in production!
-      # - ADCP_AUTH_TEST_MODE=true
+      # ADCP_AUTH_TEST_MODE: true
 
       # Customize test user credentials (optional - defaults shown)
-      # - TEST_SUPER_ADMIN_EMAIL=test_super_admin@example.com
-      # - TEST_SUPER_ADMIN_PASSWORD=test123
-      # - TEST_TENANT_ADMIN_EMAIL=test_tenant_admin@example.com
-      # - TEST_TENANT_ADMIN_PASSWORD=test123
-      # - TEST_TENANT_USER_EMAIL=test_tenant_user@example.com
-      # - TEST_TENANT_USER_PASSWORD=test123
+      # TEST_SUPER_ADMIN_EMAIL: test_super_admin@example.com
+      # TEST_SUPER_ADMIN_PASSWORD: test123
+      # TEST_TENANT_ADMIN_EMAIL: test_tenant_admin@example.com
+      # TEST_TENANT_ADMIN_PASSWORD: test123
+      # TEST_TENANT_USER_EMAIL: test_tenant_user@example.com
+      # TEST_TENANT_USER_PASSWORD: test123
 
       # Enable Flask debug mode for development
-      # - FLASK_DEBUG=1
+      # FLASK_DEBUG: 1
 
       # Skip OAuth setup if you don't have credentials yet
       # Test mode will still work without OAuth credentials
-      # - GOOGLE_CLIENT_ID=test
-      # - GOOGLE_CLIENT_SECRET=test
+      # GOOGLE_CLIENT_ID: test
+      # GOOGLE_CLIENT_SECRET: test
 
-    # Enable hot reload for development
-    # volumes:
-    #   - ./templates:/app/templates
-    #   - ./static:/app/static
-    #   - ./src/admin:/app/src/admin
+    # Enable hot reload for development - mount local code
+    volumes:
+      - .:/app
+      - /app/.venv  # Preserve container's venv (don't overwrite with local)
+      # Optional: Mount shared cache volumes for faster builds
+      # - adcp_global_pip_cache:/root/.cache/pip
+      # - adcp_global_uv_cache:/cache/uv
 
     # Expose Flask debugger port
     # ports:
@@ -38,15 +46,23 @@ services:
 
   adcp-server:
     environment:
-      # Development settings
-      # - PYTHONUNBUFFERED=1
-      # - LOG_LEVEL=DEBUG
+      # REQUIRED for hot reloading: Add container's venv site-packages to PYTHONPATH
+      # When mounting local code over /app, Python can't find installed packages
+      # unless we explicitly add site-packages to PYTHONPATH
+      # Note: Version must match Dockerfile (currently python3.12)
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages:${PYTHONPATH:-}"
 
-    # Enable hot reload for development
-    # volumes:
-    #   - ./main.py:/app/main.py
-    #   - ./schemas.py:/app/schemas.py
-    #   - ./adapters:/app/adapters
+      # Development settings
+      # PYTHONUNBUFFERED: 1
+      # LOG_LEVEL: DEBUG
+
+    # Enable hot reload for development - mount local code
+    volumes:
+      - .:/app
+      - /app/.venv  # Preserve container's venv (don't overwrite with local)
+      # Optional: Mount shared cache volumes for faster builds
+      # - adcp_global_pip_cache:/root/.cache/pip
+      # - adcp_global_uv_cache:/cache/uv
 
 # Example: Running tests with test mode enabled
 # docker-compose run --rm -e ADCP_AUTH_TEST_MODE=true admin-ui pytest tests/

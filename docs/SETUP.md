@@ -439,6 +439,22 @@ docker volume rm adcp_global_pip_cache adcp_global_uv_cache
 uv sync --extra ui-tests
 ```
 
+**Import errors / ModuleNotFoundError when using hot reload:**
+```bash
+# When mounting local code over /app with volumes, Python can't find
+# installed packages. Add PYTHONPATH to docker-compose.override.yml:
+#
+# services:
+#   adcp-server:
+#     environment:
+#       PYTHONPATH: "/app/.venv/lib/python3.12/site-packages:${PYTHONPATH:-}"
+#     volumes:
+#       - .:/app
+#       - /app/.venv
+#
+# See docker-compose.override.example.yml for full configuration
+```
+
 ### Manual Conductor Setup (if automation fails)
 
 ```bash

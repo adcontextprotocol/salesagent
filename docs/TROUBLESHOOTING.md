@@ -239,6 +239,32 @@ docker-compose exec adcp-server chown -R $(id -u):$(id -g) /app
 docker-compose run --user $(id -u):$(id -g) adcp-server
 ```
 
+#### ModuleNotFoundError / Import Errors with Hot Reload
+**Symptoms**: `ModuleNotFoundError: No module named 'flask'` or similar import errors when using `docker-compose.override.yml` with volume mounts.
+
+**Cause**: When you mount your local directory over `/app`, the container's `.venv` with installed packages becomes inaccessible. Even with the `/app/.venv` volume exclusion, Python can't find packages unless PYTHONPATH is set.
+
+**Fix**: Add PYTHONPATH to your `docker-compose.override.yml` (version must match Dockerfile):
+```yaml
+services:
+  adcp-server:
+    environment:
+      # Note: python3.12 must match Dockerfile version
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages:${PYTHONPATH:-}"
+    volumes:
+      - .:/app
+      - /app/.venv  # Preserve container's venv
+
+  admin-ui:
+    environment:
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages:${PYTHONPATH:-}"
+    volumes:
+      - .:/app
+      - /app/.venv
+```
+
+See `docker-compose.override.example.yml` for complete configuration.
+
 ### GAM Integration Issues
 
 #### OAuth Token Invalid
