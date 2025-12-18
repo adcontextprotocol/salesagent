@@ -119,12 +119,6 @@ class ProtocolWebhookService:
         elif push_notification_config.authentication_type == "Bearer" and push_notification_config.authentication_token:
             # Use Bearer token authentication
             headers["Authorization"] = f"Bearer {push_notification_config.authentication_token}"
-
-        # TODO: @yusuf - fix this
-        # notification_type_from_request = result.get("notification_type") if result is not None else None
-        # sequence_number_from_result = result.get("sequence_number") if result is not None else None
-        notification_type_from_request = None
-        sequence_number_from_result = None
         
 
         # Send notification with retry logic and logging
@@ -152,10 +146,10 @@ class ProtocolWebhookService:
         # Calculate payload size for metrics
         payload_size_bytes = len(json.dumps(payload).encode("utf-8"))
 
-        task_type=metadata['task_type'] if 'task_type' in metadata else None,
-        tenant_id=metadata['tenant_id'] if 'tenant_id' in metadata else None,
-        principal_id=metadata['principal_id'] if 'principal_id' in metadata else None,
-        media_buy_id=metadata['media_buy_id'] if 'media_buy_id' in metadata else None,
+        task_type=metadata['task_type'] if 'task_type' in metadata else None
+        tenant_id=metadata['tenant_id'] if 'tenant_id' in metadata else None
+        principal_id=metadata['principal_id'] if 'principal_id' in metadata else None
+        media_buy_id=metadata['media_buy_id'] if 'media_buy_id' in metadata else None
 
         result = extract_webhook_result_data(payload)
         # After serialization, payload is always a dict - extract task_id accordingly
