@@ -213,7 +213,7 @@ async def _call_webhook_for_creative_status(
                 creative_id=c.creative_id,
                 platform_id="", # we need to populate this. Currently not storing any internal id of our own per creative
                 action=CreativeAction.failed if c.status != "approved" else CreativeAction.created,
-                errors=[c.data.get("rejection_reason")] if c.data else None  
+                errors=[c.data.get("rejection_reason")] if c.data and c.data.get("rejection_reason") else []
             )
             for c in all_creatives
         ]
@@ -269,7 +269,12 @@ async def _call_webhook_for_creative_status(
 
             # Create appropriate webhook payload based on protocol
             if protocol == "a2a":
-                payload = create_a2a_webhook_payload(step.step_id, TaskState.completed, complete_result)
+                payload = create_a2a_webhook_payload(
+                    task_id=step.step_id,
+                    status=TaskState.completed,
+                    result=complete_result,
+                    context_id=step.context_id
+                )
             else:
                 payload = create_mcp_webhook_payload(step.step_id, TaskState.completed, complete_result)
 

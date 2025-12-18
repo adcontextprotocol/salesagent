@@ -118,29 +118,39 @@ class DeliveryWebhookScheduler:
         except Exception as e:
             logger.error(f"Error in daily delivery report batch: {e}", exc_info=True)
 
-    async def trigger_report_for_media_buy(self, media_buy: Any, session: Any) -> bool:
-        """Manually trigger a delivery report for a single media buy.
+    async def trigger_report_for_media_buy_by_id(self, media_buy_id: str, tenant_id: str) -> bool:
+        """Manually trigger a delivery report for a single media buy by ID.
+
+        This method manages its own database session to avoid detached instance errors.
 
         Args:
-            media_buy: MediaBuy database model
-            session: Database session
+            media_buy_id: The media buy ID
+            tenant_id: The tenant ID
 
         Returns:
             bool: True if report was triggered successfully, False otherwise
         """
         try:
-            raw_request = media_buy.raw_request or {}
-            reporting_webhook = raw_request.get("reporting_webhook")
+            with get_db_session() as session:
+                stmt = select(MediaBuy).filter_by(media_buy_id=media_buy_id, tenant_id=tenant_id)
+                media_buy = session.scalars(stmt).first()
 
-            if not reporting_webhook:
-                logger.warning(f"Cannot trigger report: No reporting_webhook configured for {media_buy.media_buy_id}")
-                return False
+                if not media_buy:
+                    logger.warning(f"Cannot trigger report: Media buy {media_buy_id} not found")
+                    return False
 
-            # Force sending even if already sent today (for testing)
-            await self._send_report_for_media_buy(media_buy, reporting_webhook, session, force=True)
-            return True
+                raw_request = media_buy.raw_request or {}
+                reporting_webhook = raw_request.get("reporting_webhook")
+
+                if not reporting_webhook:
+                    logger.warning(f"Cannot trigger report: No reporting_webhook configured for {media_buy_id}")
+                    return False
+
+                # Force sending even if already sent today (for testing)
+                await self._send_report_for_media_buy(media_buy, reporting_webhook, session, force=True)
+                return True
         except Exception as e:
-            logger.error(f"Error manually triggering report for {media_buy.media_buy_id}: {e}", exc_info=True)
+            logger.error(f"Error manually triggering report for {media_buy_id}: {e}", exc_info=True)
             return False
 
     async def _send_report_for_media_buy(
