@@ -763,6 +763,28 @@
                 <div class="form-section" style="margin-top: 2rem;">
                     <h3>Google Ad Manager Configuration</h3>
 
+                    {% if not gam_oauth_configured %}
+                    <!-- Warning: GAM OAuth environment variables not set -->
+                    <div class="status-card" style="background: #fef3c7; border-left: 4px solid #f59e0b; margin-bottom: 1.5rem;">
+                        <h4 style="margin: 0 0 0.5rem 0;">⚠️ GAM OAuth Not Configured</h4>
+                        <p style="margin: 0 0 0.75rem 0; font-size: 0.875rem;">
+                            OAuth authentication requires environment variables that are not currently set.
+                        </p>
+                        <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem;"><strong>To enable OAuth authentication:</strong></p>
+                        <ol style="margin: 0 0 0.75rem 1.5rem; padding: 0; font-size: 0.875rem;">
+                            <li>Create OAuth credentials at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: #2563eb;">Google Cloud Console</a></li>
+                            <li>Add redirect URI: <code style="background: #e5e7eb; padding: 0.125rem 0.25rem; border-radius: 3px;">{{ request.url_root }}tenant/callback/gam</code></li>
+                            <li>Add to <code style="background: #e5e7eb; padding: 0.125rem 0.25rem; border-radius: 3px;">.env</code> file:<br>
+                                <code style="display: block; background: #1f2937; color: #f3f4f6; padding: 0.5rem; border-radius: 4px; margin-top: 0.25rem; font-size: 0.8rem;">GAM_OAUTH_CLIENT_ID=your-client-id<br>GAM_OAUTH_CLIENT_SECRET=your-client-secret</code>
+                            </li>
+                            <li>Restart services: <code style="background: #e5e7eb; padding: 0.125rem 0.25rem; border-radius: 3px;">docker-compose restart</code></li>
+                        </ol>
+                        <p style="margin: 0; font-size: 0.875rem;">
+                            <strong>Alternative:</strong> Use Service Account authentication below - no OAuth setup required.
+                        </p>
+                    </div>
+                    {% endif %}
+
                     {% if adapter_config and adapter_config.get('refresh_token') and adapter_config.get('network_code') %}
                     <!-- Fully configured - show success state -->
                     <div class="status-card" style="background: #f0fdf4; border-left: 4px solid #10b981;">
@@ -862,10 +884,19 @@
                     {% endif %}
 
                     <!-- Service Account Integration Option -->
-                    <div class="form-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid #e5e7eb;">
-                        <h3>🔧 Alternative: Service Account Integration (Recommended for Partners)</h3>
+                    <div class="form-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 2px solid #e5e7eb; {% if not gam_oauth_configured %}background: #f0fdf4; padding: 1.5rem; border-radius: 8px; border: 2px solid #10b981;{% endif %}">
+                        <h3>
+                            🔧 {% if not gam_oauth_configured %}Recommended: {% endif %}Service Account Integration
+                            {% if not gam_oauth_configured %}
+                            <span style="background: #10b981; color: white; font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 4px; margin-left: 0.5rem; vertical-align: middle;">No OAuth Setup Required</span>
+                            {% endif %}
+                        </h3>
                         <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                            {% if not gam_oauth_configured %}
+                            Service accounts provide secure, non-expiring authentication without OAuth setup. This is the recommended option.
+                            {% else %}
                             For partner integrations, we can create and manage a service account for you. This is more secure and doesn't require sharing credentials.
+                            {% endif %}
                         </p>
 
                         {% if adapter_config and adapter_config.get('service_account_email') %}
