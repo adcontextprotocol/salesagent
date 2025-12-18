@@ -144,7 +144,11 @@ class ProtocolWebhookService:
         max_attempts: int = 3,
     ) -> bool:
         """Send webhook with exponential backoff retry logic, logging, and audit trail."""
-        
+
+        # Serialize A2A types to dict for JSON serialization
+        if isinstance(payload, (Task, TaskStatusUpdateEvent)):
+            payload = payload.model_dump(mode="json", exclude_none=True)
+
         # Calculate payload size for metrics
         payload_size_bytes = len(json.dumps(payload).encode("utf-8"))
 
@@ -154,13 +158,9 @@ class ProtocolWebhookService:
         media_buy_id=metadata['media_buy_id'] if 'media_buy_id' in metadata else None,
 
         result = extract_webhook_result_data(payload)
-        task_id = ''
-        if isinstance(payload, Task):
-            task_id = payload.id
-        elif isinstance(payload, TaskStatusUpdateEvent):
-            task_id = payload.task_id
-        else:
-            task_id = payload['task_id']
+        # After serialization, payload is always a dict - extract task_id accordingly
+        # A2A Task uses 'id', TaskStatusUpdateEvent uses 'task_id', MCP uses 'task_id'
+        task_id = payload.get('id') or payload.get('task_id') or ''
 
         # If we are delivering media buy delivery report
         notification_type_from_result=result["notification_type"] if result is not None and 'notification_type' in result else None

@@ -513,11 +513,12 @@ class AdCPRequestHandler(RequestHandler):
         # Extract push notification config from protocol layer (A2A MessageSendConfiguration)
         push_notification_config = None
         if hasattr(params, "configuration") and params.configuration:
-            if hasattr(params.configuration, "pushNotificationConfig"):
-                push_notification_config = params.configuration.pushNotificationConfig
-                logger.info(
-                    f"Protocol-level push notification config provided for task {task_id}: {push_notification_config.url}"
-                )
+            if hasattr(params.configuration, "push_notification_config"):
+                push_notification_config = params.configuration.push_notification_config
+                if push_notification_config:
+                    logger.info(
+                        f"Protocol-level push notification config provided for task {task_id}: {push_notification_config.url}"
+                    )
 
         # Prepare task metadata with both invocation types
         task_metadata: dict[str, Any] = {
@@ -590,7 +591,10 @@ class AdCPRequestHandler(RequestHandler):
                     logger.info(f"Processing explicit skill: {skill_name} with parameters: {parameters}")
 
                     try:
-                        result = await self._handle_explicit_skill(skill_name, parameters, auth_token)
+                        result = await self._handle_explicit_skill(
+                            skill_name, parameters, auth_token,
+                            push_notification_config=task_metadata.get("push_notification_config")
+                        )
                         results.append({"skill": skill_name, "result": result, "success": True})
                     except ServerError:
                         # ServerError should bubble up immediately (JSON-RPC error)
@@ -598,6 +602,20 @@ class AdCPRequestHandler(RequestHandler):
                     except Exception as e:
                         logger.error(f"Error in explicit skill {skill_name}: {e}")
                         results.append({"skill": skill_name, "error": str(e), "success": False})
+
+                # Check for submitted status (manual approval required) - return early without artifacts
+                # Per AdCP spec, async operations should return Task with status=submitted and no artifacts
+                for res in results:
+                    if res["success"] and isinstance(res["result"], dict):
+                        result_status = res["result"].get("status")
+                        if result_status == "submitted":
+                            task.status = TaskStatus(state=TaskState.submitted)
+                            task.artifacts = None  # No artifacts for pending tasks
+                            logger.info(f"Task {task_id} requires manual approval, returning status=submitted with no artifacts")
+                            # Send protocol-level webhook notification
+                            await self._send_protocol_webhook(task, status="submitted")
+                            self.tasks[task_id] = task
+                            return task
 
                 # Create artifacts for all skill results with human-readable text
                 for i, res in enumerate(results):
@@ -1306,7 +1324,13 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error deleting push notification config: {e}")
             raise ServerError(InternalError(message=f"Failed to delete push notification config: {str(e)}"))
 
-    async def _handle_explicit_skill(self, skill_name: str, parameters: dict, auth_token: str | None) -> dict:
+    async def _handle_explicit_skill(
+        self,
+        skill_name: str,
+        parameters: dict,
+        auth_token: str | None,
+        push_notification_config: dict | None = None,
+    ) -> dict:
         """Handle explicit AdCP skill invocations.
 
         Maps skill names to appropriate handlers and validates parameters.
@@ -1315,6 +1339,7 @@ class AdCPRequestHandler(RequestHandler):
             skill_name: The AdCP skill name (e.g., "get_products")
             parameters: Dictionary of skill-specific parameters
             auth_token: Bearer token for authentication (optional for discovery endpoints)
+            push_notification_config: Push notification config from A2A protocol layer
 
         Returns:
             Dictionary containing the skill result
@@ -1322,6 +1347,9 @@ class AdCPRequestHandler(RequestHandler):
         Raises:
             ValueError: For unknown skills or invalid parameters
         """
+        # Inject push_notification_config into parameters for skills that need it
+        if push_notification_config and skill_name in ("create_media_buy", "sync_creatives"):
+            parameters = {**parameters, "push_notification_config": push_notification_config}
         logger.info(f"Handling explicit skill: {skill_name} with parameters: {list(parameters.keys())}")
 
         # Validate auth_token for non-discovery skills
@@ -1552,6 +1580,11 @@ class AdCPRequestHandler(RequestHandler):
     async def _handle_sync_creatives_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit sync_creatives skill invocation (AdCP spec endpoint)."""
         try:
+            # DEBUG: Log incoming parameters
+            logger.info(f"[A2A sync_creatives] Received parameters keys: {list(parameters.keys())}")
+            logger.info(f"[A2A sync_creatives] assignments param: {parameters.get('assignments')}")
+            logger.info(f"[A2A sync_creatives] creatives count: {len(parameters.get('creatives', []))}")
+
             # Create ToolContext from A2A auth info
             tool_context = self._create_tool_context_from_a2a(
                 auth_token=auth_token,
