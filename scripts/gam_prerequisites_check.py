@@ -3,7 +3,7 @@
 Check if GAM prerequisites are configured.
 
 Usage:
-    python scripts/check_gam_prerequisites.py
+    python scripts/gam_prerequisites_check.py
 
 Returns:
     Exit code 0 if all prerequisites met, 1 otherwise
