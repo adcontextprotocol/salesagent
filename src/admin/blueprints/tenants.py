@@ -215,6 +215,11 @@ def tenant_settings(tenant_id, section=None):
             if adapter_config_obj and adapter_config_obj.adapter_type == "google_ad_manager":
                 oauth_configured = bool(adapter_config_obj.gam_refresh_token)
 
+            # Check if GAM OAuth environment variables are configured
+            gam_oauth_configured = bool(
+                os.environ.get("GAM_OAUTH_CLIENT_ID") and os.environ.get("GAM_OAUTH_CLIENT_SECRET")
+            )
+
             # Get advertiser data for the advertisers section
             from src.core.database.models import GAMInventory, Principal
 
@@ -379,6 +384,7 @@ def tenant_settings(tenant_id, section=None):
                 active_adapter=active_adapter,
                 adapter_config=adapter_config_dict,  # Use dict format
                 oauth_configured=oauth_configured,
+                gam_oauth_configured=gam_oauth_configured,  # Environment check for GAM OAuth
                 last_sync_time=last_sync_time,
                 running_sync=running_sync,  # Pass running sync info
                 principals=principals,

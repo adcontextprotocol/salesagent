@@ -267,6 +267,52 @@ See `docker-compose.override.example.yml` for complete configuration.
 
 ### GAM Integration Issues
 
+#### "Could not determine client ID from request"
+
+**Symptom**: Error when trying to save/test GAM configuration with OAuth authentication.
+
+**Cause**: `GAM_OAUTH_CLIENT_ID` or `GAM_OAUTH_CLIENT_SECRET` environment variables not set.
+
+**Solution**:
+
+1. Check if environment variables are set:
+   ```bash
+   docker-compose exec adcp-server env | grep GAM_OAUTH
+   ```
+
+2. If missing, add to your `.env` file:
+   ```bash
+   GAM_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GAM_OAUTH_CLIENT_SECRET=your-client-secret
+   ```
+
+3. Create OAuth credentials at [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
+   - Create OAuth 2.0 Client ID (Web application)
+   - Add redirect URI: `http://localhost:8001/tenant/callback/gam`
+
+4. Restart services:
+   ```bash
+   docker-compose restart
+   ```
+
+5. Verify configuration:
+   ```bash
+   docker-compose exec adcp-server python scripts/gam_prerequisites_check.py
+   ```
+
+**Alternative**: Use Service Account authentication instead (no OAuth setup required). Configure via Admin UI in the "Service Account Integration" section.
+
+#### GAM OAuth vs Service Account
+
+| Feature | OAuth (Refresh Token) | Service Account |
+|---------|----------------------|-----------------|
+| Setup complexity | Higher (requires OAuth credentials) | Lower (just upload JSON key) |
+| Token expiration | Tokens can expire | Never expires |
+| Use case | Quick local testing | Production deployments |
+| Security | Tied to user account | Isolated service identity |
+
+**Recommendation**: Use Service Account for production; OAuth for quick testing only.
+
 #### OAuth Token Invalid
 ```bash
 # Refresh OAuth token

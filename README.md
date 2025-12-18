@@ -11,45 +11,97 @@ The AdCP Sales Agent is a server that:
 - **Provides an admin interface** for managing inventory and monitoring campaigns
 - **Handles the full campaign lifecycle** from discovery to reporting
 
-## Quick Start
+## Quick Start - Choose Your Setup Path
 
-### Docker Setup (Recommended)
+### Path 1: Mock Adapter (5 min) - Recommended First Step
+
+**Perfect for:** Learning AdCP, testing integrations, development
 
 ```bash
-# 1. Clone and enter the repository
+# 1. Clone and configure
 git clone https://github.com/adcontextprotocol/salesagent.git
 cd salesagent
-
-# 2. Create your .env file
 cp .env.template .env
-# Edit .env with your values (instructions in the file)
+
+# 2. Set your Gemini API key in .env:
+#    GEMINI_API_KEY=get-free-at-https://aistudio.google.com/apikey
+#    (Test mode is enabled by default - no OAuth setup needed)
 
 # 3. Start services
 docker-compose up -d
 
-# 4. Access the Admin UI
-open http://localhost:8001
-```
-
-**Required configuration in .env:**
-- `GEMINI_API_KEY` - Get free at https://aistudio.google.com/apikey
-- `SUPER_ADMIN_EMAILS` - Your email address
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - From [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-  - Add redirect URI: `http://localhost:8001/auth/google/callback`
-
-### Creating Your First Tenant
-
-```bash
-# Create a test tenant with mock adapter (no ad server needed)
-docker-compose exec adcp-server python -m scripts.setup.setup_tenant "My Publisher" \
+# 4. Create test tenant (note the token output!)
+docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publisher" \
   --adapter mock \
   --admin-email your-email@example.com
+
+# 5. Test the MCP server with AdCP CLI (use token from step 4)
+uvx adcp http://localhost:8080/mcp/ --auth YOUR_TOKEN list_tools
+
+# 6. Access Admin UI
+open http://localhost:8001
+# Login with: test_super_admin@example.com / test123
 ```
 
-### Conductor Setup (for parallel workspaces)
+**Using with Claude Desktop:** Add to your Claude config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "adcp": {
+      "command": "uvx",
+      "args": ["mcp-remote", "http://localhost:8080/mcp/", "--header", "x-adcp-auth: YOUR_TOKEN"]
+    }
+  }
+}
+```
 
-If using Conductor, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for workspace setup.
-Each workspace gets unique ports automatically.
+The mock adapter simulates a complete ad server - no external credentials needed.
+
+---
+
+### Path 2: Google Ad Manager with OAuth (30 min)
+
+**Perfect for:** Quick local testing against a real GAM network
+
+**Note:** This uses OAuth refresh tokens. For production, use Service Account authentication instead (see Path 3).
+
+**Prerequisites - complete BEFORE starting:**
+
+1. **Create GAM OAuth Credentials:**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+   - Create OAuth 2.0 Client ID (Web application)
+   - Add redirect URI: `http://localhost:8001/tenant/callback/gam`
+   - Save Client ID and Client Secret
+
+2. **Add to .env file:**
+   ```bash
+   GAM_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GAM_OAUTH_CLIENT_SECRET=your-client-secret
+   ```
+
+3. **Start services and configure:**
+   ```bash
+   docker-compose up -d
+   docker-compose exec adcp-server python -m scripts.setup.setup_tenant "My Publisher" \
+     --adapter google_ad_manager \
+     --gam-network-code YOUR_NETWORK_CODE \
+     --admin-email your-email@example.com
+   ```
+
+4. **Complete OAuth flow** in Admin UI at http://localhost:8001
+
+---
+
+### Path 3: Production Deployment
+
+Use **Service Account** authentication (recommended over OAuth):
+- Credentials never expire
+- Better security and isolation
+- No manual refresh required
+
+See [docs/deployment.md](docs/deployment.md) for production setup.
+
+---
 
 ### Troubleshooting
 
@@ -58,8 +110,12 @@ Each workspace gets unique ports automatically.
 docker-compose logs admin-ui | head -50  # Check for missing env vars
 ```
 
+**GAM OAuth error: "Could not determine client ID"?**
+- Check that `GAM_OAUTH_CLIENT_ID` and `GAM_OAUTH_CLIENT_SECRET` are set in `.env`
+- Run `docker-compose restart` after adding credentials
+
 **OAuth callback 404?**
-- Redirect URI must be exactly: `http://localhost:8001/auth/google/callback`
+- Redirect URI must match exactly what's in Google Cloud Console
 
 **More help:** See [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
 
