@@ -16,30 +16,26 @@ The AdCP Sales Agent is a server that:
 ### Docker Setup (Recommended)
 
 ```bash
-# 1. Clone the repository
+# 1. Clone and enter the repository
 git clone https://github.com/adcontextprotocol/salesagent.git
 cd salesagent
 
-# 2. Configure secrets (REQUIRED - app won't start without these)
-cp .env.secrets.template .env.secrets
-# Edit .env.secrets with your values:
-#   - GEMINI_API_KEY (required) - get from https://aistudio.google.com/apikey
-#   - SUPER_ADMIN_EMAILS (required) - your email address
-#   - GOOGLE_CLIENT_ID/SECRET (required for login) - from Google Cloud Console
+# 2. Create your .env file
+cp .env.template .env
+# Edit .env with your values (instructions in the file)
 
-# 3. Configure Google OAuth redirect URI
-# In Google Cloud Console, add this authorized redirect URI:
-#   http://localhost:8001/auth/google/callback
+# 3. Start services
+docker-compose up -d
 
-# 4. Start with Docker Compose (source secrets first)
-source .env.secrets && docker-compose up -d
-
-# 5. Wait for containers to be healthy
-docker-compose ps
-
-# 6. Access the Admin UI
+# 4. Access the Admin UI
 open http://localhost:8001
 ```
+
+**Required configuration in .env:**
+- `GEMINI_API_KEY` - Get free at https://aistudio.google.com/apikey
+- `SUPER_ADMIN_EMAILS` - Your email address
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` - From [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+  - Add redirect URI: `http://localhost:8001/auth/google/callback`
 
 ### Creating Your First Tenant
 
@@ -50,51 +46,22 @@ docker-compose exec adcp-server python -m scripts.setup.setup_tenant "My Publish
   --admin-email your-email@example.com
 ```
 
-### Conductor Setup
+### Conductor Setup (for parallel workspaces)
 
+If using Conductor, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for workspace setup.
+Each workspace gets unique ports automatically.
+
+### Troubleshooting
+
+**Container won't start?**
 ```bash
-# One-time: Create secrets file in project root
-cp .env.secrets.template .env.secrets
-# Edit .env.secrets with your actual values
-
-# Create Conductor workspace (auto-runs setup)
-# Services will be available on unique ports
-# Check .env file for your workspace's ports
+docker-compose logs admin-ui | head -50  # Check for missing env vars
 ```
 
-**Standard Setup** starts services on:
-- PostgreSQL database (port 5435)
-- MCP server (port 8092)
-- Admin UI (port 8001)
+**OAuth callback 404?**
+- Redirect URI must be exactly: `http://localhost:8001/auth/google/callback`
 
-**Conductor Setup** uses unique ports per workspace:
-- Check `.env` file for your workspace's assigned ports
-- Example: PostgreSQL (5486), MCP (8134), Admin UI (8055)
-
-### Common Issues
-
-**Connection reset on Admin UI (port 8001)**
-```bash
-# Check container logs for startup errors
-docker-compose logs admin-ui | head -50
-
-# Most common cause: missing required env vars
-# Make sure .env.secrets exists and contains:
-#   GEMINI_API_KEY=your-key
-#   SUPER_ADMIN_EMAILS=your-email@example.com
-```
-
-**OAuth callback 404 error**
-- If redirected to `/admin/auth/google/callback` and getting 404
-- Your Google OAuth redirect URI should be `http://localhost:8001/auth/google/callback` (no `/admin` prefix for Docker)
-
-**Script not found errors**
-```bash
-# Use -m flag to run scripts as modules
-docker-compose exec adcp-server python -m scripts.setup.setup_tenant ...
-```
-
-See [Troubleshooting Guide](docs/TROUBLESHOOTING.md) for more solutions.
+**More help:** See [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
 
 ## Documentation
 
@@ -259,7 +226,7 @@ salesagent/
 
 - Python 3.12+
 - Docker and Docker Compose (for easy deployment)
-- PostgreSQL (production) or SQLite (development)
+- PostgreSQL (Docker Compose handles this automatically)
 - Google OAuth credentials (for Admin UI)
 - Gemini API key (for AI features)
 
@@ -339,4 +306,3 @@ Apache 2.0 License - see [LICENSE](LICENSE) file for details.
 - [AdCP Specification](https://github.com/adcontextprotocol/adcp-spec) - Protocol specification
 - [MCP SDK](https://github.com/modelcontextprotocol) - Model Context Protocol tools
 - [FastMCP](https://github.com/jlowin/fastmcp) - MCP server framework
-# CI test trigger Tue Sep  2 16:01:44 EDT 2025

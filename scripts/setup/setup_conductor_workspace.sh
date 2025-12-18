@@ -259,6 +259,11 @@ services:
       - adcp_global_pip_cache:/root/.cache/pip
       - adcp_global_uv_cache:/cache/uv
     environment:
+      # REQUIRED: Add container's venv site-packages to PYTHONPATH
+      # When mounting local code over /app, Python can't find installed packages
+      # unless we explicitly add site-packages to PYTHONPATH
+      # Note: Version must match Dockerfile (currently python3.12)
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages:\${PYTHONPATH:-}"
       # Enable development mode
       PYTHONUNBUFFERED: 1
       FLASK_ENV: development
@@ -275,6 +280,9 @@ services:
       - adcp_global_pip_cache:/root/.cache/pip
       - adcp_global_uv_cache:/cache/uv
     environment:
+      # REQUIRED: Add container's venv site-packages to PYTHONPATH
+      # Note: Version must match Dockerfile (currently python3.12)
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages:\${PYTHONPATH:-}"
       # Enable Flask development mode with auto-reload
       FLASK_ENV: development
       FLASK_DEBUG: 1

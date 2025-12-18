@@ -117,8 +117,10 @@ This script:
 - Detects the Conductor workspace automatically
 - Assigns unique ports based on workspace name
 - Creates `.env` with proper configuration
-- Creates `docker-compose.override.yml` for hot-reloading
+- Creates `docker-compose.override.yml` for hot-reloading (including PYTHONPATH for package imports)
 - Installs Git hooks for the workspace
+
+**Manual setup**: If you're not using the setup script, ensure your `docker-compose.override.yml` includes the PYTHONPATH setting. See `docker-compose.override.example.yml` for the required configuration.
 
 ### Conductor Workspace Structure
 
