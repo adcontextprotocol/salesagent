@@ -26,6 +26,12 @@ services:
       # Docker-specific defaults
       SKIP_NGINX: "true"
 
+      # Pass through from host environment (for CI and shell-set variables)
+      # These override .env values when set in the host environment
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
+      ADCP_TESTING: ${ADCP_TESTING:-}
+
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,8 +65,16 @@ services:
       # Override DATABASE_URL to use docker internal hostname
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
 
-      # Docker-specific defaults (override values from .env if needed)
+      # Docker-specific defaults
       SKIP_NGINX: "true"
+
+      # Pass through from host environment (for CI and shell-set variables)
+      # These override .env values when set in the host environment
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-}
 
     depends_on:
       postgres:
