@@ -18,8 +18,7 @@ services:
   adcp-server:
     build: .
     env_file:
-      - path: .env
-        required: false
+      - .env
     environment:
       # Override DATABASE_URL to use docker internal hostname
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
@@ -55,8 +54,7 @@ services:
     build: .
     command: python -m src.admin.server
     env_file:
-      - path: .env
-        required: false
+      - .env
     environment:
       # Override DATABASE_URL to use docker internal hostname
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
