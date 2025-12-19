@@ -229,7 +229,7 @@ class DynamicPricingService:
         for option in product.pricing_options:
             # adcp 2.14.0+ uses RootModel wrapper - access via .root
             inner = getattr(option, "root", option)
-            if inner.pricing_model.upper() == "CPM":
+            if inner.pricing_model.upper() == "CPM":  # type: ignore[union-attr]
                 cpm_option = inner
                 break
 

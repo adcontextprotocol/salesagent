@@ -350,7 +350,7 @@ repos:
           - types-python-dateutil
           - types-pytz
           - types-Markdown
-          - adcp
+          - adcp==2.14.0
           - fastmcp
           - alembic
         files: '^src/'
