@@ -25,6 +25,7 @@ from adcp.types.generated_poc.core.context import ContextObject
 from adcp.types.generated_poc.core.product_filters import ProductFilters
 from pydantic import BaseModel, Field, model_validator
 
+from src.core.helpers.pricing_helpers import pricing_option_has_rate
 from src.core.schemas import AdCPBaseModel
 
 
@@ -215,13 +216,12 @@ class GetProductsResponse(AdCPBaseModel):
             for p in self.products:
                 if isinstance(p, dict):
                     pricing_options = p.get("pricing_options", [])
-                    if pricing_options and any(po.get("rate") is not None for po in pricing_options):
+                    if pricing_options and any(pricing_option_has_rate(po) for po in pricing_options):
                         all_missing_pricing = False
                         break
                 else:
                     if hasattr(p, "pricing_options") and p.pricing_options:
-                        # Check if any pricing option has a rate attribute with non-None value
-                        if any(hasattr(po, "rate") and po.rate is not None for po in p.pricing_options):
+                        if any(pricing_option_has_rate(po) for po in p.pricing_options):
                             all_missing_pricing = False
                             break
 

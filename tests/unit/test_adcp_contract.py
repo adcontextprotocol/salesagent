@@ -2509,8 +2509,9 @@ class TestAdCPContract:
             ],
         )
         assert len(product_with_properties.publisher_properties) == 1
-        # publisher_properties is a discriminated union object, access via attribute
-        assert product_with_properties.publisher_properties[0].publisher_domain == "example.com"
+        # publisher_properties is a discriminated union with RootModel wrapper (adcp 2.14.0+)
+        # Access via .root attribute
+        assert product_with_properties.publisher_properties[0].root.publisher_domain == "example.com"
 
         # Invalid: missing publisher_properties (required)
         from pydantic import ValidationError
