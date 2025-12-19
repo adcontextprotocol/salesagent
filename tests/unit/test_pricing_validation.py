@@ -59,8 +59,9 @@ class TestPricingValidation:
 
     def test_new_product_with_matching_pricing_model(self):
         """Test product with pricing_options and package specifying valid pricing_model."""
-        # Setup pricing option
-        pricing_option = Mock()
+        # Setup pricing option - use spec to prevent auto-creating .root attribute
+        # (adcp 2.14.0+ uses RootModel wrapper, but mocks should not have .root)
+        pricing_option = Mock(spec=["pricing_model", "currency", "is_fixed", "rate", "min_spend_per_package"])
         pricing_option.pricing_model = "cpcv"
         pricing_option.currency = "USD"
         pricing_option.is_fixed = True
@@ -88,9 +89,10 @@ class TestPricingValidation:
 
     def test_pricing_model_not_offered_by_product(self):
         """Test package requesting pricing_model not offered by product."""
-        pricing_option = Mock()
+        pricing_option = Mock(spec=["pricing_model", "currency", "is_fixed"])
         pricing_option.pricing_model = "cpm"
         pricing_option.currency = "USD"
+        pricing_option.is_fixed = True
 
         product = Mock()
         product.product_id = "display_product"
@@ -112,9 +114,10 @@ class TestPricingValidation:
 
     def test_currency_mismatch(self):
         """Test package with campaign currency that doesn't match pricing option currency."""
-        pricing_option = Mock()
+        pricing_option = Mock(spec=["pricing_model", "currency", "is_fixed"])
         pricing_option.pricing_model = "cpm"
         pricing_option.currency = "USD"
+        pricing_option.is_fixed = True
 
         product = Mock()
         product.product_id = "product_1"
@@ -136,7 +139,7 @@ class TestPricingValidation:
 
     def test_auction_pricing_without_bid_price(self):
         """Test auction-based pricing without bid_price in package."""
-        pricing_option = Mock()
+        pricing_option = Mock(spec=["pricing_model", "currency", "is_fixed", "price_guidance"])
         pricing_option.pricing_model = "cpm"
         pricing_option.currency = "USD"
         pricing_option.is_fixed = False
@@ -163,7 +166,7 @@ class TestPricingValidation:
 
     def test_bid_price_below_floor(self):
         """Test bid_price below floor price."""
-        pricing_option = Mock()
+        pricing_option = Mock(spec=["pricing_model", "currency", "is_fixed", "price_guidance"])
         pricing_option.pricing_model = "cpm"
         pricing_option.currency = "USD"
         pricing_option.is_fixed = False
@@ -188,7 +191,7 @@ class TestPricingValidation:
 
     def test_fixed_pricing_without_rate(self):
         """Test fixed pricing option without rate specified (invalid)."""
-        pricing_option = Mock()
+        pricing_option = Mock(spec=["pricing_model", "currency", "is_fixed", "rate"])
         pricing_option.pricing_model = "cpm"
         pricing_option.currency = "USD"
         pricing_option.is_fixed = True
@@ -213,7 +216,7 @@ class TestPricingValidation:
 
     def test_budget_below_minimum_spend(self):
         """Test package budget below min_spend_per_package."""
-        pricing_option = Mock()
+        pricing_option = Mock(spec=["pricing_model", "currency", "is_fixed", "rate", "min_spend_per_package"])
         pricing_option.pricing_model = "cpcv"
         pricing_option.currency = "USD"
         pricing_option.is_fixed = True
@@ -239,7 +242,9 @@ class TestPricingValidation:
 
     def test_valid_auction_pricing_with_bid(self):
         """Test valid auction pricing with bid_price >= floor."""
-        pricing_option = Mock()
+        pricing_option = Mock(
+            spec=["pricing_model", "currency", "is_fixed", "rate", "price_guidance", "min_spend_per_package"]
+        )
         pricing_option.pricing_model = "cpm"
         pricing_option.currency = "USD"
         pricing_option.is_fixed = False

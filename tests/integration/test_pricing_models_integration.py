@@ -252,9 +252,11 @@ async def test_get_products_returns_pricing_options(setup_tenant_with_pricing_pr
     assert cpm_product is not None
     assert cpm_product.pricing_options is not None
     assert len(cpm_product.pricing_options) == 1
-    assert cpm_product.pricing_options[0].pricing_model == PricingModel.CPM
-    assert cpm_product.pricing_options[0].is_fixed is True
-    assert cpm_product.pricing_options[0].rate == 12.50
+    # adcp 2.14.0+ uses RootModel wrapper - access via .root
+    pricing_inner = getattr(cpm_product.pricing_options[0], "root", cpm_product.pricing_options[0])
+    assert pricing_inner.pricing_model == PricingModel.CPM
+    assert pricing_inner.is_fixed is True
+    assert pricing_inner.rate == 12.50
 
     # Find the multi-pricing product
     multi_product = next((p for p in response.products if p.product_id == "prod_multi"), None)
@@ -263,7 +265,8 @@ async def test_get_products_returns_pricing_options(setup_tenant_with_pricing_pr
     assert len(multi_product.pricing_options) == 3
 
     # Verify all three pricing models exist
-    pricing_models = {opt.pricing_model for opt in multi_product.pricing_options}
+    # adcp 2.14.0+ uses RootModel wrapper - access via .root
+    pricing_models = {getattr(opt, "root", opt).pricing_model for opt in multi_product.pricing_options}
     assert pricing_models == {PricingModel.CPM, PricingModel.CPCV, PricingModel.CPP}
 
 
@@ -309,9 +312,9 @@ async def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing
 
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == [], (
-        f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
-    )
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
 
 
@@ -358,9 +361,9 @@ async def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_prici
 
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == [], (
-        f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
-    )
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
 
 
@@ -454,9 +457,9 @@ async def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_prod
 
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == [], (
-        f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
-    )
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
 
 
@@ -549,9 +552,9 @@ async def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_prici
 
     # Verify response is success (AdCP 2.4 compliant)
     # Success response has media_buy_id, error response has errors field
-    assert not hasattr(response, "errors") or response.errors is None or response.errors == [], (
-        f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
-    )
+    assert (
+        not hasattr(response, "errors") or response.errors is None or response.errors == []
+    ), f"Media buy creation failed: {response.errors if hasattr(response, 'errors') else 'unknown error'}"
     assert response.media_buy_id is not None
 
 

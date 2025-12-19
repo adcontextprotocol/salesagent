@@ -1459,11 +1459,11 @@ class GetProductsResponse(NestedModelSerializerMixin, LibraryGetProductsResponse
             base_msg = f"Found {count} products that match your requirements."
 
         # Check if this looks like an anonymous response (all pricing options have no rates)
-        # Use getattr() to handle discriminated union (rate field only exists in fixed-rate variants)
+        # Import here to avoid circular import (schemas -> helpers -> auth -> schemas)
+        from src.core.helpers.pricing_helpers import pricing_option_has_rate
+
         if count > 0 and all(
-            all(getattr(po, "rate", None) is None for po in p.pricing_options)
-            for p in self.products
-            if p.pricing_options
+            all(not pricing_option_has_rate(po) for po in p.pricing_options) for p in self.products if p.pricing_options
         ):
             return f"{base_msg} Please connect through an authorized buying agent for pricing data."
 
