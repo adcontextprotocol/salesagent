@@ -99,9 +99,10 @@ def get_recommended_cpm(product: Product) -> float | None:
         Recommended CPM value (p75) from price_guidance, or None if not available
     """
     for option in product.pricing_options:
-        # Use getattr for discriminated union field access
-        price_guidance = getattr(option, "price_guidance", None)
-        if option.pricing_model.upper() == "CPM" and price_guidance:
+        # adcp 2.14.0+ uses RootModel wrapper - access via .root
+        inner = getattr(option, "root", option)
+        price_guidance = getattr(inner, "price_guidance", None)
+        if inner.pricing_model.upper() == "CPM" and price_guidance:  # type: ignore[union-attr]
             p75 = price_guidance.p75
             if p75 is not None:
                 return float(p75)
@@ -698,14 +699,16 @@ async def _get_products_impl(
                 if product.pricing_options:
                     # Annotate each pricing option with "supported" flag
                     for option in product.pricing_options:
+                        # adcp 2.14.0+ uses RootModel wrapper - access via .root
+                        inner = getattr(option, "root", option)
                         # Get pricing model as string (handle both enum and literal)
-                        pricing_model = getattr(option.pricing_model, "value", option.pricing_model)
+                        pricing_model = getattr(inner.pricing_model, "value", inner.pricing_model)  # type: ignore[union-attr]
                         # Add supported annotation (will be included in response)
                         # Dynamic attributes on discriminated union types
                         is_supported = pricing_model in supported_models
-                        option.supported = is_supported  # type: ignore[union-attr]
+                        inner.supported = is_supported  # type: ignore[union-attr]
                         if not is_supported:
-                            option.unsupported_reason = f"Current adapter does not support {pricing_model.upper()} pricing"  # type: ignore[union-attr]
+                            inner.unsupported_reason = f"Current adapter does not support {pricing_model.upper()} pricing"  # type: ignore[union-attr]
         except Exception as e:
             logger.warning(f"Failed to annotate pricing options with adapter support: {e}")
 

@@ -227,8 +227,10 @@ class DynamicPricingService:
         # Find existing CPM pricing option
         cpm_option = None
         for option in product.pricing_options:
-            if option.pricing_model.upper() == "CPM":
-                cpm_option = option
+            # adcp 2.14.0+ uses RootModel wrapper - access via .root
+            inner = getattr(option, "root", option)
+            if inner.pricing_model.upper() == "CPM":  # type: ignore[union-attr]
+                cpm_option = inner
                 break
 
         if cpm_option:

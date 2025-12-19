@@ -91,7 +91,7 @@ def create_get_products_request(
             filters_obj = ProductFilters(**filters)
 
     return GetProductsRequest(
-        brand_manifest=brand_manifest_obj,
+        brand_manifest=brand_manifest_obj,  # type: ignore[arg-type]
         brief=brief or None,
         filters=filters_obj,
         context=to_context_object(context),
