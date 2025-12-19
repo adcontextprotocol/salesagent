@@ -31,6 +31,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
       ADCP_TESTING: ${ADCP_TESTING:-}
+      DELIVERY_WEBHOOK_INTERVAL: ${DELIVERY_WEBHOOK_INTERVAL:-}
 
     depends_on:
       postgres:
