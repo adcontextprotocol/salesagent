@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 """
-Simple HTTP proxy for Fly.io deployment to route between MCP server and Admin UI
+Simple HTTP proxy to route between MCP server, Admin UI, and A2A server.
+Used for local development and quickstart deployments.
 """
 
 import asyncio
 import logging
+import os
 
 import aiohttp
 from aiohttp import web
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Port configuration (can be overridden by env vars)
+MCP_PORT = os.environ.get("ADCP_SALES_PORT", "8080")
+ADMIN_PORT = os.environ.get("ADMIN_UI_PORT", "8001")
+A2A_PORT = os.environ.get("A2A_PORT", "8091")
+PROXY_PORT = int(os.environ.get("PROXY_PORT", "8000"))
 
 # Routes that should go to Admin UI
 ADMIN_PATHS = {
@@ -24,6 +32,14 @@ ADMIN_PATHS = {
     "/test",
     "/health/admin",
     "/tenant",
+    "/signup",
+}
+
+# Routes that should go to A2A server
+A2A_PATHS = {
+    "/a2a",
+    "/.well-known",
+    "/agent.json",
 }
 
 
@@ -39,18 +55,24 @@ async def proxy_handler(request):
     if path == "/health":
         return web.Response(text="healthy\n")
 
-    # Check if this should go to admin UI
-    for admin_path in ADMIN_PATHS:
-        if path.startswith(admin_path):
-            # For /admin route, strip the prefix and forward to /
-            if path == "/admin":
-                target_url = "http://localhost:8001/"
-            else:
-                target_url = f"http://localhost:8001{path}"
+    # Check if this should go to A2A server
+    for a2a_path in A2A_PATHS:
+        if path.startswith(a2a_path):
+            target_url = f"http://localhost:{A2A_PORT}{path}"
             break
     else:
-        # Default to MCP server
-        target_url = f"http://localhost:8080{path}"
+        # Check if this should go to admin UI
+        for admin_path in ADMIN_PATHS:
+            if path.startswith(admin_path):
+                # For /admin route, strip the prefix and forward to /
+                if path == "/admin":
+                    target_url = f"http://localhost:{ADMIN_PORT}/"
+                else:
+                    target_url = f"http://localhost:{ADMIN_PORT}{path}"
+                break
+        else:
+            # Default to MCP server
+            target_url = f"http://localhost:{MCP_PORT}{path}"
 
     logger.info(f"Proxying {request.method} {path} -> {target_url}")
 
@@ -63,9 +85,9 @@ async def proxy_handler(request):
             headers.pop("Content-Length", None)
 
             # Add proxy headers for proper URL generation
-            headers["X-Forwarded-Host"] = request.headers.get("Host", "adcp-sales-agent.fly.dev")
-            headers["X-Forwarded-Proto"] = "https"
-            headers["X-Forwarded-Port"] = "443"
+            headers["X-Forwarded-Host"] = request.headers.get("Host", "localhost")
+            headers["X-Forwarded-Proto"] = request.headers.get("X-Forwarded-Proto", "http")
+            headers["X-Forwarded-Port"] = request.headers.get("X-Forwarded-Port", str(PROXY_PORT))
 
             # Make backend request
             async with session.request(
@@ -103,5 +125,8 @@ async def init_app():
 
 if __name__ == "__main__":
     app = asyncio.run(init_app())
-    # Proxy listens on 8000 to avoid conflict with MCP server on 8080
-    web.run_app(app, host="0.0.0.0", port=8000)
+    print(f"Starting proxy on port {PROXY_PORT}")
+    print(f"  /mcp/* -> localhost:{MCP_PORT}")
+    print(f"  /admin/*, /auth/*, etc -> localhost:{ADMIN_PORT}")
+    print(f"  /a2a, /.well-known/*, /agent.json -> localhost:{A2A_PORT}")
+    web.run_app(app, host="0.0.0.0", port=PROXY_PORT)

@@ -191,57 +191,138 @@ Internet → Fly.io Edge → Proxy (8000) → MCP Server (8080)
 
 ### Deployment Steps
 
-1. **Create application:**
+#### Step 1: Create the Application
+
+```bash
+fly apps create your-app-name
+```
+
+#### Step 2: Create and Attach PostgreSQL Database
+
+Fly.io provides managed PostgreSQL. Create a cluster and attach it to your app:
+
+```bash
+# Create PostgreSQL cluster
+fly postgres create --name your-app-db \
+  --region iad \
+  --initial-cluster-size 1 \
+  --vm-size shared-cpu-1x \
+  --volume-size 10
+
+# Attach to your app (this sets DATABASE_URL automatically)
+fly postgres attach your-app-db --app your-app-name
+```
+
+**Important**: The `attach` command automatically sets `DATABASE_URL` as a secret. Verify with:
+```bash
+fly secrets list --app your-app-name
+```
+
+#### Step 3: Create Persistent Volume
+
+```bash
+fly volumes create adcp_data --region iad --size 1
+```
+
+#### Step 4: Set Required Secrets
+
+```bash
+# Super admin configuration (REQUIRED - see format below)
+fly secrets set SUPER_ADMIN_EMAILS="admin@example.com,admin2@example.com"
+
+# Optional: Grant admin to all users in a domain
+fly secrets set SUPER_ADMIN_DOMAINS="example.com"
+
+# OAuth configuration (required for Google login)
+fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
+
+# API keys (optional but recommended)
+fly secrets set GEMINI_API_KEY="your-gemini-api-key"
+```
+
+**Super Admin Configuration Format:**
+
+| Variable | Format | Example |
+|----------|--------|---------|
+| `SUPER_ADMIN_EMAILS` | Comma-separated emails | `user1@example.com,user2@example.com` |
+| `SUPER_ADMIN_DOMAINS` | Comma-separated domains | `example.com,company.org` |
+
+- `SUPER_ADMIN_EMAILS`: Specific email addresses that have super admin access
+- `SUPER_ADMIN_DOMAINS`: Any user with an email from these domains gets super admin access
+
+Both are comma-separated strings (not JSON). At least one of these must be set for the application to start.
+
+#### Step 5: Configure OAuth Redirect URI
+
+Add this redirect URI to your Google Cloud Console OAuth credentials:
+```
+https://your-app-name.fly.dev/auth/google/callback
+```
+
+#### Step 6: Deploy
+
+```bash
+fly deploy
+```
+
+The first deploy will automatically run database migrations. Watch the logs:
+```bash
+fly logs
+```
+
+#### Step 7: Verify Deployment
+
+```bash
+# Check health
+curl https://your-app-name.fly.dev/health
+
+# Check app status
+fly status --app your-app-name
+```
+
+### Troubleshooting Fly.io Deployments
+
+**Database connection issues:**
+```bash
+# Verify DATABASE_URL is set
+fly secrets list --app your-app-name | grep DATABASE
+
+# Check if postgres is attached
+fly postgres list
+
+# Manually check database connectivity
+fly ssh console --app your-app-name -C "python -c \"from src.core.database.db_config import get_db_connection; print(get_db_connection())\""
+```
+
+**Migrations not running:**
+
+Migrations run automatically on startup. If you need to run them manually:
+```bash
+fly ssh console --app your-app-name -C "cd /app && python scripts/ops/migrate.py"
+```
+
+**Super admin access not working:**
+
+1. Verify the secret is set correctly:
    ```bash
-   fly apps create adcp-sales-agent
+   fly ssh console --app your-app-name -C "echo \$SUPER_ADMIN_EMAILS"
    ```
 
-2. **Create PostgreSQL cluster:**
+2. Check format (must be comma-separated, no spaces around commas):
+   - Correct: `user1@example.com,user2@example.com`
+   - Wrong: `["user1@example.com", "user2@example.com"]`
+   - Wrong: `user1@example.com, user2@example.com` (spaces)
+
+3. Restart to pick up secret changes:
    ```bash
-   fly postgres create --name adcp-db \
-     --region iad \
-     --initial-cluster-size 1 \
-     --vm-size shared-cpu-1x \
-     --volume-size 10
-
-   fly postgres attach adcp-db --app adcp-sales-agent
+   fly apps restart your-app-name
    ```
 
-3. **Create persistent volume:**
-   ```bash
-   fly volumes create adcp_data --region iad --size 1
-   ```
-
-4. **Set secrets:**
-   ```bash
-   # OAuth configuration
-   fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
-   fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
-
-   # Admin configuration
-   fly secrets set SUPER_ADMIN_EMAILS="admin@example.com"
-   fly secrets set SUPER_ADMIN_DOMAINS="example.com"
-
-   # API keys
-   fly secrets set GEMINI_API_KEY="your-gemini-api-key"
-   ```
-
-5. **Configure OAuth redirect URI:**
-
-   Add to Google Cloud Console:
-   ```
-   https://adcp-sales-agent.fly.dev/auth/google/callback
-   ```
-
-6. **Deploy:**
-   ```bash
-   fly deploy
-   ```
-
-7. **Initialize database (first time only):**
-   ```bash
-   fly ssh console -C "cd /app && python init_database.py"
-   ```
+**Force restart after configuration changes:**
+```bash
+fly apps restart your-app-name
+```
 
 ### Fly.io Configuration Files
 
