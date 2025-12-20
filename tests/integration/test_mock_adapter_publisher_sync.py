@@ -107,7 +107,7 @@ class TestMockAdapterPublisherSync:
         with app.test_request_context():
             with patch("src.admin.blueprints.publisher_partners.get_config", return_value=mock_config):
                 response = sync_publisher_partners(mock_tenant)
-                data = response[0].get_json()
+                data = response.get_json()
 
                 assert data["verified"] == 1
                 assert data.get("tags_created", 0) >= 0  # May be 0 if tag already exists
@@ -137,7 +137,7 @@ class TestMockAdapterPublisherSync:
         with app.test_request_context():
             with patch("src.admin.blueprints.publisher_partners.get_config", return_value=mock_config):
                 response = sync_publisher_partners(mock_tenant)
-                data = response[0].get_json()
+                data = response.get_json()
 
                 assert data["verified"] == 1
                 assert data.get("properties_created", 0) >= 1
