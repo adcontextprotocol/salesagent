@@ -1523,13 +1523,17 @@ async def _create_media_buy_impl(
                         request_currency = pricing_options[0].currency
 
             # Fallback to deprecated/legacy sources
-            if not request_currency and req.currency:
+            # Note: currency and budget fields no longer exist on CreateMediaBuyRequest per AdCP spec
+            # They have been moved to package level. Check with hasattr/getattr for backward compat.
+            legacy_currency = getattr(req, "currency", None)
+            legacy_budget = getattr(req, "budget", None)
+            if not request_currency and legacy_currency:
                 # Deprecated field, but still supported for backward compatibility
-                request_currency = req.currency
-            elif not request_currency and req.budget:
+                request_currency = legacy_currency
+            elif not request_currency and legacy_budget:
                 # Legacy: Extract currency from Budget object (if it's an object)
-                if hasattr(req.budget, "currency"):
-                    request_currency = req.budget.currency
+                if hasattr(legacy_budget, "currency"):
+                    request_currency = legacy_budget.currency
             elif not request_currency and req.packages and req.packages[0].budget:
                 # Legacy: Extract currency from package budget object (if it's an object)
                 if hasattr(req.packages[0].budget, "currency"):
@@ -3066,14 +3070,18 @@ async def _create_media_buy_impl(
                             )
 
         # Handle creatives if provided
+        # Note: creatives field no longer exists on CreateMediaBuyRequest per AdCP spec
+        # Creative IDs are now at package level (package.creative_ids). Check with getattr for backward compat.
         creative_statuses: dict[str, CreativeApprovalStatus] = {}
-        if req.creatives:
+        legacy_creatives = getattr(req, "creatives", None)
+        if legacy_creatives:
             # Convert Creative objects to format expected by adapter
             assets = []
-            for creative in req.creatives:
+            for creative in legacy_creatives:
                 try:
                     # Ensure product_ids is a list, not None
-                    product_ids_list = req.product_ids if req.product_ids else []
+                    # Note: product_ids no longer exists on CreateMediaBuyRequest - use get_product_ids() method
+                    product_ids_list = req.get_product_ids() if hasattr(req, "get_product_ids") else []
                     asset = _convert_creative_to_adapter_asset(creative, product_ids_list)
                     assets.append(asset)
                 except Exception as e:
@@ -3308,6 +3316,8 @@ async def _create_media_buy_impl(
             slack_notifier = get_slack_notifier(notifier_config)
 
             # Create success notification details
+            # Note: creatives field no longer exists on CreateMediaBuyRequest per AdCP spec
+            notification_creatives = getattr(req, "creatives", None)
             success_details = {
                 "total_budget": total_budget,
                 "po_number": req.po_number,
@@ -3316,7 +3326,7 @@ async def _create_media_buy_impl(
                 "product_ids": req.get_product_ids(),
                 "duration_days": (end_time_val - start_time_val).days + 1,
                 "packages_count": len(response_packages) if response_packages else 0,
-                "creatives_count": len(req.creatives) if req.creatives else 0,
+                "creatives_count": len(notification_creatives) if notification_creatives else 0,
                 "workflow_step_id": step.step_id,
             }
 
