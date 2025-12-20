@@ -1704,14 +1704,20 @@ async def _create_media_buy_impl(
                         )
                         raise ValueError(error_msg)
 
-        # Validate targeting doesn't use managed-only dimensions
-        if req.targeting_overlay:
-            from src.services.targeting_capabilities import validate_overlay_targeting
+        # Validate targeting doesn't use managed-only dimensions (targeting_overlay is at package level per AdCP spec)
+        for pkg in req.packages:
+            if hasattr(pkg, "targeting_overlay") and pkg.targeting_overlay:
+                from src.services.targeting_capabilities import validate_overlay_targeting
 
-            violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
-            if violations:
-                error_msg = f"Targeting validation failed: {'; '.join(violations)}"
-                raise ValueError(error_msg)
+                targeting_data = (
+                    pkg.targeting_overlay.model_dump(exclude_none=True)
+                    if hasattr(pkg.targeting_overlay, "model_dump")
+                    else pkg.targeting_overlay
+                )
+                violations = validate_overlay_targeting(targeting_data)
+                if violations:
+                    error_msg = f"Targeting validation failed: {'; '.join(violations)}"
+                    raise ValueError(error_msg)
 
     except (ValueError, PermissionError) as e:
         # Update workflow step as failed

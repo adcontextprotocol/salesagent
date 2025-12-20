@@ -31,7 +31,6 @@ from src.core.database.models import (
     PropertyTag,
     Tenant,
 )
-from src.core.schemas import Budget
 from src.core.tools.media_buy_create import _create_media_buy_impl
 from tests.helpers.adcp_factories import create_test_package_request
 from tests.integration_v2.conftest import create_test_product_with_pricing, get_pricing_option_id
@@ -301,7 +300,6 @@ class TestMinimumSpendValidation:
             ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            budget=Budget(total=500.0, currency="USD"),  # Explicit USD
             ctx=context,
         )
 
@@ -337,7 +335,6 @@ class TestMinimumSpendValidation:
             ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            budget=Budget(total=3000.0, currency="USD"),
             ctx=context,
         )
 
@@ -373,7 +370,6 @@ class TestMinimumSpendValidation:
             ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            budget=Budget(total=750.0, currency="USD"),
             ctx=context,
         )
 
@@ -405,7 +401,6 @@ class TestMinimumSpendValidation:
             ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            budget=Budget(total=2000.0, currency="USD"),
             ctx=context,
         )
 
@@ -439,7 +434,6 @@ class TestMinimumSpendValidation:
                 ],
                 start_time=start_time.isoformat(),
                 end_time=end_time.isoformat(),
-                budget=Budget(total=100000.0, currency="USD"),
                 ctx=context,
             )
 
@@ -472,7 +466,6 @@ class TestMinimumSpendValidation:
             ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            budget=Budget(total=800.0, currency="USD"),  # Changed to USD to match actual behavior
             ctx=context,
         )
 
@@ -518,7 +511,6 @@ class TestMinimumSpendValidation:
             ],
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            budget=Budget(total=100.0, currency="GBP"),
             ctx=context,
         )
 

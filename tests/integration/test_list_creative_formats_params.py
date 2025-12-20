@@ -25,7 +25,6 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 def test_list_creative_formats_request_minimal():
     """Test that ListCreativeFormatsRequest works with no params (all defaults)."""
     req = ListCreativeFormatsRequest()
-    assert req.adcp_version == "1.0.0"
     assert req.type is None
     assert req.format_ids is None
 
@@ -41,7 +40,6 @@ def test_list_creative_formats_request_with_all_params():
     ]
 
     req = ListCreativeFormatsRequest(
-        adcp_version="1.5.0",
         type="video",
         format_ids=format_ids,
         is_responsive=True,
@@ -49,7 +47,6 @@ def test_list_creative_formats_request_with_all_params():
         min_width=640,
         max_height=480,
     )
-    assert req.adcp_version == "1.5.0"
     # Library type uses enum, check both enum and value
     assert req.type == FormatCategory.video or req.type.value == "video"
     assert len(req.format_ids) == 2
