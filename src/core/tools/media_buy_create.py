@@ -522,26 +522,29 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                         budget = None
 
                     # Get pricing option from product
-                    pricing_option = None
+                    # adcp 2.14.0+ uses RootModel wrapper - access via .root
+                    pricing_option_inner = None
                     if product.pricing_options:
                         # Try to match pricing_model from package_config if present
                         pkg_pricing_model = package_config.get("pricing_model")
                         if pkg_pricing_model:
-                            pricing_option = next(
-                                (po for po in product.pricing_options if po.pricing_model == pkg_pricing_model),
-                                None,
-                            )
-                        if not pricing_option:
+                            for po in product.pricing_options:
+                                po_inner = getattr(po, "root", po)
+                                if po_inner.pricing_model == pkg_pricing_model:
+                                    pricing_option_inner = po_inner
+                                    break
+                        if not pricing_option_inner:
                             # Fall back to first pricing option
-                            pricing_option = product.pricing_options[0]
+                            first_po = product.pricing_options[0]
+                            pricing_option_inner = getattr(first_po, "root", first_po)
 
-                    if not pricing_option:
+                    if not pricing_option_inner:
                         error_msg = f"Product {product_id} has no pricing options"
                         logger.error(f"[APPROVAL] {error_msg}")
                         return False, error_msg
 
                     # Calculate CPM and impressions (convert Decimal to float for math operations)
-                    cpm = float(pricing_option.rate) if pricing_option.rate else 0.0
+                    cpm = float(pricing_option_inner.rate) if pricing_option_inner.rate else 0.0
                     impressions = int(total_budget / cpm * 1000) if cpm > 0 else 0
 
                     # Reconstruct package_pricing_info from package_config if available
@@ -553,10 +556,10 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                     elif package_id:
                         # Fallback for old media buys without pricing_info
                         package_pricing_info[package_id] = {
-                            "pricing_model": pricing_option.pricing_model,
-                            "currency": pricing_option.currency,
-                            "is_fixed": pricing_option.is_fixed,
-                            "rate": float(pricing_option.rate) if pricing_option.rate else None,
+                            "pricing_model": pricing_option_inner.pricing_model,
+                            "currency": pricing_option_inner.currency,
+                            "is_fixed": pricing_option_inner.is_fixed,
+                            "rate": float(pricing_option_inner.rate) if pricing_option_inner.rate else None,
                             "bid_price": None,
                         }
 
@@ -953,9 +956,13 @@ def _validate_pricing_model_selection(
     pricing_option_id = package.pricing_option_id
     pricing_model_fallback = package.pricing_model  # Legacy field
 
+    # Helper to unwrap RootModel - adcp 2.14.0+ uses RootModel wrapper
+    def unwrap_option(opt: Any) -> Any:
+        return getattr(opt, "root", opt)
+
     # If neither specified, use first pricing option from product
     if not pricing_option_id and not pricing_model_fallback:
-        first_option = product.pricing_options[0]
+        first_option = unwrap_option(product.pricing_options[0])
         return {
             "pricing_model": first_option.pricing_model,
             "rate": float(first_option.rate) if first_option.rate else None,
@@ -967,28 +974,29 @@ def _validate_pricing_model_selection(
     # Find matching pricing option
     selected_option = None
     for option in product.pricing_options:
+        opt_inner = unwrap_option(option)
         # Construct pricing_option_id in same format as get_products returns
         # Format: {pricing_model}_{currency}_{fixed|auction}
-        fixed_str = "fixed" if option.is_fixed else "auction"
-        option_id = f"{option.pricing_model}_{option.currency.lower()}_{fixed_str}"
+        fixed_str = "fixed" if opt_inner.is_fixed else "auction"
+        option_id = f"{opt_inner.pricing_model}_{opt_inner.currency.lower()}_{fixed_str}"
 
         # Try matching by pricing_option_id first (AdCP spec)
         if pricing_option_id and pricing_option_id.lower() == option_id.lower():
-            selected_option = option
+            selected_option = opt_inner
             break
 
         # Fallback: match by pricing_model (legacy)
-        if pricing_model_fallback and option.pricing_model == pricing_model_fallback.value:
+        if pricing_model_fallback and opt_inner.pricing_model == pricing_model_fallback.value:
             # If campaign currency specified, must match
-            if campaign_currency and option.currency != campaign_currency:
+            if campaign_currency and opt_inner.currency != campaign_currency:
                 continue
-            selected_option = option
+            selected_option = opt_inner
             break
 
     if not selected_option:
         # Show available options in same format as matching logic expects
         available_options = [
-            f"{opt.pricing_model}_{opt.currency.lower()}_{'fixed' if opt.is_fixed else 'auction'} ({opt.pricing_model} - {opt.currency})"
+            f"{unwrap_option(opt).pricing_model}_{unwrap_option(opt).currency.lower()}_{'fixed' if unwrap_option(opt).is_fixed else 'auction'} ({unwrap_option(opt).pricing_model} - {unwrap_option(opt).currency})"
             for opt in product.pricing_options
         ]
         error_msg = f"Product {product.product_id} does not offer "
@@ -2466,8 +2474,9 @@ async def _create_media_buy_impl(
             cpm = 10.0  # Default
             if pkg_product.pricing_options and len(pkg_product.pricing_options) > 0:
                 first_option = pkg_product.pricing_options[0]
-                # Use getattr for discriminated union to avoid union-attr errors
-                rate = getattr(first_option, "rate", None)
+                # adcp 2.14.0+ uses RootModel wrapper - access via .root
+                inner_option = getattr(first_option, "root", first_option)
+                rate = getattr(inner_option, "rate", None)
                 if rate:
                     cpm = float(rate)
 

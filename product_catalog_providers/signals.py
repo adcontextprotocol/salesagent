@@ -200,7 +200,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             is_custom=True,  # These are custom products created from signals
             brief_relevance=f"Generated from {len(signals)} signals in {category} category for: {brief[:100]}...",
             publisher_properties=[
-                PublisherPropertiesByTag(
+                PublisherPropertiesByTag(  # type: ignore[list-item]
                     selection_type="by_tag",
                     property_tags=[PropertyTag("all_inventory")],
                     publisher_domain="publisher.example.com",  # Placeholder domain
@@ -213,7 +213,7 @@ class SignalsDiscoveryProvider(ProductCatalogProvider):
             placements=None,  # Optional - new field from product details
             reporting_capabilities=None,  # Optional - new field from product details
             pricing_options=[
-                CpmAuctionPricingOption(
+                CpmAuctionPricingOption(  # type: ignore[list-item]
                     pricing_option_id="cpm_usd_auction",
                     pricing_model="cpm",  # Required literal for discriminated union
                     is_fixed=False,  # Required literal for CpmAuctionPricingOption

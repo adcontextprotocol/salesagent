@@ -265,11 +265,14 @@ class TestGetProductsFilterBehavior:
         assert hasattr(product, "pricing_options")
         assert len(product.pricing_options) > 0
 
+        # adcp 2.14.0+ uses RootModel wrapper - access via .root
         pricing = product.pricing_options[0]
-        assert hasattr(pricing, "pricing_model")
-        assert hasattr(pricing, "rate")
-        assert hasattr(pricing, "is_fixed")
-        assert hasattr(pricing, "currency")
+        pricing_inner = pricing.root if hasattr(pricing, "root") else pricing
+        assert hasattr(pricing_inner, "pricing_model")
+        # Note: 'rate' only exists on fixed-rate pricing options, not auction options
+        # Test for 'is_fixed' and 'currency' which exist on all pricing options
+        assert hasattr(pricing_inner, "is_fixed")
+        assert hasattr(pricing_inner, "currency")
 
         # Check formats structure
         assert len(product.format_ids) > 0

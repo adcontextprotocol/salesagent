@@ -67,7 +67,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
             data_provider="Acme Data Solutions",
             coverage_percentage=85.0,
             deployments=[
-                PlatformDeployment(
+                PlatformDeployment(  # type: ignore[list-item]
                     platform="google_ad_manager",
                     is_live=True,
                     type="platform",
@@ -83,7 +83,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
             data_provider="Premium Audience Co",
             coverage_percentage=75.0,
             deployments=[
-                PlatformDeployment(
+                PlatformDeployment(  # type: ignore[list-item]
                     platform="google_ad_manager",
                     is_live=True,
                     type="platform",
@@ -99,7 +99,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
             data_provider="Publisher Sports Network",
             coverage_percentage=95.0,
             deployments=[
-                PlatformDeployment(
+                PlatformDeployment(  # type: ignore[list-item]
                     platform="google_ad_manager",
                     is_live=True,
                     type="platform",
@@ -115,7 +115,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
             data_provider="Financial News Corp",
             coverage_percentage=88.0,
             deployments=[
-                PlatformDeployment(
+                PlatformDeployment(  # type: ignore[list-item]
                     platform="google_ad_manager",
                     is_live=True,
                     type="platform",
@@ -131,7 +131,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
             data_provider="Demographics Plus",
             coverage_percentage=78.0,
             deployments=[
-                PlatformDeployment(
+                PlatformDeployment(  # type: ignore[list-item]
                     platform="google_ad_manager",
                     is_live=True,
                     type="platform",
@@ -147,7 +147,7 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
             data_provider="Lifestyle Data Inc",
             coverage_percentage=92.0,
             deployments=[
-                PlatformDeployment(
+                PlatformDeployment(  # type: ignore[list-item]
                     platform="google_ad_manager",
                     is_live=True,
                     type="platform",

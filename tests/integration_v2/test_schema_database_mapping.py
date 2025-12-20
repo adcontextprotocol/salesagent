@@ -391,8 +391,11 @@ class TestSchemaFieldMapping:
             try:
                 validated_product = Product(**conversion_data)
                 assert validated_product.product_id == "validation_test_001"
-                assert validated_product.pricing_options[0].rate == 7.25
-                assert validated_product.pricing_options[0].pricing_model == "cpm"
+                # adcp 2.14.0+ uses RootModel wrapper - access via .root
+                pricing = validated_product.pricing_options[0]
+                pricing_inner = pricing.root if hasattr(pricing, "root") else pricing
+                assert pricing_inner.rate == 7.25
+                assert pricing_inner.pricing_model == "cpm"
             except Exception as e:
                 pytest.fail(f"Schema validation failed with database data: {e}")
 

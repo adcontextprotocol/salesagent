@@ -227,8 +227,10 @@ class DynamicPricingService:
         # Find existing CPM pricing option
         cpm_option = None
         for option in product.pricing_options:
-            if option.pricing_model.upper() == "CPM":
-                cpm_option = option
+            # adcp 2.14.0+ uses RootModel wrapper - access via .root
+            inner = getattr(option, "root", option)
+            if inner.pricing_model.upper() == "CPM":  # type: ignore[union-attr]
+                cpm_option = inner
                 break
 
         if cpm_option:
@@ -249,7 +251,7 @@ class DynamicPricingService:
                 # Set price_guidance on discriminated union using setattr
                 # Not all pricing option types have price_guidance attribute
                 new_guidance = PriceGuidance(floor=updated_floor, p25=None, p50=None, p75=updated_p75, p90=None)
-                setattr(cpm_option, "price_guidance", new_guidance)
+                cpm_option.price_guidance = new_guidance  # type: ignore[union-attr]
                 logger.debug(f"Updated existing CPM pricing option for {product.product_id}")
         else:
             # Create new CPM pricing option with price_guidance
