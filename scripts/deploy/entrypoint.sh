@@ -3,6 +3,42 @@ set -e
 
 echo "🚀 Starting AdCP Sales Agent..."
 
+# Validate required environment variables
+validate_required_env() {
+    echo "🔍 Validating required environment variables..."
+
+    local missing=()
+
+    # Super admin access - at least one must be set
+    if [ -z "$SUPER_ADMIN_EMAILS" ] && [ -z "$SUPER_ADMIN_DOMAINS" ]; then
+        missing+=("SUPER_ADMIN_EMAILS or SUPER_ADMIN_DOMAINS")
+    fi
+
+    # Database URL is required
+    if [ -z "$DATABASE_URL" ]; then
+        missing+=("DATABASE_URL")
+    fi
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "❌ Missing required environment variables:"
+        for var in "${missing[@]}"; do
+            echo "   - $var"
+        done
+        echo ""
+        echo "📖 See docs/deployment.md for configuration details."
+        echo ""
+        echo "Quick fix for Fly.io:"
+        echo "  fly secrets set SUPER_ADMIN_EMAILS=\"your-email@example.com\""
+        echo ""
+        exit 1
+    fi
+
+    echo "✅ Required environment variables are set"
+}
+
+# Validate required env vars first
+validate_required_env
+
 # Function to check if database is accessible
 check_database_health() {
     echo "🔍 Checking database connectivity..."

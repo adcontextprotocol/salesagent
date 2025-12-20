@@ -44,17 +44,20 @@ def validate_startup_requirements() -> None:
     This is useful for health checks and lightweight validation.
     """
     try:
+        import os
+
         from src.core.config import get_config
 
         # Just check that config can be loaded
         config = get_config()
 
-        # Basic sanity checks
-        if not config.gemini_api_key:
-            raise ValueError("GEMINI_API_KEY is required")
-
-        if not config.superadmin.emails:
-            raise ValueError("SUPER_ADMIN_EMAILS is required")
+        # Super admin access - at least one must be set
+        super_admin_emails = os.environ.get("SUPER_ADMIN_EMAILS", "")
+        super_admin_domains = os.environ.get("SUPER_ADMIN_DOMAINS", "")
+        if not super_admin_emails and not super_admin_domains:
+            raise ValueError(
+                "SUPER_ADMIN_EMAILS or SUPER_ADMIN_DOMAINS is required. " "Set at least one to grant admin access."
+            )
 
         logger.info("Startup requirements validation passed")
 
