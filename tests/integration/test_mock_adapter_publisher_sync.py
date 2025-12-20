@@ -96,10 +96,10 @@ class TestMockAdapterPublisherSync:
 
         from src.admin.app import create_app
         from src.admin.blueprints.publisher_partners import sync_publisher_partners
-        from src.core.config import Config
+        from src.core.config import AppConfig
 
         # Mock config to return development environment (triggers auto-verify)
-        mock_config = Config()
+        mock_config = AppConfig()
         mock_config.environment = "development"
 
         app, _ = create_app()
@@ -127,9 +127,9 @@ class TestMockAdapterPublisherSync:
 
         from src.admin.app import create_app
         from src.admin.blueprints.publisher_partners import sync_publisher_partners
-        from src.core.config import Config
+        from src.core.config import AppConfig
 
-        mock_config = Config()
+        mock_config = AppConfig()
         mock_config.environment = "development"
 
         app, _ = create_app()
@@ -165,9 +165,9 @@ class TestMockAdapterPublisherSync:
 
         from src.admin.app import create_app
         from src.admin.blueprints.publisher_partners import sync_publisher_partners
-        from src.core.config import Config
+        from src.core.config import AppConfig
 
-        mock_config = Config()
+        mock_config = AppConfig()
         mock_config.environment = "development"
 
         app, _ = create_app()
@@ -192,9 +192,9 @@ class TestMockAdapterPublisherSync:
 
         from src.admin.app import create_app
         from src.admin.blueprints.publisher_partners import sync_publisher_partners
-        from src.core.config import Config
+        from src.core.config import AppConfig
 
-        mock_config = Config()
+        mock_config = AppConfig()
         mock_config.environment = "development"
 
         app, _ = create_app()
