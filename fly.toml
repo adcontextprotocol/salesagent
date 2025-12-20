@@ -2,6 +2,14 @@
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
+# Port Architecture:
+#   - Port 8000: nginx reverse proxy (external-facing, what Fly routes to)
+#   - Port 8080: MCP server (internal, behind nginx)
+#   - Port 8001: Admin UI (internal, behind nginx)
+#   - Port 8091: A2A server (internal, behind nginx)
+#
+# The *_PORT env vars configure where internal services bind. nginx proxies
+# external requests on 8000 to the appropriate internal service by path.
 
 app = "adcp-sales-agent"
 primary_region = "iad"
@@ -9,7 +17,7 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile.fly"
 
-# Single unified service exposed via nginx
+# nginx proxy - routes to internal services by path
 [[services]]
   internal_port = 8000
   protocol = "tcp"
