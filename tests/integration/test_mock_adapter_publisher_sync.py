@@ -48,8 +48,6 @@ class TestMockAdapterPublisherSync:
             adapter_config = AdapterConfig(
                 tenant_id="test_mock_sync",
                 adapter_type="mock",
-                enabled=True,
-                config={},
             )
             session.add(adapter_config)
             session.commit()
