@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Static validation of adapter schema usage.
+Static validation of schema usage.
 
 Checks that all response constructor calls in main.py use correct field names
-as defined in schema_adapters.py.
+as defined in schemas.py.
 
 Exit codes:
   0 - All validations passed
@@ -283,14 +283,14 @@ def main() -> int:
     try:
         # Paths relative to repo root
         repo_root = Path(__file__).parent.parent
-        adapter_file = repo_root / "src/core/schema_adapters.py"
+        schemas_file = repo_root / "src/core/schemas.py"
         impl_file = repo_root / "src/core/main.py"
 
         # Stage 1: Extract schemas
-        schemas = extract_adapter_schemas(adapter_file)
+        schemas = extract_adapter_schemas(schemas_file)
 
         if not schemas:
-            print("⚠️  No adapter schemas found in schema_adapters.py")
+            print("⚠️  No schemas found in schemas.py")
             return 0
 
         # Filter to only Response classes (not Request classes)

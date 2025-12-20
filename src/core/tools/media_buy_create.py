@@ -77,7 +77,6 @@ from src.core.schemas import (
     PackageRequest,
     Principal,
     Product,
-    Targeting,
 )
 from src.core.schemas import (
     url as make_url,
@@ -1170,16 +1169,10 @@ from src.services.slack_notifier import get_slack_notifier
 async def _create_media_buy_impl(
     buyer_ref: str,
     brand_manifest: Any,  # BrandManifest | str - REQUIRED per AdCP v2.2.0 spec
-    packages: list[Any],  # REQUIRED per AdCP spec
+    packages: list[Any],  # REQUIRED per AdCP spec (each has targeting_overlay)
     start_time: Any,  # datetime | Literal["asap"] | str - REQUIRED per AdCP spec
     end_time: Any,  # datetime | str - REQUIRED per AdCP spec
-    budget: Any | None = None,  # DEPRECATED: Budget is package-level only per AdCP v2.2.0 (ignored)
     po_number: str | None = None,
-    product_ids: list[str] | None = None,  # Legacy format conversion
-    start_date: Any | None = None,  # Legacy format conversion
-    end_date: Any | None = None,  # Legacy format conversion
-    total_budget: float | None = None,  # Legacy format conversion
-    targeting_overlay: Targeting | None = None,
     pacing: Literal["even", "asap", "daily_budget"] = "even",
     daily_budget: float | None = None,
     creatives: list[Any] | None = None,
@@ -1196,16 +1189,10 @@ async def _create_media_buy_impl(
     Args:
         buyer_ref: Buyer reference for tracking (REQUIRED per AdCP spec)
         brand_manifest: Brand information manifest - inline object or URL string (REQUIRED per AdCP v2.2.0 spec)
-        packages: Array of packages with products and budgets (REQUIRED)
+        packages: Array of packages with products, budgets, and targeting_overlay (REQUIRED)
         start_time: Campaign start time ISO 8601 or 'asap' (REQUIRED)
         end_time: Campaign end time ISO 8601 (REQUIRED)
-        budget: DEPRECATED - Budget is at package level only per AdCP v2.2.0 (ignored if provided)
         po_number: Purchase order number (optional)
-        product_ids: Legacy: Product IDs (converted to packages)
-        start_date: Legacy: Start date (converted to start_time)
-        end_date: Legacy: End date (converted to end_time)
-        total_budget: Legacy: Total budget (converted to Budget object)
-        targeting_overlay: Targeting overlay configuration
         pacing: Pacing strategy (even, asap, daily_budget)
         daily_budget: Daily budget limit
         creatives: Creative assets for the campaign
@@ -1215,7 +1202,7 @@ async def _create_media_buy_impl(
         strategy_id: Optional strategy ID for linking operations
         push_notification_config: Push notification config for status updates (MCP/A2A)
         context: Application level context per adcp spec
-        ctx:  FastMCP context (automatically provided) (automatically provided)
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         CreateMediaBuyResponse with media buy details
@@ -1234,35 +1221,27 @@ async def _create_media_buy_impl(
                 buyer_ref,
             )
 
-    # Create request object from individual parameters (MCP-compliant)
-    # Validate early with helpful error messages
+    # Parse ISO 8601 strings to datetime if needed
+    effective_start_time = start_time
+    effective_end_time = end_time
+    if isinstance(effective_start_time, str) and effective_start_time != "asap":
+        effective_start_time = datetime.fromisoformat(effective_start_time)
+    if isinstance(effective_end_time, str):
+        effective_end_time = datetime.fromisoformat(effective_end_time)
 
+    # Create spec-compliant request object
+    # Non-spec fields (pacing, daily_budget, creatives,
+    # required_axe_signals, enable_creative_macro, strategy_id, push_notification_config)
+    # are used directly below, not passed to the request
     try:
         req = CreateMediaBuyRequest(
             buyer_ref=buyer_ref,
             brand_manifest=brand_manifest,
-            campaign_name=None,  # Optional display name
-            po_number=po_number,
             packages=packages,
-            start_time=start_time,
-            end_time=end_time,
-            budget=None,  # Budget is package-level, but field exists in schema
-            currency=None,  # Derived from product pricing_options
-            product_ids=product_ids,
-            start_date=start_date,
-            end_date=end_date,
-            total_budget=total_budget,
-            targeting_overlay=targeting_overlay,
-            pacing=pacing,
-            daily_budget=daily_budget,
-            creatives=creatives,
+            start_time=effective_start_time,
+            end_time=effective_end_time,
+            po_number=po_number,
             reporting_webhook=reporting_webhook,
-            required_axe_signals=required_axe_signals,
-            enable_creative_macro=enable_creative_macro,
-            strategy_id=strategy_id,
-            webhook_url=None,  # Internal field, not in AdCP spec
-            webhook_auth_token=None,  # Internal field, not in AdCP spec
-            push_notification_config=push_notification_config,
             context=context,
         )
     except ValidationError as e:
@@ -3507,20 +3486,7 @@ async def create_media_buy(
         packages=packages_dicts,
         start_time=start_time,
         end_time=end_time,
-        budget=budget,
-        product_ids=product_ids,
-        start_date=start_date,
-        end_date=end_date,
-        total_budget=total_budget,
-        targeting_overlay=cast(Targeting | None, targeting_overlay_dict),
-        pacing=cast(Literal["even", "asap", "daily_budget"], pacing),
-        daily_budget=daily_budget,
-        creatives=creatives_dicts,
         reporting_webhook=reporting_webhook_dict,
-        required_axe_signals=required_axe_signals,
-        enable_creative_macro=enable_creative_macro,
-        strategy_id=strategy_id,
-        push_notification_config=push_config_dict,
         context=context_dict,
         ctx=ctx,
     )
@@ -3588,20 +3554,7 @@ async def create_media_buy_raw(
         packages=packages,
         start_time=start_time,
         end_time=end_time,
-        budget=budget,
-        product_ids=product_ids,
-        start_date=start_date,
-        end_date=end_date,
-        total_budget=total_budget,
-        targeting_overlay=cast(Targeting | None, targeting_overlay),
-        pacing=cast(Literal["even", "asap", "daily_budget"], pacing),
-        daily_budget=daily_budget,
-        creatives=creatives,
         reporting_webhook=reporting_webhook,
-        required_axe_signals=required_axe_signals,
-        enable_creative_macro=enable_creative_macro,
-        strategy_id=strategy_id,
-        push_notification_config=push_notification_config,
         context=context,
         ctx=ctx,
     )

@@ -529,9 +529,20 @@ class XandrAdapter(AdServerAdapter):
             if not self.advertiser_id:
                 raise ValueError("Advertiser ID is required for Xandr operations")
 
+            # campaign_name is no longer on CreateMediaBuyRequest per AdCP spec
+            # Use brand_manifest name or buyer_ref as fallback
+            campaign_name = None
+            if hasattr(request, "brand_manifest") and request.brand_manifest:
+                manifest = request.brand_manifest
+                if hasattr(manifest, "name"):
+                    campaign_name = manifest.name
+                elif isinstance(manifest, dict):
+                    campaign_name = manifest.get("name")
+            campaign_name = campaign_name or f"AdCP Campaign {request.buyer_ref}"
+
             io_data = {
                 "insertion-order": {
-                    "name": request.campaign_name or f"AdCP Campaign {request.buyer_ref}",
+                    "name": campaign_name,
                     "advertiser_id": int(self.advertiser_id),
                     "start_date": start_time.date().isoformat(),
                     "end_date": end_time.date().isoformat(),
@@ -584,33 +595,25 @@ class XandrAdapter(AdServerAdapter):
                     }
                 }
 
-                # Apply targeting
-                if request.targeting_overlay:
+                # Apply targeting (from package-level targeting_overlay per AdCP spec)
+                if package.targeting_overlay:
                     targeting_dict = (
-                        request.targeting_overlay.model_dump()
-                        if hasattr(request.targeting_overlay, "model_dump")
-                        else dict(request.targeting_overlay)
+                        package.targeting_overlay.model_dump()
+                        if hasattr(package.targeting_overlay, "model_dump")
+                        else dict(package.targeting_overlay)
                     )
                     li_data["line-item"]["profile_id"] = self._create_targeting_profile(targeting_dict)
 
                 li_response = self._make_request("POST", "/line-item", li_data)
                 li_id = li_response["response"]["line-item"]["id"]
 
-                # Get matching request package for buyer_ref
-                matching_req_package = None
-                if request.packages and idx < len(request.packages):
-                    matching_req_package = request.packages[idx]
-
-                buyer_ref = "unknown"  # Default fallback
-                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                    buyer_ref = matching_req_package.buyer_ref or buyer_ref
-
                 # Build package response - Per AdCP spec, CreateMediaBuyResponse.Package only contains:
                 # - buyer_ref (required)
                 # - package_id (required)
+                # MediaPackage has buyer_ref populated from request
                 package_responses.append(
                     AdCPPackage(
-                        buyer_ref=buyer_ref,
+                        buyer_ref=package.buyer_ref or "unknown",
                         package_id=package.package_id,
                         paused=False,
                     )

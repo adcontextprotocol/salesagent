@@ -83,7 +83,7 @@ def generate_auto_name(
                 brand_name = manifest.name
             elif isinstance(manifest, dict):
                 brand_name = manifest.get("name")
-        return brand_name or request.campaign_name or "Campaign"
+        return brand_name or "Campaign"
 
     try:
         import google.generativeai as genai
@@ -110,7 +110,6 @@ def generate_auto_name(
 
         context_parts = [
             f"Buyer Reference: {request.buyer_ref}",
-            f"Campaign: {request.campaign_name or 'N/A'}",
             f"Brand: {brand_name}",
         ]
 
@@ -178,7 +177,7 @@ Return ONLY the order name, nothing else."""
 
     except Exception as e:
         logger.warning(f"Failed to generate auto_name with Gemini: {e}, falling back")
-        # Fallback to brand name or campaign_name
+        # Fallback to brand name
         brand_name = None
         if hasattr(request, "brand_manifest") and request.brand_manifest:
             manifest = request.brand_manifest
@@ -188,7 +187,7 @@ Return ONLY the order name, nothing else."""
                 brand_name = manifest.name
             elif isinstance(manifest, dict):
                 brand_name = manifest.get("name")
-        return brand_name or request.campaign_name or "Campaign"
+        return brand_name or "Campaign"
 
 
 def apply_naming_template(
@@ -291,8 +290,12 @@ def build_order_name_context(
         elif isinstance(manifest, dict):
             brand_name = manifest.get("name")
 
+    # campaign_name is no longer on CreateMediaBuyRequest per AdCP spec
+    # Use brand_name or generate from buyer_ref as fallback
+    campaign_name = brand_name or f"Campaign {request.buyer_ref}"
+
     return {
-        "campaign_name": request.campaign_name,
+        "campaign_name": campaign_name,
         "brand_name": brand_name or "N/A",
         "promoted_offering": brand_name or "N/A",  # Backward compatibility alias
         "buyer_ref": request.buyer_ref,

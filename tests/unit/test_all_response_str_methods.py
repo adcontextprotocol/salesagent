@@ -2,18 +2,16 @@
 
 from datetime import UTC, datetime
 
-from src.core.schema_adapters import (
-    ActivateSignalResponse,
-    GetProductsResponse,
-    ListCreativeFormatsResponse,
-    ListCreativesResponse,
-)
 from src.core.schemas import (
+    ActivateSignalResponse,
     CreateHumanTaskResponse,
     CreateMediaBuySuccess,
     Creative,
     Format,
     FormatId,
+    GetProductsResponse,
+    ListCreativeFormatsResponse,
+    ListCreativesResponse,
     Pagination,
     Product,
     QuerySummary,
@@ -129,21 +127,18 @@ class TestResponseStrMethods:
         """ListCreativeFormatsResponse with single format generates appropriate message."""
         fmt = Format(format_id=make_format_id("banner_300x250"), name="Banner", type="display")
         resp = ListCreativeFormatsResponse(formats=[fmt])
-        # Library message: "Found 1 supported creative format."
-        assert str(resp) == "Found 1 supported creative format."
+        assert str(resp) == "Found 1 creative format."
 
     def test_list_creative_formats_response_multiple_formats(self):
         """ListCreativeFormatsResponse with multiple formats generates count."""
         formats = [Format(format_id=make_format_id(f"fmt{i}"), name=f"Format {i}", type="display") for i in range(5)]
         resp = ListCreativeFormatsResponse(formats=formats)
-        # Library message: "Found N supported creative formats."
-        assert str(resp) == "Found 5 supported creative formats."
+        assert str(resp) == "Found 5 creative formats."
 
     def test_list_creative_formats_response_empty(self):
         """ListCreativeFormatsResponse with no formats generates appropriate message."""
         resp = ListCreativeFormatsResponse(formats=[])
-        # Library message: "Found 0 supported creative formats."
-        assert str(resp) == "Found 0 supported creative formats."
+        assert str(resp) == "No creative formats are currently supported."
 
     def test_sync_creatives_response(self):
         """SyncCreativesResponse generates message from creatives list."""
@@ -182,36 +177,29 @@ class TestResponseStrMethods:
             pagination=Pagination(limit=10, offset=0, has_more=False),
             creatives=[creative],
         )
-        # Library message: "Found N creatives in the system."
-        assert str(resp) == "Found 1 creative in the system."
+        assert str(resp) == "Found 1 creative."
 
-    def test_activate_signal_response_deployed(self):
-        """ActivateSignalResponse with deployed status shows platform ID."""
+    def test_activate_signal_response_success(self):
+        """ActivateSignalResponse without errors shows success message."""
+        resp = ActivateSignalResponse(signal_id="sig_123")
+        assert str(resp) == "Signal sig_123 activated successfully."
+
+    def test_activate_signal_response_with_errors(self):
+        """ActivateSignalResponse with errors shows error count."""
+        from adcp import Error
+
         resp = ActivateSignalResponse(
-            task_id="task_123",
-            status="deployed",
-            decisioning_platform_segment_id="seg_456",
+            signal_id="sig_123", errors=[Error(code="ACTIVATION_FAILED", message="Could not activate signal")]
         )
-        assert str(resp) == "Signal activated successfully (platform ID: seg_456)."
+        assert str(resp) == "Signal sig_123 activation encountered 1 error(s)."
 
-    def test_activate_signal_response_processing(self):
-        """ActivateSignalResponse with processing status shows ETA."""
+    def test_activate_signal_response_with_details(self):
+        """ActivateSignalResponse can include activation details."""
         resp = ActivateSignalResponse(
-            task_id="task_123",
-            status="processing",
-            estimated_activation_duration_minutes=5.0,
+            signal_id="sig_123", activation_details={"platform_id": "seg_456", "estimated_duration_minutes": 5.0}
         )
-        assert str(resp) == "Signal activation in progress (ETA: 5.0 min)."
-
-    def test_activate_signal_response_pending(self):
-        """ActivateSignalResponse with pending status shows task ID."""
-        resp = ActivateSignalResponse(task_id="task_123", status="pending")
-        assert str(resp) == "Signal activation pending (task ID: task_123)."
-
-    def test_activate_signal_response_failed(self):
-        """ActivateSignalResponse with failed status shows task ID."""
-        resp = ActivateSignalResponse(task_id="task_123", status="failed")
-        assert str(resp) == "Signal activation failed (task ID: task_123)."
+        # Activation details don't affect __str__ output
+        assert str(resp) == "Signal sig_123 activated successfully."
 
     def test_simulation_control_response_with_message(self):
         """SimulationControlResponse with message returns the message."""

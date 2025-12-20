@@ -35,17 +35,15 @@ class TestBudgetFormatCompatibility:
         assert budget_amount == Decimal("5000.0")
         assert isinstance(package.budget, float)
 
-    def test_request_budget_as_number_with_currency_field(self):
-        """Test CreateMediaBuyRequest with budget as number (legacy format).
+    def test_request_budget_from_packages(self):
+        """Test CreateMediaBuyRequest computes budget from packages.
 
-        NOTE: Per AdCP v2.2.0, budget is NOT a required field at media buy level.
-        Budget should be specified per-package. This test validates legacy backward compatibility.
+        Per AdCP v2.2.0, budget is specified at package level, not at media buy level.
+        This test validates get_total_budget() correctly sums all package budgets.
         """
         request = CreateMediaBuyRequest(
             brand_manifest={"name": "Test Campaign"},
             buyer_ref="test-123",
-            budget=5000.0,  # LEGACY: top-level budget (not in AdCP spec)
-            currency="USD",  # Separate currency field
             packages=[
                 PackageRequest(product_id="prod_1", budget=2500.0, buyer_ref="pkg1", pricing_option_id="test_pricing")
             ],
@@ -53,154 +51,11 @@ class TestBudgetFormatCompatibility:
             end_time="2025-02-28T23:59:59Z",
         )
 
-        # Extract budget and currency using the pattern from naming.py
-        if request.budget:
-            if isinstance(request.budget, dict):
-                budget_amount = request.budget.get("total", 0)
-                currency = request.budget.get("currency", request.currency or "USD")
-            elif isinstance(request.budget, int | float):
-                budget_amount = request.budget
-                currency = request.currency or "USD"
-            else:
-                # Budget object with .total and .currency attributes
-                budget_amount = request.budget.total
-                currency = request.budget.currency
-
-        assert budget_amount == 5000.0
-        assert currency == "USD"
-        assert isinstance(request.budget, float)
-
         # Verify get_total_budget() sums package budgets (AdCP v2.2.0 behavior)
-        assert request.get_total_budget() == 2500.0  # From package, not top-level budget
+        assert request.get_total_budget() == 2500.0
 
-    def test_request_budget_as_budget_object(self):
-        """Test CreateMediaBuyRequest with Budget object (legacy format).
-
-        NOTE: Per AdCP v2.2.0, budget is NOT a required field at media buy level.
-        This test validates legacy backward compatibility with Budget objects.
-        """
-        request = CreateMediaBuyRequest(
-            brand_manifest={"name": "Test Campaign"},
-            buyer_ref="test-123",
-            budget=Budget(total=3000.0, currency="EUR"),  # LEGACY format
-            packages=[
-                PackageRequest(product_id="prod_1", budget=1500.0, buyer_ref="pkg1", pricing_option_id="test_pricing")
-            ],
-            start_time="2025-02-15T00:00:00Z",
-            end_time="2025-02-28T23:59:59Z",
-        )
-
-        # Extract budget and currency using the pattern from naming.py
-        if request.budget:
-            if isinstance(request.budget, dict):
-                budget_amount = request.budget.get("total", 0)
-                currency = request.budget.get("currency", request.currency or "USD")
-            elif isinstance(request.budget, int | float):
-                budget_amount = request.budget
-                currency = request.currency or "USD"
-            else:
-                # Budget object with .total and .currency attributes
-                budget_amount = request.budget.total
-                currency = request.budget.currency
-
-        assert budget_amount == 3000.0
-        assert currency == "EUR"
-        assert isinstance(request.budget, Budget)
-
-        # Verify get_total_budget() sums package budgets (AdCP v2.2.0 behavior)
-        assert request.get_total_budget() == 1500.0  # From package, not top-level budget
-
-    def test_request_budget_as_dict(self):
-        """Test CreateMediaBuyRequest with budget as dict (legacy format).
-
-        Note: Pydantic automatically converts dicts to Budget objects during validation,
-        so we verify that dict input is accepted and properly converted.
-
-        Per AdCP v2.2.0, budget is NOT required at media buy level. This validates legacy support.
-        """
-        request = CreateMediaBuyRequest(
-            brand_manifest={"name": "Test Campaign"},
-            buyer_ref="test-123",
-            budget={"total": 7500.0, "currency": "GBP"},  # LEGACY format
-            packages=[
-                PackageRequest(product_id="prod_1", budget=3000.0, buyer_ref="pkg1", pricing_option_id="test_pricing")
-            ],
-            start_time="2025-02-15T00:00:00Z",
-            end_time="2025-02-28T23:59:59Z",
-        )
-
-        # Extract budget and currency using the pattern from naming.py
-        if request.budget:
-            if isinstance(request.budget, dict):
-                budget_amount = request.budget.get("total", 0)
-                currency = request.budget.get("currency", request.currency or "USD")
-            elif isinstance(request.budget, int | float):
-                budget_amount = request.budget
-                currency = request.currency or "USD"
-            else:
-                # Budget object with .total and .currency attributes
-                budget_amount = request.budget.total
-                currency = request.budget.currency
-
-        assert budget_amount == 7500.0
-        assert currency == "GBP"
-        # Pydantic converts dict to Budget object automatically
-        assert isinstance(request.budget, Budget)
-
-        # Verify get_total_budget() sums package budgets (AdCP v2.2.0 behavior)
-        assert request.get_total_budget() == 3000.0  # From package, not top-level budget
-
-    def test_request_with_number_budget_falls_back_to_currency_field(self):
-        """Test that number format uses currency field for currency (legacy behavior)."""
-        request = CreateMediaBuyRequest(
-            brand_manifest={"name": "Test Campaign"},
-            buyer_ref="test-123",
-            budget=5000.0,  # LEGACY: top-level budget
-            currency="JPY",
-            packages=[
-                PackageRequest(product_id="prod_1", budget=2000.0, buyer_ref="pkg1", pricing_option_id="test_pricing")
-            ],
-            start_time="2025-02-15T00:00:00Z",
-            end_time="2025-02-28T23:59:59Z",
-        )
-
-        # Extract budget and currency
-        if isinstance(request.budget, int | float):
-            budget_amount = request.budget
-            currency = request.currency or "USD"
-
-        assert budget_amount == 5000.0
-        assert currency == "JPY"
-
-        # Verify get_total_budget() sums package budgets (AdCP v2.2.0 behavior)
-        assert request.get_total_budget() == 2000.0
-
-    def test_request_with_number_budget_defaults_to_usd_if_no_currency(self):
-        """Test that number format defaults to USD if no currency field (legacy behavior)."""
-        request = CreateMediaBuyRequest(
-            brand_manifest={"name": "Test Campaign"},
-            buyer_ref="test-123",
-            budget=5000.0,  # LEGACY: top-level budget
-            packages=[
-                PackageRequest(product_id="prod_1", budget=3500.0, buyer_ref="pkg1", pricing_option_id="test_pricing")
-            ],
-            start_time="2025-02-15T00:00:00Z",
-            end_time="2025-02-28T23:59:59Z",
-        )
-
-        # Extract budget and currency
-        if isinstance(request.budget, int | float):
-            budget_amount = request.budget
-            currency = request.currency or "USD"
-
-        assert budget_amount == 5000.0
-        assert currency == "USD"
-
-        # Verify get_total_budget() sums package budgets (AdCP v2.2.0 behavior)
-        assert request.get_total_budget() == 3500.0
-
-    def test_multiple_packages_mixed_budget_formats(self):
-        """Test request with packages using float budgets.
+    def test_multiple_packages_budget_sum(self):
+        """Test request with multiple packages using float budgets.
 
         Per AdCP v2.2.0, budget is specified at package level as float.
         This test validates that get_total_budget() correctly sums all package budgets.
@@ -208,18 +63,10 @@ class TestBudgetFormatCompatibility:
         request = CreateMediaBuyRequest(
             brand_manifest={"name": "Test Campaign"},
             buyer_ref="test-123",
-            budget=10000.0,  # LEGACY: ignored by get_total_budget()
-            currency="USD",
             packages=[
-                PackageRequest(
-                    product_id="prod_1", budget=5000.0, buyer_ref="pkg1", pricing_option_id="test_pricing"
-                ),  # Number
-                PackageRequest(
-                    product_id="prod_2", budget=3000.0, buyer_ref="pkg2", pricing_option_id="test_pricing"
-                ),  # Number
-                PackageRequest(
-                    product_id="prod_3", budget=2000.0, buyer_ref="pkg3", pricing_option_id="test_pricing"
-                ),  # Number
+                PackageRequest(product_id="prod_1", budget=5000.0, buyer_ref="pkg1", pricing_option_id="test_pricing"),
+                PackageRequest(product_id="prod_2", budget=3000.0, buyer_ref="pkg2", pricing_option_id="test_pricing"),
+                PackageRequest(product_id="prod_3", budget=2000.0, buyer_ref="pkg3", pricing_option_id="test_pricing"),
             ],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",

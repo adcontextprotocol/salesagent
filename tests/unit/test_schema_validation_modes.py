@@ -41,57 +41,40 @@ class TestSchemaValidationModes:
             # Verify unknown field was dropped
             assert not hasattr(request, "unknown_field")
 
-    def test_adcp_version_accepted_in_production(self):
-        """Production mode should accept future schema fields like adcp_version."""
-        with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
-            # This was failing before - client sending adcp_version from newer schema
-            request = CreateMediaBuyRequest(
+    def test_adcp_version_rejected_in_schema(self):
+        """Schema extending library type rejects extra fields (library uses extra=forbid)."""
+        # Since CreateMediaBuyRequest extends the library type which uses extra="forbid",
+        # extra fields are always rejected regardless of environment.
+        # This is the expected behavior per AdCP spec compliance.
+        with pytest.raises(ValidationError) as exc_info:
+            CreateMediaBuyRequest(
                 buyer_ref="test-123",
                 brand_manifest={"name": "Test Product"},
-                packages=[],
+                packages=[
+                    {"buyer_ref": "pkg_1", "product_id": "prod_1", "budget": 5000.0, "pricing_option_id": "test"}
+                ],
                 start_time="2025-02-15T00:00:00Z",
                 end_time="2025-02-28T23:59:59Z",
-                budget={"total": 5000.0, "currency": "USD"},
-                adcp_version="1.8.0",  # Future field from v1.8.0 schema
+                adcp_version="1.8.0",  # Extra field
             )
 
-            assert request.buyer_ref == "test-123"
-            # adcp_version might be stored or ignored depending on schema definition
+        assert "adcp_version" in str(exc_info.value)
 
-    def test_create_media_buy_with_extra_fields_production(self):
-        """CreateMediaBuyRequest should accept extra fields in production."""
-        with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
-            request = CreateMediaBuyRequest(
+    def test_create_media_buy_rejects_extra_fields(self):
+        """CreateMediaBuyRequest rejects extra fields (extends library type)."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateMediaBuyRequest(
                 buyer_ref="test-123",
                 brand_manifest={"name": "Test Product"},
-                packages=[],
+                packages=[
+                    {"buyer_ref": "pkg_1", "product_id": "prod_1", "budget": 5000.0, "pricing_option_id": "test"}
+                ],
                 start_time="2025-02-15T00:00:00Z",
                 end_time="2025-02-28T23:59:59Z",
-                budget={"total": 5000.0, "currency": "USD"},
-                future_field="from_v2.0",  # Field that doesn't exist yet
-                another_future_field=123,
+                future_field="should_fail",
             )
 
-            assert request.buyer_ref == "test-123"
-            # Extra fields should be silently dropped
-
-    def test_create_media_buy_rejects_extra_fields_development(self):
-        """CreateMediaBuyRequest should reject extra fields in development."""
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("ENVIRONMENT", None)  # Default to development
-
-            with pytest.raises(ValidationError) as exc_info:
-                CreateMediaBuyRequest(
-                    buyer_ref="test-123",
-                    brand_manifest={"name": "Test Product"},
-                    packages=[],
-                    start_time="2025-02-15T00:00:00Z",
-                    end_time="2025-02-28T23:59:59Z",
-                    budget={"total": 5000.0, "currency": "USD"},
-                    future_field="should_fail",
-                )
-
-            assert "future_field" in str(exc_info.value)
+        assert "future_field" in str(exc_info.value)
 
     def test_environment_case_insensitive(self):
         """ENVIRONMENT variable should be case-insensitive."""

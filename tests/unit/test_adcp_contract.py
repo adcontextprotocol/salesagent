@@ -59,6 +59,179 @@ from src.core.schemas import (
 )
 
 
+class TestSchemaMatchesLibrary:
+    """Validate that our schemas match the adcp library schemas.
+
+    These tests ensure we don't accidentally deviate from the AdCP spec
+    by comparing our field definitions against the library's generated schemas.
+    """
+
+    def test_all_request_schemas_match_library(self):
+        """Comprehensive test that all request schemas match library definitions.
+
+        This test documents any drift between our local schemas and the library.
+        Non-spec fields should be explicitly documented and eventually removed.
+        """
+        from adcp import (
+            CreateMediaBuyRequest as LibCreateMediaBuyRequest,
+        )
+        from adcp import (
+            GetMediaBuyDeliveryRequest as LibGetMediaBuyDeliveryRequest,
+        )
+        from adcp import (
+            GetProductsRequest as LibGetProductsRequest,
+        )
+        from adcp import (
+            GetSignalsRequest as LibGetSignalsRequest,
+        )
+        from adcp import (
+            ListAuthorizedPropertiesRequest as LibListAuthorizedPropertiesRequest,
+        )
+        from adcp import (
+            ListCreativeFormatsRequest as LibListCreativeFormatsRequest,
+        )
+        from adcp import (
+            ListCreativesRequest as LibListCreativesRequest,
+        )
+        from adcp import (
+            SyncCreativesRequest as LibSyncCreativesRequest,
+        )
+
+        from src.core.schemas import (
+            CreateMediaBuyRequest as LocalCreateMediaBuyRequest,
+        )
+        from src.core.schemas import (
+            GetMediaBuyDeliveryRequest as LocalGetMediaBuyDeliveryRequest,
+        )
+        from src.core.schemas import (
+            GetSignalsRequest as LocalGetSignalsRequest,
+        )
+        from src.core.schemas import (
+            ListAuthorizedPropertiesRequest as LocalListAuthorizedPropertiesRequest,
+        )
+        from src.core.schemas import (
+            ListCreativeFormatsRequest as LocalListCreativeFormatsRequest,
+        )
+        from src.core.schemas import (
+            ListCreativesRequest as LocalListCreativesRequest,
+        )
+        from src.core.schemas import (
+            SyncCreativesRequest as LocalSyncCreativesRequest,
+        )
+
+        # GetProductsRequest - should match exactly (fixed in this PR)
+        lib_fields = set(LibGetProductsRequest.model_fields.keys())
+        local_fields = set(GetProductsRequest.model_fields.keys())
+        assert lib_fields == local_fields, f"GetProductsRequest drift: lib={lib_fields}, local={local_fields}"
+
+        # GetMediaBuyDeliveryRequest - should match exactly
+        lib_fields = set(LibGetMediaBuyDeliveryRequest.model_fields.keys())
+        local_fields = set(LocalGetMediaBuyDeliveryRequest.model_fields.keys())
+        assert lib_fields == local_fields, f"GetMediaBuyDeliveryRequest drift: lib={lib_fields}, local={local_fields}"
+
+        # Document known drift for other schemas (to be fixed)
+        # These assertions document the current state and will fail when fixed
+
+        # CreateMediaBuyRequest - has many non-spec convenience fields
+        # CreateMediaBuyRequest - now extends library, should match
+        lib_fields = set(LibCreateMediaBuyRequest.model_fields.keys())
+        local_fields = set(LocalCreateMediaBuyRequest.model_fields.keys())
+        assert lib_fields == local_fields, f"CreateMediaBuyRequest drift: lib={lib_fields}, local={local_fields}"
+
+        # ListCreativesRequest - now extends library, should match
+        lib_fields = set(LibListCreativesRequest.model_fields.keys())
+        local_fields = set(LocalListCreativesRequest.model_fields.keys())
+        assert lib_fields == local_fields, f"ListCreativesRequest drift: lib={lib_fields}, local={local_fields}"
+
+        # ListCreativeFormatsRequest - now extends library, should match
+        lib_fields = set(LibListCreativeFormatsRequest.model_fields.keys())
+        local_fields = set(LocalListCreativeFormatsRequest.model_fields.keys())
+        assert lib_fields == local_fields, f"ListCreativeFormatsRequest drift: lib={lib_fields}, local={local_fields}"
+
+        # ListAuthorizedPropertiesRequest - now extends library, should match
+        lib_fields = set(LibListAuthorizedPropertiesRequest.model_fields.keys())
+        local_fields = set(LocalListAuthorizedPropertiesRequest.model_fields.keys())
+        assert (
+            lib_fields == local_fields
+        ), f"ListAuthorizedPropertiesRequest drift: lib={lib_fields}, local={local_fields}"
+
+        # GetSignalsRequest - now has ext field, should match
+        lib_fields = set(LibGetSignalsRequest.model_fields.keys())
+        local_fields = set(LocalGetSignalsRequest.model_fields.keys())
+        assert lib_fields == local_fields, f"GetSignalsRequest drift: lib={lib_fields}, local={local_fields}"
+
+        # SyncCreativesRequest - now has ext field, should match
+        lib_fields = set(LibSyncCreativesRequest.model_fields.keys())
+        local_fields = set(LocalSyncCreativesRequest.model_fields.keys())
+        assert lib_fields == local_fields, f"SyncCreativesRequest drift: lib={lib_fields}, local={local_fields}"
+
+    def test_get_products_request_field_optionality(self):
+        """Verify GetProductsRequest fields match library optionality.
+
+        Per AdCP spec, all fields in GetProductsRequest are optional.
+        This test catches accidental regressions where we make fields required.
+        """
+        from adcp import GetProductsRequest as LibraryGetProductsRequest
+
+        # Verify library allows empty request (all fields optional)
+        lib_req = LibraryGetProductsRequest()
+        assert lib_req.brief is None
+        assert lib_req.brand_manifest is None
+        assert lib_req.context is None
+        assert lib_req.filters is None
+
+        # Our schema should also allow empty request
+        our_req = GetProductsRequest()
+        assert our_req.brief is None
+        assert our_req.brand_manifest is None
+
+    def test_get_products_request_brand_manifest_accepts_url_string(self):
+        """Verify brand_manifest accepts URL string per AdCP spec."""
+        from adcp import GetProductsRequest as LibraryGetProductsRequest
+
+        # Library accepts URL string
+        lib_req = LibraryGetProductsRequest(brand_manifest="https://acme.com/brand.json")
+        assert lib_req.brand_manifest is not None
+
+        # Our schema should also accept URL string
+        our_req = GetProductsRequest(brand_manifest="https://acme.com/brand.json")
+        assert our_req.brand_manifest is not None
+
+    def test_create_media_buy_request_brand_manifest_required(self):
+        """Verify CreateMediaBuyRequest requires brand_manifest (unlike GetProductsRequest)."""
+        from adcp import CreateMediaBuyRequest as LibraryCreateMediaBuyRequest
+        from pydantic import ValidationError
+
+        # Library should require brand_manifest for CreateMediaBuyRequest
+        with pytest.raises(ValidationError):
+            LibraryCreateMediaBuyRequest(buyer_ref="test", product_ids=["p1"])
+
+    def test_schema_validation_matches_library(self):
+        """Compare our schema validation against library for common cases."""
+        from adcp import GetProductsRequest as LibraryGetProductsRequest
+
+        # Test cases that should work in both
+        test_cases = [
+            {},  # Empty
+            {"brief": "test"},  # Brief only
+            {"brand_manifest": {"name": "Acme"}},  # Object brand_manifest
+            {"brand_manifest": "https://acme.com/brand.json"},  # URL brand_manifest
+            {"brief": "test", "brand_manifest": {"name": "Acme"}},  # Both
+        ]
+
+        for case in test_cases:
+            # Library should accept
+            lib_req = LibraryGetProductsRequest(**case)
+            # Our schema should also accept
+            our_req = GetProductsRequest(**case)
+
+            # Basic field values should match
+            assert (lib_req.brief is None) == (our_req.brief is None), f"brief mismatch for {case}"
+            assert (lib_req.brand_manifest is None) == (
+                our_req.brand_manifest is None
+            ), f"brand_manifest mismatch for {case}"
+
+
 class TestAdCPContract:
     """Test that models and schemas align with AdCP protocol requirements."""
 
@@ -220,15 +393,32 @@ class TestAdCPContract:
         assert schema.get_adapter_id("mock") == "test"
 
     def test_adcp_get_products_request(self):
-        """Test AdCP get_products request requirements."""
-        # AdCP requires both brief and brand_manifest
-        request = GetProductsRequest(
-            brief="Looking for display ads on news sites",
+        """Test AdCP get_products request per spec - all fields optional."""
+        # Per AdCP spec, all fields are optional
+        # Empty request is valid
+        empty_request = GetProductsRequest()
+        assert empty_request.brief is None
+        assert empty_request.brand_manifest is None
+
+        # Request with brief only
+        brief_only = GetProductsRequest(brief="Looking for display ads on news sites")
+        assert brief_only.brief == "Looking for display ads on news sites"
+        assert brief_only.brand_manifest is None
+
+        # Request with brand_manifest only
+        brand_only = GetProductsRequest(
             brand_manifest={"name": "B2B SaaS company selling analytics software"},
         )
+        assert brand_only.brief is None
+        assert brand_only.brand_manifest is not None
 
-        assert request.brief is not None
-        assert request.brand_manifest is not None
+        # Request with both (common case)
+        full_request = GetProductsRequest(
+            brief="Looking for display ads",
+            brand_manifest={"name": "Acme Corp"},
+        )
+        assert full_request.brief is not None
+        assert full_request.brand_manifest is not None
 
     def test_product_pr79_fields(self):
         """Test Product schema compliance with AdCP PR #79 (filtering and pricing enhancements).
@@ -306,20 +496,18 @@ class TestAdCPContract:
         assert adcp_response["pricing_options"][0]["price_guidance"]["p75"] == 8.5  # p75 used as recommended
         assert adcp_response["pricing_options"][0]["price_guidance"]["p90"] == 10.0
 
-        # Verify GetProductsRequest requires brand_manifest per AdCP v2.2.0 spec
-        # Should succeed with brand_manifest
+        # Verify GetProductsRequest accepts brand_manifest when provided
+        # Note: Per AdCP spec, brand_manifest is OPTIONAL (not required)
         request = GetProductsRequest(
             brief="Looking for high-volume campaigns",
             brand_manifest={"name": "Nike Air Max 2024"},
         )
-        # brand_manifest is required per AdCP v2.2.0 spec
         assert request.brand_manifest.name == "Nike Air Max 2024"
 
-        # Should fail without brand_manifest (AdCP requirement)
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError):
-            GetProductsRequest(brief="Just a brief")
+        # Should succeed without brand_manifest (per AdCP spec, it's optional)
+        brief_only_request = GetProductsRequest(brief="Just a brief")
+        assert brief_only_request.brief == "Just a brief"
+        assert brief_only_request.brand_manifest is None
 
     def test_product_publisher_properties_required(self):
         """Test Product schema requires publisher_properties per AdCP spec.
@@ -431,34 +619,41 @@ class TestAdCPContract:
 
     def test_adcp_create_media_buy_request(self):
         """Test AdCP create_media_buy request structure."""
-        start_date = datetime.now() + timedelta(days=1)
-        end_date = datetime.now() + timedelta(days=30)
+        start_time = datetime.now(UTC) + timedelta(days=1)
+        end_time = datetime.now(UTC) + timedelta(days=30)
 
+        # Per AdCP spec, packages is required and budget is at package level
         request = CreateMediaBuyRequest(
-            brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},  # Required per AdCP spec
+            brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},  # Required
             buyer_ref="nike_jordan_2025_q1",  # Required per AdCP spec
-            product_ids=["product_1", "product_2"],
-            total_budget=5000.0,
-            start_date=start_date.date(),
-            end_date=end_date.date(),
-            po_number="PO-12345",  # Required per AdCP spec
-            targeting_overlay={
-                "geo_country_any_of": ["US", "CA"],
-                "device_type_any_of": ["desktop", "mobile"],
-                "signals": ["sports_enthusiasts", "auto_intenders"],
-            },
+            packages=[
+                {
+                    "product_id": "product_1",
+                    "buyer_ref": "pkg_1",
+                    "budget": 2500.0,
+                    "pricing_option_id": "opt_1",
+                },
+                {
+                    "product_id": "product_2",
+                    "buyer_ref": "pkg_2",
+                    "budget": 2500.0,
+                    "pricing_option_id": "opt_2",
+                },
+            ],
+            start_time=start_time,
+            end_time=end_time,
+            po_number="PO-12345",  # Optional per spec
         )
 
         # Verify AdCP requirements
-        assert len(request.get_product_ids()) > 0
-        assert request.get_total_budget() > 0
-        # Also verify backward compatibility
+        assert len(request.get_product_ids()) == 2
         assert request.get_total_budget() == 5000.0
         assert request.flight_end_date > request.flight_start_date
 
-        # Targeting overlay should support signals (AdCP v2.4)
-        assert hasattr(request.targeting_overlay, "signals")
-        assert request.targeting_overlay.signals == ["sports_enthusiasts", "auto_intenders"]
+        # Verify spec-compliant fields are present
+        assert request.brand_manifest is not None
+        assert request.buyer_ref == "nike_jordan_2025_q1"
+        assert len(request.packages) == 2
 
     def test_format_schema_compliance(self):
         """Test that Format schema matches AdCP specifications."""
@@ -605,36 +800,35 @@ class TestAdCPContract:
             assert "implementation_config" not in product, "Internal config should not be in AdCP response"
 
     def test_adcp_signal_support(self):
-        """Test AdCP v2.4 signal support in targeting."""
-        request = CreateMediaBuyRequest(
-            brand_manifest={"name": "Luxury automotive vehicles and premium accessories"},
-            buyer_ref="luxury_auto_campaign_2025",  # Required per AdCP spec
-            product_ids=["test_product"],
-            total_budget=1000.0,
-            start_date=datetime.now().date(),
-            end_date=(datetime.now() + timedelta(days=7)).date(),
-            po_number="PO-SIGNAL-TEST",  # Required per AdCP spec
-            targeting_overlay={
-                "signals": [
-                    "sports_enthusiasts",
-                    "auto_intenders_q1_2025",
-                    "high_income_households",
-                ],
-                "aee_signals": {  # Renamed from provided_signals in v2.4
-                    "custom_audience_1": "abc123",
-                    "lookalike_model": "xyz789",
-                },
+        """Test AdCP v2.4 signal support in Targeting schema.
+
+        Note: CreateMediaBuyRequest no longer has targeting_overlay (not in spec).
+        Targeting is specified at the package level. This test verifies the
+        Targeting schema itself supports signals.
+        """
+        from src.core.schemas import Targeting
+
+        # Test Targeting schema directly (not CreateMediaBuyRequest)
+        targeting = Targeting(
+            signals=[
+                "sports_enthusiasts",
+                "auto_intenders_q1_2025",
+                "high_income_households",
+            ],
+            key_value_pairs={
+                "custom_audience_1": "abc123",
+                "lookalike_model": "xyz789",
             },
         )
 
-        # Verify signals are supported
-        assert hasattr(request.targeting_overlay, "signals")
-        assert request.targeting_overlay.signals == [
+        # Verify signals are supported in Targeting schema
+        assert hasattr(targeting, "signals")
+        assert targeting.signals == [
             "sports_enthusiasts",
             "auto_intenders_q1_2025",
             "high_income_households",
         ]
-        # Note: aee_signals was passed but might be mapped to key_value_pairs in the Targeting model
+        assert targeting.key_value_pairs is not None
 
     def test_creative_adcp_compliance(self):
         """Test that Creative model complies with AdCP v1 creative-asset schema."""
@@ -1316,56 +1510,39 @@ class TestAdCPContract:
     def test_list_creatives_request_adcp_compliance(self):
         """Test that ListCreativesRequest model complies with AdCP list-creatives schema.
 
-        After refactoring to use composition pattern (adcp 2.9.0):
-        - Uses factory function create_list_creatives_request() for convenience fields
-        - Avoids Pydantic extra='forbid' inheritance limitation
-        - Factory maps convenience fields to structured AdCP objects
-        - Serialization outputs structured AdCP-compliant fields (filters, pagination, sort)
+        Now extends library ListCreativesRequest directly - all fields are spec-compliant.
         """
-        from src.core.schemas import create_list_creatives_request
+        from adcp.types import CreativeFilters as LibraryCreativeFilters
+        from adcp.types import Pagination as LibraryPagination
+        from adcp.types import Sort as LibrarySort
 
-        # Create request using factory function with convenience fields
-        request = create_list_creatives_request(
-            media_buy_id="mb_123",  # Internal convenience field
-            buyer_ref="buyer_456",  # Internal convenience field
-            status="approved",  # Mapped to filters.status
-            format="display_300x250",  # Mapped to filters.format
-            tags=["sports", "premium"],  # Mapped to filters.tags
-            created_after=datetime.now(UTC) - timedelta(days=30),  # Mapped to filters.created_after
-            created_before=datetime.now(UTC),  # Mapped to filters.created_before
-            limit=50,  # Mapped to pagination.limit
-            page=1,  # Mapped to pagination.offset
-            sort_by="created_date",  # Mapped to sort.field
-            sort_order="desc",  # Mapped to sort.direction
+        from src.core.schemas import ListCreativesRequest
+
+        # Create request using spec-compliant structured objects
+        request = ListCreativesRequest(
+            filters=LibraryCreativeFilters(
+                status="approved",
+                format="display_300x250",
+                tags=["sports", "premium"],
+                created_after=datetime.now(UTC) - timedelta(days=30),
+                created_before=datetime.now(UTC),
+                media_buy_ids=["mb_123"],
+                buyer_refs=["buyer_456"],
+            ),
+            pagination=LibraryPagination(offset=0, limit=50),
+            sort=LibrarySort(field="created_date", direction="desc"),  # type: ignore[arg-type]
+            include_performance=False,
+            include_assignments=True,
+            include_sub_assets=False,
         )
 
         # Test model_dump - should output AdCP-compliant structured fields
-        adcp_response = request.model_dump()
-
-        # Verify internal convenience fields are EXCLUDED from serialization
-        excluded_fields = [
-            "media_buy_id",
-            "buyer_ref",
-            "status",
-            "format",
-            "tags",
-            "created_after",
-            "created_before",
-            "search",
-            "page",
-            "limit",
-            "sort_by",
-            "sort_order",
-        ]
-        for field in excluded_fields:
-            assert field not in adcp_response, f"Internal field '{field}' should be excluded from serialization"
+        adcp_response = request.model_dump(exclude_none=False)
 
         # Verify structured AdCP fields are present
         assert "filters" in adcp_response, "AdCP structured 'filters' field must be present"
         assert "sort" in adcp_response, "AdCP structured 'sort' field must be present"
-
-        # Note: pagination may or may not be present depending on defaults
-        # If page=1 and limit=50 (defaults), pagination might not be created
+        assert "pagination" in adcp_response, "AdCP structured 'pagination' field must be present"
 
         # Verify filters structure
         filters = adcp_response["filters"]
@@ -1375,26 +1552,39 @@ class TestAdCPContract:
         assert filters["tags"] == ["sports", "premium"], "filters.tags should match input"
         assert "created_after" in filters, "filters.created_after should be present"
         assert "created_before" in filters, "filters.created_before should be present"
+        assert filters["media_buy_ids"] == ["mb_123"], "filters.media_buy_ids should match input"
+        assert filters["buyer_refs"] == ["buyer_456"], "filters.buyer_refs should match input"
+
+        # Verify pagination structure
+        pagination = adcp_response["pagination"]
+        assert pagination["offset"] == 0, "pagination.offset should match input"
+        assert pagination["limit"] == 50, "pagination.limit should match input"
 
         # Verify sort structure
         sort = adcp_response["sort"]
         # Field and direction are converted to enums by library
-        assert sort["field"].value == "created_date", "sort.field should match input sort_by"
-        assert sort["direction"].value == "desc", "sort.direction should match input sort_order"
+        assert sort["field"].value == "created_date", "sort.field should match input"
+        assert sort["direction"].value == "desc", "sort.direction should match input"
 
-        # Fields WITH defaults should be present (include_performance, include_assignments, include_sub_assets)
+        # Fields WITH defaults should be present
         assert "include_performance" in adcp_response, "Field with default should be present"
         assert adcp_response["include_performance"] is False, "Default value should match"
         assert "include_assignments" in adcp_response, "Field with default should be present"
-        assert adcp_response["include_assignments"] is True, "Default value should match (library default)"
+        assert adcp_response["include_assignments"] is True, "Default value should match"
 
-        # Verify that unset optional fields are omitted
-        assert (
-            "fields" not in adcp_response or adcp_response["fields"] is None
-        ), "Unset optional field should be omitted or None"
-
-        # Verify field count (flexible - all fields optional)
-        assert len(adcp_response) >= 0, "ListCreativesRequest can have 0 or more fields"
+        # Verify all spec fields are present (per library schema)
+        spec_fields = {
+            "context",
+            "ext",
+            "fields",
+            "filters",
+            "include_assignments",
+            "include_performance",
+            "include_sub_assets",
+            "pagination",
+            "sort",
+        }
+        assert set(adcp_response.keys()) == spec_fields, f"Fields should match spec: {set(adcp_response.keys())}"
 
     def test_list_creatives_response_adcp_compliance(self):
         """Test that ListCreativesResponse model complies with AdCP list-creatives response schema."""
@@ -2063,35 +2253,24 @@ class TestAdCPContract:
 
     def test_list_authorized_properties_request_adcp_compliance(self):
         """Test that ListAuthorizedPropertiesRequest complies with AdCP list-authorized-properties-request schema."""
-        # Create request with all required + optional fields
-        request = ListAuthorizedPropertiesRequest(adcp_version="1.0.0", tags=["premium_content", "news"])
+        # Create request with optional fields per spec
+        # Per AdCP spec: context, ext, publisher_domains are all optional
+        request = ListAuthorizedPropertiesRequest(publisher_domains=["example.com", "news.example.com"])
 
-        # Test AdCP-compliant response
-        adcp_response = request.model_dump()
+        # Test AdCP-compliant response - use exclude_none=False to see all fields
+        adcp_response = request.model_dump(exclude_none=False)
 
-        # Verify required AdCP fields present and non-null
-        required_fields = ["adcp_version"]
-        for field in required_fields:
-            assert field in adcp_response
-            assert adcp_response[field] is not None
-
-        # Verify optional AdCP fields present (can be null)
-        optional_fields = ["tags"]
+        # Per AdCP spec, all fields are optional
+        optional_fields = ["context", "ext", "publisher_domains"]
         for field in optional_fields:
             assert field in adcp_response
 
-        # Verify adcp_version format
-        import re
+        # Verify publisher_domains is array when present
+        if adcp_response["publisher_domains"] is not None:
+            assert isinstance(adcp_response["publisher_domains"], list)
 
-        version_pattern = r"^\d+\.\d+\.\d+$"
-        assert re.match(version_pattern, adcp_response["adcp_version"])
-
-        # Verify tags is array when present
-        if adcp_response["tags"] is not None:
-            assert isinstance(adcp_response["tags"], list)
-
-        # Verify field count expectations
-        assert len(adcp_response) == 2
+        # Verify field count expectations - all 3 optional fields
+        assert len(adcp_response) == 3
 
     def test_list_authorized_properties_response_adcp_compliance(self):
         """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 list-authorized-properties-response schema."""
@@ -2413,6 +2592,7 @@ class TestAdCPContract:
         end_date = datetime.now(UTC) + timedelta(days=30)
 
         # Test with 'asap' start_time
+        # Per AdCP spec, budget is at package level, not request level
         request = CreateMediaBuyRequest(
             brand_manifest={"name": "Flash Sale Campaign"},
             buyer_ref="flash_sale_2025_q1",
@@ -2426,7 +2606,6 @@ class TestAdCPContract:
                     "budget": 5000.0,
                 }
             ],
-            budget={"total": 25000, "currency": "USD", "pacing": "asap"},
         )
 
         # Verify asap is accepted
@@ -2460,6 +2639,7 @@ class TestAdCPContract:
         end_date = datetime.now(UTC) + timedelta(days=30)
 
         # Test with datetime start_time (should still work)
+        # Per AdCP spec, budget is at package level, not request level
         request = CreateMediaBuyRequest(
             brand_manifest={"name": "Scheduled Campaign"},
             buyer_ref="scheduled_2025_q1",
@@ -2473,7 +2653,6 @@ class TestAdCPContract:
                     "budget": 5000.0,
                 }
             ],
-            budget={"total": 10000, "currency": "USD", "pacing": "even"},
         )
 
         # Verify datetime is still accepted
@@ -2542,6 +2721,7 @@ class TestAdCPContract:
         end_date = datetime.now(UTC) + timedelta(days=30)
 
         # Test with inline brand manifest
+        # Per AdCP spec, budget is at package level, not request level
         request = CreateMediaBuyRequest(
             buyer_ref="nike_2025_q1",
             brand_manifest={
@@ -2560,7 +2740,6 @@ class TestAdCPContract:
             ],
             start_time=start_date,
             end_time=end_date,
-            budget=5000.0,
         )
 
         # Verify brand_manifest is properly stored
@@ -2577,6 +2756,7 @@ class TestAdCPContract:
         end_date = datetime.now(UTC) + timedelta(days=30)
 
         # Test with brand manifest URL
+        # Per AdCP spec, budget is at package level, not request level
         request = CreateMediaBuyRequest(
             buyer_ref="nike_2025_q1",
             brand_manifest="https://nike.com/brand-manifest.json",
@@ -2590,12 +2770,11 @@ class TestAdCPContract:
             ],
             start_time=start_date,
             end_time=end_date,
-            budget=5000.0,
         )
 
         # Verify brand_manifest URL is properly stored
-        assert request.brand_manifest == "https://nike.com/brand-manifest.json"
-        assert isinstance(request.brand_manifest, str)
+        # Library converts URL strings to AnyUrl objects
+        assert str(request.brand_manifest) == "https://nike.com/brand-manifest.json"
 
     def test_get_signals_response_adcp_compliance(self):
         """Test that GetSignalsResponse model complies with AdCP get-signals response schema.
@@ -2603,7 +2782,7 @@ class TestAdCPContract:
         Per AdCP PR #113 and official schema, protocol fields (message, context_id)
         are added by the protocol layer, not the domain response.
         """
-        from src.core.schema_adapters import GetSignalsResponse
+        from src.core.schemas import GetSignalsResponse
 
         # Minimal required fields - only signals is required per AdCP spec
         response = GetSignalsResponse(signals=[])

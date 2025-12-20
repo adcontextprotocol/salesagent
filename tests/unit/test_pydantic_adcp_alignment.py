@@ -26,20 +26,27 @@ class TestGetProductsRequestAlignment:
     """Test that GetProductsRequest accepts all AdCP-valid fields."""
 
     def test_minimal_required_fields(self):
-        """Test with only required fields per AdCP spec."""
-        req = GetProductsRequest(brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"})
+        """Test with only required fields per AdCP spec.
 
+        Per AdCP spec, ALL fields in GetProductsRequest are optional.
+        """
+        # Empty request is valid per spec
+        empty_req = GetProductsRequest()
+        assert empty_req.brand_manifest is None
+        assert empty_req.brief is None
+        assert empty_req.filters is None
+
+        # With brand_manifest only
+        req = GetProductsRequest(brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"})
         assert req.brand_manifest.name == "Nike Air Jordan 2025 basketball shoes"
-        assert req.brief == ""  # Default value
-        assert req.adcp_version == "1.0.0"  # Default value
-        assert req.filters is None  # Optional field
+        assert req.brief is None  # Optional, defaults to None
+        assert req.filters is None
 
     def test_with_all_optional_fields(self):
         """Test with all optional fields that AdCP spec allows."""
         req = GetProductsRequest(
             brand_manifest={"name": "Acme Corp enterprise software"},
             brief="Looking for display advertising on tech sites",
-            adcp_version="1.6.0",
             filters=ProductFilters(
                 delivery_type="guaranteed",
                 format_types=["video", "display"],
@@ -53,7 +60,6 @@ class TestGetProductsRequestAlignment:
 
         assert req.brand_manifest.name == "Acme Corp enterprise software"
         assert req.brief == "Looking for display advertising on tech sites"
-        assert req.adcp_version == "1.6.0"
         assert req.filters is not None
         assert req.filters.delivery_type.value == "guaranteed"
         # format_types are stored as enum objects internally but serialize to strings
@@ -88,18 +94,6 @@ class TestGetProductsRequestAlignment:
         assert req.filters is not None
         assert req.filters.delivery_type.value == "guaranteed"
         assert req.filters.format_types is None
-
-    def test_adcp_version_validation(self):
-        """Test that adcp_version validates format per spec (X.Y.Z pattern)."""
-        # Valid versions
-        valid_versions = ["1.0.0", "1.6.0", "2.0.0", "10.5.3"]
-        for version in valid_versions:
-            req = GetProductsRequest(brand_manifest={"name": "Test product"}, adcp_version=version)
-            assert req.adcp_version == version
-
-        # Invalid version format (should fail validation)
-        with pytest.raises(ValidationError, match="pattern"):
-            GetProductsRequest(brand_manifest={"name": "Test product"}, adcp_version="1.0")  # Missing patch version
 
     def test_filters_format_types_enum(self):
         """Test that format_types accepts valid enum values per AdCP spec."""
@@ -193,12 +187,20 @@ class TestAdCPSchemaCompatibility:
         assert [ft.value for ft in req.filters.format_types] == ["video"]
 
     def test_example_minimal_adcp_request(self):
-        """Test minimal valid request per AdCP spec."""
-        req = GetProductsRequest(brand_manifest={"name": "eco-friendly products"})
+        """Test minimal valid request per AdCP spec.
 
+        Per AdCP spec, all fields are optional - even brand_manifest.
+        """
+        # Empty request is valid
+        empty_req = GetProductsRequest()
+        assert empty_req.brand_manifest is None
+        assert empty_req.brief is None
+        assert empty_req.filters is None
+
+        # Brand manifest only
+        req = GetProductsRequest(brand_manifest={"name": "eco-friendly products"})
         assert req.brand_manifest.name == "eco-friendly products"
-        assert req.brief == ""
-        assert req.adcp_version == "1.0.0"
+        assert req.brief is None  # Optional, defaults to None
         assert req.filters is None
 
     def test_example_with_brief(self):
@@ -230,67 +232,53 @@ class TestAdCPSchemaCompatibility:
 
 
 class TestRegressionPrevention:
-    """Tests to prevent regression of the original bug."""
+    """Tests to prevent regression of schema compliance."""
 
     def test_client_can_send_filters(self):
         """
-        Regression test for the bug reported by Wonderstruck client.
+        Regression test: clients can send filters in get_products request.
 
-        The client was sending:
-        {
-          "brand_manifest": {"name": "cat food"},
-          "brief": "video ads",
-          "adcp_version": "1.6.0",
-          "filters": {
-            "delivery_type": "guaranteed",
-            "format_types": ["video"]
-          }
-        }
-
-        This should NOT raise a Pydantic validation error.
+        Per AdCP spec, filters is an optional field for product filtering.
         """
         try:
             req = GetProductsRequest(
                 brand_manifest={"name": "cat food"},
                 brief="video ads",
-                adcp_version="1.6.0",
                 filters={
                     "delivery_type": "guaranteed",
                     "format_types": ["video"],
                 },
             )
-            # If we get here, the bug is fixed
             assert req.brand_manifest.name == "cat food"
-            assert req.adcp_version == "1.6.0"
+            assert req.brief == "video ads"
             assert req.filters is not None
+            assert req.filters.delivery_type.value == "guaranteed"
         except ValidationError as e:
             pytest.fail(f"GetProductsRequest should accept AdCP-valid fields. Error: {e}")
 
-    def test_client_can_send_adcp_version(self):
-        """Test that clients can send adcp_version field."""
-        req = GetProductsRequest(brand_manifest={"name": "test product"}, adcp_version="1.6.0")
-        assert req.adcp_version == "1.6.0"
+    def test_all_fields_optional(self):
+        """Test that all GetProductsRequest fields are optional per spec."""
+        # Empty request is valid
+        req = GetProductsRequest()
+        assert req.brand_manifest is None
+        assert req.brief is None
+        assert req.filters is None
 
-    def test_wonderstruck_exact_payload(self):
+    def test_spec_compliant_payload(self):
         """
-        Test the exact payload structure that was failing for Wonderstruck.
+        Test a full payload with all supported AdCP spec fields.
 
-        Before fix: Pydantic raised "Unexpected keyword argument 'filters'"
-        After fix: Should create request successfully
+        Note: adcp_version is NOT a field on GetProductsRequest per spec.
         """
-        # Exact structure from Wonderstruck's client
         payload = {
             "brand_manifest": {"name": "purina cat food"},
             "brief": "video advertising campaigns",
-            "adcp_version": "1.6.0",
             "filters": {"delivery_type": "guaranteed", "format_types": ["video"]},
         }
 
-        # This should NOT raise ValidationError
         req = GetProductsRequest(**payload)
 
         assert req.brand_manifest.name == "purina cat food"
         assert req.brief == "video advertising campaigns"
-        assert req.adcp_version == "1.6.0"
         assert req.filters.delivery_type.value == "guaranteed"
         assert [ft.value for ft in req.filters.format_types] == ["video"]

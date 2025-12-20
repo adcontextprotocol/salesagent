@@ -8,9 +8,8 @@ preventing validation errors like the 'brief' is required issue.
 from unittest.mock import Mock, patch
 
 import pytest
-from adcp import ListAuthorizedPropertiesRequest
+from adcp import GetProductsRequest, ListAuthorizedPropertiesRequest
 
-from src.core.schema_adapters import GetProductsRequest
 from src.core.schemas import (
     ActivateSignalRequest,
     CreateMediaBuyRequest,
@@ -28,17 +27,18 @@ class TestMCPContractValidation:
     """Test MCP tools can be called with minimal required parameters."""
 
     def test_get_products_minimal_call(self):
-        """Test get_products can be called with just brand_manifest."""
-        # This was the original failing case
+        """Test get_products can be called with just brand_manifest.
+
+        Per AdCP spec, all fields are optional, including brief.
+        """
         request = GetProductsRequest(brand_manifest={"name": "purina cat food"})
 
-        assert request.brief == ""  # Should default to empty string
+        assert request.brief is None  # Optional, defaults to None per spec
         # brand_manifest can be BrandManifest object or dict
         if isinstance(request.brand_manifest, dict):
             assert request.brand_manifest["name"] == "purina cat food"
         else:
             assert request.brand_manifest.name == "purina cat food"
-        assert request.strategy_id is None
 
     def test_get_products_with_brief(self):
         """Test get_products works with both brief and brand_manifest."""
@@ -51,15 +51,17 @@ class TestMCPContractValidation:
         else:
             assert request.brand_manifest.name == "purina cat food"
 
-    def test_get_products_validation_still_enforced(self):
-        """Test that underlying GetProductsRequest schema requires brand_manifest per AdCP v2.2.0 spec."""
-        from pydantic import ValidationError
+    def test_get_products_accepts_brief_only(self):
+        """Test that GetProductsRequest accepts brief without brand_manifest per AdCP spec.
 
+        Per AdCP spec, all fields in GetProductsRequest are OPTIONAL.
+        """
         from src.core.schemas import GetProductsRequest as SchemaGetProductsRequest
 
-        # brand_manifest is required per spec (test underlying schema, not adapter)
-        with pytest.raises(ValidationError):
-            SchemaGetProductsRequest(brief="just a brief")
+        # brand_manifest is optional per spec - brief-only request should succeed
+        request = SchemaGetProductsRequest(brief="just a brief")
+        assert request.brief == "just a brief"
+        assert request.brand_manifest is None
 
     def test_list_authorized_properties_minimal(self):
         """Test list_authorized_properties can be called with no parameters."""
@@ -88,14 +90,12 @@ class TestMCPContractValidation:
             ],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
             po_number="PO-12345",
         )
 
         assert request.po_number == "PO-12345"
         assert request.buyer_ref == "test_ref"
         assert len(request.packages) == 1
-        assert request.pacing == "even"  # Should have default
 
     def test_create_media_buy_get_product_ids(self):
         """Test get_product_ids() extracts unique product IDs from packages.
@@ -120,7 +120,6 @@ class TestMCPContractValidation:
             ],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
         )
         # Should return unique product IDs
         product_ids = request.get_product_ids()
@@ -224,9 +223,9 @@ class TestSchemaDefaultValues:
 
     def test_optional_fields_have_reasonable_defaults(self):
         """Test that optional fields have defaults that make sense."""
-        # GetProductsRequest
+        # GetProductsRequest - per AdCP spec, all fields are optional and default to None
         req = GetProductsRequest(brand_manifest={"name": "test"})
-        assert req.brief == ""  # Empty string, not None
+        assert req.brief is None  # Optional, defaults to None per spec
 
         # CreateMediaBuyRequest (with required fields per AdCP v2.2.0 spec)
         req = CreateMediaBuyRequest(
@@ -239,11 +238,10 @@ class TestSchemaDefaultValues:
             ],
             start_time="2025-02-15T00:00:00Z",
             end_time="2025-02-28T23:59:59Z",
-            budget={"total": 5000.0, "currency": "USD"},
             po_number="test",
         )
-        assert req.pacing == "even"  # Sensible default
-        assert req.enable_creative_macro is False  # Explicit boolean default
+        # Per AdCP spec, all fields are spec-compliant with library defaults
+        assert req.po_number == "test"
 
         # ListAuthorizedPropertiesRequest
         req = ListAuthorizedPropertiesRequest()
@@ -253,8 +251,8 @@ class TestSchemaDefaultValues:
         """Test that all required fields are actually necessary."""
 
         # This test documents which fields are required and why
+        # Note: GetProductsRequest.brand_manifest is OPTIONAL per AdCP spec
         required_field_justifications = {
-            "GetProductsRequest.brand_manifest": "Required per AdCP v2.2.0 spec for product discovery",
             "ActivateSignalRequest.signal_id": "Must specify which signal to activate",
             "CreateMediaBuyRequest.buyer_ref": "Required per AdCP spec for tracking purchases",
         }
@@ -268,11 +266,12 @@ class TestMCPToolMinimalCalls:
     """Simplified contract validation - schema tests only."""
 
     def test_contract_validation_prevents_original_issue(self):
-        """Test that GetProductsRequest works with minimal required fields per AdCP v2.2.0 spec."""
+        """Test that GetProductsRequest works with all fields optional per AdCP spec."""
         # Test that GetProductsRequest can be created with just brand_manifest
+        # (and actually, even empty per spec)
         try:
             request = GetProductsRequest(brand_manifest={"name": "purina cat food"})
-            assert request.brief == ""  # Should default to empty string
+            assert request.brief is None  # Optional, defaults to None per spec
             # brand_manifest can be BrandManifest object or dict
             if isinstance(request.brand_manifest, dict):
                 assert request.brand_manifest["name"] == "purina cat food"

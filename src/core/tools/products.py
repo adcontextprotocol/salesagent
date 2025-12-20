@@ -26,9 +26,11 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import set_current_tenant
 from src.core.database.database_session import get_db_session
-from src.core.schema_adapters import GetProductsResponse
 from src.core.schema_helpers import create_get_products_request
-from src.core.schemas import Product  # Extends library Product
+from src.core.schemas import (
+    GetProductsResponse,
+    Product,  # Extends library Product
+)
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
 from src.core.validation_helpers import format_validation_error, safe_parse_json_field

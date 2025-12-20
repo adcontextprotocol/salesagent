@@ -9,7 +9,7 @@ Fix: AdCPBaseModel.model_dump_json() now defaults to exclude_none=True
 
 import json
 
-from src.core.schema_adapters import (
+from src.core.schemas import (
     GetProductsResponse,
     ListAuthorizedPropertiesResponse,
     ListCreativeFormatsResponse,

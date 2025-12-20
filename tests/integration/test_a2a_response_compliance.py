@@ -11,7 +11,7 @@ Replaces: test_a2a_response_message_fields.py (which tested the old incorrect be
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
-from src.core.schema_adapters import (
+from src.core.schemas import (
     CreateMediaBuyResponse,
     GetMediaBuyDeliveryResponse,
     GetProductsResponse,
@@ -369,7 +369,7 @@ class TestA2AResponseRegressionPrevention:
         # This is a contract test - if someone adds 'success' or 'message' back,
         # this test will catch it
 
-        from src.core.schema_adapters import ListAuthorizedPropertiesResponse
+        from src.core.schemas import ListAuthorizedPropertiesResponse
 
         response = ListAuthorizedPropertiesResponse(publisher_domains=["test.com"])
         response_dict = response.model_dump()

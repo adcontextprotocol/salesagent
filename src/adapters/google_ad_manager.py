@@ -499,17 +499,20 @@ class GoogleAdManager(AdServerAdapter):
                     errors=[Error(code="product_not_configured", message=error_msg, details=None)],
                 )
 
-        # Validate targeting
-        unsupported_features = self._validate_targeting(request.targeting_overlay)
+        # Validate targeting from MediaPackage objects (targeting_overlay is populated from request)
+        unsupported_features = []
+        for package in packages:
+            if package.targeting_overlay:
+                features = self._validate_targeting(package.targeting_overlay)
+                if features:
+                    unsupported_features.extend(features)
+
         if unsupported_features:
             error_msg = f"Unsupported targeting features: {', '.join(unsupported_features)}"
             self.log(f"[red]Error: {error_msg}[/red]")
             return CreateMediaBuyError(
                 errors=[Error(code="unsupported_targeting", message=error_msg, details=None)],
             )
-
-        # Build base targeting from targeting overlay
-        base_targeting = self._build_targeting(request.targeting_overlay)
 
         # Check if manual approval is required for media buy creation
         # Skip approval workflow if this media buy was already manually approved
@@ -613,6 +616,12 @@ class GoogleAdManager(AdServerAdapter):
 
         self.log(f"✓ Created GAM Order ID: {order_id}")
 
+        # Build targeting for each package (per AdCP spec, targeting is at package level)
+        package_targeting = {}
+        for package in packages:
+            if package.targeting_overlay:
+                package_targeting[package.package_id] = self._build_targeting(package.targeting_overlay)
+
         # Create line items for each package
         try:
             line_item_ids = self.orders_manager.create_line_items(
@@ -620,13 +629,12 @@ class GoogleAdManager(AdServerAdapter):
                 packages=packages,
                 start_time=start_time,
                 end_time=end_time,
-                targeting=base_targeting,
                 products_map=products_map,
                 log_func=self.log,
                 tenant_id=self.tenant_id,
                 order_name=order_name,
-                targeting_overlay=request.targeting_overlay,
                 package_pricing_info=package_pricing_info,
+                package_targeting=package_targeting,
             )
             self.log(f"✓ Created {len(line_item_ids)} line items")
 

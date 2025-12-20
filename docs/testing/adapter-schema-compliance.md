@@ -213,7 +213,7 @@ While mypy doesn't directly validate against JSON schemas, it provides complemen
 ### 1. Field Existence Checking
 
 ```python
-from src.core.schema_adapters import ListAuthorizedPropertiesResponse
+from src.core.schemas import ListAuthorizedPropertiesResponse
 
 response = ListAuthorizedPropertiesResponse(
     properties=[],

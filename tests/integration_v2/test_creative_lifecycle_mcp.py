@@ -26,7 +26,7 @@ from src.core.database.models import (
     MediaBuy,
     Principal,
 )
-from src.core.schema_adapters import ListCreativesResponse, SyncCreativesResponse
+from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -1043,8 +1043,7 @@ class TestCreativeLifecycleMCP:
             )
 
             # Mock adapter
-            from src.core.schema_adapters import CreateMediaBuyResponse
-            from src.core.schemas import Package
+            from src.core.schemas import CreateMediaBuyResponse, Package
 
             mock_adapter_instance = mock_adapter.return_value
             mock_adapter_instance.create_media_buy.return_value = CreateMediaBuyResponse(

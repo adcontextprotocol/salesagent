@@ -484,8 +484,7 @@ class TestImportValidation:
 
         Protocol fields (adcp_version, status) removed in protocol envelope migration.
         """
-        from src.core.schema_adapters import CreateMediaBuyResponse
-        from src.core.schemas import Error
+        from src.core.schemas import CreateMediaBuyResponse, Error
 
         response = CreateMediaBuyResponse(
             buyer_ref="test",

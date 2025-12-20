@@ -127,8 +127,12 @@ def build_order_name_context(
         elif isinstance(manifest, dict):
             brand_name = manifest.get("name")
 
+    # campaign_name is no longer on CreateMediaBuyRequest per AdCP spec
+    # Use brand_name or generate from buyer_ref as fallback
+    campaign_name = brand_name or f"Campaign {request.buyer_ref}"
+
     return {
-        "campaign_name": request.campaign_name,
+        "campaign_name": campaign_name,
         "brand_name": brand_name or "N/A",
         "promoted_offering": brand_name or "N/A",  # Backward compatibility alias
         "buyer_ref": request.buyer_ref,

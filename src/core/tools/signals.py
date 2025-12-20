@@ -20,8 +20,7 @@ from adcp.types import PlatformDeployment, Pricing, Signal, SignalCatalogType
 
 from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import get_current_tenant
-from src.core.schema_adapters import ActivateSignalResponse, GetSignalsResponse
-from src.core.schemas import GetSignalsRequest
+from src.core.schemas import ActivateSignalResponse, GetSignalsRequest, GetSignalsResponse
 from src.core.testing_hooks import get_testing_context
 
 

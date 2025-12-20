@@ -35,10 +35,10 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, MediaPackage, PricingOption
 from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
-from src.core.schema_adapters import GetMediaBuyDeliveryResponse
 from src.core.schemas import (
     DeliveryTotals,
     GetMediaBuyDeliveryRequest,
+    GetMediaBuyDeliveryResponse,
     MediaBuyDeliveryData,
     PackageDelivery,
     PricingModel,

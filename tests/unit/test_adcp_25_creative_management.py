@@ -107,61 +107,53 @@ class TestSyncCreativesCreativeIdsFilter:
 class TestListCreativesPluralFilters:
     """Test list_creatives media_buy_ids/buyer_refs (AdCP 2.5)."""
 
-    def test_create_list_creatives_request_accepts_plural_filters(self):
-        """Test create_list_creatives_request accepts plural filter parameters."""
-        from src.core.schemas import create_list_creatives_request
+    def test_creative_filters_accepts_plural_media_buy_ids(self):
+        """Test CreativeFilters accepts plural media_buy_ids parameter."""
+        from adcp.types import CreativeFilters as LibraryCreativeFilters
+
+        from src.core.schemas import ListCreativesRequest
 
         # Should accept media_buy_ids (plural)
-        request = create_list_creatives_request(
+        filters = LibraryCreativeFilters(
             media_buy_ids=["mb_1", "mb_2", "mb_3"],
         )
+        request = ListCreativesRequest(filters=filters)
 
         # Check filters object has media_buy_ids
         assert request.filters is not None
         assert hasattr(request.filters, "media_buy_ids")
         assert request.filters.media_buy_ids == ["mb_1", "mb_2", "mb_3"]
 
-    def test_create_list_creatives_request_merges_singular_and_plural(self):
-        """Test singular media_buy_id is merged into plural media_buy_ids."""
-        from src.core.schemas import create_list_creatives_request
+    def test_creative_filters_accepts_plural_buyer_refs(self):
+        """Test CreativeFilters accepts buyer_refs plural filter."""
+        from adcp.types import CreativeFilters as LibraryCreativeFilters
 
-        # Provide both singular and plural
-        request = create_list_creatives_request(
-            media_buy_id="mb_1",
-            media_buy_ids=["mb_2", "mb_3"],
+        from src.core.schemas import ListCreativesRequest
+
+        filters = LibraryCreativeFilters(
+            buyer_refs=["ref_1", "ref_2", "ref_3"],
         )
-
-        # All three should be in the filter
-        assert request.filters is not None
-        assert set(request.filters.media_buy_ids) == {"mb_1", "mb_2", "mb_3"}
-
-    def test_create_list_creatives_request_deduplicates(self):
-        """Test duplicate IDs are not repeated."""
-        from src.core.schemas import create_list_creatives_request
-
-        # Provide duplicate
-        request = create_list_creatives_request(
-            media_buy_id="mb_1",
-            media_buy_ids=["mb_1", "mb_2"],  # mb_1 is duplicate
-        )
-
-        # Should deduplicate
-        assert request.filters is not None
-        assert len(request.filters.media_buy_ids) == 2
-        assert set(request.filters.media_buy_ids) == {"mb_1", "mb_2"}
-
-    def test_create_list_creatives_request_buyer_refs_plural(self):
-        """Test buyer_refs plural filter."""
-        from src.core.schemas import create_list_creatives_request
-
-        request = create_list_creatives_request(
-            buyer_ref="ref_1",
-            buyer_refs=["ref_2", "ref_3"],
-        )
+        request = ListCreativesRequest(filters=filters)
 
         assert request.filters is not None
         assert hasattr(request.filters, "buyer_refs")
-        assert set(request.filters.buyer_refs) == {"ref_1", "ref_2", "ref_3"}
+        assert request.filters.buyer_refs == ["ref_1", "ref_2", "ref_3"]
+
+    def test_creative_filters_accepts_both_media_buy_ids_and_buyer_refs(self):
+        """Test CreativeFilters accepts both filter types together."""
+        from adcp.types import CreativeFilters as LibraryCreativeFilters
+
+        from src.core.schemas import ListCreativesRequest
+
+        filters = LibraryCreativeFilters(
+            media_buy_ids=["mb_1", "mb_2"],
+            buyer_refs=["ref_1", "ref_2"],
+        )
+        request = ListCreativesRequest(filters=filters)
+
+        assert request.filters is not None
+        assert request.filters.media_buy_ids == ["mb_1", "mb_2"]
+        assert request.filters.buyer_refs == ["ref_1", "ref_2"]
 
 
 class TestUpdateMediaBuyInlineCreatives:
@@ -367,36 +359,35 @@ class TestListCreativesErrorCases:
         """Empty media_buy_ids array vs None have different semantics.
 
         - media_buy_ids=None: No filter on media_buy_ids
-        - media_buy_ids=[]: Implementation treats as "no filter" (same as None)
+        - media_buy_ids=[]: Empty filter (no matches)
         """
-        from src.core.schemas import create_list_creatives_request
+        from adcp.types import CreativeFilters as LibraryCreativeFilters
+
+        from src.core.schemas import ListCreativesRequest
 
         # None = no filter
-        request_no_filter = create_list_creatives_request()
-        assert request_no_filter.filters is None or request_no_filter.filters.media_buy_ids is None
+        request_no_filter = ListCreativesRequest()
+        assert request_no_filter.filters is None
 
-        # Empty array - implementation normalizes to no filter (None)
-        # This is valid behavior: empty filter means "match all"
-        request_empty = create_list_creatives_request(media_buy_ids=[])
-        # Should not raise - implementation handles gracefully
+        # Empty array - filter is set but empty
+        filters_empty = LibraryCreativeFilters(media_buy_ids=[])
+        request_empty = ListCreativesRequest(filters=filters_empty)
         assert request_empty is not None
+        assert request_empty.filters is not None
+        assert request_empty.filters.media_buy_ids == []
 
-    def test_plural_and_singular_both_empty(self):
-        """Both singular and plural filters empty should be valid.
+    def test_no_filters_is_valid(self):
+        """Request with no filters is valid.
 
-        This is a common edge case when building requests programmatically.
+        This is a common case when listing all creatives.
         """
-        from src.core.schemas import create_list_creatives_request
+        from src.core.schemas import ListCreativesRequest
 
         # Should not raise
-        request = create_list_creatives_request(
-            media_buy_id=None,
-            media_buy_ids=[],
-            buyer_ref=None,
-            buyer_refs=[],
-        )
-        # Request should be valid, filters may be None or empty
+        request = ListCreativesRequest()
+        # Request should be valid, filters is None
         assert request is not None
+        assert request.filters is None
 
 
 class TestCreativeAssignmentWeightBounds:
@@ -462,14 +453,14 @@ class TestSyncCreativesResponseFormat:
 
     def test_response_has_required_fields(self):
         """SyncCreativesResponse must have 'creatives' field per spec."""
-        from src.core.schema_adapters import SyncCreativesResponse
+        from src.core.schemas import SyncCreativesResponse
 
         fields = SyncCreativesResponse.model_fields
         assert "creatives" in fields, "Response must have 'creatives' field"
 
     def test_response_accepts_dry_run_echo(self):
         """Response should echo dry_run parameter per spec."""
-        from src.core.schema_adapters import SyncCreativesResponse
+        from src.core.schemas import SyncCreativesResponse
 
         response = SyncCreativesResponse(
             creatives=[],
@@ -479,7 +470,7 @@ class TestSyncCreativesResponseFormat:
 
     def test_response_str_summarizes_actions(self):
         """Response __str__ should provide human-readable summary."""
-        from src.core.schema_adapters import SyncCreativesResponse
+        from src.core.schemas import SyncCreativesResponse
 
         response = SyncCreativesResponse(
             creatives=[
@@ -499,14 +490,14 @@ class TestListCreativesResponseFormat:
 
     def test_response_has_required_fields(self):
         """ListCreativesResponse must have 'creatives' field per spec."""
-        from src.core.schema_adapters import ListCreativesResponse
+        from src.core.schemas import ListCreativesResponse
 
         fields = ListCreativesResponse.model_fields
         assert "creatives" in fields, "Response must have 'creatives' field"
 
     def test_response_requires_pagination(self):
         """Response requires pagination fields per spec."""
-        from src.core.schema_adapters import ListCreativesResponse
+        from src.core.schemas import ListCreativesResponse
 
         fields = ListCreativesResponse.model_fields
         # AdCP spec requires pagination fields

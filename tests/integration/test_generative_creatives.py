@@ -13,7 +13,7 @@ from sqlalchemy import select
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Creative as DBCreative
 from src.core.database.models import MediaBuy, Principal
-from src.core.schema_adapters import SyncCreativesResponse
+from src.core.schemas import SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 # Tests now working - using structured format_id objects to bypass cache validation

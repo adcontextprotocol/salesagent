@@ -415,7 +415,7 @@ class AdCPRequestHandler(RequestHandler):
         """
         try:
             # Map skill names to response classes
-            from src.core.schema_adapters import (
+            from src.core.schemas import (
                 CreateMediaBuyResponse,
                 GetMediaBuyDeliveryResponse,
                 GetProductsResponse,

@@ -436,11 +436,16 @@ class TestSpecificFieldValidation:
         request = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
             brand_manifest={"name": "Nike Air Jordan 2025"},
-            po_number="PO-123",
-            product_ids=["prod_1"],
-            total_budget=5000.0,
-            start_date="2025-02-01",
-            end_date="2025-02-28",
+            packages=[
+                {
+                    "buyer_ref": "pkg_1",
+                    "product_id": "prod_1",
+                    "budget": 5000.0,
+                    "pricing_option_id": "test_pricing",
+                }
+            ],
+            start_time="2025-02-01T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
         )
         # Verify brand_manifest was accepted (converted to BrandManifest object)
         assert request.brand_manifest is not None
@@ -458,13 +463,24 @@ class TestSpecificFieldValidation:
         assert request.filters is not None
         assert request.filters.delivery_type.value == "guaranteed"
 
-    def test_get_products_accepts_adcp_version(self):
-        """REGRESSION TEST: adcp_version must be accepted."""
+    def test_get_products_all_fields_optional(self):
+        """Test that GetProductsRequest accepts all optional fields per spec.
+
+        Note: adcp_version is NOT a field on GetProductsRequest per AdCP spec.
+        All fields are optional.
+        """
+        # Empty request is valid
+        empty_request = GetProductsRequest()
+        assert empty_request.brand_manifest is None
+        assert empty_request.brief is None
+        assert empty_request.filters is None
+
+        # With brand_manifest only
         request = GetProductsRequest(
             brand_manifest={"name": "Test Product"},
-            adcp_version="1.6.0",
         )
-        assert request.adcp_version == "1.6.0"
+        assert request.brand_manifest.name == "Test Product"
+        assert request.brief is None
 
 
 class TestFieldNameConsistency:
