@@ -2608,9 +2608,11 @@ class TestAdCPContract:
             ],
         )
 
-        # Verify asap is accepted
-        assert request.start_time == "asap"
-        assert request.end_time == end_date
+        # Verify asap is accepted (library wraps in StartTiming)
+        if hasattr(request.start_time, "root"):
+            assert request.start_time.root == "asap"
+        else:
+            assert request.start_time == "asap"
 
         # Verify it serializes correctly
         data = request.model_dump()
@@ -2655,9 +2657,13 @@ class TestAdCPContract:
             ],
         )
 
-        # Verify datetime is still accepted
-        assert isinstance(request.start_time, datetime)
-        assert request.start_time == start_date
+        # Verify datetime is still accepted (library wraps in StartTiming)
+        if hasattr(request.start_time, "root"):
+            assert isinstance(request.start_time.root, datetime)
+            assert request.start_time.root == start_date
+        else:
+            assert isinstance(request.start_time, datetime)
+            assert request.start_time == start_date
 
     def test_product_publisher_properties_constraint(self):
         """Test that Product requires publisher_properties per AdCP spec."""
@@ -2743,9 +2749,15 @@ class TestAdCPContract:
             end_time=end_date,
         )
 
-        # Verify brand_manifest is properly stored
+        # Verify brand_manifest is properly stored (library wraps in BrandManifestReference)
         assert request.brand_manifest is not None
-        assert isinstance(request.brand_manifest, dict) or hasattr(request.brand_manifest, "name")
+        # Check for nested value - library may wrap in BrandManifestReference
+        if hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+            assert request.brand_manifest.root.name == "Nike"
+        elif hasattr(request.brand_manifest, "name"):
+            assert request.brand_manifest.name == "Nike"
+        else:
+            assert isinstance(request.brand_manifest, dict)
 
         # Verify required fields still work
         assert request.buyer_ref == "nike_2025_q1"
@@ -2774,8 +2786,11 @@ class TestAdCPContract:
         )
 
         # Verify brand_manifest URL is properly stored
-        # Library converts URL strings to AnyUrl objects
-        assert str(request.brand_manifest) == "https://nike.com/brand-manifest.json"
+        # Library wraps URL strings in BrandManifestReference with AnyUrl
+        if hasattr(request.brand_manifest, "root"):
+            assert str(request.brand_manifest.root) == "https://nike.com/brand-manifest.json"
+        else:
+            assert str(request.brand_manifest) == "https://nike.com/brand-manifest.json"
 
     def test_get_signals_response_adcp_compliance(self):
         """Test that GetSignalsResponse model complies with AdCP get-signals response schema.

@@ -231,10 +231,14 @@ class TestDateTimeParsingEdgeCases:
             end_time=datetime(2025, 2, 28, 23, 59, 59, tzinfo=UTC),
         )
 
-        # Should have timezone-aware datetimes
+        # Should have timezone-aware datetimes (library wraps in StartTiming)
         assert req.start_time is not None
         assert req.end_time is not None
-        assert req.start_time.tzinfo is not None
+        # Handle library StartTiming wrapper type
+        if hasattr(req.start_time, "root"):
+            assert req.start_time.root.tzinfo is not None
+        else:
+            assert req.start_time.tzinfo is not None
         assert req.end_time.tzinfo is not None
 
 

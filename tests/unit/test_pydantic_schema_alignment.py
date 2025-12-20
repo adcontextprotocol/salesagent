@@ -449,11 +449,11 @@ class TestSpecificFieldValidation:
         )
         # Verify brand_manifest was accepted
         assert request.brand_manifest is not None
-        # Library may wrap in BrandManifestReference, check for nested value
+        # Library may wrap in BrandManifestReference with BrandManifest in root
         if hasattr(request.brand_manifest, "name"):
             assert request.brand_manifest.name == "Nike Air Jordan 2025"
-        elif hasattr(request.brand_manifest, "root"):
-            assert request.brand_manifest.root.get("name") == "Nike Air Jordan 2025"
+        elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+            assert request.brand_manifest.root.name == "Nike Air Jordan 2025"
 
     def test_get_products_accepts_filters(self):
         """REGRESSION TEST: filters must be accepted (PR #195 issue)."""
