@@ -656,9 +656,12 @@ class GoogleAdManager(AdServerAdapter):
                     )
 
                     # Get webhook URL from push notification config
+                    # Note: push_notification_config is not part of AdCP library's CreateMediaBuyRequest
+                    # Use getattr for backward compatibility with internal extensions
                     webhook_url = None
-                    if request.push_notification_config:
-                        webhook_url = request.push_notification_config.get("url")
+                    push_config = getattr(request, "push_notification_config", None)
+                    if push_config:
+                        webhook_url = push_config.get("url") if isinstance(push_config, dict) else getattr(push_config, "url", None)
 
                     # Get principal_id from adapter's principal object
                     principal_id = self.principal.principal_id if hasattr(self.principal, "principal_id") else "unknown"
