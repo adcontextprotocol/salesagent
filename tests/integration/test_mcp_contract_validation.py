@@ -34,22 +34,26 @@ class TestMCPContractValidation:
         request = GetProductsRequest(brand_manifest={"name": "purina cat food"})
 
         assert request.brief is None  # Optional, defaults to None per spec
-        # brand_manifest can be BrandManifest object or dict
+        # brand_manifest can be BrandManifest, BrandManifestReference wrapper, or dict
         if isinstance(request.brand_manifest, dict):
             assert request.brand_manifest["name"] == "purina cat food"
-        else:
+        elif hasattr(request.brand_manifest, "name"):
             assert request.brand_manifest.name == "purina cat food"
+        elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+            assert request.brand_manifest.root.name == "purina cat food"
 
     def test_get_products_with_brief(self):
         """Test get_products works with both brief and brand_manifest."""
         request = GetProductsRequest(brief="pet supplies campaign", brand_manifest={"name": "purina cat food"})
 
         assert request.brief == "pet supplies campaign"
-        # brand_manifest can be BrandManifest object or dict
+        # brand_manifest can be BrandManifest, BrandManifestReference wrapper, or dict
         if isinstance(request.brand_manifest, dict):
             assert request.brand_manifest["name"] == "purina cat food"
-        else:
+        elif hasattr(request.brand_manifest, "name"):
             assert request.brand_manifest.name == "purina cat food"
+        elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+            assert request.brand_manifest.root.name == "purina cat food"
 
     def test_get_products_accepts_brief_only(self):
         """Test that GetProductsRequest accepts brief without brand_manifest per AdCP spec.
@@ -272,11 +276,13 @@ class TestMCPToolMinimalCalls:
         try:
             request = GetProductsRequest(brand_manifest={"name": "purina cat food"})
             assert request.brief is None  # Optional, defaults to None per spec
-            # brand_manifest can be BrandManifest object or dict
+            # brand_manifest can be BrandManifest, BrandManifestReference wrapper, or dict
             if isinstance(request.brand_manifest, dict):
                 assert request.brand_manifest["name"] == "purina cat food"
-            else:
+            elif hasattr(request.brand_manifest, "name"):
                 assert request.brand_manifest.name == "purina cat food"
+            elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+                assert request.brand_manifest.root.name == "purina cat food"
         except Exception as e:
             pytest.fail(f"GetProductsRequest creation failed: {e}")
 

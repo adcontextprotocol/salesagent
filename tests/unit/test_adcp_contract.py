@@ -502,7 +502,11 @@ class TestAdCPContract:
             brief="Looking for high-volume campaigns",
             brand_manifest={"name": "Nike Air Max 2024"},
         )
-        assert request.brand_manifest.name == "Nike Air Max 2024"
+        # Library may wrap in BrandManifestReference with BrandManifest in root
+        if hasattr(request.brand_manifest, "name"):
+            assert request.brand_manifest.name == "Nike Air Max 2024"
+        elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+            assert request.brand_manifest.root.name == "Nike Air Max 2024"
 
         # Should succeed without brand_manifest (per AdCP spec, it's optional)
         brief_only_request = GetProductsRequest(brief="Just a brief")

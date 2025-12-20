@@ -399,6 +399,9 @@ class MockAdServer(AdServerAdapter):
                 test_message = request.brand_manifest
             elif hasattr(request.brand_manifest, "name"):
                 test_message = request.brand_manifest.name
+            elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+                # Handle library BrandManifestReference wrapper
+                test_message = request.brand_manifest.root.name
             elif isinstance(request.brand_manifest, dict):
                 test_message = request.brand_manifest.get("name")
 

@@ -483,7 +483,11 @@ class TestSpecificFieldValidation:
         request = GetProductsRequest(
             brand_manifest={"name": "Test Product"},
         )
-        assert request.brand_manifest.name == "Test Product"
+        # Library may wrap in BrandManifestReference with BrandManifest in root
+        if hasattr(request.brand_manifest, "name"):
+            assert request.brand_manifest.name == "Test Product"
+        elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+            assert request.brand_manifest.root.name == "Test Product"
         assert request.brief is None
 
 

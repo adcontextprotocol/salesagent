@@ -1390,13 +1390,15 @@ async def _create_media_buy_impl(
             raise ValueError(error_msg)
 
         # Handle 'asap' start_time (AdCP v1.7.0)
-        if req.start_time == "asap":
+        # Library may wrap start_time in StartTiming - unwrap if needed
+        raw_start_time = req.start_time.root if hasattr(req.start_time, "root") else req.start_time
+        if raw_start_time == "asap":
             computed_start_time: datetime = now
         else:
             # Ensure start_time is timezone-aware for comparison
-            # At this point, req.start_time is guaranteed to be datetime (not str)
-            assert isinstance(req.start_time, datetime), "start_time must be datetime when not 'asap'"
-            computed_start_time = req.start_time
+            # At this point, raw_start_time is guaranteed to be datetime (not str)
+            assert isinstance(raw_start_time, datetime), "start_time must be datetime when not 'asap'"
+            computed_start_time = raw_start_time
             if computed_start_time.tzinfo is None:
                 computed_start_time = computed_start_time.replace(tzinfo=UTC)
 

@@ -2018,39 +2018,10 @@ def _list_creatives_impl(
 
     # Calculate pagination info (page and limit have defaults from factory function)
     has_more = (page * limit) < total_count
-
-    # Audit logging
-    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
-    audit_logger.log_operation(
-        operation="list_creatives",
-        principal_name=principal_id,
-        principal_id=principal_id,
-        adapter_id="N/A",
-        success=True,
-        details={
-            "result_count": len(creatives),
-            "total_count": total_count,
-            "page": req.page,
-            "filters_applied": {
-                "media_buy_id": req.media_buy_id,
-                "status": req.status,
-                "format": req.format,
-                "search": req.search,
-            },
-        },
-    )
-
-    # Log activity
-    # Activity logging imported at module level
-    if ctx is not None:
-        log_tool_activity(ctx, "list_creatives", start_time)
-
-    message = f"Found {len(creatives)} creatives"
-    if total_count > len(creatives):
-        message += f" (page {page} of {total_pages} total)"
+    total_pages = (total_count + limit - 1) // limit if limit > 0 else 0
 
     # Build filters_applied list from structured filters
-    filters_applied = []
+    filters_applied: list[str] = []
     if req.filters:
         if hasattr(req.filters, "media_buy_ids") and req.filters.media_buy_ids:
             filters_applied.append(f"media_buy_ids={','.join(req.filters.media_buy_ids)}")
@@ -2074,9 +2045,33 @@ def _list_creatives_impl(
     if req.sort:
         sort_applied = {"field": str(req.sort.field), "direction": str(req.sort.direction)}
 
-    # Calculate offset and total_pages (page and limit have defaults from factory)
+    # Audit logging
+    audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
+    audit_logger.log_operation(
+        operation="list_creatives",
+        principal_name=principal_id,
+        principal_id=principal_id,
+        adapter_id="N/A",
+        success=True,
+        details={
+            "result_count": len(creatives),
+            "total_count": total_count,
+            "page": page,
+            "filters_applied": filters_applied if filters_applied else None,
+        },
+    )
+
+    # Log activity
+    # Activity logging imported at module level
+    if ctx is not None:
+        log_tool_activity(ctx, "list_creatives", start_time)
+
+    message = f"Found {len(creatives)} creatives"
+    if total_count > len(creatives):
+        message += f" (page {page} of {total_pages} total)"
+
+    # Calculate offset for pagination
     offset_calc = (page - 1) * limit
-    total_pages = (total_count + limit - 1) // limit if limit > 0 else 0
 
     # Import required schema classes
     from src.core.schemas import Pagination, QuerySummary
