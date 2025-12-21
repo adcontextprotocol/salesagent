@@ -735,6 +735,8 @@ async def _get_products_impl(
     # Note: We use eligible_products (Product objects), not response_data (dicts)
     # because Product objects have typed pricing_options (CpmFixedRatePricingOption, etc.)
     # while dicts lose this type information during serialization
+    # adcp 2.16.0+ accepts subclass lists at runtime via BeforeValidator coercion,
+    # but mypy still needs cast() due to list invariance in static typing
     resp = GetProductsResponse(
         products=cast(list[LibraryProduct], eligible_products),
         errors=None,
