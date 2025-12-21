@@ -82,40 +82,44 @@ class TestExternalDomainRouting:
         app, _ = create_app()
 
         with app.test_client() as client:
-            # Mock the centralized routing function
-            with patch("src.core.domain_routing.route_landing_page") as mock_route:
-                with patch("src.landing.landing_page.generate_tenant_landing_page") as mock_landing:
-                    # Mock routing result with tenant
-                    from src.core.domain_routing import RoutingResult
+            # Mock single-tenant mode to return False (we're testing multi-tenant routing)
+            with patch("src.core.config_loader.is_single_tenant_mode", return_value=False):
+                # Mock the centralized routing function
+                with patch("src.core.domain_routing.route_landing_page") as mock_route:
+                    with patch("src.landing.landing_page.generate_tenant_landing_page") as mock_landing:
+                        # Mock routing result with tenant
+                        from src.core.domain_routing import RoutingResult
 
-                    tenant_dict = {
-                        "tenant_id": "accuweather",
-                        "name": "AccuWeather",
-                        "subdomain": "accuweather",
-                        "virtual_host": "sales-agent.accuweather.com",
-                    }
-                    mock_route.return_value = RoutingResult("custom_domain", tenant_dict, "sales-agent.accuweather.com")
+                        tenant_dict = {
+                            "tenant_id": "accuweather",
+                            "name": "AccuWeather",
+                            "subdomain": "accuweather",
+                            "virtual_host": "sales-agent.accuweather.com",
+                        }
+                        mock_route.return_value = RoutingResult(
+                            "custom_domain", tenant_dict, "sales-agent.accuweather.com"
+                        )
 
-                    # Mock landing page generation
-                    mock_landing.return_value = "<html><body>Agent Landing Page</body></html>"
+                        # Mock landing page generation
+                        mock_landing.return_value = "<html><body>Agent Landing Page</body></html>"
 
-                    # Make request with Approximated headers
-                    response = client.get(
-                        "/",
-                        headers={
-                            "Host": "backend.example.com",
-                            "Apx-Incoming-Host": "sales-agent.accuweather.com",
-                        },
-                    )
+                        # Make request with Approximated headers
+                        response = client.get(
+                            "/",
+                            headers={
+                                "Host": "backend.example.com",
+                                "Apx-Incoming-Host": "sales-agent.accuweather.com",
+                            },
+                        )
 
-                    # Should show agent landing page (200) with MCP/A2A endpoints
-                    assert response.status_code == 200
-                    assert b"Agent Landing Page" in response.data
-                    # Verify landing page was called with correct parameters
-                    mock_landing.assert_called_once()
-                    call_args = mock_landing.call_args
-                    assert call_args[0][0]["tenant_id"] == "accuweather"
-                    assert call_args[0][1] == "sales-agent.accuweather.com"
+                        # Should show agent landing page (200) with MCP/A2A endpoints
+                        assert response.status_code == 200
+                        assert b"Agent Landing Page" in response.data
+                        # Verify landing page was called with correct parameters
+                        mock_landing.assert_called_once()
+                        call_args = mock_landing.call_args
+                        assert call_args[0][0]["tenant_id"] == "accuweather"
+                        assert call_args[0][1] == "sales-agent.accuweather.com"
 
     def test_index_route_external_domain_no_tenant(self):
         """Test that external domain without configured tenant shows signup landing page."""
@@ -124,25 +128,27 @@ class TestExternalDomainRouting:
         app, _ = create_app()
 
         with app.test_client() as client:
-            # Mock the centralized routing function
-            with patch("src.core.domain_routing.route_landing_page") as mock_route:
-                from src.core.domain_routing import RoutingResult
+            # Mock single-tenant mode to return False (we're testing multi-tenant routing)
+            with patch("src.core.config_loader.is_single_tenant_mode", return_value=False):
+                # Mock the centralized routing function
+                with patch("src.core.domain_routing.route_landing_page") as mock_route:
+                    from src.core.domain_routing import RoutingResult
 
-                # Mock routing result with no tenant
-                mock_route.return_value = RoutingResult("custom_domain", None, "unknown-domain.com")
+                    # Mock routing result with no tenant
+                    mock_route.return_value = RoutingResult("custom_domain", None, "unknown-domain.com")
 
-                # Make request with Approximated headers
-                response = client.get(
-                    "/",
-                    headers={
-                        "Host": "backend.example.com",
-                        "Apx-Incoming-Host": "unknown-domain.com",
-                    },
-                )
+                    # Make request with Approximated headers
+                    response = client.get(
+                        "/",
+                        headers={
+                            "Host": "backend.example.com",
+                            "Apx-Incoming-Host": "unknown-domain.com",
+                        },
+                    )
 
-                # Should redirect to signup landing page (302)
-                assert response.status_code == 302
-                assert "landing" in response.location or "signup" in response.location
+                    # Should redirect to signup landing page (302)
+                    assert response.status_code == 302
+                    assert "landing" in response.location or "signup" in response.location
 
     def test_index_route_subdomain_with_tenant(self):
         """Test that subdomain (*.sales-agent.scope3.com) with tenant shows agent landing page."""
@@ -151,33 +157,35 @@ class TestExternalDomainRouting:
         app, _ = create_app()
 
         with app.test_client() as client:
-            # Mock the centralized routing function
-            with patch("src.core.domain_routing.route_landing_page") as mock_route:
-                with patch("src.landing.landing_page.generate_tenant_landing_page") as mock_landing:
-                    from src.core.domain_routing import RoutingResult
+            # Mock single-tenant mode to return False (we're testing multi-tenant routing)
+            with patch("src.core.config_loader.is_single_tenant_mode", return_value=False):
+                # Mock the centralized routing function
+                with patch("src.core.domain_routing.route_landing_page") as mock_route:
+                    with patch("src.landing.landing_page.generate_tenant_landing_page") as mock_landing:
+                        from src.core.domain_routing import RoutingResult
 
-                    # Mock routing result with tenant
-                    tenant_dict = {
-                        "tenant_id": "accuweather",
-                        "name": "AccuWeather",
-                        "subdomain": "accuweather",
-                        "virtual_host": None,
-                    }
-                    mock_route.return_value = RoutingResult(
-                        "subdomain", tenant_dict, "accuweather.sales-agent.scope3.com"
-                    )
+                        # Mock routing result with tenant
+                        tenant_dict = {
+                            "tenant_id": "accuweather",
+                            "name": "AccuWeather",
+                            "subdomain": "accuweather",
+                            "virtual_host": None,
+                        }
+                        mock_route.return_value = RoutingResult(
+                            "subdomain", tenant_dict, "accuweather.sales-agent.scope3.com"
+                        )
 
-                    # Mock landing page generation
-                    mock_landing.return_value = "<html><body>Agent Landing Page</body></html>"
+                        # Mock landing page generation
+                        mock_landing.return_value = "<html><body>Agent Landing Page</body></html>"
 
-                    # Make request with subdomain
-                    response = client.get(
-                        "/",
-                        headers={
-                            "Host": "accuweather.sales-agent.scope3.com",
-                        },
-                    )
+                        # Make request with subdomain
+                        response = client.get(
+                            "/",
+                            headers={
+                                "Host": "accuweather.sales-agent.scope3.com",
+                            },
+                        )
 
-                    # Should show agent landing page (200)
-                    assert response.status_code == 200
-                    assert b"Agent Landing Page" in response.data
+                        # Should show agent landing page (200)
+                        assert response.status_code == 200
+                        assert b"Agent Landing Page" in response.data
