@@ -1,8 +1,8 @@
 """Factory for creating Pydantic AI models with tenant-aware configuration."""
 
 import logging
-import os
 from functools import lru_cache
+from typing import Any
 
 from src.services.ai.config import (
     TenantAIConfig,
@@ -81,8 +81,8 @@ class AIServiceFactory:
         tenant_ai_config: dict | TenantAIConfig | None = None,
         provider_override: str | None = None,
         model_override: str | None = None,
-    ) -> str:
-        """Create a Pydantic AI model string with the appropriate configuration.
+    ) -> Any:
+        """Create a Pydantic AI model with the appropriate configuration.
 
         Configuration priority:
         1. Explicit overrides (provider_override, model_override)
@@ -95,7 +95,8 @@ class AIServiceFactory:
             model_override: Override the model (for testing)
 
         Returns:
-            Pydantic AI model string (e.g., "anthropic:claude-sonnet-4-20250514")
+            Pydantic AI Model instance with API key configured via Provider.
+            This can be passed directly to Agent(model=...).
 
         Raises:
             ValueError: If no API key is available for the configured provider
@@ -117,40 +118,88 @@ class AIServiceFactory:
         if config.logfire_token:
             configure_logfire(config.logfire_token)
 
-        # Build model string for Pydantic AI
-        model_string = build_model_string(provider, model_name)
+        # Normalize provider name
+        if provider == "gemini":
+            provider = "google-gla"
 
-        # Set the API key in environment for the provider
-        # Pydantic AI reads from standard env vars
-        self._set_provider_api_key(provider, api_key)
+        logger.debug(f"Creating Pydantic AI model: {provider}:{model_name}")
 
-        logger.debug(f"Creating Pydantic AI model: {model_string}")
+        # Create model with Provider that has API key directly configured
+        # This avoids setting global environment variables
+        return self._create_provider_model(provider, model_name, api_key)
 
-        # Return the model string - Pydantic AI Agent will resolve it
-        return model_string
+    def _create_provider_model(self, provider: str, model_name: str, api_key: str | None) -> Any:
+        """Create a Pydantic AI model with explicit API key via Provider.
 
-    def _set_provider_api_key(self, provider: str, api_key: str | None) -> None:
-        """Set the API key environment variable for a provider.
-
-        Pydantic AI reads API keys from standard environment variables.
+        This passes the API key directly to the Provider constructor,
+        avoiding global environment variable mutation.
 
         Args:
-            provider: Provider name
-            api_key: API key to set
+            provider: Normalized provider name (e.g., "google-gla", "anthropic")
+            model_name: Model name (e.g., "gemini-2.0-flash")
+            api_key: API key for the provider
+
+        Returns:
+            Configured Model instance
         """
-        if not api_key:
-            return
+        # Import providers lazily to avoid import errors if not installed
+        if provider == "google-gla":
+            from pydantic_ai.models.google import GoogleModel
+            from pydantic_ai.providers.google import GoogleProvider
 
-        env_vars = {
-            "gemini": "GEMINI_API_KEY",
-            "openai": "OPENAI_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-            "groq": "GROQ_API_KEY",
-        }
+            if api_key:
+                return GoogleModel(model_name, provider=GoogleProvider(api_key=api_key))
+            return GoogleModel(model_name, provider="google-gla")
 
-        env_var = env_vars.get(provider)
-        if env_var:
-            os.environ[env_var] = api_key
+        elif provider == "anthropic":
+            from pydantic_ai.models.anthropic import AnthropicModel
+            from pydantic_ai.providers.anthropic import AnthropicProvider
+
+            if api_key:
+                return AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
+            return AnthropicModel(model_name, provider="anthropic")
+
+        elif provider == "openai":
+            from pydantic_ai.models.openai import OpenAIChatModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            if api_key:
+                return OpenAIChatModel(model_name, provider=OpenAIProvider(api_key=api_key))
+            return OpenAIChatModel(model_name, provider="openai")
+
+        elif provider == "groq":
+            from pydantic_ai.models.groq import GroqModel
+            from pydantic_ai.providers.groq import GroqProvider
+
+            if api_key:
+                return GroqModel(model_name, provider=GroqProvider(api_key=api_key))
+            return GroqModel(model_name, provider="groq")
+
+        elif provider == "mistral":
+            from pydantic_ai.models.mistral import MistralModel
+            from pydantic_ai.providers.mistral import MistralProvider
+
+            if api_key:
+                return MistralModel(model_name, provider=MistralProvider(api_key=api_key))
+            return MistralModel(model_name, provider="mistral")
+
+        elif provider == "cohere":
+            from pydantic_ai.models.cohere import CohereModel
+            from pydantic_ai.providers.cohere import CohereProvider
+
+            if api_key:
+                return CohereModel(model_name, provider=CohereProvider(api_key=api_key))
+            return CohereModel(model_name, provider="cohere")
+
+        else:
+            # Fallback: use model string and let Pydantic AI resolve it
+            # This handles gateway providers and any new providers
+            model_string = build_model_string(provider, model_name)
+            logger.warning(
+                f"Provider '{provider}' not explicitly supported, "
+                f"using model string '{model_string}' (API key must be in env var)"
+            )
+            return model_string
 
     def is_ai_enabled(
         self,

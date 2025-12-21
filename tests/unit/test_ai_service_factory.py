@@ -122,6 +122,8 @@ class TestAIServiceFactory:
 
     def test_create_model_with_platform_defaults(self):
         """Factory creates model using platform defaults."""
+        from pydantic_ai.models.google import GoogleModel
+
         with patch.dict(
             os.environ,
             {
@@ -133,10 +135,13 @@ class TestAIServiceFactory:
         ):
             factory = AIServiceFactory()
             model = factory.create_model()
-            assert model == "google-gla:gemini-2.0-flash"
+            # Now returns a Model instance instead of a string
+            assert isinstance(model, GoogleModel)
 
     def test_create_model_with_tenant_config(self):
         """Factory uses tenant config over platform defaults."""
+        from pydantic_ai.models.anthropic import AnthropicModel
+
         with patch.dict(
             os.environ,
             {
@@ -153,10 +158,13 @@ class TestAIServiceFactory:
                 "api_key": "tenant-key",
             }
             model = factory.create_model(tenant_ai_config=tenant_config)
-            assert model == "anthropic:claude-sonnet-4-20250514"
+            # Returns AnthropicModel for anthropic provider
+            assert isinstance(model, AnthropicModel)
 
     def test_create_model_with_override(self):
         """Explicit overrides take highest priority."""
+        from pydantic_ai.models.openai import OpenAIChatModel
+
         with patch.dict(
             os.environ,
             {
@@ -171,7 +179,8 @@ class TestAIServiceFactory:
                 provider_override="openai",
                 model_override="gpt-4o",
             )
-            assert model == "openai:gpt-4o"
+            # Override to openai returns OpenAIChatModel
+            assert isinstance(model, OpenAIChatModel)
 
     def test_get_effective_config_platform(self):
         """Effective config shows platform source when no tenant config."""
@@ -207,10 +216,16 @@ class TestAIServiceFactory:
             assert effective["model"] == "claude-sonnet-4-20250514"
             assert effective["source"] == "tenant"
 
-    def test_sets_provider_api_key_in_env(self):
-        """Factory sets API key in environment for provider."""
+    def test_model_receives_api_key_via_provider(self):
+        """Factory passes API key directly via Provider, not environment variables."""
+        from pydantic_ai.models.openai import OpenAIChatModel
+
+        # Clear the environment to prove we're not relying on env vars
         with patch.dict(os.environ, {}, clear=True):
             factory = AIServiceFactory()
             tenant_config = {"provider": "openai", "model": "gpt-4o", "api_key": "tenant-openai-key"}
-            factory.create_model(tenant_ai_config=tenant_config)
-            assert os.environ.get("OPENAI_API_KEY") == "tenant-openai-key"
+            model = factory.create_model(tenant_ai_config=tenant_config)
+            # Model is created successfully
+            assert isinstance(model, OpenAIChatModel)
+            # API key is NOT set in environment (we pass it directly to Provider)
+            assert os.environ.get("OPENAI_API_KEY") is None
