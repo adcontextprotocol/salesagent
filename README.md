@@ -14,19 +14,22 @@ The AdCP Sales Agent is a server that:
 ## Quick Start (3 commands)
 
 ```bash
-curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.prod.yml
-docker compose -f docker-compose.prod.yml up -d
-uvx adcp http://localhost:8080/mcp/ --auth test-token list_tools
+curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml
+docker compose up -d
+uvx adcp http://localhost:8000/mcp/ --auth test-token list_tools
 ```
 
 A default tenant with `test-token` is created automatically. No setup required.
 
 ```bash
 # CLI syntax: uvx adcp <url> --auth <token> <tool_name> '<json_args>'
-uvx adcp http://localhost:8080/mcp/ --auth test-token get_products '{"brief":"video"}'
+uvx adcp http://localhost:8000/mcp/ --auth test-token get_products '{"brief":"video"}'
 ```
 
-**Admin UI:** http://localhost:8001 (login: `test_super_admin@example.com` / `test123`)
+All services are accessible through port 8000:
+- **Admin UI:** http://localhost:8000/admin (login: `test_super_admin@example.com` / `test123`)
+- **MCP Server:** http://localhost:8000/mcp/
+- **A2A Server:** http://localhost:8000/a2a
 
 ### Using a Specific Version
 
@@ -49,7 +52,7 @@ docker pull ghcr.io/adcontextprotocol/salesagent:0.1.0
 The quick start above uses the mock adapter. To create your own tenant:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec adcp-server \
+docker compose exec adcp-server \
   python -m scripts.setup.setup_tenant "My Publisher" \
   --adapter mock \
   --admin-email your-email@example.com
@@ -63,7 +66,7 @@ This outputs a principal token you can use immediately.
   "mcpServers": {
     "adcp": {
       "command": "uvx",
-      "args": ["mcp-remote", "http://localhost:8080/mcp/", "--header", "x-adcp-auth: test-token"]
+      "args": ["mcp-remote", "http://localhost:8000/mcp/", "--header", "x-adcp-auth: test-token"]
     }
   }
 }
@@ -84,7 +87,7 @@ The mock adapter simulates a complete ad server - no external credentials needed
 1. **Create GAM OAuth Credentials:**
    - Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
    - Create OAuth 2.0 Client ID (Web application)
-   - Add redirect URI: `http://localhost:8001/tenant/callback/gam`
+   - Add redirect URI: `http://localhost:8000/tenant/callback/gam`
    - Save Client ID and Client Secret
 
 2. **Add to .env file:**
@@ -95,14 +98,14 @@ The mock adapter simulates a complete ad server - no external credentials needed
 
 3. **Start services and configure:**
    ```bash
-   docker-compose up -d
-   docker-compose exec adcp-server python -m scripts.setup.setup_tenant "My Publisher" \
+   docker compose up -d
+   docker compose exec adcp-server python -m scripts.setup.setup_tenant "My Publisher" \
      --adapter google_ad_manager \
      --gam-network-code YOUR_NETWORK_CODE \
      --admin-email your-email@example.com
    ```
 
-4. **Complete OAuth flow** in Admin UI at http://localhost:8001
+4. **Complete OAuth flow** in Admin UI at http://localhost:8000/admin
 
 ---
 
@@ -121,12 +124,12 @@ See [docs/deployment.md](docs/deployment.md) for production setup.
 
 **Container won't start?**
 ```bash
-docker-compose logs admin-ui | head -50  # Check for missing env vars
+docker compose logs admin-ui | head -50  # Check for missing env vars
 ```
 
 **GAM OAuth error: "Could not determine client ID"?**
 - Check that `GAM_OAUTH_CLIENT_ID` and `GAM_OAUTH_CLIENT_SECRET` are set in `.env`
-- Run `docker-compose restart` after adding credentials
+- Run `docker compose restart` after adding credentials
 
 **OAuth callback 404?**
 - Redirect URI must match exactly what's in Google Cloud Console
@@ -225,7 +228,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 # Connect to server
 headers = {"x-adcp-auth": "your_token"}
 transport = StreamableHttpTransport(
-    url="http://localhost:8080/mcp/",
+    url="http://localhost:8000/mcp/",
     headers=headers
 )
 client = Client(transport=transport)
@@ -289,7 +292,7 @@ salesagent/
 ├── alembic/             # Database migrations
 ├── templates/           # Jinja2 templates
 └── config/              # Configuration files
-    └── fly/             # Fly.io deployment configs
+    └── nginx/           # Nginx configuration files
 ```
 
 ## Requirements

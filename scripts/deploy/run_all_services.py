@@ -156,6 +156,29 @@ def run_nginx():
     print("Nginx stopped")
 
 
+def run_cron():
+    """Run supercronic for scheduled tasks."""
+    crontab_path = "/app/crontab"
+    if not os.path.exists(crontab_path):
+        print("[Cron] No crontab found, skipping scheduled tasks")
+        return
+
+    print("Starting supercronic for scheduled tasks...")
+
+    proc = subprocess.Popen(
+        ["supercronic", crontab_path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    processes.append(proc)
+
+    # Monitor the process output
+    for line in iter(proc.stdout.readline, b""):
+        if line:
+            print(f"[Cron] {line.decode().rstrip()}")
+    print("Supercronic stopped")
+
+
 def main():
     """Main entry point to run all services."""
     print("=" * 60)
@@ -186,6 +209,13 @@ def main():
     a2a_thread = threading.Thread(target=run_a2a_server, daemon=True)
     a2a_thread.start()
     threads.append(a2a_thread)
+
+    # Cron thread for scheduled tasks (syncing GAM tenants, etc.)
+    skip_cron = os.environ.get("SKIP_CRON", "false").lower() == "true"
+    if not skip_cron:
+        cron_thread = threading.Thread(target=run_cron, daemon=True)
+        cron_thread.start()
+        threads.append(cron_thread)
 
     # Check if we should skip nginx (useful for docker-compose with separate services)
     skip_nginx = os.environ.get("SKIP_NGINX", "false").lower() == "true"

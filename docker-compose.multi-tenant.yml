@@ -1,13 +1,22 @@
-# Production Docker Compose - uses pre-built images from GitHub Container Registry
+# Docker Compose for multi-tenant testing with subdomain routing
 #
-# Quick start:
-#   docker compose -f docker-compose.prod.yml up -d
+# Usage:
+#   docker compose -f docker-compose.multi-tenant.yml up
 #
-# Pin to a specific version for production:
-#   IMAGE_TAG=0.1.0 docker compose -f docker-compose.prod.yml up -d
+# Prerequisites:
+#   Add to /etc/hosts:
+#     127.0.0.1 sales-agent.scope3.com
+#     127.0.0.1 admin.sales-agent.scope3.com
+#     127.0.0.1 tenant1.sales-agent.scope3.com
+#     127.0.0.1 tenant2.sales-agent.scope3.com
 #
-# Available tags: latest, 0, 0.1, 0.1.0
-# See all versions: https://github.com/adcontextprotocol/salesagent/pkgs/container/salesagent
+# Access:
+#   - http://admin.sales-agent.scope3.com:8000/        -> Admin UI
+#   - http://tenant1.sales-agent.scope3.com:8000/mcp   -> Tenant 1 MCP
+#   - http://tenant1.sales-agent.scope3.com:8000/a2a   -> Tenant 1 A2A
+#   - http://sales-agent.scope3.com:8000/              -> Main signup page
+#
+# Uses pre-built images from GitHub Container Registry.
 
 services:
   postgres:
@@ -26,19 +35,45 @@ services:
       timeout: 5s
       retries: 5
 
+  # Full nginx with subdomain routing
+  proxy:
+    image: nginx:alpine
+    volumes:
+      # Use multi-tenant nginx config with Docker service names
+      - ./config/nginx/nginx-multi-tenant.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - adcp-server
+      - admin-ui
+    ports:
+      - "${PROXY_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   adcp-server:
     image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    env_file:
+      - path: .env
+        required: false
+      - path: .env.secrets
+        required: false
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
+      SKIP_CRON: "true"
+      ADCP_SALES_PORT: "8080"
+      A2A_PORT: "8091"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
+      ADCP_TESTING: ${ADCP_TESTING:-}
+      DELIVERY_WEBHOOK_INTERVAL: ${DELIVERY_WEBHOOK_INTERVAL:-}
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "${ADCP_SALES_PORT:-8080}:8080"
-      - "${A2A_PORT:-8091}:8091"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./audit_logs:/app/audit_logs
     healthcheck:
@@ -50,10 +85,15 @@ services:
   admin-ui:
     image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
     command: python -m src.admin.server
+    env_file:
+      - path: .env
+        required: false
+      - path: .env.secrets
+        required: false
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
-      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8001}
+      ADMIN_UI_PORT: "8001"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -62,12 +102,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "${ADMIN_UI_PORT:-8001}:${ADMIN_UI_PORT:-8001}"
     volumes:
       - ./audit_logs:/app/audit_logs
     healthcheck:
-      test: ["CMD", "sh", "-c", "curl -f http://localhost:${ADMIN_UI_PORT:-8001}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3

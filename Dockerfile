@@ -50,13 +50,21 @@ RUN echo 'path-exclude /usr/share/doc/*' > /etc/dpkg/dpkg.cfg.d/01_nodoc && \
     echo 'path-exclude /usr/share/lintian/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
     echo 'path-exclude /usr/share/linda/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc
 
-# Install runtime dependencies
+# Install runtime dependencies including nginx
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
-    git
+    git \
+    nginx
+
+# Install supercronic for cron jobs (container-friendly cron)
+ARG TARGETARCH
+RUN SUPERCRONIC_ARCH=$(case "${TARGETARCH}" in "arm64") echo "linux-arm64" ;; *) echo "linux-amd64" ;; esac) && \
+    curl -fsSL "https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-${SUPERCRONIC_ARCH}" \
+    -o /usr/local/bin/supercronic && \
+    chmod +x /usr/local/bin/supercronic
 
 # Install uv (cacheable)
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -73,6 +81,13 @@ RUN echo "Cache bust: $CACHE_BUST"
 
 # Copy application code
 COPY . .
+
+# Copy nginx config (use full config for production, can be overridden via volume mount)
+COPY config/nginx/nginx.conf /etc/nginx/nginx.conf
+
+# Create nginx directories with proper permissions
+RUN mkdir -p /var/log/nginx /var/run && \
+    chown -R www-data:www-data /var/log/nginx /var/run
 
 # Set up caching for uv
 ENV UV_CACHE_DIR=/cache/uv
@@ -101,8 +116,8 @@ ENV PYTHONUNBUFFERED=1
 ENV ADCP_PORT=8080
 ENV ADCP_HOST=0.0.0.0
 
-# Expose ports (MCP, Admin UI, A2A)
-EXPOSE 8080 8001 8091
+# Expose ports (Proxy, MCP, Admin UI, A2A)
+EXPOSE 8000 8080 8001 8091
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

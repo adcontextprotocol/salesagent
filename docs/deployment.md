@@ -70,24 +70,25 @@ See all available versions: https://github.com/adcontextprotocol/salesagent/pkgs
 The fastest way to get started using published images:
 
 ```bash
-# Download the production compose file
-curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.prod.yml
+# Download the compose file
+curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml
 
 # Start services
-docker compose -f docker-compose.prod.yml up -d
+docker compose up -d
 
 # Verify it's running
-curl http://localhost:8080/health
+curl http://localhost:8000/health
 ```
 
 **Pin to a specific version for production:**
 ```bash
-IMAGE_TAG=0.1.0 docker compose -f docker-compose.prod.yml up -d
+IMAGE_TAG=0.1.0 docker compose up -d
 ```
 
-**Access services:**
-- MCP Server: http://localhost:8080/mcp/
-- Admin UI: http://localhost:8001 (test login: `test_super_admin@example.com` / `test123`)
+**Access services (all through port 8000):**
+- Admin UI: http://localhost:8000/admin (test login: `test_super_admin@example.com` / `test123`)
+- MCP Server: http://localhost:8000/mcp/
+- A2A Server: http://localhost:8000/a2a
 - PostgreSQL: localhost:5432
 
 ### Option B: Build from Source
@@ -102,57 +103,70 @@ For development or customization:
    # Edit .env with your configuration
    ```
 
-2. **Start services:**
+2. **Start services with development overlay:**
    ```bash
-   docker-compose up -d
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
    ```
 
-3. **Access services:**
-   - MCP Server: http://localhost:8080/mcp/
-   - Admin UI: http://localhost:8001
+3. **Access services (all through port 8000):**
+   - Admin UI: http://localhost:8000/admin
+   - MCP Server: http://localhost:8000/mcp/
+   - A2A Server: http://localhost:8000/a2a
    - PostgreSQL: localhost:5432
 
 ### Docker Services
 
-The `docker-compose.yml` defines three services:
+The `docker-compose.yml` defines four services:
 
 ```yaml
 services:
   postgres:      # PostgreSQL database
-  adcp-server:   # MCP server (port 8080)
+  proxy:         # Nginx reverse proxy (port 8000)
+  adcp-server:   # MCP server + A2A server (ports 8080, 8091)
   admin-ui:      # Admin interface (port 8001)
 ```
 
-### Docker Caching
+### Docker Compose Variants
 
-The system uses BuildKit caching with shared volumes:
-- `adcp_global_pip_cache` - Python packages cache
-- `adcp_global_uv_cache` - uv dependencies cache
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Quickstart with pre-built images |
+| `docker-compose.dev.yml` | Development overlay with hot-reload |
+| `docker-compose.multi-tenant.yml` | Multi-tenant testing with subdomain routing |
 
-This reduces rebuild times from ~3 minutes to ~30 seconds across all Conductor workspaces.
+```bash
+# Quickstart (most common)
+docker compose up -d
+
+# Development with hot-reload
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+# Multi-tenant testing (requires /etc/hosts entries)
+docker compose -f docker-compose.multi-tenant.yml up
+```
 
 ### Docker Management
 
 ```bash
 # Rebuild after code changes
-docker-compose build
-docker-compose up -d
+docker compose build
+docker compose up -d
 
 # View logs
-docker-compose logs -f
-docker-compose logs -f adcp-server
+docker compose logs -f
+docker compose logs -f adcp-server
 
 # Stop services
-docker-compose down
+docker compose down
 
 # Reset everything (including volumes)
-docker-compose down -v
+docker compose down -v
 
 # Enter container
-docker-compose exec adcp-server bash
+docker compose exec adcp-server bash
 
 # Backup database
-docker-compose exec postgres pg_dump -U adcp_user adcp > backup.sql
+docker compose exec postgres pg_dump -U adcp_user adcp > backup.sql
 ```
 
 ## Fly.io Deployment (Reference Implementation)
@@ -327,9 +341,8 @@ fly apps restart your-app-name
 ### Fly.io Configuration Files
 
 - `fly.toml` - Main application configuration
-- `Dockerfile.fly` - Optimized Docker image for Fly.io
-- `fly-proxy.py` - Request routing proxy
-- `debug_start.sh` - Service startup script
+- `Dockerfile` - Docker image with integrated nginx and supercronic
+- `scripts/deploy/run_all_services.py` - Service orchestration script
 
 ### Monitoring on Fly.io
 
@@ -416,7 +429,7 @@ DB_TYPE=sqlite
 
 ```bash
 # Docker deployment
-docker-compose exec adcp-server python -m scripts.setup.setup_tenant \
+docker compose exec adcp-server python -m scripts.setup.setup_tenant \
   "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456 \
@@ -428,7 +441,7 @@ fly ssh console -C "python -m scripts.setup.setup_tenant 'Publisher Name' \
   --gam-network-code 123456"
 
 # Mock adapter for testing
-docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publisher" --adapter mock
+docker compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publisher" --adapter mock
 ```
 
 ### Managing Principals (Advertisers)
@@ -480,7 +493,7 @@ curl http://localhost:8080/health
 curl http://localhost:8001/health
 
 # PostgreSQL health (Docker)
-docker-compose exec postgres pg_isready
+docker compose exec postgres pg_isready
 ```
 
 ### Monitoring Metrics
@@ -535,7 +548,7 @@ server {
 #### PostgreSQL Backup
 ```bash
 # Docker
-docker-compose exec postgres \
+docker compose exec postgres \
   pg_dump -U adcp_user adcp > backup_$(date +%Y%m%d).sql
 
 # Fly.io
@@ -545,7 +558,7 @@ fly postgres backup create --app adcp-db
 #### PostgreSQL Restore
 ```bash
 # Docker
-docker-compose exec -T postgres \
+docker compose exec -T postgres \
   psql -U adcp_user adcp < backup.sql
 
 # Fly.io
@@ -591,12 +604,12 @@ docker network inspect salesagent_default
 #### Container Won't Start
 ```bash
 # Check logs
-docker-compose logs adcp-server
+docker compose logs adcp-server
 
 # Rebuild from scratch
-docker-compose down -v
-docker-compose build --no-cache
-docker-compose up
+docker compose down -v
+docker compose build --no-cache
+docker compose up
 ```
 
 ### Debug Mode
@@ -604,7 +617,7 @@ docker-compose up
 Enable debug logging:
 ```bash
 # Docker
-DEBUG=true docker-compose up
+DEBUG=true docker compose up
 
 # Fly.io
 fly secrets set DEBUG=true
@@ -738,13 +751,13 @@ To enable maintenance mode:
 
 ```bash
 # Full backup
-docker-compose exec postgres pg_dump -U adcp_user adcp > backup.sql
+docker compose exec postgres pg_dump -U adcp_user adcp > backup.sql
 
 # Compressed backup
-docker-compose exec postgres pg_dump -U adcp_user adcp | gzip > backup.sql.gz
+docker compose exec postgres pg_dump -U adcp_user adcp | gzip > backup.sql.gz
 
 # Restore
-docker-compose exec -T postgres psql -U adcp_user adcp < backup.sql
+docker compose exec -T postgres psql -U adcp_user adcp < backup.sql
 ```
 
 ### SQLite Backup
