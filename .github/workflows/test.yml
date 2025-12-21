@@ -273,14 +273,14 @@ jobs:
         export PATH="$HOME/.cargo/bin:$PATH"
         uv sync --extra dev
 
-    - name: Install Docker Compose
+    - name: Verify Docker Compose v2
       run: |
-        # Install docker-compose without man pages to speed up installation
-        sudo mkdir -p /etc/dpkg/dpkg.cfg.d
-        echo 'path-exclude /usr/share/doc/*' | sudo tee /etc/dpkg/dpkg.cfg.d/01_nodoc
-        echo 'path-exclude /usr/share/man/*' | sudo tee -a /etc/dpkg/dpkg.cfg.d/01_nodoc
-        sudo apt-get update
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends docker-compose
+        # GitHub-hosted runners include Docker Compose v2 plugin
+        docker compose version
+        # Create alias for backwards compatibility with tests that use docker-compose
+        echo '#!/bin/bash' | sudo tee /usr/local/bin/docker-compose
+        echo 'exec docker compose "$@"' | sudo tee -a /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
 
     - name: Clean up any lingering containers
       run: |
@@ -289,7 +289,7 @@ jobs:
         docker ps -q --filter "publish=8080" | xargs -r docker kill || true
         docker ps -q --filter "publish=8091" | xargs -r docker kill || true
         # Clean up any stopped containers and networks
-        docker-compose down -v 2>/dev/null || true
+        docker compose down -v 2>/dev/null || true
         docker system prune -f 2>/dev/null || true
 
     - name: Run E2E tests
@@ -313,7 +313,7 @@ jobs:
     - name: Cleanup Docker services
       if: always()
       run: |
-        docker-compose down -v 2>/dev/null || true
+        docker compose down -v 2>/dev/null || true
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
