@@ -64,9 +64,7 @@ def _extract_brand_name(request) -> str | None:
 def _get_fallback_name(request) -> str:
     """Get fallback name when AI is unavailable."""
     brand_name = _extract_brand_name(request)
-    # campaign_name is no longer on CreateMediaBuyRequest per AdCP spec
-    campaign_name = getattr(request, "campaign_name", None)
-    return brand_name or campaign_name or "Campaign"
+    return brand_name or "Campaign"
 
 
 def generate_auto_name(
@@ -146,13 +144,11 @@ def generate_auto_name(
                 objectives = manifest.campaign_objectives
 
         # Run async agent synchronously
-        # campaign_name is no longer on CreateMediaBuyRequest per AdCP spec
-        campaign_name = getattr(request, "campaign_name", None)
         generated_name = asyncio.run(
             generate_name_async(
                 agent=agent,
                 buyer_ref=request.buyer_ref,
-                campaign_name=campaign_name,
+                campaign_name=None,  # Not in AdCP spec
                 brand_name=brand_name if brand_name != "N/A" else None,
                 budget_info=budget_info,
                 date_range=format_date_range(start_time, end_time),
