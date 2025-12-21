@@ -36,14 +36,18 @@ def create_media_package(
     buyer_ref: str = "pkg_buyer_ref",
     pricing_option_id: str = "pricing_opt_1",
 ):
-    """Helper function to create MediaPackage record (required for execute_approved_media_buy)."""
+    """Helper function to create MediaPackage record (required for execute_approved_media_buy).
+
+    Note: package_config stores the PackageRequest fields per AdCP spec.
+    package_id is an internal field stored separately on MediaPackage, not in package_config.
+    """
     with get_db_session() as session:
         media_package = MediaPackage(
             media_buy_id=media_buy_id,
             package_id=package_id,
             budget=Decimal(str(budget)),
             package_config={
-                "package_id": package_id,
+                # AdCP PackageRequest fields only - package_id is internal
                 "product_id": product_id,
                 "buyer_ref": buyer_ref,
                 "budget": budget,

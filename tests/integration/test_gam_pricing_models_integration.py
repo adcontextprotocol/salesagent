@@ -380,8 +380,6 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-03-01T00:00:00Z",
         end_time="2026-03-31T23:59:59Z",
     )
@@ -401,7 +399,6 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
     )
 
@@ -440,8 +437,6 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
                 budget=5000.0,
             )
         ],
-        budget={"total": 5000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-03-01T00:00:00Z",
         end_time="2026-03-31T23:59:59Z",
     )
@@ -461,7 +456,6 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
     )
 
@@ -501,8 +495,6 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
                 budget=12000.0,
             )
         ],
-        budget={"total": 12000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-03-01T00:00:00Z",
         end_time="2026-03-31T23:59:59Z",
     )
@@ -522,7 +514,6 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
     )
 
@@ -563,8 +554,6 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
                 budget=5000.0,
             )
         ],
-        budget={"total": 5000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-03-01T00:00:00Z",
         end_time="2026-03-10T23:59:59Z",  # 10 days
     )
@@ -584,7 +573,6 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
     )
 
@@ -636,8 +624,6 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
                 budget=9000.0,
             ),
         ],
-        budget={"total": 20000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-03-01T00:00:00Z",
         end_time="2026-03-31T23:59:59Z",
     )
@@ -657,7 +643,6 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
     )
 
@@ -713,8 +698,6 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
                 bid_price=2.25,  # Bid within floor/ceiling
             )
         ],
-        budget={"total": 4000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-03-01T00:00:00Z",
         end_time="2026-03-31T23:59:59Z",
     )
@@ -737,7 +720,6 @@ async def test_gam_auction_cpc_creates_price_priority(setup_gam_tenant_with_all_
             packages=request.packages,
             start_time=request.start_time,
             end_time=request.end_time,
-            budget=request.budget,
             ctx=context,
         )
 

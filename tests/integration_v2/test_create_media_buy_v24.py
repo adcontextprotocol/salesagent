@@ -441,35 +441,47 @@ class TestCreateMediaBuyV24Format:
         assert isinstance(package, dict), "Package must be serialized to dict"
         assert package["buyer_ref"] == "pkg_a2a_test"
 
-    async def test_create_media_buy_legacy_format_still_works(self, setup_test_tenant):
-        """Verify legacy format (product_ids + total_budget) still works.
+    async def test_create_media_buy_with_minimal_package(self, setup_test_tenant):
+        """Verify media buy creation works with a minimal valid package.
 
-        This ensures backward compatibility wasn't broken by v2.4 changes.
+        Tests that the standard AdCP format creates media buys correctly.
+        Legacy formats (product_ids, total_budget) were removed in adcp 2.16.0.
         """
-        from unittest.mock import MagicMock
-
+        from src.core.schemas import PackageRequest
+        from src.core.tool_context import ToolContext
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create mock context with headers
-        context = MagicMock()
-        context.headers = {"x-adcp-auth": "test_token_v24"}
+        # Create proper ToolContext
+        context = ToolContext(
+            context_id="test_ctx",
+            tenant_id="test_tenant_v24",
+            principal_id="test_principal_v24",
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
+            testing_context={"dry_run": True, "test_session_id": "test_session"},
+        )
 
-        # Legacy format using individual parameters
-        # NOTE: Even legacy format now requires buyer_ref, packages, start_time, end_time per AdCP spec
-        # The legacy parameters (product_ids, total_budget, start_date, end_date) are converted internally
+        # Standard AdCP format with explicit package
         response = await _create_media_buy_impl(
-            buyer_ref="test_buyer_v24_legacy",  # REQUIRED per AdCP v2.2.0
+            buyer_ref="test_buyer_v24_standard",
             brand_manifest={"name": "Under Armour HOVR 2025 running shoes"},
-            packages=[],  # Empty packages - will be auto-created from product_ids
+            packages=[
+                PackageRequest(
+                    buyer_ref="pkg_v24_test",
+                    product_id="prod_test_v24_usd",
+                    budget=5000.0,
+                    pricing_option_id="default",
+                )
+            ],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
-            po_number="TEST-LEGACY-001",
+            po_number="TEST-STANDARD-001",
             ctx=context,
         )
 
         # Verify response
         assert response.media_buy_id
-        assert len(response.packages) > 0  # Should auto-create packages from product_ids
+        assert len(response.packages) > 0
 
         # Packages should still serialize to dicts
         response_dict = response.model_dump()
