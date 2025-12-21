@@ -1398,9 +1398,15 @@ async def _create_media_buy_impl(
             computed_start_time: datetime = now
         else:
             # Ensure start_time is timezone-aware for comparison
-            # At this point, raw_start_time is guaranteed to be datetime (not str)
-            assert isinstance(raw_start_time, datetime), "start_time must be datetime when not 'asap'"
-            computed_start_time = raw_start_time
+            # Handle case where StartTiming.root is an ISO string (adcp 2.16.0+)
+            if isinstance(raw_start_time, str):
+                computed_start_time = datetime.fromisoformat(raw_start_time)
+            elif isinstance(raw_start_time, datetime):
+                computed_start_time = raw_start_time
+            else:
+                # StartTiming that wasn't unwrapped - this shouldn't happen but handle gracefully
+                error_msg = f"Unexpected start_time type: {type(raw_start_time)}"
+                raise ValueError(error_msg)
             if computed_start_time.tzinfo is None:
                 computed_start_time = computed_start_time.replace(tzinfo=UTC)
 

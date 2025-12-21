@@ -462,6 +462,7 @@ class TestCreateMediaBuyV24Format:
         )
 
         # Standard AdCP format with explicit package
+        # pricing_option_id format: {model}_{currency}_{fixed|auction}
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_standard",
             brand_manifest={"name": "Under Armour HOVR 2025 running shoes"},
@@ -470,7 +471,7 @@ class TestCreateMediaBuyV24Format:
                     buyer_ref="pkg_v24_test",
                     product_id="prod_test_v24_usd",
                     budget=5000.0,
-                    pricing_option_id="default",
+                    pricing_option_id="cpm_usd_fixed",  # Matches fixture: CPM, USD, is_fixed=True
                 )
             ],
             start_time=datetime.now(UTC) + timedelta(days=1),
