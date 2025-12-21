@@ -100,9 +100,6 @@ RUN --mount=type=cache,target=/cache/uv \
     uv sync --python=/usr/local/bin/python3.12 --frozen
 
 # Add .venv to PATH
-# Note: We run as root because nginx needs to bind to port 8000 (< 1024)
-# and write to /var/log/nginx. This is safe in container environments
-# where Fly.io provides VM-level isolation.
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
@@ -110,8 +107,9 @@ ENV PYTHONUNBUFFERED=1
 ENV ADCP_PORT=8080
 ENV ADCP_HOST=0.0.0.0
 
-# Expose ports (Proxy, MCP, Admin UI, A2A)
-EXPOSE 8000 8080 8001 8091
+# Expose port 8000 (nginx proxy - the only external-facing port)
+# Internal services (MCP:8080, Admin:8001, A2A:8091) are accessed via nginx
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
