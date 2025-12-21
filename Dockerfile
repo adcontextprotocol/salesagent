@@ -70,9 +70,6 @@ RUN SUPERCRONIC_ARCH=$(case "${TARGETARCH}" in "arm64") echo "linux-arm64" ;; *)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir uv
 
-# Create non-root user
-RUN useradd -m -u 1000 adcp
-
 WORKDIR /app
 
 # Cache bust for COPY layer - change this value to force rebuild
@@ -102,13 +99,10 @@ RUN --mount=type=cache,target=/cache/uv \
     --mount=type=cache,target=/root/.cache/pip \
     uv sync --python=/usr/local/bin/python3.12 --frozen
 
-# Set ownership after creating venv
-RUN chown -R adcp:adcp /app
-
-# Switch to non-root user
-USER adcp
-
 # Add .venv to PATH
+# Note: We run as root because nginx needs to bind to port 8000 (< 1024)
+# and write to /var/log/nginx. This is safe in container environments
+# where Fly.io provides VM-level isolation.
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 

@@ -15,7 +15,7 @@ app = "adcp-sales-agent"
 primary_region = "iad"
 
 [build]
-  dockerfile = "Dockerfile.fly"
+  dockerfile = "Dockerfile"
 
 # nginx proxy - routes to internal services by path
 [[services]]
