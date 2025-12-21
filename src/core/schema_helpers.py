@@ -16,6 +16,7 @@ from adcp import GetProductsRequest, GetProductsResponse, Product
 from adcp.types.generated_poc.core.brand_manifest import BrandManifest
 from adcp.types.generated_poc.core.context import ContextObject
 from adcp.types.generated_poc.core.product_filters import ProductFilters
+from adcp.types.generated_poc.media_buy.create_media_buy_request import ReportingWebhook
 
 
 def to_context_object(context: dict[str, Any] | ContextObject | None) -> ContextObject | None:
@@ -33,6 +34,24 @@ def to_context_object(context: dict[str, Any] | ContextObject | None) -> Context
         return context
     if isinstance(context, dict):
         return ContextObject(**context)
+    return None  # Fallback for unexpected types
+
+
+def to_reporting_webhook(webhook: dict[str, Any] | ReportingWebhook | None) -> ReportingWebhook | None:
+    """Convert dict to ReportingWebhook for adcp type compatibility.
+
+    Args:
+        webhook: Webhook config as dict or ReportingWebhook or None
+
+    Returns:
+        ReportingWebhook or None
+    """
+    if webhook is None:
+        return None
+    if isinstance(webhook, ReportingWebhook):
+        return webhook
+    if isinstance(webhook, dict):
+        return ReportingWebhook(**webhook)
     return None  # Fallback for unexpected types
 
 
@@ -133,6 +152,7 @@ def create_get_products_response(
 # Re-export commonly used generated types for convenience
 __all__ = [
     "to_context_object",
+    "to_reporting_webhook",
     "create_get_products_request",
     "create_get_products_response",
     # Re-export types for type hints
@@ -140,4 +160,5 @@ __all__ = [
     "GetProductsResponse",
     "Product",
     "ContextObject",
+    "ReportingWebhook",
 ]

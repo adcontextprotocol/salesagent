@@ -172,9 +172,9 @@ def _list_authorized_properties_impl(
 
             response = ListAuthorizedPropertiesResponse(**response_data)
 
-            # Carry back application context from request if provided
+            # Carry back application context from request if provided (convert ContextObject to dict)
             if req.context is not None:
-                response.context = req.context
+                response.context = req.context.model_dump() if hasattr(req.context, "model_dump") else dict(req.context)
 
             # Log audit
             audit_logger = get_audit_logger("AdCP", tenant_id)

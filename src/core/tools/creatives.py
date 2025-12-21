@@ -43,6 +43,7 @@ from src.core.helpers import (
     get_principal_id_from_context,
     log_tool_activity,
 )
+from src.core.schema_helpers import to_context_object
 from src.core.schemas import (
     Creative,
     CreativeStatusEnum,
@@ -1852,7 +1853,7 @@ def _list_creatives_impl(
             include_performance=include_performance,
             include_assignments=include_assignments,
             include_sub_assets=include_sub_assets,
-            context=context,
+            context=to_context_object(context),
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creatives request")) from e
@@ -2076,6 +2077,8 @@ def _list_creatives_impl(
     # Import required schema classes
     from src.core.schemas import Pagination, QuerySummary
 
+    # Convert ContextObject to dict for response
+    context_dict = req.context.model_dump() if req.context and hasattr(req.context, "model_dump") else None
     return ListCreativesResponse(
         query_summary=QuerySummary(
             total_matching=total_count,
@@ -2087,7 +2090,9 @@ def _list_creatives_impl(
             limit=limit, offset=offset_calc, has_more=has_more, total_pages=total_pages, current_page=page
         ),
         creatives=creatives,
-        context=req.context,
+        format_summary=None,
+        status_summary=None,
+        context=context_dict,
     )
 
 

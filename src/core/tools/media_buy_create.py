@@ -64,7 +64,7 @@ from src.core.database.models import Product as ModelProduct
 from src.core.helpers import get_principal_id_from_context, log_tool_activity
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.helpers.creative_helpers import _convert_creative_to_adapter_asset, process_and_upload_package_creatives
-from src.core.schema_helpers import to_context_object
+from src.core.schema_helpers import to_context_object, to_reporting_webhook
 from src.core.schemas import (
     CreateMediaBuyError,
     CreateMediaBuyRequest,
@@ -912,7 +912,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
 
 def _validate_pricing_model_selection(
-    package: Package | PackageRequest,
+    package: Package | PackageRequest | AdcpPackageRequest,
     product: Any,  # ProductModel from database
     campaign_currency: str | None,
 ) -> dict[str, Any]:
@@ -939,9 +939,11 @@ def _validate_pricing_model_selection(
     from decimal import Decimal
 
     # Log pricing validation details at debug level
+    # Use getattr for legacy pricing_model field (deprecated - use pricing_option_id instead)
+    legacy_pricing_model = getattr(package, "pricing_model", None)
     logger.debug(
         f"[PRICING] Package {package.product_id}: pricing_option={package.pricing_option_id}, "
-        f"model={package.pricing_model}, bid_price={package.bid_price}, budget={package.budget}"
+        f"model={legacy_pricing_model}, bid_price={package.bid_price}, budget={package.budget}"
     )
 
     # All products must have pricing_options
@@ -954,7 +956,7 @@ def _validate_pricing_model_selection(
     # Determine which pricing option to use
     # Priority: pricing_option_id (AdCP spec) > pricing_model (legacy)
     pricing_option_id = package.pricing_option_id
-    pricing_model_fallback = package.pricing_model  # Legacy field
+    pricing_model_fallback = getattr(package, "pricing_model", None)  # Legacy field
 
     # Helper to unwrap RootModel - adcp 2.14.0+ uses RootModel wrapper
     def unwrap_option(opt: Any) -> Any:
@@ -1014,7 +1016,7 @@ def _validate_pricing_model_selection(
         if not package.bid_price:
             raise ToolError(
                 "PRICING_ERROR",
-                f"Package requires bid_price for auction-based {package.pricing_model} pricing. "
+                f"Package requires bid_price for auction-based {selected_option.pricing_model} pricing. "
                 f"Floor price: {selected_option.price_guidance.get('floor') if selected_option.price_guidance else 'N/A'}",
             )
 
@@ -1028,7 +1030,7 @@ def _validate_pricing_model_selection(
         if bid_decimal < floor_price:
             raise ToolError(
                 "PRICING_ERROR",
-                f"Bid price {package.bid_price} is below floor price {floor_price} for {package.pricing_model} pricing",
+                f"Bid price {package.bid_price} is below floor price {floor_price} for {selected_option.pricing_model} pricing",
             )
 
     # Validate fixed pricing has rate
@@ -1049,7 +1051,7 @@ def _validate_pricing_model_selection(
             raise ToolError(
                 "PRICING_ERROR",
                 f"Package budget {package_budget} {selected_option.currency} is below minimum spend "
-                f"{selected_option.min_spend_per_package} {selected_option.currency} for {package.pricing_model}",
+                f"{selected_option.min_spend_per_package} {selected_option.currency} for {selected_option.pricing_model}",
             )
 
     # Return validated pricing information
@@ -1249,8 +1251,8 @@ async def _create_media_buy_impl(
             start_time=effective_start_time,
             end_time=effective_end_time,
             po_number=po_number,
-            reporting_webhook=reporting_webhook,
-            context=context,
+            reporting_webhook=to_reporting_webhook(reporting_webhook),
+            context=to_context_object(context),
         )
     except ValidationError as e:
         # Format validation errors with helpful context using shared helper
@@ -1510,10 +1512,11 @@ async def _create_media_buy_impl(
                     product = product_map[package_product_ids[0]]
                     pricing_options = product.pricing_options or []
 
-                    # Find the pricing option matching the package's pricing_model
-                    if first_package.pricing_model and pricing_options:
+                    # Find the pricing option matching the package's pricing_model (legacy field)
+                    first_package_pricing_model = getattr(first_package, "pricing_model", None)
+                    if first_package_pricing_model and pricing_options:
                         matching_option = next(
-                            (po for po in pricing_options if po.pricing_model == first_package.pricing_model), None
+                            (po for po in pricing_options if po.pricing_model == first_package_pricing_model), None
                         )
                         if matching_option:
                             request_currency = matching_option.currency
@@ -1713,10 +1716,11 @@ async def _create_media_buy_impl(
             if hasattr(pkg, "targeting_overlay") and pkg.targeting_overlay:
                 from src.services.targeting_capabilities import validate_overlay_targeting
 
-                targeting_data = (
+                # Convert to dict for validation - TargetingOverlay always has model_dump
+                targeting_data: dict[str, Any] = (
                     pkg.targeting_overlay.model_dump(exclude_none=True)
                     if hasattr(pkg.targeting_overlay, "model_dump")
-                    else pkg.targeting_overlay
+                    else dict(pkg.targeting_overlay)  # Fallback for dict-like objects
                 )
                 violations = validate_overlay_targeting(targeting_data)
                 if violations:
@@ -1747,13 +1751,14 @@ async def _create_media_buy_impl(
                 )
             try:
                 logger.info("[INLINE_CREATIVE_DEBUG] Calling process_and_upload_package_creatives")
+                # Cast packages to local PackageRequest type (runtime compatible, mypy list invariance)
                 updated_packages, uploaded_ids = process_and_upload_package_creatives(
-                    packages=req.packages,
+                    packages=cast(list[PackageRequest], req.packages),
                     context=ctx,
                     testing_ctx=testing_ctx,
                 )
                 # Replace packages with updated versions (functional approach)
-                req.packages = updated_packages
+                req.packages = cast(list[AdcpPackageRequest], updated_packages)
                 logger.info("[INLINE_CREATIVE_DEBUG] Updated req.packages with creative_ids")
                 if uploaded_ids:
                     logger.info(f"Successfully uploaded creatives for {len(uploaded_ids)} packages: {uploaded_ids}")
@@ -2030,7 +2035,9 @@ async def _create_media_buy_impl(
                                     "creative_ids": req_pkg.creative_ids,
                                     "format_ids": format_ids_serialized,
                                     "pricing_info": pricing_info_for_package,  # Store pricing info for UI display
-                                    "impressions": req_pkg.impressions,  # Store impressions for display
+                                    "impressions": getattr(
+                                        req_pkg, "impressions", None
+                                    ),  # Store impressions for display (legacy field)
                                 }
                             )
                             break
@@ -2719,9 +2726,9 @@ async def _create_media_buy_impl(
                     # Get pricing info for this package if available
                     pricing_info_for_package = package_pricing_info.get(resp_package_id)
 
-                    # Get impressions from request package if available
-                    request_pkg: PackageRequest | None = req.packages[i] if i < len(req.packages) else None
-                    impressions = request_pkg.impressions if request_pkg else None
+                    # Get impressions from request package if available (legacy field)
+                    request_pkg = req.packages[i] if i < len(req.packages) else None
+                    impressions = getattr(request_pkg, "impressions", None) if request_pkg else None
 
                     package_config = {
                         "package_id": resp_package_id,
@@ -3173,8 +3180,10 @@ async def _create_media_buy_impl(
                     float(package.budget) if isinstance(package.budget, (int, float)) else package.budget
                 )
 
-            if package.impressions is not None:
-                full_package_dict["impressions"] = float(package.impressions)
+            # Legacy impressions field (use getattr for backward compatibility)
+            package_impressions = getattr(package, "impressions", None)
+            if package_impressions is not None:
+                full_package_dict["impressions"] = float(package_impressions)
 
             if package.bid_price is not None:
                 full_package_dict["bid_price"] = float(package.bid_price)

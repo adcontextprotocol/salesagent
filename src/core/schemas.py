@@ -2073,8 +2073,6 @@ class ListCreativesResponse(NestedModelSerializerMixin, AdCPBaseModel):
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
 
-    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
-
     # Required AdCP domain fields
     query_summary: QuerySummary = Field(..., description="Summary of the query that was executed")
     pagination: Pagination = Field(..., description="Pagination information for navigating results")
@@ -2083,6 +2081,7 @@ class ListCreativesResponse(NestedModelSerializerMixin, AdCPBaseModel):
     # Optional AdCP domain fields
     format_summary: dict[str, int] | None = Field(None, description="Breakdown by format type")
     status_summary: dict[str, int] | None = Field(None, description="Breakdown by creative status")
+    context: dict[str, Any] | None = Field(None, description="Application-level context echoed from the request")
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""
@@ -2494,8 +2493,8 @@ class CreateMediaBuyRequest(LibraryCreateMediaBuyRequest):
     - reporting_webhook: dict (webhook configuration)
     """
 
-    # Override packages to use our extended PackageRequest type
-    packages: list[PackageRequest] = Field(..., description="Array of packages with products and budgets (REQUIRED)")
+    # Note: packages field uses LibraryPackageRequest from parent class.
+    # Internal fields (pricing_model, impressions) are accessed via getattr() for backward compatibility.
 
     @model_validator(mode="after")
     def validate_timezone_aware(self):

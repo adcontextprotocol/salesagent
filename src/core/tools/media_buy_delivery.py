@@ -36,6 +36,7 @@ from src.core.database.models import MediaBuy, MediaPackage, PricingOption
 from src.core.helpers import get_principal_id_from_context
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.schemas import (
+    AggregatedTotals,
     DeliveryTotals,
     GetMediaBuyDeliveryRequest,
     GetMediaBuyDeliveryResponse,
@@ -46,6 +47,16 @@ from src.core.schemas import (
 )
 from src.core.testing_hooks import DeliverySimulator, TimeSimulator, apply_testing_hooks, get_testing_context
 from src.core.validation_helpers import format_validation_error
+
+
+def _context_to_dict(context: ContextObject | None) -> dict[str, Any] | None:
+    """Convert ContextObject to dict for response, handling None case."""
+    if context is None:
+        return None
+    if hasattr(context, "model_dump"):
+        return context.model_dump()
+    # Fallback for dict-like objects
+    return dict(context) if context else None
 
 
 def _get_media_buy_delivery_impl(
@@ -68,19 +79,21 @@ def _get_media_buy_delivery_impl(
     if not principal_id:
         # Return AdCP-compliant error response
         # TODO: @yusuf - Should this return only error field and not the other fields? Haven't we updated adcp spec to only return error field on errors??
+        # Convert ContextObject to dict if needed
+        context_dict = _context_to_dict(req.context)
         return GetMediaBuyDeliveryResponse(
             reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
             currency="USD",
-            aggregated_totals={
-                "impressions": 0,
-                "spend": 0,
-                "clicks": None,
-                "video_completions": None,
-                "media_buy_count": 0,
-            },
+            aggregated_totals=AggregatedTotals(
+                impressions=0.0,
+                spend=0.0,
+                clicks=None,
+                video_completions=None,
+                media_buy_count=0,
+            ),
             media_buy_deliveries=[],
             errors=[{"code": "principal_id_missing", "message": "Principal ID not found in context"}],
-            context=req.context or None,
+            context=context_dict,
         )
 
     # Get the Principal object
@@ -88,19 +101,20 @@ def _get_media_buy_delivery_impl(
     if not principal:
         # Return AdCP-compliant error response
         # TODO: @yusuf - Should this return only error field and not the other fields? Haven't we updated adcp spec to only return error field on errors??
+        context_dict = _context_to_dict(req.context)
         return GetMediaBuyDeliveryResponse(
             reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
             currency="USD",
-            aggregated_totals={
-                "impressions": 0,
-                "spend": 0,
-                "clicks": None,
-                "video_completions": None,
-                "media_buy_count": 0,
-            },
+            aggregated_totals=AggregatedTotals(
+                impressions=0.0,
+                spend=0.0,
+                clicks=None,
+                video_completions=None,
+                media_buy_count=0,
+            ),
             media_buy_deliveries=[],
             errors=[{"code": "principal_not_found", "message": f"Principal {principal_id} not found"}],
-            context=req.context or None,
+            context=context_dict,
         )
 
     # Get the appropriate adapter
@@ -114,19 +128,20 @@ def _get_media_buy_delivery_impl(
         end_dt = datetime.strptime(req.end_date, "%Y-%m-%d")
 
         if start_dt >= end_dt:
+            context_dict = _context_to_dict(req.context)
             return GetMediaBuyDeliveryResponse(
                 reporting_period=ReportingPeriod(start=datetime.now().isoformat(), end=datetime.now().isoformat()),
                 currency="USD",
-                aggregated_totals={
-                    "impressions": 0,
-                    "spend": 0,
-                    "clicks": None,
-                    "video_completions": None,
-                    "media_buy_count": 0,
-                },
+                aggregated_totals=AggregatedTotals(
+                    impressions=0.0,
+                    spend=0.0,
+                    clicks=None,
+                    video_completions=None,
+                    media_buy_count=0,
+                ),
                 media_buy_deliveries=[],
                 errors=[{"code": "invalid_date_range", "message": "Start date must be before end date"}],
-                context=req.context or None,
+                context=context_dict,
             )
     else:
         # Default to last 30 days
@@ -227,19 +242,20 @@ def _get_media_buy_delivery_impl(
 
                 except Exception as e:
                     logger.error(f"Error getting delivery for {media_buy_id}: {e}")
+                    context_dict = _context_to_dict(req.context)
                     return GetMediaBuyDeliveryResponse(
                         reporting_period=reporting_period,
                         currency=buy.currency,
-                        aggregated_totals={
-                            "impressions": 0,
-                            "spend": 0,
-                            "clicks": None,
-                            "video_completions": None,
-                            "media_buy_count": 0,
-                        },
+                        aggregated_totals=AggregatedTotals(
+                            impressions=0.0,
+                            spend=0.0,
+                            clicks=None,
+                            video_completions=None,
+                            media_buy_count=0,
+                        ),
                         media_buy_deliveries=[],
                         errors=[{"code": "adapter_error", "message": f"Error getting delivery for {media_buy_id}"}],
-                        context=req.context or None,
+                        context=context_dict,
                     )
             else:
                 # Use simulation for testing
@@ -378,18 +394,20 @@ def _get_media_buy_delivery_impl(
             # Continue with other media buys
 
     # Create AdCP-compliant response
+    context_dict = _context_to_dict(req.context)
     response = GetMediaBuyDeliveryResponse(
         reporting_period=reporting_period,
         currency="USD",  # TODO: @yusuf - This is wrong. Currency should be at the media buy delivery level, not on aggregated totals.
-        aggregated_totals={
-            "impressions": total_impressions,
-            "spend": total_spend,
-            "clicks": total_clicks,
-            "video_completions": None,
-            "media_buy_count": media_buy_count,
-        },
+        aggregated_totals=AggregatedTotals(
+            impressions=float(total_impressions),
+            spend=total_spend,
+            clicks=float(total_clicks) if total_clicks else None,
+            video_completions=None,
+            media_buy_count=media_buy_count,
+        ),
         media_buy_deliveries=deliveries,
-        context=req.context or None,
+        errors=None,
+        context=context_dict,
     )
 
     # Apply testing hooks if needed
@@ -448,18 +466,25 @@ def _get_media_buy_delivery_impl(
             filtered_data["media_buy_deliveries"] = response_data.get("media_buy_deliveries", [])
 
         # Use explicit fields for validator (instead of **kwargs)
+        # Convert aggregated_totals dict to AggregatedTotals object if needed
+        agg_totals = filtered_data["aggregated_totals"]
+        if isinstance(agg_totals, dict):
+            agg_totals = AggregatedTotals(
+                impressions=agg_totals.get("impressions", 0.0),
+                spend=agg_totals.get("spend", 0.0),
+                clicks=agg_totals.get("clicks"),
+                video_completions=agg_totals.get("video_completions"),
+                media_buy_count=agg_totals.get("media_buy_count", 0),
+            )
+        # Convert context to dict if it's a ContextObject
+        context_dict = _context_to_dict(req.context)
         response = GetMediaBuyDeliveryResponse(
             reporting_period=filtered_data["reporting_period"],
             currency=filtered_data["currency"],
-            aggregated_totals=filtered_data["aggregated_totals"],
+            aggregated_totals=agg_totals,
             media_buy_deliveries=filtered_data["media_buy_deliveries"],
-            notification_type=filtered_data.get("notification_type"),
-            partial_data=filtered_data.get("partial_data"),
-            unavailable_count=filtered_data.get("unavailable_count"),
-            sequence_number=filtered_data.get("sequence_number"),
-            next_expected_at=filtered_data.get("next_expected_at"),
             errors=filtered_data.get("errors"),
-            context=req.context or None,
+            context=context_dict,
         )
 
     return response

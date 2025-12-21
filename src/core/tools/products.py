@@ -8,10 +8,11 @@ import logging
 import os
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from adcp import BrandManifest, ProductFilters
 from adcp import GetProductsRequest as GetProductsRequestGenerated
+from adcp import Product as LibraryProduct
 from adcp.types import PushNotificationConfig
 from adcp.types.generated_poc.core.context import ContextObject
 from fastmcp.exceptions import ToolError
@@ -728,13 +729,17 @@ async def _get_products_impl(
     if testing_ctx is not None:
         response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
 
-    # No conversion needed - our Product extends library Product
+    # Our Product extends LibraryProduct - cast for type safety since list is invariant
     # When serialized, Pydantic automatically uses library Product fields
     # Internal-only fields (implementation_config) excluded by model_dump()
     # Note: We use eligible_products (Product objects), not response_data (dicts)
     # because Product objects have typed pricing_options (CpmFixedRatePricingOption, etc.)
     # while dicts lose this type information during serialization
-    resp = GetProductsResponse(products=eligible_products, errors=None, context=req.context)
+    resp = GetProductsResponse(
+        products=cast(list[LibraryProduct], eligible_products),
+        errors=None,
+        context=req.context,
+    )
 
     return resp
 
