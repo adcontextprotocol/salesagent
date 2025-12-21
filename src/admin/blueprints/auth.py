@@ -1,4 +1,14 @@
-"""Authentication blueprint for admin UI."""
+"""Authentication blueprint for admin UI.
+
+Supports multiple OAuth providers via generic OIDC configuration:
+- Google (default)
+- Any OIDC-compliant provider (Okta, Auth0, Azure AD, Keycloak, etc.)
+
+Configuration priority:
+1. Generic OIDC (OAUTH_DISCOVERY_URL set) - uses any OIDC provider
+2. Google OAuth (GOOGLE_CLIENT_ID set) - uses Google specifically
+3. Legacy file-based Google credentials (client_secret.json)
+"""
 
 import json
 import logging
@@ -24,48 +34,177 @@ logger = logging.getLogger(__name__)
 # Create Blueprint
 auth_bp = Blueprint("auth", __name__)
 
+# Well-known OIDC discovery URLs for common providers
+OIDC_PROVIDERS = {
+    "google": "https://accounts.google.com/.well-known/openid-configuration",
+    "microsoft": "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+    "okta": None,  # Requires tenant: https://{tenant}.okta.com/.well-known/openid-configuration
+    "auth0": None,  # Requires tenant: https://{tenant}.auth0.com/.well-known/openid-configuration
+    "keycloak": None,  # Requires server/realm: https://{server}/realms/{realm}/.well-known/openid-configuration
+}
+
+
+def get_oauth_provider_name():
+    """Get the configured OAuth provider name."""
+    return os.environ.get("OAUTH_PROVIDER", "google").lower()
+
+
+def get_oauth_config():
+    """Get OAuth configuration from environment.
+
+    Returns tuple of (client_id, client_secret, discovery_url, scopes) or (None, None, None, None).
+
+    Configuration options (in priority order):
+    1. Generic OIDC: OAUTH_DISCOVERY_URL + OAUTH_CLIENT_ID + OAUTH_CLIENT_SECRET
+    2. Named provider: OAUTH_PROVIDER + OAUTH_CLIENT_ID + OAUTH_CLIENT_SECRET
+    3. Google-specific: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET
+    4. Legacy file: client_secret.json
+    """
+    # Option 1: Full generic OIDC configuration
+    discovery_url = os.environ.get("OAUTH_DISCOVERY_URL")
+    client_id = os.environ.get("OAUTH_CLIENT_ID")
+    client_secret = os.environ.get("OAUTH_CLIENT_SECRET")
+    scopes = os.environ.get("OAUTH_SCOPES", "openid email profile")
+
+    if discovery_url and client_id and client_secret:
+        logger.info(f"Using generic OIDC provider with discovery URL: {discovery_url}")
+        return client_id, client_secret, discovery_url, scopes
+
+    # Option 2: Named provider with generic credentials
+    provider = get_oauth_provider_name()
+    if client_id and client_secret and provider in OIDC_PROVIDERS:
+        provider_url = OIDC_PROVIDERS.get(provider)
+        if provider_url:
+            logger.info(f"Using {provider} OAuth provider")
+            return client_id, client_secret, provider_url, scopes
+        else:
+            logger.warning(f"Provider '{provider}' requires OAUTH_DISCOVERY_URL to be set")
+
+    # Option 3: Google-specific environment variables (backwards compatible)
+    google_client_id = os.environ.get("GOOGLE_CLIENT_ID")
+    google_client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+
+    if google_client_id and google_client_secret:
+        logger.info("Using Google OAuth (legacy GOOGLE_CLIENT_ID configuration)")
+        return google_client_id, google_client_secret, OIDC_PROVIDERS["google"], "openid email profile"
+
+    # Option 4: Legacy file-based credentials
+    for filename in [
+        "client_secret.json",
+        "client_secret_819081116704-kqh8lrv0nvqmu8onqmvnadqtlajbqbbn.apps.googleusercontent.com.json",
+    ]:
+        filepath = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), filename)
+        if os.path.exists(filepath):
+            try:
+                with open(filepath) as f:
+                    creds = json.load(f)
+                    if "web" in creds:
+                        logger.info(f"Using Google OAuth credentials from {filename}")
+                        return (
+                            creds["web"]["client_id"],
+                            creds["web"]["client_secret"],
+                            OIDC_PROVIDERS["google"],
+                            "openid email profile",
+                        )
+            except Exception as e:
+                logger.error(f"Failed to load OAuth credentials from {filepath}: {e}")
+
+    return None, None, None, None
+
+
+def extract_user_info(token):
+    """Extract user info from OAuth token, handling different provider formats.
+
+    Different OIDC providers return user info in different claim formats:
+    - Google: email, name, picture
+    - Microsoft: email OR preferred_username, name, picture
+    - Okta: email, name, picture (or custom claims)
+    - Auth0: email, name, picture
+    - Keycloak: email, preferred_username, name, picture
+
+    Returns dict with normalized keys: email, name, picture
+    """
+    import jwt
+
+    user = token.get("userinfo")
+
+    if not user:
+        # Try to decode from ID token
+        id_token = token.get("id_token")
+        if id_token:
+            try:
+                user = jwt.decode(id_token, options={"verify_signature": False})
+            except Exception as e:
+                logger.warning(f"Failed to decode ID token: {e}")
+                return None
+
+    if not user:
+        return None
+
+    # Extract email - try multiple claim names
+    email = (
+        user.get("email")
+        or user.get("preferred_username")
+        or user.get("upn")  # Microsoft UPN
+        or user.get("sub")  # Fallback to subject
+    )
+
+    if not email:
+        logger.error(f"Could not extract email from user claims: {list(user.keys())}")
+        return None
+
+    # Extract name - try multiple claim names
+    name = user.get("name") or user.get("display_name")
+    if not name:
+        # Try constructing from given/family names
+        given = user.get("given_name", "")
+        family = user.get("family_name", "")
+        if given or family:
+            name = f"{given} {family}".strip()
+    if not name:
+        # Fallback to email prefix
+        name = email.split("@")[0]
+
+    # Extract picture - try multiple claim names
+    picture = user.get("picture") or user.get("avatar_url") or user.get("photo") or ""
+
+    return {
+        "email": email.lower(),
+        "name": name,
+        "picture": picture,
+    }
+
 
 def init_oauth(app):
-    """Initialize OAuth with the Flask app."""
+    """Initialize OAuth with the Flask app.
+
+    Supports generic OIDC providers via OAUTH_DISCOVERY_URL or
+    Google OAuth via GOOGLE_CLIENT_ID for backwards compatibility.
+    """
     oauth = OAuth(app)
 
-    # Google OAuth configuration
-    client_id = os.environ.get("GOOGLE_CLIENT_ID")
-    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+    client_id, client_secret, discovery_url, scopes = get_oauth_config()
 
-    # Try to load from file if env vars not set
-    if not client_id or not client_secret:
-        for filename in [
-            "client_secret.json",
-            "client_secret_819081116704-kqh8lrv0nvqmu8onqmvnadqtlajbqbbn.apps.googleusercontent.com.json",
-        ]:
-            # Look in project root (4 levels up from src/admin/blueprints/auth.py)
-            filepath = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), filename
-            )
-            if os.path.exists(filepath):
-                try:
-                    with open(filepath) as f:
-                        creds = json.load(f)
-                        if "web" in creds:
-                            client_id = creds["web"]["client_id"]
-                            client_secret = creds["web"]["client_secret"]
-                            break
-                except Exception as e:
-                    logger.error(f"Failed to load OAuth credentials from {filepath}: {e}")
-
-    if client_id and client_secret:
+    if client_id and client_secret and discovery_url:
+        # Register as 'oidc' for generic providers, but keep 'google' name for compatibility
+        # This allows the same code path for all providers
         oauth.register(
-            name="google",
+            name="google",  # Keep name for route compatibility
             client_id=client_id,
             client_secret=client_secret,
-            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-            client_kwargs={"scope": "openid email profile"},
+            server_metadata_url=discovery_url,
+            client_kwargs={"scope": scopes},
         )
         app.oauth = oauth
+        app.oauth_provider = get_oauth_provider_name()
+        logger.info(f"OAuth initialized with provider: {app.oauth_provider}")
         return oauth
     else:
-        logger.warning("Google OAuth not configured - authentication will not work")
+        logger.warning(
+            "OAuth not configured - authentication will not work. "
+            "Set OAUTH_DISCOVERY_URL + OAUTH_CLIENT_ID + OAUTH_CLIENT_SECRET for generic OIDC, "
+            "or GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET for Google OAuth."
+        )
         return None
 
 
@@ -246,21 +385,14 @@ def google_callback():
             flash("Authentication failed. Please try again.", "error")
             return redirect(url_for("auth.login"))
 
-        # Get user info
-        user = token.get("userinfo")
-        if not user:
-            # Try to get user info from ID token
-            import jwt
-
-            id_token = token.get("id_token")
-            if id_token:
-                user = jwt.decode(id_token, options={"verify_signature": False})
+        # Extract user info using provider-agnostic helper
+        user = extract_user_info(token)
 
         if not user or not user.get("email"):
-            flash("Could not retrieve user information", "error")
+            flash("Could not retrieve user information from OAuth provider", "error")
             return redirect(url_for("auth.login"))
 
-        email = user["email"].lower()
+        email = user["email"]
         session["user"] = email
         session["user_name"] = user.get("name", email)
         session["user_picture"] = user.get("picture", "")

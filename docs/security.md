@@ -207,23 +207,109 @@ Potential approaches for cross-domain OAuth:
 ### Current Recommendation
 For immediate needs, direct users to use `https://tenant.sales-agent.scope3.com/admin/` for OAuth authentication rather than external domain URLs.
 
+## Generic OIDC Provider Support
+
+The Admin UI supports authentication via any OpenID Connect (OIDC) compliant provider, not just Google. This allows organizations to use their existing identity provider.
+
+### Supported Providers
+
+Any OIDC-compliant provider works, including:
+- **Google** (default)
+- **Microsoft Azure AD / Entra ID**
+- **Okta**
+- **Auth0**
+- **Keycloak**
+- **OneLogin**
+- **Ping Identity**
+- **Custom OIDC providers**
+
+### Configuration Options
+
+#### Option A: Generic OIDC (Any Provider)
+
+```bash
+# Required for generic OIDC
+OAUTH_DISCOVERY_URL=https://your-provider.com/.well-known/openid-configuration
+OAUTH_CLIENT_ID=your-client-id
+OAUTH_CLIENT_SECRET=your-client-secret
+
+# Optional: customize scopes (defaults to "openid email profile")
+OAUTH_SCOPES=openid email profile custom_scope
+```
+
+#### Option B: Google OAuth (Simpler for Google-only)
+
+```bash
+# Google-specific (backwards compatible)
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+### Common Discovery URLs
+
+| Provider | Discovery URL |
+|----------|--------------|
+| Google | `https://accounts.google.com/.well-known/openid-configuration` |
+| Microsoft | `https://login.microsoftonline.com/{tenant-id}/v2.0/.well-known/openid-configuration` |
+| Okta | `https://{your-domain}.okta.com/.well-known/openid-configuration` |
+| Auth0 | `https://{your-tenant}.auth0.com/.well-known/openid-configuration` |
+| Keycloak | `https://{server}/realms/{realm}/.well-known/openid-configuration` |
+
+### OAuth Application Setup
+
+When creating your OAuth application in your identity provider:
+
+1. **Application Type**: Web application
+2. **Redirect URI**: `http://localhost:8001/auth/google/callback` (local) or `https://your-domain/admin/auth/google/callback` (production)
+3. **Scopes**: At minimum `openid`, `email`, and `profile`
+4. **Grant Type**: Authorization Code
+
+### Claim Mapping
+
+The system automatically handles different claim formats from various providers:
+
+| Claim | Providers |
+|-------|-----------|
+| Email | `email`, `preferred_username`, `upn`, `sub` |
+| Name | `name`, `display_name`, `given_name` + `family_name` |
+| Picture | `picture`, `avatar_url`, `photo` |
+
+### Priority Order
+
+When multiple OAuth configurations exist, they're used in this order:
+
+1. **Generic OIDC** (`OAUTH_DISCOVERY_URL` + credentials) - highest priority
+2. **Named Provider** (`OAUTH_PROVIDER` + generic credentials)
+3. **Google OAuth** (`GOOGLE_CLIENT_ID` + secret) - backwards compatible
+4. **File-based** (`client_secret.json`) - legacy support
+
 ## Secrets Configuration
 
 ### .env.secrets File (REQUIRED)
 **🔒 Security**: All secrets MUST be in `.env.secrets` file (no environment variables).
 
-Create `/Users/brianokelley/Developer/salesagent/.env.secrets`:
+Create your `.env.secrets` file:
 
 ```bash
 # API Keys
 GEMINI_API_KEY=your-gemini-api-key-here
 
-# OAuth Configuration (for Admin UI)
+# OAuth Configuration (choose ONE option)
+
+# Option A: Generic OIDC (works with ANY provider)
+OAUTH_DISCOVERY_URL=https://your-provider.com/.well-known/openid-configuration
+OAUTH_CLIENT_ID=your-client-id
+OAUTH_CLIENT_SECRET=your-client-secret
+
+# Option B: Google OAuth (simpler if only using Google)
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
+
+# Super Admin Configuration
 SUPER_ADMIN_EMAILS=user1@example.com,user2@example.com
 
 # GAM OAuth Configuration (required for Google Ad Manager functionality)
+# Note: This is separate from Admin UI OAuth - it's for GAM API access
 GAM_OAUTH_CLIENT_ID=your-gam-client-id.apps.googleusercontent.com
 GAM_OAUTH_CLIENT_SECRET=your-gam-client-secret
 
