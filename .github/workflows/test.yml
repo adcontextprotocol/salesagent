@@ -284,13 +284,15 @@ jobs:
 
     - name: Clean up any lingering containers
       run: |
-        # Kill any containers using our ports to prevent conflicts
-        docker ps -q --filter "publish=40000" | xargs -r docker kill || true
-        docker ps -q --filter "publish=8080" | xargs -r docker kill || true
-        docker ps -q --filter "publish=8091" | xargs -r docker kill || true
-        # Clean up any stopped containers and networks
+        # Kill all running containers to prevent port conflicts
+        docker ps -q | xargs -r docker kill || true
+        # Clean up E2E compose stack specifically
+        docker compose -f docker-compose.e2e.yml down -v 2>/dev/null || true
         docker compose down -v 2>/dev/null || true
-        docker system prune -f 2>/dev/null || true
+        # Remove all containers, networks, and volumes
+        docker container prune -f 2>/dev/null || true
+        docker network prune -f 2>/dev/null || true
+        docker volume prune -f 2>/dev/null || true
 
     - name: Run E2E tests
       env:
@@ -313,7 +315,7 @@ jobs:
     - name: Cleanup Docker services
       if: always()
       run: |
-        docker compose down -v 2>/dev/null || true
+        docker compose -f docker-compose.e2e.yml down -v 2>/dev/null || true
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
