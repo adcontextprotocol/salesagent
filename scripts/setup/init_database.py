@@ -64,12 +64,36 @@ def init_db(exit_on_error=False):
                 session.commit()
                 print(f"✅ Updated tenant management domains: {tenant_management_domains}")
 
+        # Check if demo tenant creation is enabled (default: true for backwards compatibility)
+        create_demo_tenant = os.environ.get("CREATE_DEMO_TENANT", "true").lower() == "true"
+
         # Check if default tenant already exists (idempotent for CI/testing)
         from sqlalchemy import select
         from sqlalchemy.exc import IntegrityError
 
         stmt = select(Tenant).filter_by(tenant_id="default")
         existing_tenant = session.scalars(stmt).first()
+
+        if not existing_tenant and not create_demo_tenant:
+            # Demo tenant disabled - user will create their own via signup flow or CLI
+            print(
+                """
+╔══════════════════════════════════════════════════════════════════════════╗
+║                        🚀 ADCP SALES AGENT READY                         ║
+╠══════════════════════════════════════════════════════════════════════════╣
+║                                                                          ║
+║  No demo tenant created (CREATE_DEMO_TENANT=false)                       ║
+║                                                                          ║
+║  To create a tenant:                                                     ║
+║  • Sign up via Admin UI: http://localhost:8001                           ║
+║  • Or use CLI:                                                           ║
+║    python -m scripts.setup.setup_tenant "My Publisher" --adapter mock    ║
+║    python -m scripts.setup.setup_tenant "My Publisher" --adapter gam     ║
+║                                                                          ║
+╚══════════════════════════════════════════════════════════════════════════╝
+"""
+            )
+            return
 
         if not existing_tenant:
             # No default tenant exists - create one for simple use case
