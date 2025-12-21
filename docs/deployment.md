@@ -183,6 +183,22 @@ Fly.io provides:
 - Integrated PostgreSQL clusters
 - Built-in monitoring and logging
 
+### Single-Tenant vs Multi-Tenant
+
+**Single-Tenant (Default):** Most publishers deploying their own sales agent should use single-tenant mode. This provides simple path-based routing without subdomain complexity.
+
+**Multi-Tenant:** For platforms hosting multiple publishers, multi-tenant mode enables subdomain-based routing (e.g., `publisher1.yourdomain.com`, `publisher2.yourdomain.com`).
+
+The mode is controlled by the `ADCP_MULTI_TENANT` environment variable:
+
+```bash
+# Single-tenant (default) - simple path-based routing
+ADCP_MULTI_TENANT=false  # or omit entirely
+
+# Multi-tenant - subdomain routing enabled
+ADCP_MULTI_TENANT=true
+```
+
 ### Architecture
 
 ```
@@ -411,17 +427,15 @@ DATABASE_URL=postgresql://user:pass@host:5432/dbname
 
 ### Database Configuration
 
-#### PostgreSQL (Production)
+#### PostgreSQL (Required)
+
+PostgreSQL is required for all deployments. SQLite is not supported.
+
 ```bash
 DATABASE_URL=postgresql://user:password@host:5432/dbname
-DB_TYPE=postgresql
 ```
 
-#### SQLite (Development Only)
-```bash
-DATABASE_URL=sqlite:///adcp_local.db
-DB_TYPE=sqlite
-```
+Docker Compose handles database setup automatically. For other deployments, create a PostgreSQL database and set the connection URL.
 
 ## Tenant Management
 
@@ -476,10 +490,10 @@ uv run alembic downgrade -1
 
 ### Migration Best Practices
 
-1. Always test on both SQLite and PostgreSQL
+1. Test migrations on a fresh database before deploying
 2. Use SQLAlchemy operations for compatibility
 3. Include proper downgrade logic
-4. Test with fresh database before deploying
+4. Backup production database before running migrations
 
 ## Health Monitoring
 
@@ -623,31 +637,30 @@ DEBUG=true docker compose up
 fly secrets set DEBUG=true
 ```
 
-## Migration from Single-Tenant
+## Migration from Older Versions
 
-If migrating from an older single-tenant version:
+If migrating from an older version:
 
 1. **Backup existing data:**
    ```bash
-   cp adcp.db adcp_backup.db
-   sqlite3 adcp.db .dump > backup.sql
+   docker compose exec postgres pg_dump -U adcp_user adcp > backup.sql
    ```
 
 2. **Update code:**
    ```bash
    git pull
-   uv sync
+   docker compose pull  # Get latest images
    ```
 
 3. **Run migration:**
    ```bash
-   uv run python migrate.py
+   docker compose up -d  # Migrations run automatically on startup
    ```
 
 The system will automatically:
-- Create a default tenant from existing config
-- Migrate data to multi-tenant schema
-- Generate authentication tokens
+- Run pending database migrations
+- Create default tenant in single-tenant mode
+- Update schema as needed
 
 ## Performance Tuning
 
@@ -760,15 +773,6 @@ docker compose exec postgres pg_dump -U adcp_user adcp | gzip > backup.sql.gz
 docker compose exec -T postgres psql -U adcp_user adcp < backup.sql
 ```
 
-### SQLite Backup
-
-```bash
-# Simple copy
-cp adcp_local.db backup.db
-
-# With active connections
-sqlite3 adcp_local.db ".backup backup.db"
-```
 
 ## Production Considerations
 
@@ -898,7 +902,7 @@ sqlite3 adcp_local.db ".backup backup.db"
 1. **System requirements:**
    ```bash
    # Ubuntu/Debian
-   sudo apt install python3.11 python3-pip postgresql nginx
+   sudo apt install python3.12 python3-pip postgresql nginx
 
    # Install uv (Python package manager)
    curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -969,8 +973,8 @@ We're here to support your deployment approach:
 4. **Contribute back** - Add deployment guides for your platform
 
 **Common requirements across all platforms:**
-- Python 3.11+ (if not using Docker)
-- PostgreSQL (production) or SQLite (dev/testing)
+- Python 3.12+ (if not using Docker)
+- PostgreSQL (required for all deployments)
 - Environment variables for configuration
 - HTTPS/SSL for production
 - Health check endpoint at `/health`

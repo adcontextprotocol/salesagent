@@ -32,6 +32,16 @@ def run_migrations(exit_on_error=True):
         # there are parallel migration branches that haven't been merged yet
         command.upgrade(alembic_cfg, "heads")
         print("✅ Database migrations completed successfully!")
+
+        # In single-tenant mode, ensure default tenant exists
+        try:
+            from src.core.config_loader import ensure_default_tenant_exists
+
+            tenant = ensure_default_tenant_exists()
+            if tenant:
+                print(f"✅ Default tenant ready: {tenant.get('name', 'Unknown')}")
+        except Exception as e:
+            print(f"⚠️ Could not ensure default tenant: {e}")
     except Exception as e:
         error_msg = str(e)
         print(f"❌ Error running migrations: {error_msg}")

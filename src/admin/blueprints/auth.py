@@ -461,7 +461,32 @@ def google_callback():
         # Convert dict to list for session
         session["available_tenants"] = list(tenant_dict.values())
 
-        # Always show tenant selector (includes "Create New Tenant" option)
+        # In single-tenant mode, auto-select the tenant (skip selection screen)
+        from src.core.config_loader import is_single_tenant_mode
+
+        if is_single_tenant_mode() and len(session["available_tenants"]) == 1:
+            # Auto-select the only tenant
+            tenant = session["available_tenants"][0]
+            tenant_id = tenant["tenant_id"]
+
+            # Ensure User record exists
+            from src.admin.domain_access import ensure_user_in_tenant
+
+            user_name = session.get("user_name", email.split("@")[0].title())
+            role = "admin" if tenant.get("is_admin") else "viewer"
+
+            try:
+                ensure_user_in_tenant(email, tenant_id, role=role, name=user_name)
+            except Exception as e:
+                logger.error(f"Failed to create User record for {email} in tenant {tenant_id}: {e}")
+
+            session["tenant_id"] = tenant_id
+            session["is_tenant_admin"] = tenant.get("is_admin", True)
+            session.pop("available_tenants", None)
+            flash(f"Welcome {user.get('name', email)}!", "success")
+            return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+        # Multi-tenant mode or multiple tenants: show tenant selector
         flash(f"Welcome {user.get('name', email)}!", "success")
         return redirect(url_for("auth.select_tenant"))
 
@@ -510,7 +535,13 @@ def select_tenant():
         flash("Invalid tenant selection", "error")
         return redirect(url_for("auth.select_tenant"))
 
-    return render_template("choose_tenant.html", tenants=session["available_tenants"])
+    from src.core.config_loader import is_single_tenant_mode
+
+    return render_template(
+        "choose_tenant.html",
+        tenants=session["available_tenants"],
+        is_single_tenant=is_single_tenant_mode(),
+    )
 
 
 @auth_bp.route("/logout")

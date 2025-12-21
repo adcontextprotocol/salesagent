@@ -79,8 +79,11 @@ RUN echo "Cache bust: $CACHE_BUST"
 # Copy application code
 COPY . .
 
-# Copy nginx config (use full config for production, can be overridden via volume mount)
-COPY config/nginx/nginx.conf /etc/nginx/nginx.conf
+# Copy both nginx configs - run_all_services.py selects based on ADCP_MULTI_TENANT env var
+# Default: simple (single-tenant, path-based routing)
+# ADCP_MULTI_TENANT=true: full config with subdomain routing
+COPY config/nginx/nginx-simple.conf /etc/nginx/nginx-simple.conf
+COPY config/nginx/nginx.conf /etc/nginx/nginx-multi-tenant.conf
 
 # Create nginx directories with proper permissions
 RUN mkdir -p /var/log/nginx /var/run && \

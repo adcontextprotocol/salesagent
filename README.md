@@ -1,149 +1,148 @@
 # AdCP Sales Agent
 
-A reference implementation of the Advertising Context Protocol (AdCP) V2.3 sales agent, enabling AI agents to buy advertising inventory through a standardized MCP (Model Context Protocol) interface.
+A reference implementation of the [Ad Context Protocol (AdCP)](https://adcontextprotocol.org) sales agent, enabling AI agents to buy advertising inventory through a standardized MCP interface.
 
 ## What is this?
 
 The AdCP Sales Agent is a server that:
-- **Exposes advertising inventory** to AI agents via MCP protocol
-- **Manages multi-tenant publishers** with isolated data and configuration
-- **Integrates with ad servers** like Google Ad Manager, Kevel, and Triton
-- **Provides an admin interface** for managing inventory and monitoring campaigns
+- **Exposes advertising inventory** to AI agents via MCP (Model Context Protocol) and A2A (Agent-to-Agent)
+- **Integrates with ad servers** like Google Ad Manager
+- **Provides an admin interface** for managing inventory and campaigns
 - **Handles the full campaign lifecycle** from discovery to reporting
 
-## Quick Start (3 commands)
+## Choose Your Path
 
-```bash
-curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml
-docker compose up -d
-uvx adcp http://localhost:8000/mcp/ --auth test-token list_tools
-```
-
-A default tenant with `test-token` is created automatically. No setup required.
-
-```bash
-# CLI syntax: uvx adcp <url> --auth <token> <tool_name> '<json_args>'
-uvx adcp http://localhost:8000/mcp/ --auth test-token get_products '{"brief":"video"}'
-```
-
-All services are accessible through port 8000:
-- **Admin UI:** http://localhost:8000/admin (login: `test_super_admin@example.com` / `test123`)
-- **MCP Server:** http://localhost:8000/mcp/
-- **A2A Server:** http://localhost:8000/a2a
-
-### Using a Specific Version
-
-For production, pin to a specific version:
-
-```bash
-# Available at ghcr.io/adcontextprotocol/salesagent
-# Tags: latest, 0, 0.1, 0.1.0 (see all versions at GitHub Packages)
-docker pull ghcr.io/adcontextprotocol/salesagent:0.1.0
-```
+| I want to... | Start here |
+|--------------|------------|
+| **Deploy my own sales agent** (publisher) | [Quickstart Guide](docs/quickstart.md) |
+| **Evaluate or develop locally** | [Quick Start](#quick-start-evaluation) below |
+| **Run a multi-tenant platform** | [Deployment Guide](docs/deployment.md) |
 
 ---
 
-## Setup Paths
+## Quick Start (Evaluation)
 
-### Path 1: Mock Adapter (Recommended First Step)
-
-**Perfect for:** Learning AdCP, testing integrations, development
-
-The quick start above uses the mock adapter. To create your own tenant:
+Try the sales agent locally with demo data:
 
 ```bash
-docker compose exec adcp-server \
-  python -m scripts.setup.setup_tenant "My Publisher" \
-  --adapter mock \
-  --admin-email your-email@example.com
+# Download and start
+curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml
+docker compose up -d
+
+# Test the MCP interface
+uvx adcp http://localhost:8000/mcp/ --auth test-token list_tools
+uvx adcp http://localhost:8000/mcp/ --auth test-token get_products '{"brief":"video"}'
 ```
 
-This outputs a principal token you can use immediately.
+Access services at http://localhost:8000:
+- **Admin UI:** `/admin` (login: `test_super_admin@example.com` / `test123`)
+- **MCP Server:** `/mcp/`
+- **A2A Server:** `/a2a`
 
-**Using with Claude Desktop:** Add to your Claude config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+This creates a demo tenant with mock data for testing. For production, see the [Quickstart Guide](docs/quickstart.md).
+
+---
+
+## Publisher Deployment
+
+Publishers deploy their own sales agent on cloud platforms like Fly.io, Cloud Run, or similar. The [Quickstart Guide](docs/quickstart.md) covers:
+
+- **Fly.io** - Simple deployment with managed PostgreSQL
+- **Google Cloud Run** - Serverless with Cloud SQL
+- **Docker** - Any platform that runs containers
+
+After deployment, configure via the Admin UI:
+1. Configure your ad server (Settings → Adapters)
+2. Set up products that match your GAM line items
+3. Add advertisers who will use the MCP API
+4. Set your custom domain (Settings → General)
+
+See the [Quickstart Guide](docs/quickstart.md) for step-by-step deployment instructions.
+
+---
+
+## Development Setup
+
+For local development with hot-reload:
+
+```bash
+git clone https://github.com/adcontextprotocol/salesagent.git
+cd salesagent
+cp .env.template .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+Run tests:
+```bash
+uv run pytest tests/unit/ -x       # Unit tests
+uv run pytest tests/integration/   # Integration tests (requires PostgreSQL)
+uv run pytest tests/e2e/           # E2E tests (uses Docker)
+```
+
+See [Development Guide](docs/DEVELOPMENT.md) for contributing.
+
+---
+
+## Google Ad Manager Setup
+
+For GAM integration, choose your authentication method:
+
+**Service Account (Recommended for Production):**
+- No OAuth credentials needed
+- Configure service account JSON in Admin UI
+- See [GAM Adapter Guide](docs/adapters/gam.md) for setup
+
+**OAuth (Development/Testing):**
+1. Create OAuth credentials at [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Add to .env:
+   ```bash
+   GAM_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GAM_OAUTH_CLIENT_SECRET=your-client-secret
+   ```
+3. Configure in Admin UI: Settings → Adapters → Google Ad Manager
+
+---
+
+## Using with Claude Desktop
+
+Add to your Claude config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
     "adcp": {
       "command": "uvx",
-      "args": ["mcp-remote", "http://localhost:8000/mcp/", "--header", "x-adcp-auth: test-token"]
+      "args": ["mcp-remote", "http://localhost:8000/mcp/", "--header", "x-adcp-auth: YOUR_TOKEN"]
     }
   }
 }
 ```
 
-The mock adapter simulates a complete ad server - no external credentials needed.
+Get your token from Admin UI → Advertisers → (select advertiser) → API Token.
 
 ---
 
-### Path 2: Google Ad Manager with OAuth (30 min)
-
-**Perfect for:** Quick local testing against a real GAM network
-
-**Note:** This uses OAuth refresh tokens. For production, use Service Account authentication instead (see Path 3).
-
-**Prerequisites - complete BEFORE starting:**
-
-1. **Create GAM OAuth Credentials:**
-   - Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-   - Create OAuth 2.0 Client ID (Web application)
-   - Add redirect URI: `http://localhost:8000/tenant/callback/gam`
-   - Save Client ID and Client Secret
-
-2. **Add to .env file:**
-   ```bash
-   GAM_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
-   GAM_OAUTH_CLIENT_SECRET=your-client-secret
-   ```
-
-3. **Start services and configure:**
-   ```bash
-   docker compose up -d
-   docker compose exec adcp-server python -m scripts.setup.setup_tenant "My Publisher" \
-     --adapter google_ad_manager \
-     --gam-network-code YOUR_NETWORK_CODE \
-     --admin-email your-email@example.com
-   ```
-
-4. **Complete OAuth flow** in Admin UI at http://localhost:8000/admin
-
----
-
-### Path 3: Production Deployment
-
-Use **Service Account** authentication (recommended over OAuth):
-- Credentials never expire
-- Better security and isolation
-- No manual refresh required
-
-See [docs/deployment.md](docs/deployment.md) for production setup.
-
----
-
-### Troubleshooting
+## Troubleshooting
 
 **Container won't start?**
 ```bash
-docker compose logs admin-ui | head -50  # Check for missing env vars
+docker compose logs adcp-server | head -50
 ```
 
-**GAM OAuth error: "Could not determine client ID"?**
-- Check that `GAM_OAUTH_CLIENT_ID` and `GAM_OAUTH_CLIENT_SECRET` are set in `.env`
-- Run `docker compose restart` after adding credentials
+**GAM OAuth error?**
+- Verify `GAM_OAUTH_CLIENT_ID` and `GAM_OAUTH_CLIENT_SECRET` in `.env`
+- Restart: `docker compose restart`
 
-**OAuth callback 404?**
-- Redirect URI must match exactly what's in Google Cloud Console
-
-**More help:** See [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+**More help:** [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
 
 ## Documentation
 
-- **[Setup Guide](docs/SETUP.md)** - Installation and configuration
+- **[Quickstart Guide](docs/quickstart.md)** - Deploy your own sales agent
+- **[Deployment Guide](docs/deployment.md)** - All deployment options (Docker, Cloud Run, Fly.io, K8s)
 - **[Development Guide](docs/DEVELOPMENT.md)** - Local development and contributing
 - **[Testing Guide](docs/testing/README.md)** - Running and writing tests
-- **[Deployment Guide](docs/deployment.md)** - Production deployment options
-- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Monitoring and debugging
 - **[Architecture](docs/ARCHITECTURE.md)** - System design and database schema
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Monitoring and debugging
 
 ## Key Features
 

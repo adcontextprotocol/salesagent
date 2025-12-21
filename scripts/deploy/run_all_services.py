@@ -133,6 +133,22 @@ def run_nginx():
     os.makedirs("/var/log/nginx", exist_ok=True)
     os.makedirs("/var/run", exist_ok=True)
 
+    # Select nginx config based on ADCP_MULTI_TENANT env var
+    # Default: simple (single-tenant, path-based routing only)
+    # ADCP_MULTI_TENANT=true: full config with subdomain routing for multi-tenant
+    multi_tenant = os.environ.get("ADCP_MULTI_TENANT", "false").lower() == "true"
+    if multi_tenant:
+        config_path = "/etc/nginx/nginx-multi-tenant.conf"
+        print("[Nginx] Using multi-tenant config (subdomain routing enabled)")
+    else:
+        config_path = "/etc/nginx/nginx-simple.conf"
+        print("[Nginx] Using simple config (path-based routing only)")
+
+    # Copy selected config to active location
+    import shutil
+
+    shutil.copy(config_path, "/etc/nginx/nginx.conf")
+
     # Test nginx configuration first
     test_proc = subprocess.run(["nginx", "-t"], capture_output=True, text=True)
     if test_proc.returncode != 0:

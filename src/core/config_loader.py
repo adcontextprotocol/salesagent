@@ -1,6 +1,7 @@
 """Configuration loader for multi-tenant setup."""
 
 import json
+import logging
 import os
 from contextvars import ContextVar
 from typing import Any
@@ -9,6 +10,8 @@ from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
+
+logger = logging.getLogger(__name__)
 
 
 def safe_json_loads(value, default=None):
@@ -234,3 +237,91 @@ def get_tenant_by_virtual_host(virtual_host: str) -> dict[str, Any] | None:
 def get_secret(key: str, default: str | None = None) -> str | None:
     """Get a secret from environment or config."""
     return os.environ.get(key, default)
+
+
+def is_single_tenant_mode() -> bool:
+    """Check if the system is running in single-tenant mode.
+
+    Single-tenant mode is the default. Multi-tenant mode must be explicitly enabled
+    via ADCP_MULTI_TENANT=true environment variable.
+
+    Returns:
+        True if single-tenant mode (default), False if multi-tenant mode
+    """
+    return os.environ.get("ADCP_MULTI_TENANT", "false").lower() != "true"
+
+
+def ensure_default_tenant_exists() -> dict[str, Any] | None:
+    """Ensure a default tenant exists for single-tenant deployments.
+
+    In single-tenant mode, this creates a default tenant if none exists.
+    This should be called after database migrations complete.
+
+    Returns:
+        The default tenant dict if created/exists, None if in multi-tenant mode
+    """
+    if not is_single_tenant_mode():
+        logger.debug("Multi-tenant mode enabled, skipping default tenant creation")
+        return None
+
+    try:
+        with get_db_session() as db_session:
+            # Check if any tenant exists
+            stmt = select(Tenant).filter_by(is_active=True)
+            existing = db_session.scalars(stmt).first()
+
+            if existing:
+                logger.debug(f"Tenant already exists: {existing.name}")
+                from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+                return serialize_tenant_to_dict(existing)
+
+            # Create default tenant for single-tenant deployments
+            logger.info("Single-tenant mode: Creating default tenant...")
+
+            # Get super admin email for initial authorization
+            super_admin_emails = os.environ.get("SUPER_ADMIN_EMAILS", "")
+            authorized_emails = [e.strip() for e in super_admin_emails.split(",") if e.strip()]
+
+            # Get super admin domains for initial authorization
+            super_admin_domains = os.environ.get("SUPER_ADMIN_DOMAINS", "")
+            authorized_domains = [d.strip() for d in super_admin_domains.split(",") if d.strip()]
+
+            default_tenant = Tenant(
+                tenant_id="default",
+                name="Default Publisher",
+                ad_server="mock",  # Start with mock adapter, user can configure later
+                authorized_emails=authorized_emails,
+                authorized_domains=authorized_domains,
+                is_active=True,
+            )
+
+            db_session.add(default_tenant)
+            db_session.commit()
+            db_session.refresh(default_tenant)
+
+            logger.info(f"Created default tenant: {default_tenant.name} (id: {default_tenant.tenant_id})")
+
+            from src.core.utils.tenant_utils import serialize_tenant_to_dict
+
+            return serialize_tenant_to_dict(default_tenant)
+
+    except Exception as e:
+        # Don't fail startup if tenant creation fails - log and continue
+        logger.warning(f"Could not ensure default tenant exists: {e}")
+        return None
+
+
+def get_single_tenant() -> dict[str, Any] | None:
+    """Get the single tenant for single-tenant deployments.
+
+    In single-tenant mode, returns the only active tenant.
+    In multi-tenant mode, returns None.
+
+    Returns:
+        The single tenant dict, or None if multi-tenant mode or no tenant exists
+    """
+    if not is_single_tenant_mode():
+        return None
+
+    return get_default_tenant()

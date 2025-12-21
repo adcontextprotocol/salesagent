@@ -24,12 +24,19 @@
         <button type="submit" class="btn btn-primary btn-lg w-100" style="margin-bottom: 1rem;">Continue to Selected Account</button>
     </form>
 
+    {% if not is_single_tenant %}
     <div style="text-align: center; padding-top: 1rem; border-top: 1px solid #ddd;">
         <p style="margin-bottom: 0.75rem; color: #666; font-size: 0.9rem;">Don't see your account?</p>
         <a href="{{ url_for('public.signup_onboarding') }}" class="btn btn-outline-secondary">
             Create New Account
         </a>
     </div>
+    {% endif %}
+    {% else %}
+    {% if is_single_tenant %}
+    <p style="margin-bottom: 2rem; color: #666;">
+        No account is configured. Please contact the system administrator.
+    </p>
     {% else %}
     <p style="margin-bottom: 2rem; color: #666;">
         You don't have access to any accounts yet.
@@ -38,6 +45,7 @@
     <a href="{{ url_for('public.signup_onboarding') }}" class="btn btn-primary btn-lg w-100">
         Create New Account
     </a>
+    {% endif %}
     {% endif %}
 </div>
 
