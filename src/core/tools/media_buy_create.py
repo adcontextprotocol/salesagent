@@ -2411,7 +2411,6 @@ async def _create_media_buy_impl(
                 # Build set of requested format keys for comparison
                 requested_format_keys: set[tuple[str | None, str]] = set()
                 for fmt in matching_package.format_ids:
-                    # matching_package.format_ids are FormatId objects from request
                     normalized_url = str(fmt.agent_url).rstrip("/") if fmt.agent_url else None
                     requested_format_keys.add((normalized_url, fmt.id))
 

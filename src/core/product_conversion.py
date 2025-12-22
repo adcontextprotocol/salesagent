@@ -198,7 +198,6 @@ def convert_product_model_to_schema(product_model) -> Product:
 
     # format_ids: Use effective_format_ids which auto-resolves from profile if set
     # Products must have at least one format_id to be valid for media buys
-    # Note: Returns dicts from database JSONB, handled by extract_format_key() in media_buy_create.py
     effective_formats = product_model.effective_format_ids or []
     if not effective_formats:
         raise ValueError(
