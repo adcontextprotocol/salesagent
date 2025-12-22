@@ -50,30 +50,6 @@ def validate_agent_url(url: str | None) -> bool:
         return False
 
 
-def extract_format_key(fmt: Any) -> tuple[str | None, str]:
-    """Extract (agent_url, id) tuple from dict or FormatId object.
-
-    Handles format_ids from multiple sources:
-    - Dict: from database JSONB fields
-    - FormatId object: from validated Pydantic request
-
-    Args:
-        fmt: A format identifier (dict or FormatId object)
-
-    Returns:
-        Tuple of (normalized_agent_url, format_id)
-    """
-    if isinstance(fmt, dict):
-        agent_url = fmt.get("agent_url")
-        format_id = fmt.get("id") or fmt.get("format_id")
-        normalized_url = str(agent_url).rstrip("/") if agent_url else None
-        return (normalized_url, format_id or "")
-    else:
-        # FormatId object
-        normalized_url = str(fmt.agent_url).rstrip("/") if fmt.agent_url else None
-        return (normalized_url, fmt.id)
-
-
 # Tool-specific imports
 from src.core import schemas
 from src.core.audit_logger import get_audit_logger
@@ -2427,12 +2403,17 @@ async def _create_media_buy_impl(
                 product_format_keys: set[tuple[str | None, str]] = set()
                 if pkg_product.format_ids:
                     for fmt in pkg_product.format_ids:
-                        product_format_keys.add(extract_format_key(fmt))
+                        # pkg_product.format_ids are dicts from database JSONB
+                        agent_url = fmt["agent_url"]
+                        normalized_url = str(agent_url).rstrip("/") if agent_url else None
+                        product_format_keys.add((normalized_url, fmt["id"]))
 
                 # Build set of requested format keys for comparison
                 requested_format_keys: set[tuple[str | None, str]] = set()
                 for fmt in matching_package.format_ids:
-                    requested_format_keys.add(extract_format_key(fmt))
+                    # matching_package.format_ids are FormatId objects from request
+                    normalized_url = str(fmt.agent_url).rstrip("/") if fmt.agent_url else None
+                    requested_format_keys.add((normalized_url, fmt.id))
 
                 def format_display(url: str | None, fid: str) -> str:
                     """Format a (url, id) pair for display, handling trailing slashes."""
