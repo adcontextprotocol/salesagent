@@ -284,8 +284,6 @@ async def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -305,7 +303,6 @@ async def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
         context=None,
     )
@@ -333,8 +330,6 @@ async def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_prici
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -354,7 +349,6 @@ async def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_prici
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         context=None,
         ctx=context,
     )
@@ -382,8 +376,6 @@ async def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -404,7 +396,6 @@ async def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
         context=None,
     )
@@ -429,8 +420,6 @@ async def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_prod
                 budget=8000.0,  # Above min spend of 5000
             )
         ],
-        budget={"total": 8000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -450,7 +439,6 @@ async def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_prod
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
         context=None,
     )
@@ -477,8 +465,6 @@ async def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_
                 budget=3000.0,  # Below min spend of 5000
             )
         ],
-        budget={"total": 3000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -499,7 +485,6 @@ async def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         context=None,
         ctx=context,
     )
@@ -524,8 +509,6 @@ async def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_prici
                 budget=15000.0,  # Above min spend of 10000
             )
         ],
-        budget={"total": 15000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -545,7 +528,6 @@ async def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_prici
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
         context=None,
     )
@@ -572,8 +554,6 @@ async def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pr
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -594,7 +574,6 @@ async def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pr
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
         context=None,
     )
