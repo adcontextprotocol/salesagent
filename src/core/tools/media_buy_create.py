@@ -50,6 +50,30 @@ def validate_agent_url(url: str | None) -> bool:
         return False
 
 
+def extract_format_key(fmt: Any) -> tuple[str | None, str]:
+    """Extract (agent_url, id) tuple from dict or FormatId object.
+
+    Handles format_ids from multiple sources:
+    - Dict: from database JSONB fields
+    - FormatId object: from validated Pydantic request
+
+    Args:
+        fmt: A format identifier (dict or FormatId object)
+
+    Returns:
+        Tuple of (normalized_agent_url, format_id)
+    """
+    if isinstance(fmt, dict):
+        agent_url = fmt.get("agent_url")
+        format_id = fmt.get("id") or fmt.get("format_id")
+        normalized_url = str(agent_url).rstrip("/") if agent_url else None
+        return (normalized_url, format_id or "")
+    else:
+        # FormatId object
+        normalized_url = str(fmt.agent_url).rstrip("/") if fmt.agent_url else None
+        return (normalized_url, fmt.id)
+
+
 # Tool-specific imports
 from src.core import schemas
 from src.core.audit_logger import get_audit_logger
@@ -2236,9 +2260,16 @@ async def _create_media_buy_impl(
                         else "non_guaranteed"
                     )
                     # Extract format IDs as strings for config generation
+                    # Handle dict (from database JSONB) or FormatId object (from request)
                     formats_list: list[str] | None = None
                     if schema_product.format_ids:
-                        formats_list = [fmt.id for fmt in schema_product.format_ids]
+                        formats_list = []
+                        for fmt in schema_product.format_ids:
+                            if isinstance(fmt, dict):
+                                formats_list.append(fmt.get("id") or fmt.get("format_id") or "")
+                            else:
+                                # FormatId object
+                                formats_list.append(fmt.id)
                     schema_product.implementation_config = gam_validator.generate_default_config(
                         delivery_type=delivery_type_str, formats=formats_list
                     )
@@ -2400,20 +2431,15 @@ async def _create_media_buy_impl(
             if matching_package and hasattr(matching_package, "format_ids") and matching_package.format_ids:
                 # Validate that requested formats are supported by product
                 # Format is composite key: (agent_url, id) per AdCP spec
-                # FormatId objects have agent_url (AnyUrl) and id (str) fields
                 product_format_keys: set[tuple[str | None, str]] = set()
                 if pkg_product.format_ids:
                     for fmt in pkg_product.format_ids:
-                        # Normalize agent_url by removing trailing slash for consistent comparison
-                        normalized_url = str(fmt.agent_url).rstrip("/") if fmt.agent_url else None
-                        product_format_keys.add((normalized_url, fmt.id))
+                        product_format_keys.add(extract_format_key(fmt))
 
                 # Build set of requested format keys for comparison
                 requested_format_keys: set[tuple[str | None, str]] = set()
                 for fmt in matching_package.format_ids:
-                    # Normalize agent_url by removing trailing slash for consistent comparison
-                    normalized_url = str(fmt.agent_url).rstrip("/") if fmt.agent_url else None
-                    requested_format_keys.add((normalized_url, fmt.id))
+                    requested_format_keys.add(extract_format_key(fmt))
 
                 def format_display(url: str | None, fid: str) -> str:
                     """Format a (url, id) pair for display, handling trailing slashes."""
