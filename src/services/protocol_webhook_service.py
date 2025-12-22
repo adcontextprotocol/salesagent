@@ -231,7 +231,12 @@ class ProtocolWebhookService:
                 logger.info(f"Successfully sent webhook for task {task_id} (status: {response.status_code})")
 
                 # Write to webhook_delivery_log (success)
-                if task_type == "delivery_report" and media_buy_id and tenant_id and principal_id:
+                if (
+                    task_type in ("delivery_report", "media_buy_delivery")
+                    and media_buy_id
+                    and tenant_id
+                    and principal_id
+                ):
                     try:
                         with get_db_session() as session:
                             log_entry = WebhookDeliveryLog(
@@ -274,7 +279,12 @@ class ProtocolWebhookService:
                     logger.error(f"Webhook failed for task {task_id} with client error {status_code} - not retrying")
 
                     # Write to webhook_delivery_log (failed)
-                    if task_type == "delivery_report" and media_buy_id and tenant_id and principal_id:
+                    if (
+                        task_type in ("delivery_report", "media_buy_delivery")
+                        and media_buy_id
+                        and tenant_id
+                        and principal_id
+                    ):
                         try:
                             with get_db_session() as session:
                                 log_entry = WebhookDeliveryLog(
@@ -314,7 +324,12 @@ class ProtocolWebhookService:
                     )
 
                     # Write to webhook_delivery_log (retrying)
-                    if task_type == "delivery_report" and media_buy_id and tenant_id and principal_id:
+                    if (
+                        task_type in ("delivery_report", "media_buy_delivery")
+                        and media_buy_id
+                        and tenant_id
+                        and principal_id
+                    ):
                         try:
                             with get_db_session() as session:
                                 next_retry = datetime.now(UTC).replace(microsecond=0)
@@ -347,7 +362,12 @@ class ProtocolWebhookService:
                     logger.error(f"Webhook failed for task {task_id} after {max_attempts} attempts: HTTP {status_code}")
 
                     # Write to webhook_delivery_log (failed after all retries)
-                    if task_type == "delivery_report" and media_buy_id and tenant_id and principal_id:
+                    if (
+                        task_type in ("delivery_report", "media_buy_delivery")
+                        and media_buy_id
+                        and tenant_id
+                        and principal_id
+                    ):
                         try:
                             with get_db_session() as session:
                                 log_entry = WebhookDeliveryLog(
@@ -396,7 +416,12 @@ class ProtocolWebhookService:
                     )
 
                     # Write to webhook_delivery_log (failed)
-                    if task_type == "delivery_report" and media_buy_id and tenant_id and principal_id:
+                    if (
+                        task_type in ("delivery_report", "media_buy_delivery")
+                        and media_buy_id
+                        and tenant_id
+                        and principal_id
+                    ):
                         try:
                             with get_db_session() as session:
                                 log_entry = WebhookDeliveryLog(
@@ -430,7 +455,12 @@ class ProtocolWebhookService:
                 logger.error(f"Unexpected error sending webhook for task {task_id}: {e}")
 
                 # Write to webhook_delivery_log (unexpected failure)
-                if task_type == "delivery_report" and media_buy_id and tenant_id and principal_id:
+                if (
+                    task_type in ("delivery_report", "media_buy_delivery")
+                    and media_buy_id
+                    and tenant_id
+                    and principal_id
+                ):
                     try:
                         with get_db_session() as session:
                             log_entry = WebhookDeliveryLog(
