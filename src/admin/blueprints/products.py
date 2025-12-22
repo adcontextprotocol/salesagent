@@ -592,12 +592,18 @@ def _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_d
     )
 
     with get_db_session() as db_session:
-        # Load authorized properties
+        # Load authorized properties (all statuses - verification can take time)
         authorized_properties_query = db_session.scalars(
-            select(AuthorizedProperty).filter_by(tenant_id=tenant_id, verification_status="verified")
+            select(AuthorizedProperty).filter_by(tenant_id=tenant_id).order_by(AuthorizedProperty.name)
         ).all()
         properties_list = [
-            {"property_id": p.property_id, "name": p.name, "property_type": p.property_type, "tags": p.tags or []}
+            {
+                "property_id": p.property_id,
+                "name": p.name,
+                "property_type": p.property_type,
+                "tags": p.tags or [],
+                "verification_status": p.verification_status,
+            }
             for p in authorized_properties_query
         ]
 
