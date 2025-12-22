@@ -2262,10 +2262,7 @@ async def _create_media_buy_impl(
                     # Extract format IDs as strings for config generation
                     formats_list: list[str] | None = None
                     if schema_product.format_ids:
-                        formats_list = [
-                            fmt.get("id") or fmt.get("format_id") or "" if isinstance(fmt, dict) else fmt.id
-                            for fmt in schema_product.format_ids
-                        ]
+                        formats_list = [fmt.id for fmt in schema_product.format_ids]
                     schema_product.implementation_config = gam_validator.generate_default_config(
                         delivery_type=delivery_type_str, formats=formats_list
                     )
