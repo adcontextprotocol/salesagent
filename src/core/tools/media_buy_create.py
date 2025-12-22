@@ -486,7 +486,8 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             for db_pkg in db_packages:
                 try:
                     package_config = dict(db_pkg.package_config)
-                    package_id = package_config.get("package_id")
+                    # package_id is stored on the MediaPackage model, not in package_config (AdCP spec)
+                    package_id = db_pkg.package_id
                     product_id = package_config.get("product_id")
 
                     if not product_id:

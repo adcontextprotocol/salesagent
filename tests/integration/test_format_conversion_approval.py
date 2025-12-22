@@ -741,7 +741,7 @@ class TestFormatConversionApproval:
                     "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
-                            "package_id": "pkg_1",
+                            # package_id is internal, not in AdCP PackageRequest spec
                             "product_id": product_id,
                             "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 1500.0,
@@ -1053,7 +1053,7 @@ class TestFormatConversionApproval:
                     "end_time": (now + timedelta(days=7)).isoformat(),
                     "packages": [
                         {
-                            "package_id": "pkg_1",
+                            # package_id is internal, not in AdCP PackageRequest spec
                             "product_id": product_id,
                             "buyer_ref": "pkg_1_buyer_ref",
                             "budget": 2000.0,
