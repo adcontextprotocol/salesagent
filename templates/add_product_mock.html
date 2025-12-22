@@ -568,6 +568,13 @@
                         <input type="checkbox" name="selected_property_ids" value="{{ prop.property_id }}" style="margin-right: 0.5rem;">
                         <strong>{{ prop.name or prop.property_id }}</strong>
                         <span style="color: #666; font-size: 0.9em;">({{ prop.property_type }})</span>
+                        {% if prop.verification_status == 'verified' %}
+                        <span style="background: #c8e6c9; color: #2e7d32; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.25rem;">verified</span>
+                        {% elif prop.verification_status == 'pending' %}
+                        <span style="background: #fff3e0; color: #e65100; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.25rem;">pending</span>
+                        {% elif prop.verification_status == 'failed' %}
+                        <span style="background: #ffebee; color: #c62828; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.25rem;">failed</span>
+                        {% endif %}
                         {% if prop.tags %}
                         <div style="margin-left: 1.5rem; margin-top: 0.25rem;">
                             {% for tag in prop.tags %}
@@ -602,6 +609,13 @@
                     <label style="display: block; padding: 0.5rem;">
                         <input type="checkbox" name="full_property_ids" value="{{ prop.property_id }}">
                         {{ prop.name or prop.property_id }} ({{ prop.property_type }})
+                        {% if prop.verification_status == 'verified' %}
+                        <span style="background: #c8e6c9; color: #2e7d32; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em;">verified</span>
+                        {% elif prop.verification_status == 'pending' %}
+                        <span style="background: #fff3e0; color: #e65100; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em;">pending</span>
+                        {% elif prop.verification_status == 'failed' %}
+                        <span style="background: #ffebee; color: #c62828; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em;">failed</span>
+                        {% endif %}
                         {% if prop.tags %}<span class="badge" style="margin-left: 0.5rem;">{{ prop.tags|join(', ') }}</span>{% endif %}
                     </label>
                     {% endfor %}
