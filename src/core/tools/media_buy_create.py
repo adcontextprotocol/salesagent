@@ -50,6 +50,21 @@ def validate_agent_url(url: str | None) -> bool:
         return False
 
 
+def extract_format_id(fmt: Any) -> str:
+    """Extract format ID string from dict or FormatId object.
+
+    Args:
+        fmt: A format identifier (dict or FormatId object)
+
+    Returns:
+        The format ID string
+    """
+    if isinstance(fmt, dict):
+        return fmt.get("id") or fmt.get("format_id") or ""
+    else:
+        return fmt.id
+
+
 def extract_format_key(fmt: Any) -> tuple[str | None, str]:
     """Extract (agent_url, id) tuple from dict or FormatId object.
 
@@ -65,9 +80,8 @@ def extract_format_key(fmt: Any) -> tuple[str | None, str]:
     """
     if isinstance(fmt, dict):
         agent_url = fmt.get("agent_url")
-        format_id = fmt.get("id") or fmt.get("format_id")
         normalized_url = str(agent_url).rstrip("/") if agent_url else None
-        return (normalized_url, format_id or "")
+        return (normalized_url, extract_format_id(fmt))
     else:
         # FormatId object
         normalized_url = str(fmt.agent_url).rstrip("/") if fmt.agent_url else None
@@ -2260,16 +2274,9 @@ async def _create_media_buy_impl(
                         else "non_guaranteed"
                     )
                     # Extract format IDs as strings for config generation
-                    # Handle dict (from database JSONB) or FormatId object (from request)
                     formats_list: list[str] | None = None
                     if schema_product.format_ids:
-                        formats_list = []
-                        for fmt in schema_product.format_ids:
-                            if isinstance(fmt, dict):
-                                formats_list.append(fmt.get("id") or fmt.get("format_id") or "")
-                            else:
-                                # FormatId object
-                                formats_list.append(fmt.id)
+                        formats_list = [extract_format_id(fmt) for fmt in schema_product.format_ids]
                     schema_product.implementation_config = gam_validator.generate_default_config(
                         delivery_type=delivery_type_str, formats=formats_list
                     )
