@@ -38,7 +38,7 @@ def test_create_media_buy_with_profile_based_product_uses_profile_inventory(db_s
                 "placements": ["99999"],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "display_300x250"},
             ],
             publisher_properties=[
@@ -160,7 +160,7 @@ def test_create_media_buy_with_profile_based_product_validates_formats(db_sessio
                 "placements": [],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "display_300x250"},
                 {"agent_url": "https://test.example.com", "id": "display_728x90"},
             ],
@@ -264,7 +264,7 @@ def test_multiple_products_same_profile_in_media_buy(db_session, sample_tenant):
                 "placements": [],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "display_300x250"},
             ],
             publisher_properties=[
@@ -374,7 +374,7 @@ def test_media_buy_reflects_profile_updates_made_after_product_creation(db_sessi
                 "placements": [],
                 "include_descendants": False,
             },
-            formats=[
+            format_ids=[
                 {"agent_url": "https://test.example.com", "id": "display_300x250"},
             ],
             publisher_properties=[
