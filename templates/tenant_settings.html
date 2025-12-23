@@ -1779,6 +1779,7 @@ REJECT - Creative cannot be approved:
                                 <tr>
                                     <th>Name</th>
                                     <th>Principal ID</th>
+                                    <th>Access Token</th>
                                     <th>Platform Mappings</th>
                                     <th>Created</th>
                                     <th>Actions</th>
@@ -1789,6 +1790,16 @@ REJECT - Creative cannot be approved:
                                 <tr>
                                     <td><strong>{{ principal.name }}</strong></td>
                                     <td><code>{{ principal.principal_id }}</code></td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <code class="text-truncate" style="max-width: 120px;" title="{{ principal.access_token }}">{{ principal.access_token[:12] }}...</code>
+                                            <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                                                    onclick="copyAccessToken('{{ principal.access_token }}')"
+                                                    title="Copy full token">
+                                                📋
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td>
                                         {% if principal.platform_mappings %}
                                             {% set mappings = principal.platform_mappings | from_json %}
