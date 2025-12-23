@@ -828,8 +828,14 @@ function validatePropertySelection() {
             return false;
         }
 
-    } else {
-        const checkboxes = document.querySelectorAll('input[name="property_ids"]:checked');
+    } else if (propertyMode === 'property_ids') {
+        const checkboxes = document.querySelectorAll('input[name="selected_property_ids"]:checked');
+        if (checkboxes.length === 0) {
+            alert('Please select at least one property');
+            return false;
+        }
+    } else if (propertyMode === 'full') {
+        const checkboxes = document.querySelectorAll('input[name="full_property_ids"]:checked');
         if (checkboxes.length === 0) {
             alert('Please select at least one property');
             return false;

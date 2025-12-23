@@ -1050,9 +1050,50 @@ def add_product(tenant_id):
                     else:
                         # No tags provided, default to empty list to satisfy DB constraint
                         product_kwargs["property_tags"] = []
+                elif property_mode == "property_ids":
+                    # Get selected property IDs and store as property_tags referencing those properties
+                    property_ids_str = request.form.getlist("selected_property_ids")
+
+                    # Validate property IDs are integers (security)
+                    try:
+                        property_ids = [int(pid) for pid in property_ids_str]
+                    except (ValueError, TypeError):
+                        flash("Invalid property IDs provided", "error")
+                        return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+
+                    if property_ids:
+                        from src.core.database.models import AuthorizedProperty
+
+                        properties = db_session.scalars(
+                            select(AuthorizedProperty).filter(
+                                AuthorizedProperty.id.in_(property_ids), AuthorizedProperty.tenant_id == tenant_id
+                            )
+                        ).all()
+
+                        # Verify all requested IDs were found (prevent TOCTOU)
+                        if len(properties) != len(property_ids):
+                            flash("One or more selected properties not found or not authorized", "error")
+                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+
+                        # Collect all tags from selected properties
+                        all_tags = set()
+                        for prop in properties:
+                            if prop.tags:
+                                all_tags.update(prop.tags)
+
+                        if all_tags:
+                            product_kwargs["property_tags"] = list(all_tags)
+                        else:
+                            # Properties have no tags - use default all_inventory
+                            product_kwargs["property_tags"] = ["all_inventory"]
+                    else:
+                        # No properties selected
+                        flash("Please select at least one property", "error")
+                        return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+
                 elif property_mode == "full":
                     # Get selected property IDs and load full property objects
-                    property_ids_str = request.form.getlist("property_ids")
+                    property_ids_str = request.form.getlist("full_property_ids")
 
                     # Validate property IDs are integers (security)
                     try:
