@@ -33,10 +33,12 @@ class TestSelfServiceSignupFlow:
         assert b"Get Started with Google" in response.data
 
     def test_root_redirects_to_landing_when_not_authenticated(self, client):
-        """Test that root URL redirects to landing page for unauthenticated users."""
-        response = client.get("/", follow_redirects=False)
-        assert response.status_code == 302
-        assert "/signup" in response.headers["Location"]
+        """Test that root URL redirects to landing page for unauthenticated users in multi-tenant mode."""
+        # In multi-tenant mode, unauthenticated users at root should redirect to signup
+        with patch("src.core.config_loader.is_single_tenant_mode", return_value=False):
+            response = client.get("/", follow_redirects=False)
+            assert response.status_code == 302
+            assert "/signup" in response.headers["Location"]
 
     def test_signup_start_sets_session_context(self, client):
         """Test that signup start sets signup context in session."""

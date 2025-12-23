@@ -133,6 +133,22 @@ def run_nginx():
     os.makedirs("/var/log/nginx", exist_ok=True)
     os.makedirs("/var/run", exist_ok=True)
 
+    # Select nginx config based on ADCP_MULTI_TENANT env var
+    # Default: simple (single-tenant, path-based routing only)
+    # ADCP_MULTI_TENANT=true: full config with subdomain routing for multi-tenant
+    multi_tenant = os.environ.get("ADCP_MULTI_TENANT", "false").lower() == "true"
+    if multi_tenant:
+        config_path = "/etc/nginx/nginx-multi-tenant.conf"
+        print("[Nginx] Using multi-tenant config (subdomain routing enabled)")
+    else:
+        config_path = "/etc/nginx/nginx-simple.conf"
+        print("[Nginx] Using simple config (path-based routing only)")
+
+    # Copy selected config to active location
+    import shutil
+
+    shutil.copy(config_path, "/etc/nginx/nginx.conf")
+
     # Test nginx configuration first
     test_proc = subprocess.run(["nginx", "-t"], capture_output=True, text=True)
     if test_proc.returncode != 0:
@@ -154,6 +170,29 @@ def run_nginx():
         if line:
             print(f"[Nginx] {line.decode().rstrip()}")
     print("Nginx stopped")
+
+
+def run_cron():
+    """Run supercronic for scheduled tasks."""
+    crontab_path = "/app/crontab"
+    if not os.path.exists(crontab_path):
+        print("[Cron] No crontab found, skipping scheduled tasks")
+        return
+
+    print("Starting supercronic for scheduled tasks...")
+
+    proc = subprocess.Popen(
+        ["supercronic", crontab_path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    processes.append(proc)
+
+    # Monitor the process output
+    for line in iter(proc.stdout.readline, b""):
+        if line:
+            print(f"[Cron] {line.decode().rstrip()}")
+    print("Supercronic stopped")
 
 
 def main():
@@ -186,6 +225,13 @@ def main():
     a2a_thread = threading.Thread(target=run_a2a_server, daemon=True)
     a2a_thread.start()
     threads.append(a2a_thread)
+
+    # Cron thread for scheduled tasks (syncing GAM tenants, etc.)
+    skip_cron = os.environ.get("SKIP_CRON", "false").lower() == "true"
+    if not skip_cron:
+        cron_thread = threading.Thread(target=run_cron, daemon=True)
+        cron_thread.start()
+        threads.append(cron_thread)
 
     # Check if we should skip nginx (useful for docker-compose with separate services)
     skip_nginx = os.environ.get("SKIP_NGINX", "false").lower() == "true"

@@ -1,23 +1,22 @@
-# AdCP Sales Agent - Quickstart Docker Compose
+# Docker Compose for multi-tenant testing with subdomain routing
 #
-# Quick start:
-#   docker compose up -d
+# Usage:
+#   docker compose -f docker-compose.multi-tenant.yml up
 #
-# All services accessible through port 8000:
-#   - http://localhost:8000/       -> Admin UI
-#   - http://localhost:8000/admin  -> Admin UI
-#   - http://localhost:8000/mcp    -> MCP Server
-#   - http://localhost:8000/a2a    -> A2A Server
+# Prerequisites:
+#   Add to /etc/hosts:
+#     127.0.0.1 sales-agent.scope3.com
+#     127.0.0.1 admin.sales-agent.scope3.com
+#     127.0.0.1 tenant1.sales-agent.scope3.com
+#     127.0.0.1 tenant2.sales-agent.scope3.com
+#
+# Access:
+#   - http://admin.sales-agent.scope3.com:8000/        -> Admin UI
+#   - http://tenant1.sales-agent.scope3.com:8000/mcp   -> Tenant 1 MCP
+#   - http://tenant1.sales-agent.scope3.com:8000/a2a   -> Tenant 1 A2A
+#   - http://sales-agent.scope3.com:8000/              -> Main signup page
 #
 # Uses pre-built images from GitHub Container Registry.
-# Pin to a specific version:
-#   IMAGE_TAG=0.1.0 docker compose up -d
-#
-# For development with hot-reload:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-#
-# For multi-tenant testing with subdomain routing:
-#   docker compose -f docker-compose.multi-tenant.yml up
 
 services:
   postgres:
@@ -36,11 +35,12 @@ services:
       timeout: 5s
       retries: 5
 
-  # Nginx proxy for unified routing on port 8000
+  # Full nginx with subdomain routing
   proxy:
     image: nginx:alpine
     volumes:
-      - ./config/nginx/nginx-simple.conf:/etc/nginx/nginx.conf:ro
+      # Use multi-tenant nginx config with Docker service names
+      - ./config/nginx/nginx-multi-tenant.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - adcp-server
       - admin-ui

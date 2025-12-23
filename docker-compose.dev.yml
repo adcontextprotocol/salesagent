@@ -1,0 +1,56 @@
+# Docker Compose development overlay with hot reloading
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# This overlay:
+#   - Builds images locally instead of using GHCR
+#   - Mounts source code for hot-reload
+#   - Enables Flask debug mode
+#   - Uses named volumes for pip/uv cache (auto-created)
+
+services:
+  proxy:
+    # No changes needed for proxy in dev mode
+
+  adcp-server:
+    build: .
+    volumes:
+      # Mount source code for hot reloading, excluding .venv
+      - .:/app
+      - /app/.venv
+      - ./audit_logs:/app/audit_logs
+      # Named volumes for caching (auto-created on first run)
+      - pip_cache:/root/.cache/pip
+      - uv_cache:/cache/uv
+    environment:
+      # Add container's venv site-packages to PYTHONPATH
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages"
+      PYTHONUNBUFFERED: 1
+      FLASK_ENV: development
+      WERKZEUG_RUN_MAIN: true
+    command: ["python", "run_server.py"]
+
+  admin-ui:
+    build: .
+    volumes:
+      # Mount source code for hot reloading, excluding .venv
+      - .:/app
+      - /app/.venv
+      - ./audit_logs:/app/audit_logs
+      # Named volumes for caching (auto-created on first run)
+      - pip_cache:/root/.cache/pip
+      - uv_cache:/cache/uv
+    environment:
+      # Add container's venv site-packages to PYTHONPATH
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages"
+      # Enable Flask development mode with auto-reload
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      PYTHONUNBUFFERED: 1
+      WERKZEUG_RUN_MAIN: true
+
+# Named volumes for caching (auto-created if they don't exist)
+volumes:
+  pip_cache:
+  uv_cache:

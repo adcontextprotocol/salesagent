@@ -61,9 +61,37 @@ def get_tenant_from_hostname():
 @core_bp.route("/")
 def index():
     """Main index page - redirects based on authentication and user role."""
+    from src.core.config_loader import is_single_tenant_mode
+
     # Check if user is authenticated
     if "user" not in session:
-        # Not authenticated - use centralized routing logic
+        # Single-tenant mode: show tenant landing page with API info
+        if is_single_tenant_mode():
+            with get_db_session() as db_session:
+                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id="default")).first()
+            if tenant:
+                from src.landing.landing_page import generate_tenant_landing_page
+
+                # Build effective host from request
+                effective_host = request.headers.get("X-Forwarded-Host", request.host)
+
+                # Use virtual_host if configured
+                if tenant.virtual_host:
+                    effective_host = tenant.virtual_host
+
+                # Convert tenant to dict for landing page generator
+                tenant_dict = {
+                    "tenant_id": tenant.tenant_id,
+                    "name": tenant.name,
+                    "subdomain": tenant.subdomain,
+                    "virtual_host": tenant.virtual_host,
+                }
+                html_content = generate_tenant_landing_page(tenant_dict, effective_host)
+                return Response(html_content, mimetype="text/html")
+            # No default tenant yet - redirect to login
+            return redirect(url_for("auth.login"))
+
+        # Multi-tenant mode - use centralized routing logic
         from src.core.domain_routing import route_landing_page
 
         result = route_landing_page(dict(request.headers))

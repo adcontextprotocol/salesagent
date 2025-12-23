@@ -15,7 +15,7 @@ app = "adcp-sales-agent"
 primary_region = "iad"
 
 [build]
-  dockerfile = "Dockerfile.fly"
+  dockerfile = "Dockerfile"
 
 # nginx proxy - routes to internal services by path
 [[services]]
@@ -59,6 +59,9 @@ primary_region = "iad"
   ADK_WEB_PORT = "8091"
   A2A_PORT = "8091"
   DB_TYPE = "postgresql"
+  # Enable multi-tenant mode for reference deployment (subdomain routing)
+  # Publishers deploying their own instance should set this to "false" or remove it
+  ADCP_MULTI_TENANT = "true"
   # Domain configuration - set these as secrets:
   # fly secrets set BASE_DOMAIN=your-domain.com
   # fly secrets set SALES_AGENT_DOMAIN=sales-agent.your-domain.com

@@ -1,0 +1,45 @@
+{
+  "name": "adcp-sales-agent",
+  "env": {
+    "DATABASE_URL": {
+      "description": "PostgreSQL connection string (e.g., postgresql://user:pass@host:5432/db). Create a Cloud SQL instance first: https://console.cloud.google.com/sql",
+      "required": true,
+      "order": 1
+    },
+    "SUPER_ADMIN_EMAILS": {
+      "description": "Comma-separated list of email addresses for super admin access",
+      "required": true,
+      "order": 2
+    },
+    "OAUTH_CLIENT_ID": {
+      "description": "OAuth Client ID (create at https://console.cloud.google.com/apis/credentials)",
+      "required": true,
+      "order": 3
+    },
+    "OAUTH_CLIENT_SECRET": {
+      "description": "OAuth Client Secret",
+      "required": true,
+      "order": 4
+    },
+    "OAUTH_DISCOVERY_URL": {
+      "description": "OIDC discovery URL (defaults to Google if not set)",
+      "value": "https://accounts.google.com/.well-known/openid-configuration",
+      "required": false,
+      "order": 5
+    }
+  },
+  "options": {
+    "allow-unauthenticated": true,
+    "memory": "1Gi",
+    "cpu": "1",
+    "port": 8000,
+    "max-instances": 10
+  },
+  "hooks": {
+    "postcreate": {
+      "commands": [
+        "echo 'AdCP Sales Agent deployed! Configure Gemini API key and other settings in Admin UI.'"
+      ]
+    }
+  }
+}

@@ -42,6 +42,15 @@ RUN --mount=type=cache,target=/cache/uv \
 # Runtime stage
 FROM python:3.12-slim
 
+# OCI labels for GitHub Container Registry
+LABEL org.opencontainers.image.title="AdCP Sales Agent"
+LABEL org.opencontainers.image.description="Reference implementation of an AdCP (Ad Context Protocol) Sales Agent. Deploy with Docker Compose: curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml && docker compose up -d"
+LABEL org.opencontainers.image.url="https://github.com/adcontextprotocol/salesagent"
+LABEL org.opencontainers.image.source="https://github.com/adcontextprotocol/salesagent"
+LABEL org.opencontainers.image.documentation="https://github.com/adcontextprotocol/salesagent/blob/main/docs/quickstart.md"
+LABEL org.opencontainers.image.vendor="Agentic Advertising Foundation"
+LABEL org.opencontainers.image.licenses="MIT"
+
 # Disable man pages and docs to speed up apt operations
 RUN echo 'path-exclude /usr/share/doc/*' > /etc/dpkg/dpkg.cfg.d/01_nodoc && \
     echo 'path-exclude /usr/share/man/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
@@ -50,20 +59,25 @@ RUN echo 'path-exclude /usr/share/doc/*' > /etc/dpkg/dpkg.cfg.d/01_nodoc && \
     echo 'path-exclude /usr/share/lintian/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
     echo 'path-exclude /usr/share/linda/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc
 
-# Install runtime dependencies
+# Install runtime dependencies including nginx
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
-    git
+    git \
+    nginx
+
+# Install supercronic for cron jobs (container-friendly cron)
+ARG TARGETARCH
+RUN SUPERCRONIC_ARCH=$(case "${TARGETARCH}" in "arm64") echo "linux-arm64" ;; *) echo "linux-amd64" ;; esac) && \
+    curl -fsSL "https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-${SUPERCRONIC_ARCH}" \
+    -o /usr/local/bin/supercronic && \
+    chmod +x /usr/local/bin/supercronic
 
 # Install uv (cacheable)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir uv
-
-# Create non-root user
-RUN useradd -m -u 1000 adcp
 
 WORKDIR /app
 
@@ -73,6 +87,16 @@ RUN echo "Cache bust: $CACHE_BUST"
 
 # Copy application code
 COPY . .
+
+# Copy both nginx configs - run_all_services.py selects based on ADCP_MULTI_TENANT env var
+# Default: simple (single-tenant, path-based routing)
+# ADCP_MULTI_TENANT=true: full config with subdomain routing
+COPY config/nginx/nginx-simple.conf /etc/nginx/nginx-simple.conf
+COPY config/nginx/nginx.conf /etc/nginx/nginx-multi-tenant.conf
+
+# Create nginx directories with proper permissions
+RUN mkdir -p /var/log/nginx /var/run && \
+    chown -R www-data:www-data /var/log/nginx /var/run
 
 # Set up caching for uv
 ENV UV_CACHE_DIR=/cache/uv
@@ -87,12 +111,6 @@ RUN --mount=type=cache,target=/cache/uv \
     --mount=type=cache,target=/root/.cache/pip \
     uv sync --python=/usr/local/bin/python3.12 --frozen
 
-# Set ownership after creating venv
-RUN chown -R adcp:adcp /app
-
-# Switch to non-root user
-USER adcp
-
 # Add .venv to PATH
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
@@ -101,8 +119,9 @@ ENV PYTHONUNBUFFERED=1
 ENV ADCP_PORT=8080
 ENV ADCP_HOST=0.0.0.0
 
-# Expose ports (MCP, Admin UI, A2A)
-EXPOSE 8080 8001 8091
+# Expose port 8000 (nginx proxy - the only external-facing port)
+# Internal services (MCP:8080, Admin:8001, A2A:8091) are accessed via nginx
+EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
