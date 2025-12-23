@@ -16,7 +16,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.core.schemas import Budget
 from tests.helpers.adcp_factories import create_test_package_request
 
 
@@ -90,7 +89,6 @@ class TestDuplicateProductValidation:
                 packages=packages,
                 start_time=start_time,
                 end_time=end_time,
-                budget=Budget(total=2500, currency="USD"),
                 ctx=mock_context,
             )
 
@@ -99,9 +97,9 @@ class TestDuplicateProductValidation:
             error_msg = result.errors[0].message
             assert "duplicate" in error_msg.lower(), f"Error should mention 'duplicate': {error_msg}"
             assert "prod_test_1" in error_msg, f"Error should mention 'prod_test_1': {error_msg}"
-            assert "each product can only be used once" in error_msg.lower(), (
-                f"Error should say 'each product can only be used once': {error_msg}"
-            )
+            assert (
+                "each product can only be used once" in error_msg.lower()
+            ), f"Error should say 'each product can only be used once': {error_msg}"
 
     @pytest.mark.asyncio
     async def test_multiple_duplicate_products_all_listed(self, integration_db):
@@ -181,7 +179,6 @@ class TestDuplicateProductValidation:
                 packages=packages,
                 start_time=start_time,
                 end_time=end_time,
-                budget=Budget(total=6300, currency="USD"),
                 ctx=mock_context,
             )
 
@@ -255,7 +252,6 @@ class TestDuplicateProductValidation:
                     packages=packages,
                     start_time=start_time,
                     end_time=end_time,
-                    budget=Budget(total=2500, currency="USD"),
                 )
 
             # Should NOT be about duplicate products

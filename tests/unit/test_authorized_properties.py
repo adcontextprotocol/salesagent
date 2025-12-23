@@ -16,39 +16,39 @@ class TestListAuthorizedPropertiesRequest:
     """Test ListAuthorizedPropertiesRequest schema validation."""
 
     def test_request_with_minimal_fields(self):
-        """Test request with only required fields."""
+        """Test request with only required fields (all optional per spec)."""
         request = ListAuthorizedPropertiesRequest()
 
-        # adcp_version removed from AdCP spec
-        assert request.tags is None
+        # All fields are optional per AdCP spec
+        assert request.context is None
+        assert request.ext is None
+        assert request.publisher_domains is None
 
-    def test_request_with_all_fields(self):
-        """Test request with all fields."""
-        request = ListAuthorizedPropertiesRequest(tags=["premium_content", "news"])
+    def test_request_with_publisher_domains(self):
+        """Test request with publisher_domains filter."""
+        request = ListAuthorizedPropertiesRequest(publisher_domains=["example.com", "news.example.com"])
 
-        assert request.tags == ["premium_content", "news"]
-
-    def test_request_normalizes_tags(self):
-        """Test that tags are normalized to lowercase with underscores."""
-        request = ListAuthorizedPropertiesRequest(tags=["Premium-Content", "News-Sports"])
-
-        assert request.tags == ["premium_content", "news_sports"]
+        # Library wraps strings in PublisherDomain type
+        assert request.publisher_domains is not None
+        assert len(request.publisher_domains) == 2
+        # Access the root value for comparison
+        domains = [str(d.root) for d in request.publisher_domains]
+        assert domains == ["example.com", "news.example.com"]
 
     def test_adcp_compliance(self):
         """Test that ListAuthorizedPropertiesRequest complies with AdCP schema."""
-        # Create request with all fields
-        request = ListAuthorizedPropertiesRequest(tags=["premium_content", "news"])
+        # Create request with optional fields
+        request = ListAuthorizedPropertiesRequest(publisher_domains=["example.com"])
 
         # Test AdCP-compliant response
-        adcp_response = request.model_dump()
+        adcp_response = request.model_dump(exclude_none=False)
 
-        # Verify optional AdCP fields present (can be null)
-        optional_fields = ["tags", "adcp_version"]
-        for field in optional_fields:
-            assert field in adcp_response
+        # Verify spec fields are present (all optional per spec)
+        spec_fields = {"context", "ext", "publisher_domains"}
+        assert set(adcp_response.keys()) == spec_fields
 
         # Verify field count matches expectation
-        assert len(adcp_response) == 2
+        assert len(adcp_response) == 3
 
 
 class TestProperty:

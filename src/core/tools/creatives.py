@@ -11,7 +11,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 
 from adcp import CreativeFilters, PushNotificationConfig
 from adcp.types.generated_poc.core.context import ContextObject
@@ -43,8 +43,14 @@ from src.core.helpers import (
     get_principal_id_from_context,
     log_tool_activity,
 )
-from src.core.schema_adapters import ListCreativesResponse, SyncCreativesResponse
-from src.core.schemas import Creative, CreativeStatusEnum, SyncCreativeResult
+from src.core.schema_helpers import to_context_object
+from src.core.schemas import (
+    Creative,
+    CreativeStatusEnum,
+    ListCreativesResponse,
+    SyncCreativeResult,
+    SyncCreativesResponse,
+)
 from src.core.validation_helpers import format_validation_error, run_async_in_sync_context
 
 
@@ -1757,7 +1763,11 @@ def _list_creatives_impl(
     Returns:
         ListCreativesResponse with filtered creative assets and pagination info
     """
-    from src.core.schemas import create_list_creatives_request
+    from adcp.types import CreativeFilters as LibraryCreativeFilters
+    from adcp.types import Pagination as LibraryPagination
+    from adcp.types import Sort as LibrarySort
+
+    from src.core.schemas import ListCreativesRequest
 
     # Parse datetime strings if provided
     created_after_dt = None
@@ -1773,7 +1783,6 @@ def _list_creatives_impl(
         except ValueError:
             raise ToolError(f"Invalid created_before date format: {created_before}")
 
-    # Create request object from individual parameters (MCP-compliant)
     # Validate sort_order is valid Literal
     from typing import Literal
 
@@ -1781,30 +1790,70 @@ def _list_creatives_impl(
         Literal["asc", "desc"], sort_order if sort_order in ["asc", "desc"] else "desc"
     )
 
+    # Enforce max limit
+    effective_limit = min(limit, 1000)
+
+    # Build spec-compliant filters from flat parameters
+    filters_dict: dict[str, Any] = {}
+    if status:
+        filters_dict["status"] = status
+    if format:
+        filters_dict["format"] = format
+    if tags:
+        filters_dict["tags"] = tags
+    if created_after_dt:
+        filters_dict["created_after"] = created_after_dt
+    if created_before_dt:
+        filters_dict["created_before"] = created_before_dt
+    if search:
+        filters_dict["name_contains"] = search
+
+    # Build media_buy_ids and buyer_refs filter arrays
+    effective_media_buy_ids = list(media_buy_ids) if media_buy_ids else []
+    if media_buy_id and media_buy_id not in effective_media_buy_ids:
+        effective_media_buy_ids.append(media_buy_id)
+    if effective_media_buy_ids:
+        filters_dict["media_buy_ids"] = effective_media_buy_ids
+
+    effective_buyer_refs = list(buyer_refs) if buyer_refs else []
+    if buyer_ref and buyer_ref not in effective_buyer_refs:
+        effective_buyer_refs.append(buyer_ref)
+    if effective_buyer_refs:
+        filters_dict["buyer_refs"] = effective_buyer_refs
+
+    # Merge with provided filters dict
+    if filters:
+        filters_dict = {**filters, **filters_dict}
+
+    # Build structured objects
+    structured_filters = LibraryCreativeFilters(**filters_dict) if filters_dict else None
+
+    # Build pagination
+    offset = (page - 1) * effective_limit
+    structured_pagination = LibraryPagination(offset=offset, limit=effective_limit)
+
+    # Build sort
+    field_mapping = {
+        "created_date": "created_date",
+        "updated_date": "updated_date",
+        "name": "name",
+        "status": "status",
+        "assignment_count": "assignment_count",
+        "performance_score": "performance_score",
+    }
+    mapped_field = field_mapping.get(sort_by, "created_date")
+    structured_sort = LibrarySort(field=mapped_field, direction=valid_sort_order)  # type: ignore[arg-type]
+
     try:
-        req = create_list_creatives_request(
-            media_buy_id=media_buy_id,
-            media_buy_ids=media_buy_ids,
-            buyer_ref=buyer_ref,
-            buyer_refs=buyer_refs,
-            status=status,
-            format=format,
-            tags=tags or [],
-            created_after=created_after_dt,
-            created_before=created_before_dt,
-            search=search,
-            filters=filters,
-            sort=sort,
-            pagination=pagination,
-            fields=fields,
+        req = ListCreativesRequest(
+            filters=structured_filters,
+            pagination=structured_pagination,
+            sort=structured_sort,
+            fields=fields,  # type: ignore[arg-type]
             include_performance=include_performance,
             include_assignments=include_assignments,
             include_sub_assets=include_sub_assets,
-            page=page,
-            limit=min(limit, 1000),  # Enforce max limit
-            sort_by=sort_by,
-            sort_order=valid_sort_order,
-            context=context,
+            context=to_context_object(context),
         )
     except ValidationError as e:
         raise ToolError(format_validation_error(e, context="list_creatives request")) from e
@@ -1834,56 +1883,43 @@ def _list_creatives_impl(
         # Build query - filter by tenant AND principal for security
         stmt = select(DBCreative).filter_by(tenant_id=tenant["tenant_id"], principal_id=principal_id)
 
-        # Apply filters
+        # Apply filters using local variables (already processed above)
         # AdCP 2.5: Support plural media_buy_ids and buyer_refs filters
-        # Extract from filters object (populated by create_list_creatives_request)
-        media_buy_ids_filter = None
-        buyer_refs_filter = None
-        if req.filters:
-            media_buy_ids_filter = getattr(req.filters, "media_buy_ids", None)
-            buyer_refs_filter = getattr(req.filters, "buyer_refs", None)
-
-        # Also check legacy singular fields on request object for backward compat
-        if not media_buy_ids_filter and hasattr(req, "media_buy_id") and req.media_buy_id:
-            media_buy_ids_filter = [req.media_buy_id]
-        if not buyer_refs_filter and hasattr(req, "buyer_ref") and req.buyer_ref:
-            buyer_refs_filter = [req.buyer_ref]
-
-        if media_buy_ids_filter:
+        if effective_media_buy_ids:
             # Filter by media buy assignments (OR logic - matches any)
             stmt = stmt.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id).where(
-                DBAssignment.media_buy_id.in_(media_buy_ids_filter)
+                DBAssignment.media_buy_id.in_(effective_media_buy_ids)
             )
 
-        if buyer_refs_filter:
+        if effective_buyer_refs:
             # Filter by buyer_ref through media buy (OR logic - matches any)
             # Only join if not already joined for media_buy_ids
-            if not media_buy_ids_filter:
+            if not effective_media_buy_ids:
                 stmt = stmt.join(DBAssignment, DBCreative.creative_id == DBAssignment.creative_id)
             stmt = stmt.join(MediaBuy, DBAssignment.media_buy_id == MediaBuy.media_buy_id).where(
-                MediaBuy.buyer_ref.in_(buyer_refs_filter)
+                MediaBuy.buyer_ref.in_(effective_buyer_refs)
             )
 
-        if req.status:
-            stmt = stmt.where(DBCreative.status == req.status)
+        if status:
+            stmt = stmt.where(DBCreative.status == status)
 
-        if req.format:
-            stmt = stmt.where(DBCreative.format == req.format)
+        if format:
+            stmt = stmt.where(DBCreative.format == format)
 
-        if req.tags:
+        if tags:
             # Simple tag filtering - in production, might use JSON operators
-            for tag in req.tags:
+            for tag in tags:
                 stmt = stmt.where(DBCreative.name.contains(tag))  # Simplified
 
-        if req.created_after:
-            stmt = stmt.where(DBCreative.created_at >= req.created_after)
+        if created_after_dt:
+            stmt = stmt.where(DBCreative.created_at >= created_after_dt)
 
-        if req.created_before:
-            stmt = stmt.where(DBCreative.created_at <= req.created_before)
+        if created_before_dt:
+            stmt = stmt.where(DBCreative.created_at <= created_before_dt)
 
-        if req.search:
+        if search:
             # Search in name and description
-            search_term = f"%{req.search}%"
+            search_term = f"%{search}%"
             stmt = stmt.where(DBCreative.name.ilike(search_term))
 
         # Get total count before pagination
@@ -1893,25 +1929,22 @@ def _list_creatives_impl(
         total_count_result = session.scalar(select(func.count()).select_from(stmt.subquery()))
         total_count = int(total_count_result) if total_count_result is not None else 0
 
-        # Apply sorting
+        # Apply sorting using local variables
         sort_column: InstrumentedAttribute
-        if req.sort_by == "name":
+        if sort_by == "name":
             sort_column = DBCreative.name
-        elif req.sort_by == "status":
+        elif sort_by == "status":
             sort_column = DBCreative.status
         else:  # Default to created_date
             sort_column = DBCreative.created_at
 
-        if req.sort_order == "asc":
+        if valid_sort_order == "asc":
             stmt = stmt.order_by(sort_column.asc())
         else:
             stmt = stmt.order_by(sort_column.desc())
 
-        # Apply pagination (page and limit have defaults from factory function)
-        page = req.page if req.page is not None else 1
-        limit = req.limit if req.limit is not None else 50
-        offset = (page - 1) * limit
-        db_creatives = session.scalars(stmt.offset(offset).limit(limit)).all()
+        # Apply pagination using local variables (already computed above)
+        db_creatives = session.scalars(stmt.offset(offset).limit(effective_limit)).all()
 
         # Convert to schema objects
         for db_creative in db_creatives:
@@ -1986,6 +2019,32 @@ def _list_creatives_impl(
 
     # Calculate pagination info (page and limit have defaults from factory function)
     has_more = (page * limit) < total_count
+    total_pages = (total_count + limit - 1) // limit if limit > 0 else 0
+
+    # Build filters_applied list from structured filters
+    filters_applied: list[str] = []
+    if req.filters:
+        if hasattr(req.filters, "media_buy_ids") and req.filters.media_buy_ids:
+            filters_applied.append(f"media_buy_ids={','.join(req.filters.media_buy_ids)}")
+        if hasattr(req.filters, "buyer_refs") and req.filters.buyer_refs:
+            filters_applied.append(f"buyer_refs={','.join(req.filters.buyer_refs)}")
+        if hasattr(req.filters, "status") and req.filters.status:
+            filters_applied.append(f"status={req.filters.status}")
+        if hasattr(req.filters, "format") and req.filters.format:
+            filters_applied.append(f"format={req.filters.format}")
+        if hasattr(req.filters, "tags") and req.filters.tags:
+            filters_applied.append(f"tags={','.join(req.filters.tags)}")
+        if hasattr(req.filters, "created_after") and req.filters.created_after:
+            filters_applied.append(f"created_after={req.filters.created_after.isoformat()}")
+        if hasattr(req.filters, "created_before") and req.filters.created_before:
+            filters_applied.append(f"created_before={req.filters.created_before.isoformat()}")
+        if hasattr(req.filters, "name_contains") and req.filters.name_contains:
+            filters_applied.append(f"search={req.filters.name_contains}")
+
+    # Build sort_applied dict from structured sort
+    sort_applied = None
+    if req.sort:
+        sort_applied = {"field": str(req.sort.field), "direction": str(req.sort.direction)}
 
     # Audit logging
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
@@ -1998,13 +2057,8 @@ def _list_creatives_impl(
         details={
             "result_count": len(creatives),
             "total_count": total_count,
-            "page": req.page,
-            "filters_applied": {
-                "media_buy_id": req.media_buy_id,
-                "status": req.status,
-                "format": req.format,
-                "search": req.search,
-            },
+            "page": page,
+            "filters_applied": filters_applied if filters_applied else None,
         },
     )
 
@@ -2015,39 +2069,16 @@ def _list_creatives_impl(
 
     message = f"Found {len(creatives)} creatives"
     if total_count > len(creatives):
-        message += f" (page {req.page} of {total_count} total)"
+        message += f" (page {page} of {total_pages} total)"
 
-    # Build filters_applied list
-    filters_applied = []
-    if req.media_buy_id:
-        filters_applied.append(f"media_buy_id={req.media_buy_id}")
-    if req.buyer_ref:
-        filters_applied.append(f"buyer_ref={req.buyer_ref}")
-    if req.status:
-        filters_applied.append(f"status={req.status}")
-    if req.format:
-        filters_applied.append(f"format={req.format}")
-    if req.tags:
-        filters_applied.append(f"tags={','.join(req.tags)}")
-    if req.created_after:
-        filters_applied.append(f"created_after={req.created_after.isoformat()}")
-    if req.created_before:
-        filters_applied.append(f"created_before={req.created_before.isoformat()}")
-    if req.search:
-        filters_applied.append(f"search={req.search}")
-
-    # Build sort_applied dict (sort_by and sort_order have defaults from factory)
-    sort_by = req.sort_by if req.sort_by is not None else "created_date"
-    sort_order = req.sort_order if req.sort_order is not None else "desc"
-    sort_applied = {"field": sort_by, "direction": sort_order} if sort_by else None
-
-    # Calculate offset and total_pages (page and limit have defaults from factory)
+    # Calculate offset for pagination
     offset_calc = (page - 1) * limit
-    total_pages = (total_count + limit - 1) // limit if limit > 0 else 0
 
     # Import required schema classes
     from src.core.schemas import Pagination, QuerySummary
 
+    # Convert ContextObject to dict for response
+    context_dict = req.context.model_dump() if req.context and hasattr(req.context, "model_dump") else None
     return ListCreativesResponse(
         query_summary=QuerySummary(
             total_matching=total_count,
@@ -2059,7 +2090,9 @@ def _list_creatives_impl(
             limit=limit, offset=offset_calc, has_more=has_more, total_pages=total_pages, current_page=page
         ),
         creatives=creatives,
-        context=req.context,
+        format_summary=None,
+        status_summary=None,
+        context=context_dict,
     )
 
 

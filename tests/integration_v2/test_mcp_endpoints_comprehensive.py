@@ -219,79 +219,42 @@ class TestMCPEndpointsComprehensive:
             assert "products" in content
             assert isinstance(content["products"], list)
 
-    def test_schema_backward_compatibility(self):
-        """Test that AdCP v2.4 schema maintains backward compatibility."""
-        from datetime import date
+    def test_schema_adcp_format(self):
+        """Test that AdCP schema validates requests correctly per spec.
 
-        from src.core.schemas import Budget, CreateMediaBuyRequest
+        Note: Legacy formats (product_ids, total_budget, start_date, end_date) were
+        removed in adcp 2.16.0. All requests must use the standard AdCP format with
+        explicit packages, buyer_ref, start_time, and end_time fields.
+        """
+        from src.core.schemas import CreateMediaBuyRequest
         from tests.helpers.adcp_factories import create_test_package_request
 
-        # Test 1: Legacy format should work
-        legacy_request = CreateMediaBuyRequest(
-            brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
-            product_ids=["prod_1", "prod_2"],
-            total_budget=5000.0,
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=30),
-            po_number="PO-LEGACY-12345",  # Required per AdCP spec
-            targeting_overlay={"geo_country_any_of": ["US"]},
-        )
-
-        # buyer_ref should NOT be auto-generated (it's the buyer's identifier)
-        assert legacy_request.buyer_ref is None
-
-        # Should calculate total budget from total_budget (legacy field)
-        assert legacy_request.get_total_budget() == 5000.0
-        # Note: budget field is optional/None in AdCP v2.2.0 (not in spec)
-        # Legacy total_budget doesn't auto-create top-level budget object
-
-        # Should create packages from product_ids
-        product_ids = legacy_request.get_product_ids()
-        assert len(product_ids) == 2
-        assert product_ids[0] == "prod_1"
-        assert product_ids[1] == "prod_2"
-
-        # Should have packages created
-        assert len(legacy_request.packages) == 2
-
-        # Test 2: New v2.4 format should work (per AdCP spec: product_id singular)
-        new_request = CreateMediaBuyRequest(
+        # Test: Standard AdCP format with explicit packages
+        request = CreateMediaBuyRequest(
             brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
             buyer_ref="custom_ref_123",
-            po_number="PO-V24-67890",  # Required per AdCP spec
-            budget=Budget(total=10000.0, currency="EUR", pacing="asap"),
+            po_number="PO-V24-67890",
             packages=[
                 create_test_package_request(
                     buyer_ref="pkg_1", product_id="prod_1", budget=6000.0, pricing_option_id="default"
-                ),  # Float budget per AdCP v2.2.0
+                ),
                 create_test_package_request(
                     buyer_ref="pkg_2", product_id="prod_2", budget=4000.0, pricing_option_id="default"
-                ),  # Float budget per AdCP v2.2.0
+                ),
             ],
             start_time=datetime.now(UTC),
             end_time=datetime.now(UTC) + timedelta(days=30),
         )
 
-        assert new_request.buyer_ref == "custom_ref_123"
-        assert new_request.budget.currency == "EUR"
-        assert new_request.budget.pacing == "asap"
-        assert len(new_request.packages) == 2
+        assert request.buyer_ref == "custom_ref_123"
+        assert len(request.packages) == 2
 
-        # Test 3: Mixed format should work (legacy with some new fields)
-        mixed_request = CreateMediaBuyRequest(
-            brand_manifest={"name": "Puma RS-X 2025 training shoes"},
-            buyer_ref="mixed_ref",
-            po_number="PO-MIXED-99999",  # Required per AdCP spec
-            product_ids=["prod_1"],
-            total_budget=3000.0,
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=15),
-            budget=Budget(total=3000.0, currency="GBP"),  # Override currency
-        )
-
-        assert mixed_request.buyer_ref == "mixed_ref"
-        assert mixed_request.budget.currency == "GBP"
-        assert mixed_request.get_total_budget() == 3000.0
+        # Helper methods work correctly
+        assert request.get_total_budget() == 10000.0
+        product_ids = request.get_product_ids()
+        assert len(product_ids) == 2
+        assert product_ids[0] == "prod_1"
+        assert product_ids[1] == "prod_2"
 
     @pytest.mark.timeout(60)
     @pytest.mark.requires_server

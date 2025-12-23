@@ -210,8 +210,14 @@ class Kevel(AdServerAdapter):
             dry_run_prefix=False,
         )
 
-        # Validate targeting
-        unsupported_features = self._validate_targeting(request.targeting_overlay)
+        # Validate targeting from MediaPackage objects (targeting_overlay is populated from request)
+        unsupported_features = []
+        for package in packages:
+            if package.targeting_overlay:
+                features = self._validate_targeting(package.targeting_overlay)
+                if features:
+                    unsupported_features.extend(features)
+
         if unsupported_features:
             from src.core.schemas import Error
 
@@ -273,16 +279,16 @@ class Kevel(AdServerAdapter):
                 self.log(f"    'StartDate': '{start_time.isoformat()}',")
                 self.log(f"    'EndDate': '{end_time.isoformat()}'")
 
-                # Add targeting if provided
-                if request.targeting_overlay:
-                    targeting = self._build_targeting(request.targeting_overlay)
+                # Add targeting if provided (from package-level targeting_overlay per AdCP spec)
+                if package.targeting_overlay:
+                    targeting = self._build_targeting(package.targeting_overlay)
                     if targeting:
                         self.log(f"    'Targeting': {json.dumps(targeting, indent=6)}")
 
                     # Log frequency capping if enabled
-                    if request.targeting_overlay.frequency_cap and self.frequency_capping_enabled:
-                        freq_cap = request.targeting_overlay.frequency_cap
-                        if freq_cap.scope == "package":
+                    freq_cap = getattr(package.targeting_overlay, "frequency_cap", None)
+                    if freq_cap and self.frequency_capping_enabled:
+                        if getattr(freq_cap, "scope", None) == "package":
                             self.log("    'FreqCap': 1,  # Suppress after 1 impression")
                             self.log(
                                 f"    'FreqCapDuration': {max(1, freq_cap.suppress_minutes // 60)},  # {freq_cap.suppress_minutes} minutes"
@@ -331,16 +337,16 @@ class Kevel(AdServerAdapter):
                     "IsActive": True,
                 }
 
-                # Add targeting if provided
-                if request.targeting_overlay:
-                    targeting = self._build_targeting(request.targeting_overlay)
+                # Add targeting if provided (from package-level targeting_overlay per AdCP spec)
+                if package.targeting_overlay:
+                    targeting = self._build_targeting(package.targeting_overlay)
                     if targeting:
                         flight_payload.update(targeting)
 
                     # Add frequency capping if enabled (package level only)
-                    if request.targeting_overlay.frequency_cap and self.frequency_capping_enabled:
-                        freq_cap = request.targeting_overlay.frequency_cap
-                        if freq_cap.scope == "package":
+                    freq_cap = getattr(package.targeting_overlay, "frequency_cap", None)
+                    if freq_cap and self.frequency_capping_enabled:
+                        if getattr(freq_cap, "scope", None) == "package":
                             # Kevel's FreqCap = 1 impression
                             # FreqCapDuration in hours, convert from minutes
                             flight_payload["FreqCap"] = 1
@@ -354,22 +360,13 @@ class Kevel(AdServerAdapter):
                 flight_data = flight_response.json()
                 flight_id = flight_data.get("Id")
 
-                # Get matching request package for buyer_ref
-                matching_req_package = None
-                package_idx = packages.index(package)
-                if request.packages and package_idx < len(request.packages):
-                    matching_req_package = request.packages[package_idx]
-
-                buyer_ref = "unknown"  # Default fallback
-                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                    buyer_ref = matching_req_package.buyer_ref or buyer_ref
-
                 # Build package response - Per AdCP spec v2.9.0, CreateMediaBuyResponse.Package requires:
                 # - package_id (required)
                 # - status (required)
+                # MediaPackage has buyer_ref populated from request
                 package_responses.append(
                     ResponsePackage(
-                        buyer_ref=buyer_ref,
+                        buyer_ref=package.buyer_ref or "unknown",
                         package_id=package.package_id,
                         paused=False,  # Default to not paused for created packages
                     )
@@ -381,22 +378,14 @@ class Kevel(AdServerAdapter):
         # For dry_run, build package responses with ALL package data (no flight IDs)
         if self.dry_run:
             package_responses = []
-            for idx, package in enumerate(packages):
-                # Get matching request package for buyer_ref and other fields
-                matching_req_package = None
-                if request.packages and idx < len(request.packages):
-                    matching_req_package = request.packages[idx]
-
-                buyer_ref = "unknown"  # Default fallback
-                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                    buyer_ref = matching_req_package.buyer_ref or buyer_ref
-
+            for package in packages:
                 # Build package response - Per AdCP spec v2.9.0, CreateMediaBuyResponse.Package requires:
                 # - package_id (required)
                 # - status (required)
+                # MediaPackage has buyer_ref populated from request
                 package_responses.append(
                     ResponsePackage(
-                        buyer_ref=buyer_ref,
+                        buyer_ref=package.buyer_ref or "unknown",
                         package_id=package.package_id,
                         paused=False,  # Default to not paused for created packages
                     )

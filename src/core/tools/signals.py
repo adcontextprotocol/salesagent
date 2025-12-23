@@ -7,6 +7,7 @@ implementation pattern from CLAUDE.md.
 import logging
 import time
 import uuid
+from typing import Literal
 
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -20,8 +21,7 @@ from adcp.types import PlatformDeployment, Pricing, Signal, SignalCatalogType
 
 from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import get_current_tenant
-from src.core.schema_adapters import ActivateSignalResponse, GetSignalsResponse
-from src.core.schemas import GetSignalsRequest
+from src.core.schemas import ActivateSignalResponse, GetSignalsRequest, GetSignalsResponse
 from src.core.testing_hooks import get_testing_context
 
 
@@ -199,7 +199,60 @@ async def _get_signals_impl(req: GetSignalsRequest, context: Context | ToolConte
 
     # Per AdCP PR #113 and official schema, protocol fields (message, context_id)
     # are added by the protocol layer, not the domain response.
-    return GetSignalsResponse(signals=signals)
+    # Convert library Signal types to our local Signal type for type compatibility
+    from src.core.schemas import Signal as LocalSignal
+    from src.core.schemas import SignalDeployment, SignalPricing
+
+    local_signals = []
+    for s in signals:
+        # Convert library signal_type enum to string literal
+        signal_type_val = s.signal_type.value if hasattr(s.signal_type, "value") else str(s.signal_type)
+        # Map to valid Literal type
+        signal_type_literal: Literal["marketplace", "custom", "owned"] = (
+            "marketplace" if signal_type_val == "marketplace" else "custom" if signal_type_val == "custom" else "owned"
+        )
+
+        # Convert library deployments to local SignalDeployment
+        # Library Deployment is a union of Deployment1 (platform-based) and Deployment2 (agent-based)
+        local_deployments = []
+        for d in s.deployments or []:
+            # Access attributes safely - both Deployment1 and Deployment2 have is_live
+            # platform is only on Deployment1, use getattr with default
+            deployment_platform = getattr(d, "platform", "unknown")
+            deployment_is_live = getattr(d, "is_live", False)
+            deployment_type = getattr(d, "type", "platform")
+            local_deployments.append(
+                SignalDeployment(
+                    platform=deployment_platform,
+                    account=None,
+                    is_live=deployment_is_live,
+                    scope="platform-wide" if deployment_type == "platform" else "account-specific",
+                    decisioning_platform_segment_id=None,
+                    estimated_activation_duration_minutes=None,
+                )
+            )
+
+        local_signals.append(
+            LocalSignal(
+                signal_agent_segment_id=s.signal_agent_segment_id,
+                name=s.name,
+                description=s.description or "",
+                signal_type=signal_type_literal,
+                data_provider=s.data_provider or "",
+                coverage_percentage=s.coverage_percentage or 0.0,
+                deployments=local_deployments,
+                pricing=SignalPricing(
+                    cpm=s.pricing.cpm if s.pricing else 0.0,
+                    currency=s.pricing.currency if s.pricing else "USD",
+                ),
+                # Optional internal fields - explicitly None to satisfy mypy
+                tenant_id=None,
+                created_at=None,
+                updated_at=None,
+                metadata=None,
+            )
+        )
+    return GetSignalsResponse(signals=local_signals, errors=None, context=req.context)
 
 
 async def get_signals(req: GetSignalsRequest, context: Context | ToolContext | None = None):
@@ -270,46 +323,53 @@ async def _activate_signal_impl(
         activation_success = True
         requires_approval = signal_id.startswith("premium_")  # Mock rule: premium signals need approval
 
-        task_id = f"task_{uuid.uuid4().hex[:12]}"
+        from src.core.schemas import Error
 
         if requires_approval:
-            # Create a human task for approval
-            status = "pending"
+            # Create a human task for approval - return error response
             errors = [
-                {
-                    "code": "APPROVAL_REQUIRED",
-                    "message": f"Signal {signal_id} requires manual approval before activation",
-                }
+                Error(
+                    code="APPROVAL_REQUIRED",
+                    message=f"Signal {signal_id} requires manual approval before activation",
+                )
             ]
-        elif activation_success:
-            status = "processing"  # Activation in progress
-            estimated_activation_duration_minutes = 15.0
-            decisioning_platform_segment_id = f"seg_{signal_id}_{uuid.uuid4().hex[:8]}"
-        else:
-            status = "failed"
-            errors = [{"code": "ACTIVATION_FAILED", "message": "Signal provider unavailable"}]
-
-        # Build response with adapter schema fields
-        if requires_approval or not activation_success:
-            response = ActivateSignalResponse(task_id=task_id, status=status, errors=errors, context=context)
-        else:
-            response = ActivateSignalResponse(
-                task_id=task_id,
-                status=status,
-                decisioning_platform_segment_id=decisioning_platform_segment_id if activation_success else None,
-                estimated_activation_duration_minutes=(
-                    estimated_activation_duration_minutes if activation_success else None
-                ),
+            return ActivateSignalResponse(
+                signal_id=signal_id,
+                activation_details=None,
+                errors=errors,
                 context=context,
             )
-        return response
+        elif activation_success:
+            # Success - return activation details
+            decisioning_platform_segment_id = f"seg_{signal_id}_{uuid.uuid4().hex[:8]}"
+            return ActivateSignalResponse(
+                signal_id=signal_id,
+                activation_details={
+                    "decisioning_platform_segment_id": decisioning_platform_segment_id,
+                    "estimated_activation_duration_minutes": 15.0,
+                    "status": "processing",
+                },
+                errors=None,
+                context=context,
+            )
+        else:
+            # Failure
+            errors = [Error(code="ACTIVATION_FAILED", message="Signal provider unavailable")]
+            return ActivateSignalResponse(
+                signal_id=signal_id,
+                activation_details=None,
+                errors=errors,
+                context=context,
+            )
 
     except Exception as e:
         logger.error(f"Error activating signal {signal_id}: {e}")
+        from src.core.schemas import Error
+
         return ActivateSignalResponse(
-            task_id=f"task_{uuid.uuid4().hex[:12]}",
-            status="failed",
-            errors=[{"code": "ACTIVATION_ERROR", "message": str(e)}],
+            signal_id=signal_id,
+            activation_details=None,
+            errors=[Error(code="ACTIVATION_ERROR", message=str(e))],
             context=context,
         )
 

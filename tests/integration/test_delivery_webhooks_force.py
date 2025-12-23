@@ -8,12 +8,12 @@ from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import WebhookDeliveryLog
+from src.core.schemas import GetMediaBuyDeliveryResponse
 from src.services.delivery_webhook_scheduler import DeliveryWebhookScheduler
 from tests.integration.test_delivery_webhooks_integration import (
-    _create_test_tenant_and_principal,
     _create_basic_media_buy_with_webhook,
+    _create_test_tenant_and_principal,
 )
-from src.core.schema_adapters import GetMediaBuyDeliveryResponse
 
 
 @pytest.mark.requires_db
@@ -25,10 +25,17 @@ def test_mock_response_validation():
         media_buy_deliveries=[
             {
                 "media_buy_id": "mb_1",
+                "status": "active",  # Required field per AdCP spec
                 "totals": {"impressions": 1000, "spend": 10.0, "clicks": 5},
-                "by_package": []
+                "by_package": [],
             }
-        ]
+        ],
+        aggregated_totals={  # Required field per AdCP spec
+            "spend": 10.0,
+            "impressions": 1000,
+            "clicks": 5,
+            "media_buy_count": 1,
+        },
     )
     assert isinstance(mock_response, GetMediaBuyDeliveryResponse)
     assert mock_response.errors is None
@@ -38,11 +45,11 @@ def test_mock_response_validation():
 @pytest.mark.asyncio
 async def test_force_trigger_delivery_webhook_bypasses_duplicate_check(integration_db):
     """Test that force=True sends a webhook even if one was already sent today."""
-    
+
     # 1. Setup
     tenant_id, principal_id = _create_test_tenant_and_principal()
     media_buy_id = _create_basic_media_buy_with_webhook(tenant_id, principal_id)
-    
+
     scheduler = DeliveryWebhookScheduler()
 
     # Mock delivery response to ensure success (avoiding actual adapter calls)
@@ -52,10 +59,17 @@ async def test_force_trigger_delivery_webhook_bypasses_duplicate_check(integrati
         media_buy_deliveries=[
             {
                 "media_buy_id": media_buy_id,
+                "status": "active",  # Required field per AdCP spec
                 "totals": {"impressions": 1000, "spend": 10.0, "clicks": 5},
-                "by_package": []
+                "by_package": [],
             }
-        ]
+        ],
+        aggregated_totals={  # Required field per AdCP spec
+            "spend": 10.0,
+            "impressions": 1000,
+            "clicks": 5,
+            "media_buy_count": 1,
+        },
     )
 
     # Mock webhook sending to avoid network calls
@@ -69,16 +83,13 @@ async def test_force_trigger_delivery_webhook_bypasses_duplicate_check(integrati
             new_callable=AsyncMock,
             side_effect=fake_send_notification,
         ) as mock_send,
-        patch(
-            "src.services.delivery_webhook_scheduler._get_media_buy_delivery_impl",
-            return_value=mock_response
-        )
+        patch("src.services.delivery_webhook_scheduler._get_media_buy_delivery_impl", return_value=mock_response),
     ):
-        
+
         # 2. Insert a fake log entry simulating a report sent today
         with get_db_session() as session:
             # Use the same logic as scheduler to calculate "today" for reporting
-            
+
             # So we need a log entry created today
             log = WebhookDeliveryLog(
                 # id is auto-generated default=uuid4
@@ -90,25 +101,28 @@ async def test_force_trigger_delivery_webhook_bypasses_duplicate_check(integrati
                 media_buy_id=media_buy_id,
                 webhook_url="http://example.com",
                 http_status_code=200,
-                created_at=datetime.now(UTC)
+                created_at=datetime.now(UTC),
             )
             session.add(log)
             session.commit()
 
             # reload media buy to attach to session
             from src.core.database.models import MediaBuy
-            media_buy = session.scalars(
-                select(MediaBuy).filter_by(media_buy_id=media_buy_id)
-            ).first()
+
+            media_buy = session.scalars(select(MediaBuy).filter_by(media_buy_id=media_buy_id)).first()
 
             # 3. Try sending WITHOUT force - should skip
-            await scheduler._send_report_for_media_buy(media_buy, media_buy.raw_request["reporting_webhook"], session, force=False)
+            await scheduler._send_report_for_media_buy(
+                media_buy, media_buy.raw_request["reporting_webhook"], session, force=False
+            )
             assert mock_send.call_count == 0
 
             # 4. Try sending WITH force - should send
-            await scheduler._send_report_for_media_buy(media_buy, media_buy.raw_request["reporting_webhook"], session, force=True)
+            await scheduler._send_report_for_media_buy(
+                media_buy, media_buy.raw_request["reporting_webhook"], session, force=True
+            )
             assert mock_send.call_count == 1
-            
+
             # Verify call args
             args, kwargs = mock_send.await_args
             result = kwargs.get("result")
@@ -120,24 +134,23 @@ async def test_force_trigger_delivery_webhook_bypasses_duplicate_check(integrati
 @pytest.mark.asyncio
 async def test_trigger_report_for_media_buy_public_method(integration_db):
     """Test the public wrapper method trigger_report_for_media_buy."""
-    
+
     # 1. Setup
     tenant_id, principal_id = _create_test_tenant_and_principal()
     media_buy_id = _create_basic_media_buy_with_webhook(tenant_id, principal_id)
-    
+
     scheduler = DeliveryWebhookScheduler()
-    
+
     # Mock _send_report_for_media_buy to verify it receives force=True
     with patch.object(scheduler, "_send_report_for_media_buy", new_callable=AsyncMock) as mock_send_internal:
         with get_db_session() as session:
             from src.core.database.models import MediaBuy
-            media_buy = session.scalars(
-                select(MediaBuy).filter_by(media_buy_id=media_buy_id)
-            ).first()
-            
+
+            media_buy = session.scalars(select(MediaBuy).filter_by(media_buy_id=media_buy_id)).first()
+
             # 2. Call public method
             result = await scheduler.trigger_report_for_media_buy(media_buy, session)
-            
+
             # 3. Verify result and call
             assert result is True
             mock_send_internal.assert_called_once()
@@ -149,12 +162,13 @@ async def test_trigger_report_for_media_buy_public_method(integration_db):
 @pytest.mark.asyncio
 async def test_trigger_report_fails_gracefully_no_webhook(integration_db):
     """Test triggering report for media buy without webhook config."""
-    
+
     tenant_id, principal_id = _create_test_tenant_and_principal()
-    
+
     # Create media buy WITHOUT webhook
     with get_db_session() as session:
         from src.core.database.models import MediaBuy
+
         media_buy = MediaBuy(
             media_buy_id="mb_no_webhook",
             tenant_id=tenant_id,
@@ -165,18 +179,17 @@ async def test_trigger_report_fails_gracefully_no_webhook(integration_db):
             start_date=datetime.now(UTC),
             end_date=datetime.now(UTC) + timedelta(days=7),
             status="active",
-            raw_request={}  # No webhook config
+            raw_request={},  # No webhook config
         )
         session.add(media_buy)
         session.commit()
-        
+
         # Refresh to attach to session
         media_buy = session.scalars(select(MediaBuy).filter_by(media_buy_id="mb_no_webhook")).first()
-        
+
         scheduler = DeliveryWebhookScheduler()
-        
+
         # Call public method
         result = await scheduler.trigger_report_for_media_buy(media_buy, session)
-        
-        assert result is False
 
+        assert result is False

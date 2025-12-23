@@ -624,6 +624,8 @@ class TestTaskDetails:
 
     def test_gemini_api_key_detection(self, integration_db, setup_minimal_tenant, test_tenant_id):
         """Test tenant-specific Gemini API key detection (moved to optional tasks)."""
+        from cryptography.fernet import Fernet
+
         from src.core.database.database_session import get_db_session
 
         # Without key (tenant.gemini_api_key is None)
@@ -632,16 +634,18 @@ class TestTaskDetails:
         gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
         assert not gemini_task["is_complete"]
 
-        # With tenant-specific key
-        with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=test_tenant_id)).first()
-            tenant.gemini_api_key = "test_tenant_key"  # Set tenant-specific key
-            db_session.commit()
+        # With tenant-specific key (requires ENCRYPTION_KEY for encrypted storage)
+        test_encryption_key = Fernet.generate_key().decode()
+        with patch.dict(os.environ, {"ENCRYPTION_KEY": test_encryption_key}):
+            with get_db_session() as db_session:
+                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=test_tenant_id)).first()
+                tenant.gemini_api_key = "test_tenant_key"  # Set tenant-specific key
+                db_session.commit()
 
-        service = SetupChecklistService(test_tenant_id)
-        status = service.get_setup_status()
-        gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
-        assert gemini_task["is_complete"]
+            service = SetupChecklistService(test_tenant_id)
+            status = service.get_setup_status()
+            gemini_task = next(t for t in status["optional"] if t["key"] == "gemini_api_key")
+            assert gemini_task["is_complete"]
 
     def test_currency_count_in_details(self, integration_db, test_tenant_id):
         """Test that currency count is shown in task details."""

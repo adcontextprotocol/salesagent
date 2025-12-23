@@ -64,7 +64,7 @@ def _extract_brand_name(request) -> str | None:
 def _get_fallback_name(request) -> str:
     """Get fallback name when AI is unavailable."""
     brand_name = _extract_brand_name(request)
-    return brand_name or request.campaign_name or "Campaign"
+    return brand_name or "Campaign"
 
 
 def generate_auto_name(
@@ -148,7 +148,7 @@ def generate_auto_name(
             generate_name_async(
                 agent=agent,
                 buyer_ref=request.buyer_ref,
-                campaign_name=request.campaign_name,
+                campaign_name=None,  # Not in AdCP spec
                 brand_name=brand_name if brand_name != "N/A" else None,
                 budget_info=budget_info,
                 date_range=format_date_range(start_time, end_time),
@@ -260,8 +260,12 @@ def build_order_name_context(
     # Extract brand name from brand_manifest
     brand_name = _extract_brand_name(request)
 
+    # campaign_name is no longer on CreateMediaBuyRequest per AdCP spec
+    # Use brand_name or generate from buyer_ref as fallback
+    campaign_name = brand_name or f"Campaign {request.buyer_ref}"
+
     return {
-        "campaign_name": request.campaign_name,
+        "campaign_name": campaign_name,
         "brand_name": brand_name or "N/A",
         "promoted_offering": brand_name or "N/A",  # Backward compatibility alias
         "buyer_ref": request.buyer_ref,

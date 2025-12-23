@@ -23,7 +23,7 @@ from adcp.types import TargetingOverlay
 from sqlalchemy import delete, select
 
 from src.core.database.database_session import get_db_session
-from src.core.schemas import Budget, PackageRequest
+from src.core.schemas import PackageRequest
 from tests.integration_v2.conftest import add_required_setup_data, create_test_product_with_pricing
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db, pytest.mark.asyncio]
@@ -234,14 +234,13 @@ class TestCreateMediaBuyV24Format:
 
         # Call _impl with individual parameters (not a request object)
         # This exercises the FULL serialization path including response_packages construction
-        # NOTE: _create_media_buy_impl now requires buyer_ref and budget as REQUIRED arguments per AdCP v2.2.0 spec
+        # NOTE: budget is at package level per AdCP v2.4 spec (not a top-level parameter)
         response = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
-            budget=Budget(total=5000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-001",
             ctx=context,
         )
@@ -308,7 +307,6 @@ class TestCreateMediaBuyV24Format:
             packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
-            budget=Budget(total=8000.0, currency="EUR"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-002",
             ctx=context,
         )
@@ -385,7 +383,6 @@ class TestCreateMediaBuyV24Format:
             packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
-            budget=Budget(total=total_budget_value, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-003",
             ctx=context,
         )
@@ -430,7 +427,6 @@ class TestCreateMediaBuyV24Format:
             packages=[p.model_dump() for p in packages],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
-            budget=Budget(total=6000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
             po_number="TEST-V24-A2A-001",
             ctx=context,
         )
@@ -445,40 +441,48 @@ class TestCreateMediaBuyV24Format:
         assert isinstance(package, dict), "Package must be serialized to dict"
         assert package["buyer_ref"] == "pkg_a2a_test"
 
-    async def test_create_media_buy_legacy_format_still_works(self, setup_test_tenant):
-        """Verify legacy format (product_ids + total_budget) still works.
+    async def test_create_media_buy_with_minimal_package(self, setup_test_tenant):
+        """Verify media buy creation works with a minimal valid package.
 
-        This ensures backward compatibility wasn't broken by v2.4 changes.
+        Tests that the standard AdCP format creates media buys correctly.
+        Legacy formats (product_ids, total_budget) were removed in adcp 2.16.0.
         """
-        from unittest.mock import MagicMock
-
+        from src.core.schemas import PackageRequest
+        from src.core.tool_context import ToolContext
         from src.core.tools.media_buy_create import _create_media_buy_impl
 
-        # Create mock context with headers
-        context = MagicMock()
-        context.headers = {"x-adcp-auth": "test_token_v24"}
+        # Create proper ToolContext
+        context = ToolContext(
+            context_id="test_ctx",
+            tenant_id="test_tenant_v24",
+            principal_id="test_principal_v24",
+            tool_name="create_media_buy",
+            request_timestamp=datetime.now(UTC),
+            testing_context={"dry_run": True, "test_session_id": "test_session"},
+        )
 
-        # Legacy format using individual parameters
-        # NOTE: Even legacy format now requires buyer_ref, packages, start_time, end_time, budget per AdCP v2.2.0
-        # The legacy parameters (product_ids, total_budget, start_date, end_date) are converted internally
+        # Standard AdCP format with explicit package
+        # pricing_option_id format: {model}_{currency}_{fixed|auction}
         response = await _create_media_buy_impl(
-            buyer_ref="test_buyer_v24_legacy",  # REQUIRED per AdCP v2.2.0
+            buyer_ref="test_buyer_v24_standard",
             brand_manifest={"name": "Under Armour HOVR 2025 running shoes"},
-            packages=[],  # Empty packages - will be auto-created from product_ids
+            packages=[
+                PackageRequest(
+                    buyer_ref="pkg_v24_test",
+                    product_id="prod_test_v24_usd",
+                    budget=5000.0,
+                    pricing_option_id="cpm_usd_fixed",  # Matches fixture: CPM, USD, is_fixed=True
+                )
+            ],
             start_time=datetime.now(UTC) + timedelta(days=1),
             end_time=datetime.now(UTC) + timedelta(days=31),
-            budget=Budget(total=4000.0, currency="USD"),  # REQUIRED per AdCP v2.2.0
-            po_number="TEST-LEGACY-001",
-            product_ids=[setup_test_tenant["product_id_usd"]],  # Legacy parameter - Use USD product
-            total_budget=4000.0,  # Legacy parameter
-            start_date=(datetime.now(UTC) + timedelta(days=1)).date(),  # Legacy parameter
-            end_date=(datetime.now(UTC) + timedelta(days=31)).date(),  # Legacy parameter
+            po_number="TEST-STANDARD-001",
             ctx=context,
         )
 
         # Verify response
         assert response.media_buy_id
-        assert len(response.packages) > 0  # Should auto-create packages from product_ids
+        assert len(response.packages) > 0
 
         # Packages should still serialize to dicts
         response_dict = response.model_dump()

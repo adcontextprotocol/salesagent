@@ -26,7 +26,7 @@ from src.core.database.models import (
     MediaBuy,
     Principal,
 )
-from src.core.schema_adapters import ListCreativesResponse, SyncCreativesResponse
+from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -1013,7 +1013,6 @@ class TestCreativeLifecycleMCP:
             session.commit()
 
         # Import create_media_buy tool
-        from src.core.schemas import Budget
         from src.core.tools import create_media_buy_raw
 
         # Create media buy with creative_ids in packages
@@ -1043,11 +1042,10 @@ class TestCreativeLifecycleMCP:
             )
 
             # Mock adapter
-            from src.core.schema_adapters import CreateMediaBuyResponse
-            from src.core.schemas import Package
+            from src.core.schemas import CreateMediaBuySuccess, Package
 
             mock_adapter_instance = mock_adapter.return_value
-            mock_adapter_instance.create_media_buy.return_value = CreateMediaBuyResponse(
+            mock_adapter_instance.create_media_buy.return_value = CreateMediaBuySuccess(
                 buyer_ref="test_buyer",
                 media_buy_id="test_buy_123",
                 packages=[
@@ -1118,7 +1116,6 @@ class TestCreativeLifecycleMCP:
                 packages=packages,
                 start_time=datetime.now(UTC) + timedelta(days=1),
                 end_time=datetime.now(UTC) + timedelta(days=30),
-                budget=Budget(total=5000.0, currency="USD"),
                 po_number="PO-TEST-123",
                 ctx=mock_context,
             )

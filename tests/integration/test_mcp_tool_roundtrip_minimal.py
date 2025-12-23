@@ -7,7 +7,7 @@ and caused errors.
 Focus: Test parameter-to-schema mapping, not business logic.
 """
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastmcp.client import Client
@@ -305,26 +305,6 @@ class TestSchemaConstructionValidation:
         assert hasattr(req, "today")
         assert "today" not in req.model_dump()  # Excluded from output
 
-    def test_create_media_buy_request_with_deprecated_fields(self):
-        """Test that deprecated fields don't break schema construction."""
-        from src.core.schemas import CreateMediaBuyRequest
-
-        # These deprecated fields should be handled by model_validator
-        req = CreateMediaBuyRequest(
-            buyer_ref="test_ref",
-            brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
-            po_number="TEST-003",
-            product_ids=["prod_1"],
-            start_date=date.today(),
-            end_date=date.today() + timedelta(days=30),
-            total_budget=5000.0,
-        )
-
-        assert req.po_number == "TEST-003"
-        # start_date should be converted to start_time
-        assert req.start_time is not None
-        assert req.end_time is not None
-
     def test_all_request_schemas_have_optional_or_default_fields(self):
         """Verify that all request schemas can be constructed without all fields."""
         from src.core import schemas
@@ -375,30 +355,3 @@ class TestParameterToSchemaMapping:
 
         # budget field should be None since not provided
         assert req.budget is None
-
-    def test_create_media_buy_legacy_field_conversion(self):
-        """Test that legacy fields are converted to new fields."""
-        from src.core.schemas import CreateMediaBuyRequest
-
-        req = CreateMediaBuyRequest(
-            buyer_ref="test_ref",
-            brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
-            po_number="TEST-004",
-            product_ids=["prod_1", "prod_2"],
-            start_date="2025-02-01",
-            end_date="2025-02-28",
-            total_budget=10000.0,
-        )
-
-        # Legacy fields should be converted
-        assert req.packages is not None
-        assert len(req.packages) == 2
-        # Legacy conversion divides total_budget among packages
-        assert req.packages[0].budget == 5000.0  # 10000 / 2 packages
-        assert req.packages[0].product_id == "prod_1"
-        assert req.packages[1].budget == 5000.0  # 10000 / 2 packages
-        assert req.packages[1].product_id == "prod_2"
-        assert req.start_time is not None
-        assert req.end_time is not None
-        # total_budget is stored but NOT converted to Budget object automatically
-        assert req.total_budget == 10000.0

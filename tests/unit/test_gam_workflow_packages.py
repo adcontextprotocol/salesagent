@@ -5,7 +5,7 @@ Tests that both manual approval and activation workflow paths return packages
 with package_id, fixing the "Adapter did not return package_id" error.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -38,6 +38,8 @@ def mock_gam_config():
 @pytest.fixture
 def sample_request():
     """Sample CreateMediaBuyRequest."""
+    start_time = datetime.now(UTC)
+    end_time = start_time + timedelta(days=30)
     return CreateMediaBuyRequest(
         buyer_ref="test_buyer_ref_123",
         brand_manifest={"name": "Test Brand"},
@@ -45,9 +47,8 @@ def sample_request():
             PackageRequest(product_id="prod_123", buyer_ref="pkg_001", budget=5000.0, pricing_option_id="test_pricing"),
             PackageRequest(product_id="prod_456", buyer_ref="pkg_002", budget=5000.0, pricing_option_id="test_pricing"),
         ],
-        start_date=date.today(),
-        end_date=date.today() + timedelta(days=30),
-        total_budget=10000.0,
+        start_time=start_time,
+        end_time=end_time,
     )
 
 
@@ -123,9 +124,9 @@ class TestGAMManualApprovalPath:
                 # Assert - Package IDs must match input packages
                 returned_ids = {pkg.package_id for pkg in response.packages}
                 expected_ids = {pkg.package_id for pkg in sample_packages}
-                assert returned_ids == expected_ids, (
-                    f"Package IDs don't match. Got {returned_ids}, expected {expected_ids}"
-                )
+                assert (
+                    returned_ids == expected_ids
+                ), f"Package IDs don't match. Got {returned_ids}, expected {expected_ids}"
 
                 # Assert - Other required fields
                 assert response.buyer_ref == sample_request.buyer_ref, "buyer_ref must be preserved"

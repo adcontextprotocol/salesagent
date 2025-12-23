@@ -252,7 +252,7 @@ class TestA2AResponseDictConstruction:
 
     def test_get_products_response_to_dict(self):
         """Test GetProductsResponse can be converted to A2A dict."""
-        from src.core.schema_adapters import GetProductsResponse
+        from src.core.schemas import GetProductsResponse
 
         response = GetProductsResponse(products=[])
 

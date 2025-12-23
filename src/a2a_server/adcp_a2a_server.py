@@ -414,27 +414,43 @@ class AdCPRequestHandler(RequestHandler):
             Reconstructed response object, or None if reconstruction fails
         """
         try:
-            # Map skill names to response classes
-            from src.core.schema_adapters import (
-                CreateMediaBuyResponse,
+            # Import response classes - for union types, import the concrete variants
+            from src.core.schemas import (
+                CreateMediaBuyError,
+                CreateMediaBuySuccess,
                 GetMediaBuyDeliveryResponse,
                 GetProductsResponse,
                 ListAuthorizedPropertiesResponse,
                 ListCreativeFormatsResponse,
                 ListCreativesResponse,
                 SyncCreativesResponse,
-                UpdateMediaBuyResponse,
+                UpdateMediaBuyError,
+                UpdateMediaBuySuccess,
             )
 
-            response_map = {
-                "create_media_buy": CreateMediaBuyResponse,
+            # For union types (CreateMediaBuyResponse, UpdateMediaBuyResponse),
+            # determine which concrete class based on data content
+            if skill_name == "create_media_buy":
+                # Success responses have media_buy_id, error responses have errors
+                if "media_buy_id" in data:
+                    return CreateMediaBuySuccess(**data)
+                else:
+                    return CreateMediaBuyError(**data)
+            elif skill_name == "update_media_buy":
+                # Success responses have media_buy_id, error responses have errors
+                if "media_buy_id" in data:
+                    return UpdateMediaBuySuccess(**data)
+                else:
+                    return UpdateMediaBuyError(**data)
+
+            # Non-union response types - use the concrete class directly
+            response_map: dict[str, type] = {
                 "get_media_buy_delivery": GetMediaBuyDeliveryResponse,
                 "get_products": GetProductsResponse,
                 "list_authorized_properties": ListAuthorizedPropertiesResponse,
                 "list_creative_formats": ListCreativeFormatsResponse,
                 "list_creatives": ListCreativesResponse,
                 "sync_creatives": SyncCreativesResponse,
-                "update_media_buy": UpdateMediaBuyResponse,
             }
 
             response_class = response_map.get(skill_name)

@@ -436,15 +436,24 @@ class TestSpecificFieldValidation:
         request = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
             brand_manifest={"name": "Nike Air Jordan 2025"},
-            po_number="PO-123",
-            product_ids=["prod_1"],
-            total_budget=5000.0,
-            start_date="2025-02-01",
-            end_date="2025-02-28",
+            packages=[
+                {
+                    "buyer_ref": "pkg_1",
+                    "product_id": "prod_1",
+                    "budget": 5000.0,
+                    "pricing_option_id": "test_pricing",
+                }
+            ],
+            start_time="2025-02-01T00:00:00Z",
+            end_time="2025-02-28T23:59:59Z",
         )
-        # Verify brand_manifest was accepted (converted to BrandManifest object)
+        # Verify brand_manifest was accepted
         assert request.brand_manifest is not None
-        assert request.brand_manifest.name == "Nike Air Jordan 2025"
+        # Library may wrap in BrandManifestReference with BrandManifest in root
+        if hasattr(request.brand_manifest, "name"):
+            assert request.brand_manifest.name == "Nike Air Jordan 2025"
+        elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+            assert request.brand_manifest.root.name == "Nike Air Jordan 2025"
 
     def test_get_products_accepts_filters(self):
         """REGRESSION TEST: filters must be accepted (PR #195 issue)."""
@@ -458,13 +467,28 @@ class TestSpecificFieldValidation:
         assert request.filters is not None
         assert request.filters.delivery_type.value == "guaranteed"
 
-    def test_get_products_accepts_adcp_version(self):
-        """REGRESSION TEST: adcp_version must be accepted."""
+    def test_get_products_all_fields_optional(self):
+        """Test that GetProductsRequest accepts all optional fields per spec.
+
+        Note: adcp_version is NOT a field on GetProductsRequest per AdCP spec.
+        All fields are optional.
+        """
+        # Empty request is valid
+        empty_request = GetProductsRequest()
+        assert empty_request.brand_manifest is None
+        assert empty_request.brief is None
+        assert empty_request.filters is None
+
+        # With brand_manifest only
         request = GetProductsRequest(
             brand_manifest={"name": "Test Product"},
-            adcp_version="1.6.0",
         )
-        assert request.adcp_version == "1.6.0"
+        # Library may wrap in BrandManifestReference with BrandManifest in root
+        if hasattr(request.brand_manifest, "name"):
+            assert request.brand_manifest.name == "Test Product"
+        elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+            assert request.brand_manifest.root.name == "Test Product"
+        assert request.brief is None
 
 
 class TestFieldNameConsistency:

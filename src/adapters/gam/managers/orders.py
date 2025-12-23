@@ -346,29 +346,28 @@ class GAMOrdersManager:
         packages: list,
         start_time: datetime,
         end_time: datetime,
-        targeting: dict[str, Any],
         products_map: dict[str, Any],
         log_func: Callable | None = None,
         tenant_id: str | None = None,
         order_name: str | None = None,
-        targeting_overlay: Any | None = None,
         package_pricing_info: dict[str, dict] | None = None,
+        package_targeting: dict[str, dict] | None = None,
     ) -> list[str]:
         """Create line items for an order.
 
         Args:
             order_id: GAM order ID
-            packages: List of MediaPackage objects
+            packages: List of MediaPackage objects (each has targeting_overlay)
             start_time: Flight start datetime
             end_time: Flight end datetime
-            targeting: Base targeting dict (built from targeting overlay)
             products_map: Map of product_id to product config
             log_func: Optional logging function
             tenant_id: Tenant ID for fetching naming templates
             order_name: Order name for line item naming context
-            targeting_overlay: Original AdCP targeting overlay for frequency caps, etc.
             package_pricing_info: Optional pricing info per package (AdCP PR #88)
                 Maps package_id → {pricing_model, rate, currency, is_fixed, bid_price}
+            package_targeting: Pre-built GAM targeting dicts per package
+                Maps package_id → GAM targeting dict (built by adapter from targeting_overlay)
 
         Returns:
             List of created line item IDs
@@ -411,8 +410,10 @@ class GAMOrdersManager:
             product = products_map.get(package.package_id)
             impl_config = product.get("implementation_config", {}) if product else {}
 
-            # Build line item targeting (merge base targeting with product config)
-            line_item_targeting = dict(targeting)  # Copy base targeting
+            # Get pre-built targeting for this package (built by adapter from targeting_overlay)
+            line_item_targeting = {}
+            if package_targeting and package.package_id in package_targeting:
+                line_item_targeting = package_targeting[package.package_id]
 
             # Add ad unit/placement targeting from product config
             if impl_config.get("targeted_ad_unit_ids"):
@@ -912,9 +913,13 @@ class GAMOrdersManager:
                         }
                     )
 
-            # Then, add buyer's frequency cap from targeting_overlay if present
-            if targeting_overlay and targeting_overlay.frequency_cap:
-                freq_cap = targeting_overlay.frequency_cap
+            # Then, add buyer's frequency cap from package's targeting_overlay if present
+            if (
+                package.targeting_overlay
+                and hasattr(package.targeting_overlay, "frequency_cap")
+                and package.targeting_overlay.frequency_cap
+            ):
+                freq_cap = package.targeting_overlay.frequency_cap
                 # Convert AdCP FrequencyCap (suppress_minutes) to GAM format
                 # AdCP: suppress_minutes (e.g., 60 = 1 hour)
                 # GAM: maxImpressions=1, numTimeUnits=X, timeUnit="MINUTE"/"HOUR"/"DAY"

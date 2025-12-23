@@ -95,20 +95,29 @@ async def test_invalid_get_products_response():
 
 @pytest.mark.asyncio
 async def test_get_products_request_validation():
-    """Test validation of get-products request parameters."""
+    """Test validation of get-products request parameters.
+
+    Per AdCP spec, all fields in GetProductsRequest are OPTIONAL.
+    """
     async with AdCPSchemaValidator() as validator:
-        # Valid request with required brand_manifest (must have url or name)
-        valid_request = {
+        # Empty request is valid per spec
+        empty_request = {}
+        await validator.validate_request("get-products", empty_request)
+
+        # Brief only (no brand_manifest)
+        brief_only = {"brief": "Looking for display advertising"}
+        await validator.validate_request("get-products", brief_only)
+
+        # brand_manifest only (no brief)
+        brand_only = {"brand_manifest": {"name": "Test Brand"}}
+        await validator.validate_request("get-products", brand_only)
+
+        # Full request with both
+        full_request = {
             "brief": "Looking for display advertising",
             "brand_manifest": {"url": "https://example.com", "name": "Example Brand"},
         }
-
-        # Should not raise exception
-        await validator.validate_request("get-products", valid_request)
-
-        # Test with minimal required request (brand_manifest with just name)
-        minimal_request = {"brand_manifest": {"name": "Test Brand"}}
-        await validator.validate_request("get-products", minimal_request)
+        await validator.validate_request("get-products", full_request)
 
         # Test with brand_manifest as URL string (alternative format)
         url_request = {"brand_manifest": "https://cdn.example.com/brand-manifest.json"}

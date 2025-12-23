@@ -5,7 +5,7 @@ Tests that Kevel, Triton, and Xandr adapters all return packages with package_id
 fixing the "Adapter did not return package_id" error.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
 
 import pytest
@@ -30,6 +30,8 @@ def sample_request():
     """Sample CreateMediaBuyRequest."""
     from tests.helpers.adcp_factories import create_test_package_request
 
+    start_time = datetime.now(UTC)
+    end_time = start_time + timedelta(days=30)
     return CreateMediaBuyRequest(
         buyer_ref="test_buyer_ref_123",
         brand_manifest={"name": "Test Brand"},
@@ -37,9 +39,8 @@ def sample_request():
             create_test_package_request(product_id="prod_123", buyer_ref="buyer_pkg_001"),
             create_test_package_request(product_id="prod_456", buyer_ref="buyer_pkg_002"),
         ],
-        start_date=date.today(),
-        end_date=date.today() + timedelta(days=30),
-        total_budget=10000.0,
+        start_time=start_time,
+        end_time=end_time,
     )
 
 
@@ -339,9 +340,9 @@ class TestXandrAdapterPackages:
             # Assert - Each package must have package_id (AdCP spec requirement)
             # Note: platform_line_item_id is internal tracking data, not part of AdCP Package spec
             for i, pkg in enumerate(response.packages):
-                assert hasattr(pkg, "package_id") and pkg.package_id is not None, (
-                    f"Xandr package {i} missing package_id"
-                )
+                assert (
+                    hasattr(pkg, "package_id") and pkg.package_id is not None
+                ), f"Xandr package {i} missing package_id"
 
             # Assert - Package IDs must match input packages
             returned_ids = {pkg.package_id for pkg in response.packages}

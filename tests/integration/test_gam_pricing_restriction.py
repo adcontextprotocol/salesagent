@@ -279,8 +279,6 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -304,7 +302,6 @@ async def test_gam_rejects_cpcv_pricing_model(setup_gam_tenant_with_non_cpm_prod
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
     )
 
@@ -335,8 +332,6 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -357,7 +352,6 @@ async def test_gam_accepts_cpm_pricing_model(setup_gam_tenant_with_non_cpm_produ
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
     )
 
@@ -389,8 +383,6 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
                 budget=15000.0,
             )
         ],
-        budget={"total": 15000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -413,7 +405,6 @@ async def test_gam_rejects_cpp_from_multi_pricing_product(setup_gam_tenant_with_
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
     )
 
@@ -444,8 +435,6 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
                 budget=10000.0,
             )
         ],
-        budget={"total": 10000.0, "currency": "USD"},
-        currency="USD",
         start_time="2026-02-01T00:00:00Z",
         end_time="2026-02-28T23:59:59Z",
     )
@@ -466,7 +455,6 @@ async def test_gam_accepts_cpm_from_multi_pricing_product(setup_gam_tenant_with_
         packages=request.packages,
         start_time=request.start_time,
         end_time=request.end_time,
-        budget=request.budget,
         ctx=context,
     )
 

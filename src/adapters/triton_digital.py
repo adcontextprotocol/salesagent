@@ -140,8 +140,14 @@ class TritonDigital(AdServerAdapter):
             dry_run_prefix=False,
         )
 
-        # Validate targeting
-        unsupported_features = self._validate_targeting(request.targeting_overlay)
+        # Validate targeting from MediaPackage objects (targeting_overlay is populated from request)
+        unsupported_features = []
+        for package in packages:
+            if package.targeting_overlay:
+                features = self._validate_targeting(package.targeting_overlay)
+                if features:
+                    unsupported_features.extend(features)
+
         if unsupported_features:
             from src.core.schemas import Error
 
@@ -205,9 +211,9 @@ class TritonDigital(AdServerAdapter):
                 self.log(f"    'startDate': '{start_time.date().isoformat()}',")
                 self.log(f"    'endDate': '{end_time.date().isoformat()}'")
 
-                # Add targeting if provided
-                if request.targeting_overlay:
-                    targeting = self._build_targeting(request.targeting_overlay)
+                # Add targeting if provided (from package-level targeting_overlay per AdCP spec)
+                if package.targeting_overlay:
+                    targeting = self._build_targeting(package.targeting_overlay)
                     if targeting:
                         self.log(f"    'targeting': {json.dumps(targeting, indent=6)}")
 
@@ -251,9 +257,9 @@ class TritonDigital(AdServerAdapter):
                     "endDate": end_time.date().isoformat(),
                 }
 
-                # Add targeting if provided
-                if request.targeting_overlay:
-                    targeting = self._build_targeting(request.targeting_overlay)
+                # Add targeting if provided (from package-level targeting_overlay per AdCP spec)
+                if package.targeting_overlay:
+                    targeting = self._build_targeting(package.targeting_overlay)
                     if targeting and "targeting" in targeting:
                         flight_payload["targeting"] = targeting["targeting"]
                     if targeting and "stationIds" in targeting:
@@ -264,23 +270,13 @@ class TritonDigital(AdServerAdapter):
                 flight_data = flight_response.json()
                 flight_id = flight_data.get("id")
 
-                # Get matching request package for buyer_ref
-                matching_req_package = None
-                package_idx = packages.index(package)
-                if request.packages and package_idx < len(request.packages):
-                    matching_req_package = request.packages[package_idx]
-
-                buyer_ref = "unknown"  # Default fallback
-                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                    buyer_ref = matching_req_package.buyer_ref or buyer_ref
-
                 # Build package response - Per AdCP spec v2.9.0, CreateMediaBuyResponse.Package contains:
                 # - package_id (required)
                 # - status (required)
-                # - buyer_ref, budget, impressions, etc. (optional)
+                # MediaPackage has buyer_ref populated from request
                 package_responses.append(
                     ResponsePackage(
-                        buyer_ref=buyer_ref,
+                        buyer_ref=package.buyer_ref or "unknown",
                         package_id=package.package_id,
                         paused=False,  # Default to not paused for created packages
                     )
@@ -294,20 +290,13 @@ class TritonDigital(AdServerAdapter):
         # - status (required)
         if self.dry_run:
             package_responses = []
-            for idx, package in enumerate(packages):
-                # Get matching request package for buyer_ref
-                matching_req_package = None
-                if request.packages and idx < len(request.packages):
-                    matching_req_package = request.packages[idx]
-
-                buyer_ref = "unknown"  # Default fallback
-                if matching_req_package and hasattr(matching_req_package, "buyer_ref"):
-                    buyer_ref = matching_req_package.buyer_ref or buyer_ref
+            for package in packages:
+                # MediaPackage has buyer_ref populated from request
 
                 # Create AdCP-compliant Package response
                 package_responses.append(
                     ResponsePackage(
-                        buyer_ref=buyer_ref,
+                        buyer_ref=package.buyer_ref or "unknown",
                         package_id=package.package_id,
                         paused=False,  # Default to not paused for created packages
                     )

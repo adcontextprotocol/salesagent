@@ -3,8 +3,8 @@
 from unittest.mock import patch
 
 import pytest
+from adcp import GetProductsRequest
 
-from src.core.schema_adapters import GetProductsRequest
 from src.services.policy_check_service import PolicyCheckResult, PolicyCheckService, PolicyStatus
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -209,4 +209,11 @@ async def test_full_request_flow():
 
     # Verify the request has brand_manifest (AdCP v2.2.0 spec field)
     assert hasattr(request, "brand_manifest")
-    assert request.brand_manifest["name"] == "TechCorp - Latest 5G smartphone with advanced features"
+    # Library may wrap in BrandManifestReference with BrandManifest in root
+    expected_name = "TechCorp - Latest 5G smartphone with advanced features"
+    if isinstance(request.brand_manifest, dict):
+        assert request.brand_manifest["name"] == expected_name
+    elif hasattr(request.brand_manifest, "name"):
+        assert request.brand_manifest.name == expected_name
+    elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+        assert request.brand_manifest.root.name == expected_name

@@ -64,7 +64,7 @@ from src.core.database.models import Product as ModelProduct
 from src.core.helpers import get_principal_id_from_context, log_tool_activity
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.helpers.creative_helpers import _convert_creative_to_adapter_asset, process_and_upload_package_creatives
-from src.core.schema_helpers import to_context_object
+from src.core.schema_helpers import to_context_object, to_reporting_webhook
 from src.core.schemas import (
     CreateMediaBuyError,
     CreateMediaBuyRequest,
@@ -77,7 +77,6 @@ from src.core.schemas import (
     PackageRequest,
     Principal,
     Product,
-    Targeting,
 )
 from src.core.schemas import (
     url as make_url,
@@ -487,7 +486,8 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             for db_pkg in db_packages:
                 try:
                     package_config = dict(db_pkg.package_config)
-                    package_id = package_config.get("package_id")
+                    # package_id is stored on the MediaPackage model, not in package_config (AdCP spec)
+                    package_id = db_pkg.package_id
                     product_id = package_config.get("product_id")
 
                     if not product_id:
@@ -913,7 +913,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
 
 def _validate_pricing_model_selection(
-    package: Package | PackageRequest,
+    package: Package | PackageRequest | AdcpPackageRequest,
     product: Any,  # ProductModel from database
     campaign_currency: str | None,
 ) -> dict[str, Any]:
@@ -940,9 +940,11 @@ def _validate_pricing_model_selection(
     from decimal import Decimal
 
     # Log pricing validation details at debug level
+    # Use getattr for legacy pricing_model field (deprecated - use pricing_option_id instead)
+    legacy_pricing_model = getattr(package, "pricing_model", None)
     logger.debug(
         f"[PRICING] Package {package.product_id}: pricing_option={package.pricing_option_id}, "
-        f"model={package.pricing_model}, bid_price={package.bid_price}, budget={package.budget}"
+        f"model={legacy_pricing_model}, bid_price={package.bid_price}, budget={package.budget}"
     )
 
     # All products must have pricing_options
@@ -955,7 +957,7 @@ def _validate_pricing_model_selection(
     # Determine which pricing option to use
     # Priority: pricing_option_id (AdCP spec) > pricing_model (legacy)
     pricing_option_id = package.pricing_option_id
-    pricing_model_fallback = package.pricing_model  # Legacy field
+    pricing_model_fallback = getattr(package, "pricing_model", None)  # Legacy field
 
     # Helper to unwrap RootModel - adcp 2.14.0+ uses RootModel wrapper
     def unwrap_option(opt: Any) -> Any:
@@ -1015,7 +1017,7 @@ def _validate_pricing_model_selection(
         if not package.bid_price:
             raise ToolError(
                 "PRICING_ERROR",
-                f"Package requires bid_price for auction-based {package.pricing_model} pricing. "
+                f"Package requires bid_price for auction-based {selected_option.pricing_model} pricing. "
                 f"Floor price: {selected_option.price_guidance.get('floor') if selected_option.price_guidance else 'N/A'}",
             )
 
@@ -1029,7 +1031,7 @@ def _validate_pricing_model_selection(
         if bid_decimal < floor_price:
             raise ToolError(
                 "PRICING_ERROR",
-                f"Bid price {package.bid_price} is below floor price {floor_price} for {package.pricing_model} pricing",
+                f"Bid price {package.bid_price} is below floor price {floor_price} for {selected_option.pricing_model} pricing",
             )
 
     # Validate fixed pricing has rate
@@ -1050,7 +1052,7 @@ def _validate_pricing_model_selection(
             raise ToolError(
                 "PRICING_ERROR",
                 f"Package budget {package_budget} {selected_option.currency} is below minimum spend "
-                f"{selected_option.min_spend_per_package} {selected_option.currency} for {package.pricing_model}",
+                f"{selected_option.min_spend_per_package} {selected_option.currency} for {selected_option.pricing_model}",
             )
 
     # Return validated pricing information
@@ -1178,16 +1180,10 @@ from src.services.slack_notifier import get_slack_notifier
 async def _create_media_buy_impl(
     buyer_ref: str,
     brand_manifest: Any,  # BrandManifest | str - REQUIRED per AdCP v2.2.0 spec
-    packages: list[Any],  # REQUIRED per AdCP spec
+    packages: list[Any],  # REQUIRED per AdCP spec (each has targeting_overlay)
     start_time: Any,  # datetime | Literal["asap"] | str - REQUIRED per AdCP spec
     end_time: Any,  # datetime | str - REQUIRED per AdCP spec
-    budget: Any | None = None,  # DEPRECATED: Budget is package-level only per AdCP v2.2.0 (ignored)
     po_number: str | None = None,
-    product_ids: list[str] | None = None,  # Legacy format conversion
-    start_date: Any | None = None,  # Legacy format conversion
-    end_date: Any | None = None,  # Legacy format conversion
-    total_budget: float | None = None,  # Legacy format conversion
-    targeting_overlay: Targeting | None = None,
     pacing: Literal["even", "asap", "daily_budget"] = "even",
     daily_budget: float | None = None,
     creatives: list[Any] | None = None,
@@ -1204,16 +1200,10 @@ async def _create_media_buy_impl(
     Args:
         buyer_ref: Buyer reference for tracking (REQUIRED per AdCP spec)
         brand_manifest: Brand information manifest - inline object or URL string (REQUIRED per AdCP v2.2.0 spec)
-        packages: Array of packages with products and budgets (REQUIRED)
+        packages: Array of packages with products, budgets, and targeting_overlay (REQUIRED)
         start_time: Campaign start time ISO 8601 or 'asap' (REQUIRED)
         end_time: Campaign end time ISO 8601 (REQUIRED)
-        budget: DEPRECATED - Budget is at package level only per AdCP v2.2.0 (ignored if provided)
         po_number: Purchase order number (optional)
-        product_ids: Legacy: Product IDs (converted to packages)
-        start_date: Legacy: Start date (converted to start_time)
-        end_date: Legacy: End date (converted to end_time)
-        total_budget: Legacy: Total budget (converted to Budget object)
-        targeting_overlay: Targeting overlay configuration
         pacing: Pacing strategy (even, asap, daily_budget)
         daily_budget: Daily budget limit
         creatives: Creative assets for the campaign
@@ -1223,7 +1213,7 @@ async def _create_media_buy_impl(
         strategy_id: Optional strategy ID for linking operations
         push_notification_config: Push notification config for status updates (MCP/A2A)
         context: Application level context per adcp spec
-        ctx:  FastMCP context (automatically provided) (automatically provided)
+        ctx: FastMCP context (automatically provided)
 
     Returns:
         CreateMediaBuyResponse with media buy details
@@ -1242,36 +1232,28 @@ async def _create_media_buy_impl(
                 buyer_ref,
             )
 
-    # Create request object from individual parameters (MCP-compliant)
-    # Validate early with helpful error messages
+    # Parse ISO 8601 strings to datetime if needed
+    effective_start_time = start_time
+    effective_end_time = end_time
+    if isinstance(effective_start_time, str) and effective_start_time != "asap":
+        effective_start_time = datetime.fromisoformat(effective_start_time)
+    if isinstance(effective_end_time, str):
+        effective_end_time = datetime.fromisoformat(effective_end_time)
 
+    # Create spec-compliant request object
+    # Non-spec fields (pacing, daily_budget, creatives,
+    # required_axe_signals, enable_creative_macro, strategy_id, push_notification_config)
+    # are used directly below, not passed to the request
     try:
         req = CreateMediaBuyRequest(
             buyer_ref=buyer_ref,
             brand_manifest=brand_manifest,
-            campaign_name=None,  # Optional display name
-            po_number=po_number,
             packages=packages,
-            start_time=start_time,
-            end_time=end_time,
-            budget=None,  # Budget is package-level, but field exists in schema
-            currency=None,  # Derived from product pricing_options
-            product_ids=product_ids,
-            start_date=start_date,
-            end_date=end_date,
-            total_budget=total_budget,
-            targeting_overlay=targeting_overlay,
-            pacing=pacing,
-            daily_budget=daily_budget,
-            creatives=creatives,
-            reporting_webhook=reporting_webhook,
-            required_axe_signals=required_axe_signals,
-            enable_creative_macro=enable_creative_macro,
-            strategy_id=strategy_id,
-            webhook_url=None,  # Internal field, not in AdCP spec
-            webhook_auth_token=None,  # Internal field, not in AdCP spec
-            push_notification_config=push_notification_config,
-            context=context,
+            start_time=effective_start_time,
+            end_time=effective_end_time,
+            po_number=po_number,
+            reporting_webhook=to_reporting_webhook(reporting_webhook),
+            context=to_context_object(context),
         )
     except ValidationError as e:
         # Format validation errors with helpful context using shared helper
@@ -1411,13 +1393,21 @@ async def _create_media_buy_impl(
             raise ValueError(error_msg)
 
         # Handle 'asap' start_time (AdCP v1.7.0)
-        if req.start_time == "asap":
+        # Library may wrap start_time in StartTiming - unwrap if needed
+        raw_start_time = req.start_time.root if hasattr(req.start_time, "root") else req.start_time
+        if raw_start_time == "asap":
             computed_start_time: datetime = now
         else:
             # Ensure start_time is timezone-aware for comparison
-            # At this point, req.start_time is guaranteed to be datetime (not str)
-            assert isinstance(req.start_time, datetime), "start_time must be datetime when not 'asap'"
-            computed_start_time = req.start_time
+            # Handle case where StartTiming.root is an ISO string (adcp 2.16.0+)
+            if isinstance(raw_start_time, str):
+                computed_start_time = datetime.fromisoformat(raw_start_time)
+            elif isinstance(raw_start_time, datetime):
+                computed_start_time = raw_start_time
+            else:
+                # StartTiming that wasn't unwrapped - this shouldn't happen but handle gracefully
+                error_msg = f"Unexpected start_time type: {type(raw_start_time)}"
+                raise ValueError(error_msg)
             if computed_start_time.tzinfo is None:
                 computed_start_time = computed_start_time.replace(tzinfo=UTC)
 
@@ -1529,10 +1519,11 @@ async def _create_media_buy_impl(
                     product = product_map[package_product_ids[0]]
                     pricing_options = product.pricing_options or []
 
-                    # Find the pricing option matching the package's pricing_model
-                    if first_package.pricing_model and pricing_options:
+                    # Find the pricing option matching the package's pricing_model (legacy field)
+                    first_package_pricing_model = getattr(first_package, "pricing_model", None)
+                    if first_package_pricing_model and pricing_options:
                         matching_option = next(
-                            (po for po in pricing_options if po.pricing_model == first_package.pricing_model), None
+                            (po for po in pricing_options if po.pricing_model == first_package_pricing_model), None
                         )
                         if matching_option:
                             request_currency = matching_option.currency
@@ -1542,13 +1533,17 @@ async def _create_media_buy_impl(
                         request_currency = pricing_options[0].currency
 
             # Fallback to deprecated/legacy sources
-            if not request_currency and req.currency:
+            # Note: currency and budget fields no longer exist on CreateMediaBuyRequest per AdCP spec
+            # They have been moved to package level. Check with hasattr/getattr for backward compat.
+            legacy_currency = getattr(req, "currency", None)
+            legacy_budget = getattr(req, "budget", None)
+            if not request_currency and legacy_currency:
                 # Deprecated field, but still supported for backward compatibility
-                request_currency = req.currency
-            elif not request_currency and req.budget:
+                request_currency = legacy_currency
+            elif not request_currency and legacy_budget:
                 # Legacy: Extract currency from Budget object (if it's an object)
-                if hasattr(req.budget, "currency"):
-                    request_currency = req.budget.currency
+                if hasattr(legacy_budget, "currency"):
+                    request_currency = legacy_budget.currency
             elif not request_currency and req.packages and req.packages[0].budget:
                 # Legacy: Extract currency from package budget object (if it's an object)
                 if hasattr(req.packages[0].budget, "currency"):
@@ -1723,14 +1718,21 @@ async def _create_media_buy_impl(
                         )
                         raise ValueError(error_msg)
 
-        # Validate targeting doesn't use managed-only dimensions
-        if req.targeting_overlay:
-            from src.services.targeting_capabilities import validate_overlay_targeting
+        # Validate targeting doesn't use managed-only dimensions (targeting_overlay is at package level per AdCP spec)
+        for pkg in req.packages:
+            if hasattr(pkg, "targeting_overlay") and pkg.targeting_overlay:
+                from src.services.targeting_capabilities import validate_overlay_targeting
 
-            violations = validate_overlay_targeting(req.targeting_overlay.model_dump(exclude_none=True))
-            if violations:
-                error_msg = f"Targeting validation failed: {'; '.join(violations)}"
-                raise ValueError(error_msg)
+                # Convert to dict for validation - TargetingOverlay always has model_dump
+                targeting_data: dict[str, Any] = (
+                    pkg.targeting_overlay.model_dump(exclude_none=True)
+                    if hasattr(pkg.targeting_overlay, "model_dump")
+                    else dict(pkg.targeting_overlay)  # Fallback for dict-like objects
+                )
+                violations = validate_overlay_targeting(targeting_data)
+                if violations:
+                    error_msg = f"Targeting validation failed: {'; '.join(violations)}"
+                    raise ValueError(error_msg)
 
     except (ValueError, PermissionError) as e:
         # Update workflow step as failed
@@ -1756,13 +1758,14 @@ async def _create_media_buy_impl(
                 )
             try:
                 logger.info("[INLINE_CREATIVE_DEBUG] Calling process_and_upload_package_creatives")
+                # Cast packages to local PackageRequest type (runtime compatible, mypy list invariance)
                 updated_packages, uploaded_ids = process_and_upload_package_creatives(
-                    packages=req.packages,
+                    packages=cast(list[PackageRequest], req.packages),
                     context=ctx,
                     testing_ctx=testing_ctx,
                 )
                 # Replace packages with updated versions (functional approach)
-                req.packages = updated_packages
+                req.packages = cast(list[AdcpPackageRequest], updated_packages)
                 logger.info("[INLINE_CREATIVE_DEBUG] Updated req.packages with creative_ids")
                 if uploaded_ids:
                     logger.info(f"Successfully uploaded creatives for {len(uploaded_ids)} packages: {uploaded_ids}")
@@ -2039,7 +2042,9 @@ async def _create_media_buy_impl(
                                     "creative_ids": req_pkg.creative_ids,
                                     "format_ids": format_ids_serialized,
                                     "pricing_info": pricing_info_for_package,  # Store pricing info for UI display
-                                    "impressions": req_pkg.impressions,  # Store impressions for display
+                                    "impressions": getattr(
+                                        req_pkg, "impressions", None
+                                    ),  # Store impressions for display (legacy field)
                                 }
                             )
                             break
@@ -2727,9 +2732,9 @@ async def _create_media_buy_impl(
                     # Get pricing info for this package if available
                     pricing_info_for_package = package_pricing_info.get(resp_package_id)
 
-                    # Get impressions from request package if available
-                    request_pkg: PackageRequest | None = req.packages[i] if i < len(req.packages) else None
-                    impressions = request_pkg.impressions if request_pkg else None
+                    # Get impressions from request package if available (legacy field)
+                    request_pkg = req.packages[i] if i < len(req.packages) else None
+                    impressions = getattr(request_pkg, "impressions", None) if request_pkg else None
 
                     package_config = {
                         "package_id": resp_package_id,
@@ -3078,14 +3083,18 @@ async def _create_media_buy_impl(
                             )
 
         # Handle creatives if provided
+        # Note: creatives field no longer exists on CreateMediaBuyRequest per AdCP spec
+        # Creative IDs are now at package level (package.creative_ids). Check with getattr for backward compat.
         creative_statuses: dict[str, CreativeApprovalStatus] = {}
-        if req.creatives:
+        legacy_creatives = getattr(req, "creatives", None)
+        if legacy_creatives:
             # Convert Creative objects to format expected by adapter
             assets = []
-            for creative in req.creatives:
+            for creative in legacy_creatives:
                 try:
                     # Ensure product_ids is a list, not None
-                    product_ids_list = req.product_ids if req.product_ids else []
+                    # Note: product_ids no longer exists on CreateMediaBuyRequest - use get_product_ids() method
+                    product_ids_list = req.get_product_ids() if hasattr(req, "get_product_ids") else []
                     asset = _convert_creative_to_adapter_asset(creative, product_ids_list)
                     assets.append(asset)
                 except Exception as e:
@@ -3177,8 +3186,10 @@ async def _create_media_buy_impl(
                     float(package.budget) if isinstance(package.budget, (int, float)) else package.budget
                 )
 
-            if package.impressions is not None:
-                full_package_dict["impressions"] = float(package.impressions)
+            # Legacy impressions field (use getattr for backward compatibility)
+            package_impressions = getattr(package, "impressions", None)
+            if package_impressions is not None:
+                full_package_dict["impressions"] = float(package_impressions)
 
             if package.bid_price is not None:
                 full_package_dict["bid_price"] = float(package.bid_price)
@@ -3320,6 +3331,8 @@ async def _create_media_buy_impl(
             slack_notifier = get_slack_notifier(notifier_config)
 
             # Create success notification details
+            # Note: creatives field no longer exists on CreateMediaBuyRequest per AdCP spec
+            notification_creatives = getattr(req, "creatives", None)
             success_details = {
                 "total_budget": total_budget,
                 "po_number": req.po_number,
@@ -3328,7 +3341,7 @@ async def _create_media_buy_impl(
                 "product_ids": req.get_product_ids(),
                 "duration_days": (end_time_val - start_time_val).days + 1,
                 "packages_count": len(response_packages) if response_packages else 0,
-                "creatives_count": len(req.creatives) if req.creatives else 0,
+                "creatives_count": len(notification_creatives) if notification_creatives else 0,
                 "workflow_step_id": step.step_id,
             }
 
@@ -3515,20 +3528,7 @@ async def create_media_buy(
         packages=packages_dicts,
         start_time=start_time,
         end_time=end_time,
-        budget=budget,
-        product_ids=product_ids,
-        start_date=start_date,
-        end_date=end_date,
-        total_budget=total_budget,
-        targeting_overlay=cast(Targeting | None, targeting_overlay_dict),
-        pacing=cast(Literal["even", "asap", "daily_budget"], pacing),
-        daily_budget=daily_budget,
-        creatives=creatives_dicts,
         reporting_webhook=reporting_webhook_dict,
-        required_axe_signals=required_axe_signals,
-        enable_creative_macro=enable_creative_macro,
-        strategy_id=strategy_id,
-        push_notification_config=push_config_dict,
         context=context_dict,
         ctx=ctx,
     )
@@ -3596,20 +3596,7 @@ async def create_media_buy_raw(
         packages=packages,
         start_time=start_time,
         end_time=end_time,
-        budget=budget,
-        product_ids=product_ids,
-        start_date=start_date,
-        end_date=end_date,
-        total_budget=total_budget,
-        targeting_overlay=cast(Targeting | None, targeting_overlay),
-        pacing=cast(Literal["even", "asap", "daily_budget"], pacing),
-        daily_budget=daily_budget,
-        creatives=creatives,
         reporting_webhook=reporting_webhook,
-        required_axe_signals=required_axe_signals,
-        enable_creative_macro=enable_creative_macro,
-        strategy_id=strategy_id,
-        push_notification_config=push_notification_config,
         context=context,
         ctx=ctx,
     )

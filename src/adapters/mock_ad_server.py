@@ -399,6 +399,9 @@ class MockAdServer(AdServerAdapter):
                 test_message = request.brand_manifest
             elif hasattr(request.brand_manifest, "name"):
                 test_message = request.brand_manifest.name
+            elif hasattr(request.brand_manifest, "root") and hasattr(request.brand_manifest.root, "name"):
+                # Handle library BrandManifestReference wrapper
+                test_message = request.brand_manifest.root.name
             elif isinstance(request.brand_manifest, dict):
                 test_message = request.brand_manifest.get("name")
 
@@ -451,38 +454,41 @@ class MockAdServer(AdServerAdapter):
                     self.sync_delay_ms = original_delay
                 return result
 
-        # NO QUIET FAILURES policy - Check for unsupported targeting
-        if request.targeting_overlay:
-            # Mock adapter mirrors GAM behavior - these targeting types are not supported
-            if request.targeting_overlay.device_type_any_of:
-                raise ValueError(
-                    f"Device targeting requested but not supported. "
-                    f"Cannot fulfill buyer contract for device types: {request.targeting_overlay.device_type_any_of}."
-                )
+        # NO QUIET FAILURES policy - Check for unsupported targeting at package level
+        # Per AdCP spec, targeting is at the package level (MediaPackage.targeting_overlay)
+        for package in packages:
+            targeting = package.targeting_overlay
+            if targeting:
+                # Mock adapter mirrors GAM behavior - these targeting types are not supported
+                if getattr(targeting, "device_type_any_of", None):
+                    raise ValueError(
+                        f"Device targeting requested but not supported. "
+                        f"Cannot fulfill buyer contract for device types: {targeting.device_type_any_of}."
+                    )
 
-            if request.targeting_overlay.os_any_of:
-                raise ValueError(
-                    f"OS targeting requested but not supported. "
-                    f"Cannot fulfill buyer contract for OS types: {request.targeting_overlay.os_any_of}."
-                )
+                if getattr(targeting, "os_any_of", None):
+                    raise ValueError(
+                        f"OS targeting requested but not supported. "
+                        f"Cannot fulfill buyer contract for OS types: {targeting.os_any_of}."
+                    )
 
-            if request.targeting_overlay.browser_any_of:
-                raise ValueError(
-                    f"Browser targeting requested but not supported. "
-                    f"Cannot fulfill buyer contract for browsers: {request.targeting_overlay.browser_any_of}."
-                )
+                if getattr(targeting, "browser_any_of", None):
+                    raise ValueError(
+                        f"Browser targeting requested but not supported. "
+                        f"Cannot fulfill buyer contract for browsers: {targeting.browser_any_of}."
+                    )
 
-            if request.targeting_overlay.content_cat_any_of:
-                raise ValueError(
-                    f"Content category targeting requested but not supported. "
-                    f"Cannot fulfill buyer contract for categories: {request.targeting_overlay.content_cat_any_of}."
-                )
+                if getattr(targeting, "content_cat_any_of", None):
+                    raise ValueError(
+                        f"Content category targeting requested but not supported. "
+                        f"Cannot fulfill buyer contract for categories: {targeting.content_cat_any_of}."
+                    )
 
-            if request.targeting_overlay.keywords_any_of:
-                raise ValueError(
-                    f"Keyword targeting requested but not supported. "
-                    f"Cannot fulfill buyer contract for keywords: {request.targeting_overlay.keywords_any_of}."
-                )
+                if getattr(targeting, "keywords_any_of", None):
+                    raise ValueError(
+                        f"Keyword targeting requested but not supported. "
+                        f"Cannot fulfill buyer contract for keywords: {targeting.keywords_any_of}."
+                    )
 
         # GAM-like validation (based on real GAM behavior)
         self._validate_media_buy_request(request, packages, start_time, end_time, package_pricing_info)
@@ -716,17 +722,21 @@ class MockAdServer(AdServerAdapter):
             self.log(f"    'start_date': '{start_time.isoformat()}',")
             self.log(f"    'end_date': '{end_time.isoformat()}',")
             self.log("    'targeting': {")
-            if request.targeting_overlay:
-                if request.targeting_overlay.geo_country_any_of:
-                    self.log(f"      'countries': {request.targeting_overlay.geo_country_any_of},")
-                if request.targeting_overlay.geo_region_any_of:
-                    self.log(f"      'regions': {request.targeting_overlay.geo_region_any_of},")
-                if request.targeting_overlay.geo_metro_any_of:
-                    self.log(f"      'metros': {request.targeting_overlay.geo_metro_any_of},")
-                if request.targeting_overlay.key_value_pairs:
-                    self.log(f"      'key_values': {request.targeting_overlay.key_value_pairs},")
-                if request.targeting_overlay.media_type_any_of:
-                    self.log(f"      'media_types': {request.targeting_overlay.media_type_any_of},")
+            # Log targeting from packages (per AdCP spec, targeting is at package level)
+            for package in packages:
+                if package.targeting_overlay:
+                    targeting = package.targeting_overlay
+                    if getattr(targeting, "geo_country_any_of", None):
+                        self.log(f"      'countries': {targeting.geo_country_any_of},")
+                    if getattr(targeting, "geo_region_any_of", None):
+                        self.log(f"      'regions': {targeting.geo_region_any_of},")
+                    if getattr(targeting, "geo_metro_any_of", None):
+                        self.log(f"      'metros': {targeting.geo_metro_any_of},")
+                    if getattr(targeting, "key_value_pairs", None):
+                        self.log(f"      'key_values': {targeting.key_value_pairs},")
+                    if getattr(targeting, "media_type_any_of", None):
+                        self.log(f"      'media_types': {targeting.media_type_any_of},")
+                    break  # Log first package's targeting only to avoid repetition
             self.log("    }")
             self.log("  }")
 

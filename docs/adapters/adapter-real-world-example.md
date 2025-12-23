@@ -33,7 +33,7 @@ def test_get_products_with_brand():
 
 ```python
 # tests/unit/test_my_feature.py
-from src.core.schema_adapters import GetProductsRequest  # Adapter
+from adcp import GetProductsRequest  # Adapter
 
 def test_get_products_with_brand():
     """Test get_products request."""
@@ -88,7 +88,7 @@ def test_adcp_get_products_request(self):
 
 ```python
 # tests/unit/test_adcp_contract.py (MIGRATED)
-from src.core.schema_adapters import GetProductsRequest
+from adcp import GetProductsRequest
 
 def test_adcp_get_products_request(self):
     """Test AdCP get_products request requirements."""
@@ -153,7 +153,7 @@ def test_adcp_get_products_request(self):
 from src.core.schemas import GetProductsRequest
 
 # NEW:
-from src.core.schema_adapters import GetProductsRequest
+from adcp import GetProductsRequest
 
 # Everything else stays the same!
 ```
@@ -172,11 +172,11 @@ If tests fail → adapter needs refinement
 # Migrate file by file
 # tests/unit/test_authorized_properties.py
 - from src.core.schemas import GetProductsRequest
-+ from src.core.schema_adapters import GetProductsRequest
++ from adcp import GetProductsRequest
 
 # tests/unit/test_mcp_schema_validator.py
 - from src.core.schemas import GetProductsRequest
-+ from src.core.schema_adapters import GetProductsRequest
++ from adcp import GetProductsRequest
 ```
 
 ### Step 3: Validate with Schema Change

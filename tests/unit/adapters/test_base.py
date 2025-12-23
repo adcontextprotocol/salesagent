@@ -74,7 +74,6 @@ def test_mock_ad_server_create_media_buy(sample_packages, mocker):
         packages=packages,  # AdCP v2.2.0: packages required
         start_time=start_time,
         end_time=end_time,
-        targeting_overlay={},  # Empty targeting
         po_number="PO-12345",
     )
 

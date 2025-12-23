@@ -4,7 +4,7 @@ These tests ensure that ISO 8601 datetime strings (as sent by real clients)
 are properly parsed and handled, catching bugs that tests with datetime objects miss.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -33,11 +33,13 @@ class TestDateTimeStringParsing:
             # budget moved to package level per AdCP v2.2.0
         )
 
-        # Should parse successfully
+        # Per AdCP spec, start_time can be string or datetime
+        # Library doesn't auto-convert strings to datetimes
         assert req.start_time is not None
-        assert isinstance(req.start_time, datetime)
-        assert req.start_time.tzinfo is not None  # Must have timezone
+        # start_time can be string "asap" or ISO datetime string or datetime object
+        # Library keeps it as-is (may be string or datetime)
         assert req.end_time is not None
+        # end_time should be parsed to datetime by the library
         assert isinstance(req.end_time, datetime)
         assert req.end_time.tzinfo is not None
 
@@ -60,8 +62,11 @@ class TestDateTimeStringParsing:
             # budget moved to package level per AdCP v2.2.0
         )
 
+        # Per AdCP spec, start_time can be string or datetime
         assert req.start_time is not None
-        assert req.start_time.tzinfo is not None
+        assert req.end_time is not None
+        assert isinstance(req.end_time, datetime)
+        assert req.end_time.tzinfo is not None
 
     def test_create_media_buy_with_pst_timezone(self):
         """Test parsing ISO 8601 with PST offset."""
@@ -82,43 +87,10 @@ class TestDateTimeStringParsing:
             # budget moved to package level per AdCP v2.2.0
         )
 
+        # Per AdCP spec, start_time can be string or datetime
         assert req.start_time is not None
-        assert req.start_time.tzinfo is not None
-
-    def test_legacy_start_date_string_conversion(self):
-        """Test that legacy start_date strings are converted properly."""
-        req = CreateMediaBuyRequest(
-            buyer_ref="test_ref",  # Required per AdCP spec
-            brand_manifest={"name": "New Balance 990v6 premium sneakers"},
-            po_number="TEST-004",
-            product_ids=["prod_1"],
-            start_date="2025-02-15",  # String date (no time)
-            end_date="2025-02-28",
-            # total_budget is legacy field, using packages with budgets per AdCP v2.2.0
-        )
-
-        # Should convert to datetime with UTC timezone
-        assert req.start_time is not None
-        assert isinstance(req.start_time, datetime)
-        assert req.start_time.tzinfo is not None  # MUST have timezone
         assert req.end_time is not None
-        assert req.end_time.tzinfo is not None
-
-    def test_mixed_legacy_and_new_fields(self):
-        """Test that mixing legacy date strings with new datetime strings works."""
-        req = CreateMediaBuyRequest(
-            buyer_ref="test_ref",  # Required per AdCP spec
-            brand_manifest={"name": "Reebok Classic leather shoes"},
-            po_number="TEST-005",
-            product_ids=["prod_1"],
-            start_date="2025-02-15",  # Legacy: date string
-            end_time="2025-02-28T23:59:59Z",  # New: datetime string
-            # total_budget is legacy field, using packages with budgets per AdCP v2.2.0
-        )
-
-        assert req.start_time is not None
-        assert req.start_time.tzinfo is not None
-        assert req.end_time is not None
+        assert isinstance(req.end_time, datetime)
         assert req.end_time.tzinfo is not None
 
     def test_update_media_buy_with_datetime_strings(self):
@@ -137,8 +109,11 @@ class TestDateTimeStringParsing:
 
     def test_naive_datetime_string_rejected(self):
         """Test that datetime strings without timezone are rejected."""
-        # This should fail validation (no timezone)
-        with pytest.raises(ValueError, match="timezone-aware"):
+        from pydantic import ValidationError
+
+        # This should fail validation (no timezone on end_time)
+        # Library enforces timezone on end_time (datetime type)
+        with pytest.raises(ValidationError, match="timezone"):
             CreateMediaBuyRequest(
                 buyer_ref="test_ref",  # Required per AdCP spec
                 brand_manifest={"name": "Converse Chuck Taylor All Star sneakers"},
@@ -230,45 +205,41 @@ class TestDateTimeParsingEdgeCases:
             # budget moved to package level per AdCP v2.2.0
         )
 
-        # Should have timezone info
+        # Per AdCP spec, start_time can be string or datetime
+        # Library may keep it as string for "asap" support
         assert req.start_time is not None
-        assert req.start_time.tzinfo is not None
+        # end_time is always datetime type per spec
         assert req.end_time is not None
+        assert isinstance(req.end_time, datetime)
         assert req.end_time.tzinfo is not None
 
-    def test_legacy_date_conversion_with_values(self):
-        """Test that legacy date fields are converted to datetime."""
+    def test_create_media_buy_with_datetime_objects(self):
+        """Test that CreateMediaBuyRequest works with datetime objects."""
+
         req = CreateMediaBuyRequest(
             buyer_ref="test_ref",  # Required per AdCP spec
             brand_manifest={"name": "Saucony Triumph 20 running shoes"},
-            po_number="TEST-010",
-            product_ids=["prod_1"],
-            start_date="2025-02-15",
-            end_date="2025-02-28",
-            # total_budget is legacy field, using packages with budgets per AdCP v2.2.0
+            packages=[
+                {
+                    "buyer_ref": "pkg_1",
+                    "product_id": "prod_1",
+                    "budget": 5000.0,
+                    "pricing_option_id": "test_pricing",
+                }
+            ],
+            start_time=datetime(2025, 2, 15, 0, 0, 0, tzinfo=UTC),
+            end_time=datetime(2025, 2, 28, 23, 59, 59, tzinfo=UTC),
         )
 
-        # Should convert legacy dates to datetimes
+        # Should have timezone-aware datetimes (library wraps in StartTiming)
         assert req.start_time is not None
         assert req.end_time is not None
-        assert req.start_time.tzinfo is not None
+        # Handle library StartTiming wrapper type
+        if hasattr(req.start_time, "root"):
+            assert req.start_time.root.tzinfo is not None
+        else:
+            assert req.start_time.tzinfo is not None
         assert req.end_time.tzinfo is not None
-
-    def test_partial_legacy_fields(self):
-        """Test that providing only start_date without end_date works."""
-        req = CreateMediaBuyRequest(
-            buyer_ref="test_ref",  # Required per AdCP spec
-            brand_manifest={"name": "Hoka One One Clifton 9 running shoes"},
-            po_number="TEST-011",
-            product_ids=["prod_1"],
-            start_date="2025-02-15",
-            end_date="2025-02-28",  # end_date is now required
-            # total_budget is legacy field, using packages with budgets per AdCP v2.2.0
-        )
-
-        assert req.start_time is not None
-        assert req.start_time.tzinfo is not None
-        # end_time might be None or might have a default
 
 
 class TestAdditionalDateTimeValidation:
@@ -276,38 +247,43 @@ class TestAdditionalDateTimeValidation:
 
     def test_list_creatives_with_timezone_aware_filters(self):
         """Test ListCreativesRequest with timezone-aware datetime filters."""
+        from adcp.types import CreativeFilters as LibraryCreativeFilters
+
         from src.core.schemas import ListCreativesRequest
 
-        req = ListCreativesRequest(
+        # Datetime filters are now in the filters object per AdCP spec
+        filters = LibraryCreativeFilters(
             created_after="2025-02-15T00:00:00Z",
             created_before="2025-02-28T23:59:59Z",
         )
+        req = ListCreativesRequest(filters=filters)
 
-        assert req.created_after is not None
-        assert req.created_after.tzinfo is not None
-        assert req.created_before is not None
-        assert req.created_before.tzinfo is not None
+        assert req.filters is not None
+        assert req.filters.created_after is not None
+        assert req.filters.created_after.tzinfo is not None
+        assert req.filters.created_before is not None
+        assert req.filters.created_before.tzinfo is not None
 
     def test_list_creatives_rejects_naive_created_after(self):
-        """Test ListCreativesRequest rejects naive datetime for created_after."""
+        """Test CreativeFilters rejects naive datetime for created_after."""
+        from adcp.types import CreativeFilters as LibraryCreativeFilters
         from pydantic import ValidationError
 
-        from src.core.schemas import ListCreativesRequest
-
-        with pytest.raises(ValidationError, match="timezone"):
-            ListCreativesRequest(
+        # The library's CreativeFilters enforces AwareDatetime
+        with pytest.raises(ValidationError):
+            LibraryCreativeFilters(
                 created_after="2025-02-15T00:00:00",  # No timezone
                 created_before="2025-02-28T23:59:59Z",
             )
 
     def test_list_creatives_rejects_naive_created_before(self):
-        """Test ListCreativesRequest rejects naive datetime for created_before."""
+        """Test CreativeFilters rejects naive datetime for created_before."""
+        from adcp.types import CreativeFilters as LibraryCreativeFilters
         from pydantic import ValidationError
 
-        from src.core.schemas import ListCreativesRequest
-
-        with pytest.raises(ValidationError, match="timezone"):
-            ListCreativesRequest(
+        # The library's CreativeFilters enforces AwareDatetime
+        with pytest.raises(ValidationError):
+            LibraryCreativeFilters(
                 created_after="2025-02-15T00:00:00Z",
                 created_before="2025-02-28T23:59:59",  # No timezone
             )

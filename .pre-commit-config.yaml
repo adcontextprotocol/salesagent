@@ -210,7 +210,7 @@ repos:
         name: Validate adapter schema field names
         entry: uv run python scripts/validate_adapter_usage.py
         language: system
-        files: '^(src/core/main\.py|src/core/schema_adapters\.py)$'
+        files: '^(src/core/main\.py|src/core/schemas\.py)$'
         pass_filenames: false
 
       # Check Pydantic-AdCP schema alignment (prevents client validation errors like missing promoted_offering)

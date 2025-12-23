@@ -11,15 +11,15 @@ Replaces: test_a2a_response_message_fields.py (which tested the old incorrect be
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
-from src.core.schema_adapters import (
-    CreateMediaBuyResponse,
+from src.core.schemas import (
+    CreateMediaBuySuccess,
     GetMediaBuyDeliveryResponse,
     GetProductsResponse,
     ListAuthorizedPropertiesResponse,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
     SyncCreativesResponse,
-    UpdateMediaBuyResponse,
+    UpdateMediaBuySuccess,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -62,8 +62,8 @@ class TestA2ASpecCompliance:
 
         assert extra_fields == set(), f"Response has non-spec fields: {extra_fields}"
 
-        # Verify __str__() works for human-readable message (using library's .summary())
-        assert str(response) == "Authorized to represent 1 publisher domain."
+        # Verify __str__() works for human-readable message
+        assert str(response) == "Found 1 authorized publisher domain."
 
     def test_get_products_spec_compliance(self):
         """Test get_products returns only spec-defined fields."""
@@ -138,8 +138,8 @@ class TestA2ASpecCompliance:
         extra_fields = response_fields - spec_fields
 
         assert extra_fields == set(), f"Response has non-spec fields: {extra_fields}"
-        # Library's .summary() message format
-        assert str(response) == "Found 0 creatives in the system."
+        # Local schema's __str__() message format
+        assert str(response) == "Found 0 creatives."
 
     def test_list_creative_formats_spec_compliance(self):
         """Test list_creative_formats returns only spec-defined fields."""
@@ -158,15 +158,16 @@ class TestA2ASpecCompliance:
         extra_fields = response_fields - spec_fields
 
         assert extra_fields == set(), f"Response has non-spec fields: {extra_fields}"
-        # Library's .summary() message format
-        assert str(response) == "Found 0 supported creative formats."
+        # Local schema's __str__() message format
+        assert str(response) == "No creative formats are currently supported."
 
     def test_create_media_buy_spec_compliance(self):
         """Test create_media_buy returns only spec-defined fields."""
         ctx = {"user_id": "1234567890"}
-        response = CreateMediaBuyResponse(
+        response = CreateMediaBuySuccess(
             buyer_ref="test-123",
             media_buy_id="mb-456",
+            packages=[],  # Required field per AdCP spec
             context=ctx,
         )
 
@@ -174,6 +175,7 @@ class TestA2ASpecCompliance:
         response_dict = response.model_dump()
         assert "buyer_ref" in response_dict
         assert "media_buy_id" in response_dict
+        assert "packages" in response_dict
 
         # Verify __str__() works
         assert str(response) == "Media buy mb-456 created successfully."
@@ -185,7 +187,7 @@ class TestA2ASpecCompliance:
     def test_update_media_buy_spec_compliance(self):
         """Test update_media_buy returns only spec-defined fields."""
         ctx = {"user_id": "1234567890"}
-        response = UpdateMediaBuyResponse(
+        response = UpdateMediaBuySuccess(
             buyer_ref="test-123",
             media_buy_id="mb-456",
             context=ctx,
@@ -204,7 +206,7 @@ class TestA2ASpecCompliance:
         """Test get_media_buy_delivery returns only spec-defined fields."""
         from datetime import UTC, datetime
 
-        from src.core.schemas import ReportingPeriod
+        from src.core.schemas import AggregatedTotals, ReportingPeriod
 
         ctx = {"user_id": "1234567890"}
         response = GetMediaBuyDeliveryResponse(
@@ -214,6 +216,12 @@ class TestA2ASpecCompliance:
             ),
             currency="USD",
             media_buy_deliveries=[],
+            aggregated_totals=AggregatedTotals(  # Required field per AdCP spec
+                spend=0.0,
+                impressions=0,
+                clicks=0,
+                media_buy_count=0,
+            ),
             context=ctx,
         )
 
@@ -221,6 +229,7 @@ class TestA2ASpecCompliance:
         assert "media_buy_deliveries" in response_dict
         assert "reporting_period" in response_dict
         assert "currency" in response_dict
+        assert "aggregated_totals" in response_dict
         # __str__() may vary based on the schema class used
         assert len(str(response)) > 0
 
@@ -252,8 +261,8 @@ class TestA2AArtifactDescriptions:
 
         assert response is not None
         assert isinstance(response, ListAuthorizedPropertiesResponse)
-        # Library's .summary() message format
-        assert str(response) == "Authorized to represent 2 publisher domains."
+        # Local schema's __str__() message format
+        assert str(response) == "Found 2 authorized publisher domains."
 
     def test_artifact_reconstruction_all_skills(self):
         """Test reconstruction works for all supported skills."""
@@ -337,14 +346,14 @@ class TestMCPAndA2AResponseParity:
         mcp_message = str(mcp_response)
         a2a_message = str(ListAuthorizedPropertiesResponse(**a2a_response_data))
         assert mcp_message == a2a_message
-        # Library's .summary() message format
-        assert mcp_message == "Authorized to represent 1 publisher domain."
+        # Local schema's __str__() message format
+        assert mcp_message == "Found 1 authorized publisher domain."
 
     def test_all_response_types_have_str_method(self):
         """Test that all AdCP response types support __str__() for human-readable messages."""
         response_types = [
-            CreateMediaBuyResponse,
-            UpdateMediaBuyResponse,
+            CreateMediaBuySuccess,
+            UpdateMediaBuySuccess,
             GetMediaBuyDeliveryResponse,
             GetProductsResponse,
             ListAuthorizedPropertiesResponse,
@@ -369,7 +378,7 @@ class TestA2AResponseRegressionPrevention:
         # This is a contract test - if someone adds 'success' or 'message' back,
         # this test will catch it
 
-        from src.core.schema_adapters import ListAuthorizedPropertiesResponse
+        from src.core.schemas import ListAuthorizedPropertiesResponse
 
         response = ListAuthorizedPropertiesResponse(publisher_domains=["test.com"])
         response_dict = response.model_dump()

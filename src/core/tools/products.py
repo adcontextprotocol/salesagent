@@ -8,10 +8,11 @@ import logging
 import os
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from adcp import BrandManifest, ProductFilters
 from adcp import GetProductsRequest as GetProductsRequestGenerated
+from adcp import Product as LibraryProduct
 from adcp.types import PushNotificationConfig
 from adcp.types.generated_poc.core.context import ContextObject
 from fastmcp.exceptions import ToolError
@@ -26,9 +27,11 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import set_current_tenant
 from src.core.database.database_session import get_db_session
-from src.core.schema_adapters import GetProductsResponse
 from src.core.schema_helpers import create_get_products_request
-from src.core.schemas import Product  # Extends library Product
+from src.core.schemas import (
+    GetProductsResponse,
+    Product,  # Extends library Product
+)
 from src.core.testing_hooks import apply_testing_hooks, get_testing_context
 from src.core.tool_context import ToolContext
 from src.core.validation_helpers import format_validation_error, safe_parse_json_field
@@ -726,13 +729,19 @@ async def _get_products_impl(
     if testing_ctx is not None:
         response_data = apply_testing_hooks(response_data, testing_ctx, "get_products")
 
-    # No conversion needed - our Product extends library Product
+    # Our Product extends LibraryProduct - cast for type safety since list is invariant
     # When serialized, Pydantic automatically uses library Product fields
     # Internal-only fields (implementation_config) excluded by model_dump()
     # Note: We use eligible_products (Product objects), not response_data (dicts)
     # because Product objects have typed pricing_options (CpmFixedRatePricingOption, etc.)
     # while dicts lose this type information during serialization
-    resp = GetProductsResponse(products=eligible_products, errors=None, context=req.context)
+    # adcp 2.16.0+ accepts subclass lists at runtime via BeforeValidator coercion,
+    # but mypy still needs cast() due to list invariance in static typing
+    resp = GetProductsResponse(
+        products=cast(list[LibraryProduct], eligible_products),
+        errors=None,
+        context=req.context,
+    )
 
     return resp
 
