@@ -1,13 +1,16 @@
-# Production Docker Compose - uses pre-built images from GitHub Container Registry
+# Docker Compose for E2E tests
 #
-# Quick start:
-#   docker compose -f docker-compose.prod.yml up -d
+# Builds from source and exposes individual service ports for direct testing.
+# Used by tests/e2e/conftest.py to run the full test suite.
 #
-# Pin to a specific version for production:
-#   IMAGE_TAG=0.1.0 docker compose -f docker-compose.prod.yml up -d
+# Usage:
+#   docker compose -f docker-compose.e2e.yml up -d
 #
-# Available tags: latest, 0, 0.1, 0.1.0
-# See all versions: https://github.com/adcontextprotocol/salesagent/pkgs/container/salesagent
+# Port configuration (via environment variables):
+#   ADCP_SALES_PORT - MCP server port (default: 8092, maps to internal 8080)
+#   A2A_PORT        - A2A server port (default: 8094, maps to internal 8091)
+#   ADMIN_UI_PORT   - Admin UI port (default: 8093)
+#   POSTGRES_PORT   - PostgreSQL port (default: 5435)
 
 services:
   postgres:
@@ -19,7 +22,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5435}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U adcp_user -d adcp"]
       interval: 10s
@@ -27,18 +30,24 @@ services:
       retries: 5
 
   adcp-server:
-    image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    build: .
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
+      SKIP_CRON: "true"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
+      ADCP_TESTING: ${ADCP_TESTING:-}
+      DELIVERY_WEBHOOK_INTERVAL: ${DELIVERY_WEBHOOK_INTERVAL:-}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "${ADCP_SALES_PORT:-8080}:8080"
-      - "${A2A_PORT:-8091}:8091"
+      # Expose MCP and A2A ports directly for E2E tests
+      - "${ADCP_SALES_PORT:-8092}:8080"
+      - "${A2A_PORT:-8094}:8091"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./audit_logs:/app/audit_logs
     healthcheck:
@@ -48,12 +57,12 @@ services:
       retries: 3
 
   admin-ui:
-    image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    build: .
     command: python -m src.admin.server
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
-      ADMIN_UI_PORT: ${ADMIN_UI_PORT:-8001}
+      ADMIN_UI_PORT: "${ADMIN_UI_PORT:-8093}"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -63,11 +72,11 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${ADMIN_UI_PORT:-8001}:${ADMIN_UI_PORT:-8001}"
+      - "${ADMIN_UI_PORT:-8093}:${ADMIN_UI_PORT:-8093}"
     volumes:
       - ./audit_logs:/app/audit_logs
     healthcheck:
-      test: ["CMD", "sh", "-c", "curl -f http://localhost:${ADMIN_UI_PORT:-8001}/health"]
+      test: ["CMD", "sh", "-c", "curl -f http://localhost:$${ADMIN_UI_PORT:-8093}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
