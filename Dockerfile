@@ -42,6 +42,15 @@ RUN --mount=type=cache,target=/cache/uv \
 # Runtime stage
 FROM python:3.12-slim
 
+# OCI labels for GitHub Container Registry
+LABEL org.opencontainers.image.title="AdCP Sales Agent"
+LABEL org.opencontainers.image.description="Reference implementation of an AdCP (Ad Context Protocol) Sales Agent. Deploy with Docker Compose: curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml && docker compose up -d"
+LABEL org.opencontainers.image.url="https://github.com/adcontextprotocol/salesagent"
+LABEL org.opencontainers.image.source="https://github.com/adcontextprotocol/salesagent"
+LABEL org.opencontainers.image.documentation="https://github.com/adcontextprotocol/salesagent/blob/main/docs/quickstart.md"
+LABEL org.opencontainers.image.vendor="Agentic Advertising Foundation"
+LABEL org.opencontainers.image.licenses="MIT"
+
 # Disable man pages and docs to speed up apt operations
 RUN echo 'path-exclude /usr/share/doc/*' > /etc/dpkg/dpkg.cfg.d/01_nodoc && \
     echo 'path-exclude /usr/share/man/*' >> /etc/dpkg/dpkg.cfg.d/01_nodoc && \
