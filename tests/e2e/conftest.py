@@ -87,7 +87,9 @@ def docker_services_e2e(request):
 
         # Always clean up existing services and volumes to ensure fresh state
         print("Cleaning up any existing Docker services and volumes...")
-        subprocess.run(["docker-compose", "down", "-v"], capture_output=True, check=False)
+        subprocess.run(
+            ["docker-compose", "-f", "docker-compose.e2e.yml", "down", "-v"], capture_output=True, check=False
+        )
 
         # Explicitly remove volumes in case docker-compose down -v didn't work
         print("Explicitly removing Docker volumes...")
@@ -126,9 +128,10 @@ def docker_services_e2e(request):
         print("This may take 2-3 minutes for initial build...")
 
         # Build first with output visible, then start detached
+        # Use docker-compose.e2e.yml which exposes individual ports for testing
         print("Step 1/2: Building Docker images...")
         build_result = subprocess.run(
-            ["docker-compose", "build", "--progress=plain"],
+            ["docker-compose", "-f", "docker-compose.e2e.yml", "build", "--progress=plain"],
             env=env,
             capture_output=False,  # Show build output
         )
@@ -137,7 +140,7 @@ def docker_services_e2e(request):
             raise subprocess.CalledProcessError(build_result.returncode, "docker-compose build")
 
         print("Step 2/2: Starting services...")
-        subprocess.run(["docker-compose", "up", "-d"], check=True, env=env)
+        subprocess.run(["docker-compose", "-f", "docker-compose.e2e.yml", "up", "-d"], check=True, env=env)
 
         # Wait for services to be healthy
         max_wait = 120  # Increased from 60 to 120 seconds for CI
@@ -159,7 +162,10 @@ def docker_services_e2e(request):
                 # Show container status for debugging
                 try:
                     ps_result = subprocess.run(
-                        ["docker-compose", "ps", "--format", "table"], capture_output=True, text=True, timeout=2
+                        ["docker-compose", "-f", "docker-compose.e2e.yml", "ps", "--format", "table"],
+                        capture_output=True,
+                        text=True,
+                        timeout=2,
                     )
                     if ps_result.returncode == 0 and ps_result.stdout:
                         print(f"  Container status:\n{ps_result.stdout}")
@@ -202,7 +208,10 @@ def docker_services_e2e(request):
                 try:
                     print(f"\n📋 {service} logs (last 100 lines):")
                     result = subprocess.run(
-                        ["docker-compose", "logs", "--tail=100", service], capture_output=True, text=True, timeout=5
+                        ["docker-compose", "-f", "docker-compose.e2e.yml", "logs", "--tail=100", service],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
                     )
                     if result.stdout:
                         print(result.stdout)
@@ -214,7 +223,9 @@ def docker_services_e2e(request):
             # Show container status
             try:
                 print("\n📊 Container status:")
-                ps_result = subprocess.run(["docker-compose", "ps"], capture_output=True, text=True, timeout=2)
+                ps_result = subprocess.run(
+                    ["docker-compose", "-f", "docker-compose.e2e.yml", "ps"], capture_output=True, text=True, timeout=2
+                )
                 print(ps_result.stdout)
             except Exception as e:
                 print(f"Could not get container status: {e}")
@@ -241,7 +252,16 @@ def docker_services_e2e(request):
     # If running manually without script, it defaults to folder name.
 
     init_result = subprocess.run(
-        ["docker-compose", "exec", "-T", "adcp-server", "python", "scripts/setup/init_database_ci.py"],
+        [
+            "docker-compose",
+            "-f",
+            "docker-compose.e2e.yml",
+            "exec",
+            "-T",
+            "adcp-server",
+            "python",
+            "scripts/setup/init_database_ci.py",
+        ],
         env=init_env,
         capture_output=True,
         text=True,
@@ -351,7 +371,12 @@ def docker_services_e2e(request):
         print("\n🧹 Cleaning up Docker resources...")
         try:
             # Stop and remove containers + volumes
-            subprocess.run(["docker-compose", "down", "-v"], capture_output=True, check=False, timeout=30)
+            subprocess.run(
+                ["docker-compose", "-f", "docker-compose.e2e.yml", "down", "-v"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
             print("✓ Docker containers and volumes cleaned up")
 
             # Prune dangling volumes (created by tests but not tracked by docker-compose)

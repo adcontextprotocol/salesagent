@@ -70,24 +70,25 @@ See all available versions: https://github.com/adcontextprotocol/salesagent/pkgs
 The fastest way to get started using published images:
 
 ```bash
-# Download the production compose file
-curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.prod.yml
+# Download the compose file
+curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml
 
 # Start services
-docker compose -f docker-compose.prod.yml up -d
+docker compose up -d
 
 # Verify it's running
-curl http://localhost:8080/health
+curl http://localhost:8000/health
 ```
 
 **Pin to a specific version for production:**
 ```bash
-IMAGE_TAG=0.1.0 docker compose -f docker-compose.prod.yml up -d
+IMAGE_TAG=0.1.0 docker compose up -d
 ```
 
-**Access services:**
-- MCP Server: http://localhost:8080/mcp/
-- Admin UI: http://localhost:8001 (test login: `test_super_admin@example.com` / `test123`)
+**Access services (all through port 8000):**
+- Admin UI: http://localhost:8000/admin (test login: `test_super_admin@example.com` / `test123`)
+- MCP Server: http://localhost:8000/mcp/
+- A2A Server: http://localhost:8000/a2a
 - PostgreSQL: localhost:5432
 
 ### Option B: Build from Source
@@ -102,57 +103,70 @@ For development or customization:
    # Edit .env with your configuration
    ```
 
-2. **Start services:**
+2. **Start services with development overlay:**
    ```bash
-   docker-compose up -d
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
    ```
 
-3. **Access services:**
-   - MCP Server: http://localhost:8080/mcp/
-   - Admin UI: http://localhost:8001
+3. **Access services (all through port 8000):**
+   - Admin UI: http://localhost:8000/admin
+   - MCP Server: http://localhost:8000/mcp/
+   - A2A Server: http://localhost:8000/a2a
    - PostgreSQL: localhost:5432
 
 ### Docker Services
 
-The `docker-compose.yml` defines three services:
+The `docker-compose.yml` defines four services:
 
 ```yaml
 services:
   postgres:      # PostgreSQL database
-  adcp-server:   # MCP server (port 8080)
+  proxy:         # Nginx reverse proxy (port 8000)
+  adcp-server:   # MCP server + A2A server (ports 8080, 8091)
   admin-ui:      # Admin interface (port 8001)
 ```
 
-### Docker Caching
+### Docker Compose Variants
 
-The system uses BuildKit caching with shared volumes:
-- `adcp_global_pip_cache` - Python packages cache
-- `adcp_global_uv_cache` - uv dependencies cache
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Quickstart with pre-built images |
+| `docker-compose.dev.yml` | Development overlay with hot-reload |
+| `docker-compose.multi-tenant.yml` | Multi-tenant testing with subdomain routing |
 
-This reduces rebuild times from ~3 minutes to ~30 seconds across all Conductor workspaces.
+```bash
+# Quickstart (most common)
+docker compose up -d
+
+# Development with hot-reload
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+# Multi-tenant testing (requires /etc/hosts entries)
+docker compose -f docker-compose.multi-tenant.yml up
+```
 
 ### Docker Management
 
 ```bash
 # Rebuild after code changes
-docker-compose build
-docker-compose up -d
+docker compose build
+docker compose up -d
 
 # View logs
-docker-compose logs -f
-docker-compose logs -f adcp-server
+docker compose logs -f
+docker compose logs -f adcp-server
 
 # Stop services
-docker-compose down
+docker compose down
 
 # Reset everything (including volumes)
-docker-compose down -v
+docker compose down -v
 
 # Enter container
-docker-compose exec adcp-server bash
+docker compose exec adcp-server bash
 
 # Backup database
-docker-compose exec postgres pg_dump -U adcp_user adcp > backup.sql
+docker compose exec postgres pg_dump -U adcp_user adcp > backup.sql
 ```
 
 ## Fly.io Deployment (Reference Implementation)
@@ -168,6 +182,22 @@ Fly.io provides:
 - Global distribution with edge locations
 - Integrated PostgreSQL clusters
 - Built-in monitoring and logging
+
+### Single-Tenant vs Multi-Tenant
+
+**Single-Tenant (Default):** Most publishers deploying their own sales agent should use single-tenant mode. This provides simple path-based routing without subdomain complexity.
+
+**Multi-Tenant:** For platforms hosting multiple publishers, multi-tenant mode enables subdomain-based routing (e.g., `publisher1.yourdomain.com`, `publisher2.yourdomain.com`).
+
+The mode is controlled by the `ADCP_MULTI_TENANT` environment variable:
+
+```bash
+# Single-tenant (default) - simple path-based routing
+ADCP_MULTI_TENANT=false  # or omit entirely
+
+# Multi-tenant - subdomain routing enabled
+ADCP_MULTI_TENANT=true
+```
 
 ### Architecture
 
@@ -191,64 +221,144 @@ Internet → Fly.io Edge → Proxy (8000) → MCP Server (8080)
 
 ### Deployment Steps
 
-1. **Create application:**
+#### Step 1: Create the Application
+
+```bash
+fly apps create your-app-name
+```
+
+#### Step 2: Create and Attach PostgreSQL Database
+
+Fly.io provides managed PostgreSQL. Create a cluster and attach it to your app:
+
+```bash
+# Create PostgreSQL cluster
+fly postgres create --name your-app-db \
+  --region iad \
+  --initial-cluster-size 1 \
+  --vm-size shared-cpu-1x \
+  --volume-size 10
+
+# Attach to your app (this sets DATABASE_URL automatically)
+fly postgres attach your-app-db --app your-app-name
+```
+
+**Important**: The `attach` command automatically sets `DATABASE_URL` as a secret. Verify with:
+```bash
+fly secrets list --app your-app-name
+```
+
+#### Step 3: Create Persistent Volume
+
+```bash
+fly volumes create adcp_data --region iad --size 1
+```
+
+#### Step 4: Set Required Secrets
+
+```bash
+# Super admin configuration (REQUIRED - see format below)
+fly secrets set SUPER_ADMIN_EMAILS="admin@example.com,admin2@example.com"
+
+# Optional: Grant admin to all users in a domain
+fly secrets set SUPER_ADMIN_DOMAINS="example.com"
+
+# OAuth configuration (required for Google login)
+fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
+
+# API keys (optional but recommended)
+fly secrets set GEMINI_API_KEY="your-gemini-api-key"
+```
+
+**Super Admin Configuration Format:**
+
+| Variable | Format | Example |
+|----------|--------|---------|
+| `SUPER_ADMIN_EMAILS` | Comma-separated emails | `user1@example.com,user2@example.com` |
+| `SUPER_ADMIN_DOMAINS` | Comma-separated domains | `example.com,company.org` |
+
+- `SUPER_ADMIN_EMAILS`: Specific email addresses that have super admin access
+- `SUPER_ADMIN_DOMAINS`: Any user with an email from these domains gets super admin access
+
+Both are comma-separated strings (not JSON). At least one of these must be set for the application to start.
+
+#### Step 5: Configure OAuth Redirect URI
+
+Add this redirect URI to your Google Cloud Console OAuth credentials:
+```
+https://your-app-name.fly.dev/auth/google/callback
+```
+
+#### Step 6: Deploy
+
+```bash
+fly deploy
+```
+
+The first deploy will automatically run database migrations. Watch the logs:
+```bash
+fly logs
+```
+
+#### Step 7: Verify Deployment
+
+```bash
+# Check health
+curl https://your-app-name.fly.dev/health
+
+# Check app status
+fly status --app your-app-name
+```
+
+### Troubleshooting Fly.io Deployments
+
+**Database connection issues:**
+```bash
+# Verify DATABASE_URL is set
+fly secrets list --app your-app-name | grep DATABASE
+
+# Check if postgres is attached
+fly postgres list
+
+# Manually check database connectivity
+fly ssh console --app your-app-name -C "python -c \"from src.core.database.db_config import get_db_connection; print(get_db_connection())\""
+```
+
+**Migrations not running:**
+
+Migrations run automatically on startup. If you need to run them manually:
+```bash
+fly ssh console --app your-app-name -C "cd /app && python scripts/ops/migrate.py"
+```
+
+**Super admin access not working:**
+
+1. Verify the secret is set correctly:
    ```bash
-   fly apps create adcp-sales-agent
+   fly ssh console --app your-app-name -C "echo \$SUPER_ADMIN_EMAILS"
    ```
 
-2. **Create PostgreSQL cluster:**
+2. Check format (must be comma-separated, no spaces around commas):
+   - Correct: `user1@example.com,user2@example.com`
+   - Wrong: `["user1@example.com", "user2@example.com"]`
+   - Wrong: `user1@example.com, user2@example.com` (spaces)
+
+3. Restart to pick up secret changes:
    ```bash
-   fly postgres create --name adcp-db \
-     --region iad \
-     --initial-cluster-size 1 \
-     --vm-size shared-cpu-1x \
-     --volume-size 10
-
-   fly postgres attach adcp-db --app adcp-sales-agent
+   fly apps restart your-app-name
    ```
 
-3. **Create persistent volume:**
-   ```bash
-   fly volumes create adcp_data --region iad --size 1
-   ```
-
-4. **Set secrets:**
-   ```bash
-   # OAuth configuration
-   fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
-   fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
-
-   # Admin configuration
-   fly secrets set SUPER_ADMIN_EMAILS="admin@example.com"
-   fly secrets set SUPER_ADMIN_DOMAINS="example.com"
-
-   # API keys
-   fly secrets set GEMINI_API_KEY="your-gemini-api-key"
-   ```
-
-5. **Configure OAuth redirect URI:**
-
-   Add to Google Cloud Console:
-   ```
-   https://adcp-sales-agent.fly.dev/auth/google/callback
-   ```
-
-6. **Deploy:**
-   ```bash
-   fly deploy
-   ```
-
-7. **Initialize database (first time only):**
-   ```bash
-   fly ssh console -C "cd /app && python init_database.py"
-   ```
+**Force restart after configuration changes:**
+```bash
+fly apps restart your-app-name
+```
 
 ### Fly.io Configuration Files
 
 - `fly.toml` - Main application configuration
-- `Dockerfile.fly` - Optimized Docker image for Fly.io
-- `fly-proxy.py` - Request routing proxy
-- `debug_start.sh` - Service startup script
+- `Dockerfile` - Docker image with integrated nginx and supercronic
+- `scripts/deploy/run_all_services.py` - Service orchestration script
 
 ### Monitoring on Fly.io
 
@@ -317,17 +427,15 @@ DATABASE_URL=postgresql://user:pass@host:5432/dbname
 
 ### Database Configuration
 
-#### PostgreSQL (Production)
+#### PostgreSQL (Required)
+
+PostgreSQL is required for all deployments. SQLite is not supported.
+
 ```bash
 DATABASE_URL=postgresql://user:password@host:5432/dbname
-DB_TYPE=postgresql
 ```
 
-#### SQLite (Development Only)
-```bash
-DATABASE_URL=sqlite:///adcp_local.db
-DB_TYPE=sqlite
-```
+Docker Compose handles database setup automatically. For other deployments, create a PostgreSQL database and set the connection URL.
 
 ## Tenant Management
 
@@ -335,7 +443,7 @@ DB_TYPE=sqlite
 
 ```bash
 # Docker deployment
-docker-compose exec adcp-server python -m scripts.setup.setup_tenant \
+docker compose exec adcp-server python -m scripts.setup.setup_tenant \
   "Publisher Name" \
   --adapter google_ad_manager \
   --gam-network-code 123456 \
@@ -347,7 +455,7 @@ fly ssh console -C "python -m scripts.setup.setup_tenant 'Publisher Name' \
   --gam-network-code 123456"
 
 # Mock adapter for testing
-docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publisher" --adapter mock
+docker compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publisher" --adapter mock
 ```
 
 ### Managing Principals (Advertisers)
@@ -382,10 +490,10 @@ uv run alembic downgrade -1
 
 ### Migration Best Practices
 
-1. Always test on both SQLite and PostgreSQL
+1. Test migrations on a fresh database before deploying
 2. Use SQLAlchemy operations for compatibility
 3. Include proper downgrade logic
-4. Test with fresh database before deploying
+4. Backup production database before running migrations
 
 ## Health Monitoring
 
@@ -399,7 +507,7 @@ curl http://localhost:8080/health
 curl http://localhost:8001/health
 
 # PostgreSQL health (Docker)
-docker-compose exec postgres pg_isready
+docker compose exec postgres pg_isready
 ```
 
 ### Monitoring Metrics
@@ -454,7 +562,7 @@ server {
 #### PostgreSQL Backup
 ```bash
 # Docker
-docker-compose exec postgres \
+docker compose exec postgres \
   pg_dump -U adcp_user adcp > backup_$(date +%Y%m%d).sql
 
 # Fly.io
@@ -464,7 +572,7 @@ fly postgres backup create --app adcp-db
 #### PostgreSQL Restore
 ```bash
 # Docker
-docker-compose exec -T postgres \
+docker compose exec -T postgres \
   psql -U adcp_user adcp < backup.sql
 
 # Fly.io
@@ -510,12 +618,12 @@ docker network inspect salesagent_default
 #### Container Won't Start
 ```bash
 # Check logs
-docker-compose logs adcp-server
+docker compose logs adcp-server
 
 # Rebuild from scratch
-docker-compose down -v
-docker-compose build --no-cache
-docker-compose up
+docker compose down -v
+docker compose build --no-cache
+docker compose up
 ```
 
 ### Debug Mode
@@ -523,37 +631,36 @@ docker-compose up
 Enable debug logging:
 ```bash
 # Docker
-DEBUG=true docker-compose up
+DEBUG=true docker compose up
 
 # Fly.io
 fly secrets set DEBUG=true
 ```
 
-## Migration from Single-Tenant
+## Migration from Older Versions
 
-If migrating from an older single-tenant version:
+If migrating from an older version:
 
 1. **Backup existing data:**
    ```bash
-   cp adcp.db adcp_backup.db
-   sqlite3 adcp.db .dump > backup.sql
+   docker compose exec postgres pg_dump -U adcp_user adcp > backup.sql
    ```
 
 2. **Update code:**
    ```bash
    git pull
-   uv sync
+   docker compose pull  # Get latest images
    ```
 
 3. **Run migration:**
    ```bash
-   uv run python migrate.py
+   docker compose up -d  # Migrations run automatically on startup
    ```
 
 The system will automatically:
-- Create a default tenant from existing config
-- Migrate data to multi-tenant schema
-- Generate authentication tokens
+- Run pending database migrations
+- Create default tenant in single-tenant mode
+- Update schema as needed
 
 ## Performance Tuning
 
@@ -657,24 +764,15 @@ To enable maintenance mode:
 
 ```bash
 # Full backup
-docker-compose exec postgres pg_dump -U adcp_user adcp > backup.sql
+docker compose exec postgres pg_dump -U adcp_user adcp > backup.sql
 
 # Compressed backup
-docker-compose exec postgres pg_dump -U adcp_user adcp | gzip > backup.sql.gz
+docker compose exec postgres pg_dump -U adcp_user adcp | gzip > backup.sql.gz
 
 # Restore
-docker-compose exec -T postgres psql -U adcp_user adcp < backup.sql
+docker compose exec -T postgres psql -U adcp_user adcp < backup.sql
 ```
 
-### SQLite Backup
-
-```bash
-# Simple copy
-cp adcp_local.db backup.db
-
-# With active connections
-sqlite3 adcp_local.db ".backup backup.db"
-```
 
 ## Production Considerations
 
@@ -804,7 +902,7 @@ sqlite3 adcp_local.db ".backup backup.db"
 1. **System requirements:**
    ```bash
    # Ubuntu/Debian
-   sudo apt install python3.11 python3-pip postgresql nginx
+   sudo apt install python3.12 python3-pip postgresql nginx
 
    # Install uv (Python package manager)
    curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -875,8 +973,8 @@ We're here to support your deployment approach:
 4. **Contribute back** - Add deployment guides for your platform
 
 **Common requirements across all platforms:**
-- Python 3.11+ (if not using Docker)
-- PostgreSQL (production) or SQLite (dev/testing)
+- Python 3.12+ (if not using Docker)
+- PostgreSQL (required for all deployments)
 - Environment variables for configuration
 - HTTPS/SSL for production
 - Health check endpoint at `/health`
