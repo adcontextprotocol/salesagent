@@ -11,18 +11,19 @@
       "required": true,
       "order": 2
     },
-    "OAUTH_DISCOVERY_URL": {
-      "description": "OIDC discovery URL for login (e.g., https://accounts.google.com/.well-known/openid-configuration)",
-      "required": false,
+    "OAUTH_CLIENT_ID": {
+      "description": "OAuth Client ID (create at https://console.cloud.google.com/apis/credentials)",
+      "required": true,
       "order": 3
     },
-    "OAUTH_CLIENT_ID": {
-      "description": "OAuth Client ID from your identity provider",
-      "required": false,
+    "OAUTH_CLIENT_SECRET": {
+      "description": "OAuth Client Secret",
+      "required": true,
       "order": 4
     },
-    "OAUTH_CLIENT_SECRET": {
-      "description": "OAuth Client Secret from your identity provider",
+    "OAUTH_DISCOVERY_URL": {
+      "description": "OIDC discovery URL (defaults to Google if not set)",
+      "value": "https://accounts.google.com/.well-known/openid-configuration",
       "required": false,
       "order": 5
     }
