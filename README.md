@@ -45,10 +45,20 @@ This creates a demo tenant with mock data for testing. For production, see the [
 
 ## Publisher Deployment
 
-Publishers deploy their own sales agent on cloud platforms like Fly.io, Cloud Run, or similar. The [Quickstart Guide](docs/quickstart.md) covers:
+Publishers deploy their own sales agent on cloud platforms like Fly.io, Cloud Run, or similar.
+
+### One-Click Deploy to Google Cloud Run
+
+[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run?git_repo=https://github.com/adcontextprotocol/salesagent)
+
+> **Prerequisites:** You'll need a Cloud SQL PostgreSQL instance. [Create one here](https://console.cloud.google.com/sql).
+
+### Other Platforms
+
+The [Quickstart Guide](docs/quickstart.md) covers:
 
 - **Fly.io** - Simple deployment with managed PostgreSQL
-- **Google Cloud Run** - Serverless with Cloud SQL
+- **Google Cloud Run** - Manual setup with Cloud SQL
 - **Docker** - Any platform that runs containers
 
 After deployment, configure via the Admin UI:

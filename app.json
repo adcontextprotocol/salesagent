@@ -1,0 +1,50 @@
+{
+  "name": "adcp-sales-agent",
+  "env": {
+    "DATABASE_URL": {
+      "description": "PostgreSQL connection string (e.g., postgresql://user:pass@host:5432/db). Create a Cloud SQL instance first: https://console.cloud.google.com/sql",
+      "required": true,
+      "order": 1
+    },
+    "SUPER_ADMIN_EMAILS": {
+      "description": "Comma-separated list of email addresses for super admin access",
+      "required": true,
+      "order": 2
+    },
+    "GEMINI_API_KEY": {
+      "description": "Google Gemini API key for AI-powered features (optional but recommended). Get one at: https://aistudio.google.com/apikey",
+      "required": false,
+      "order": 3
+    },
+    "GOOGLE_CLIENT_ID": {
+      "description": "Google OAuth Client ID for login (optional - enables Google SSO)",
+      "required": false,
+      "order": 4
+    },
+    "GOOGLE_CLIENT_SECRET": {
+      "description": "Google OAuth Client Secret",
+      "required": false,
+      "order": 5
+    },
+    "ENCRYPTION_KEY": {
+      "description": "Encryption key for sensitive data (auto-generated if not provided)",
+      "generator": "secret",
+      "required": false,
+      "order": 6
+    }
+  },
+  "options": {
+    "allow-unauthenticated": true,
+    "memory": "1Gi",
+    "cpu": "1",
+    "port": 8000,
+    "max-instances": 10
+  },
+  "hooks": {
+    "postcreate": {
+      "commands": [
+        "echo 'AdCP Sales Agent deployed! Database migrations will run on first startup.'"
+      ]
+    }
+  }
+}
