@@ -66,7 +66,11 @@ class DeliveryWebhookScheduler:
             logger.info("Delivery webhook scheduler stopped")
 
     async def _run_scheduler(self) -> None:
-        """Main scheduler loop - runs on a fixed hourly cadence."""
+        """Main scheduler loop - runs on a fixed hourly cadence.
+
+        Sends immediately on startup (duplicate check prevents re-sending if
+        already sent in last 24 hours), then continues on hourly cadence.
+        """
         while self.is_running:
             try:
                 await self._send_reports()
@@ -75,7 +79,7 @@ class DeliveryWebhookScheduler:
             except Exception as e:
                 logger.error(f"Error in delivery webhook scheduler: {e}", exc_info=True)
             finally:
-                # Wait 1 hour before next batch, even if there was an error
+                # Wait before next batch
                 await asyncio.sleep(SLEEP_INTERVAL_SECONDS)
 
     async def _send_reports(self) -> None:
