@@ -46,12 +46,15 @@ class TestCreateMediaBuyV24Format:
             now = datetime.now(UTC)
 
             # Create tenant
+            # Note: human_review_required=False ensures media buy runs immediately
+            # rather than going to approval workflow (needed for testing serialization)
             tenant = ModelTenant(
                 tenant_id="test_tenant_v24",
                 name="Test V24 Tenant",
                 subdomain="testv24",
                 ad_server="mock",
                 is_active=True,
+                human_review_required=False,
                 created_at=now,
                 updated_at=now,
                 # Required: Access control configuration (will be updated by add_required_setup_data)
@@ -149,6 +152,7 @@ class TestCreateMediaBuyV24Format:
                     "name": "Test V24 Tenant",
                     "ad_server": "mock",
                     "auto_approve_format_ids": ["display_300x250"],
+                    "human_review_required": False,
                 }
             )
 
