@@ -3,6 +3,7 @@
 import logging
 
 from fastmcp.server.context import Context
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.auth import get_principal_from_context
 from src.core.config_loader import set_current_tenant
@@ -32,8 +33,9 @@ def get_principal_id_from_context(context: Context | ToolContext | None) -> str 
             from src.core.config_loader import get_tenant_by_id
 
             tenant = get_tenant_by_id(context.tenant_id)
-        except Exception as e:
-            # Database not available (e.g., in unit tests) - fall back to minimal tenant
+        except (SQLAlchemyError, RuntimeError) as e:
+            # Database not available (e.g., in unit tests where RuntimeError is raised,
+            # or connection errors as SQLAlchemyError) - fall back to minimal tenant
             logger.debug(f"Could not load tenant from database: {e}")
 
         if tenant:

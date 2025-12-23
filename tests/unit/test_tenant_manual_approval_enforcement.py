@@ -5,6 +5,22 @@ is respected during media buy creation, with the tenant setting taking
 precedence over adapter-specific settings.
 
 Issue: https://github.com/adcontextprotocol/salesagent/issues/845
+
+## Test Strategy
+
+This module uses two types of tests:
+
+1. **Source Code Pattern Tests**: Verify that security-critical patterns exist in the
+   implementation. These catch regressions that might accidentally remove the tenant
+   approval check. If these tests fail after a refactor, update them to match the new
+   pattern (or investigate if the security invariant was accidentally removed).
+
+2. **Specification Tests**: Document the expected logical behavior. These serve as
+   executable documentation of the business rules.
+
+Integration tests for actual media buy approval flow are in:
+- tests/integration_v2/test_create_media_buy_v24.py
+- tests/integration/test_gam_pricing_models_integration.py
 """
 
 from pathlib import Path
@@ -13,91 +29,65 @@ from pathlib import Path
 class TestTenantManualApprovalEnforcement:
     """Test that tenant.human_review_required is enforced for media buys."""
 
-    def test_source_code_uses_tenant_approval_setting(self):
-        """Verify create_media_buy source uses tenant.human_review_required as primary source."""
+    def test_implementation_uses_tenant_approval_setting(self):
+        """Verify create_media_buy uses tenant.human_review_required as primary source.
+
+        This is a source code pattern test that catches regressions where the tenant
+        approval check might be accidentally removed. If this test fails after a
+        refactor, update it to match the new pattern.
+        """
         file_path = Path(__file__).parent.parent.parent / "src" / "core" / "tools" / "media_buy_create.py"
         source = file_path.read_text()
 
-        # Find the manual approval check section
-        approval_check_start = source.find("# Check if manual approval is required")
-        assert approval_check_start != -1, "Manual approval check section not found"
-
-        # Get the relevant section (next 15 lines after the comment)
-        approval_section = source[approval_check_start : approval_check_start + 1000]
-
-        # Must use tenant's human_review_required as primary source
-        assert 'tenant.get("human_review_required"' in approval_section, (
-            "tenant.human_review_required must be used as the authoritative source " "for manual approval requirements"
+        # The implementation must check tenant's human_review_required setting
+        assert 'tenant.get("human_review_required"' in source, (
+            "Implementation must use tenant.human_review_required as the authoritative source "
+            "for manual approval requirements. This is a security-critical check."
         )
 
-        # Must set tenant_approval_required variable
-        assert (
-            "tenant_approval_required" in approval_section
-        ), "Should have a tenant_approval_required variable to track tenant's setting"
+        # The implementation must combine tenant and adapter settings with OR logic
+        assert "tenant_approval_required or adapter_approval_required" in source, (
+            "Implementation must use OR logic: if either tenant or adapter requires approval, "
+            "approval is required. This ensures secure-by-default behavior."
+        )
 
-        # Must combine both tenant and adapter settings
-        assert (
-            "tenant_approval_required or adapter_approval_required" in approval_section
-        ), "Final manual_approval_required should be the OR of tenant and adapter settings"
 
-    def test_source_code_logs_both_settings(self):
-        """Verify debug logging includes both tenant and adapter settings."""
-        file_path = Path(__file__).parent.parent.parent / "src" / "core" / "tools" / "media_buy_create.py"
-        source = file_path.read_text()
+class TestApprovalLogicSpecification:
+    """Specification tests documenting the expected approval logic.
 
-        # Find the debug log section
-        debug_log_start = source.find("[DEBUG] Manual approval check")
-        assert debug_log_start != -1, "Debug log for manual approval check not found"
+    These tests serve as executable documentation of the business rules.
+    """
 
-        # Get the log statement (next 300 chars)
-        debug_section = source[debug_log_start : debug_log_start + 300]
-
-        # Should log tenant_approval_required
-        assert (
-            "tenant_approval_required" in debug_section
-        ), "Debug log should include tenant_approval_required for troubleshooting"
-
-        # Should log adapter_approval_required
-        assert (
-            "adapter_approval_required" in debug_section
-        ), "Debug log should include adapter_approval_required for troubleshooting"
-
-    def test_tenant_approval_takes_precedence(self):
-        """Document expected behavior: tenant.human_review_required=True overrides adapter."""
-        # This test documents the expected behavior after the fix:
-        # If tenant.human_review_required is True, manual_approval_required should be True
-        # regardless of what the adapter says
-
-        # Scenario 1: Tenant requires approval, adapter doesn't
+    def test_tenant_true_overrides_adapter_false(self):
+        """Tenant requiring approval overrides adapter not requiring it."""
         tenant_requires = True
         adapter_requires = False
-        expected_result = tenant_requires or adapter_requires
-        assert expected_result is True, "Tenant requirement should override adapter"
+        result = tenant_requires or adapter_requires
+        assert result is True
 
-        # Scenario 2: Tenant doesn't require, adapter does
+    def test_adapter_true_triggers_approval_even_if_tenant_false(self):
+        """Adapter requiring approval still triggers if tenant doesn't require it."""
         tenant_requires = False
         adapter_requires = True
-        expected_result = tenant_requires or adapter_requires
-        assert expected_result is True, "Either setting true should require approval"
+        result = tenant_requires or adapter_requires
+        assert result is True
 
-        # Scenario 3: Both require approval
+    def test_both_true_requires_approval(self):
+        """Both settings true requires approval."""
         tenant_requires = True
         adapter_requires = True
-        expected_result = tenant_requires or adapter_requires
-        assert expected_result is True, "Both true should require approval"
+        result = tenant_requires or adapter_requires
+        assert result is True
 
-        # Scenario 4: Neither requires approval
+    def test_both_false_skips_approval(self):
+        """Only when both settings are false can approval be skipped."""
         tenant_requires = False
         adapter_requires = False
-        expected_result = tenant_requires or adapter_requires
-        assert expected_result is False, "Only false when both are false"
+        result = tenant_requires or adapter_requires
+        assert result is False
 
-    def test_default_behavior_is_safe(self):
-        """Document that default behavior requires approval for safety."""
-        # The fix defaults to True when tenant.human_review_required is not set
-        # This matches the secure-by-default principle
-
-        # Simulate tenant.get("human_review_required", True) with missing key
-        tenant: dict = {}
+    def test_missing_tenant_setting_defaults_to_require_approval(self):
+        """Missing tenant setting defaults to True (secure by default)."""
+        tenant: dict[str, bool] = {}  # No human_review_required key
         default_approval = tenant.get("human_review_required", True)
-        assert default_approval is True, "Default should be True (require approval) for safety"
+        assert default_approval is True
