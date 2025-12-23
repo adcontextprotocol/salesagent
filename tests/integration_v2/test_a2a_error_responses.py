@@ -64,12 +64,15 @@ class TestA2AErrorPropagation:
             session.commit()
 
             # Create tenant
+            # Note: human_review_required=False ensures media buy runs immediately
+            # rather than going to approval workflow (needed for response field tests)
             tenant = ModelTenant(
                 tenant_id="a2a_error_test",
                 name="A2A Error Test Tenant",
                 subdomain="a2aerror",
                 ad_server="mock",
                 is_active=True,
+                human_review_required=False,
                 created_at=now,
                 updated_at=now,
             )
@@ -292,9 +295,9 @@ class TestA2AErrorPropagation:
 
             # CRITICAL ASSERTIONS: Success response
             assert artifact_data["success"] is True, "success must be True for successful operation"
-            assert artifact_data.get("errors") is None or len(artifact_data.get("errors", [])) == 0, (
-                "errors field must be None or empty array for success"
-            )
+            assert (
+                artifact_data.get("errors") is None or len(artifact_data.get("errors", [])) == 0
+            ), "errors field must be None or empty array for success"
             assert "media_buy_id" in artifact_data, "Success response must include media_buy_id"
             assert artifact_data["media_buy_id"] is not None, "media_buy_id must not be None for success"
 
