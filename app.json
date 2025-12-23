@@ -11,26 +11,20 @@
       "required": true,
       "order": 2
     },
-    "GEMINI_API_KEY": {
-      "description": "Google Gemini API key for AI-powered features (optional but recommended). Get one at: https://aistudio.google.com/apikey",
+    "OAUTH_DISCOVERY_URL": {
+      "description": "OIDC discovery URL for login (e.g., https://accounts.google.com/.well-known/openid-configuration)",
       "required": false,
       "order": 3
     },
-    "GOOGLE_CLIENT_ID": {
-      "description": "Google OAuth Client ID for login (optional - enables Google SSO)",
+    "OAUTH_CLIENT_ID": {
+      "description": "OAuth Client ID from your identity provider",
       "required": false,
       "order": 4
     },
-    "GOOGLE_CLIENT_SECRET": {
-      "description": "Google OAuth Client Secret",
+    "OAUTH_CLIENT_SECRET": {
+      "description": "OAuth Client Secret from your identity provider",
       "required": false,
       "order": 5
-    },
-    "ENCRYPTION_KEY": {
-      "description": "Encryption key for sensitive data (auto-generated if not provided)",
-      "generator": "secret",
-      "required": false,
-      "order": 6
     }
   },
   "options": {
@@ -43,7 +37,7 @@
   "hooks": {
     "postcreate": {
       "commands": [
-        "echo 'AdCP Sales Agent deployed! Database migrations will run on first startup.'"
+        "echo 'AdCP Sales Agent deployed! Configure Gemini API key and other settings in Admin UI.'"
       ]
     }
   }
