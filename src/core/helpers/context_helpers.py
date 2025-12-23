@@ -1,10 +1,14 @@
 """Context extraction helpers for MCP tools."""
 
+import logging
+
 from fastmcp.server.context import Context
 
 from src.core.auth import get_principal_from_context
 from src.core.config_loader import set_current_tenant
 from src.core.tool_context import ToolContext
+
+logger = logging.getLogger(__name__)
 
 
 def get_principal_id_from_context(context: Context | ToolContext | None) -> str | None:
@@ -22,8 +26,21 @@ def get_principal_id_from_context(context: Context | ToolContext | None) -> str 
     """
     # Handle ToolContext (from A2A server) - it already has principal_id and tenant_id
     if isinstance(context, ToolContext):
-        # Set tenant context from ToolContext
-        set_current_tenant({"tenant_id": context.tenant_id})
+        # Try to load full tenant from database to get all fields (human_review_required, etc.)
+        tenant = None
+        try:
+            from src.core.config_loader import get_tenant_by_id
+
+            tenant = get_tenant_by_id(context.tenant_id)
+        except Exception as e:
+            # Database not available (e.g., in unit tests) - fall back to minimal tenant
+            logger.debug(f"Could not load tenant from database: {e}")
+
+        if tenant:
+            set_current_tenant(tenant)
+        else:
+            # Fallback to minimal tenant dict if not found in database or DB unavailable
+            set_current_tenant({"tenant_id": context.tenant_id})
         return context.principal_id
 
     # Handle FastMCP Context (from MCP protocol)
