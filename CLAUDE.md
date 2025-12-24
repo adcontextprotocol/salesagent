@@ -32,6 +32,19 @@ This guide helps you work effectively with the AdCP sales agent codebase. Key pr
 - ❌ Don't bypass pre-commit hooks without good reason
 - ❌ Don't skip tests to make CI pass (fix the underlying issue)
 
+### Commit Messages & PR Titles
+**Use Conventional Commits format** - release-please uses this to generate changelogs.
+
+PR titles should use one of these prefixes:
+- `feat: Add new feature` - New functionality (appears in "Features" section)
+- `fix: Fix bug description` - Bug fixes (appears in "Bug Fixes" section)
+- `docs: Update documentation` - Documentation changes
+- `refactor: Restructure code` - Code refactoring (appears in "Code Refactoring" section)
+- `perf: Improve performance` - Performance improvements
+- `chore: Update dependencies` - Maintenance tasks (hidden from changelog)
+
+**Without a prefix, commits won't appear in release notes!** The code will still be released, but the change won't be documented in the changelog.
+
 ---
 
 ## 🚨 Critical Architecture Patterns
