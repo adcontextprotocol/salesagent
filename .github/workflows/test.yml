@@ -25,9 +25,9 @@ jobs:
         python-version: ${{ env.PYTHON_VERSION }}
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: ${{ env.UV_VERSION }}
 
     - name: Cache uv dependencies
       uses: actions/cache@v4
@@ -38,18 +38,14 @@ jobs:
         key: ${{ runner.os }}-uv-v2-${{ hashFiles('**/uv.lock') }}
 
     - name: Install dependencies
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv sync --extra dev
+      run: uv sync --extra dev
 
     - name: Run smoke tests
       env:
         GEMINI_API_KEY: test_key
         PYTEST_CURRENT_TEST: true
         ADCP_TESTING: true
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv run pytest tests/smoke/ -v --tb=short
+      run: uv run pytest tests/smoke/ -v --tb=short
 
     - name: Check for skipped tests
       run: |
@@ -72,9 +68,9 @@ jobs:
         python-version: ${{ env.PYTHON_VERSION }}
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: ${{ env.UV_VERSION }}
 
     - name: Cache uv dependencies
       uses: actions/cache@v4
@@ -85,9 +81,7 @@ jobs:
         key: ${{ runner.os }}-uv-v2-${{ hashFiles('**/uv.lock') }}
 
     - name: Install dependencies
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv sync --extra dev
+      run: uv sync --extra dev
 
     - name: Run unit tests
       env:
@@ -96,9 +90,7 @@ jobs:
         GOOGLE_CLIENT_SECRET: test_client_secret
         SUPER_ADMIN_EMAILS: test@example.com
         ADCP_TESTING: true
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv run pytest tests/unit/ -v --tb=short --cov=. --cov-report=term-missing
+      run: uv run pytest tests/unit/ -v --tb=short --cov=. --cov-report=term-missing
 
   integration-tests:
     name: Integration Tests (Legacy - 174 passing)
@@ -129,9 +121,9 @@ jobs:
         python-version: ${{ env.PYTHON_VERSION }}
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: ${{ env.UV_VERSION }}
 
     - name: Cache uv dependencies
       uses: actions/cache@v4
@@ -143,7 +135,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
         uv sync --extra dev
         # Clear Python bytecode cache to prevent stale imports
         find . -type d -name __pycache__ -exec rm -rf {} + || true
@@ -152,9 +143,7 @@ jobs:
     - name: Run database migrations
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv run python scripts/ops/migrate.py
+      run: uv run python scripts/ops/migrate.py
 
     - name: Run integration tests
       env:
@@ -166,7 +155,6 @@ jobs:
         ENCRYPTION_KEY: PEg0SNGQyvzi4Nft-ForSzK8AGXyhRtql1MgoUsfUHk=
         ADCP_TESTING: true
       run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
         uv run pytest tests/integration/ -v --tb=short --cov=. --cov-report=term-missing --timeout=60 -m "not requires_server and not skip_ci" \
           --ignore=tests/integration/test_a2a_error_responses.py \
           --ignore=tests/integration/test_a2a_skill_invocation.py \
@@ -200,9 +188,9 @@ jobs:
         python-version: ${{ env.PYTHON_VERSION }}
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: ${{ env.UV_VERSION }}
 
     - name: Cache uv dependencies
       uses: actions/cache@v4
@@ -214,7 +202,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
         uv sync --extra dev
         # Clear Python bytecode cache to prevent stale imports
         find . -type d -name __pycache__ -exec rm -rf {} + || true
@@ -223,9 +210,7 @@ jobs:
     - name: Run database migrations
       env:
         DATABASE_URL: postgresql://adcp_user:test_password@localhost:5432/adcp_test_v2
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv run python scripts/ops/migrate.py
+      run: uv run python scripts/ops/migrate.py
 
     - name: Run integration V2 tests
       env:
@@ -236,9 +221,7 @@ jobs:
         SUPER_ADMIN_EMAILS: test@example.com
         ENCRYPTION_KEY: PEg0SNGQyvzi4Nft-ForSzK8AGXyhRtql1MgoUsfUHk=
         ADCP_TESTING: true
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv run pytest tests/integration_v2/ -v --tb=short --cov=. --cov-report=term-missing -m "not skip_ci"
+      run: uv run pytest tests/integration_v2/ -v --tb=short --cov=. --cov-report=term-missing -m "not skip_ci"
 
   e2e-tests:
     name: E2E Tests
@@ -256,9 +239,9 @@ jobs:
         python-version: ${{ env.PYTHON_VERSION }}
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: ${{ env.UV_VERSION }}
 
     - name: Cache uv dependencies
       uses: actions/cache@v4
@@ -269,9 +252,7 @@ jobs:
         key: ${{ runner.os }}-uv-v2-${{ hashFiles('**/uv.lock') }}
 
     - name: Install dependencies
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv sync --extra dev
+      run: uv sync --extra dev
 
     - name: Verify Docker Compose v2
       run: |
@@ -308,7 +289,6 @@ jobs:
         DOCKER_BUILDKIT: 1
         COMPOSE_DOCKER_CLI_BUILD: 1
       run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
         # Let pytest manage Docker Compose via conftest.py
         uv run pytest tests/e2e/ -v --tb=short --timeout=120
 
@@ -329,30 +309,23 @@ jobs:
         python-version: ${{ env.PYTHON_VERSION }}
 
     - name: Install uv
-      run: |
-        curl -LsSf https://astral.sh/uv/${{ env.UV_VERSION }}/install.sh | sh
-        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: ${{ env.UV_VERSION }}
 
     - name: Install dependencies
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv sync --extra dev
+      run: uv sync --extra dev
 
     - name: Run Ruff linter
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv run ruff check . --config pyproject.toml || true
+      run: uv run ruff check . --config pyproject.toml || true
       continue-on-error: true
 
     - name: Run Ruff formatter
-      run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
-        uv run ruff format . --check --config pyproject.toml || true
+      run: uv run ruff format . --check --config pyproject.toml || true
       continue-on-error: true
 
     - name: Run mypy type checking (ENFORCED - must pass)
       run: |
-        export PATH="$HOME/.cargo/bin:$PATH"
         echo "🔍 Running mypy type checks on src/ directory..."
         # Use uv to run mypy from the project's virtual environment
         uv run python -m mypy src/ --config-file=mypy.ini
