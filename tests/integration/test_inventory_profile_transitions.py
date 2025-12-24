@@ -161,6 +161,14 @@ class TestInventoryProfileTransitions:
                 "property_ids": ["custom_property"],
             }
         ]
+        # effective_properties adds selection_type when converting legacy format
+        expected_effective_properties = [
+            {
+                "publisher_domain": "custom-site.com",
+                "property_ids": ["custom_property"],
+                "selection_type": "by_id",
+            }
+        ]
 
         self.create_product(
             tenant_id=tenant,
@@ -182,7 +190,7 @@ class TestInventoryProfileTransitions:
             assert product.format_ids == custom_formats
             assert product.properties == custom_properties
             assert product.effective_format_ids == custom_formats
-            assert product.effective_properties == custom_properties
+            assert product.effective_properties == expected_effective_properties
 
             # Get profile data for comparison
             stmt = select(InventoryProfile).where(InventoryProfile.id == profile_a)
@@ -202,7 +210,7 @@ class TestInventoryProfileTransitions:
 
             # Assert effective_properties returns profile data
             assert product.effective_properties == profile_properties
-            assert product.effective_properties != custom_properties
+            assert product.effective_properties != expected_effective_properties
 
             # Assert custom data still exists in database (not deleted)
             assert product.format_ids == custom_formats
@@ -258,6 +266,14 @@ class TestInventoryProfileTransitions:
                     "property_ids": ["new_custom_property"],
                 }
             ]
+            # effective_properties adds selection_type when converting legacy format
+            expected_effective_properties = [
+                {
+                    "publisher_domain": "new-custom-site.com",
+                    "property_ids": ["new_custom_property"],
+                    "selection_type": "by_id",
+                }
+            ]
 
             product.format_ids = custom_formats
             product.properties = custom_properties
@@ -269,8 +285,8 @@ class TestInventoryProfileTransitions:
             # Assert effective_formats returns custom data
             assert product.effective_format_ids == custom_formats
 
-            # Assert effective_properties returns custom data
-            assert product.effective_properties == custom_properties
+            # Assert effective_properties returns custom data (with selection_type added)
+            assert product.effective_properties == expected_effective_properties
 
         # Cleanup
         with get_db_session() as session:

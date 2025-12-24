@@ -245,22 +245,25 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                     discovery_service = get_property_discovery_service()
 
                     for domain in verified_domains:
-                        try:
-                            # Try to fetch real properties from adagents.json
-                            property_stats = discovery_service.sync_properties_from_adagents_sync(
-                                tenant_id, publisher_domains=[domain], dry_run=False
-                            )
-                            properties_created += property_stats.get("properties_created", 0)
-                            properties_updated += property_stats.get("properties_updated", 0)
-                            tags_created += property_stats.get("tags_created", 0)
+                        # Try to fetch real properties from adagents.json
+                        property_stats = discovery_service.sync_properties_from_adagents_sync(
+                            tenant_id, publisher_domains=[domain], dry_run=False
+                        )
+                        domain_properties_created = property_stats.get("properties_created", 0)
+                        properties_created += domain_properties_created
+                        properties_updated += property_stats.get("properties_updated", 0)
+                        tags_created += property_stats.get("tags_created", 0)
+
+                        # Check if sync failed or created no properties
+                        # (errors list or 0 properties means adagents.json unavailable/empty)
+                        has_errors = bool(property_stats.get("errors", []))
+                        if has_errors or domain_properties_created == 0:
+                            # Create a fallback mock property for this domain
                             logger.info(
-                                f"Fetched real properties from {domain}: "
-                                f"{property_stats.get('properties_created', 0)} created"
+                                f"No properties from {domain} adagents.json "
+                                f"(errors: {has_errors}, created: {domain_properties_created}) - "
+                                f"creating fallback mock property"
                             )
-                        except Exception as e:
-                            # If adagents.json fetch fails, create a fallback mock property
-                            logger.warning(f"Could not fetch adagents.json from {domain}: {e}")
-                            logger.info(f"Creating fallback mock property for {domain}")
 
                             from src.core.database.models import AuthorizedProperty, PropertyTag
 
@@ -306,6 +309,10 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                                 fallback_properties += 1
 
                             session.commit()
+                        else:
+                            logger.info(
+                                f"Fetched real properties from {domain}: " f"{domain_properties_created} created"
+                            )
 
                 return jsonify(
                     {
