@@ -980,6 +980,22 @@ function generateA2ACode() {
     document.getElementById('a2a-code-output').textContent = code;
 }
 
+// Toggle token visibility between truncated and full
+function toggleTokenVisibility(button) {
+    const tokenDisplay = button.parentElement.querySelector('.token-display');
+    const isShowingFull = tokenDisplay.textContent === tokenDisplay.dataset.full;
+
+    if (isShowingFull) {
+        tokenDisplay.textContent = tokenDisplay.dataset.truncated;
+        button.textContent = '👁';
+        button.title = 'Show full token';
+    } else {
+        tokenDisplay.textContent = tokenDisplay.dataset.full;
+        button.textContent = '👁‍🗨';
+        button.title = 'Hide full token';
+    }
+}
+
 // Copy access token to clipboard
 function copyAccessToken(token) {
     const button = event.target.closest('button');
