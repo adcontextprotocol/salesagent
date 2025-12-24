@@ -603,6 +603,7 @@ def _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_d
                 "property_type": p.property_type,
                 "tags": p.tags or [],
                 "verification_status": p.verification_status,
+                "publisher_domain": p.publisher_domain,
             }
             for p in authorized_properties_query
         ]
@@ -1471,6 +1472,109 @@ def edit_product(tenant_id, product_id):
                     product.allowed_principal_ids = None
                 attributes.flag_modified(product, "allowed_principal_ids")
 
+                # Handle publisher properties (AdCP requirement)
+                property_mode = form_data.get("property_mode", "tags")
+                if property_mode == "tags":
+                    # Get selected property tags (format: "domain:tag")
+                    selected_tags = request.form.getlist("selected_property_tags")
+                    if selected_tags:
+                        import re
+                        from collections import defaultdict
+
+                        tags_by_domain: dict[str, list[str]] = defaultdict(list)
+                        tag_pattern = re.compile(r"^[a-z0-9_]+$")
+
+                        for selection in selected_tags:
+                            if ":" in selection:
+                                domain, tag = selection.split(":", 1)
+                                if tag_pattern.match(tag) and tag not in tags_by_domain[domain]:
+                                    tags_by_domain[domain].append(tag)
+
+                        # Build AdCP discriminated union format
+                        publisher_properties = []
+                        for domain, tags in tags_by_domain.items():
+                            publisher_properties.append(
+                                {
+                                    "publisher_domain": domain,
+                                    "property_tags": tags,
+                                    "selection_type": "by_tag",
+                                }
+                            )
+
+                        if publisher_properties:
+                            product.properties = publisher_properties
+                            product.property_tags = None
+                            product.property_ids = None
+                            attributes.flag_modified(product, "properties")
+
+                elif property_mode == "property_ids":
+                    # Get selected property IDs
+                    property_ids_list = request.form.getlist("selected_property_ids")
+                    if property_ids_list:
+                        from collections import defaultdict
+
+                        from src.core.database.models import AuthorizedProperty
+
+                        # Query properties to get their publisher_domain
+                        properties = db_session.scalars(
+                            select(AuthorizedProperty).filter(
+                                AuthorizedProperty.property_id.in_(property_ids_list),
+                                AuthorizedProperty.tenant_id == tenant_id,
+                            )
+                        ).all()
+
+                        # Group by publisher_domain
+                        properties_by_domain: dict[str, list[str]] = defaultdict(list)
+                        for prop in properties:
+                            properties_by_domain[prop.publisher_domain].append(prop.property_id)
+
+                        # Build AdCP discriminated union format
+                        publisher_properties = []
+                        for domain, prop_ids in properties_by_domain.items():
+                            publisher_properties.append(
+                                {
+                                    "publisher_domain": domain,
+                                    "property_ids": prop_ids,
+                                    "selection_type": "by_id",
+                                }
+                            )
+
+                        if publisher_properties:
+                            product.properties = publisher_properties
+                            product.property_tags = None
+                            product.property_ids = None
+                            attributes.flag_modified(product, "properties")
+
+                elif property_mode == "full":
+                    # Get selected full property IDs (legacy mode)
+                    property_ids_list = request.form.getlist("full_property_ids")
+                    if property_ids_list:
+                        from src.core.database.models import AuthorizedProperty
+
+                        properties = db_session.scalars(
+                            select(AuthorizedProperty).filter(
+                                AuthorizedProperty.property_id.in_(property_ids_list),
+                                AuthorizedProperty.tenant_id == tenant_id,
+                            )
+                        ).all()
+
+                        if properties:
+                            properties_data = []
+                            for prop in properties:
+                                prop_dict = {
+                                    "property_type": prop.property_type,
+                                    "name": prop.name,
+                                    "identifiers": prop.identifiers or [],
+                                    "tags": prop.tags or [],
+                                    "publisher_domain": prop.publisher_domain,
+                                }
+                                properties_data.append(prop_dict)
+
+                            product.properties = properties_data
+                            product.property_tags = None
+                            product.property_ids = None
+                            attributes.flag_modified(product, "properties")
+
                 # Get pricing based on line item type (GAM form) or delivery type (other adapters)
                 line_item_type = form_data.get("line_item_type")
 
@@ -1851,6 +1955,27 @@ def edit_product(tenant_id, product_id):
             ).all()
             principals_list = [{"principal_id": p.principal_id, "name": p.name} for p in principals]
 
+            # Get authorized properties for publisher properties selector
+            from src.core.database.models import AuthorizedProperty
+
+            authorized_properties_query = db_session.scalars(
+                select(AuthorizedProperty).filter_by(tenant_id=tenant_id).order_by(AuthorizedProperty.name)
+            ).all()
+            authorized_properties_list = [
+                {
+                    "property_id": p.property_id,
+                    "name": p.name,
+                    "property_type": p.property_type,
+                    "tags": p.tags or [],
+                    "verification_status": p.verification_status,
+                    "publisher_domain": p.publisher_domain,
+                }
+                for p in authorized_properties_query
+            ]
+
+            # Get current publisher properties from product (for pre-selecting in edit form)
+            selected_publisher_properties = product.effective_properties
+
             # Show adapter-specific form
             if adapter_type == "google_ad_manager":
                 from src.core.database.models import GAMInventory
@@ -1936,6 +2061,8 @@ def edit_product(tenant_id, product_id):
                     assigned_inventory=assigned_inventory,
                     inventory_profiles=inventory_profiles,
                     principals=principals_list,
+                    authorized_properties=authorized_properties_list,
+                    selected_publisher_properties=selected_publisher_properties,
                 )
             else:
                 return render_template(
@@ -1945,6 +2072,8 @@ def edit_product(tenant_id, product_id):
                     tenant_adapter=adapter_type,
                     currencies=currencies,
                     principals=principals_list,
+                    authorized_properties=authorized_properties_list,
+                    selected_publisher_properties=selected_publisher_properties,
                 )
 
     except Exception as e:
