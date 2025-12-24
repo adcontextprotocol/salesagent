@@ -557,32 +557,18 @@
 
         <div id="property-ids-section" style="margin-top: 1rem; display: none;">
             <div class="form-group">
-                <label>Select Specific Properties *</label>
-                <small style="color: #666; display: block; margin-bottom: 0.5rem;">Select one or more properties from your authorized inventory.</small>
+                <label>Select Property IDs *</label>
+                <small style="color: #666; display: block; margin-bottom: 0.5rem;">Select property IDs from your authorized inventory.</small>
                 {% if authorized_properties and authorized_properties|length > 0 %}
                 <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 0.5rem; background: #fafafa;">
                     {% for prop in authorized_properties %}
-                    <label style="display: block; padding: 0.5rem; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s;"
-                           onmouseover="this.style.background='#f0f7ff'"
-                           onmouseout="this.style.background='transparent'">
-                        <input type="checkbox" name="selected_property_ids" value="{{ prop.property_id }}" style="margin-right: 0.5rem;">
-                        <strong>{{ prop.name or prop.property_id }}</strong>
-                        <span style="color: #666; font-size: 0.9em;">({{ prop.property_type }})</span>
-                        {% if prop.verification_status == 'verified' %}
-                        <span style="background: #c8e6c9; color: #2e7d32; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.25rem;">verified</span>
-                        {% elif prop.verification_status == 'pending' %}
-                        <span style="background: #fff3e0; color: #e65100; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.25rem;">pending</span>
-                        {% elif prop.verification_status == 'failed' %}
-                        <span style="background: #ffebee; color: #c62828; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.25rem;">failed</span>
-                        {% endif %}
-                        {% if prop.tags %}
-                        <div style="margin-left: 1.5rem; margin-top: 0.25rem;">
-                            {% for tag in prop.tags %}
-                            <span style="background: #e3f2fd; color: #1976d2; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.8em; margin-right: 0.25rem;">{{ tag }}</span>
-                            {% endfor %}
-                        </div>
-                        {% endif %}
-                    </label>
+                    <div style="display: flex; align-items: center; padding: 0.5rem; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s;"
+                         onmouseover="this.style.background='#f0f7ff'"
+                         onmouseout="this.style.background='transparent'">
+                        <input type="checkbox" name="selected_property_ids" value="{{ prop.property_id }}" id="prop_{{ prop.property_id }}" style="margin-right: 0.75rem; flex-shrink: 0; width: auto;">
+                        <code style="background: #e0e0e0; color: #333; padding: 0.2rem 0.5rem; border-radius: 3px; font-family: monospace; font-size: 0.9em;">{{ prop.property_id }}</code>
+                        <span style="color: #555; font-size: 0.85em; margin-left: 0.75rem;">{{ prop.name }}</span>
+                    </div>
                     {% endfor %}
                 </div>
                 {% else %}

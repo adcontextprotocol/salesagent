@@ -1350,6 +1350,7 @@ function renderPublishers(publishers) {
                         </div>
                         <div class="small text-muted">
                             <div><strong>Domain:</strong> ${pub.publisher_domain}</div>
+                            ${pub.property_count > 0 ? `<div><strong>Properties:</strong> ${pub.property_count} discovered</div>` : ''}
                             ${pub.last_synced_at ? `<div><strong>Last Synced:</strong> ${new Date(pub.last_synced_at).toLocaleString()}</div>` : ''}
                             ${pub.sync_error ? `<div class="text-danger"><strong>Error:</strong> ${pub.sync_error}</div>` : ''}
                         </div>
