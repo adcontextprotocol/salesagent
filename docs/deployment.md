@@ -847,11 +847,114 @@ docker compose exec -T postgres psql -U adcp_user adcp < backup.sql
 
 ### GCP Deployment
 
-**Option 1: Cloud Run**
-- Deploy Docker container directly
-- Serverless, auto-scaling
-- Cloud SQL for PostgreSQL
-- Cloud Load Balancing
+**Option 1: Cloud Run with Cloud SQL (Recommended)**
+
+The easiest way to deploy on GCP. Use the "Run on Google Cloud" button in the README, or follow these steps:
+
+#### Prerequisites
+1. [Google Cloud Project](https://console.cloud.google.com) with billing enabled
+2. [gcloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated
+
+#### Step 1: Create Cloud SQL Instance
+
+```bash
+# Create PostgreSQL instance
+gcloud sql instances create adcp-sales-agent \
+  --database-version=POSTGRES_15 \
+  --tier=db-f1-micro \
+  --region=us-central1 \
+  --root-password=YOUR_SECURE_PASSWORD
+
+# Create database
+gcloud sql databases create salesagent --instance=adcp-sales-agent
+```
+
+Or use the [Cloud SQL Console](https://console.cloud.google.com/sql).
+
+#### Step 2: Get Connection Details
+
+From Cloud SQL instance overview page, note:
+- **Public IP**: e.g., `34.46.58.47`
+- **Connection name**: e.g., `your-project:us-central1:adcp-sales-agent`
+
+#### Step 3: Configure Authorized Networks
+
+**For initial setup** (restrict in production):
+1. Go to Cloud SQL → Your Instance → **Connections**
+2. Click **Authorized networks** → **Add network**
+3. Add `0.0.0.0/0` (allows all IPs - restrict later)
+
+**For production**, use Cloud SQL Auth Proxy (see Option B below).
+
+#### Step 4: Deploy to Cloud Run
+
+**Option A: Public IP Connection (Simpler)**
+
+```bash
+# Build and push image
+gcloud builds submit --tag gcr.io/YOUR_PROJECT/adcp-sales-agent
+
+# Deploy with environment variables
+# URL-encode special characters in password: & -> %26, = -> %3D, * -> %2A, # -> %23
+gcloud run deploy adcp-sales-agent \
+  --image gcr.io/YOUR_PROJECT/adcp-sales-agent \
+  --region us-central1 \
+  --platform managed \
+  --allow-unauthenticated \
+  --memory 1Gi \
+  --port 8000 \
+  --set-env-vars="DATABASE_URL=postgresql://postgres:URL_ENCODED_PASS@PUBLIC_IP:5432/salesagent" \
+  --set-env-vars="SUPER_ADMIN_EMAILS=your-email@example.com" \
+  --set-env-vars="OAUTH_CLIENT_ID=your-client-id" \
+  --set-env-vars="OAUTH_CLIENT_SECRET=your-secret"
+```
+
+**Option B: Cloud SQL Connector (Recommended for Production)**
+
+More secure - no public IP exposure needed:
+
+```bash
+gcloud run deploy adcp-sales-agent \
+  --image gcr.io/YOUR_PROJECT/adcp-sales-agent \
+  --region us-central1 \
+  --platform managed \
+  --allow-unauthenticated \
+  --memory 1Gi \
+  --port 8000 \
+  --add-cloudsql-instances=YOUR_PROJECT:us-central1:adcp-sales-agent \
+  --set-env-vars="DATABASE_URL=postgresql://postgres:URL_ENCODED_PASS@/salesagent?host=/cloudsql/YOUR_PROJECT:us-central1:adcp-sales-agent" \
+  --set-env-vars="SUPER_ADMIN_EMAILS=your-email@example.com" \
+  --set-env-vars="OAUTH_CLIENT_ID=your-client-id" \
+  --set-env-vars="OAUTH_CLIENT_SECRET=your-secret"
+```
+
+#### Step 5: Configure OAuth Redirect
+
+Add this redirect URI to your [OAuth credentials](https://console.cloud.google.com/apis/credentials):
+```
+https://YOUR-SERVICE-URL.run.app/auth/google/callback
+```
+
+#### Troubleshooting Cloud Run
+
+**Database connection failed - "No such file or directory"**
+- DATABASE_URL is missing the host IP
+- Use format: `postgresql://user:pass@IP:5432/dbname`
+
+**Database connection refused**
+- Cloud SQL authorized networks not configured
+- Add Cloud Run's egress IP or use `0.0.0.0/0` for testing
+
+**Password authentication failed**
+- Special characters in password need URL encoding
+- `&` → `%26`, `=` → `%3D`, `*` → `%2A`, `#` → `%23`
+
+**Redeploy after fixing configuration:**
+```bash
+gcloud run services update adcp-sales-agent \
+  --region us-central1 \
+  --set-env-vars="DATABASE_URL=postgresql://..."
+```
 
 **Option 2: GKE (Kubernetes)**
 - Deploy using k8s manifests

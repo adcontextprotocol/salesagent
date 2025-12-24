@@ -2,7 +2,7 @@
   "name": "adcp-sales-agent",
   "env": {
     "DATABASE_URL": {
-      "description": "PostgreSQL connection string (e.g., postgresql://user:pass@host:5432/db). Create a Cloud SQL instance first: https://console.cloud.google.com/sql",
+      "description": "PostgreSQL URL. Format: postgresql://USER:PASS@IP:5432/postgres (URL-encode special chars: & -> %26, = -> %3D, * -> %2A, # -> %23). Get IP from Cloud SQL instance overview.",
       "required": true,
       "order": 1
     },
@@ -38,7 +38,16 @@
   "hooks": {
     "postcreate": {
       "commands": [
-        "echo 'AdCP Sales Agent deployed! Configure Gemini API key and other settings in Admin UI.'"
+        "echo ''",
+        "echo '=== IMPORTANT: Cloud SQL Setup Required ==='",
+        "echo ''",
+        "echo 'If deployment failed with database connection error:'",
+        "echo ''",
+        "echo '1. Go to Cloud SQL > Your Instance > Connections > Authorized networks'",
+        "echo '2. Add 0.0.0.0/0 (or restrict to Cloud Run egress IPs for production)'",
+        "echo '3. Redeploy: gcloud run services update adcp-sales-agent --region=REGION'",
+        "echo ''",
+        "echo 'AdCP Sales Agent deployed! Configure Gemini API key in Admin UI.'"
       ]
     }
   }

@@ -47,7 +47,19 @@ check_database_health() {
     echo "Checking if psycopg2 is available..."
     python -c "import psycopg2; print('✅ psycopg2 imported successfully')" || (echo "❌ psycopg2 not available"; exit 1)
     python -c "
-from src.core.database.db_config import get_db_connection
+from src.core.database.db_config import get_db_connection, DatabaseConfig
+import os
+
+# Show parsed connection info (without password)
+db_url = os.environ.get('DATABASE_URL', '')
+print(f'DATABASE_URL set: {bool(db_url)}')
+
+if db_url:
+    config = DatabaseConfig.get_db_config()
+    print(f'Parsed host: {config.get(\"host\", \"NOT SET\")}')
+    print(f'Parsed port: {config.get(\"port\", \"NOT SET\")}')
+    print(f'Parsed database: {config.get(\"database\", \"NOT SET\")}')
+
 try:
     conn = get_db_connection()
     cursor = conn.execute('SELECT 1')
@@ -55,7 +67,41 @@ try:
     conn.close()
     print('✅ Database connection successful')
 except Exception as e:
+    error_str = str(e)
     print(f'❌ Database connection failed: {e}')
+    print('')
+
+    # Provide specific guidance based on error
+    if 'No such file or directory' in error_str and '/var/run/postgresql' in error_str:
+        print('💡 This error means the DATABASE_URL is missing a host.')
+        print('')
+        print('   For Cloud Run with Cloud SQL, use one of these formats:')
+        print('')
+        print('   Option 1 - Public IP (simpler but less secure):')
+        print('     DATABASE_URL=postgresql://USER:PASS@IP_ADDRESS:5432/DATABASE')
+        print('     Example: postgresql://postgres:mypass@34.46.58.47:5432/postgres')
+        print('')
+        print('   Option 2 - Cloud SQL Connector (recommended):')
+        print('     1. Add Cloud SQL connection in Cloud Run service settings')
+        print('     2. Use: DATABASE_URL=postgresql://USER:PASS@/DATABASE?host=/cloudsql/PROJECT:REGION:INSTANCE')
+        print('')
+    elif 'could not connect to server' in error_str or 'Connection refused' in error_str:
+        print('💡 Database server is unreachable. Check:')
+        print('   - Is the IP address correct?')
+        print('   - Is Cloud SQL instance running?')
+        print('   - Are authorized networks configured? (Cloud SQL > Connections > Authorized networks)')
+        print('')
+    elif 'password authentication failed' in error_str:
+        print('💡 Wrong password. Check:')
+        print('   - Password in DATABASE_URL matches Cloud SQL user password')
+        print('   - Special characters are URL-encoded (& -> %26, = -> %3D, etc.)')
+        print('')
+    elif 'database' in error_str and 'does not exist' in error_str:
+        print('💡 Database does not exist. Either:')
+        print('   - Use the default \"postgres\" database')
+        print('   - Create your database: CREATE DATABASE yourdb;')
+        print('')
+
     exit(1)
     "
 }
