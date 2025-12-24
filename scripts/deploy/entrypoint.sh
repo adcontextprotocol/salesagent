@@ -79,7 +79,7 @@ except Exception as e:
         print('')
         print('   Option 1 - Public IP (simpler but less secure):')
         print('     DATABASE_URL=postgresql://USER:PASS@IP_ADDRESS:5432/DATABASE')
-        print('     Example: postgresql://postgres:mypass@34.46.58.47:5432/postgres')
+        print('     Example: postgresql://postgres:YOUR_PASSWORD@YOUR_IP:5432/postgres')
         print('')
         print('   Option 2 - Cloud SQL Connector (recommended):')
         print('     1. Add Cloud SQL connection in Cloud Run service settings')

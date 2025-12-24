@@ -112,7 +112,7 @@ Example: If password is `My&Pass=123`, use `My%26Pass%3D123`
 
 Your DATABASE_URL should look like:
 ```
-postgresql://postgres:YOUR_ENCODED_PASSWORD@34.46.58.47:5432/postgres
+postgresql://postgres:YOUR_ENCODED_PASSWORD@YOUR_PUBLIC_IP:5432/postgres
 ```
 
 ### 8. Deploy to Cloud Run (2 min)
