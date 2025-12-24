@@ -159,7 +159,7 @@
                         {% if session.role == 'super_admin' %}
                             <span class="status" style="background: #9b59b6;">Super Admin</span>
                         {% elif session.role == 'tenant_admin' %}
-                            <span class="status" style="background: #3498db;">{% if tenant %}{{ tenant.name }}{% endif %} (Legacy Admin)</span>
+                            <span class="status" style="background: #3498db;">{% if tenant %}{{ tenant.name }}{% endif %}</span>
                         {% elif session.role == 'admin' %}
                             <span class="status" style="background: #e74c3c;">{% if tenant %}{{ tenant.name }}{% endif %} Admin</span>
                         {% elif session.role == 'manager' %}

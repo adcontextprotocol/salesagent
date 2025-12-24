@@ -1644,6 +1644,72 @@ function saveServiceAccountNetworkCode() {
     });
 }
 
+function saveManualServiceAccount() {
+    const button = event.target;
+    const jsonInput = document.getElementById('manual_service_account_json');
+    const networkCodeInput = document.getElementById('manual_network_code');
+    const jsonText = jsonInput.value.trim();
+    const networkCode = networkCodeInput.value.trim();
+
+    if (!jsonText) {
+        alert('Please paste your service account JSON key');
+        return;
+    }
+
+    // Validate JSON
+    let jsonData;
+    try {
+        jsonData = JSON.parse(jsonText);
+    } catch (e) {
+        alert('Invalid JSON format. Please paste the complete contents of your service account JSON key file.');
+        return;
+    }
+
+    // Validate required fields in the service account JSON
+    if (!jsonData.client_email || !jsonData.private_key) {
+        alert('Invalid service account JSON. Make sure it contains "client_email" and "private_key" fields.');
+        return;
+    }
+
+    if (!networkCode) {
+        alert('Please enter a GAM network code');
+        return;
+    }
+
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+
+    // Save service account JSON and network code
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/configure`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            auth_method: 'service_account',
+            service_account_json: jsonText,
+            network_code: networkCode
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.innerHTML = 'Save Service Account Configuration';
+
+        if (data.success) {
+            alert('✅ Service account configuration saved!\n\nMake sure the service account email (' + jsonData.client_email + ') is added as a user in GAM with Trafficker role, then test the connection.');
+            location.reload();
+        } else {
+            alert('❌ Failed to save configuration:\n\n' + (data.error || data.errors?.join('\n') || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.innerHTML = 'Save Service Account Configuration';
+        alert('Error: ' + error.message);
+    });
+}
+
 function testGAMServiceAccountConnection() {
     const button = event.target;
     button.disabled = true;
@@ -1797,14 +1863,14 @@ function resolveTemplate(template, context) {
     return template.replace(/\{([^}]+)\}/g, (match, key) => {
         // Handle fallbacks like {campaign_name|promoted_offering}
         const options = key.split('|');
-        
+
         for (const option of options) {
             const val = context[option.trim()];
             if (val !== undefined && val !== null && val !== '') {
                 return val;
             }
         }
-        
+
         // If no value found, keep the placeholder
         return match;
     });
@@ -1813,7 +1879,7 @@ function resolveTemplate(template, context) {
 function updateNamingPreview() {
     const orderTemplate = document.getElementById('order_name_template')?.value || '';
     const lineItemTemplate = document.getElementById('line_item_name_template')?.value || '';
-    
+
     // Sample data matching the HTML description
     const context = {
         campaign_name: '', // null/empty
@@ -1827,22 +1893,22 @@ function updateNamingPreview() {
         package_count: 3,
         auto_name: 'Nike Shoes Q1 Campaign'
     };
-    
+
     // 1. Resolve Order Name
     const orderName = resolveTemplate(orderTemplate, context);
-    
+
     const orderPreviewEl = document.getElementById('order-preview');
     if (orderPreviewEl) {
         orderPreviewEl.textContent = orderName;
     }
-    
+
     // 2. Resolve Line Items
     const products = [
         { name: 'Display 300x250', index: 1 },
         { name: 'Video Pre-roll', index: 2 },
         { name: 'Native Article', index: 3 }
     ];
-    
+
     const lineItemNames = products.map(p => {
         const itemContext = {
             ...context,
@@ -1853,7 +1919,7 @@ function updateNamingPreview() {
         const name = resolveTemplate(lineItemTemplate, itemContext);
         return `${p.index}. ${name}`;
     });
-    
+
     const lineItemPreviewEl = document.getElementById('lineitem-preview');
     if (lineItemPreviewEl) {
         lineItemPreviewEl.innerHTML = lineItemNames.join('<br>');
@@ -1893,7 +1959,7 @@ function useNamingPreset(presetName) {
     if (lineItemField) {
         lineItemField.value = preset.lineItem;
     }
-    
+
     // Update preview immediately
     updateNamingPreview();
 }

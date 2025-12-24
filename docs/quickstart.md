@@ -72,30 +72,94 @@ Then configure DNS:
 
 ## Cloud Run Deployment
 
-Google Cloud Run works well for single-tenant deployments:
+Google Cloud Run works well for single-tenant deployments.
+
+### Step 1: Create Cloud SQL PostgreSQL
+
+Create a PostgreSQL instance using the cheapest sandbox option:
+
+**[Create Cloud SQL Instance](https://console.cloud.google.com/sql/instances/create;engine=PostgreSQL;template=POSTGRES_ENTERPRISE_SANDBOX_TEMPLATE)**
+
+After creation:
+1. Note the **Connection name** (e.g., `my-project:us-central1:my-instance`)
+2. Create a database named `adcp`
+3. Create a user and password
+
+### Step 2: Deploy in Test Mode
+
+Deploy with test mode enabled - this lets you log in without OAuth:
 
 ```bash
 # 1. Build and push to Google Container Registry
 gcloud builds submit --tag gcr.io/YOUR_PROJECT/salesagent
 
-# 2. Deploy to Cloud Run
+# 2. Deploy to Cloud Run in test mode
 gcloud run deploy salesagent \
   --image gcr.io/YOUR_PROJECT/salesagent \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
   --port 8000 \
+  --memory 1Gi \
+  --add-cloudsql-instances YOUR_PROJECT:us-central1:YOUR_INSTANCE \
+  --set-env-vars "ADCP_AUTH_TEST_MODE=true" \
   --set-env-vars "SUPER_ADMIN_EMAILS=your-email@example.com" \
-  --set-env-vars "DATABASE_URL=postgresql://..." \
-  --set-env-vars "GEMINI_API_KEY=..."
-
-# 3. Map your custom domain
-gcloud run services update-traffic salesagent --to-latest
-gcloud beta run domain-mappings create --service salesagent --domain sales-agent.yourcompany.com
+  --set-env-vars "DATABASE_URL=postgresql://USER:PASSWORD@/adcp?host=/cloudsql/YOUR_PROJECT:us-central1:YOUR_INSTANCE" \
+  --set-env-vars "GEMINI_API_KEY=your-gemini-key"
 ```
 
+Note your service URL from the output (e.g., `https://salesagent-abc123-uc.a.run.app`)
+
+### Step 3: Access Admin UI
+
+Open `https://YOUR-CLOUDRUN-URL.run.app/admin` and log in using the test mode button. In test mode, the Google login button won't appear - you'll only see the test login option.
+
+### Step 4: Add SSO/OAuth (for production)
+
+Once you've verified the deployment works, add OAuth for production use. You can use **Google, Microsoft, Okta, Auth0**, or any OIDC-compliant provider.
+
+**Option A: Google OAuth**
+
+1. [Create OAuth credentials](https://console.cloud.google.com/auth/clients)
+   - Click **"Create Credentials"** → **"OAuth client ID"**
+   - Select **"Web application"**
+   - Add **Authorized redirect URI**: `https://YOUR-CLOUDRUN-URL.run.app/auth/google/callback`
+
+2. Update your deployment:
+   ```bash
+   gcloud run services update salesagent \
+     --region us-central1 \
+     --update-env-vars "GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com" \
+     --update-env-vars "GOOGLE_CLIENT_SECRET=your-client-secret" \
+     --remove-env-vars "ADCP_AUTH_TEST_MODE"
+   ```
+
+**Option B: Other OIDC Providers (Okta, Auth0, Azure AD, etc.)**
+
+```bash
+gcloud run services update salesagent \
+  --region us-central1 \
+  --update-env-vars "OAUTH_CLIENT_ID=your-client-id" \
+  --update-env-vars "OAUTH_CLIENT_SECRET=your-client-secret" \
+  --update-env-vars "OAUTH_DISCOVERY_URL=https://your-provider/.well-known/openid-configuration" \
+  --remove-env-vars "ADCP_AUTH_TEST_MODE"
+```
+
+Users will be redirected directly to your SSO provider when they access `/login`.
+
+### Optional: Custom Domain
+
+```bash
+gcloud beta run domain-mappings create \
+  --service salesagent \
+  --domain sales-agent.yourcompany.com \
+  --region us-central1
+```
+
+If using a custom domain, add it as an additional redirect URI in your OAuth credentials.
+
 **Cloud Run Requirements:**
-- Cloud SQL PostgreSQL instance (or external PostgreSQL)
+- Cloud SQL PostgreSQL instance
 - Port 8000 (nginx handles routing internally)
 - At least 1GB memory recommended
 

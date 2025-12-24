@@ -60,37 +60,38 @@ def get_tenant_from_hostname():
 
 @core_bp.route("/")
 def index():
-    """Main index page - redirects based on authentication and user role."""
+    """Main index page - shows landing page or redirects based on mode."""
     from src.core.config_loader import is_single_tenant_mode
 
-    # Check if user is authenticated
+    # Single-tenant mode: root URL ALWAYS shows the landing page (public API info)
+    # Admin UI is only accessible at /admin/
+    if is_single_tenant_mode():
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id="default")).first()
+        if tenant:
+            from src.landing.landing_page import generate_tenant_landing_page
+
+            # Build effective host from request
+            effective_host = request.headers.get("X-Forwarded-Host", request.host)
+
+            # Use virtual_host if configured
+            if tenant.virtual_host:
+                effective_host = tenant.virtual_host
+
+            # Convert tenant to dict for landing page generator
+            tenant_dict = {
+                "tenant_id": tenant.tenant_id,
+                "name": tenant.name,
+                "subdomain": tenant.subdomain,
+                "virtual_host": tenant.virtual_host,
+            }
+            html_content = generate_tenant_landing_page(tenant_dict, effective_host)
+            return Response(html_content, mimetype="text/html")
+        # No default tenant yet - redirect to login to set up
+        return redirect(url_for("auth.login"))
+
+    # Multi-tenant mode below - behavior depends on authentication
     if "user" not in session:
-        # Single-tenant mode: show tenant landing page with API info
-        if is_single_tenant_mode():
-            with get_db_session() as db_session:
-                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id="default")).first()
-            if tenant:
-                from src.landing.landing_page import generate_tenant_landing_page
-
-                # Build effective host from request
-                effective_host = request.headers.get("X-Forwarded-Host", request.host)
-
-                # Use virtual_host if configured
-                if tenant.virtual_host:
-                    effective_host = tenant.virtual_host
-
-                # Convert tenant to dict for landing page generator
-                tenant_dict = {
-                    "tenant_id": tenant.tenant_id,
-                    "name": tenant.name,
-                    "subdomain": tenant.subdomain,
-                    "virtual_host": tenant.virtual_host,
-                }
-                html_content = generate_tenant_landing_page(tenant_dict, effective_host)
-                return Response(html_content, mimetype="text/html")
-            # No default tenant yet - redirect to login
-            return redirect(url_for("auth.login"))
-
         # Multi-tenant mode - use centralized routing logic
         from src.core.domain_routing import route_landing_page
 
@@ -126,7 +127,7 @@ def index():
         # Redirect to tenant dashboard with tenant_id
         return redirect(url_for("tenants.dashboard", tenant_id=tenant.tenant_id))
 
-    # Check if user is super admin
+    # Check if user is super admin (multi-tenant only)
     if session.get("role") == "super_admin":
         # Super admin - show all active tenants with configuration and activity status
         from sqlalchemy.orm import joinedload
@@ -275,6 +276,34 @@ def index():
     else:
         # Unknown role
         return "Access denied", 403
+
+
+@core_bp.route("/admin/")
+@core_bp.route("/admin")
+def admin_index():
+    """Admin UI entry point - requires authentication."""
+    from src.core.config_loader import is_single_tenant_mode
+
+    # Check if user is authenticated
+    if "user" not in session:
+        return redirect(url_for("auth.login"))
+
+    # Single-tenant mode: go to default tenant dashboard
+    if is_single_tenant_mode():
+        return redirect(url_for("tenants.dashboard", tenant_id="default"))
+
+    # Multi-tenant mode: check for tenant context or show tenant selector
+    if session.get("role") == "super_admin":
+        # Super admin - show all tenants (existing index behavior for authenticated super admins)
+        return redirect(url_for("core.index"))
+
+    # Regular user - check for tenant context
+    tenant_id = session.get("tenant_id")
+    if tenant_id:
+        return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+    # No tenant context - show tenant selector
+    return redirect(url_for("auth.select_tenant"))
 
 
 @core_bp.route("/debug/headers")

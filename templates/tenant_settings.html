@@ -516,23 +516,30 @@
                             <input type="text" id="tenant_name" name="name" value="{{ tenant.name }}" required>
                         </div>
 
+                        {% if not single_tenant_mode %}
                         <div class="form-group">
                             <label for="subdomain">Subdomain</label>
                             <input type="text" id="subdomain" name="subdomain" value="{{ tenant.subdomain }}" readonly>
                             <small>Cannot be changed after creation</small>
                         </div>
+                        {% endif %}
 
                         <div class="form-group">
                             <label for="virtual_host">Custom Domain (Optional)</label>
                             <input type="text" id="virtual_host" name="virtual_host" value="{{ tenant.virtual_host or '' }}" placeholder="e.g. sales-agent.yourcompany.com">
                             <small>
                                 <p style="margin-top: 0.5rem; color: #666; font-size: 0.85em;">
+                                    {% if single_tenant_mode %}
+                                    💡 Set your custom domain and point your DNS A/CNAME record to this server's IP address.
+                                    {% else %}
                                     💡 Set your custom domain for MCP and admin access. Point your DNS to this deployment's address.
+                                    {% endif %}
                                 </p>
                             </small>
                         </div>
 
-                        <!-- DNS Configuration Widget -->
+                        {% if not single_tenant_mode %}
+                        <!-- DNS Configuration Widget (Approximated - multi-tenant only) -->
                         <div id="dns-widget-container" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
                             <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">📝 Configure DNS Records</h4>
                             <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
@@ -553,7 +560,7 @@
                             <div id="apxdnswidget"></div>
                         </div>
 
-                        <!-- Domain Registration Status (Approximated Backend) -->
+                        <!-- Domain Registration Status (Approximated Backend - multi-tenant only) -->
                         <div id="domain-registration-container" style="display: none; margin-top: 1rem; padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
                             <h4 style="font-size: 1rem; margin-bottom: 0.5rem;">🔒 Domain Registration Status</h4>
                             <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
@@ -584,6 +591,7 @@
                                 </button>
                             </div>
                         </div>
+                        {% endif %}
 
                     </div>
                 </div>
@@ -591,7 +599,8 @@
                 <!-- Budget & Limits moved to Business Rules section -->
                 <!-- Features moved to Business Rules section -->
 
-                <!-- DNS Verification Warning -->
+                {% if not single_tenant_mode %}
+                <!-- DNS Verification Warning (Approximated - multi-tenant only) -->
                 <div id="dns-warning-banner" style="display: none; margin-bottom: 1rem; padding: 1rem; background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px;">
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <span style="font-size: 1.5rem;">⚠️</span>
@@ -601,10 +610,10 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}
 
                 <div class="button-group">
                     <button type="submit" class="btn btn-primary">Save Account Settings</button>
-                    <button type="reset" class="btn btn-secondary">Reset</button>
                 </div>
             </form>
 
@@ -894,6 +903,8 @@
                         <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
                             {% if not gam_oauth_configured %}
                             Service accounts provide secure, non-expiring authentication without OAuth setup. This is the recommended option.
+                            {% elif single_tenant_mode %}
+                            Service accounts provide secure, non-expiring authentication. Create a service account in your GCP project and configure it here.
                             {% else %}
                             For partner integrations, we can create and manage a service account for you. This is more secure and doesn't require sharing credentials.
                             {% endif %}
@@ -966,12 +977,56 @@
                         {% else %}
                         <!-- No service account yet -->
                         <div class="status-card" style="background: #f9fafb; border-left: 4px solid #9ca3af;">
+                            {% if single_tenant_mode %}
+                            <p style="margin: 0 0 1rem 0; font-size: 0.875rem;">
+                                To use a service account, create one in your GCP project and download the JSON key file.
+                                Then add the service account email as a user in Google Ad Manager with the Trafficker role.
+                            </p>
+                            <p style="margin: 0 0 1.5rem 0; font-size: 0.875rem; color: #6b7280;">
+                                See the <a href="https://developers.google.com/ad-manager/api/start" target="_blank">GAM API documentation</a> for setup instructions.
+                            </p>
+
+                            <!-- Service Account JSON Key Input -->
+                            <div style="margin-top: 1rem;">
+                                <label style="font-weight: 600; font-size: 0.875rem; display: block; margin-bottom: 0.5rem;">
+                                    Service Account JSON Key <span style="color: #dc2626;">*</span>
+                                </label>
+                                <textarea id="manual_service_account_json"
+                                          style="width: 100%; min-height: 150px; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace; font-size: 0.75rem;"
+                                          placeholder='Paste your service account JSON key here (the contents of the .json file downloaded from GCP)'></textarea>
+                                <small style="color: #6b7280; display: block; margin-top: 0.25rem;">
+                                    The full contents of your GCP service account JSON key file
+                                </small>
+                            </div>
+
+                            <!-- Network Code Input -->
+                            <div style="margin-top: 1rem;">
+                                <label style="font-weight: 600; font-size: 0.875rem; display: block; margin-bottom: 0.5rem;">
+                                    GAM Network Code <span style="color: #dc2626;">*</span>
+                                </label>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <input type="text" id="manual_network_code"
+                                           style="flex: 1; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace;"
+                                           placeholder="e.g., 12345678">
+                                </div>
+                                <small style="color: #6b7280; display: block; margin-top: 0.25rem;">
+                                    Find this in GAM under Admin → Global Settings → Network Code
+                                </small>
+                            </div>
+
+                            <div style="margin-top: 1.5rem;">
+                                <button onclick="saveManualServiceAccount()" class="btn btn-primary">
+                                    Save Service Account Configuration
+                                </button>
+                            </div>
+                            {% else %}
                             <p style="margin: 0 0 1rem 0; font-size: 0.875rem;">
                                 We'll create a service account in our GCP project and provide you with the email address. You then add this email as a user in your Google Ad Manager with the Trafficker role.
                             </p>
                             <button onclick="createServiceAccount()" class="btn btn-success" id="create-service-account-btn">
                                 🔑 Create Service Account
                             </button>
+                            {% endif %}
                         </div>
                         {% endif %}
                     </div>
@@ -2553,7 +2608,8 @@ result = await client.tools.get_products(brief="video ads")</pre>
 
 <script src="{{ url_for('static', filename='js/tenant_settings.js') }}"></script>
 
-<!-- Approximated DNS Widget -->
+{% if not single_tenant_mode %}
+<!-- Approximated DNS Widget (multi-tenant only) -->
 <link rel="stylesheet" href="https://cloud.approximated.app/dnswidget/dnswidget.v1.css">
 <script src="https://cloud.approximated.app/dnswidget/dnswidget.v1.js"></script>
 <script>
@@ -2937,7 +2993,10 @@ async function unregisterDomain() {
         unregisterBtn.textContent = 'Unregister Domain';
     }
 }
+</script>
+{% endif %}
 
+<script>
 // Measurement Providers Functions
 function addMeasurementProvider() {
     const container = document.getElementById('measurement-providers-container');

@@ -23,6 +23,11 @@ def init_db(exit_on_error=False):
         print("Applying database migrations...")
         run_migrations(exit_on_error=exit_on_error)
 
+    # Check if demo tenant should be created
+    # CREATE_DEMO_TENANT=true (default) creates a fully configured demo with mock adapter
+    # CREATE_DEMO_TENANT=false creates a blank tenant requiring setup
+    create_demo_tenant = os.environ.get("CREATE_DEMO_TENANT", "true").lower() == "true"
+
     # Check if we need to create a default tenant
     with get_db_session() as db_session:
         from sqlalchemy.exc import IntegrityError
@@ -32,31 +37,45 @@ def init_db(exit_on_error=False):
         existing_tenant = db_session.scalars(stmt).first()
 
         if not existing_tenant:
-            # No tenants exist - create a default one for simple use case
             admin_token = secrets.token_urlsafe(32)
 
-            # Create default tenant with proper columns (no config column after migration 007)
-            # NOTE: max_daily_budget moved to currency_limits table
-            new_tenant = Tenant(
-                tenant_id="default",
-                name="Default Publisher",
-                subdomain="default",  # Proper subdomain routing
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-                is_active=True,
-                billing_plan="standard",
-                ad_server="mock",
-                enable_axe_signals=True,
-                auto_approve_format_ids=json.dumps(
-                    [
-                        "display_300x250",
-                        "display_728x90",
-                        "video_30s",
-                    ]
-                ),
-                human_review_required=False,
-                admin_token=admin_token,
-            )
+            if create_demo_tenant:
+                # Demo mode: Create fully configured tenant with mock adapter
+                new_tenant = Tenant(
+                    tenant_id="default",
+                    name="Demo Sales Agent",
+                    subdomain="default",
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                    is_active=True,
+                    billing_plan="standard",
+                    ad_server="mock",
+                    enable_axe_signals=True,
+                    auto_approve_format_ids=json.dumps(
+                        [
+                            "display_300x250",
+                            "display_728x90",
+                            "video_30s",
+                        ]
+                    ),
+                    human_review_required=False,
+                    admin_token=admin_token,
+                )
+            else:
+                # Production mode: Create blank tenant requiring setup
+                new_tenant = Tenant(
+                    tenant_id="default",
+                    name="My Sales Agent",
+                    subdomain="default",
+                    created_at=datetime.now(),
+                    updated_at=datetime.now(),
+                    is_active=True,
+                    billing_plan="standard",
+                    ad_server=None,  # No adapter - user must configure
+                    enable_axe_signals=False,  # User should explicitly enable
+                    admin_token=admin_token,
+                )
+
             db_session.add(new_tenant)
 
             try:
@@ -67,47 +86,46 @@ def init_db(exit_on_error=False):
                 print("ℹ️  Default tenant already exists (created by concurrent process)")
                 return  # Exit early since tenant exists
 
-            # Create adapter_config for mock adapter
-            new_adapter = AdapterConfig(tenant_id="default", adapter_type="mock", mock_dry_run=False)
-            db_session.add(new_adapter)
+            if create_demo_tenant:
+                # Demo mode: Add mock adapter config, test principal, currencies, etc.
+                new_adapter = AdapterConfig(tenant_id="default", adapter_type="mock", mock_dry_run=False)
+                db_session.add(new_adapter)
 
-            # Always create a CI test principal for E2E testing
-            # This principal uses a fixed token that matches tests/e2e/conftest.py
-            ci_test_principal = Principal(
-                tenant_id="default",
-                principal_id="ci-test-principal",
-                name="CI Test Principal",
-                platform_mappings=json.dumps({"mock": {"advertiser_id": "test-advertiser"}}),
-                access_token="ci-test-token",  # Fixed token for E2E tests
-            )
-            db_session.add(ci_test_principal)
-
-            # Add required setup checklist items (currency limits and authorized property)
-            # These are required for the setup checklist validation
-            for currency in ["USD", "EUR", "GBP"]:
-                currency_limit = CurrencyLimit(
+                # Create a CI test principal for E2E testing
+                ci_test_principal = Principal(
                     tenant_id="default",
-                    currency_code=currency,
-                    min_package_budget=0.0,
-                    max_daily_package_spend=100000.0,
+                    principal_id="ci-test-principal",
+                    name="CI Test Principal",
+                    platform_mappings=json.dumps({"mock": {"advertiser_id": "test-advertiser"}}),
+                    access_token="ci-test-token",  # Fixed token for E2E tests
                 )
-                db_session.add(currency_limit)
+                db_session.add(ci_test_principal)
 
-            # Add authorized property for setup checklist
-            authorized_property = AuthorizedProperty(
-                tenant_id="default",
-                property_id="default-property",
-                property_type="website",
-                name="Default Property",
-                identifiers=[{"type": "domain", "value": "example.com"}],
-                tags=["default"],
-                publisher_domain="example.com",
-                verification_status="verified",
-            )
-            db_session.add(authorized_property)
+                # Add currency limits for demo
+                for currency in ["USD", "EUR", "GBP"]:
+                    currency_limit = CurrencyLimit(
+                        tenant_id="default",
+                        currency_code=currency,
+                        min_package_budget=0.0,
+                        max_daily_package_spend=100000.0,
+                    )
+                    db_session.add(currency_limit)
+
+                # Add authorized property for demo
+                authorized_property = AuthorizedProperty(
+                    tenant_id="default",
+                    property_id="default-property",
+                    property_type="website",
+                    name="Default Property",
+                    identifiers=[{"type": "domain", "value": "example.com"}],
+                    tags=["default"],
+                    publisher_domain="example.com",
+                    verification_status="verified",
+                )
+                db_session.add(authorized_property)
 
             # Only create additional sample advertisers if this is a development environment
-            if os.environ.get("CREATE_SAMPLE_DATA", "false").lower() == "true":
+            if create_demo_tenant and os.environ.get("CREATE_SAMPLE_DATA", "false").lower() == "true":
                 principals_data = [
                     {
                         "principal_id": "acme_corp",
@@ -138,60 +156,53 @@ def init_db(exit_on_error=False):
                     db_session.add(new_principal)
 
             # Commit tenant, principals, and adapter config
-            # Products will be created later (outside this block) if CREATE_SAMPLE_DATA is set
             db_session.commit()
 
-            # Update the print statement based on whether sample data was created
-            if os.environ.get("CREATE_SAMPLE_DATA", "false").lower() == "true":
+            # Print appropriate message based on mode
+            if create_demo_tenant:
                 print(
-                    f"""
+                    """
 ╔══════════════════════════════════════════════════════════════════╗
-║                 🚀 ADCP SALES AGENT INITIALIZED                  ║
+║              🎮 DEMO SALES AGENT INITIALIZED                     ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
-║  A default tenant has been created for quick start:              ║
+║  A demo tenant has been created with mock adapter:               ║
 ║                                                                  ║
-║  🏢 Tenant: Default Publisher                                    ║
-║  🌐 URL: http://default.localhost:8080                           ║
+║  🏢 Tenant: Demo Sales Agent                                     ║
+║  🌐 Admin UI: http://localhost:8001/admin/                       ║
+║  🔧 Adapter: Mock (for testing)                                  ║
 ║                                                                  ║
-║  🔑 Admin Token (x-adcp-auth header):                            ║
-║     {admin_token}  ║
+║  ✅ Pre-configured with:                                         ║
+║     • Mock ad server adapter                                     ║
+║     • USD/EUR/GBP currencies                                     ║
+║     • Test principal (ci-test-token)                             ║
+║     • Sample authorized property                                 ║
 ║                                                                  ║
-║  👤 Sample Advertiser Tokens:                                    ║
-║     • Acme Corp: acme_corp_token                                 ║
-║     • Purina: purina_token                                       ║
-║                                                                  ║
-║  💡 To create additional tenants:                                ║
-║     python scripts/setup/setup_tenant.py "Publisher Name"        ║
-║                                                                  ║
-║  📚 To use with a different tenant:                              ║
-║     http://[subdomain].localhost:PORT                            ║
+║  💡 Ready to test! No setup required.                            ║
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
                 """
                 )
             else:
                 print(
-                    f"""
+                    """
 ╔══════════════════════════════════════════════════════════════════╗
-║                 🚀 ADCP SALES AGENT INITIALIZED                  ║
+║              🚀 SALES AGENT INITIALIZED                          ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
-║  A default tenant has been created for quick start:              ║
+║  A blank tenant has been created for production setup:           ║
 ║                                                                  ║
-║  🏢 Tenant: Default Publisher                                    ║
-║  🌐 Admin UI: http://localhost:8001/tenant/default/login         ║
+║  🏢 Tenant: My Sales Agent                                       ║
+║  🌐 Admin UI: http://localhost:8001/admin/                       ║
 ║                                                                  ║
-║  🔑 Admin Token (for legacy API access):                         ║
-║     {admin_token}  ║
+║  ⚡ Next Steps (use Setup Checklist in Admin UI):                ║
+║     1. Configure your ad server (GAM, Kevel, etc.)               ║
+║     2. Set up currencies                                         ║
+║     3. Create products                                           ║
+║     4. Add advertisers (principals)                              ║
+║     5. Configure access control                                  ║
 ║                                                                  ║
-║  ⚡ Next Steps:                                                  ║
-║     1. Log in to the Admin UI                                    ║
-║     2. Set up your ad server (Ad Server Setup tab)              ║
-║     3. Create principals for your advertisers                    ║
-║                                                                  ║
-║  💡 To create additional tenants:                                ║
-║     python scripts/setup/setup_tenant.py "Publisher Name"        ║
+║  💡 For demo/testing, restart with CREATE_DEMO_TENANT=true       ║
 ║                                                                  ║
 ╚══════════════════════════════════════════════════════════════════╝
                     """

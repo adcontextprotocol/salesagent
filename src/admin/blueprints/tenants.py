@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from src.admin.services import DashboardService
 from src.admin.utils import get_tenant_config_from_db, require_tenant_access
 from src.admin.utils.audit_decorator import log_admin_action
+from src.core.config_loader import is_single_tenant_mode
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Principal, Tenant
 from src.core.domain_config import get_sales_agent_domain
@@ -418,6 +419,7 @@ def tenant_settings(tenant_id, section=None):
                 custom_targeting_values_count=custom_targeting_values_count,
                 setup_status=setup_status,
                 available_currencies=available_currencies,  # Currency list from Babel
+                single_tenant_mode=is_single_tenant_mode(),
             )
 
     except Exception as e:

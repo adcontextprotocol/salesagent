@@ -548,9 +548,25 @@ class SetupChecklistService:
         """Check recommended tasks for better experience."""
         tasks = []
 
-        # 1. Creative Approval Guidelines
-        policy_settings = tenant.policy_settings or {}
-        has_approval_config = tenant.human_review_required is not None or tenant.auto_approve_format_ids
+        # 1. Tenant Name (important for branding)
+        # Default names that indicate user hasn't customized
+        default_names = {"default", "Test Sales Agent", "My Sales Agent", "Demo Sales Agent"}
+        has_custom_name = bool(tenant.name and tenant.name not in default_names and tenant.name != tenant.tenant_id)
+        tasks.append(
+            SetupTask(
+                key="tenant_name",
+                name="Account Name",
+                description="Set a display name for your sales agent",
+                is_complete=has_custom_name,
+                action_url=f"/tenant/{self.tenant_id}/settings#account",
+                details=f"Using '{tenant.name}'" if has_custom_name else "Using default name",
+            )
+        )
+
+        # 2. Creative Approval Guidelines
+        # Only count as configured if user has set auto-approve formats (explicit configuration)
+        # Default human_review_required=True doesn't count as "configured"
+        has_approval_config = bool(tenant.auto_approve_format_ids)
         tasks.append(
             SetupTask(
                 key="creative_approval_guidelines",
@@ -558,12 +574,17 @@ class SetupChecklistService:
                 description="Configure auto-approval rules and manual review settings",
                 is_complete=has_approval_config,
                 action_url=f"/tenant/{self.tenant_id}/settings#business-rules",
-                details="Approval workflow configured" if has_approval_config else "Using default approval settings",
+                details=(
+                    "Auto-approval formats configured"
+                    if has_approval_config
+                    else "Using default (manual review required)"
+                ),
             )
         )
 
-        # 2. Naming Conventions
-        has_custom_naming = bool(tenant.order_name_template or tenant.line_item_name_template)
+        # 3. Naming Conventions
+        # Only count line_item_name_template as custom (order_name_template has server_default)
+        has_custom_naming = bool(tenant.line_item_name_template)
         tasks.append(
             SetupTask(
                 key="naming_conventions",
@@ -903,8 +924,25 @@ class SetupChecklistService:
         """Build recommended tasks from pre-fetched data (no session queries)."""
         tasks = []
 
-        # 1. Creative Approval Guidelines
-        has_approval_config = tenant.human_review_required is not None or tenant.auto_approve_format_ids
+        # 1. Tenant Name (important for branding)
+        # Default names that indicate user hasn't customized
+        default_names = {"default", "Test Sales Agent", "My Sales Agent", "Demo Sales Agent"}
+        has_custom_name = bool(tenant.name and tenant.name not in default_names and tenant.name != tenant.tenant_id)
+        tasks.append(
+            SetupTask(
+                key="tenant_name",
+                name="Account Name",
+                description="Set a display name for your sales agent",
+                is_complete=has_custom_name,
+                action_url=f"/tenant/{self.tenant_id}/settings#account",
+                details=f"Using '{tenant.name}'" if has_custom_name else "Using default name",
+            )
+        )
+
+        # 2. Creative Approval Guidelines
+        # Only count as configured if user has set auto-approve formats (explicit configuration)
+        # Default human_review_required=True doesn't count as "configured"
+        has_approval_config = bool(tenant.auto_approve_format_ids)
         tasks.append(
             SetupTask(
                 key="creative_approval_guidelines",
@@ -912,12 +950,17 @@ class SetupChecklistService:
                 description="Configure auto-approval rules and manual review settings",
                 is_complete=has_approval_config,
                 action_url=f"/tenant/{self.tenant_id}/settings#business-rules",
-                details="Approval workflow configured" if has_approval_config else "Using default approval settings",
+                details=(
+                    "Auto-approval formats configured"
+                    if has_approval_config
+                    else "Using default (manual review required)"
+                ),
             )
         )
 
-        # 2. Naming Conventions
-        has_custom_naming = bool(tenant.order_name_template or tenant.line_item_name_template)
+        # 3. Naming Conventions
+        # Only count line_item_name_template as custom (order_name_template has server_default)
+        has_custom_naming = bool(tenant.line_item_name_template)
         tasks.append(
             SetupTask(
                 key="naming_conventions",
