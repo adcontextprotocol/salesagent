@@ -45,31 +45,23 @@ This creates a demo tenant with mock data for testing. For production, see the [
 
 ## Publisher Deployment
 
-Publishers deploy their own sales agent on cloud platforms like Fly.io, Cloud Run, or similar.
+Publishers deploy their own sales agent. Choose based on your needs:
 
-### One-Click Deploy to Google Cloud Run
+| Platform | Time | Difficulty | Guide |
+|----------|------|------------|-------|
+| **Docker** (local/on-prem) | 2 min | Easy | [quickstart-docker.md](docs/quickstart-docker.md) |
+| **Fly.io** (cloud) | 10-15 min | Medium | [quickstart-fly.md](docs/quickstart-fly.md) |
+| **Google Cloud Run** | 15-20 min | Medium | [quickstart-cloud-run.md](docs/quickstart-cloud-run.md) |
 
-[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run?git_repo=https://github.com/adcontextprotocol/salesagent)
+**Docker is the fastest** - it bundles PostgreSQL and just works. Cloud platforms require separate database setup.
 
-> **Prerequisites:** A [Cloud SQL PostgreSQL instance](https://console.cloud.google.com/sql/instances/create;engine=PostgreSQL;template=POSTGRES_ENTERPRISE_SANDBOX_TEMPLATE) (uses cheapest sandbox option)
->
-> The deploy button will prompt you to set `ADCP_AUTH_TEST_MODE=true` for initial setup. This lets you log in without OAuth configured. Once deployed, you can add Google OAuth credentials and disable test mode.
+### After Deployment
 
-### Other Platforms
-
-The [Quickstart Guide](docs/quickstart.md) covers:
-
-- **Fly.io** - Simple deployment with managed PostgreSQL
-- **Google Cloud Run** - Manual setup with Cloud SQL
-- **Docker** - Any platform that runs containers
-
-After deployment, configure via the Admin UI:
+Configure via the Admin UI:
 1. Configure your ad server (Settings → Adapters)
 2. Set up products that match your GAM line items
 3. Add advertisers who will use the MCP API
 4. Set your custom domain (Settings → General)
-
-See the [Quickstart Guide](docs/quickstart.md) for step-by-step deployment instructions.
 
 ---
 
@@ -149,8 +141,13 @@ docker compose logs adcp-server | head -50
 
 ## Documentation
 
-- **[Quickstart Guide](docs/quickstart.md)** - Deploy your own sales agent
-- **[Deployment Guide](docs/deployment.md)** - All deployment options (Docker, Cloud Run, Fly.io, K8s)
+### Deployment Guides
+- **[Docker Quickstart](docs/quickstart-docker.md)** - Local/on-prem (2 min)
+- **[Fly.io Quickstart](docs/quickstart-fly.md)** - Cloud deployment (10-15 min)
+- **[Cloud Run Quickstart](docs/quickstart-cloud-run.md)** - GCP deployment (15-20 min)
+- **[Full Deployment Guide](docs/deployment.md)** - All options (K8s, AWS, Azure, etc.)
+
+### Reference
 - **[Development Guide](docs/DEVELOPMENT.md)** - Local development and contributing
 - **[Testing Guide](docs/testing/README.md)** - Running and writing tests
 - **[Architecture](docs/ARCHITECTURE.md)** - System design and database schema

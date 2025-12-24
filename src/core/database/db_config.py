@@ -34,7 +34,14 @@ class DatabaseConfig:
 
     @staticmethod
     def _parse_database_url(url: str) -> dict[str, Any]:
-        """Parse DATABASE_URL into configuration dict."""
+        """Parse DATABASE_URL into configuration dict.
+
+        Supports both TCP connections and Cloud SQL socket connections:
+        - TCP: postgresql://user:pass@host:port/dbname
+        - Cloud SQL: postgresql://user:pass@/dbname?host=/cloudsql/project:region:instance
+        """
+        from urllib.parse import parse_qs
+
         parsed = urlparse(url)
 
         if parsed.scheme not in ["postgres", "postgresql"]:
@@ -42,9 +49,25 @@ class DatabaseConfig:
                 f"Unsupported database scheme: {parsed.scheme}. Only PostgreSQL is supported. Use 'postgresql://' URLs."
             )
 
+        # Parse query string for socket path (Cloud SQL format)
+        query_params = parse_qs(parsed.query)
+        socket_path = query_params.get("host", [None])[0]
+
+        # Determine host - use socket path if no hostname (Cloud SQL style)
+        host = parsed.hostname
+        if not host and socket_path:
+            # Cloud SQL socket connection
+            host = socket_path
+        elif not host:
+            raise ValueError(
+                "DATABASE_URL missing host. Use either:\n"
+                "  - TCP: postgresql://user:pass@HOST:5432/dbname\n"
+                "  - Cloud SQL socket: postgresql://user:pass@/dbname?host=/cloudsql/PROJECT:REGION:INSTANCE"
+            )
+
         return {
             "type": "postgresql",
-            "host": parsed.hostname,
+            "host": host,
             "port": parsed.port or 5432,
             "database": parsed.path.lstrip("/"),
             "user": parsed.username,
