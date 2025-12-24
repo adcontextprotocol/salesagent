@@ -210,7 +210,26 @@ def init_oauth(app):
 
 @auth_bp.route("/login")
 def login():
-    """Show login page with tenant context detection."""
+    """Show login page or redirect to OAuth provider.
+
+    If OAuth is configured and not in test mode, redirects directly to OAuth.
+    Otherwise shows the login page with test mode buttons.
+    """
+    test_mode = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
+
+    # Capture 'next' parameter for redirect after login
+    next_url = request.args.get("next")
+    if next_url:
+        session["login_next_url"] = next_url
+
+    # Check if OAuth is configured
+    client_id, client_secret, discovery_url, _ = get_oauth_config()
+    oauth_configured = bool(client_id and client_secret and discovery_url)
+
+    # If OAuth is configured and not in test mode, redirect directly to OAuth
+    if oauth_configured and not test_mode:
+        return redirect(url_for("auth.google_auth"))
+
     # Extract tenant from headers (Approximated routing or direct Host header)
     host = request.headers.get("Host", "")
     tenant_context = None
@@ -246,28 +265,45 @@ def login():
                     tenant_name = tenant.name
                     logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
 
+    from src.core.config_loader import is_single_tenant_mode
+
+    # Show login page (test mode or OAuth not configured)
     return render_template(
         "login.html",
-        test_mode=os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true",
+        test_mode=test_mode,
+        oauth_configured=oauth_configured,
         tenant_context=tenant_context,
         tenant_name=tenant_name,
+        single_tenant_mode=is_single_tenant_mode(),
     )
 
 
 @auth_bp.route("/tenant/<tenant_id>/login")
 def tenant_login(tenant_id):
-    """Show tenant-specific login page."""
+    """Show tenant-specific login page or redirect to OAuth provider."""
     # Verify tenant exists
     with get_db_session() as db_session:
         tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             abort(404)
+        tenant_name = tenant.name
+
+    test_mode = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
+
+    # Check if OAuth is configured
+    client_id, client_secret, discovery_url, _ = get_oauth_config()
+    oauth_configured = bool(client_id and client_secret and discovery_url)
+
+    # If OAuth is configured and not in test mode, redirect directly to OAuth
+    if oauth_configured and not test_mode:
+        return redirect(url_for("auth.tenant_google_auth", tenant_id=tenant_id))
 
     return render_template(
         "login.html",
         tenant_id=tenant_id,
-        tenant_name=tenant.name,
-        test_mode=os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true",
+        tenant_name=tenant_name,
+        test_mode=test_mode,
+        oauth_configured=oauth_configured,
     )
 
 
@@ -408,6 +444,10 @@ def google_callback():
             session.pop("signup_flow", None)
             session.pop("signup_step", None)
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
+            # Check for saved redirect URL
+            next_url = session.pop("login_next_url", None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for("core.index"))
 
         # Check if this is a signup flow (only for non-super-admin users)
@@ -484,6 +524,10 @@ def google_callback():
             session["is_tenant_admin"] = tenant.get("is_admin", True)
             session.pop("available_tenants", None)
             flash(f"Welcome {user.get('name', email)}!", "success")
+            # Check for saved redirect URL
+            next_url = session.pop("login_next_url", None)
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
         # Multi-tenant mode or multiple tenants: show tenant selector
@@ -530,6 +574,10 @@ def select_tenant():
                 session["is_tenant_admin"] = tenant["is_admin"]
                 session.pop("available_tenants", None)  # Clean up
                 flash(f"Welcome to {tenant['name']}!", "success")
+                # Check for saved redirect URL
+                next_url = session.pop("login_next_url", None)
+                if next_url:
+                    return redirect(next_url)
                 return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
         flash("Invalid tenant selection", "error")
@@ -563,6 +611,9 @@ def test_auth():
     password = request.form.get("password")
     tenant_id = request.form.get("tenant_id")
 
+    # Check for saved redirect URL from login page
+    next_url = session.get("login_next_url")
+
     # Define test users
     test_users = {
         os.environ.get("TEST_SUPER_ADMIN_EMAIL", "test_super_admin@example.com"): {
@@ -582,6 +633,12 @@ def test_auth():
         },
     }
 
+    # In single-tenant mode, always use "default" as tenant_id
+    from src.core.config_loader import is_single_tenant_mode
+
+    if is_single_tenant_mode() and not tenant_id:
+        tenant_id = "default"
+
     # Check if email is a super admin (bypass password check for super admins in test mode)
     if is_super_admin(email) and password == "test123":
         session["test_user"] = email
@@ -596,8 +653,17 @@ def test_auth():
 
         if tenant_id:
             session["test_tenant_id"] = tenant_id
+            session["tenant_id"] = tenant_id  # Set tenant_id for authorization checks
+            # Use saved redirect URL if available
+            if next_url:
+                session.pop("login_next_url", None)
+                return redirect(next_url)
             return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
         else:
+            # Use saved redirect URL if available
+            if next_url:
+                session.pop("login_next_url", None)
+                return redirect(next_url)
             return redirect(url_for("core.index"))
 
     # Check test users
@@ -617,8 +683,17 @@ def test_auth():
 
         if tenant_id:
             session["test_tenant_id"] = tenant_id
+            session["tenant_id"] = tenant_id  # Set tenant_id for authorization checks
+            # Use saved redirect URL if available
+            if next_url:
+                session.pop("login_next_url", None)
+                return redirect(next_url)
             return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
         else:
+            # Use saved redirect URL if available
+            if next_url:
+                session.pop("login_next_url", None)
+                return redirect(next_url)
             return redirect(url_for("core.index"))
 
     flash("Invalid test credentials", "error")
@@ -631,7 +706,9 @@ def test_login_form():
     if os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() != "true":
         abort(404)
 
-    return render_template("login.html", test_mode=True, test_only=True)
+    from src.core.config_loader import is_single_tenant_mode
+
+    return render_template("login.html", test_mode=True, test_only=True, single_tenant_mode=is_single_tenant_mode())
 
 
 # GAM OAuth Flow endpoints

@@ -1685,6 +1685,72 @@ function saveServiceAccountNetworkCode() {
     });
 }
 
+function saveManualServiceAccount() {
+    const button = event.target;
+    const jsonInput = document.getElementById('manual_service_account_json');
+    const networkCodeInput = document.getElementById('manual_network_code');
+    const jsonText = jsonInput.value.trim();
+    const networkCode = networkCodeInput.value.trim();
+
+    if (!jsonText) {
+        alert('Please paste your service account JSON key');
+        return;
+    }
+
+    // Validate JSON
+    let jsonData;
+    try {
+        jsonData = JSON.parse(jsonText);
+    } catch (e) {
+        alert('Invalid JSON format. Please paste the complete contents of your service account JSON key file.');
+        return;
+    }
+
+    // Validate required fields in the service account JSON
+    if (!jsonData.client_email || !jsonData.private_key) {
+        alert('Invalid service account JSON. Make sure it contains "client_email" and "private_key" fields.');
+        return;
+    }
+
+    if (!networkCode) {
+        alert('Please enter a GAM network code');
+        return;
+    }
+
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+
+    // Save service account JSON and network code
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/configure`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            auth_method: 'service_account',
+            service_account_json: jsonText,
+            network_code: networkCode
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.innerHTML = 'Save Service Account Configuration';
+
+        if (data.success) {
+            alert('✅ Service account configuration saved!\n\nMake sure the service account email (' + jsonData.client_email + ') is added as a user in GAM with Trafficker role, then test the connection.');
+            location.reload();
+        } else {
+            alert('❌ Failed to save configuration:\n\n' + (data.error || data.errors?.join('\n') || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.innerHTML = 'Save Service Account Configuration';
+        alert('Error: ' + error.message);
+    });
+}
+
 function testGAMServiceAccountConnection() {
     const button = event.target;
     button.disabled = true;

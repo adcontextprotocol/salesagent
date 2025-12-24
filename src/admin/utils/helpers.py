@@ -251,7 +251,10 @@ def require_auth(admin_only=False):
 
             if "user" not in session:
                 logger.info(f"require_auth: No 'user' in session. Session keys: {list(session.keys())}")
-                return redirect(url_for("auth.login"))
+                # Store the original URL to redirect back after login
+                from flask import request
+
+                return redirect(url_for("auth.login", next=request.url))
 
             # Store user in g for access in view functions
             g.user = session["user"]
@@ -303,7 +306,8 @@ def require_tenant_access(api_mode=False):
             if "user" not in session:
                 if api_mode:
                     return jsonify({"error": "Authentication required"}), 401
-                return redirect(url_for("auth.login"))
+                # Store the original URL to redirect back after login
+                return redirect(url_for("auth.login", next=request.url))
 
             user_info = session["user"]
 

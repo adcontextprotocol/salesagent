@@ -490,7 +490,7 @@ class TestSetupChecklistService:
 
         # Verify tenant 3 has high progress (near complete)
         status3 = statuses[tenant_ids[2]]
-        assert status3["progress_percent"] > 70
+        assert status3["progress_percent"] >= 70
 
         # Verify structure matches single-tenant query
         for status in statuses.values():

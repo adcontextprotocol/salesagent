@@ -29,7 +29,7 @@ def _determine_base_url(virtual_host: str | None = None) -> str:
     """Determine the base URL for the current environment.
 
     Args:
-        virtual_host: Virtual host if provided (e.g., from Apx-Incoming-Host header)
+        virtual_host: Virtual host if provided (e.g., from request.host or Apx-Incoming-Host header)
 
     Returns:
         Base URL for generating endpoint URLs
@@ -41,12 +41,13 @@ def _determine_base_url(virtual_host: str | None = None) -> str:
         # Fallback to production domain
         return get_sales_agent_url()
 
-    # Check for virtual host in development
+    # Development/local mode: use virtual_host if provided
     if virtual_host:
-        # Development with virtual host
-        return f"https://{virtual_host}"
+        # Use http for localhost, https for everything else
+        scheme = "http" if "localhost" in virtual_host or virtual_host.startswith("127.") else "https"
+        return f"{scheme}://{virtual_host}"
 
-    # Local development fallback
+    # Local development fallback (should rarely be reached)
     port = os.getenv("ADCP_SALES_PORT", "8080")
     return f"http://localhost:{port}"
 
@@ -228,18 +229,36 @@ def generate_tenant_landing_page(tenant: dict, virtual_host: str | None = None) 
     a2a_url = base_url  # A2A endpoint is at the root, not /a2a
     agent_card_url = f"{base_url}/.well-known/agent.json"
 
-    # Admin URL: For external domains, use subdomain; otherwise use current domain
-    is_external_domain = virtual_host and not is_sales_agent_domain(virtual_host)
-    if is_external_domain and tenant_subdomain:
-        # External domain: Point admin to tenant subdomain
-        if os.getenv("PRODUCTION") == "true":
-            admin_url = f"{get_tenant_url(tenant_subdomain)}/admin/"
+    # Admin URL: Depends on deployment mode
+    from src.core.config_loader import is_single_tenant_mode
+
+    if is_single_tenant_mode():
+        # Single-tenant mode: use full URLs based on virtual_host (passed from request)
+        # This ensures users see copy-pasteable URLs like http://localhost:55030/mcp
+        if virtual_host:
+            # Use http for localhost, https for everything else
+            scheme = "http" if "localhost" in virtual_host or virtual_host.startswith("127.") else "https"
+            single_tenant_base = f"{scheme}://{virtual_host}"
         else:
-            # Local dev: Use localhost with subdomain simulation
-            admin_url = f"http://{tenant_subdomain}.localhost:8001/admin/"
+            # Fallback to base_url if no virtual_host
+            single_tenant_base = base_url
+        mcp_url = f"{single_tenant_base}/mcp"
+        a2a_url = single_tenant_base  # A2A is at root
+        agent_card_url = f"{single_tenant_base}/.well-known/agent.json"
+        admin_url = f"{single_tenant_base}/admin/"
     else:
-        # Same domain or subdomain: Use base_url
-        admin_url = f"{base_url}/admin/"
+        # Multi-tenant mode: For external domains, use subdomain; otherwise use current domain
+        is_external_domain = virtual_host and not is_sales_agent_domain(virtual_host)
+        if is_external_domain and tenant_subdomain:
+            # External domain: Point admin to tenant subdomain
+            if os.getenv("PRODUCTION") == "true":
+                admin_url = f"{get_tenant_url(tenant_subdomain)}/admin/"
+            else:
+                # Local dev: Use localhost with subdomain simulation
+                admin_url = f"http://{tenant_subdomain}.localhost:8001/admin/"
+        else:
+            # Same domain or subdomain: Use base_url
+            admin_url = f"{base_url}/admin/"
 
     # Prepare template context
     template_context = {

@@ -51,7 +51,9 @@ Publishers deploy their own sales agent on cloud platforms like Fly.io, Cloud Ru
 
 [![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run?git_repo=https://github.com/adcontextprotocol/salesagent)
 
-> **Prerequisites:** You'll need a Cloud SQL PostgreSQL instance. [Create one here](https://console.cloud.google.com/sql).
+> **Prerequisites:** A [Cloud SQL PostgreSQL instance](https://console.cloud.google.com/sql/instances/create;engine=PostgreSQL;template=POSTGRES_ENTERPRISE_SANDBOX_TEMPLATE) (uses cheapest sandbox option)
+>
+> The deploy button will prompt you to set `ADCP_AUTH_TEST_MODE=true` for initial setup. This lets you log in without OAuth configured. Once deployed, you can add Google OAuth credentials and disable test mode.
 
 ### Other Platforms
 
