@@ -1779,16 +1779,22 @@ async def _create_media_buy_impl(
         adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
 
         # Check if manual approval is required
-        manual_approval_required = (
+        # Use tenant.human_review_required as the authoritative source, with adapter setting as fallback
+        tenant_approval_required = tenant.get("human_review_required", True)
+        adapter_approval_required = (
             adapter.manual_approval_required if hasattr(adapter, "manual_approval_required") else False
         )
+        # Tenant setting takes precedence - if tenant requires approval, it's required
+        manual_approval_required = tenant_approval_required or adapter_approval_required
         manual_approval_operations = (
             adapter.manual_approval_operations if hasattr(adapter, "manual_approval_operations") else []
         )
 
         # DEBUG: Log manual approval settings
         logger.info(
-            f"[DEBUG] Manual approval check - required: {manual_approval_required}, "
+            f"[DEBUG] Manual approval check - tenant_approval_required: {tenant_approval_required}, "
+            f"adapter_approval_required: {adapter_approval_required}, "
+            f"final_required: {manual_approval_required}, "
             f"operations: {manual_approval_operations}, "
             f"adapter type: {adapter.__class__.__name__}"
         )

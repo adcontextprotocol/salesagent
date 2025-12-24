@@ -42,11 +42,14 @@ def setup_gam_tenant_with_all_pricing_models(integration_db):
     """Create a GAM tenant with products offering all supported pricing models."""
     with get_db_session() as session:
         # Create GAM tenant
+        # Note: human_review_required=False ensures media buy validation runs immediately
+        # rather than going to approval workflow (needed for pricing validation tests)
         tenant = create_tenant_with_timestamps(
             tenant_id="test_gam_pricing_tenant",
             name="GAM Pricing Test Publisher",
             subdomain="gam-pricing-test",
             ad_server="google_ad_manager",
+            human_review_required=False,
         )
         session.add(tenant)
         session.flush()
