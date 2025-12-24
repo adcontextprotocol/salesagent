@@ -1,0 +1,58 @@
+name: PR Title Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  check-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title follows Conventional Commits
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Configure which types are allowed
+          # These match release-please-config.json changelog-sections
+          types: |
+            feat
+            fix
+            docs
+            refactor
+            perf
+            chore
+            test
+            ci
+            build
+            style
+            revert
+          # Require a scope? (e.g., feat(api): ...)
+          requireScope: false
+          # Disallow scopes that don't match a given regex
+          # disallowScopes: |
+          #   release
+          # Define the subject pattern (text after the type/scope)
+          subjectPattern: ^.+$
+          subjectPatternError: |
+            The PR title "{title}" doesn't follow Conventional Commits format.
+
+            Please use one of these prefixes:
+            - feat: New features (appears in "Features" section)
+            - fix: Bug fixes (appears in "Bug Fixes" section)
+            - docs: Documentation changes
+            - refactor: Code refactoring (appears in "Code Refactoring" section)
+            - perf: Performance improvements
+            - chore: Maintenance tasks (hidden from changelog)
+            - test: Test changes
+            - ci: CI/CD changes
+            - build: Build system changes
+            - style: Code style changes
+            - revert: Reverts a previous commit
+
+            Example: "feat: Add user authentication"
+          # For work-in-progress PRs, allow wip/WIP prefix
+          wip: true
+          # Validate the subject doesn't start with uppercase
+          # (conventional commits typically use lowercase)
+          validateSingleCommit: false
