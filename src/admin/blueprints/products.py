@@ -603,6 +603,7 @@ def _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_d
                 "property_type": p.property_type,
                 "tags": p.tags or [],
                 "verification_status": p.verification_status,
+                "publisher_domain": p.publisher_domain,
             }
             for p in authorized_properties_query
         ]
@@ -996,87 +997,143 @@ def add_product(tenant_id):
                 # Default to empty property_tags if not specified (satisfies DB constraint)
                 property_mode = form_data.get("property_mode", "tags")
                 if property_mode == "tags":
-                    # Parse property tags from comma-separated string
-                    property_tags_str = form_data.get("property_tags", "").strip()
-                    if property_tags_str:
-                        property_tags = [
-                            tag.strip().lower().replace("-", "_") for tag in property_tags_str.split(",") if tag.strip()
-                        ]
+                    # Get selected property tags (format: "domain:tag")
+                    selected_tags = request.form.getlist("selected_property_tags")
 
-                        # Server-side validation (defense in depth - client-side validation exists)
-                        import re
-
-                        for tag in property_tags:
-                            # Length validation
-                            if len(tag) < 2 or len(tag) > 50:
-                                flash("Property tags must be 2-50 characters", "error")
-                                return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
-
-                            # Character whitelist validation (AdCP spec: ^[a-z0-9_]+$)
-                            if not re.match(r"^[a-z0-9_]+$", tag):
-                                flash(
-                                    f"Invalid tag '{tag}': use only lowercase letters, numbers, and underscores",
-                                    "error",
-                                )
-                                return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
-
-                        # Check for duplicates
-                        if len(property_tags) != len(set(property_tags)):
-                            flash("Duplicate property tags detected", "error")
-                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
-
-                        # Validate that all property tags exist in the database
-                        if property_tags:
-                            from src.core.database.models import PropertyTag
-
-                            existing_tags = db_session.scalars(
-                                select(PropertyTag).filter(
-                                    PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id.in_(property_tags)
-                                )
-                            ).all()
-
-                            existing_tag_ids = {tag.tag_id for tag in existing_tags}
-                            missing_tags = set(property_tags) - existing_tag_ids
-
-                            if missing_tags:
-                                flash(
-                                    f"Property tags do not exist: {', '.join(missing_tags)}. "
-                                    f"Please create them in Settings → Authorized Properties first.",
-                                    "error",
-                                )
-                                return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
-
-                            product_kwargs["property_tags"] = property_tags
-                    else:
-                        # No tags provided, default to empty list to satisfy DB constraint
-                        product_kwargs["property_tags"] = []
-                elif property_mode == "full":
-                    # Get selected property IDs and load full property objects
-                    property_ids_str = request.form.getlist("property_ids")
-
-                    # Validate property IDs are integers (security)
-                    try:
-                        property_ids = [int(pid) for pid in property_ids_str]
-                    except (ValueError, TypeError):
-                        flash("Invalid property IDs provided", "error")
+                    if not selected_tags:
+                        flash("Please select at least one property tag", "error")
                         return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
-                    if property_ids:
+                    # Parse domain:tag pairs and group by publisher_domain
+                    import re
+                    from collections import defaultdict
+
+                    tags_by_domain: dict[str, list[str]] = defaultdict(list)
+                    tag_pattern = re.compile(r"^[a-z0-9_]+$")
+
+                    for selection in selected_tags:
+                        if ":" not in selection:
+                            flash(f"Invalid tag selection format: {selection}", "error")
+                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+
+                        domain, tag = selection.split(":", 1)
+
+                        # Validate tag format
+                        if not tag_pattern.match(tag):
+                            flash(f"Invalid tag '{tag}': use only lowercase letters, numbers, and underscores", "error")
+                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+
+                        if tag not in tags_by_domain[domain]:
+                            tags_by_domain[domain].append(tag)
+
+                    # Validate that tags exist for properties from these publishers
+                    from src.core.database.models import AuthorizedProperty
+
+                    for domain, tags in tags_by_domain.items():
+                        # Check that properties with these tags exist for this publisher
+                        props_with_tags = db_session.scalars(
+                            select(AuthorizedProperty).filter(
+                                AuthorizedProperty.tenant_id == tenant_id,
+                                AuthorizedProperty.publisher_domain == domain,
+                            )
+                        ).all()
+
+                        available_tags = set()
+                        for prop in props_with_tags:
+                            if prop.tags:
+                                available_tags.update(prop.tags)
+
+                        missing_tags = set(tags) - available_tags
+                        if missing_tags:
+                            flash(
+                                f"Tags not found for publisher {domain}: {', '.join(missing_tags)}",
+                                "error",
+                            )
+                            return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+
+                    # Build AdCP 2.13.0 discriminated union format
+                    publisher_properties = []
+                    for domain, tags in tags_by_domain.items():
+                        publisher_properties.append(
+                            {
+                                "publisher_domain": domain,
+                                "property_tags": tags,
+                                "selection_type": "by_tag",
+                            }
+                        )
+
+                    # Store in the properties field (supports full publisher_properties structure)
+                    product_kwargs["properties"] = publisher_properties
+                elif property_mode == "property_ids":
+                    # Get selected property IDs and store in AdCP discriminated union format
+                    # grouped by publisher_domain
+                    property_ids_list = request.form.getlist("selected_property_ids")
+
+                    if not property_ids_list:
+                        flash("Please select at least one property", "error")
+                        return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+
+                    from src.core.database.models import AuthorizedProperty
+
+                    # Query by property_id (string), not integer id
+                    properties = db_session.scalars(
+                        select(AuthorizedProperty).filter(
+                            AuthorizedProperty.property_id.in_(property_ids_list),
+                            AuthorizedProperty.tenant_id == tenant_id,
+                        )
+                    ).all()
+
+                    # Verify all requested IDs were found (prevent TOCTOU)
+                    if len(properties) != len(property_ids_list):
+                        flash("One or more selected properties not found or not authorized", "error")
+                        return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
+
+                    # Group property_ids by publisher_domain for correct AdCP format
+                    from collections import defaultdict
+
+                    properties_by_domain: dict[str, list[str]] = defaultdict(list)
+                    for prop in properties:
+                        properties_by_domain[prop.publisher_domain].append(prop.property_id)
+
+                    # Build AdCP 2.13.0 discriminated union format
+                    publisher_properties = []
+                    for domain, prop_ids in properties_by_domain.items():
+                        publisher_properties.append(
+                            {
+                                "publisher_domain": domain,
+                                "property_ids": prop_ids,
+                                "selection_type": "by_id",
+                            }
+                        )
+
+                    # Store in the properties field (supports full publisher_properties structure)
+                    product_kwargs["properties"] = publisher_properties
+
+                elif property_mode == "full":
+                    # Get selected property IDs and load full property objects (legacy mode)
+                    property_ids_list = request.form.getlist("full_property_ids")
+
+                    if not property_ids_list:
+                        # No properties selected, default to empty property_tags to satisfy DB constraint
+                        product_kwargs["property_tags"] = []
+                    else:
                         from src.core.database.models import AuthorizedProperty
 
+                        # Query by property_id (string), not integer id
                         properties = db_session.scalars(
                             select(AuthorizedProperty).filter(
-                                AuthorizedProperty.id.in_(property_ids), AuthorizedProperty.tenant_id == tenant_id
+                                AuthorizedProperty.property_id.in_(property_ids_list),
+                                AuthorizedProperty.tenant_id == tenant_id,
                             )
                         ).all()
 
                         # Verify all requested IDs were found (prevent TOCTOU)
-                        if len(properties) != len(property_ids):
+                        if len(properties) != len(property_ids_list):
                             flash("One or more selected properties not found or not authorized", "error")
                             return _render_add_product_form(tenant_id, tenant, adapter_type, currencies, form_data)
 
                         if properties:
-                            # Convert to dict format for JSONB storage
+                            # Convert to dict format for JSONB storage (legacy format)
                             properties_data = []
                             for prop in properties:
                                 prop_dict = {
@@ -1091,9 +1148,6 @@ def add_product(tenant_id):
                         else:
                             # No properties found, default to empty property_tags to satisfy DB constraint
                             product_kwargs["property_tags"] = []
-                    else:
-                        # No properties selected, default to empty property_tags to satisfy DB constraint
-                        product_kwargs["property_tags"] = []
 
                 # Ensure either properties or property_tags is set (DB constraint requirement)
                 if "properties" not in product_kwargs and "property_tags" not in product_kwargs:
@@ -1417,6 +1471,109 @@ def edit_product(tenant_id, product_id):
                 else:
                     product.allowed_principal_ids = None
                 attributes.flag_modified(product, "allowed_principal_ids")
+
+                # Handle publisher properties (AdCP requirement)
+                property_mode = form_data.get("property_mode", "tags")
+                if property_mode == "tags":
+                    # Get selected property tags (format: "domain:tag")
+                    selected_tags = request.form.getlist("selected_property_tags")
+                    if selected_tags:
+                        import re
+                        from collections import defaultdict
+
+                        tags_by_domain: dict[str, list[str]] = defaultdict(list)
+                        tag_pattern = re.compile(r"^[a-z0-9_]+$")
+
+                        for selection in selected_tags:
+                            if ":" in selection:
+                                domain, tag = selection.split(":", 1)
+                                if tag_pattern.match(tag) and tag not in tags_by_domain[domain]:
+                                    tags_by_domain[domain].append(tag)
+
+                        # Build AdCP discriminated union format
+                        publisher_properties = []
+                        for domain, tags in tags_by_domain.items():
+                            publisher_properties.append(
+                                {
+                                    "publisher_domain": domain,
+                                    "property_tags": tags,
+                                    "selection_type": "by_tag",
+                                }
+                            )
+
+                        if publisher_properties:
+                            product.properties = publisher_properties
+                            product.property_tags = None
+                            product.property_ids = None
+                            attributes.flag_modified(product, "properties")
+
+                elif property_mode == "property_ids":
+                    # Get selected property IDs
+                    property_ids_list = request.form.getlist("selected_property_ids")
+                    if property_ids_list:
+                        from collections import defaultdict
+
+                        from src.core.database.models import AuthorizedProperty
+
+                        # Query properties to get their publisher_domain
+                        properties = db_session.scalars(
+                            select(AuthorizedProperty).filter(
+                                AuthorizedProperty.property_id.in_(property_ids_list),
+                                AuthorizedProperty.tenant_id == tenant_id,
+                            )
+                        ).all()
+
+                        # Group by publisher_domain
+                        properties_by_domain: dict[str, list[str]] = defaultdict(list)
+                        for prop in properties:
+                            properties_by_domain[prop.publisher_domain].append(prop.property_id)
+
+                        # Build AdCP discriminated union format
+                        publisher_properties = []
+                        for domain, prop_ids in properties_by_domain.items():
+                            publisher_properties.append(
+                                {
+                                    "publisher_domain": domain,
+                                    "property_ids": prop_ids,
+                                    "selection_type": "by_id",
+                                }
+                            )
+
+                        if publisher_properties:
+                            product.properties = publisher_properties
+                            product.property_tags = None
+                            product.property_ids = None
+                            attributes.flag_modified(product, "properties")
+
+                elif property_mode == "full":
+                    # Get selected full property IDs (legacy mode)
+                    property_ids_list = request.form.getlist("full_property_ids")
+                    if property_ids_list:
+                        from src.core.database.models import AuthorizedProperty
+
+                        properties = db_session.scalars(
+                            select(AuthorizedProperty).filter(
+                                AuthorizedProperty.property_id.in_(property_ids_list),
+                                AuthorizedProperty.tenant_id == tenant_id,
+                            )
+                        ).all()
+
+                        if properties:
+                            properties_data = []
+                            for prop in properties:
+                                prop_dict = {
+                                    "property_type": prop.property_type,
+                                    "name": prop.name,
+                                    "identifiers": prop.identifiers or [],
+                                    "tags": prop.tags or [],
+                                    "publisher_domain": prop.publisher_domain,
+                                }
+                                properties_data.append(prop_dict)
+
+                            product.properties = properties_data
+                            product.property_tags = None
+                            product.property_ids = None
+                            attributes.flag_modified(product, "properties")
 
                 # Get pricing based on line item type (GAM form) or delivery type (other adapters)
                 line_item_type = form_data.get("line_item_type")
@@ -1798,6 +1955,27 @@ def edit_product(tenant_id, product_id):
             ).all()
             principals_list = [{"principal_id": p.principal_id, "name": p.name} for p in principals]
 
+            # Get authorized properties for publisher properties selector
+            from src.core.database.models import AuthorizedProperty
+
+            authorized_properties_query = db_session.scalars(
+                select(AuthorizedProperty).filter_by(tenant_id=tenant_id).order_by(AuthorizedProperty.name)
+            ).all()
+            authorized_properties_list = [
+                {
+                    "property_id": p.property_id,
+                    "name": p.name,
+                    "property_type": p.property_type,
+                    "tags": p.tags or [],
+                    "verification_status": p.verification_status,
+                    "publisher_domain": p.publisher_domain,
+                }
+                for p in authorized_properties_query
+            ]
+
+            # Get current publisher properties from product (for pre-selecting in edit form)
+            selected_publisher_properties = product.effective_properties
+
             # Show adapter-specific form
             if adapter_type == "google_ad_manager":
                 from src.core.database.models import GAMInventory
@@ -1883,6 +2061,8 @@ def edit_product(tenant_id, product_id):
                     assigned_inventory=assigned_inventory,
                     inventory_profiles=inventory_profiles,
                     principals=principals_list,
+                    authorized_properties=authorized_properties_list,
+                    selected_publisher_properties=selected_publisher_properties,
                 )
             else:
                 return render_template(
@@ -1892,6 +2072,8 @@ def edit_product(tenant_id, product_id):
                     tenant_adapter=adapter_type,
                     currencies=currencies,
                     principals=principals_list,
+                    authorized_properties=authorized_properties_list,
+                    selected_publisher_properties=selected_publisher_properties,
                 )
 
     except Exception as e:

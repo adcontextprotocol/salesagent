@@ -1,0 +1,366 @@
+<!-- Publisher Properties Selector Widget
+
+     Allows selecting properties or tags from specific publishers.
+     Stores selections in AdCP discriminated union format.
+
+     Required template variables:
+     - authorized_properties: list of dicts with property_id, name, property_type, tags, publisher_domain
+     - selected_publisher_properties: (optional) list of current selections for edit mode
+       Format: [{"publisher_domain": "...", "property_ids": [...], "selection_type": "by_id"}, ...]
+-->
+
+<style>
+.publisher-props-widget {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    margin: 1rem 0;
+}
+
+.publisher-props-widget h4 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    color: #333;
+}
+
+.property-mode-selector {
+    margin-bottom: 1rem;
+}
+
+.property-mode-selector label {
+    display: block;
+    padding: 0.5rem 0;
+    cursor: pointer;
+}
+
+.property-mode-selector input[type="radio"] {
+    margin-right: 0.5rem;
+}
+
+.publisher-group {
+    border-bottom: 2px solid #ddd;
+}
+
+.publisher-group:last-child {
+    border-bottom: none;
+}
+
+.publisher-header {
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.publisher-header.tags-mode {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.publisher-header.ids-mode {
+    background: #e8f4fd;
+    color: #1565c0;
+}
+
+.publisher-header.full-mode {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.property-item {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.property-item:hover {
+    background: #f0f7ff;
+}
+
+.property-item:last-child {
+    border-bottom: none;
+}
+
+.property-item input[type="checkbox"] {
+    margin-right: 0.75rem;
+    flex-shrink: 0;
+    width: auto;
+}
+
+.property-id-badge {
+    background: #e0e0e0;
+    color: #333;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.tag-badge {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+.property-name {
+    color: #555;
+    font-size: 0.85em;
+    margin-left: 0.75rem;
+}
+
+.no-properties-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    padding: 1rem;
+    border-radius: 4px;
+}
+
+.properties-list-container {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fafafa;
+}
+</style>
+
+<div class="publisher-props-widget">
+    <h4><i class="fas fa-building"></i> Publisher Properties</h4>
+    <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+        Select which publisher properties this product can serve on.
+    </p>
+
+    <!-- Mode Selection -->
+    <div class="property-mode-selector">
+        <label>
+            <input type="radio" name="property_mode" value="tags" onchange="togglePropertyMode()"
+                   {% if not selected_publisher_properties or (selected_publisher_properties and selected_publisher_properties[0].selection_type == 'by_tag') %}checked{% endif %}>
+            Select by Tags
+            <small style="display: block; color: #666; margin-left: 1.5rem;">Choose tags from specific publishers</small>
+        </label>
+
+        <label>
+            <input type="radio" name="property_mode" value="property_ids" onchange="togglePropertyMode()"
+                   {% if selected_publisher_properties and selected_publisher_properties[0].selection_type == 'by_id' %}checked{% endif %}>
+            Select by Property IDs
+            <small style="display: block; color: #666; margin-left: 1.5rem;">Choose specific properties from publishers</small>
+        </label>
+
+        <label>
+            <input type="radio" name="property_mode" value="full" onchange="togglePropertyMode()"
+                   {% if selected_publisher_properties and selected_publisher_properties[0].selection_type not in ['by_id', 'by_tag'] %}checked{% endif %}>
+            Specify Full Properties (Legacy)
+            <small style="display: block; color: #666; margin-left: 1.5rem;">Include complete property objects - for backward compatibility only.</small>
+        </label>
+    </div>
+
+    <!-- Tags Section -->
+    <div id="property-tags-section" style="margin-top: 1rem;">
+        <label style="font-weight: 600;">Select Property Tags *</label>
+        <small style="color: #666; display: block; margin-bottom: 0.5rem;">Select tags from specific publishers. Each selection targets that tag on that publisher only.</small>
+
+        {# Build tags grouped by publisher_domain #}
+        {% set tags_by_publisher = {} %}
+        {% if authorized_properties and authorized_properties|length > 0 %}
+            {% for prop in authorized_properties %}
+                {% set domain = prop.publisher_domain or 'Unknown Publisher' %}
+                {% if prop.tags %}
+                    {% if domain not in tags_by_publisher %}
+                        {% set _ = tags_by_publisher.update({domain: []}) %}
+                    {% endif %}
+                    {% for tag in prop.tags %}
+                        {% if tag not in tags_by_publisher[domain] %}
+                            {% set _ = tags_by_publisher[domain].append(tag) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+
+        {% if tags_by_publisher|length > 0 %}
+        <div class="properties-list-container">
+            {% for domain, tags in tags_by_publisher.items()|sort %}
+            <div class="publisher-group">
+                <div class="publisher-header tags-mode">
+                    <i class="fas fa-globe" style="margin-right: 0.5rem;"></i>{{ domain }}
+                    <span style="font-weight: normal; color: #666; font-size: 0.85em; margin-left: 0.5rem;">({{ tags|length }} tag{{ 's' if tags|length != 1 else '' }})</span>
+                </div>
+                {% for tag in tags|sort %}
+                {% set is_selected = false %}
+                {% if selected_publisher_properties %}
+                    {% for sp in selected_publisher_properties %}
+                        {% if sp.publisher_domain == domain and sp.selection_type == 'by_tag' and tag in (sp.property_tags or []) %}
+                            {% set is_selected = true %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+                <div class="property-item">
+                    <input type="checkbox" name="selected_property_tags" value="{{ domain }}:{{ tag }}"
+                           id="tag_{{ domain|replace('.', '_')|replace('-', '_') }}_{{ tag }}"
+                           {% if is_selected %}checked{% endif %}>
+                    <span class="tag-badge">{{ tag }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="no-properties-warning">
+            <strong style="color: #856404;">No property tags found</strong><br>
+            <small style="color: #856404; display: block; margin-top: 0.5rem;">
+                Property tags are derived from your authorized properties. Add publisher partnerships and sync their properties first.
+            </small>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Property IDs Section -->
+    <div id="property-ids-section" style="margin-top: 1rem; display: none;">
+        <label style="font-weight: 600;">Select Property IDs *</label>
+        <small style="color: #666; display: block; margin-bottom: 0.5rem;">Select property IDs from your authorized inventory, grouped by publisher.</small>
+
+        {% if authorized_properties and authorized_properties|length > 0 %}
+        {# Group properties by publisher_domain #}
+        {% set properties_by_publisher = {} %}
+        {% for prop in authorized_properties %}
+            {% set domain = prop.publisher_domain or 'Unknown Publisher' %}
+            {% if domain not in properties_by_publisher %}
+                {% set _ = properties_by_publisher.update({domain: []}) %}
+            {% endif %}
+            {% set _ = properties_by_publisher[domain].append(prop) %}
+        {% endfor %}
+
+        <div class="properties-list-container">
+            {% for domain, props in properties_by_publisher.items()|sort %}
+            <div class="publisher-group">
+                <div class="publisher-header ids-mode">
+                    <i class="fas fa-globe" style="margin-right: 0.5rem;"></i>{{ domain }}
+                    <span style="font-weight: normal; color: #666; font-size: 0.85em; margin-left: 0.5rem;">({{ props|length }} properties)</span>
+                </div>
+                {% for prop in props %}
+                {% set is_selected = false %}
+                {% if selected_publisher_properties %}
+                    {% for sp in selected_publisher_properties %}
+                        {% if sp.publisher_domain == domain and sp.selection_type == 'by_id' and prop.property_id in (sp.property_ids or []) %}
+                            {% set is_selected = true %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+                <div class="property-item">
+                    <input type="checkbox" name="selected_property_ids" value="{{ prop.property_id }}"
+                           id="prop_{{ prop.property_id }}" {% if is_selected %}checked{% endif %}>
+                    <code class="property-id-badge">{{ prop.property_id }}</code>
+                    <span class="property-name">{{ prop.name }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="no-properties-warning">
+            <strong>No publisher properties found</strong><br>
+            <small style="display: block; margin-top: 0.5rem;">
+                You need to add publisher partnerships first.
+            </small>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Full Properties Section (Legacy) -->
+    <div id="property-full-section" style="margin-top: 1rem; display: none;">
+        <div class="alert" style="background: #fff3e0; border-left: 4px solid #ff9800; padding: 1rem; margin-bottom: 1rem;">
+            <strong>Legacy Mode:</strong> This mode includes full property objects in the product definition. For most cases, use property tags or property IDs instead.
+        </div>
+        <label style="font-weight: 600;">Select Properties (grouped by publisher)</label>
+
+        {% if authorized_properties and authorized_properties|length > 0 %}
+        {# Reuse properties_by_publisher from above #}
+        <div class="properties-list-container" style="max-height: 300px;">
+            {% for domain, props in properties_by_publisher.items()|sort %}
+            <div class="publisher-group">
+                <div class="publisher-header full-mode">
+                    <i class="fas fa-globe" style="margin-right: 0.5rem;"></i>{{ domain }}
+                </div>
+                {% for prop in props %}
+                <label class="property-item" style="cursor: pointer;">
+                    <input type="checkbox" name="full_property_ids" value="{{ prop.property_id }}">
+                    {{ prop.name or prop.property_id }} ({{ prop.property_type }})
+                    {% if prop.verification_status == 'verified' %}
+                    <span style="background: #c8e6c9; color: #2e7d32; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.5rem;">verified</span>
+                    {% elif prop.verification_status == 'pending' %}
+                    <span style="background: #fff3e0; color: #e65100; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.75em; margin-left: 0.5rem;">pending</span>
+                    {% endif %}
+                    {% if prop.tags %}<span class="tag-badge" style="margin-left: 0.5rem;">{{ prop.tags|join(', ') }}</span>{% endif %}
+                </label>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="no-properties-warning">
+            No publisher properties found. Add publisher partnerships first.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function togglePropertyMode() {
+    const mode = document.querySelector('input[name="property_mode"]:checked').value;
+    const tagsSection = document.getElementById('property-tags-section');
+    const idsSection = document.getElementById('property-ids-section');
+    const fullSection = document.getElementById('property-full-section');
+
+    // Hide all sections first
+    tagsSection.style.display = 'none';
+    idsSection.style.display = 'none';
+    fullSection.style.display = 'none';
+
+    // Show the selected section
+    if (mode === 'tags') {
+        tagsSection.style.display = 'block';
+    } else if (mode === 'property_ids') {
+        idsSection.style.display = 'block';
+    } else if (mode === 'full') {
+        fullSection.style.display = 'block';
+    }
+}
+
+function validatePublisherProperties() {
+    const mode = document.querySelector('input[name="property_mode"]:checked').value;
+
+    if (mode === 'tags') {
+        const checkboxes = document.querySelectorAll('input[name="selected_property_tags"]:checked');
+        if (checkboxes.length === 0) {
+            alert('Please select at least one property tag');
+            return false;
+        }
+    } else if (mode === 'property_ids') {
+        const checkboxes = document.querySelectorAll('input[name="selected_property_ids"]:checked');
+        if (checkboxes.length === 0) {
+            alert('Please select at least one property');
+            return false;
+        }
+    } else if (mode === 'full') {
+        const checkboxes = document.querySelectorAll('input[name="full_property_ids"]:checked');
+        if (checkboxes.length === 0) {
+            alert('Please select at least one property');
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', function() {
+    togglePropertyMode();
+});
+</script>

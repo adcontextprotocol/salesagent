@@ -104,6 +104,8 @@ services:
         condition: service_healthy
     volumes:
       - ./audit_logs:/app/audit_logs
+      - ./templates:/app/templates:ro
+      - ./src:/app/src:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s

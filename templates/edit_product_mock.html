@@ -190,6 +190,16 @@
         </div>
         {% endif %}
 
+        <!-- Publisher Properties -->
+        <h3 style="margin-top: 2rem;">
+            <i class="fas fa-building"></i> Publisher Properties (AdCP)
+        </h3>
+        <div class="alert" style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 1rem; margin-bottom: 1rem;">
+            <strong>Required:</strong> Specify which properties this product covers so buyers can validate against their authorized properties.
+        </div>
+
+        {% include 'components/publisher_properties_selector.html' %}
+
         <!-- Custom Targeting (Optional) -->
         <h3 style="margin-top: 2rem;">
             <i class="fas fa-bullseye"></i> Custom Targeting (Optional)

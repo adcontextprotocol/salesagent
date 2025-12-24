@@ -41,6 +41,18 @@ def list_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
             )
             partners = session.scalars(stmt_partners).all()
 
+            # Get property counts per publisher domain
+            from sqlalchemy import func
+
+            from src.core.database.models import AuthorizedProperty
+
+            property_counts_stmt = (
+                select(AuthorizedProperty.publisher_domain, func.count(AuthorizedProperty.property_id))
+                .filter(AuthorizedProperty.tenant_id == tenant_id)
+                .group_by(AuthorizedProperty.publisher_domain)
+            )
+            property_counts = {row[0]: row[1] for row in session.execute(property_counts_stmt).all()}
+
             # Convert to dict
             partners_list = []
             for partner in partners:
@@ -54,6 +66,7 @@ def list_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                         "sync_status": partner.sync_status,
                         "sync_error": partner.sync_error,
                         "created_at": partner.created_at.isoformat(),
+                        "property_count": property_counts.get(partner.publisher_domain, 0),
                     }
                 )
 
@@ -192,7 +205,9 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
             if not partners:
                 return jsonify({"message": "No publishers to sync"}), 200
 
-            # For development environment or mock adapters, auto-verify all publishers (skip adagents.json fetching)
+            # For development environment or mock adapters, auto-verify publishers
+            # (don't require our agent to be in their adagents.json)
+            # BUT still fetch real properties from adagents.json if available
             config = get_config()
             is_dev = config.environment == "development"
             is_mock = tenant.adapter_config and tenant.adapter_config.adapter_type == "mock"
@@ -217,57 +232,87 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
 
                 session.commit()
 
-                # Create mock properties for verified publishers (only for mock adapters - they don't have real adagents.json)
+                # Try to fetch real properties from adagents.json for each publisher
+                # This allows mock tenants to test with real publisher inventory
                 properties_created = 0
+                properties_updated = 0
                 tags_created = 0
-                if is_mock and verified_domains:
-                    from src.core.database.models import AuthorizedProperty, PropertyTag
+                fallback_properties = 0
 
-                    # Ensure 'all_inventory' tag exists
-                    tag_stmt = select(PropertyTag).where(
-                        PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id == "all_inventory"
-                    )
-                    all_inventory_tag = session.scalars(tag_stmt).first()
-                    if not all_inventory_tag:
-                        all_inventory_tag = PropertyTag(
-                            tag_id="all_inventory",
-                            tenant_id=tenant_id,
-                            name="All Inventory",
-                            description="Default tag that applies to all properties.",
-                            created_at=datetime.now(UTC),
-                            updated_at=datetime.now(UTC),
-                        )
-                        session.add(all_inventory_tag)
-                        tags_created += 1
-                        logger.info(f"Created 'all_inventory' tag for tenant {tenant_id}")
+                if verified_domains:
+                    from src.services.property_discovery_service import get_property_discovery_service
 
-                    # Create a mock property for each publisher domain
+                    discovery_service = get_property_discovery_service()
+
                     for domain in verified_domains:
-                        property_id = f"website_{domain.replace('.', '_').replace('-', '_')}"
-                        prop_stmt = select(AuthorizedProperty).where(
-                            AuthorizedProperty.tenant_id == tenant_id,
-                            AuthorizedProperty.property_id == property_id,
+                        # Try to fetch real properties from adagents.json
+                        property_stats = discovery_service.sync_properties_from_adagents_sync(
+                            tenant_id, publisher_domains=[domain], dry_run=False
                         )
-                        existing = session.scalars(prop_stmt).first()
-                        if not existing:
-                            mock_property = AuthorizedProperty(
-                                tenant_id=tenant_id,
-                                property_id=property_id,
-                                property_type="website",
-                                name=domain,
-                                publisher_domain=domain,
-                                identifiers=[{"type": "domain", "value": domain}],
-                                tags=["all_inventory"],
-                                verification_status="verified",
-                                verification_checked_at=datetime.now(UTC),
-                                created_at=datetime.now(UTC),
-                                updated_at=datetime.now(UTC),
-                            )
-                            session.add(mock_property)
-                            properties_created += 1
-                            logger.info(f"Created mock property for {domain}")
+                        domain_properties_created = property_stats.get("properties_created", 0)
+                        properties_created += domain_properties_created
+                        properties_updated += property_stats.get("properties_updated", 0)
+                        tags_created += property_stats.get("tags_created", 0)
 
-                    session.commit()
+                        # Check if sync failed or created no properties
+                        # (errors list or 0 properties means adagents.json unavailable/empty)
+                        has_errors = bool(property_stats.get("errors", []))
+                        if has_errors or domain_properties_created == 0:
+                            # Create a fallback mock property for this domain
+                            logger.info(
+                                f"No properties from {domain} adagents.json "
+                                f"(errors: {has_errors}, created: {domain_properties_created}) - "
+                                f"creating fallback mock property"
+                            )
+
+                            from src.core.database.models import AuthorizedProperty, PropertyTag
+
+                            # Ensure 'all_inventory' tag exists
+                            tag_stmt = select(PropertyTag).where(
+                                PropertyTag.tenant_id == tenant_id, PropertyTag.tag_id == "all_inventory"
+                            )
+                            all_inventory_tag = session.scalars(tag_stmt).first()
+                            if not all_inventory_tag:
+                                all_inventory_tag = PropertyTag(
+                                    tag_id="all_inventory",
+                                    tenant_id=tenant_id,
+                                    name="All Inventory",
+                                    description="Default tag that applies to all properties.",
+                                    created_at=datetime.now(UTC),
+                                    updated_at=datetime.now(UTC),
+                                )
+                                session.add(all_inventory_tag)
+                                tags_created += 1
+
+                            # Create fallback property
+                            property_id = f"website_{domain.replace('.', '_').replace('-', '_')}"
+                            prop_stmt = select(AuthorizedProperty).where(
+                                AuthorizedProperty.tenant_id == tenant_id,
+                                AuthorizedProperty.property_id == property_id,
+                            )
+                            existing = session.scalars(prop_stmt).first()
+                            if not existing:
+                                fallback_property = AuthorizedProperty(
+                                    tenant_id=tenant_id,
+                                    property_id=property_id,
+                                    property_type="website",
+                                    name=domain,
+                                    publisher_domain=domain,
+                                    identifiers=[{"type": "domain", "value": domain}],
+                                    tags=["all_inventory"],
+                                    verification_status="verified",
+                                    verification_checked_at=datetime.now(UTC),
+                                    created_at=datetime.now(UTC),
+                                    updated_at=datetime.now(UTC),
+                                )
+                                session.add(fallback_property)
+                                fallback_properties += 1
+
+                            session.commit()
+                        else:
+                            logger.info(
+                                f"Fetched real properties from {domain}: " f"{domain_properties_created} created"
+                            )
 
                 return jsonify(
                     {
@@ -276,7 +321,8 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                         "verified": len(partners),
                         "errors": 0,
                         "total": len(partners),
-                        "properties_created": properties_created,
+                        "properties_created": properties_created + fallback_properties,
+                        "properties_updated": properties_updated,
                         "tags_created": tags_created,
                     }
                 )
