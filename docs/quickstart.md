@@ -37,9 +37,10 @@ Access the Admin UI at http://localhost:8000/admin
 ## What Gets Created
 
 On first startup in single-tenant mode (the default):
-- An empty "Default Publisher" tenant is created
+- A tenant is created with either:
+  - **Demo data** (default): Mock adapter, sample currencies, test principal - great for evaluation
+  - **Blank slate** (`CREATE_DEMO_TENANT=false`): Empty tenant requiring full setup - for production deployments
 - Super admins (from `SUPER_ADMIN_EMAILS`) get automatic access
-- No demo data - you configure your real ad server
 
 ## Configuration Steps
 
@@ -206,6 +207,7 @@ fly deploy
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ADCP_MULTI_TENANT` | Enable multi-tenant mode | `false` |
+| `CREATE_DEMO_TENANT` | Create demo tenant with mock adapter and sample data (for evaluation) vs blank tenant (for production) | `true` |
 | `ENCRYPTION_KEY` | For encrypting sensitive data | Auto-generated |
 
 ## Single-Tenant vs Multi-Tenant
