@@ -37,7 +37,7 @@ services:
 
   # Full nginx with subdomain routing
   proxy:
-    image: nginx:alpine
+    image: nginx:stable
     volumes:
       # Use multi-tenant nginx config with Docker service names
       - ./config/nginx/nginx-multi-tenant.conf:/etc/nginx/nginx.conf:ro
