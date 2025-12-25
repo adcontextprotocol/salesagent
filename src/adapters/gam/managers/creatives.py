@@ -19,6 +19,65 @@ from ..utils.validation import GAMValidator
 logger = logging.getLogger(__name__)
 
 
+def _extract_package_info(package_assignments: list) -> list[tuple[str, int]]:
+    """Extract package IDs and weights from package_assignments.
+
+    Supports both legacy format (list of strings) and new format (list of dicts with weight).
+
+    Args:
+        package_assignments: List of package IDs (strings) or dicts with package_id/weight
+
+    Returns:
+        List of (package_id, weight) tuples. Weight defaults to 100 if not provided.
+    """
+    result = []
+    for assignment in package_assignments:
+        if isinstance(assignment, str):
+            # Legacy format: just package_id string
+            result.append((assignment, 100))
+        elif isinstance(assignment, dict):
+            # New format: {"package_id": "...", "weight": N}
+            pkg_id = assignment.get("package_id", "")
+            weight = assignment.get("weight", 100)
+            if pkg_id:
+                result.append((pkg_id, weight))
+            else:
+                logger.warning(f"Skipping malformed package assignment (missing package_id): {assignment}")
+    return result
+
+
+def _get_package_ids(package_assignments: list) -> list[str]:
+    """Extract just the package IDs from package_assignments.
+
+    Supports both legacy format (list of strings) and new format (list of dicts).
+    """
+    return [pkg_id for pkg_id, _ in _extract_package_info(package_assignments)]
+
+
+def _extract_product_id_from_package(package_id: str) -> str | None:
+    """Extract product ID from a package ID string.
+
+    Package IDs follow the format: pkg_prod_XXXXXX_YYYYYYYY_N
+    where XXXXXX is the product ID suffix.
+
+    Args:
+        package_id: Package ID string (e.g., "pkg_prod_2215c038_63e4864a_1")
+
+    Returns:
+        Product ID (e.g., "prod_2215c038") or None if format doesn't match.
+    """
+    if not package_id.startswith("pkg_prod_"):
+        return None
+
+    parts = package_id.split("_")
+    # Expected: ["pkg", "prod", "XXXXXX", "YYYYYYYY", "N"]
+    if len(parts) >= 3:
+        return f"prod_{parts[2]}"
+
+    logger.warning(f"Package ID '{package_id}' has unexpected format - cannot extract product ID")
+    return None
+
+
 class GAMCreativesManager:
     """Manages creative operations for Google Ad Manager."""
 
@@ -70,6 +129,12 @@ class GAMCreativesManager:
         logger.info(f"[DEBUG] line_item_map keys: {list(line_item_map.keys())}")
         logger.info(f"[DEBUG] creative_placeholders keys: {list(creative_placeholders.keys())}")
 
+        # AdCP 2.5: Check if any creatives have non-default weights
+        # If so, update affected line items to use MANUAL rotation
+        self._update_line_items_for_weighted_creatives(
+            assets, line_item_map, line_item_service if not self.dry_run else None
+        )
+
         for asset in assets:
             logger.info(
                 f"[DEBUG] Processing asset {asset.get('creative_id')} with package_assignments: {asset.get('package_assignments', [])}"
@@ -114,8 +179,9 @@ class GAMCreativesManager:
                 continue
 
             # Get placeholders for this asset's package assignments
+            # Use helper to extract package IDs (supports both legacy string and new dict format)
             asset_placeholders = []
-            for pkg_id in asset.get("package_assignments", []):
+            for pkg_id in _get_package_ids(asset.get("package_assignments", [])):
                 if pkg_id in creative_placeholders:
                     asset_placeholders.extend(creative_placeholders[pkg_id])
 
@@ -239,6 +305,94 @@ class GAMCreativesManager:
 
         return line_item_map, creative_placeholders
 
+    def _update_line_items_for_weighted_creatives(
+        self, assets: list[dict[str, Any]], line_item_map: dict[str, str], line_item_service
+    ) -> None:
+        """Update line items to use MANUAL rotation if creatives have non-default weights.
+
+        AdCP 2.5 supports creative rotation weights. When weights differ from the default (100),
+        GAM requires MANUAL rotation type on the line item to respect the weights.
+
+        Args:
+            assets: List of creative assets with package_assignments containing weights
+            line_item_map: Mapping of line item names to GAM line item IDs
+            line_item_service: GAM LineItemService (None for dry run)
+        """
+        # Collect all weights per line item to determine if MANUAL rotation is needed
+        line_item_weights: dict[str, list[int]] = {}
+
+        for asset in assets:
+            package_info = _extract_package_info(asset.get("package_assignments", []))
+            for package_id, weight in package_info:
+                # Find the line item for this package
+                line_item_id = None
+                product_id = _extract_product_id_from_package(package_id)
+                if product_id:
+                    for line_item_name, item_id in line_item_map.items():
+                        if line_item_name.endswith(f" - {product_id}"):
+                            line_item_id = item_id
+                            break
+
+                if line_item_id:
+                    if line_item_id not in line_item_weights:
+                        line_item_weights[line_item_id] = []
+                    line_item_weights[line_item_id].append(weight)
+
+        # Determine which line items need MANUAL rotation
+        # MANUAL is required when any creative has a non-default weight (not 100)
+        # This covers both cases: varying weights AND uniform non-default weights
+        line_items_needing_manual = []
+        for line_item_id, weights in line_item_weights.items():
+            if any(w != 100 for w in weights):
+                line_items_needing_manual.append(line_item_id)
+                logger.info(f"Line item {line_item_id} has non-default weights {weights} - will use MANUAL rotation")
+
+        if not line_items_needing_manual:
+            logger.info("All creatives have default weights - keeping EVEN rotation")
+            return
+
+        if self.dry_run:
+            for li_id in line_items_needing_manual:
+                logger.info(f"Would update line item {li_id} to use MANUAL rotation")
+            return
+
+        if not line_item_service:
+            logger.warning("No line item service available - cannot update rotation type")
+            return
+
+        # Fetch and update line items
+        for line_item_id in line_items_needing_manual:
+            try:
+                # Get the line item
+                statement = (
+                    self.client_manager.get_statement_builder()
+                    .Where("id = :id")
+                    .WithBindVariable("id", int(line_item_id))
+                )
+                response = line_item_service.getLineItemsByStatement(statement.ToStatement())
+                line_items = getattr(response, "results", [])
+
+                if not line_items:
+                    logger.warning(f"Line item {line_item_id} not found for rotation update")
+                    continue
+
+                line_item = line_items[0]
+                # GAM Zeep objects support dict-style access for both read and write
+                current_rotation = line_item.get("creativeRotationType", "EVEN")
+
+                if current_rotation != "MANUAL":
+                    # Update to MANUAL rotation
+                    line_item["creativeRotationType"] = "MANUAL"
+                    line_item_service.updateLineItems([line_item])
+                    logger.info(f"Updated line item {line_item_id} from {current_rotation} to MANUAL rotation")
+                else:
+                    logger.info(f"Line item {line_item_id} already uses MANUAL rotation")
+
+            except Exception as e:
+                # Log full traceback for debugging, but don't fail the whole operation
+                # Weights will still be set on LICAs even if rotation type update fails
+                logger.error(f"Failed to update rotation type for line item {line_item_id}: {e}", exc_info=True)
+
     def _get_creative_type(self, asset: dict[str, Any]) -> str:
         """Determine the creative type based on AdCP v1.3+ fields.
 
@@ -328,13 +482,14 @@ class GAMCreativesManager:
             return validation_errors
 
         # Check if asset dimensions match any placeholder in its assigned packages
-        package_assignments = asset.get("package_assignments", [])
-        if not package_assignments:
+        # Use helper to extract package IDs (supports both legacy string and new dict format)
+        package_ids = _get_package_ids(asset.get("package_assignments", []))
+        if not package_ids:
             logger.warning(f"Creative {asset.get('creative_id', 'unknown')} has no package assignments")
             return validation_errors
 
         matching_placeholders_found = False
-        for package_id in package_assignments:
+        for package_id in package_ids:
             # Try direct lookup first (for backward compatibility with line item names)
             placeholders = creative_placeholders.get(package_id, [])
 
@@ -383,7 +538,7 @@ class GAMCreativesManager:
 
         if not matching_placeholders_found:
             available_sizes = []
-            for package_id in package_assignments:
+            for package_id in package_ids:
                 # Try direct lookup first
                 placeholders = creative_placeholders.get(package_id, [])
 
@@ -727,33 +882,36 @@ class GAMCreativesManager:
     def _associate_creative_with_line_items(
         self, gam_creative_id: str, asset: dict[str, Any], line_item_map: dict[str, str], lica_service
     ) -> None:
-        """Associate creative with its assigned line items."""
-        package_assignments = asset.get("package_assignments", [])
+        """Associate creative with its assigned line items.
 
-        for package_id in package_assignments:
+        Supports creative rotation weights (AdCP 2.5). When weights differ from the default (100),
+        the weight is passed to GAM's manualCreativeRotationWeight field for MANUAL rotation.
+        """
+        # Extract package IDs and weights using helper (supports legacy and new formats)
+        package_info = _extract_package_info(asset.get("package_assignments", []))
+
+        for package_id, weight in package_info:
             # Line item map is keyed by line item name (which ends with "- prod_XXXXXX")
             # Package IDs are like "pkg_prod_XXXXXX_YYYYYYYY_N"
             # We need to match them by product ID
             line_item_id = None
 
             # Extract product ID from package_id: "pkg_prod_2215c038_..." -> "prod_2215c038"
-            if package_id.startswith("pkg_prod_"):
-                parts = package_id.split("_")
-                if len(parts) >= 3:
-                    product_id = f"prod_{parts[2]}"
-                    logger.info(f"[DEBUG] Looking for line item ending with ' - {product_id}'")
-                    # Find line item that ends with this product ID
-                    for line_item_name, item_id in line_item_map.items():
-                        logger.info(f"[DEBUG] Checking line item: {line_item_name}")
+            product_id = _extract_product_id_from_package(package_id)
+            if product_id:
+                logger.info(f"[DEBUG] Looking for line item ending with ' - {product_id}'")
+                # Find line item that ends with this product ID
+                for line_item_name, item_id in line_item_map.items():
+                    logger.info(f"[DEBUG] Checking line item: {line_item_name}")
+                    logger.info(
+                        f"[DEBUG] Does it end with ' - {product_id}'? {line_item_name.endswith(f' - {product_id}')}"
+                    )
+                    if line_item_name.endswith(f" - {product_id}"):
+                        line_item_id = item_id
                         logger.info(
-                            f"[DEBUG] Does it end with ' - {product_id}'? {line_item_name.endswith(f' - {product_id}')}"
+                            f"[DEBUG] MATCH! Package {package_id} -> line item {line_item_name} (ID: {item_id})"
                         )
-                        if line_item_name.endswith(f" - {product_id}"):
-                            line_item_id = item_id
-                            logger.info(
-                                f"[DEBUG] MATCH! Package {package_id} -> line item {line_item_name} (ID: {item_id})"
-                            )
-                            break
+                        break
 
             if not line_item_id:
                 logger.warning(
@@ -762,17 +920,25 @@ class GAMCreativesManager:
                 continue
 
             if self.dry_run:
-                logger.info(f"Would associate creative {gam_creative_id} with line item {line_item_id}")
+                weight_info = f" with weight {weight}" if weight != 100 else ""
+                logger.info(f"Would associate creative {gam_creative_id} with line item {line_item_id}{weight_info}")
             else:
-                # Create Line Item Creative Association
-                association = {
+                # Create Line Item Creative Association (AdCP 2.5 weight support)
+                association: dict[str, str | int] = {
                     "creativeId": gam_creative_id,
                     "lineItemId": line_item_id,
                 }
 
+                # Add weight for manual rotation if not default
+                # GAM uses manualCreativeRotationWeight for MANUAL rotation type
+                if weight != 100:
+                    association["manualCreativeRotationWeight"] = weight
+                    logger.info(f"Setting creative weight to {weight} for LICA")
+
                 try:
                     lica_service.createLineItemCreativeAssociations([association])
-                    logger.info(f"✓ Associated creative {gam_creative_id} with line item {line_item_id}")
+                    weight_info = f" (weight: {weight})" if weight != 100 else ""
+                    logger.info(f"✓ Associated creative {gam_creative_id} with line item {line_item_id}{weight_info}")
                 except Exception as e:
                     logger.error(f"Failed to associate creative {gam_creative_id} with line item {line_item_id}: {e}")
                     raise

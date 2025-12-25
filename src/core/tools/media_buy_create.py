@@ -12,7 +12,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypedDict, cast
 from urllib.parse import urlparse
 
 from adcp import BrandManifest, PushNotificationConfig
@@ -27,6 +27,14 @@ from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
 from pydantic import ValidationError
 from rich.console import Console
+
+
+class PackageAssignmentDict(TypedDict):
+    """Internal dict format for passing package assignments to adapters."""
+
+    package_id: str
+    weight: int
+
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -756,13 +764,19 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
             if assignments:
                 logger.info(f"[APPROVAL] Found {len(assignments)} creative assignments, uploading to adapter")
 
-                # Group packages by creative (REVERSED - key by creative_id, value is list of package_ids)
+                # Group packages by creative (REVERSED - key by creative_id, value is list of package assignments)
                 # This ensures each creative is uploaded ONCE with ALL its package assignments
-                packages_by_creative: dict[str, list[str]] = {}
+                # Each assignment includes weight for proper rotation in adapters (AdCP 2.5)
+                packages_by_creative: dict[str, list[PackageAssignmentDict]] = {}
                 for assignment in assignments:
                     if assignment.creative_id not in packages_by_creative:
                         packages_by_creative[assignment.creative_id] = []
-                    packages_by_creative[assignment.creative_id].append(assignment.package_id)
+                    packages_by_creative[assignment.creative_id].append(
+                        {
+                            "package_id": assignment.package_id,
+                            "weight": assignment.weight,  # From CreativeAssignment.weight (default 100)
+                        }
+                    )
 
                 # Load all creatives
                 all_creative_ids = list(packages_by_creative.keys())
@@ -775,7 +789,7 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
                 # Build assets list for adapter and collect all validation errors
                 assets = []
                 all_validation_errors = []
-                for creative_id, package_ids in packages_by_creative.items():
+                for creative_id, package_assignment_list in packages_by_creative.items():
                     creative = creative_map.get(creative_id)
                     if not creative:
                         logger.warning(f"[APPROVAL] Creative {creative_id} not found in database")
@@ -804,7 +818,8 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
                     asset = {
                         "creative_id": creative.creative_id,
-                        "package_assignments": package_ids,  # Array of ALL package IDs this creative is assigned to
+                        # Include full assignment info with weights for adapter creative rotation (AdCP 2.5)
+                        "package_assignments": package_assignment_list,
                         "width": width,
                         "height": height,
                         "url": url,
