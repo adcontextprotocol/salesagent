@@ -38,7 +38,7 @@ services:
 
   # Nginx proxy for unified routing on port 8000
   proxy:
-    image: nginx:alpine
+    image: nginx:stable
     volumes:
       - ./config/nginx/nginx-simple.conf:/etc/nginx/nginx.conf:ro
     depends_on:
