@@ -1,99 +1,117 @@
-# Docker Hub Rate Limit Solution for Fly.io Deployment
+# Docker Image Registries
 
-## Problem
-Fly.io deployments fail with Docker Hub rate limit errors:
+The AdCP Sales Agent is published to two container registries on every release:
+
+| Registry | Image | Best For |
+|----------|-------|----------|
+| **GitHub Container Registry** | `ghcr.io/adcontextprotocol/salesagent` | GitHub-integrated workflows |
+| **Docker Hub** | `adcontextprotocol/salesagent` | Universal access, all cloud providers |
+
+## Pulling Images
+
+### Docker Hub (Recommended for simplicity)
+```bash
+docker pull adcontextprotocol/salesagent:latest
+docker pull adcontextprotocol/salesagent:0.2.1  # specific version
 ```
-429 Too Many Requests - Server message: toomanyrequests: You have reached your unauthenticated pull rate limit.
+
+### GitHub Container Registry
+```bash
+docker pull ghcr.io/adcontextprotocol/salesagent:latest
 ```
 
-## Implemented Solution ✅
-**Use AWS Public ECR instead of Docker Hub.**
+## Cloud Provider Compatibility
 
-The `Dockerfile.fly` now uses:
-```dockerfile
-FROM public.ecr.aws/docker/library/python:3.12-slim
-```
+| Cloud Provider | Docker Hub | ghcr.io | Notes |
+|----------------|------------|---------|-------|
+| **GCP (Cloud Run/GKE)** | Native | Requires setup | Docker Hub is zero-config |
+| **AWS (ECS/EKS)** | Native | Pull-through cache | Docker Hub is simpler |
+| **Azure (Container Apps/AKS)** | Native | Native | Both work well |
+| **DigitalOcean** | Native | Native | Both work well |
+| **Fly.io** | Native | Native | Both work well |
 
-**Benefits:**
-- ✅ No rate limits for public images
-- ✅ No authentication required
-- ✅ Mirrors official Docker images (same SHA)
-- ✅ No configuration needed in Fly.io
-- ✅ High availability and fast pulls
+## GCP Deployment
 
-AWS Public ECR provides a mirror of Docker's official images without rate limiting or authentication requirements. This is the simplest and most reliable solution for Fly.io deployments.
-
-## Alternative: Docker Hub Authentication (Advanced)
-If you specifically need Docker Hub, you can configure authentication (note: this is more complex and requires additional setup).
-
-## Setup Steps
-
-### 1. Create Docker Hub Access Token
-1. Log in to [Docker Hub](https://hub.docker.com/)
-2. Go to Account Settings → Security → Access Tokens
-3. Click "New Access Token"
-4. Name it "Fly.io Deployment"
-5. Copy the token (you'll only see it once)
-
-### 2. Configure Fly.io Secrets
-Set your Docker Hub credentials as Fly.io secrets:
+With Docker Hub, GCP Cloud Run deployment is straightforward:
 
 ```bash
-fly secrets set DOCKER_HUB_USERNAME="your-dockerhub-username" --app adcp-sales-agent
-fly secrets set DOCKER_HUB_TOKEN="your-token-here" --app adcp-sales-agent
+gcloud run deploy salesagent \
+  --image adcontextprotocol/salesagent:latest \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated
 ```
 
-### 3. Verify Configuration
-Check that secrets are set:
+No authentication or registry configuration needed.
+
+## Rate Limits
+
+### Docker Hub
+- **Unauthenticated**: 10 pulls/hour per IP (as of April 2025)
+- **Free authenticated**: 100 pulls/6 hours
+- **Pro account**: Unlimited
+
+For production deployments with frequent pulls, authenticate or use ghcr.io.
+
+### GitHub Container Registry
+- **Public images**: Unlimited pulls, no authentication needed
+- **Private images**: Requires GitHub PAT
+
+## Authenticating to Docker Hub (Optional)
+
+If you hit rate limits, authenticate:
 
 ```bash
-fly secrets list --app adcp-sales-agent
-```
-
-### 4. Deploy
-The next deployment will automatically use these credentials:
-
-```bash
-fly deploy --app adcp-sales-agent
-```
-
-## Alternative: GitHub Actions Authentication
-If deploying via GitHub Actions, add Docker Hub credentials to repository secrets:
-1. Go to repository Settings → Secrets and variables → Actions
-2. Add `DOCKER_HUB_USERNAME` and `DOCKER_HUB_TOKEN`
-3. Update workflow to use these secrets
-
-## Testing Locally
-To test Docker builds locally without hitting rate limits:
-
-```bash
-# Login to Docker Hub
+# Interactive login
 docker login
 
-# Build the image
-docker build -f Dockerfile.fly -t adcp-sales-agent .
+# Or with credentials
+echo $DOCKER_HUB_TOKEN | docker login -u $DOCKER_HUB_USERNAME --password-stdin
 ```
 
-## Troubleshooting
+### In Kubernetes
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dockerhub-secret
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: <base64-encoded-docker-config>
+---
+apiVersion: v1
+kind: Pod
+spec:
+  imagePullSecrets:
+    - name: dockerhub-secret
+  containers:
+    - name: salesagent
+      image: adcontextprotocol/salesagent:latest
+```
 
-### Still Getting Rate Limit Errors?
-- Verify credentials are correct: `fly secrets list --app adcp-sales-agent`
-- Check Docker Hub account status at https://hub.docker.com/
-- Consider upgrading Docker Hub plan if needed
+## Using ghcr.io with GCP (Alternative)
 
-### Need to Update Token?
+If you prefer ghcr.io, set up an Artifact Registry remote repository:
+
 ```bash
-fly secrets set DOCKER_HUB_TOKEN="new-token-here" --app adcp-sales-agent
+# Create remote repository as ghcr.io proxy
+gcloud artifacts repositories create ghcr \
+  --repository-format=docker \
+  --location=us-central1 \
+  --mode=remote-repository \
+  --remote-docker-repo=https://ghcr.io
+
+# Reference via Artifact Registry
+gcloud run deploy salesagent \
+  --image us-central1-docker.pkg.dev/YOUR_PROJECT/ghcr/adcontextprotocol/salesagent:latest \
+  --platform managed \
+  --region us-central1
 ```
 
-### Remove Authentication
-```bash
-fly secrets unset DOCKER_HUB_USERNAME DOCKER_HUB_TOKEN --app adcp-sales-agent
-```
+## CI/CD Configuration
 
-## Docker Hub Rate Limits
-- **Unauthenticated**: 100 pulls per 6 hours per IP
-- **Free account**: 200 pulls per 6 hours
-- **Pro account**: Unlimited pulls
+To publish to Docker Hub in your own fork, add these GitHub repository secrets:
+- `DOCKER_HUB_USERNAME`: Your Docker Hub username or organization
+- `DOCKER_HUB_TOKEN`: Docker Hub access token (not password)
 
-For production deployments, authentication is strongly recommended.
+Create a token at: https://hub.docker.com/settings/security
