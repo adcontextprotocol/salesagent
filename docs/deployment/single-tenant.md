@@ -18,17 +18,42 @@ Single-tenant mode is the default and recommended for most publishers deploying 
 
 ## Docker Images
 
-Pre-built images are available at `ghcr.io/adcontextprotocol/salesagent`:
+Pre-built images are published to two registries on every release:
+
+| Registry | Image | Best For |
+|----------|-------|----------|
+| **Docker Hub** | `adcontextprotocol/salesagent` | Universal access, simpler for most cloud providers |
+| **GitHub Container Registry** | `ghcr.io/adcontextprotocol/salesagent` | GitHub-integrated workflows |
+
+### Pulling Images
+
+```bash
+# Docker Hub (recommended for simplicity)
+docker pull adcontextprotocol/salesagent:latest
+
+# GitHub Container Registry
+docker pull ghcr.io/adcontextprotocol/salesagent:latest
+```
+
+### Version Tags
 
 | Tag | Use Case |
 |-----|----------|
 | `latest` | Quick evaluation |
-| `0.1` | Auto-update within minor version |
-| `0.1.0` | Production (pin specific version) |
+| `0.3` | Auto-update within minor version |
+| `0.3.0` | Production (pin specific version) |
 
-```bash
-docker pull ghcr.io/adcontextprotocol/salesagent:latest
-```
+### Cloud Provider Notes
+
+- **GCP Cloud Run/GKE**: Docker Hub works with zero configuration
+- **AWS ECS/EKS**: Both registries work natively
+- **Azure/DigitalOcean/Fly.io**: Both registries work natively
+
+### Rate Limits
+
+**Docker Hub**: 10 pulls/hour unauthenticated, 100 pulls/6 hours with free account. For frequent pulls, authenticate with `docker login` or use ghcr.io.
+
+**GitHub Container Registry**: Unlimited pulls for public images, no authentication needed.
 
 ## Required Environment Variables
 
