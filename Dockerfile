@@ -127,5 +127,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Use ENTRYPOINT to ensure the script runs
-ENTRYPOINT ["/bin/bash", "./scripts/deploy/entrypoint.sh"]
+# Use Python directly as entrypoint (prepares for hardened images that lack bash)
+ENTRYPOINT ["python", "scripts/deploy/run_all_services.py"]
