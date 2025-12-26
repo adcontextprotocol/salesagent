@@ -1,25 +1,19 @@
 # Quickstart Guide
 
-This guide walks you through deploying your own AdCP Sales Agent. Most publishers should follow the **single-tenant deployment** path - it's simpler and designed for running on your own domain.
+Get the AdCP Sales Agent running locally in under 5 minutes.
 
-## Deployment Options
+## Prerequisites
 
-| Option | Best For | Complexity |
-|--------|----------|------------|
-| **Docker Compose** | Local dev, on-premise | Low |
-| **Cloud Run** | GCP users, serverless | Low |
-| **Fly.io** | Simple cloud hosting | Low |
-| **Kubernetes** | Enterprise, multi-region | Medium |
+- Docker and Docker Compose installed
+- (Optional) Gemini API key for AI-powered creative review
 
-## Quick Start (Docker Compose)
-
-The fastest way to get running locally:
+## Quick Start
 
 ```bash
 # 1. Download the compose file
 curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml
 
-# 2. Create environment file
+# 2. Create environment file (optional - works without this)
 cat > .env << 'EOF'
 SUPER_ADMIN_EMAILS=your-email@example.com
 GEMINI_API_KEY=your-gemini-key
@@ -32,210 +26,45 @@ docker compose up -d
 curl http://localhost:8000/health
 ```
 
-Access the Admin UI at http://localhost:8000/admin
+## Access the Admin UI
+
+Open http://localhost:8000/admin
+
+In local development mode, use the test login:
+- Email: `test_super_admin@example.com`
+- Password: `test123`
 
 ## What Gets Created
 
-On first startup in single-tenant mode (the default):
-- A tenant is created with either:
-  - **Demo data** (default): Mock adapter, sample currencies, test principal - great for evaluation
-  - **Blank slate** (`CREATE_DEMO_TENANT=false`): Empty tenant requiring full setup - for production deployments
-- Super admins (from `SUPER_ADMIN_EMAILS`) get automatic access
+On first startup, the system creates:
+- A default tenant with the **Mock adapter** (simulates an ad server)
+- Sample currencies (USD, EUR, GBP)
+- A test principal/advertiser for API access
+- Sample products
 
-## Configuration Steps
+This demo data lets you explore all features without configuring a real ad server.
 
-### 1. Access Admin UI
+## Services
 
-Navigate to http://localhost:8000/admin and log in with Google OAuth (or test credentials in dev mode).
+All services are accessible through port 8000:
 
-### 2. Configure Your Ad Server
+| Service | URL |
+|---------|-----|
+| Admin UI | http://localhost:8000/admin |
+| MCP Server | http://localhost:8000/mcp/ |
+| A2A Server | http://localhost:8000/a2a |
+| Health Check | http://localhost:8000/health |
 
-Go to **Settings > Adapters** and configure your ad server:
+## Connecting an AI Agent
 
-- **Google Ad Manager (GAM)**: Enter your network code and OAuth credentials
-- **Mock**: For testing without a real ad server
-
-### 3. Set Up Products
-
-Go to **Products** and create products that match your GAM line item templates.
-
-### 4. Add Advertisers (Principals)
-
-Go to **Advertisers** and add the advertisers who will use the MCP API.
-
-### 5. Configure Your Domain (Production)
-
-Go to **Settings > General** and set your **Virtual Host** (e.g., `sales-agent.yourcompany.com`).
-
-Then configure DNS:
-- Point your domain to your deployment
-- The Admin UI shows the exact DNS records needed
-
-## Cloud Run Deployment
-
-Google Cloud Run works well for single-tenant deployments.
-
-### Step 1: Create Cloud SQL PostgreSQL
-
-Create a PostgreSQL instance using the cheapest sandbox option:
-
-**[Create Cloud SQL Instance](https://console.cloud.google.com/sql/instances/create;engine=PostgreSQL;template=POSTGRES_ENTERPRISE_SANDBOX_TEMPLATE)**
-
-After creation:
-1. Note the **Connection name** (e.g., `my-project:us-central1:my-instance`)
-2. Create a database named `adcp`
-3. Create a user and password
-
-### Step 2: Deploy in Test Mode
-
-Deploy with test mode enabled - this lets you log in without OAuth:
-
-```bash
-# 1. Build and push to Google Container Registry
-gcloud builds submit --tag gcr.io/YOUR_PROJECT/salesagent
-
-# 2. Deploy to Cloud Run in test mode
-gcloud run deploy salesagent \
-  --image gcr.io/YOUR_PROJECT/salesagent \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --port 8000 \
-  --memory 1Gi \
-  --add-cloudsql-instances YOUR_PROJECT:us-central1:YOUR_INSTANCE \
-  --set-env-vars "ADCP_AUTH_TEST_MODE=true" \
-  --set-env-vars "SUPER_ADMIN_EMAILS=your-email@example.com" \
-  --set-env-vars "DATABASE_URL=postgresql://USER:PASSWORD@/adcp?host=/cloudsql/YOUR_PROJECT:us-central1:YOUR_INSTANCE" \
-  --set-env-vars "GEMINI_API_KEY=your-gemini-key"
-```
-
-Note your service URL from the output (e.g., `https://salesagent-abc123-uc.a.run.app`)
-
-### Step 3: Access Admin UI
-
-Open `https://YOUR-CLOUDRUN-URL.run.app/admin` and log in using the test mode button. In test mode, the Google login button won't appear - you'll only see the test login option.
-
-### Step 4: Add SSO/OAuth (for production)
-
-Once you've verified the deployment works, add OAuth for production use. You can use **Google, Microsoft, Okta, Auth0**, or any OIDC-compliant provider.
-
-**Option A: Google OAuth**
-
-1. [Create OAuth credentials](https://console.cloud.google.com/auth/clients)
-   - Click **"Create Credentials"** → **"OAuth client ID"**
-   - Select **"Web application"**
-   - Add **Authorized redirect URI**: `https://YOUR-CLOUDRUN-URL.run.app/auth/google/callback`
-
-2. Update your deployment:
-   ```bash
-   gcloud run services update salesagent \
-     --region us-central1 \
-     --update-env-vars "GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com" \
-     --update-env-vars "GOOGLE_CLIENT_SECRET=your-client-secret" \
-     --remove-env-vars "ADCP_AUTH_TEST_MODE"
-   ```
-
-**Option B: Other OIDC Providers (Okta, Auth0, Azure AD, etc.)**
-
-```bash
-gcloud run services update salesagent \
-  --region us-central1 \
-  --update-env-vars "OAUTH_CLIENT_ID=your-client-id" \
-  --update-env-vars "OAUTH_CLIENT_SECRET=your-client-secret" \
-  --update-env-vars "OAUTH_DISCOVERY_URL=https://your-provider/.well-known/openid-configuration" \
-  --remove-env-vars "ADCP_AUTH_TEST_MODE"
-```
-
-Users will be redirected directly to your SSO provider when they access `/login`.
-
-### Optional: Custom Domain
-
-```bash
-gcloud beta run domain-mappings create \
-  --service salesagent \
-  --domain sales-agent.yourcompany.com \
-  --region us-central1
-```
-
-If using a custom domain, add it as an additional redirect URI in your OAuth credentials.
-
-**Cloud Run Requirements:**
-- Cloud SQL PostgreSQL instance
-- Port 8000 (nginx handles routing internally)
-- At least 1GB memory recommended
-
-## Fly.io Deployment
-
-```bash
-# 1. Install Fly CLI
-brew install flyctl
-
-# 2. Create app
-fly apps create your-app-name
-
-# 3. Create PostgreSQL
-fly postgres create --name your-app-db
-fly postgres attach your-app-db --app your-app-name
-
-# 4. Set secrets
-fly secrets set SUPER_ADMIN_EMAILS="your-email@example.com"
-fly secrets set GEMINI_API_KEY="your-key"
-
-# 5. Deploy (uses fly.toml from repo)
-fly deploy
-```
-
-## Environment Variables
-
-### Required
-
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `SUPER_ADMIN_EMAILS` | Comma-separated admin emails |
-
-### Recommended
-
-| Variable | Description |
-|----------|-------------|
-| `GEMINI_API_KEY` | For AI-powered creative review |
-| `GOOGLE_CLIENT_ID` | For Google OAuth login |
-| `GOOGLE_CLIENT_SECRET` | For Google OAuth login |
-
-### Optional
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ADCP_MULTI_TENANT` | Enable multi-tenant mode | `false` |
-| `CREATE_DEMO_TENANT` | Create demo tenant with mock adapter and sample data (for evaluation) vs blank tenant (for production) | `true` |
-| `ENCRYPTION_KEY` | For encrypting sensitive data | Auto-generated |
-
-## Single-Tenant vs Multi-Tenant
-
-**Single-Tenant (Default)**
-- One publisher per deployment
-- Simple path-based routing (`/admin`, `/mcp`, `/a2a`)
-- Set your custom domain in Admin UI settings
-- No subdomain complexity
-
-**Multi-Tenant**
-- Multiple publishers on one deployment
-- Subdomain-based routing (`publisher1.yourdomain.com`)
-- Set `ADCP_MULTI_TENANT=true`
-- Requires wildcard DNS and SSL
-
-Most publishers should use single-tenant mode.
-
-## Connecting AI Agents
-
-Once deployed, AI agents connect via MCP:
+Once running, AI agents can connect via MCP:
 
 ```python
 from fastmcp.client import Client, StreamableHttpTransport
 
-# Get your endpoint and token from Admin UI > Settings > API & Tokens
+# Get your token from Admin UI > Advertisers > View Token
 transport = StreamableHttpTransport(
-    url="https://sales-agent.yourcompany.com/mcp/",
+    url="http://localhost:8000/mcp/",
     headers={"x-adcp-auth": "your-principal-token"}
 )
 
@@ -252,23 +81,54 @@ async with Client(transport=transport) as client:
     })
 ```
 
+## Common Commands
+
+```bash
+# View logs
+docker compose logs -f
+
+# Stop services
+docker compose down
+
+# Reset everything (including database)
+docker compose down -v
+
+# Rebuild after code changes
+docker compose build && docker compose up -d
+```
+
+## Development Mode
+
+For development with hot-reload:
+
+```bash
+git clone https://github.com/adcontextprotocol/salesagent.git
+cd salesagent
+cp .env.template .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
 ## Troubleshooting
 
 ### "No tenant context" error
-- Ensure `SUPER_ADMIN_EMAILS` includes your email
-- Check that migrations ran successfully (`docker compose logs adcp-server`)
+- Ensure you're using the test login credentials
+- Check that migrations ran: `docker compose logs adcp-server | grep migration`
 
-### OAuth redirect mismatch
-- Add your domain to Google OAuth authorized redirect URIs
-- Format: `https://your-domain.com/auth/google/callback`
+### Port 8000 already in use
+```bash
+lsof -i :8000
+kill -9 $(lsof -t -i:8000)
+```
 
-### Database connection failed
-- Verify `DATABASE_URL` is correct
-- Ensure PostgreSQL is running and accessible
-- Check firewall/security group rules
+### Container won't start
+```bash
+docker compose logs adcp-server
+docker compose down -v
+docker compose up -d
+```
 
 ## Next Steps
 
-- [Full Deployment Guide](deployment.md) - All deployment options in detail
-- [GAM Adapter Setup](adapters/gam.md) - Configuring Google Ad Manager
-- [API Reference](api.md) - MCP tool documentation
+- **Deploy to the cloud**: See [deployment/](deployment/) for production deployment guides
+- **Configure GAM**: See [adapters/gam/](adapters/gam/) to connect Google Ad Manager
+- **User guide**: See [user-guide/](user-guide/) for setting up products, advertisers, and creatives

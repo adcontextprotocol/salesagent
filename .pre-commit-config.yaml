@@ -2,6 +2,14 @@ repos:
   - repo: local
     hooks:
 
+      # Check for broken links in documentation
+      - id: check-docs-links
+        name: Check documentation links
+        entry: uv run python .pre-commit-hooks/check_docs_links.py
+        language: system
+        files: '^docs/.*\.md$'
+        pass_filenames: false
+
       # Check for tenant.config references
       - id: no-tenant-config
         name: No tenant.config references
