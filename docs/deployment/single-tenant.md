@@ -77,6 +77,9 @@ docker pull ghcr.io/adcontextprotocol/salesagent:latest
 | `CREATE_DEMO_TENANT` | Create demo tenant with sample data | `true` |
 | `ENCRYPTION_KEY` | For encrypting sensitive data | Auto-generated |
 | `ADCP_AUTH_TEST_MODE` | Enable test login (no OAuth required) | `false` |
+| `ADCP_MULTI_TENANT` | Enable multi-tenant mode (subdomain routing) | `false` |
+
+> **Session Cookies**: In single-tenant mode (default), session cookies use the actual request domain, allowing the sales agent to work with any custom domain. In multi-tenant mode, cookies are scoped to a base domain to work across tenant subdomains. See [Multi-Tenant Setup](multi-tenant.md) for details.
 
 ## Docker Compose Deployment
 
