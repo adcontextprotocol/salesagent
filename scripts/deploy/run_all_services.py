@@ -136,19 +136,15 @@ def check_schema_issues():
         ]
 
         for table, column in checks:
-            try:
-                cursor = conn.execute(
-                    f"""
-                    SELECT column_name
-                    FROM information_schema.columns
-                    WHERE table_name = '{table}' AND column_name = '{column}'
-                """
-                )
-                if not cursor.fetchone():
-                    issues.append(f"Missing column: {table}.{column}")
-            except Exception:
-                # SQLite doesn't have information_schema, skip check
-                pass
+            cursor = conn.execute(
+                f"""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = '{table}' AND column_name = '{column}'
+            """
+            )
+            if not cursor.fetchone():
+                issues.append(f"Missing column: {table}.{column}")
 
         if issues:
             print("⚠️  Schema issues detected (non-critical):")
@@ -199,20 +195,26 @@ signal.signal(signal.SIGTERM, cleanup)
 
 def run_migrations():
     """Run database migrations before starting services."""
-    print("Running database migrations...")
+    print("📦 Running database migrations...")
     try:
         result = subprocess.run(
             [sys.executable, "scripts/ops/migrate.py"],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=60,
         )
         if result.returncode == 0:
             print("✅ Migrations complete")
         else:
-            print(f"⚠️ Migration warnings: {result.stderr}")
+            print(f"❌ Migration failed: {result.stderr}")
+            print(result.stdout)
+            sys.exit(1)
+    except subprocess.TimeoutExpired:
+        print("❌ Migration timed out after 60 seconds")
+        sys.exit(1)
     except Exception as e:
-        print(f"⚠️ Migration error (non-fatal): {e}")
+        print(f"❌ Migration error: {e}")
+        sys.exit(1)
 
 
 def run_mcp_server():
@@ -373,12 +375,7 @@ def main():
     check_database_health()
 
     # Run migrations
-    try:
-        run_migrations()
-    except Exception as e:
-        print("⚠️  Database migration failed - continuing with startup...")
-        print("ℹ️  This may be due to a known migration chain issue with f7e503a712cf")
-        print("ℹ️  Application will continue to start - database schema should be current")
+    run_migrations()
 
     # Check for schema issues (non-blocking)
     check_schema_issues()
