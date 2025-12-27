@@ -47,6 +47,7 @@ services:
 
   adcp-server:
     image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    entrypoint: []  # Override image entrypoint for local dev
     env_file:
       - path: .env
         required: false
@@ -83,6 +84,7 @@ services:
 
   admin-ui:
     image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    entrypoint: []  # Override image entrypoint for local dev
     env_file:
       - path: .env
         required: false
