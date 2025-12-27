@@ -3,53 +3,91 @@ Domain configuration utilities.
 
 This module provides centralized domain configuration that can be customized
 via environment variables, making the codebase vendor-neutral.
+
+In single-tenant mode, most of these functions are not needed since there's
+no subdomain routing. In multi-tenant mode, you must set SALES_AGENT_DOMAIN.
 """
 
 import os
 
 
-def get_base_domain() -> str:
-    """Get the base domain (e.g., scope3.com).
+def get_sales_agent_domain() -> str | None:
+    """Get the sales agent domain (e.g., sales-agent.example.com).
 
-    Defaults to scope3.com for backwards compatibility with existing deployments.
-    Override with BASE_DOMAIN environment variable to use a different domain.
+    Returns:
+        The configured SALES_AGENT_DOMAIN, or None if not configured.
+        Multi-tenant mode requires this to be set.
     """
-    return os.getenv("BASE_DOMAIN", "scope3.com")
+    return os.getenv("SALES_AGENT_DOMAIN")
 
 
-def get_sales_agent_domain() -> str:
-    """Get the sales agent domain (e.g., sales-agent.example.com)."""
-    return os.getenv("SALES_AGENT_DOMAIN", f"sales-agent.{get_base_domain()}")
+def get_admin_domain() -> str | None:
+    """Get the admin domain (e.g., admin.sales-agent.example.com).
+
+    Returns:
+        The configured ADMIN_DOMAIN, or constructs from SALES_AGENT_DOMAIN,
+        or None if neither is configured.
+    """
+    # First check for explicit ADMIN_DOMAIN
+    if domain := os.getenv("ADMIN_DOMAIN"):
+        return domain
+    # Fall back to constructing from sales agent domain if available
+    if sales_domain := get_sales_agent_domain():
+        return f"admin.{sales_domain}"
+    return None
 
 
-def get_admin_domain() -> str:
-    """Get the admin domain (e.g., admin.sales-agent.example.com)."""
-    return os.getenv("ADMIN_DOMAIN", f"admin.{get_sales_agent_domain()}")
+def get_super_admin_domain() -> str | None:
+    """Get the domain for super admin emails (e.g., example.com).
+
+    Returns:
+        The configured SUPER_ADMIN_DOMAIN, or None if not configured.
+    """
+    return os.getenv("SUPER_ADMIN_DOMAIN")
 
 
-def get_super_admin_domain() -> str:
-    """Get the domain for super admin emails (e.g., example.com)."""
-    return os.getenv("SUPER_ADMIN_DOMAIN", get_base_domain())
+def get_sales_agent_url(protocol: str = "https") -> str | None:
+    """Get the full sales agent URL (e.g., https://sales-agent.example.com).
+
+    Returns:
+        The full URL, or None if SALES_AGENT_DOMAIN is not configured.
+    """
+    if domain := get_sales_agent_domain():
+        return f"{protocol}://{domain}"
+    return None
 
 
-def get_sales_agent_url(protocol: str = "https") -> str:
-    """Get the full sales agent URL (e.g., https://sales-agent.example.com)."""
-    return f"{protocol}://{get_sales_agent_domain()}"
+def get_admin_url(protocol: str = "https") -> str | None:
+    """Get the full admin URL (e.g., https://admin.sales-agent.example.com).
+
+    Returns:
+        The full URL, or None if domain is not configured.
+    """
+    if domain := get_admin_domain():
+        return f"{protocol}://{domain}"
+    return None
 
 
-def get_admin_url(protocol: str = "https") -> str:
-    """Get the full admin URL (e.g., https://admin.sales-agent.example.com)."""
-    return f"{protocol}://{get_admin_domain()}"
+def get_a2a_server_url(protocol: str = "https") -> str | None:
+    """Get the A2A server URL (e.g., https://sales-agent.example.com/a2a).
+
+    Returns:
+        The full URL, or None if SALES_AGENT_DOMAIN is not configured.
+    """
+    if url := get_sales_agent_url(protocol):
+        return f"{url}/a2a"
+    return None
 
 
-def get_a2a_server_url(protocol: str = "https") -> str:
-    """Get the A2A server URL (e.g., https://sales-agent.example.com/a2a)."""
-    return f"{get_sales_agent_url(protocol)}/a2a"
+def get_mcp_server_url(protocol: str = "https") -> str | None:
+    """Get the MCP server URL (e.g., https://sales-agent.example.com/mcp).
 
-
-def get_mcp_server_url(protocol: str = "https") -> str:
-    """Get the MCP server URL (e.g., https://sales-agent.example.com/mcp)."""
-    return f"{get_sales_agent_url(protocol)}/mcp"
+    Returns:
+        The full URL, or None if SALES_AGENT_DOMAIN is not configured.
+    """
+    if url := get_sales_agent_url(protocol):
+        return f"{url}/mcp"
+    return None
 
 
 def is_sales_agent_domain(host: str) -> bool:
@@ -60,9 +98,13 @@ def is_sales_agent_domain(host: str) -> bool:
         host: The hostname to check (e.g., "tenant.sales-agent.example.com")
 
     Returns:
-        True if the host ends with the sales agent domain
+        True if the host ends with the sales agent domain.
+        Returns False if SALES_AGENT_DOMAIN is not configured.
     """
-    return host.endswith(f".{get_sales_agent_domain()}") or host == get_sales_agent_domain()
+    sales_domain = get_sales_agent_domain()
+    if not sales_domain:
+        return False
+    return host.endswith(f".{sales_domain}") or host == sales_domain
 
 
 def is_admin_domain(host: str) -> bool:
@@ -73,9 +115,13 @@ def is_admin_domain(host: str) -> bool:
         host: The hostname to check
 
     Returns:
-        True if the host is the admin domain
+        True if the host is the admin domain.
+        Returns False if admin domain is not configured.
     """
-    return host == get_admin_domain() or host.startswith(f"{get_admin_domain()}:")
+    admin_domain = get_admin_domain()
+    if not admin_domain:
+        return False
+    return host == admin_domain or host.startswith(f"{admin_domain}:")
 
 
 def extract_subdomain_from_host(host: str) -> str | None:
@@ -87,8 +133,11 @@ def extract_subdomain_from_host(host: str) -> str | None:
 
     Returns:
         The subdomain (e.g., "tenant") or None if not a subdomain
+        or if SALES_AGENT_DOMAIN is not configured.
     """
     sales_domain = get_sales_agent_domain()
+    if not sales_domain:
+        return None
 
     if f".{sales_domain}" in host:
         return host.split(f".{sales_domain}")[0]
@@ -96,7 +145,7 @@ def extract_subdomain_from_host(host: str) -> str | None:
     return None
 
 
-def get_tenant_url(subdomain: str, protocol: str = "https") -> str:
+def get_tenant_url(subdomain: str, protocol: str = "https") -> str | None:
     """
     Get the URL for a specific tenant subdomain.
 
@@ -106,30 +155,38 @@ def get_tenant_url(subdomain: str, protocol: str = "https") -> str:
 
     Returns:
         The full tenant URL (e.g., https://tenant.sales-agent.example.com)
+        or None if SALES_AGENT_DOMAIN is not configured.
     """
-    return f"{protocol}://{subdomain}.{get_sales_agent_domain()}"
+    if sales_domain := get_sales_agent_domain():
+        return f"{protocol}://{subdomain}.{sales_domain}"
+    return None
 
 
-def get_oauth_redirect_uri(protocol: str = "https") -> str:
+def get_oauth_redirect_uri(protocol: str = "https") -> str | None:
     """
     Get the OAuth redirect URI.
 
     Returns:
         The OAuth callback URL (e.g., https://sales-agent.example.com/admin/auth/google/callback)
+        or None if not configured.
     """
     # Allow override via environment variable
-    env_uri = os.getenv("GOOGLE_OAUTH_REDIRECT_URI")
-    if env_uri:
+    if env_uri := os.getenv("GOOGLE_OAUTH_REDIRECT_URI"):
         return env_uri
 
-    return f"{get_sales_agent_url(protocol)}/admin/auth/google/callback"
+    if url := get_sales_agent_url(protocol):
+        return f"{url}/admin/auth/google/callback"
+    return None
 
 
-def get_session_cookie_domain() -> str:
+def get_session_cookie_domain() -> str | None:
     """
     Get the session cookie domain (with leading dot for subdomain sharing).
 
     Returns:
         The cookie domain (e.g., ".sales-agent.example.com")
+        or None if SALES_AGENT_DOMAIN is not configured.
     """
-    return f".{get_sales_agent_domain()}"
+    if sales_domain := get_sales_agent_domain():
+        return f".{sales_domain}"
+    return None

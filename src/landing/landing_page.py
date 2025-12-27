@@ -38,8 +38,10 @@ def _determine_base_url(virtual_host: str | None = None) -> str:
     if os.getenv("PRODUCTION") == "true":
         if virtual_host:
             return f"https://{virtual_host}"
-        # Fallback to production domain
-        return get_sales_agent_url()
+        # Fallback to production domain (if configured)
+        if url := get_sales_agent_url():
+            return url
+        # If no SALES_AGENT_DOMAIN configured, fall through to development mode
 
     # Development/local mode: use virtual_host if provided
     if virtual_host:

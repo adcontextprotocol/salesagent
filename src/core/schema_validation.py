@@ -55,9 +55,14 @@ def get_schema_reference(model_class: type[BaseModel], base_url: str | None = No
 
     Returns:
         Schema reference URL
+
+    Raises:
+        ValueError: If SALES_AGENT_DOMAIN is not configured and no base_url provided
     """
     if base_url is None:
         base_url = get_sales_agent_url()
+        if base_url is None:
+            raise ValueError("SALES_AGENT_DOMAIN must be configured or base_url must be provided")
 
     schema_name = model_class.__name__.lower().replace("response", "")
     return urljoin(base_url, f"/schemas/adcp/v2.4/{schema_name}.json")

@@ -51,13 +51,16 @@ def validate_startup_requirements() -> None:
         # Just check that config can be loaded
         config = get_config()
 
-        # Super admin access - at least one must be set
-        super_admin_emails = os.environ.get("SUPER_ADMIN_EMAILS", "")
-        super_admin_domains = os.environ.get("SUPER_ADMIN_DOMAINS", "")
-        if not super_admin_emails and not super_admin_domains:
-            raise ValueError(
-                "SUPER_ADMIN_EMAILS or SUPER_ADMIN_DOMAINS is required. " "Set at least one to grant admin access."
-            )
+        # In test mode, super admin validation is skipped (test accounts are used)
+        test_mode = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
+        if not test_mode:
+            # Super admin access - at least one must be set
+            super_admin_emails = os.environ.get("SUPER_ADMIN_EMAILS", "")
+            super_admin_domains = os.environ.get("SUPER_ADMIN_DOMAINS", "")
+            if not super_admin_emails and not super_admin_domains:
+                raise ValueError(
+                    "SUPER_ADMIN_EMAILS or SUPER_ADMIN_DOMAINS is required. " "Set at least one to grant admin access."
+                )
 
         logger.info("Startup requirements validation passed")
 

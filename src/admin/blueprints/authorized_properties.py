@@ -247,9 +247,11 @@ def _construct_agent_url(tenant_id: str, request: Any) -> str:
                 return url
             else:
                 # Fallback to subdomain pattern
-                url = get_tenant_url(subdomain)
-                logger.info(f"🌐 Production: using subdomain pattern -> {url}")
-                return url
+                tenant_url = get_tenant_url(subdomain)
+                if tenant_url:
+                    logger.info(f"🌐 Production: using subdomain pattern -> {tenant_url}")
+                    return tenant_url
+                # If SALES_AGENT_DOMAIN not configured, fall through to development mode
 
         # For development, use MCP server port
         mcp_port = os.environ.get("ADCP_SALES_PORT", "8080")

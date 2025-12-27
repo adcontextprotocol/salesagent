@@ -2,6 +2,8 @@
 
 This walkthrough covers deploying the AdCP Sales Agent to Fly.io. The reference implementation at https://adcp-sales-agent.fly.dev uses this setup.
 
+> **Single-Tenant by Default**: Fly.io deployments run in single-tenant mode by default, which is appropriate for most publishers deploying their own sales agent. Session cookies use the actual request domain, so authentication works with any custom domain. For multi-tenant mode with subdomain routing, see [Multi-Tenant Setup](../multi-tenant.md).
+
 ## Prerequisites
 
 1. [Fly.io account](https://fly.io)
@@ -38,13 +40,7 @@ Verify DATABASE_URL is set:
 fly secrets list --app your-app-name
 ```
 
-## Step 4: Create Persistent Volume
-
-```bash
-fly volumes create adcp_data --region iad --size 1
-```
-
-## Step 5: Set Required Secrets
+## Step 4: Set Required Secrets
 
 ```bash
 # Super admin configuration (required)
@@ -61,18 +57,27 @@ fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
 fly secrets set GEMINI_API_KEY="your-gemini-api-key"
 ```
 
+### Quick Start with Test Mode
+
+For evaluation or testing without OAuth configuration:
+```bash
+fly secrets set ADCP_AUTH_TEST_MODE="true"
+```
+
+This enables a test login page at `/login` that bypasses OAuth. See [Single-Tenant Setup](../single-tenant.md#optional-environment-variables) for details.
+
 **Format for admin configuration:**
 - `SUPER_ADMIN_EMAILS`: Comma-separated, no spaces: `user1@example.com,user2@example.com`
 - `SUPER_ADMIN_DOMAINS`: Comma-separated domains: `example.com,company.org`
 
-## Step 6: Configure OAuth Redirect
+## Step 5: Configure OAuth Redirect
 
 Add this redirect URI to your [Google OAuth credentials](https://console.cloud.google.com/apis/credentials):
 ```
 https://your-app-name.fly.dev/auth/google/callback
 ```
 
-## Step 7: Deploy
+## Step 6: Deploy
 
 ```bash
 fly deploy
@@ -83,7 +88,7 @@ The first deploy runs database migrations automatically. Watch the logs:
 fly logs
 ```
 
-## Step 8: Verify
+## Step 7: Verify
 
 ```bash
 # Check health
@@ -100,6 +105,8 @@ fly status --app your-app-name
 | Admin UI | https://your-app-name.fly.dev/admin |
 | MCP Server | https://your-app-name.fly.dev/mcp/ |
 | Health Check | https://your-app-name.fly.dev/health |
+
+> **Authentication**: Visiting `/admin` without being logged in will redirect you to the login page. After successful authentication, you'll be redirected back to the Admin UI.
 
 ## Monitoring
 

@@ -37,6 +37,7 @@ from src.admin.blueprints.signals_agents import signals_agents_bp
 from src.admin.blueprints.tenants import tenants_bp
 from src.admin.blueprints.users import users_bp
 from src.admin.blueprints.workflows import workflows_bp
+from src.core.config_loader import is_single_tenant_mode
 from src.core.domain_config import (
     get_session_cookie_domain,
     get_tenant_url,
@@ -119,7 +120,12 @@ def create_app(config=None):
         app.config["SESSION_COOKIE_HTTPONLY"] = False  # Allow EventSource to access cookies
         app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Required for EventSource cross-origin requests
         app.config["SESSION_COOKIE_PATH"] = "/admin/"  # Ensure cookies work for all /admin/* paths
-        app.config["SESSION_COOKIE_DOMAIN"] = get_session_cookie_domain()  # Allow cookies across subdomains for OAuth
+        # Only set cookie domain in multi-tenant mode for subdomain sharing
+        # In single-tenant mode, let Flask use the actual request domain
+        if not is_single_tenant_mode():
+            app.config["SESSION_COOKIE_DOMAIN"] = (
+                get_session_cookie_domain()
+            )  # Allow cookies across subdomains for OAuth
     else:
         app.config["SESSION_COOKIE_SECURE"] = False  # Allow HTTP in dev
         app.config["SESSION_COOKIE_HTTPONLY"] = True  # Standard setting for dev

@@ -1,4 +1,11 @@
-"""Configuration loader for multi-tenant setup."""
+"""Configuration loader for multi-tenant setup.
+
+Environment variables:
+    ADCP_MULTI_TENANT: Set to "true" to enable multi-tenant mode with subdomain routing.
+    SALES_AGENT_DOMAIN: Required in multi-tenant mode (e.g., "sales-agent.example.com").
+    SUPER_ADMIN_EMAILS: Comma-separated list of super admin emails.
+    SUPER_ADMIN_DOMAINS: Comma-separated list of super admin email domains.
+"""
 
 import json
 import logging
@@ -12,6 +19,22 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 
 logger = logging.getLogger(__name__)
+
+
+def validate_multi_tenant_config() -> list[str]:
+    """Validate configuration for multi-tenant mode.
+
+    Returns:
+        List of validation error messages, empty if valid.
+    """
+    errors = []
+
+    if not is_single_tenant_mode():
+        # Multi-tenant mode requires SALES_AGENT_DOMAIN
+        if not os.environ.get("SALES_AGENT_DOMAIN"):
+            errors.append("SALES_AGENT_DOMAIN is required for multi-tenant mode")
+
+    return errors
 
 
 def safe_json_loads(value, default=None):
@@ -167,7 +190,7 @@ def get_tenant_by_subdomain(subdomain: str) -> dict[str, Any] | None:
     """Get tenant by subdomain.
 
     Args:
-        subdomain: The subdomain to look up (e.g., 'wonderstruck' from wonderstruck.sales-agent.scope3.com)
+        subdomain: The subdomain to look up (e.g., 'wonderstruck' from wonderstruck.sales-agent.example.com)
 
     Returns:
         Tenant dict if found, None otherwise
