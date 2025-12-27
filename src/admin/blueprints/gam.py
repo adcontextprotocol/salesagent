@@ -195,9 +195,11 @@ def detect_gam_network(tenant_id):
                 # Also get network info for currency and timezone
                 network_service = client.GetService("NetworkService", version=GAM_API_VERSION)
                 current_network = network_service.getCurrentNetwork()
-                currency_code = current_network.get("currencyCode", "USD") if current_network else "USD"
-                secondary_currencies = current_network.get("secondaryCurrencyCodes", []) if current_network else []
-                timezone = current_network.get("timeZone") if current_network else None
+                currency_code = safe_get(current_network, "currencyCode", "USD") if current_network else "USD"
+                secondary_currencies = (
+                    safe_get(current_network, "secondaryCurrencyCodes") or [] if current_network else []
+                )
+                timezone = safe_get(current_network, "timeZone") if current_network else None
 
                 return jsonify(
                     {
