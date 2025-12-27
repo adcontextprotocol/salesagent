@@ -80,91 +80,6 @@ fi
 echo "✓ Secrets will be loaded from $SECRETS_FILE"
 echo ""
 
-# Check if port management script exists
-PORT_MANAGER="./manage_conductor_ports.py"
-PORT_CONFIG="./conductor_ports.json"
-
-if [ -f "$PORT_MANAGER" ] && [ -f "$PORT_CONFIG" ]; then
-    echo "Using Conductor port reservation system..."
-
-    # Reserve ports for this workspace
-    PORT_RESULT=$(python3 "$PORT_MANAGER" reserve "$CONDUCTOR_WORKSPACE_NAME" 2>&1)
-
-    if [ $? -eq 0 ]; then
-        # Extract ports from the output
-        POSTGRES_PORT=$(echo "$PORT_RESULT" | grep "PostgreSQL:" | awk '{print $2}')
-        ADCP_PORT=$(echo "$PORT_RESULT" | grep "MCP Server:" | awk '{print $3}')
-        ADMIN_PORT=$(echo "$PORT_RESULT" | grep "Admin UI:" | awk '{print $3}')
-
-        echo "$PORT_RESULT"
-    else
-        echo "Failed to reserve ports: $PORT_RESULT"
-        echo "Falling back to smart port assignment..."
-
-        # Smart port assignment function
-        find_available_admin_port() {
-            # Try preferred admin ports first (8001-8004)
-            for port in 8001 8002 8003 8004; do
-                if ! netstat -an 2>/dev/null | grep -q ":$port "; then
-                    echo $port
-                    return
-                fi
-            done
-
-            # If preferred ports are taken, use hash-based fallback
-            WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
-            WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
-            echo $((8001 + $WORKSPACE_NUM))
-        }
-
-        # Find available admin port
-        ADMIN_PORT=$(find_available_admin_port)
-
-        # Calculate other ports based on workspace hash
-        WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
-        WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
-        POSTGRES_PORT=$((5432 + $WORKSPACE_NUM))
-        ADCP_PORT=$((8080 + $WORKSPACE_NUM))
-
-        echo "Using smart port assignment:"
-        echo "  PostgreSQL: $POSTGRES_PORT"
-        echo "  MCP Server: $ADCP_PORT"
-        echo "  Admin UI: $ADMIN_PORT"
-    fi
-else
-    echo "Port reservation system not found, using smart port assignment..."
-
-    # Smart port assignment function
-    find_available_admin_port() {
-        # Try preferred admin ports first (8001-8004)
-        for port in 8001 8002 8003 8004; do
-            if ! netstat -an 2>/dev/null | grep -q ":$port "; then
-                echo $port
-                return
-            fi
-        done
-
-        # If preferred ports are taken, use hash-based fallback
-        WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
-        WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
-        echo $((8001 + $WORKSPACE_NUM))
-    }
-
-    # Find available admin port
-    ADMIN_PORT=$(find_available_admin_port)
-
-    # Calculate other ports based on workspace hash
-    WORKSPACE_HASH=$(echo -n "$CONDUCTOR_WORKSPACE_NAME" | cksum | cut -f1 -d' ')
-    WORKSPACE_NUM=$((($WORKSPACE_HASH % 100) + 1))
-    POSTGRES_PORT=$((5432 + $WORKSPACE_NUM))
-    ADCP_PORT=$((8080 + $WORKSPACE_NUM))
-
-    echo "Using smart port assignment:"
-    echo "  PostgreSQL: $POSTGRES_PORT"
-    echo "  MCP Server: $ADCP_PORT"
-    echo "  Admin UI: $ADMIN_PORT"
-fi
-
 # Set up Docker caching infrastructure
 echo ""
 echo "Setting up Docker caching..."
@@ -189,8 +104,8 @@ echo ""
 echo "Copying files from root workspace..."
 cp $CONDUCTOR_ROOT_PATH/adcp-manager-key.json .
 
-# Create .env file with secrets from multiple sources
-echo "Creating .env file with secrets and workspace configuration..."
+# Create .env file with secrets
+echo "Creating .env file with secrets..."
 
 # Start with a fresh .env file with workspace-specific settings
 cat > .env << EOF
@@ -212,100 +127,16 @@ elif [ -f "$CONDUCTOR_ROOT_PATH/.env.secrets" ]; then
     echo "Loading secrets from root directory ($CONDUCTOR_ROOT_PATH/.env.secrets)..."
 fi
 
-# Load secrets from .env.secrets file (already validated above)
+# Append secrets to .env
 echo "" >> .env
 echo "# Secrets from $SECRETS_FILE" >> .env
 cat "$SECRETS_FILE" >> .env
 echo "✓ Loaded secrets from $SECRETS_FILE"
 
-# Update .env with unique ports
-echo "" >> .env
-echo "# Server Ports (unique for Conductor workspace: $CONDUCTOR_WORKSPACE_NAME)" >> .env
-echo "POSTGRES_PORT=$POSTGRES_PORT" >> .env
-echo "ADCP_SALES_PORT=$ADCP_PORT" >> .env
-echo "ADMIN_UI_PORT=$ADMIN_PORT" >> .env
-echo "" >> .env
-echo "# Docker Compose E2E Test Ports (CONDUCTOR_* for worktree isolation)" >> .env
-echo "# These are used by e2e tests to avoid port conflicts between worktrees" >> .env
-echo "# Admin UI uses a different port for e2e (doesn't need OAuth on 8001-8004)" >> .env
-echo "CONDUCTOR_POSTGRES_PORT=$POSTGRES_PORT" >> .env
-echo "CONDUCTOR_MCP_PORT=$ADCP_PORT" >> .env
-echo "CONDUCTOR_A2A_PORT=$((ADCP_PORT + 11))" >> .env
-echo "CONDUCTOR_ADMIN_PORT=$((ADCP_PORT + 21))" >> .env
-echo "" >> .env
-echo "# Google OAuth redirect URI (based on Admin UI port)" >> .env
-echo "GOOGLE_OAUTH_REDIRECT_URI=http://localhost:$ADMIN_PORT/auth/google/callback" >> .env
-echo "" >> .env
-echo "DATABASE_URL=postgresql://adcp_user:secure_password_change_me@localhost:$POSTGRES_PORT/adcp" >> .env
-
-echo "✓ Updated .env with unique ports"
-
-# Note: docker-compose.yml is not modified - ports are configured via .env file
-echo "✓ Port configuration saved to .env file"
-
-# Create docker-compose.override.yml for development hot reloading
-cat > docker-compose.override.yml << 'EOF'
-# Docker Compose override for development with hot reloading
-# This file is automatically loaded by docker-compose
-
-services:
-  adcp-server:
-    volumes:
-      # Mount source code for hot reloading, excluding .venv
-      - .:/app
-      - /app/.venv
-      - ./audit_logs:/app/audit_logs
-      # Mount shared cache volumes for faster builds
-      - adcp_global_pip_cache:/root/.cache/pip
-      - adcp_global_uv_cache:/cache/uv
-    environment:
-      # REQUIRED: Add container's venv site-packages to PYTHONPATH
-      # When mounting local code over /app, Python can't find installed packages
-      # unless we explicitly add site-packages to PYTHONPATH
-      # Note: Version must match Dockerfile (currently python3.12)
-      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages:\${PYTHONPATH:-}"
-      # Enable development mode
-      PYTHONUNBUFFERED: 1
-      FLASK_ENV: development
-      WERKZEUG_RUN_MAIN: true
-    command: ["python", "run_server.py"]
-
-  admin-ui:
-    volumes:
-      # Mount source code for hot reloading, excluding .venv
-      - .:/app
-      - /app/.venv
-      - ./audit_logs:/app/audit_logs
-      # Mount shared cache volumes for faster builds
-      - adcp_global_pip_cache:/root/.cache/pip
-      - adcp_global_uv_cache:/cache/uv
-    environment:
-      # REQUIRED: Add container's venv site-packages to PYTHONPATH
-      # Note: Version must match Dockerfile (currently python3.12)
-      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages:\${PYTHONPATH:-}"
-      # Enable Flask development mode with auto-reload
-      FLASK_ENV: development
-      FLASK_DEBUG: 1
-      PYTHONUNBUFFERED: 1
-      WERKZEUG_RUN_MAIN: true
-
-# Reference external cache volumes (shared across all workspaces)
-volumes:
-  adcp_global_pip_cache:
-    external: true
-  adcp_global_uv_cache:
-    external: true
-EOF
-echo "✓ Created docker-compose.override.yml for development"
-
-# Fix database.py indentation issues if they exist
-if grep -q "for p in principals_data:" database.py && ! grep -B1 "for p in principals_data:" database.py | grep -q "^    "; then
-    echo "Fixing database.py indentation issues..."
-    # This is a simplified fix - in production you'd want a more robust solution
-    echo "✗ Warning: database.py may have indentation issues that need manual fixing"
-fi
+echo "✓ Created .env file"
 
 # Set up Git hooks for this workspace
+echo ""
 echo "Setting up Git hooks..."
 
 # Configure git to use worktree-specific hooks
@@ -414,11 +245,6 @@ if grep -q "ui-tests" pyproject.toml 2>/dev/null; then
     if command -v uv &> /dev/null; then
         uv sync --extra ui-tests
         echo "✓ UI test dependencies installed"
-
-        # Configure UI test environment
-        if [ -d "ui_tests" ]; then
-            echo "✓ UI tests configured for Admin UI port $ADMIN_PORT"
-        fi
     else
         echo "✗ Warning: uv not found, skipping UI test setup"
     fi
@@ -510,14 +336,20 @@ fi
 
 echo ""
 echo "Setup complete! Next steps:"
-echo "1. Build and start services:"
-echo "   docker compose build"
+echo ""
+echo "For development (with hot-reload):"
+echo "   docker compose -f docker-compose.dev.yml up"
+echo ""
+echo "For production-style testing:"
 echo "   docker compose up -d"
 echo ""
 echo "Services will be available at:"
-echo "  MCP Server: http://localhost:$ADCP_PORT/mcp/"
-echo "  Admin UI: http://localhost:$ADMIN_PORT/"
-echo "  PostgreSQL: localhost:$POSTGRES_PORT"
+echo "  http://localhost:\$CONDUCTOR_PORT/       -> Admin UI"
+echo "  http://localhost:\$CONDUCTOR_PORT/admin  -> Admin UI"
+echo "  http://localhost:\$CONDUCTOR_PORT/mcp    -> MCP Server"
+echo "  http://localhost:\$CONDUCTOR_PORT/a2a    -> A2A Server"
+echo ""
+echo "Your CONDUCTOR_PORT is: ${CONDUCTOR_PORT:-8000}"
 echo ""
 echo "✓ Docker caching is enabled automatically for faster builds!"
 echo "✓ Environment variables from .env are now active in this shell"
