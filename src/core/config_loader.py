@@ -290,6 +290,7 @@ def ensure_default_tenant_exists() -> dict[str, Any] | None:
             default_tenant = Tenant(
                 tenant_id="default",
                 name="Default Publisher",
+                subdomain="default",  # Required field for routing
                 ad_server="mock",  # Start with mock adapter, user can configure later
                 authorized_emails=authorized_emails,
                 authorized_domains=authorized_domains,
