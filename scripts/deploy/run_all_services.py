@@ -310,10 +310,20 @@ def run_nginx():
         config_path = "/etc/nginx/nginx-simple.conf"
         print("[Nginx] Using simple config (path-based routing only)")
 
-    # Copy selected config to active location
-    import shutil
+    # Read the config file
+    with open(config_path) as f:
+        config_content = f.read()
 
-    shutil.copy(config_path, "/etc/nginx/nginx.conf")
+    # Patch docker-compose service names to localhost for single-machine deployments
+    # In single-machine mode (Fly.io, Cloud Run), all services run on localhost
+    # Docker Compose configs use service names (adcp-server, admin-ui) which don't resolve
+    config_content = config_content.replace("adcp-server:", "localhost:")
+    config_content = config_content.replace("admin-ui:", "localhost:")
+    print("[Nginx] Patched service names to localhost for single-machine deployment")
+
+    # Write patched config to active location
+    with open("/etc/nginx/nginx.conf", "w") as f:
+        f.write(config_content)
 
     # Test nginx configuration first
     test_proc = subprocess.run(["nginx", "-t"], capture_output=True, text=True)
