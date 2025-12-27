@@ -55,8 +55,6 @@ services:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
       SKIP_CRON: "true"
-      ADCP_SALES_PORT: "8080"
-      A2A_PORT: "8091"
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
       # Development settings
       PYTHONPATH: "/app/.venv/lib/python3.12/site-packages"
@@ -91,7 +89,6 @@ services:
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
-      ADMIN_UI_PORT: "8001"
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
       # Development settings
       PYTHONPATH: "/app/.venv/lib/python3.12/site-packages"

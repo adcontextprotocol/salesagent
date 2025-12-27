@@ -4,6 +4,8 @@ This walkthrough covers deploying the AdCP Sales Agent to Fly.io. The reference 
 
 > **Single-Tenant by Default**: Fly.io deployments run in single-tenant mode by default, which is appropriate for most publishers deploying their own sales agent. Session cookies use the actual request domain, so authentication works with any custom domain. For multi-tenant mode with subdomain routing, see [Multi-Tenant Setup](../multi-tenant.md).
 
+> **Template**: A ready-to-use `fly.toml` template is available at [`fly.toml.template`](fly.toml.template). Copy it to your project root and customize.
+
 ## Prerequisites
 
 1. [Fly.io account](https://fly.io)
@@ -48,36 +50,38 @@ fly secrets set SUPER_ADMIN_EMAILS="admin@example.com,admin2@example.com"
 
 # Optional: Grant admin to all users in a domain
 fly secrets set SUPER_ADMIN_DOMAINS="example.com"
-
-# OAuth configuration (required for Google login)
-fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
-fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
-
-# API keys (optional but recommended)
-fly secrets set GEMINI_API_KEY="your-gemini-api-key"
 ```
-
-### Quick Start with Test Mode
-
-For evaluation or testing without OAuth configuration:
-```bash
-fly secrets set ADCP_AUTH_TEST_MODE="true"
-```
-
-This enables a test login page at `/login` that bypasses OAuth. See [Single-Tenant Setup](../single-tenant.md#optional-environment-variables) for details.
 
 **Format for admin configuration:**
 - `SUPER_ADMIN_EMAILS`: Comma-separated, no spaces: `user1@example.com,user2@example.com`
 - `SUPER_ADMIN_DOMAINS`: Comma-separated domains: `example.com,company.org`
 
-## Step 5: Configure OAuth Redirect
+### Authentication Options
 
-Add this redirect URI to your [Google OAuth credentials](https://console.cloud.google.com/apis/credentials):
-```
-https://your-app-name.fly.dev/auth/google/callback
-```
+Choose one of these authentication methods:
 
-## Step 6: Deploy
+**Option A: Quick Start with Test Mode** (for evaluation/testing)
+```bash
+fly secrets set ADCP_AUTH_TEST_MODE="true"
+```
+This enables test login buttons that bypass OAuth. Not for production.
+
+**Option B: Generic OIDC** (Okta, Auth0, Azure AD, Keycloak, etc.)
+```bash
+fly secrets set OAUTH_DISCOVERY_URL="https://your-provider.com/.well-known/openid-configuration"
+fly secrets set OAUTH_CLIENT_ID="your-client-id"
+fly secrets set OAUTH_CLIENT_SECRET="your-client-secret"
+```
+Add redirect URI to your provider: `https://your-app-name.fly.dev/auth/google/callback`
+
+**Option C: Google OAuth**
+```bash
+fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
+```
+Add redirect URI to [Google OAuth credentials](https://console.cloud.google.com/apis/credentials): `https://your-app-name.fly.dev/auth/google/callback`
+
+## Step 5: Deploy
 
 ```bash
 fly deploy
@@ -88,7 +92,7 @@ The first deploy runs database migrations automatically. Watch the logs:
 fly logs
 ```
 
-## Step 7: Verify
+## Step 6: Verify
 
 ```bash
 # Check health

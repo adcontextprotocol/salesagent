@@ -28,6 +28,7 @@ build/
 
 # Logs
 logs/
+audit_logs/
 *.log
 
 # Virtual environment

@@ -1,0 +1,75 @@
+# fly.toml - Fly.io deployment configuration for AdCP Sales Agent
+#
+# This is a TEMPLATE. Copy to your project root and customize:
+#   cp docs/deployment/walkthroughs/fly.toml.template fly.toml
+#
+# Then update:
+#   - app = "your-app-name"
+#   - primary_region = "your-preferred-region"
+#
+# For full deployment guide, see: docs/deployment/walkthroughs/fly.md
+#
+# Required secrets (set via `fly secrets set`):
+#   - DATABASE_URL (auto-set by `fly postgres attach`)
+#   - SUPER_ADMIN_EMAILS or SUPER_ADMIN_DOMAINS (access control)
+#
+# OAuth secrets (choose one):
+#   Option A - Generic OIDC (Okta, Auth0, Azure AD, Keycloak, etc.):
+#     - OAUTH_DISCOVERY_URL, OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET
+#   Option B - Google OAuth:
+#     - GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+#
+# Optional:
+#   - ADCP_AUTH_TEST_MODE=true (bypasses OAuth for testing)
+
+app = "your-app-name"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Nginx reverse proxy - routes to internal services by path
+# External port 8000 -> internal services (8080 MCP, 8001 Admin, 8091 A2A)
+[[services]]
+  internal_port = 8000
+  protocol = "tcp"
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+  [[services.ports]]
+    port = 443
+    handlers = ["http", "tls"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.http_checks]]
+    interval = "30s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+    timeout = "10s"
+
+[[vm]]
+  memory = "4gb"
+  cpu_kind = "shared"
+  cpus = 2
+
+# Environment variables (non-sensitive config)
+# Sensitive values should be set as secrets via `fly secrets set`
+[env]
+  PRODUCTION = "true"
+  ENVIRONMENT = "production"
+
+# Persistent storage for audit logs
+[mounts]
+  source = "adcp_data"
+  destination = "/data"
