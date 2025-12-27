@@ -2221,7 +2221,8 @@ def create_agent_card() -> AgentCard:
     """
     # Use configured domain for agent card
     # Note: This will be overridden dynamically in the endpoint handlers
-    server_url = get_a2a_server_url()
+    # Fallback to localhost if SALES_AGENT_DOMAIN not configured
+    server_url = get_a2a_server_url() or "http://localhost:8091"
 
     from a2a.types import AgentCapabilities, AgentSkill
     from adcp import get_adcp_version
@@ -2424,8 +2425,8 @@ def main():
                 server_url = f"{protocol}://{host}/a2a"
                 logger.info(f"Using Host header: {host} -> {server_url}")
             else:
-                # Default fallback - configured production URL
-                server_url = get_a2a_server_url()
+                # Default fallback - configured production URL or localhost
+                server_url = get_a2a_server_url() or "http://localhost:8091"
                 logger.info(f"Using default URL: {server_url}")
 
         # Create a copy of the static agent card with dynamic URL

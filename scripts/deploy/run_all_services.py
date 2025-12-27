@@ -35,6 +35,11 @@ def validate_required_env():
     if not os.environ.get("DATABASE_URL"):
         missing.append("DATABASE_URL")
 
+    # Multi-tenant mode requires SALES_AGENT_DOMAIN
+    if os.environ.get("ADCP_MULTI_TENANT", "false").lower() == "true":
+        if not os.environ.get("SALES_AGENT_DOMAIN"):
+            missing.append("SALES_AGENT_DOMAIN (required for multi-tenant mode)")
+
     if missing:
         print("❌ Missing required environment variables:")
         for var in missing:
