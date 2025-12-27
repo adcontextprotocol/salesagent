@@ -40,7 +40,7 @@ services:
   proxy:
     image: nginx:stable
     volumes:
-      - ./config/nginx/nginx-compose.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/nginx-development.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - adcp-server
       - admin-ui

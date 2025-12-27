@@ -307,8 +307,8 @@ def run_nginx():
         config_path = "/etc/nginx/nginx-multi-tenant.conf"
         print("[Nginx] Using multi-tenant config (subdomain routing enabled)")
     else:
-        config_path = "/etc/nginx/nginx-simple.conf"
-        print("[Nginx] Using simple config (path-based routing only)")
+        config_path = "/etc/nginx/nginx-single-tenant.conf"
+        print("[Nginx] Using single-tenant config (path-based routing only)")
 
     # Copy selected config to active location
     import shutil
