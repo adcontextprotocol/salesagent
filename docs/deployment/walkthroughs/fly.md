@@ -40,15 +40,7 @@ Verify DATABASE_URL is set:
 fly secrets list --app your-app-name
 ```
 
-## Step 4: Create Persistent Volume (Optional)
-
-> **Note**: The volume is optional since all data is stored in PostgreSQL. You may skip this step for simpler deployments.
-
-```bash
-fly volumes create adcp_data --region iad --size 1
-```
-
-## Step 5: Set Required Secrets
+## Step 4: Set Required Secrets
 
 ```bash
 # Super admin configuration (required)
@@ -78,14 +70,14 @@ This enables a test login page at `/login` that bypasses OAuth. See [Single-Tena
 - `SUPER_ADMIN_EMAILS`: Comma-separated, no spaces: `user1@example.com,user2@example.com`
 - `SUPER_ADMIN_DOMAINS`: Comma-separated domains: `example.com,company.org`
 
-## Step 6: Configure OAuth Redirect
+## Step 5: Configure OAuth Redirect
 
 Add this redirect URI to your [Google OAuth credentials](https://console.cloud.google.com/apis/credentials):
 ```
 https://your-app-name.fly.dev/auth/google/callback
 ```
 
-## Step 7: Deploy
+## Step 6: Deploy
 
 ```bash
 fly deploy
@@ -96,7 +88,7 @@ The first deploy runs database migrations automatically. Watch the logs:
 fly logs
 ```
 
-## Step 8: Verify
+## Step 7: Verify
 
 ```bash
 # Check health
@@ -110,12 +102,11 @@ fly status --app your-app-name
 
 | Service | URL |
 |---------|-----|
-| Login | https://your-app-name.fly.dev/login |
 | Admin UI | https://your-app-name.fly.dev/admin |
 | MCP Server | https://your-app-name.fly.dev/mcp/ |
 | Health Check | https://your-app-name.fly.dev/health |
 
-> **First-time access**: Start at `/login` to authenticate. After login, you'll be redirected to the Admin UI.
+> **Authentication**: Visiting `/admin` without being logged in will redirect you to the login page. After successful authentication, you'll be redirected back to the Admin UI.
 
 ## Monitoring
 

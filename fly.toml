@@ -62,11 +62,6 @@ primary_region = "iad"
   # Enable multi-tenant mode for reference deployment (subdomain routing)
   # Publishers deploying their own instance should set this to "false" or remove it
   ADCP_MULTI_TENANT = "true"
-  # Domain configuration - set these as secrets:
+  # Domain configuration for multi-tenant mode - set these as secrets:
   # fly secrets set BASE_DOMAIN=your-domain.com
   # fly secrets set SALES_AGENT_DOMAIN=sales-agent.your-domain.com
-  # fly secrets set GCP_PROJECT_ID=your-gcp-project
-
-[mounts]
-  source = "adcp_data"
-  destination = "/data"
