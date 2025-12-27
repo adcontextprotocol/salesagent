@@ -579,7 +579,15 @@ class GoogleAdManager(AdServerAdapter):
 
         order_name_template = "{campaign_name|brand_name} - {date_range}"  # Default
         tenant_gemini_key = None
+
+        # Get currency from the request's package pricing (validated upstream in media_buy_create.py)
+        # All packages in a media buy use the same currency
         order_currency = "USD"  # Default fallback
+        if package_pricing_info:
+            for pricing in package_pricing_info.values():
+                order_currency = pricing.get("currency", "USD")
+                break  # All packages have same currency
+
         with get_db_session() as db_session:
             from src.core.database.models import Tenant
 
@@ -588,9 +596,6 @@ class GoogleAdManager(AdServerAdapter):
             if adapter_config:
                 if adapter_config.gam_order_name_template:
                     order_name_template = adapter_config.gam_order_name_template
-                # Use detected GAM network currency for order budget
-                if adapter_config.gam_network_currency:
-                    order_currency = adapter_config.gam_network_currency
 
             # Get tenant's Gemini key for auto_name generation
             tenant_stmt = select(Tenant).filter_by(tenant_id=self.tenant_id)
