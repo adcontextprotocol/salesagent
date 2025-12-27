@@ -66,3 +66,8 @@ primary_region = "iad"
   GOOGLE_OAUTH_REDIRECT_URI = "https://admin.sales-agent.adcontextprotocol.org/auth/google/callback"
   # GCP project for GAM service account management
   GCP_PROJECT_ID = "adcp-manager"
+
+# Persistent storage for audit logs and data
+[mounts]
+  source = "adcp_data"
+  destination = "/data"
