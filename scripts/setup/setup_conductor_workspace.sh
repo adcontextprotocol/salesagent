@@ -43,22 +43,19 @@ else
     echo "✓ uv is already installed ($(uv --version))"
 fi
 
-# Check for secrets configuration
+# Check for .env file
 echo ""
-echo "Checking secrets configuration..."
+echo "Checking environment configuration..."
 
-# Check for .env.secrets file (REQUIRED - only supported method)
-SECRETS_FILE=""
-if [ -f ".env.secrets" ]; then
-    SECRETS_FILE=".env.secrets"
-    echo "✓ Found .env.secrets in current directory"
-elif [ -f "$CONDUCTOR_ROOT_PATH/.env.secrets" ]; then
-    SECRETS_FILE="$CONDUCTOR_ROOT_PATH/.env.secrets"
-    echo "✓ Found .env.secrets in root directory ($CONDUCTOR_ROOT_PATH)"
+if [ -f ".env" ]; then
+    echo "✓ Found .env in current directory"
+elif [ -f "$CONDUCTOR_ROOT_PATH/.env" ]; then
+    cp "$CONDUCTOR_ROOT_PATH/.env" .env
+    echo "✓ Copied .env from root directory ($CONDUCTOR_ROOT_PATH)"
 else
-    echo "✗ ERROR: .env.secrets file not found!"
+    echo "✗ ERROR: .env file not found!"
     echo ""
-    echo "Please create $CONDUCTOR_ROOT_PATH/.env.secrets with your secrets:"
+    echo "Please create $CONDUCTOR_ROOT_PATH/.env with your configuration:"
     echo ""
     echo "# API Keys"
     echo "GEMINI_API_KEY=your-gemini-api-key"
@@ -72,13 +69,10 @@ else
     echo "GAM_OAUTH_CLIENT_ID=your-gam-client-id.apps.googleusercontent.com"
     echo "GAM_OAUTH_CLIENT_SECRET=your-gam-client-secret"
     echo ""
-    echo "See .env.secrets.template for a full example."
+    echo "See .env.template for a full example."
     echo ""
     exit 1
 fi
-
-echo "✓ Secrets will be loaded from $SECRETS_FILE"
-echo ""
 
 # Set up Docker caching infrastructure
 echo ""
@@ -102,38 +96,10 @@ fi
 # Copy required files from root workspace
 echo ""
 echo "Copying files from root workspace..."
-cp $CONDUCTOR_ROOT_PATH/adcp-manager-key.json .
-
-# Create .env file with secrets
-echo "Creating .env file with secrets..."
-
-# Start with a fresh .env file with workspace-specific settings
-cat > .env << EOF
-# Environment configuration for Conductor workspace: $CONDUCTOR_WORKSPACE_NAME
-# Generated on $(date)
-
-# Docker BuildKit Caching (enabled by default)
-DOCKER_BUILDKIT=1
-COMPOSE_DOCKER_CLI_BUILD=1
-EOF
-
-# Load secrets from .env.secrets file (check current dir first, then root)
-SECRETS_FILE=""
-if [ -f ".env.secrets" ]; then
-    SECRETS_FILE=".env.secrets"
-    echo "Loading secrets from current directory (.env.secrets)..."
-elif [ -f "$CONDUCTOR_ROOT_PATH/.env.secrets" ]; then
-    SECRETS_FILE="$CONDUCTOR_ROOT_PATH/.env.secrets"
-    echo "Loading secrets from root directory ($CONDUCTOR_ROOT_PATH/.env.secrets)..."
+if [ -f "$CONDUCTOR_ROOT_PATH/adcp-manager-key.json" ]; then
+    cp "$CONDUCTOR_ROOT_PATH/adcp-manager-key.json" .
+    echo "✓ Copied adcp-manager-key.json"
 fi
-
-# Append secrets to .env
-echo "" >> .env
-echo "# Secrets from $SECRETS_FILE" >> .env
-cat "$SECRETS_FILE" >> .env
-echo "✓ Loaded secrets from $SECRETS_FILE"
-
-echo "✓ Created .env file"
 
 # Set up Git hooks for this workspace
 echo ""
@@ -351,7 +317,6 @@ echo "  http://localhost:\$CONDUCTOR_PORT/a2a    -> A2A Server"
 echo ""
 echo "Your CONDUCTOR_PORT is: ${CONDUCTOR_PORT:-8000}"
 echo ""
-echo "✓ Docker caching is enabled automatically for faster builds!"
 echo "✓ Environment variables from .env are now active in this shell"
 echo ""
 echo "You can now run commands directly:"

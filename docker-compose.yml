@@ -56,8 +56,6 @@ services:
     env_file:
       - path: .env
         required: false
-      - path: .env.secrets
-        required: false
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
@@ -86,8 +84,6 @@ services:
     command: python -m src.admin.server
     env_file:
       - path: .env
-        required: false
-      - path: .env.secrets
         required: false
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
