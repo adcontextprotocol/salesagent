@@ -76,8 +76,8 @@ class EnhancedMCPServer(FastMCP):
             # Store context_id as metadata that the transport can use
             # Note: Using setattr to add dynamic metadata to Pydantic models
             if not hasattr(result, "__mcp_metadata__"):
-                setattr(result, "__mcp_metadata__", {})
-            metadata = getattr(result, "__mcp_metadata__")
+                result.__mcp_metadata__ = {}
+            metadata = result.__mcp_metadata__
             metadata["context_id"] = context_id
 
         return result

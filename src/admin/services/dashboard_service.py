@@ -161,21 +161,21 @@ class DashboardService:
                 # Using setattr for dynamic attributes that mypy can't know about
                 for media_buy in recent_buys:
                     # Calculate estimated spend based on flight duration and status
-                    setattr(media_buy, "spend", self._calculate_estimated_spend(media_buy))
+                    media_buy.spend = self._calculate_estimated_spend(media_buy)
 
                     # Calculate relative time with proper timezone handling
-                    setattr(media_buy, "created_at_relative", self._format_relative_time(media_buy.created_at))
+                    media_buy.created_at_relative = self._format_relative_time(media_buy.created_at)
 
                     # Add advertiser name from eager-loaded principal
-                    setattr(media_buy, "advertiser_name", media_buy.principal.name if media_buy.principal else "Unknown")
+                    media_buy.advertiser_name = media_buy.principal.name if media_buy.principal else "Unknown"
 
                     # Add readiness state and details
                     readiness = MediaBuyReadinessService.get_readiness_state(
                         media_buy.media_buy_id, self.tenant_id, db_session
                     )
-                    setattr(media_buy, "readiness_state", readiness["state"])
-                    setattr(media_buy, "is_ready", readiness["is_ready_to_activate"])
-                    setattr(media_buy, "readiness_details", readiness)
+                    media_buy.readiness_state = readiness["state"]
+                    media_buy.is_ready = readiness["is_ready_to_activate"]
+                    media_buy.readiness_details = readiness
 
                 return list(recent_buys)
 
