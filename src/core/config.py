@@ -92,7 +92,9 @@ class SuperAdminConfig(BaseSettings):
 class AppConfig(BaseSettings):
     """Main application configuration."""
 
-    gemini_api_key: str = Field(..., description="Gemini API key for AI features")
+    gemini_api_key: str | None = Field(
+        default=None, description="Platform-level Gemini API key (optional - tenants can configure their own)"
+    )
     flask_secret_key: str = Field(default="dev-secret-key-change-in-production", description="Flask secret key")
     debug: bool = Field(default=False, description="Enable debug mode")
     environment: str = Field(default="development", description="Environment: production, staging, or development")
@@ -116,8 +118,7 @@ def get_config() -> AppConfig:
     """Get the global configuration instance."""
     global _config
     if _config is None:
-        # BaseSettings reads from environment; mypy doesn't understand this pattern
-        _config = AppConfig()  # type: ignore[call-arg]
+        _config = AppConfig()
     return _config
 
 
@@ -136,24 +137,17 @@ def validate_configuration() -> None:
             # Configuration validation happens automatically via Pydantic
             pass
 
-        # Validate critical configuration
-        required_configs = [
-            ("GEMINI_API_KEY", config.gemini_api_key),
-            ("SUPER_ADMIN_EMAILS", config.superadmin.emails),
-        ]
-
-        missing = []
-        for name, value in required_configs:
-            if not value:
-                missing.append(name)
-
-        if missing:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+        # Validate critical configuration (SUPER_ADMIN_EMAILS required)
+        # Note: GEMINI_API_KEY is optional - tenants configure their own AI keys
+        if not config.superadmin.emails:
+            raise ValueError("Missing required environment variable: SUPER_ADMIN_EMAILS")
 
         print("✅ Configuration validation passed")
         print(f"   GAM OAuth: {'✅ Configured' if config.gam_oauth.client_id else '❌ Not configured'}")
         print(f"   Database: {'✅ Configured' if config.database.url else '❌ Not configured'}")
-        print(f"   Gemini API: {'✅ Configured' if config.gemini_api_key else '❌ Not configured'}")
+        print(
+            f"   Gemini API: {'✅ Configured' if config.gemini_api_key else '⚪ Not configured (tenants use own keys)'}"
+        )
         print(f"   Super Admin: {'✅ Configured' if config.superadmin.emails else '❌ Not configured'}")
 
     except Exception as e:
