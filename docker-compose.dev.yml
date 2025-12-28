@@ -56,6 +56,8 @@ services:
       SKIP_NGINX: "true"
       SKIP_CRON: "true"
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
+      # Override .env ports to match nginx-development.conf expectations
+      ADCP_SALES_PORT: "8080"
       # Development settings
       PYTHONPATH: "/app/.venv/lib/python3.12/site-packages"
       PYTHONUNBUFFERED: "1"
