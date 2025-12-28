@@ -8,7 +8,6 @@ Utility scripts for setup, deployment, and operations.
 - `init_database.py` - Initialize database with schema
 - `init_database_ci.py` - CI-specific database initialization
 - `setup_tenant.py` - Create new publisher/tenant
-- `setup_hooks.sh` - Setup git hooks for development
 
 ### `/ops/` - Operations
 - `migrate.py` - Run database migrations
@@ -42,8 +41,8 @@ Utility scripts for setup, deployment, and operations.
 
 ### Setting Up a New Environment
 ```bash
-# 1. Setup git hooks
-scripts/setup/setup_hooks.sh
+# 1. Setup git hooks (from project root)
+./setup_hooks.sh
 
 # 2. Initialize database
 uv run python scripts/setup/init_database.py
