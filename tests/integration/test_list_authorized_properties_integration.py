@@ -153,7 +153,7 @@ def test_list_authorized_properties_returns_empty_when_no_publishers(integration
         # Verify empty response with helpful description
         assert response.publisher_domains == []
         assert response.portfolio_description is not None
-        assert "No verified publisher partnerships" in response.portfolio_description
+        assert "No publisher partnerships" in response.portfolio_description
 
 
 @pytest.mark.requires_db
