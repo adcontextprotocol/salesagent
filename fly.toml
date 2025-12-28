@@ -51,22 +51,23 @@ primary_region = "iad"
   cpu_kind = "shared"
   cpus = 2
 
+# Environment variables (non-sensitive config)
+# Sensitive values (API keys, credentials) should be set via `fly secrets set`
 [env]
   PRODUCTION = "true"
-  ADCP_UNIFIED_MODE = "true"
-  ADCP_SALES_PORT = "8080"
-  ADMIN_UI_PORT = "8001"
-  ADK_WEB_PORT = "8091"
-  A2A_PORT = "8091"
-  DB_TYPE = "postgresql"
-  # Enable multi-tenant mode for reference deployment (subdomain routing)
-  # Publishers deploying their own instance should set this to "false" or remove it
+  ENVIRONMENT = "production"
+  # Multi-tenant mode for reference deployment (subdomain routing)
+  # Publishers deploying their own instance should remove this
   ADCP_MULTI_TENANT = "true"
-  # Domain configuration - set these as secrets:
-  # fly secrets set BASE_DOMAIN=your-domain.com
-  # fly secrets set SALES_AGENT_DOMAIN=sales-agent.your-domain.com
-  # fly secrets set GCP_PROJECT_ID=your-gcp-project
+  BASE_DOMAIN = "adcontextprotocol.org"
+  SALES_AGENT_DOMAIN = "sales-agent.adcontextprotocol.org"
+  # URLs for OAuth redirects and notifications
+  ADMIN_UI_URL = "https://admin.sales-agent.adcontextprotocol.org"
+  GOOGLE_OAUTH_REDIRECT_URI = "https://admin.sales-agent.adcontextprotocol.org/auth/google/callback"
+  # GCP project for GAM service account management
+  GCP_PROJECT_ID = "adcp-manager"
 
+# Persistent storage for audit logs and data
 [mounts]
   source = "adcp_data"
   destination = "/data"

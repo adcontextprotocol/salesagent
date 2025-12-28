@@ -1,56 +1,123 @@
-# Docker Compose development overlay with hot reloading
+# AdCP Sales Agent - Development Docker Compose
+#
+# For local development with hot-reload and worktree isolation.
 #
 # Usage:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   docker compose -f docker-compose.dev.yml up
 #
-# This overlay:
-#   - Builds images locally instead of using GHCR
-#   - Mounts source code for hot-reload
-#   - Enables Flask debug mode
-#   - Uses named volumes for pip/uv cache (auto-created)
+# Uses CONDUCTOR_PORT from environment for proxy (avoids port conflicts between worktrees).
+# Falls back to 8000 if not set.
+#
+# All services accessible through the proxy port:
+#   - http://localhost:$CONDUCTOR_PORT/       -> Admin UI
+#   - http://localhost:$CONDUCTOR_PORT/admin  -> Admin UI
+#   - http://localhost:$CONDUCTOR_PORT/mcp    -> MCP Server
+#   - http://localhost:$CONDUCTOR_PORT/a2a    -> A2A Server
 
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: adcp
+      POSTGRES_USER: adcp_user
+      POSTGRES_PASSWORD: secure_password_change_me
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No host port exposure - access via docker compose exec if needed
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adcp_user -d adcp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   proxy:
-    # No changes needed for proxy in dev mode
+    image: nginx:stable
+    volumes:
+      - ./config/nginx/nginx-development.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - adcp-server
+      - admin-ui
+    ports:
+      - "${CONDUCTOR_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   adcp-server:
-    build: .
+    image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    entrypoint: []  # Override image entrypoint for local dev
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
+      SKIP_NGINX: "true"
+      SKIP_CRON: "true"
+      ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
+      # Override .env ports to match nginx-development.conf expectations
+      ADCP_SALES_PORT: "8080"
+      # Development settings
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages"
+      PYTHONUNBUFFERED: "1"
+      FLASK_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      # Mount source code for hot reloading, excluding .venv
+      # Mount source code for hot reloading
       - .:/app
       - /app/.venv
       - ./audit_logs:/app/audit_logs
-      # Named volumes for caching (auto-created on first run)
-      - pip_cache:/root/.cache/pip
-      - uv_cache:/cache/uv
-    environment:
-      # Add container's venv site-packages to PYTHONPATH
-      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages"
-      PYTHONUNBUFFERED: 1
-      FLASK_ENV: development
-      WERKZEUG_RUN_MAIN: true
-    command: ["python", "run_server.py"]
+      # Shared cache volumes for faster builds
+      - adcp_global_pip_cache:/root/.cache/pip
+      - adcp_global_uv_cache:/cache/uv
+    command: ["python", "scripts/run_server.py"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   admin-ui:
-    build: .
+    image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    entrypoint: []  # Override image entrypoint for local dev
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
+      SKIP_NGINX: "true"
+      ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
+      # Development settings
+      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages"
+      PYTHONUNBUFFERED: "1"
+      FLASK_ENV: development
+      FLASK_DEBUG: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
-      # Mount source code for hot reloading, excluding .venv
+      # Mount source code for hot reloading
       - .:/app
       - /app/.venv
       - ./audit_logs:/app/audit_logs
-      # Named volumes for caching (auto-created on first run)
-      - pip_cache:/root/.cache/pip
-      - uv_cache:/cache/uv
-    environment:
-      # Add container's venv site-packages to PYTHONPATH
-      PYTHONPATH: "/app/.venv/lib/python3.12/site-packages"
-      # Enable Flask development mode with auto-reload
-      FLASK_ENV: development
-      FLASK_DEBUG: 1
-      PYTHONUNBUFFERED: 1
-      WERKZEUG_RUN_MAIN: true
+      # Shared cache volumes for faster builds
+      - adcp_global_pip_cache:/root/.cache/pip
+      - adcp_global_uv_cache:/cache/uv
+    command: ["python", "-m", "src.admin.server"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-# Named volumes for caching (auto-created if they don't exist)
 volumes:
-  pip_cache:
-  uv_cache:
+  postgres_data:
+  adcp_global_pip_cache:
+    external: true
+  adcp_global_uv_cache:
+    external: true

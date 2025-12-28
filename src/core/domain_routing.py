@@ -2,7 +2,7 @@
 
 Centralizes the logic for determining how to route requests based on domain:
 - Custom domains (virtual_host) → agent landing page
-- Subdomains (*.sales-agent.scope3.com) → agent landing page or login
+- Subdomains (*.sales-agent.example.com) → agent landing page or login
 - Admin domains (admin.*) → admin login
 - Unknown domains → fallback
 
@@ -63,23 +63,23 @@ def route_landing_page(request_headers: dict) -> RoutingResult:
 
     Examples:
         Admin domain routing:
-        >>> route_landing_page({"Host": "admin.sales-agent.scope3.com"})
-        RoutingResult(type="admin", tenant=None, effective_host="admin.sales-agent.scope3.com")
+        >>> route_landing_page({"Host": "admin.sales-agent.example.com"})
+        RoutingResult(type="admin", tenant=None, effective_host="admin.sales-agent.example.com")
 
         Custom domain with tenant:
-        >>> route_landing_page({"Host": "sales-agent.accuweather.com"})
-        RoutingResult(type="custom_domain", tenant={...}, effective_host="sales-agent.accuweather.com")
+        >>> route_landing_page({"Host": "sales-agent.publisher.com"})
+        RoutingResult(type="custom_domain", tenant={...}, effective_host="sales-agent.publisher.com")
 
         Subdomain with tenant:
-        >>> route_landing_page({"Host": "applabs.sales-agent.scope3.com"})
-        RoutingResult(type="subdomain", tenant={...}, effective_host="applabs.sales-agent.scope3.com")
+        >>> route_landing_page({"Host": "mytenant.sales-agent.example.com"})
+        RoutingResult(type="subdomain", tenant={...}, effective_host="mytenant.sales-agent.example.com")
 
         Proxied request (Approximated header takes precedence):
         >>> route_landing_page({
-        ...     "Host": "backend.example.com",
-        ...     "Apx-Incoming-Host": "admin.sales-agent.scope3.com"
+        ...     "Host": "backend.internal.com",
+        ...     "Apx-Incoming-Host": "admin.sales-agent.example.com"
         ... })
-        RoutingResult(type="admin", tenant=None, effective_host="admin.sales-agent.scope3.com")
+        RoutingResult(type="admin", tenant=None, effective_host="admin.sales-agent.example.com")
     """
     # Get host from headers (Approximated proxy or direct)
     apx_host = request_headers.get("apx-incoming-host") or request_headers.get("Apx-Incoming-Host")
@@ -94,7 +94,7 @@ def route_landing_page(request_headers: dict) -> RoutingResult:
     # Admin domain check - uses is_admin_domain() which validates against the
     # configured admin domain. This prevents spoofing via malicious domains that
     # start with 'admin.' but aren't our legitimate admin domain
-    # (e.g., admin.sales-agent.scope3.com is valid, admin.malicious.com is not)
+    # (e.g., admin.sales-agent.example.com is valid, admin.malicious.com is not)
     if is_admin_domain(effective_host):
         return RoutingResult("admin", None, effective_host)
 

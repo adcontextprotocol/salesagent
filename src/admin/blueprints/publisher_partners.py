@@ -197,9 +197,12 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
 
             # Get our agent URL - use virtual_host if configured, otherwise construct from subdomain
             if tenant.virtual_host:
-                agent_url = f"https://{tenant.virtual_host}"
+                agent_url: str = f"https://{tenant.virtual_host}"
             else:
-                agent_url = get_tenant_url(tenant.subdomain)
+                maybe_url = get_tenant_url(tenant.subdomain)
+                if not maybe_url:
+                    return jsonify({"error": "Agent URL not configured (SALES_AGENT_DOMAIN not set)"}), 500
+                agent_url = maybe_url
 
             # Get all publisher partners
             stmt_partners = select(PublisherPartner).filter_by(tenant_id=tenant_id)
@@ -485,9 +488,12 @@ def get_publisher_properties(tenant_id: str, partner_id: int) -> Response | tupl
 
             # Get our agent URL - use virtual_host if configured, otherwise construct from subdomain
             if tenant.virtual_host:
-                agent_url = f"https://{tenant.virtual_host}"
+                agent_url: str = f"https://{tenant.virtual_host}"
             else:
-                agent_url = get_tenant_url(tenant.subdomain)
+                maybe_url = get_tenant_url(tenant.subdomain)
+                if not maybe_url:
+                    return jsonify({"error": "Agent URL not configured (SALES_AGENT_DOMAIN not set)"}), 500
+                agent_url = maybe_url
 
             # Fetch fresh authorization context
             logger.info(f"Fetching properties for {partner.publisher_domain}")
