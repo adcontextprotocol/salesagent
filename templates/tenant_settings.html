@@ -466,36 +466,43 @@
             <span>Policies & Workflows</span>
         </a>
 
-        <div class="settings-nav-separator"></div>
-
-        <a class="settings-nav-item" data-section="inventory">
-            <span class="settings-nav-icon">📊</span>
-            <span>Inventory</span>
+        <a class="settings-nav-item" data-section="integrations">
+            <span class="settings-nav-icon">🔗</span>
+            <span>Integrations</span>
         </a>
 
-        <!-- Authorized Properties moved to Inventory tab (Publishers & Properties) -->
+        <div class="settings-nav-separator"></div>
+
+        <a class="settings-nav-item" data-section="publishers">
+            <span class="settings-nav-icon">🌐</span>
+            <span>Publishers</span>
+        </a>
 
         <a class="settings-nav-item" data-section="products">
             <span class="settings-nav-icon">📦</span>
             <span>Products</span>
         </a>
 
+        <a class="settings-nav-item" data-section="inventory">
+            <span class="settings-nav-icon">📊</span>
+            <span>Inventory</span>
+        </a>
+
+        <div class="settings-nav-separator"></div>
+
         <a class="settings-nav-item" data-section="advertisers">
             <span class="settings-nav-icon">👥</span>
             <span>Advertisers</span>
         </a>
 
+        {% if not single_tenant_mode %}
         <div class="settings-nav-separator"></div>
-
-        <a class="settings-nav-item" data-section="integrations">
-            <span class="settings-nav-icon">🔗</span>
-            <span>Integrations</span>
-        </a>
 
         <a class="settings-nav-item" data-section="danger-zone">
             <span class="settings-nav-icon">⚠️</span>
             <span>Danger Zone</span>
         </a>
+        {% endif %}
     </nav>
 
     <!-- Settings Content -->
@@ -1792,12 +1799,80 @@ REJECT - Creative cannot be approved:
                     <a href="#" onclick="event.preventDefault(); switchSettingsSection('adserver')" class="btn btn-primary">
                         Configure Ad Server
                     </a>
-                    <a href="{{ url_for('inventory.inventory_browser', tenant_id=tenant_id, type='all') }}" class="btn btn-secondary">
-                        Manage Publishers & Properties
+                    <a href="#" onclick="event.preventDefault(); switchSettingsSection('publishers')" class="btn btn-secondary">
+                        Manage Publishers
                     </a>
                 </div>
             </div>
             {% endif %}
+        </div>
+
+        <!-- Publishers Settings -->
+        <div id="publishers" class="settings-section">
+            <div class="settings-header">
+                <h2>Publisher Partnerships</h2>
+                <p>Manage the publishers you represent and sell inventory for</p>
+            </div>
+
+            <div class="form-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3>Publisher Partners</h3>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button onclick="syncAllPublishers()" class="btn btn-secondary" id="sync-publishers-btn">
+                            <span id="sync-publishers-icon">🔄</span> Verify All
+                        </button>
+                        <button onclick="showAddPublisherModal()" class="btn btn-primary">
+                            + Add Publisher
+                        </button>
+                    </div>
+                </div>
+
+                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                    Publishers must authorize your sales agent in their <code>/.well-known/adagents.json</code> file.
+                    Once authorized, you can sell their inventory to advertisers.
+                </p>
+
+                <!-- Publishers List -->
+                <div id="publishers-list" style="margin-top: 1rem;">
+                    <div style="text-align: center; padding: 2rem; color: #6b7280;">
+                        <span style="font-size: 1.5rem;">⏳</span>
+                        <p>Loading publishers...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Publisher Modal -->
+            <div id="add-publisher-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+                <div style="background: white; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto;">
+                    <h3 style="margin: 0 0 1rem 0;">Add Publisher Partner</h3>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1.5rem;">
+                        Enter the domain of the publisher you want to represent. They must have authorized your sales agent in their adagents.json file.
+                    </p>
+
+                    <form id="add-publisher-form" onsubmit="addPublisher(event)">
+                        <div class="form-group">
+                            <label for="publisher-domain">Publisher Domain</label>
+                            <input type="text" id="publisher-domain" name="publisher_domain"
+                                   placeholder="example.com" required
+                                   style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;">
+                            <small style="color: #6b7280;">Enter the domain without http:// or https://</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="publisher-display-name">Display Name (Optional)</label>
+                            <input type="text" id="publisher-display-name" name="display_name"
+                                   placeholder="Example Publisher"
+                                   style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;">
+                            <small style="color: #6b7280;">Friendly name for this publisher</small>
+                        </div>
+
+                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+                            <button type="button" onclick="hideAddPublisherModal()" class="btn btn-secondary">Cancel</button>
+                            <button type="submit" class="btn btn-primary" id="add-publisher-submit">Add Publisher</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
 
         <!-- Products Settings -->
@@ -2440,121 +2515,6 @@ result = await client.tools.get_products(brief="video ads")</pre>
                     Each advertiser has their own API token
                 </p>
                 <!-- Token list would go here -->
-            </div>
-        </div>
-
-        <!-- Users Settings -->
-        <div id="users" class="settings-section">
-            <div class="settings-header">
-                <h2>Users & Access</h2>
-                <p>Manage who can access this tenant's admin interface</p>
-            </div>
-
-            <!-- Authorized Domains Section -->
-            <div class="form-section">
-                <h3>🏢 Authorized Domains</h3>
-                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
-                    Users from these domains get automatic admin access via OAuth
-                </p>
-
-                <!-- Current Domains -->
-                {% if authorized_domains %}
-                <div class="domain-list" style="margin-bottom: 1rem;">
-                    {% for domain in authorized_domains %}
-                    <div class="domain-item" style="display: flex; align-items: center; justify-content: between; padding: 0.5rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 0.5rem;">
-                        <div style="flex: 1;">
-                            <strong>{{ domain }}</strong>
-                            <small style="color: #6b7280; margin-left: 0.5rem;">@{{ domain }} users</small>
-                        </div>
-                        <form method="POST" action="{{ url_for('settings.remove_authorized_domain', tenant_id=tenant.tenant_id) }}" style="margin: 0;">
-                            <input type="hidden" name="domain" value="{{ domain }}">
-                            <button type="submit" class="btn btn-outline-danger btn-sm"
-                                    onclick="return confirm('Remove domain {{ domain }}? Users from this domain will lose access.')">Remove</button>
-                        </form>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div style="text-align: center; color: #9ca3af; font-style: italic; margin-bottom: 1rem;">
-                    No authorized domains configured
-                </div>
-                {% endif %}
-
-                <!-- Add Domain Form -->
-                <form method="POST" action="{{ url_for('settings.add_authorized_domain', tenant_id=tenant.tenant_id) }}" style="display: flex; gap: 0.5rem; align-items: end;">
-                    <div style="flex: 1;">
-                        <label for="new_domain" style="font-size: 0.875rem; font-weight: 500;">Add Domain</label>
-                        <input type="text" id="new_domain" name="domain" placeholder="company.com" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;">
-                    </div>
-                    <button type="submit" class="btn btn-primary">Add</button>
-                </form>
-            </div>
-
-            <!-- Authorized Emails Section -->
-            <div class="form-section">
-                <h3>📧 Authorized Emails</h3>
-                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
-                    External users requiring explicit access (contractors, agencies, etc.)
-                </p>
-
-                <!-- Current Emails -->
-                {% if authorized_emails %}
-                <div class="email-list" style="margin-bottom: 1rem;">
-                    {% for email in authorized_emails %}
-                    <div class="email-item" style="display: flex; align-items: center; justify-content: between; padding: 0.5rem; background: #fef7ec; border: 1px solid #fed7aa; border-radius: 6px; margin-bottom: 0.5rem;">
-                        <div style="flex: 1;">
-                            <strong>{{ email }}</strong>
-                            <small style="color: #92400e; margin-left: 0.5rem;">External user</small>
-                        </div>
-                        <form method="POST" action="{{ url_for('settings.remove_authorized_email', tenant_id=tenant.tenant_id) }}" style="margin: 0;">
-                            <input type="hidden" name="email" value="{{ email }}">
-                            <button type="submit" class="btn btn-outline-danger btn-sm"
-                                    onclick="return confirm('Remove {{ email }}? This user will lose access.')">Remove</button>
-                        </form>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div style="text-align: center; color: #9ca3af; font-style: italic; margin-bottom: 1rem;">
-                    No external emails configured
-                </div>
-                {% endif %}
-
-                <!-- Add Email Form -->
-                <form method="POST" action="{{ url_for('settings.add_authorized_email', tenant_id=tenant.tenant_id) }}" style="display: flex; gap: 0.5rem; align-items: end;">
-                    <div style="flex: 1;">
-                        <label for="new_email" style="font-size: 0.875rem; font-weight: 500;">Add Email</label>
-                        <input type="email" id="new_email" name="email" placeholder="contractor@agency.com" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;">
-                    </div>
-                    <button type="submit" class="btn btn-primary">Add</button>
-                </form>
-            </div>
-
-            <!-- Test Access Section -->
-            <div class="form-section">
-                <h3>🧪 Test Access</h3>
-                <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
-                    Test if an email address would have access to this tenant
-                </p>
-
-                <form method="POST" action="{{ url_for('settings.test_domain_access', tenant_id=tenant.tenant_id) }}" style="display: flex; gap: 0.5rem; align-items: end;">
-                    <div style="flex: 1;">
-                        <label for="test_email" style="font-size: 0.875rem; font-weight: 500;">Email to Test</label>
-                        <input type="email" id="test_email" name="test_email" placeholder="user@example.com" style="width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;">
-                    </div>
-                    <button type="submit" class="btn btn-secondary">Test</button>
-                </form>
-            </div>
-
-            <div class="form-section">
-                <h3>Tenant Login URL</h3>
-                <div class="config-code">
-                    <button class="copy-button" onclick="copyToClipboard(this)">Copy</button>
-                    <pre style="margin: 0;">http://localhost:{{ admin_port }}/tenant/{{ tenant.tenant_id }}/login</pre>
-                </div>
-                <p style="margin-top: 0.5rem; color: #6b7280; font-size: 0.875rem;">
-                    Share this URL with authorized users to access this tenant directly
-                </p>
             </div>
         </div>
 

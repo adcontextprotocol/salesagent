@@ -195,8 +195,11 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
-            # Get our agent URL
-            agent_url = get_tenant_url(tenant.subdomain)
+            # Get our agent URL - use virtual_host if configured, otherwise construct from subdomain
+            if tenant.virtual_host:
+                agent_url = f"https://{tenant.virtual_host}"
+            else:
+                agent_url = get_tenant_url(tenant.subdomain)
 
             # Get all publisher partners
             stmt_partners = select(PublisherPartner).filter_by(tenant_id=tenant_id)
@@ -480,8 +483,11 @@ def get_publisher_properties(tenant_id: str, partner_id: int) -> Response | tupl
             if not partner:
                 return jsonify({"error": "Publisher not found"}), 404
 
-            # Get our agent URL
-            agent_url = get_tenant_url(tenant.subdomain)
+            # Get our agent URL - use virtual_host if configured, otherwise construct from subdomain
+            if tenant.virtual_host:
+                agent_url = f"https://{tenant.virtual_host}"
+            else:
+                agent_url = get_tenant_url(tenant.subdomain)
 
             # Fetch fresh authorization context
             logger.info(f"Fetching properties for {partner.publisher_domain}")
