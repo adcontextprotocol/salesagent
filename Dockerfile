@@ -71,7 +71,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Install supercronic for cron jobs (container-friendly cron)
 ARG TARGETARCH
 RUN SUPERCRONIC_ARCH=$(case "${TARGETARCH}" in "arm64") echo "linux-arm64" ;; *) echo "linux-amd64" ;; esac) && \
-    curl -fsSL "https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-${SUPERCRONIC_ARCH}" \
+    curl -fsSL "https://github.com/aptible/supercronic/releases/download/v0.2.41/supercronic-${SUPERCRONIC_ARCH}" \
     -o /usr/local/bin/supercronic && \
     chmod +x /usr/local/bin/supercronic
 
