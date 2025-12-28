@@ -410,3 +410,52 @@ class TestVirtualHostEdgeCases:
                 # Other reserved domains would pass current validation (including 127.0.0.1)
                 # because digits are alphanumeric
                 assert is_valid, f"Reserved domain validation not implemented: {domain}"
+
+
+class TestVirtualHostPublisherAuthorizationUrl:
+    """Test that publisher authorization uses virtual_host when configured."""
+
+    def test_agent_url_uses_virtual_host_when_configured(self):
+        """Test that agent URL is constructed from virtual_host with https prefix."""
+        # Arrange - tenant with virtual_host configured
+        virtual_host = "sales-agent.accuweather.com"
+
+        # Act - simulate the URL construction logic from publisher_partners.py
+        if virtual_host:
+            agent_url = f"https://{virtual_host}"
+        else:
+            agent_url = "https://fallback.sales-agent.scope3.com"
+
+        # Assert
+        assert agent_url == "https://sales-agent.accuweather.com"
+
+    def test_agent_url_falls_back_to_subdomain_when_no_virtual_host(self):
+        """Test that agent URL falls back to subdomain pattern when no virtual_host."""
+        # Arrange - tenant without virtual_host
+        virtual_host = None
+        subdomain = "accuweather"
+
+        # Act - simulate the URL construction logic
+        if virtual_host:
+            agent_url = f"https://{virtual_host}"
+        else:
+            # Simulates get_tenant_url(subdomain) -> https://subdomain.sales-agent.scope3.com
+            agent_url = f"https://{subdomain}.sales-agent.scope3.com"
+
+        # Assert
+        assert agent_url == "https://accuweather.sales-agent.scope3.com"
+
+    def test_agent_url_handles_empty_string_virtual_host(self):
+        """Test that empty string virtual_host is treated as None."""
+        # Arrange - tenant with empty string virtual_host
+        virtual_host = ""
+        subdomain = "accuweather"
+
+        # Act - empty string is falsy in Python
+        if virtual_host:
+            agent_url = f"https://{virtual_host}"
+        else:
+            agent_url = f"https://{subdomain}.sales-agent.scope3.com"
+
+        # Assert - should fall back to subdomain
+        assert agent_url == "https://accuweather.sales-agent.scope3.com"

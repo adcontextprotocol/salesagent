@@ -9,7 +9,7 @@ Handles property discovery including:
 
 import logging
 import time
-from typing import cast
+from typing import Any, cast
 
 from adcp import ListAuthorizedPropertiesRequest
 from adcp.types.generated_poc.core.context import ContextObject
@@ -96,24 +96,32 @@ def _list_authorized_properties_impl(
 
     try:
         with get_db_session() as session:
-            # Query verified publisher partners for this tenant
-            # list_authorized_properties returns publisher domains we're authorized to represent
-            # This comes from our PublisherPartner table (single source of truth)
-            stmt = select(PublisherPartner).where(
-                PublisherPartner.tenant_id == tenant_id, PublisherPartner.is_verified == True  # noqa: E712
-            )
-            verified_publishers = session.scalars(stmt).all()
+            # Query all publisher partners for this tenant (verified or pending)
+            # We return all registered publishers because:
+            # 1. Verification may be in progress during publisher setup
+            # 2. The sales agent is claiming to represent these publishers
+            # 3. Buyers should see the full portfolio even if some are pending verification
+            stmt = select(PublisherPartner).where(PublisherPartner.tenant_id == tenant_id)
+            all_publishers = session.scalars(stmt).all()
 
-            # Extract publisher domains
-            publisher_domains = sorted([p.publisher_domain for p in verified_publishers])
+            # Extract publisher domains (all registered, regardless of verification status)
+            publisher_domains = sorted([p.publisher_domain for p in all_publishers])
 
-            # If no publishers configured, return error - NO FALLBACK BEHAVIOR
+            # If no publishers configured, return empty list with helpful description
             if not publisher_domains:
-                raise ToolError(
-                    "NO_PUBLISHERS_CONFIGURED",
-                    f"No verified publisher partnerships configured for tenant '{tenant_id}'. "
-                    f"Please add publishers via the Admin UI at /admin/tenant/{tenant_id}/inventory#publishers-pane",
+                empty_response_data: dict[str, Any] = {"publisher_domains": []}
+                empty_response_data["portfolio_description"] = (
+                    "No publisher partnerships are currently configured. " "Publishers can be added via the Admin UI."
                 )
+                response = ListAuthorizedPropertiesResponse(**empty_response_data)
+
+                # Carry back application context from request if provided
+                if req and req.context is not None:
+                    response.context = (
+                        req.context.model_dump() if hasattr(req.context, "model_dump") else dict(req.context)
+                    )
+
+                return response
 
             # Generate advertising policies text from tenant configuration
             advertising_policies_text = None
@@ -162,8 +170,6 @@ def _list_authorized_properties_impl(
             # Note: Optional fields (advertising_policies, errors, etc.) should be omitted if not set,
             # not set to None or empty values. AdCPBaseModel.model_dump() uses exclude_none=True by default.
             # Build response dict with only non-None values
-            from typing import Any
-
             response_data: dict[str, Any] = {"publisher_domains": publisher_domains}  # Required per AdCP v2.4 spec
 
             # Only add optional fields if they have actual values
