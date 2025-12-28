@@ -306,8 +306,8 @@ def require_tenant_access(api_mode=False):
             if "user" not in session:
                 if api_mode:
                     return jsonify({"error": "Authentication required"}), 401
-                # Store the original URL to redirect back after login
-                return redirect(url_for("auth.login", next=request.url))
+                # Redirect to tenant-specific login (preserves tenant context)
+                return redirect(url_for("auth.tenant_login", tenant_id=tenant_id, next=request.url))
 
             user_info = session["user"]
 

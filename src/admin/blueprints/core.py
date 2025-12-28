@@ -284,13 +284,14 @@ def admin_index():
     """Admin UI entry point - requires authentication."""
     from src.core.config_loader import is_single_tenant_mode
 
-    # Check if user is authenticated
-    if "user" not in session:
-        return redirect(url_for("auth.login"))
-
-    # Single-tenant mode: go to default tenant dashboard
+    # Single-tenant mode: always redirect to default tenant dashboard
+    # (the @require_tenant_access decorator handles auth redirect)
     if is_single_tenant_mode():
         return redirect(url_for("tenants.dashboard", tenant_id="default"))
+
+    # Multi-tenant mode: check authentication
+    if "user" not in session:
+        return redirect(url_for("auth.login"))
 
     # Multi-tenant mode: check for tenant context or show tenant selector
     if session.get("role") == "super_admin":

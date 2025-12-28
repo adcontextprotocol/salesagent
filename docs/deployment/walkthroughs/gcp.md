@@ -32,12 +32,8 @@ Note the **Connection name** from the instance overview (e.g., `your-project:us-
 Deploy with test mode enabled to verify everything works before configuring OAuth:
 
 ```bash
-# Build and push image
-gcloud builds submit --tag gcr.io/YOUR_PROJECT/adcp-sales-agent
-
-# Deploy with Cloud SQL connector (recommended)
 gcloud run deploy adcp-sales-agent \
-  --image gcr.io/YOUR_PROJECT/adcp-sales-agent \
+  --image docker.io/adcontextprotocol/salesagent:latest \
   --region us-central1 \
   --platform managed \
   --allow-unauthenticated \
@@ -46,9 +42,10 @@ gcloud run deploy adcp-sales-agent \
   --add-cloudsql-instances YOUR_PROJECT:us-central1:adcp-sales-agent \
   --set-env-vars "ADCP_AUTH_TEST_MODE=true" \
   --set-env-vars "SUPER_ADMIN_EMAILS=your-email@example.com" \
-  --set-env-vars "DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@/salesagent?host=/cloudsql/YOUR_PROJECT:us-central1:adcp-sales-agent" \
-  --set-env-vars "GEMINI_API_KEY=your-gemini-key"
+  --set-env-vars "DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@/salesagent?host=/cloudsql/YOUR_PROJECT:us-central1:adcp-sales-agent"
 ```
+
+> **Note**: This uses the prebuilt image from Docker Hub. To build from source instead, run `gcloud builds submit --tag gcr.io/YOUR_PROJECT/adcp-sales-agent` first and use that image.
 
 Note your service URL from the output (e.g., `https://adcp-sales-agent-abc123-uc.a.run.app`).
 
@@ -107,10 +104,10 @@ If using a custom domain, add it as an additional redirect URI in your OAuth cre
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | Cloud SQL connection string |
 | `SUPER_ADMIN_EMAILS` | Yes | Comma-separated admin emails |
-| `GEMINI_API_KEY` | No | For AI-powered creative review |
 | `GOOGLE_CLIENT_ID` | Prod | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Prod | Google OAuth client secret |
 | `ADCP_AUTH_TEST_MODE` | No | Set `true` for initial testing |
+| `GEMINI_API_KEY` | No | Platform-level AI key (tenants can configure their own) |
 
 ## Troubleshooting
 

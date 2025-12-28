@@ -10,7 +10,7 @@
 # For full deployment guide, see: docs/deployment/walkthroughs/fly.md
 #
 # Required secrets (set via `fly secrets set`):
-#   - DATABASE_URL (auto-set by `fly postgres attach`)
+#   - DATABASE_URL (auto-set by `fly mpg attach` or `fly postgres attach`)
 #   - SUPER_ADMIN_EMAILS or SUPER_ADMIN_DOMAINS (access control)
 #
 # OAuth secrets (choose one):
