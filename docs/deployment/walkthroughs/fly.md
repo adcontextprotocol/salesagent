@@ -104,7 +104,16 @@ Add redirect URI to [Google OAuth credentials](https://console.cloud.google.com/
 
 ## Step 5: Deploy
 
+**Option A: Use prebuilt image (recommended)**
 ```bash
+fly deploy --image docker.io/adcontextprotocol/salesagent:latest
+```
+
+**Option B: Build from source**
+```bash
+# Clone the repository first
+git clone https://github.com/adcontextprotocol/salesagent.git
+cd salesagent
 fly deploy
 ```
 
