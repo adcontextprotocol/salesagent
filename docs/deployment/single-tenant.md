@@ -55,28 +55,19 @@ docker pull ghcr.io/adcontextprotocol/salesagent:latest
 
 **GitHub Container Registry**: Unlimited pulls for public images, no authentication needed.
 
-## Required Environment Variables
+## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `SUPER_ADMIN_EMAILS` | Comma-separated admin emails |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `SUPER_ADMIN_EMAILS` | Yes | Comma-separated admin emails |
+| `ADCP_AUTH_TEST_MODE` | No | Set to `true` for testing without OAuth |
+| `GOOGLE_CLIENT_ID` | For OAuth | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | For OAuth | Google OAuth client secret |
 
-## Recommended Environment Variables
+For a complete list including AI configuration, GAM integration, and all optional settings, see the **[Environment Variables Reference](environment-variables.md)**.
 
-| Variable | Description |
-|----------|-------------|
-| `GEMINI_API_KEY` | For AI-powered creative review |
-| `GOOGLE_CLIENT_ID` | For Google OAuth login |
-| `GOOGLE_CLIENT_SECRET` | For Google OAuth login |
-
-## Optional Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CREATE_DEMO_TENANT` | Create demo tenant with sample data | `false` |
-| `ENCRYPTION_KEY` | For encrypting sensitive data | Auto-generated |
-| `ADCP_AUTH_TEST_MODE` | Enable test login (no OAuth required) | `false` |
+> **Session Cookies**: In single-tenant mode (default), session cookies use the actual request domain, allowing the sales agent to work with any custom domain. In multi-tenant mode, cookies are scoped to a base domain to work across tenant subdomains. See [Multi-Tenant Setup](multi-tenant.md) for details.
 
 ## Docker Compose Deployment
 
@@ -86,10 +77,9 @@ docker pull ghcr.io/adcontextprotocol/salesagent:latest
 # Download compose file
 curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml
 
-# Create environment file
+# Create environment file (optional - test mode works without it)
 cat > .env << 'EOF'
 SUPER_ADMIN_EMAILS=your-email@example.com
-GEMINI_API_KEY=your-gemini-key
 EOF
 
 # Start services

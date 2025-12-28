@@ -1,4 +1,4 @@
-# AdCP Sales Agent - Quickstart Docker Compose
+# AdCP Sales Agent - Production/Quickstart Docker Compose
 #
 # Quick start:
 #   docker compose up -d
@@ -13,8 +13,8 @@
 # Pin to a specific version:
 #   IMAGE_TAG=0.1.0 docker compose up -d
 #
-# For development with hot-reload:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# For development with hot-reload (supports multiple worktrees):
+#   docker compose -f docker-compose.dev.yml up
 #
 # For multi-tenant testing with subdomain routing:
 #   docker compose -f docker-compose.multi-tenant.yml up
@@ -28,8 +28,7 @@ services:
       POSTGRES_PASSWORD: secure_password_change_me
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # No host port exposure - access via docker compose exec if needed
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U adcp_user -d adcp"]
       interval: 10s
@@ -40,12 +39,12 @@ services:
   proxy:
     image: nginx:stable
     volumes:
-      - ./config/nginx/nginx-simple.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/nginx-development.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - adcp-server
       - admin-ui
     ports:
-      - "${PROXY_PORT:-8000}:8000"
+      - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -57,18 +56,11 @@ services:
     env_file:
       - path: .env
         required: false
-      - path: .env.secrets
-        required: false
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
       SKIP_CRON: "true"
-      ADCP_SALES_PORT: "8080"
-      A2A_PORT: "8091"
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
-      ADCP_TESTING: ${ADCP_TESTING:-}
-      DELIVERY_WEBHOOK_INTERVAL: ${DELIVERY_WEBHOOK_INTERVAL:-}
+      ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,16 +80,9 @@ services:
     env_file:
       - path: .env
         required: false
-      - path: .env.secrets
-        required: false
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
-      ADMIN_UI_PORT: "8001"
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
     depends_on:
       postgres:

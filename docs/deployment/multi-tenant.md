@@ -44,6 +44,8 @@ ADMIN_DOMAIN=admin.sales-agent.yourdomain.com
 SUPER_ADMIN_DOMAIN=yourdomain.com
 ```
 
+> **Session Cookies in Multi-Tenant Mode**: When `ADCP_MULTI_TENANT=true`, session cookies are automatically scoped to `SALES_AGENT_DOMAIN` to work across all tenant subdomains. This allows users to authenticate at `admin.sales-agent.yourdomain.com` and access tenant dashboards at `tenant.sales-agent.yourdomain.com`. In single-tenant mode (default), cookies use the actual request domain instead.
+
 ## Step 3: DNS Configuration
 
 ### Wildcard DNS (for subdomain routing)

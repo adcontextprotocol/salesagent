@@ -88,11 +88,12 @@ RUN echo "Cache bust: $CACHE_BUST"
 # Copy application code
 COPY . .
 
-# Copy both nginx configs - run_all_services.py selects based on ADCP_MULTI_TENANT env var
-# Default: simple (single-tenant, path-based routing)
-# ADCP_MULTI_TENANT=true: full config with subdomain routing
-COPY config/nginx/nginx-simple.conf /etc/nginx/nginx-simple.conf
-COPY config/nginx/nginx.conf /etc/nginx/nginx-multi-tenant.conf
+# Copy nginx configs for production - run_all_services.py selects based on ADCP_MULTI_TENANT
+# Default: single-tenant (path-based routing)
+# ADCP_MULTI_TENANT=true: multi-tenant (subdomain routing)
+# Note: nginx-development.conf is only used by docker-compose, not copied to image
+COPY config/nginx/nginx-single-tenant.conf /etc/nginx/nginx-single-tenant.conf
+COPY config/nginx/nginx-multi-tenant.conf /etc/nginx/nginx-multi-tenant.conf
 
 # Create nginx directories with proper permissions
 RUN mkdir -p /var/log/nginx /var/run && \
