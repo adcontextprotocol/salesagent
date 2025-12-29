@@ -337,7 +337,7 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="USD",
                 countries=["US"],
-                channel="display",
+                channels=["display"],
                 is_custom=False,
             )
 
@@ -358,7 +358,7 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="USD",
                 countries=["US", "CA"],
-                channel="video",
+                channels=["video"],
                 is_custom=False,
             )
 
@@ -379,7 +379,7 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="USD",
                 countries=None,  # No country restriction
-                channel="audio",
+                channels=["audio"],
                 is_custom=False,
             )
 
@@ -400,7 +400,7 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="GBP",
                 countries=["GB"],
-                channel="display",
+                channels=["display"],
                 is_custom=False,
             )
 
@@ -421,11 +421,11 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="USD",
                 countries=["US"],
-                channel="native",
+                channels=["native"],
                 is_custom=False,
             )
 
-            # Product 6: Global, no channel set (matches all channel filters)
+            # Product 6: Global, no channels set (matches all channel filters)
             create_test_product_with_pricing(
                 session=session,
                 tenant_id="new_filter_test",
@@ -442,7 +442,7 @@ class TestNewGetProductsFilters:
                 is_fixed=True,
                 currency="USD",
                 countries=None,  # No country restriction
-                channel=None,  # No channel restriction
+                channels=None,  # No channel restriction
                 is_custom=False,
             )
 
