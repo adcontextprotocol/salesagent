@@ -639,15 +639,7 @@ async function extractSizesFromInventory() {
     // Helper function to recursively extract sizes from an ad unit and its children
     const extractSizesFromUnit = (unitId) => {
         const item = inventoryCache.adUnits.get(unitId);
-        if (!item) {
-            console.log('extractSizesFromUnit: unit not found in cache:', unitId);
-            return;
-        }
-
-        console.log('extractSizesFromUnit: processing unit', unitId, item);
-        console.log('extractSizesFromUnit: item.children =', item.children);
-        console.log('extractSizesFromUnit: item.sizes =', item.sizes);
-        console.log('extractSizesFromUnit: item.metadata?.sizes =', item.metadata?.sizes);
+        if (!item) return;
 
         // Extract sizes from this unit using helper function
         // Check both item.sizes (raw API format) and item.metadata.sizes (normalized format)
@@ -659,9 +651,7 @@ async function extractSizesFromInventory() {
         // Recursively extract sizes from children (for hierarchical ad units)
         // Children are stored as full objects from the tree API
         if (item.children && Array.isArray(item.children)) {
-            console.log('extractSizesFromUnit: found', item.children.length, 'children');
             item.children.forEach(child => {
-                console.log('extractSizesFromUnit: processing child', child.id, 'sizes:', child.sizes);
                 // Child has sizes directly from tree API - use helper function
                 addSizesToCache(child.sizes);
                 // Recursively process grandchildren if they exist
@@ -735,9 +725,16 @@ async function extractSizesFromInventory() {
         }
     }
 
-    // Update UI
+    // Update legacy UI (size chips panel)
     updateSizeChipsPanel();
     updateFormatMatchIndicators();
+
+    // Pass extracted sizes to format template picker (AdCP 2.5 parameterized formats)
+    if (window.formatPickerIntegration && inventoryCache && inventoryCache.extractedSizes.size > 0) {
+        const sizesArray = Array.from(inventoryCache.extractedSizes);
+        console.log('[FormatPicker] Auto-selecting sizes from inventory:', sizesArray);
+        window.formatPickerIntegration.addSizesFromInventory(sizesArray);
+    }
 }
 
 /**
@@ -746,8 +743,11 @@ async function extractSizesFromInventory() {
 function updateSizeChipsPanel() {
     const panel = document.getElementById('size-filter-panel');
 
+    // Early return if panel doesn't exist (e.g., when using format template picker instead)
+    if (!panel) return;
+
     if (!inventoryCache || inventoryCache.extractedSizes.size === 0) {
-        if (panel) panel.style.display = 'none';
+        panel.style.display = 'none';
         return;
     }
 
@@ -762,6 +762,8 @@ function updateSizeChipsPanel() {
     });
 
     const chipsContainer = document.getElementById('size-chips-container');
+    if (!chipsContainer) return;
+
     chipsContainer.innerHTML = sortedSizes.map(sizeKey => {
         const count = inventoryCache.sizeUnitCounts.get(sizeKey) || 0;
         const displaySize = sizeKey.replace('x', '×');
@@ -1932,25 +1934,41 @@ function removePricingOption(index) {
 
 // Populate formats JSON before form submission
 function prepareFormSubmission(event) {
-    // Convert checked format checkboxes to JSON for backend
-    const formatCheckboxes = document.querySelectorAll('.format-checkbox:checked');
-    const formatsJson = Array.from(formatCheckboxes).map(cb => ({
-        agent_url: cb.dataset.agentUrl || '',
-        format_id: cb.dataset.formatId || ''
-    }));
-
-    // Populate the hidden field with JSON
+    // Check if format picker has already populated the field
     const formatsField = document.getElementById('formats-data');
-    if (formatsField) {
-        formatsField.value = JSON.stringify(formatsJson);
+    const existingValue = formatsField ? formatsField.value : '';
+    let hasFormatPickerData = false;
+
+    try {
+        const parsed = JSON.parse(existingValue);
+        hasFormatPickerData = Array.isArray(parsed) && parsed.length > 0;
+    } catch (e) {
+        hasFormatPickerData = false;
     }
 
-    console.log('[DEBUG] Form submission - formats JSON:', formatsJson);
-    console.log('[DEBUG] Form submission - total checked:', formatsJson.length);
+    if (hasFormatPickerData) {
+        // Format picker already populated - don't overwrite
+        console.log('[DEBUG] Form submission - using format picker data:', existingValue);
+    } else {
+        // Legacy path: Convert checked format checkboxes to JSON for backend
+        const formatCheckboxes = document.querySelectorAll('.format-checkbox:checked');
+        const formatsJson = Array.from(formatCheckboxes).map(cb => ({
+            agent_url: cb.dataset.agentUrl || '',
+            format_id: cb.dataset.formatId || ''
+        }));
 
-    if (formatsJson.length === 0) {
-        console.log('[DEBUG] NO FORMATS CHECKED ON SUBMIT');
-        // Don't prevent submission, just log
+        // Populate the hidden field with JSON
+        if (formatsField) {
+            formatsField.value = JSON.stringify(formatsJson);
+        }
+
+        console.log('[DEBUG] Form submission - formats JSON (legacy):', formatsJson);
+        console.log('[DEBUG] Form submission - total checked:', formatsJson.length);
+
+        if (formatsJson.length === 0) {
+            console.log('[DEBUG] NO FORMATS CHECKED ON SUBMIT');
+            // Don't prevent submission, just log
+        }
     }
 
     // Debug targeting data

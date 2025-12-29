@@ -15,6 +15,18 @@
  */
 
 /**
+ * Escape HTML entities to prevent XSS attacks.
+ * @param {string} str - The string to escape
+ * @returns {string} - The escaped string safe for HTML interpolation
+ */
+function escapeHtml(str) {
+    if (typeof str !== 'string') return String(str);
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+/**
  * Format templates mapped to creative agent format IDs.
  * These IDs must match what the creative agent returns in list_creative_formats.
  *
@@ -114,7 +126,8 @@ class FormatTemplatePicker {
         this.selectedTemplates = new Map();  // templateId -> Set of {width, height} or {duration_ms}
         this.customFormats = [];  // Legacy/custom formats: [{agent_url, id, width?, height?}]
         this.inventorySizes = new Set();  // Sizes from inventory: "300x250", "728x90"
-        this.allLegacyFormats = [];  // All formats from /api/formats/list for custom selection
+        this.agentFormats = {};  // Formats from creative agents: {agent_url: [Format, ...]}
+        this.agentsLoaded = false;  // Track if agent formats have been loaded
 
         // Initialize
         this.container = document.getElementById(this.containerId);
@@ -128,10 +141,12 @@ class FormatTemplatePicker {
         // Load initial formats if provided (edit mode)
         if (options.initialFormats && options.initialFormats.length > 0) {
             this._parseInitialFormats(options.initialFormats);
+            // Update hidden input with initial formats so form submission works
+            this._updateHiddenInput();
         }
 
         this.render();
-        this._loadLegacyFormats();
+        this._loadAgentFormats();
     }
 
     /**
@@ -170,40 +185,42 @@ class FormatTemplatePicker {
     }
 
     /**
-     * Load legacy formats from API for custom format selection.
+     * Load formats from creative agents for the dropdown selection.
+     * Fetches from /api/formats/list which returns all formats from tenant's creative agents.
      */
-    async _loadLegacyFormats() {
+    async _loadAgentFormats() {
         try {
-            const response = await fetch(`${this.scriptRoot}/api/formats/list?tenant_id=${this.tenantId}`);
+            const response = await fetch(`${this.scriptRoot}/api/formats/list?tenant_id=${encodeURIComponent(this.tenantId)}`);
+            if (!response.ok) {
+                console.warn('[FormatTemplatePicker] HTTP error loading agent formats:', response.status);
+                return;
+            }
             const data = await response.json();
 
             if (data.error) {
-                console.warn('[FormatTemplatePicker] Error loading legacy formats:', data.error);
+                console.warn('[FormatTemplatePicker] Error loading agent formats:', data.error);
                 return;
             }
 
-            // Flatten formats from all agents
-            this.allLegacyFormats = [];
-            for (const [agentUrl, formats] of Object.entries(data.agents || {})) {
-                formats.forEach(fmt => {
-                    const formatIdStr = typeof fmt.format_id === 'object' ? fmt.format_id.id : fmt.format_id;
-                    this.allLegacyFormats.push({
-                        ...fmt,
-                        format_id_str: formatIdStr,
-                        agent_url: agentUrl
-                    });
-                });
-            }
+            // Store formats grouped by agent
+            this.agentFormats = data.agents || {};
+            this.agentsLoaded = true;
 
-            console.log(`[FormatTemplatePicker] Loaded ${this.allLegacyFormats.length} legacy formats`);
+            // Log what we got
+            const totalFormats = Object.values(this.agentFormats).reduce((sum, fmts) => sum + fmts.length, 0);
+            const agentCount = Object.keys(this.agentFormats).length;
+            console.log(`[FormatTemplatePicker] Loaded ${totalFormats} formats from ${agentCount} creative agent(s)`);
+
+            // Re-render to show the dropdown
+            this.render();
         } catch (error) {
-            console.error('[FormatTemplatePicker] Failed to load legacy formats:', error);
+            console.error('[FormatTemplatePicker] Failed to load agent formats:', error);
         }
     }
 
     /**
      * Add sizes from inventory metadata.
-     * Called when user selects an inventory profile.
+     * Called when user selects ad units/placements from inventory.
      */
     addSizesFromInventory(sizes) {
         if (!sizes || !Array.isArray(sizes)) return;
@@ -212,11 +229,12 @@ class FormatTemplatePicker {
             if (typeof sizeStr === 'string' && sizeStr.includes('x')) {
                 this.inventorySizes.add(sizeStr);
 
-                // Auto-add to display_static template if present
-                if (!this.selectedTemplates.has('display_static')) {
-                    this.selectedTemplates.set('display_static', new Set());
+                // Auto-select the unified "display" template and add these sizes
+                // This template expands to display_image, display_html, display_js
+                if (!this.selectedTemplates.has('display')) {
+                    this.selectedTemplates.set('display', new Set());
                 }
-                this.selectedTemplates.get('display_static').add(sizeStr);
+                this.selectedTemplates.get('display').add(sizeStr);
             }
         });
 
@@ -235,6 +253,24 @@ class FormatTemplatePicker {
             }
         }
         this.inventorySizes.clear();
+        this.render();
+        this._updateHiddenInput();
+    }
+
+    /**
+     * Remove a single inventory size.
+     */
+    removeInventorySize(sizeStr) {
+        if (!this.inventorySizes.has(sizeStr)) return;
+
+        // Remove from inventory sizes set
+        this.inventorySizes.delete(sizeStr);
+
+        // Remove from all template selections
+        for (const [templateId, sizes] of this.selectedTemplates) {
+            sizes.delete(sizeStr);
+        }
+
         this.render();
         this._updateHiddenInput();
     }
@@ -315,9 +351,9 @@ class FormatTemplatePicker {
     }
 
     /**
-     * Add a custom/legacy format.
+     * Add a custom/agent format.
      */
-    addCustomFormat(agentUrl, formatId, width, height) {
+    addCustomFormat(agentUrl, formatId, width, height, durationMs) {
         if (!agentUrl || !formatId) {
             alert('Agent URL and Format ID are required.');
             return;
@@ -327,7 +363,8 @@ class FormatTemplatePicker {
             agent_url: agentUrl,
             id: formatId,
             width: width || null,
-            height: height || null
+            height: height || null,
+            duration_ms: durationMs || null
         });
 
         this.render();
@@ -618,11 +655,12 @@ class FormatTemplatePicker {
 
             for (const sizeKey of selectedSizes) {
                 const isFromInventory = this.inventorySizes.has(sizeKey);
+                const escapedSizeKey = escapeHtml(sizeKey);
                 html += `
                     <span style="background: #0066cc; color: white; padding: 0.4rem 0.6rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
-                        ${sizeKey}
+                        ${escapedSizeKey}
                         ${isFromInventory ? '<span title="From inventory" style="font-size: 0.7rem;">&#x1F4E6;</span>' : ''}
-                        <span class="remove-size" data-template-id="${template.id}" data-size="${sizeKey}"
+                        <span class="remove-size" data-template-id="${escapeHtml(template.id)}" data-size="${escapedSizeKey}"
                               style="cursor: pointer; font-weight: bold; margin-left: 0.25rem;">&times;</span>
                     </span>
                 `;
@@ -640,27 +678,47 @@ class FormatTemplatePicker {
 
         return `
             <div style="margin-bottom: 1.5rem; padding: 1rem; background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 8px;">
-                <h5 style="margin: 0 0 0.5rem 0; color: #2e7d32;">
-                    &#x1F4E6; Sizes from Inventory
-                </h5>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <h5 style="margin: 0; color: #2e7d32;">
+                        &#x1F4E6; Sizes from Inventory
+                    </h5>
+                    <button type="button" class="clear-inventory-sizes-btn"
+                            style="padding: 0.25rem 0.5rem; background: #d32f2f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">
+                        Clear All
+                    </button>
+                </div>
                 <p style="color: #666; font-size: 0.85rem; margin-bottom: 0.5rem;">
-                    These sizes were automatically added based on your selected inventory.
+                    These sizes were automatically added based on your selected inventory. Click × to remove.
                 </p>
                 <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                    ${sizes.map(s => `<span style="background: #4caf50; color: white; padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.85rem;">${s}</span>`).join('')}
+                    ${sizes.map(s => {
+                        const escaped = escapeHtml(s);
+                        return `
+                        <span class="inventory-size-chip" data-size="${escaped}"
+                              style="background: #4caf50; color: white; padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.3rem; cursor: default;">
+                            ${escaped}
+                            <span class="remove-inventory-size" data-size="${escaped}"
+                                  style="cursor: pointer; font-weight: bold; margin-left: 0.2rem;">&times;</span>
+                        </span>
+                    `;}).join('')}
                 </div>
             </div>
         `;
     }
 
     _renderCustomFormatsSection() {
+        // Build dropdown options from creative agent formats
+        const hasAgentFormats = this.agentsLoaded && Object.keys(this.agentFormats).length > 0;
+
         let html = `
-            <div class="custom-formats-section" style="margin-top: 2rem; padding: 1rem; background: #fff3e0; border: 1px solid #ffe0b2; border-radius: 8px;">
-                <h5 style="margin: 0 0 1rem 0; color: #e65100;">
-                    Custom Formats (Legacy/Tenant-Specific)
+            <div class="custom-formats-section" style="margin-top: 2rem; padding: 1rem; background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px;">
+                <h5 style="margin: 0 0 1rem 0; color: #1565c0;">
+                    Additional Formats from Creative Agents
                 </h5>
                 <p style="color: #666; font-size: 0.85rem; margin-bottom: 1rem;">
-                    Add custom format IDs from tenant creative agents or use legacy size-specific formats.
+                    ${hasAgentFormats
+                        ? 'Select formats from your registered creative agents. These are parameterized formats that work with your ad server.'
+                        : 'Loading formats from creative agents...'}
                 </p>
         `;
 
@@ -669,10 +727,12 @@ class FormatTemplatePicker {
             html += `<div style="margin-bottom: 1rem;">`;
             for (let i = 0; i < this.customFormats.length; i++) {
                 const fmt = this.customFormats[i];
-                const dimsStr = fmt.width && fmt.height ? ` (${fmt.width}x${fmt.height})` : '';
+                let label = fmt.id;
+                if (fmt.width && fmt.height) label += ` (${fmt.width}x${fmt.height})`;
+                if (fmt.duration_ms) label += ` (${fmt.duration_ms / 1000}s)`;
                 html += `
-                    <span style="background: #ff9800; color: white; padding: 0.4rem 0.6rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.5rem; margin: 0.25rem; font-size: 0.85rem;">
-                        ${fmt.id}${dimsStr}
+                    <span style="background: #1976d2; color: white; padding: 0.4rem 0.6rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.5rem; margin: 0.25rem; font-size: 0.85rem;">
+                        ${label}
                         <span class="remove-custom" data-index="${i}"
                               style="cursor: pointer; font-weight: bold;">&times;</span>
                     </span>
@@ -681,39 +741,90 @@ class FormatTemplatePicker {
             html += `</div>`;
         }
 
-        // Add custom format form
-        html += `
-                <div style="display: grid; grid-template-columns: 2fr 1fr 80px 80px auto; gap: 0.5rem; align-items: end;">
-                    <div>
-                        <label style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem;">Agent URL</label>
-                        <input type="text" id="custom-agent-url" value="${DEFAULT_CREATIVE_AGENT_URL}"
-                               style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem;">
+        // Format selection dropdown (only if formats are loaded)
+        if (hasAgentFormats) {
+            html += `
+                <div style="display: flex; gap: 0.5rem; align-items: end; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 300px;">
+                        <label style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem;">Select Format</label>
+                        <select id="agent-format-select"
+                                style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9rem;">
+                            <option value="">-- Select a format --</option>
+            `;
+
+            // Group formats by agent
+            for (const [agentUrl, formats] of Object.entries(this.agentFormats)) {
+                // Get short name for agent
+                const agentName = agentUrl.includes('adcontextprotocol.org')
+                    ? 'AdCP Standard'
+                    : new URL(agentUrl).hostname;
+
+                html += `<optgroup label="${agentName}">`;
+
+                for (const fmt of formats) {
+                    const formatId = typeof fmt.format_id === 'object' ? fmt.format_id.id : fmt.format_id;
+                    const dimsStr = fmt.dimensions ? ` (${fmt.dimensions})` : '';
+                    const typeStr = fmt.type ? ` [${fmt.type}]` : '';
+
+                    // Store full format info as data attribute (JSON encoded)
+                    const formatData = JSON.stringify({
+                        agent_url: agentUrl,
+                        id: formatId,
+                        name: fmt.name,
+                        type: fmt.type,
+                        dimensions: fmt.dimensions
+                    });
+
+                    html += `
+                        <option value="${formatId}" data-format='${formatData.replace(/'/g, "&#39;")}'>
+                            ${fmt.name || formatId}${dimsStr}${typeStr}
+                        </option>
+                    `;
+                }
+
+                html += `</optgroup>`;
+            }
+
+            html += `
+                        </select>
                     </div>
                     <div>
-                        <label style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem;">Format ID</label>
-                        <input type="text" id="custom-format-id" placeholder="e.g., display_300x250"
-                               style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem;">
-                    </div>
-                    <div>
-                        <label style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem;">Width</label>
-                        <input type="number" id="custom-width" placeholder="300"
-                               style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem;">
-                    </div>
-                    <div>
-                        <label style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem;">Height</label>
-                        <input type="number" id="custom-height" placeholder="250"
-                               style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem;">
-                    </div>
-                    <div>
-                        <button type="button" id="add-custom-format-btn"
-                                style="padding: 0.5rem 1rem; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">
-                            + Add
+                        <button type="button" id="add-agent-format-btn"
+                                style="padding: 0.5rem 1rem; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;">
+                            + Add Format
                         </button>
                     </div>
                 </div>
-            </div>
-        `;
+            `;
 
+            // Show parameter inputs for parameterized formats
+            html += `
+                <div id="format-params-section" style="margin-top: 1rem; padding: 0.75rem; background: #f5f5f5; border-radius: 4px; display: none;">
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <div id="dims-params" style="display: none;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem;">Dimensions (optional)</label>
+                            <div style="display: flex; gap: 0.25rem; align-items: center;">
+                                <input type="number" id="param-width" placeholder="Width" style="width: 80px; padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;">
+                                <span>x</span>
+                                <input type="number" id="param-height" placeholder="Height" style="width: 80px; padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                        </div>
+                        <div id="duration-params" style="display: none;">
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 0.25rem;">Duration (optional)</label>
+                            <select id="param-duration" style="padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="">No duration</option>
+                                <option value="6000">6s (Bumper)</option>
+                                <option value="15000">15s (Standard)</option>
+                                <option value="30000">30s (Standard)</option>
+                                <option value="60000">60s (Long)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
         return html;
     }
 
@@ -804,6 +915,22 @@ class FormatTemplatePicker {
             });
         });
 
+        // Remove inventory size (individual)
+        this.container.querySelectorAll('.remove-inventory-size').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.removeInventorySize(btn.dataset.size);
+            });
+        });
+
+        // Clear all inventory sizes
+        const clearInventoryBtn = this.container.querySelector('.clear-inventory-sizes-btn');
+        if (clearInventoryBtn) {
+            clearInventoryBtn.addEventListener('click', () => {
+                this.clearInventorySizes();
+            });
+        }
+
         // Remove custom format
         this.container.querySelectorAll('.remove-custom').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -812,18 +939,94 @@ class FormatTemplatePicker {
             });
         });
 
-        // Add custom format button
-        const addCustomBtn = this.container.querySelector('#add-custom-format-btn');
-        if (addCustomBtn) {
-            addCustomBtn.addEventListener('click', () => {
-                const agentUrl = this.container.querySelector('#custom-agent-url').value;
-                const formatId = this.container.querySelector('#custom-format-id').value;
-                const width = parseInt(this.container.querySelector('#custom-width').value) || null;
-                const height = parseInt(this.container.querySelector('#custom-height').value) || null;
-                this.addCustomFormat(agentUrl, formatId, width, height);
-                this.container.querySelector('#custom-format-id').value = '';
-                this.container.querySelector('#custom-width').value = '';
-                this.container.querySelector('#custom-height').value = '';
+        // Add agent format button (dropdown-based)
+        const addAgentFormatBtn = this.container.querySelector('#add-agent-format-btn');
+        if (addAgentFormatBtn) {
+            addAgentFormatBtn.addEventListener('click', () => {
+                const select = this.container.querySelector('#agent-format-select');
+                const selectedOption = select.options[select.selectedIndex];
+
+                if (!selectedOption || !selectedOption.value) {
+                    alert('Please select a format from the dropdown.');
+                    return;
+                }
+
+                // Parse format data from data attribute
+                let formatData;
+                try {
+                    formatData = JSON.parse(selectedOption.dataset.format);
+                } catch (e) {
+                    console.error('[FormatTemplatePicker] Invalid format data:', e);
+                    alert('Invalid format selected. Please try again.');
+                    return;
+                }
+
+                // Get optional parameters
+                const width = parseInt(this.container.querySelector('#param-width')?.value) || null;
+                const height = parseInt(this.container.querySelector('#param-height')?.value) || null;
+                const durationMs = parseInt(this.container.querySelector('#param-duration')?.value) || null;
+
+                this.addCustomFormat(
+                    formatData.agent_url,
+                    formatData.id,
+                    width,
+                    height,
+                    durationMs
+                );
+
+                // Reset form
+                select.value = '';
+                const paramsSection = this.container.querySelector('#format-params-section');
+                if (paramsSection) paramsSection.style.display = 'none';
+                const widthInput = this.container.querySelector('#param-width');
+                const heightInput = this.container.querySelector('#param-height');
+                const durationSelect = this.container.querySelector('#param-duration');
+                if (widthInput) widthInput.value = '';
+                if (heightInput) heightInput.value = '';
+                if (durationSelect) durationSelect.value = '';
+            });
+        }
+
+        // Format select change handler - show/hide parameter inputs
+        const formatSelect = this.container.querySelector('#agent-format-select');
+        if (formatSelect) {
+            formatSelect.addEventListener('change', () => {
+                const selectedOption = formatSelect.options[formatSelect.selectedIndex];
+                const paramsSection = this.container.querySelector('#format-params-section');
+                const dimsParams = this.container.querySelector('#dims-params');
+                const durationParams = this.container.querySelector('#duration-params');
+
+                if (!selectedOption || !selectedOption.value) {
+                    if (paramsSection) paramsSection.style.display = 'none';
+                    return;
+                }
+
+                let formatData;
+                try {
+                    formatData = JSON.parse(selectedOption.dataset.format);
+                } catch (e) {
+                    console.error('[FormatTemplatePicker] Invalid format data:', e);
+                    if (paramsSection) paramsSection.style.display = 'none';
+                    return;
+                }
+                const formatType = formatData.type || '';
+
+                // Determine which params apply to this format type
+                const showDims = formatType === 'display' || formatType === 'video';
+                const showDuration = formatType === 'video' || formatType === 'audio';
+
+                // Only show params section if at least one param type is relevant
+                if (paramsSection) {
+                    paramsSection.style.display = (showDims || showDuration) ? 'block' : 'none';
+                }
+
+                // Show appropriate parameter inputs based on format type
+                if (dimsParams) {
+                    dimsParams.style.display = showDims ? 'block' : 'none';
+                }
+                if (durationParams) {
+                    durationParams.style.display = showDuration ? 'block' : 'none';
+                }
             });
         }
     }
