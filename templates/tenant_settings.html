@@ -454,6 +454,16 @@
             <span>Setup Checklist</span>
         </a>
 
+        <a class="settings-nav-item" href="{{ url_for('tenants.auth_settings', tenant_id=tenant.tenant_id) }}">
+            <span class="settings-nav-icon">🔐</span>
+            <span>Authentication</span>
+        </a>
+
+        <a class="settings-nav-item" href="{{ url_for('users.list_users', tenant_id=tenant.tenant_id) }}">
+            <span class="settings-nav-icon">👥</span>
+            <span>Users</span>
+        </a>
+
         <div class="settings-nav-separator"></div>
 
         <a class="settings-nav-item" data-section="adserver">

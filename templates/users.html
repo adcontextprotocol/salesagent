@@ -1,242 +1,509 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>User Management - {{ tenant_name }}</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        h1, h2 {
-            color: #333;
-        }
-        .container {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        .user-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        .user-table th, .user-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-        .user-table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-        }
-        .user-table tr:hover {
-            background-color: #f8f9fa;
-        }
-        .role-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        .role-admin {
-            background-color: #dc3545;
-            color: white;
-        }
-        .role-manager {
-            background-color: #fd7e14;
-            color: white;
-        }
-        .role-viewer {
-            background-color: #6c757d;
-            color: white;
-        }
-        .status-active {
-            color: #28a745;
-            font-weight: bold;
-        }
-        .status-inactive {
-            color: #dc3545;
-            font-weight: bold;
-        }
-        .btn {
-            display: inline-block;
-            padding: 8px 16px;
-            margin: 4px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            font-size: 14px;
-        }
-        .btn-primary {
-            background-color: #007bff;
-            color: white;
-        }
-        .btn-danger {
-            background-color: #dc3545;
-            color: white;
-        }
-        .btn-success {
-            background-color: #28a745;
-            color: white;
-        }
-        .btn-secondary {
-            background-color: #6c757d;
-            color: white;
-        }
-        .btn:hover {
-            opacity: 0.9;
-        }
-        .add-user-form {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        .form-group input, .form-group select {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        .actions {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        .inline-form {
-            display: inline;
-        }
-    </style>
-</head>
-<body>
-    <h1>User Management</h1>
+{% extends "base.html" %}
 
-    <div class="container">
-        <h2>{{ tenant_name }}</h2>
-        <a href="/tenant/{{ tenant_id }}" class="btn btn-secondary">← Back to Dashboard</a>
+{% block title %}Users - {{ tenant_name }}{% endblock %}
+
+{% block content %}
+<style>
+    .users-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .page-header {
+        margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.5rem;
+    }
+
+    .page-header p {
+        color: #6b7280;
+    }
+
+    .breadcrumb {
+        margin-bottom: 1rem;
+    }
+
+    .breadcrumb a {
+        color: #6b7280;
+        text-decoration: none;
+    }
+
+    .breadcrumb a:hover {
+        color: #111827;
+    }
+
+    .card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .card-header h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #111827;
+        margin: 0;
+    }
+
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.625rem 1rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-decoration: none;
+    }
+
+    .btn-primary {
+        background: #3b82f6;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #2563eb;
+    }
+
+    .btn-secondary {
+        background: #f3f4f6;
+        color: #374151;
+    }
+
+    .btn-secondary:hover {
+        background: #e5e7eb;
+    }
+
+    .btn-danger {
+        background: #fef2f2;
+        color: #dc2626;
+    }
+
+    .btn-danger:hover {
+        background: #fee2e2;
+    }
+
+    .btn-success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .btn-success:hover {
+        background: #a7f3d0;
+    }
+
+    .btn-sm {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.8125rem;
+    }
+
+    .form-group {
+        margin-bottom: 1rem;
+    }
+
+    .form-group label {
+        display: block;
+        font-weight: 500;
+        color: #374151;
+        margin-bottom: 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 0.625rem 0.875rem;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+
+    .add-user-form {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .add-user-form .form-group {
+        margin-bottom: 0;
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .users-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .users-table th,
+    .users-table td {
+        padding: 1rem;
+        text-align: left;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .users-table th {
+        font-weight: 500;
+        color: #6b7280;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        background: #f9fafb;
+    }
+
+    .users-table td {
+        color: #374151;
+        font-size: 0.875rem;
+    }
+
+    .users-table tr:hover td {
+        background: #f9fafb;
+    }
+
+    .user-email {
+        font-weight: 500;
+        color: #111827;
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.25rem 0.625rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .status-active {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .status-inactive {
+        background: #f3f4f6;
+        color: #6b7280;
+    }
+
+    .role-badge {
+        display: inline-flex;
+        padding: 0.25rem 0.5rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        background: #eff6ff;
+        color: #1e40af;
+    }
+
+    .role-admin {
+        background: #fef3c7;
+        color: #92400e;
+    }
+
+    .role-manager {
+        background: #e0e7ff;
+        color: #3730a3;
+    }
+
+    .role-viewer {
+        background: #f3f4f6;
+        color: #6b7280;
+    }
+
+    .passkey-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-size: 0.75rem;
+        color: #6b7280;
+    }
+
+    .passkey-indicator.has-passkey {
+        color: #059669;
+    }
+
+    .user-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .dropdown {
+        position: relative;
+        display: inline-block;
+    }
+
+    .dropdown-content {
+        display: none;
+        position: absolute;
+        right: 0;
+        background: white;
+        min-width: 150px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        border-radius: 8px;
+        z-index: 10;
+        overflow: hidden;
+    }
+
+    .dropdown:hover .dropdown-content {
+        display: block;
+    }
+
+    .dropdown-content button,
+    .dropdown-content a {
+        display: block;
+        width: 100%;
+        padding: 0.625rem 1rem;
+        text-align: left;
+        border: none;
+        background: none;
+        font-size: 0.875rem;
+        color: #374151;
+        cursor: pointer;
+        text-decoration: none;
+    }
+
+    .dropdown-content button:hover,
+    .dropdown-content a:hover {
+        background: #f3f4f6;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: #6b7280;
+    }
+
+    .empty-state p {
+        margin-bottom: 1rem;
+    }
+
+    .flash-message {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+
+    .flash-success {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    .flash-error {
+        background: #fef2f2;
+        color: #dc2626;
+    }
+
+    .meta-text {
+        font-size: 0.75rem;
+        color: #9ca3af;
+    }
+</style>
+
+<div class="users-container">
+    <div class="breadcrumb">
+        <a href="{{ url_for('tenants.dashboard', tenant_id=tenant_id) }}">{{ tenant_name }}</a>
+        <span style="color: #9ca3af; margin: 0 0.5rem;">/</span>
+        <a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant_id) }}">Settings</a>
+        <span style="color: #9ca3af; margin: 0 0.5rem;">/</span>
+        <span style="color: #374151;">Users</span>
     </div>
 
-    <div class="container">
-        <h3>Add New User</h3>
-        <form method="POST" action="/tenant/{{ tenant_id }}/users/add" class="add-user-form">
-            <div class="form-group">
+    <div class="page-header">
+        <h1>User Management</h1>
+        <p>Manage who can access {{ tenant_name }}</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="flash-message flash-{{ category }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- Add User -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Add User</h2>
+        </div>
+
+        <form method="post" action="{{ url_for('users.add_user', tenant_id=tenant_id) }}" class="add-user-form">
+            <div class="form-group" style="flex: 2;">
                 <label for="email">Email Address</label>
-                <input type="email" id="email" name="email" required placeholder="user@example.com">
+                <input type="email" id="email" name="email" placeholder="user@example.com" required>
             </div>
-            <div class="form-group">
-                <label for="name">Full Name</label>
-                <input type="text" id="name" name="name" required placeholder="John Doe">
-            </div>
-            <div class="form-group">
+
+            <div class="form-group" style="flex: 1;">
                 <label for="role">Role</label>
-                <select id="role" name="role" required>
-                    <option value="viewer">Viewer (Read-only)</option>
-                    <option value="manager">Manager (View & Approve)</option>
-                    <option value="admin">Admin (Full Access)</option>
+                <select id="role" name="role">
+                    <option value="viewer">Viewer</option>
+                    <option value="manager">Manager</option>
+                    <option value="admin">Admin</option>
                 </select>
             </div>
+
             <button type="submit" class="btn btn-primary">Add User</button>
         </form>
     </div>
 
-    <div class="container">
-        <h3>Current Users</h3>
-        <table class="user-table">
+    <!-- Users List -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Users ({{ users|length }})</h2>
+        </div>
+
+        {% if users %}
+        <table class="users-table">
             <thead>
                 <tr>
-                    <th>Email</th>
-                    <th>Name</th>
+                    <th>User</th>
                     <th>Role</th>
                     <th>Status</th>
+                    <th>Passkeys</th>
                     <th>Last Login</th>
-                    <th>Created</th>
-                    <th>Actions</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
                 {% for user in users %}
                 <tr>
-                    <td>{{ user.email }}</td>
-                    <td>{{ user.name }}</td>
                     <td>
-                        <span class="role-badge role-{{ user.role }}">{{ user.role }}</span>
+                        <div class="user-email">{{ user.email }}</div>
+                        <div class="meta-text">Added {{ user.created_at.strftime('%b %d, %Y') if user.created_at else 'Unknown' }}</div>
+                    </td>
+                    <td>
+                        <span class="role-badge role-{{ user.role }}">{{ user.role|capitalize }}</span>
                     </td>
                     <td>
                         {% if user.is_active %}
-                            <span class="status-active">Active</span>
+                        <span class="status-badge status-active">Active</span>
                         {% else %}
-                            <span class="status-inactive">Inactive</span>
+                        <span class="status-badge status-inactive">Inactive</span>
                         {% endif %}
                     </td>
-                    <td>{{ user.last_login or 'Never' }}</td>
-                    <td>{{ user.created_at }}</td>
                     <td>
-                        <div class="actions">
-                            <!-- Toggle Active/Inactive -->
-                            <form method="POST" action="/tenant/{{ tenant_id }}/users/{{ user.user_id }}/toggle" class="inline-form">
-                                {% if user.is_active %}
-                                    <button type="submit" class="btn btn-danger" onclick="return confirm('Disable this user?')">Disable</button>
-                                {% else %}
-                                    <button type="submit" class="btn btn-success" onclick="return confirm('Enable this user?')">Enable</button>
-                                {% endif %}
-                            </form>
-
-                            <!-- Change Role -->
-                            {% if user.role != 'admin' %}
-                                <form method="POST" action="/tenant/{{ tenant_id }}/users/{{ user.user_id }}/update_role" class="inline-form">
-                                    <select name="role" onchange="this.form.submit()">
-                                        <option value="">Change Role</option>
-                                        {% if user.role != 'admin' %}
-                                            <option value="admin">→ Admin</option>
+                        <span class="passkey-indicator" id="passkey-count-{{ user.user_id }}">
+                            <span>-</span>
+                        </span>
+                    </td>
+                    <td>
+                        {% if user.last_login %}
+                        <span class="meta-text">{{ user.last_login.strftime('%b %d, %Y') }}</span>
+                        {% else %}
+                        <span class="meta-text">Never</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="user-actions">
+                            <div class="dropdown">
+                                <button class="btn btn-secondary btn-sm">Actions</button>
+                                <div class="dropdown-content">
+                                    <form method="post" action="{{ url_for('users.toggle_user', tenant_id=tenant_id, user_id=user.user_id) }}" style="display: contents;">
+                                        {% if user.is_active %}
+                                        <button type="submit">Deactivate</button>
+                                        {% else %}
+                                        <button type="submit">Activate</button>
                                         {% endif %}
-                                        {% if user.role != 'manager' %}
-                                            <option value="manager">→ Manager</option>
-                                        {% endif %}
-                                        {% if user.role != 'viewer' %}
-                                            <option value="viewer">→ Viewer</option>
-                                        {% endif %}
-                                    </select>
-                                </form>
-                            {% endif %}
+                                    </form>
+                                    <form method="post" action="{{ url_for('users.update_role', tenant_id=tenant_id, user_id=user.user_id) }}" style="display: contents;">
+                                        <input type="hidden" name="role" value="admin">
+                                        <button type="submit" {% if user.role == 'admin' %}disabled style="opacity:0.5"{% endif %}>Make Admin</button>
+                                    </form>
+                                    <form method="post" action="{{ url_for('users.update_role', tenant_id=tenant_id, user_id=user.user_id) }}" style="display: contents;">
+                                        <input type="hidden" name="role" value="manager">
+                                        <button type="submit" {% if user.role == 'manager' %}disabled style="opacity:0.5"{% endif %}>Make Manager</button>
+                                    </form>
+                                    <form method="post" action="{{ url_for('users.update_role', tenant_id=tenant_id, user_id=user.user_id) }}" style="display: contents;">
+                                        <input type="hidden" name="role" value="viewer">
+                                        <button type="submit" {% if user.role == 'viewer' %}disabled style="opacity:0.5"{% endif %}>Make Viewer</button>
+                                    </form>
+                                </div>
+                            </div>
                         </div>
                     </td>
                 </tr>
                 {% endfor %}
-                {% if not users %}
-                <tr>
-                    <td colspan="7" style="text-align: center; padding: 40px;">
-                        No users yet. Add the first user above.
-                    </td>
-                </tr>
-                {% endif %}
             </tbody>
         </table>
+        {% else %}
+        <div class="empty-state">
+            <p>No users yet. Add your first user above.</p>
+        </div>
+        {% endif %}
     </div>
 
-    <div class="container">
-        <h3>Role Permissions</h3>
-        <ul>
-            <li><strong>Viewer:</strong> Can view dashboards, reports, and campaign data</li>
-            <li><strong>Manager:</strong> Viewer permissions + can approve/reject campaigns</li>
-            <li><strong>Admin:</strong> Full access including user management and tenant configuration</li>
-        </ul>
+    <!-- Info Card -->
+    <div class="card" style="background: #eff6ff; border: 1px solid #bfdbfe;">
+        <h3 style="font-size: 0.875rem; font-weight: 600; color: #1e40af; margin-bottom: 0.5rem;">About User Management</h3>
+        <p style="font-size: 0.875rem; color: #1e40af; line-height: 1.6; margin: 0;">
+            Users must be added here before they can log in to this tenant. When a user logs in via
+            passkey or SSO, the system checks that they have an active User record. You can deactivate
+            users to revoke their access without deleting them.
+        </p>
     </div>
-</body>
-</html>
+</div>
+
+<script>
+const tenantId = '{{ tenant_id }}';
+const scriptRoot = '{{ request.script_root }}' || '';
+
+// Load passkey counts for all users
+async function loadPasskeyCounts() {
+    const userIds = {{ users|map(attribute='user_id')|list|tojson }};
+
+    for (const userId of userIds) {
+        try {
+            const response = await fetch(`${scriptRoot}/auth/passkey/check?tenant_id=${tenantId}&user_id=${userId}`, {
+                credentials: 'same-origin'
+            });
+            const data = await response.json();
+
+            const indicator = document.getElementById(`passkey-count-${userId}`);
+            if (indicator) {
+                if (data.passkey_count > 0) {
+                    indicator.innerHTML = `<span style="color: #059669;">${data.passkey_count} passkey${data.passkey_count > 1 ? 's' : ''}</span>`;
+                    indicator.classList.add('has-passkey');
+                } else {
+                    indicator.innerHTML = '<span>None</span>';
+                }
+            }
+        } catch (err) {
+            console.error(`Failed to load passkey count for ${userId}:`, err);
+        }
+    }
+}
+
+// Initialize
+loadPasskeyCounts();
+</script>
+{% endblock %}

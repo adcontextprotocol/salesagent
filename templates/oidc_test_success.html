@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth Test Successful - {{ tenant.name }}</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            padding: 48px;
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+        }
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: #10b981;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .success-icon svg {
+            width: 40px;
+            height: 40px;
+            color: white;
+        }
+        h1 {
+            font-size: 28px;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 32px;
+        }
+        .user-info {
+            background: #f8f9ff;
+            border: 1px solid #e0e5ff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+            text-align: left;
+        }
+        .user-info h3 {
+            font-size: 14px;
+            color: #4a5568;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .user-detail {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e5ff;
+        }
+        .user-detail:last-child {
+            border-bottom: none;
+        }
+        .user-detail .label {
+            color: #666;
+            font-size: 14px;
+        }
+        .user-detail .value {
+            color: #1a1a2e;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        .next-steps {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+            text-align: left;
+        }
+        .next-steps h3 {
+            font-size: 14px;
+            color: #92400e;
+            margin-bottom: 8px;
+        }
+        .next-steps p {
+            color: #92400e;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .btn {
+            display: inline-block;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+        </div>
+
+        <h1>OAuth Test Successful!</h1>
+        <p class="subtitle">Your SSO configuration is working correctly</p>
+
+        <div class="user-info">
+            <h3>Authenticated User</h3>
+            <div class="user-detail">
+                <span class="label">Email</span>
+                <span class="value">{{ email }}</span>
+            </div>
+            <div class="user-detail">
+                <span class="label">Name</span>
+                <span class="value">{{ name }}</span>
+            </div>
+        </div>
+
+        <div class="next-steps">
+            <h3>Next Steps</h3>
+            <p>Your OAuth configuration has been verified. You can now enable SSO for your users from the Authentication Settings page.</p>
+        </div>
+
+        <a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant_id) }}" class="btn btn-primary">
+            Return to Settings
+        </a>
+    </div>
+</body>
+</html>

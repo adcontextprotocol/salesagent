@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup - {{ tenant.name }}</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .setup-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            padding: 48px;
+            max-width: 480px;
+            width: 100%;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .logo h1 {
+            font-size: 28px;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+        }
+        .logo p {
+            color: #666;
+            font-size: 14px;
+        }
+        h2 {
+            font-size: 24px;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .step {
+            display: none;
+        }
+        .step.active {
+            display: block;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            display: inline-block;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            text-align: center;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 100%;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+            width: 100%;
+            margin-top: 12px;
+        }
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        .passkey-icon {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .passkey-icon svg {
+            width: 64px;
+            height: 64px;
+            color: #667eea;
+        }
+        .info-box {
+            background: #f8f9ff;
+            border: 1px solid #e0e5ff;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        .info-box h4 {
+            color: #4a5568;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .info-box p {
+            color: #666;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .error {
+            background: #fff5f5;
+            border: 1px solid #fc8181;
+            color: #c53030;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .error.show {
+            display: block;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .loading.show {
+            display: block;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .test-mode-notice {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            color: #92400e;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 24px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <div class="logo">
+            <h1>{{ tenant.name }}</h1>
+            <p>Sales Agent Setup</p>
+        </div>
+
+        <div id="error" class="error"></div>
+
+        <!-- Step 1: Enter Email -->
+        <div id="step1" class="step active">
+            <h2>Create Your Account</h2>
+            <p class="subtitle">Set up the first administrator account</p>
+
+            <form id="emailForm">
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" required placeholder="you@company.com" autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="name">Your Name</label>
+                    <input type="text" id="name" name="name" placeholder="Jane Smith">
+                </div>
+                <button type="submit" class="btn btn-primary">Continue</button>
+            </form>
+        </div>
+
+        <!-- Step 2: Register Passkey -->
+        <div id="step2" class="step">
+            <div class="passkey-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                </svg>
+            </div>
+            <h2>Set Up Passkey</h2>
+            <p class="subtitle">Secure your account with passwordless login</p>
+
+            <div class="info-box">
+                <h4>What is a Passkey?</h4>
+                <p>Passkeys use your device's built-in security (like Touch ID, Face ID, or Windows Hello) for fast, secure login without passwords.</p>
+            </div>
+
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Waiting for your device...</p>
+            </div>
+
+            <div id="passkeyButtons">
+                <button id="registerPasskey" class="btn btn-primary">Register Passkey</button>
+                <div id="testModeSkip" style="display: none;">
+                    <button id="skipPasskey" class="btn btn-secondary">Skip for Now (Test Mode)</button>
+                    <div class="test-mode-notice">
+                        Test mode is enabled. You can skip passkey setup, but we recommend setting one up for security.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Success -->
+        <div id="step3" class="step">
+            <div class="passkey-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="#10b981">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <h2>Setup Complete!</h2>
+            <p class="subtitle">Your account is ready to use</p>
+            <a href="/tenant/{{ tenant_id }}" class="btn btn-primary">Go to Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        const tenantId = '{{ tenant_id }}';
+        const scriptRoot = '{{ request.script_root }}' || '';
+        let passkeyOptions = null;
+
+        // Check if test mode is enabled
+        fetch(scriptRoot + '/auth/passkey/check', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email: 'test@test.com', tenant_id: tenantId})
+        }).then(() => {
+            // If test mode env var is set, show skip button
+            // We'll show it based on a data attribute set by the server
+        }).catch(() => {});
+
+        // Show test mode skip if available
+        {% if request.environ.get('ADCP_AUTH_TEST_MODE', '').lower() == 'true' %}
+        document.getElementById('testModeSkip').style.display = 'block';
+        {% endif %}
+
+        function showError(message) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = message;
+            errorEl.classList.add('show');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.remove('show');
+        }
+
+        function showStep(stepNum) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById('step' + stepNum).classList.add('active');
+        }
+
+        // Step 1: Submit email
+        document.getElementById('emailForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideError();
+
+            const email = document.getElementById('email').value;
+            const name = document.getElementById('name').value;
+
+            try {
+                const response = await fetch(scriptRoot + '/setup/' + tenantId + '/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, name})
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showError(data.error || 'Registration failed');
+                    return;
+                }
+
+                passkeyOptions = data.passkey_options;
+                showStep(2);
+
+            } catch (err) {
+                showError('Network error. Please try again.');
+            }
+        });
+
+        // Step 2: Register passkey
+        document.getElementById('registerPasskey').addEventListener('click', async () => {
+            hideError();
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('passkeyButtons').style.display = 'none';
+
+            try {
+                // Convert base64url to ArrayBuffer
+                function base64urlToBuffer(base64url) {
+                    const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+                    const padLen = (4 - base64.length % 4) % 4;
+                    const padded = base64 + '='.repeat(padLen);
+                    const binary = atob(padded);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        bytes[i] = binary.charCodeAt(i);
+                    }
+                    return bytes.buffer;
+                }
+
+                // Convert ArrayBuffer to base64url
+                function bufferToBase64url(buffer) {
+                    const bytes = new Uint8Array(buffer);
+                    let binary = '';
+                    for (let i = 0; i < bytes.length; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+                }
+
+                // Prepare options for WebAuthn API
+                const publicKey = {
+                    challenge: base64urlToBuffer(passkeyOptions.challenge),
+                    rp: passkeyOptions.rp,
+                    user: {
+                        id: base64urlToBuffer(passkeyOptions.user.id),
+                        name: passkeyOptions.user.name,
+                        displayName: passkeyOptions.user.displayName
+                    },
+                    pubKeyCredParams: passkeyOptions.pubKeyCredParams,
+                    timeout: passkeyOptions.timeout,
+                    authenticatorSelection: passkeyOptions.authenticatorSelection,
+                    attestation: passkeyOptions.attestation
+                };
+
+                if (passkeyOptions.excludeCredentials) {
+                    publicKey.excludeCredentials = passkeyOptions.excludeCredentials.map(c => ({
+                        type: c.type,
+                        id: base64urlToBuffer(c.id)
+                    }));
+                }
+
+                // Create credential
+                const credential = await navigator.credentials.create({publicKey});
+
+                // Prepare credential for server
+                const credentialData = {
+                    id: credential.id,
+                    rawId: bufferToBase64url(credential.rawId),
+                    type: credential.type,
+                    response: {
+                        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                        attestationObject: bufferToBase64url(credential.response.attestationObject)
+                    }
+                };
+
+                // Verify with server
+                const verifyResponse = await fetch(scriptRoot + '/setup/' + tenantId + '/verify-passkey', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        credential: credentialData,
+                        name: 'Setup Key'
+                    })
+                });
+
+                const verifyData = await verifyResponse.json();
+
+                if (!verifyResponse.ok) {
+                    throw new Error(verifyData.error || 'Verification failed');
+                }
+
+                // Success - redirect
+                window.location.href = verifyData.redirect;
+
+            } catch (err) {
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('passkeyButtons').style.display = 'block';
+
+                if (err.name === 'NotAllowedError') {
+                    showError('Passkey registration was cancelled. Please try again.');
+                } else if (err.name === 'NotSupportedError') {
+                    showError('Passkeys are not supported on this device/browser.');
+                } else {
+                    showError(err.message || 'Passkey registration failed');
+                }
+            }
+        });
+
+        // Skip passkey (test mode only)
+        document.getElementById('skipPasskey')?.addEventListener('click', async () => {
+            try {
+                const response = await fetch(scriptRoot + '/setup/' + tenantId + '/skip-passkey', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showError(data.error || 'Skip failed');
+                    return;
+                }
+
+                window.location.href = data.redirect;
+            } catch (err) {
+                showError('Network error. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>

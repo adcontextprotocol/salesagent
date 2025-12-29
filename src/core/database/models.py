@@ -17,6 +17,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -129,6 +130,12 @@ class Tenant(Base, JSONValidatorMixin):
     signals_agents = relationship(
         "SignalsAgent",
         back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+    auth_config = relationship(
+        "TenantAuthConfig",
+        back_populates="tenant",
+        uselist=False,
         cascade="all, delete-orphan",
     )
 
@@ -582,6 +589,7 @@ class User(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")
+    passkeys = relationship("UserPasskey", back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'manager', 'viewer')"),
@@ -590,6 +598,89 @@ class User(Base):
         Index("idx_users_email", "email"),
         Index("idx_users_google_id", "google_id"),
     )
+
+
+class UserPasskey(Base):
+    """WebAuthn passkey credentials for passwordless authentication."""
+
+    __tablename__ = "user_passkeys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(50), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
+    )
+
+    # WebAuthn credential data
+    credential_id: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, unique=True)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    sign_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Metadata
+    name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "MacBook Pro", "YubiKey"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="passkeys")
+    tenant: Mapped["Tenant"] = relationship()
+
+    __table_args__ = (
+        Index("idx_user_passkeys_user_id", "user_id"),
+        Index("idx_user_passkeys_tenant_id", "tenant_id"),
+        Index("idx_user_passkeys_credential_id", "credential_id", unique=True),
+    )
+
+
+class TenantAuthConfig(Base):
+    """Per-tenant authentication configuration for OIDC/SSO."""
+
+    __tablename__ = "tenant_auth_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+
+    # OIDC configuration
+    oidc_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    oidc_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)  # google, microsoft, custom
+    oidc_discovery_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    oidc_client_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    oidc_client_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)  # Fernet encrypted
+    oidc_scopes: Mapped[str | None] = mapped_column(String(500), nullable=True, default="openid email profile")
+
+    # Verification state - tracks last successful OAuth test
+    oidc_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    oidc_verified_redirect_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+
+    # Relationships
+    tenant: Mapped["Tenant"] = relationship(back_populates="auth_config")
+
+    __table_args__ = (Index("idx_tenant_auth_configs_tenant_id", "tenant_id", unique=True),)
+
+    @property
+    def oidc_client_secret(self) -> str | None:
+        """Decrypt and return the OIDC client secret."""
+        if not self.oidc_client_secret_encrypted:
+            return None
+        from src.core.utils.encryption import decrypt_api_key
+
+        return decrypt_api_key(self.oidc_client_secret_encrypted)
+
+    @oidc_client_secret.setter
+    def oidc_client_secret(self, value: str | None) -> None:
+        """Encrypt and store the OIDC client secret."""
+        if value is None:
+            self.oidc_client_secret_encrypted = None
+        else:
+            from src.core.utils.encryption import encrypt_api_key
+
+            self.oidc_client_secret_encrypted = encrypt_api_key(value)
 
 
 class Creative(Base):

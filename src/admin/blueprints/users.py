@@ -44,9 +44,10 @@ def list_users(tenant_id):
             )
 
         return render_template(
-            "tenant_users.html",
+            "users.html",
             tenant=tenant,
             tenant_id=tenant_id,
+            tenant_name=tenant.name,
             users=users_list,
         )
 

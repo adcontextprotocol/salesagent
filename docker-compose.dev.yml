@@ -46,7 +46,9 @@ services:
       retries: 3
 
   adcp-server:
-    image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
     entrypoint: []  # Override image entrypoint for local dev
     env_file:
       - path: .env
@@ -83,7 +85,9 @@ services:
       retries: 3
 
   admin-ui:
-    image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
     entrypoint: []  # Override image entrypoint for local dev
     env_file:
       - path: .env
