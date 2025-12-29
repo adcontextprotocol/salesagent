@@ -28,8 +28,8 @@
  * - video_dimensions: accepts dimensions
  * - native_standard: no parameters
  *
- * Note: The "display" template is a virtual template that expands to all three
- * display format types (image, html, js) so products accept any creative type.
+ * Note: "display" and "video" templates are virtual templates that expand to
+ * multiple format types so products accept any creative variation.
  * The actual creative type is auto-detected at upload time.
  */
 const FORMAT_TEMPLATES = {
@@ -56,26 +56,15 @@ const FORMAT_TEMPLATES = {
         ],
         gamSupported: true
     },
-    video_standard: {
-        id: "video_standard",
-        name: "Hosted Video",
-        description: "Video ads hosted on creative agent (MP4, WebM)",
+    // Unified video template - expands to video_standard, video_vast
+    video: {
+        id: "video",  // Virtual ID - expands to multiple format IDs
+        name: "Video",
+        description: "Video ads (hosted or VAST - auto-detected at upload)",
         type: "video",
-        parameterType: "duration",  // duration parameter
-        commonDurations: [
-            { ms: 6000, name: "6s (Bumper)" },
-            { ms: 15000, name: "15s (Standard)" },
-            { ms: 30000, name: "30s (Standard)" },
-            { ms: 60000, name: "60s (Long)" }
-        ],
-        gamSupported: true
-    },
-    video_vast: {
-        id: "video_vast",
-        name: "VAST Tag",
-        description: "Video ads served via VAST XML redirect",
-        type: "video",
-        parameterType: "duration",  // duration parameter
+        parameterType: "duration",  // duration_ms parameter
+        // Maps to these actual creative agent format IDs
+        expandsTo: ["video_standard", "video_vast"],
         commonDurations: [
             { ms: 6000, name: "6s (Bumper)" },
             { ms: 15000, name: "15s (Standard)" },
@@ -86,7 +75,7 @@ const FORMAT_TEMPLATES = {
     },
     native_standard: {
         id: "native_standard",
-        name: "Native Ad",
+        name: "Native",
         description: "Native content ads that match the look of the site",
         type: "native",
         parameterType: "none",  // No dimension parameters
