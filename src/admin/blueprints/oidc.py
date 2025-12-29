@@ -140,7 +140,7 @@ def disable(tenant_id: str):
     return jsonify(
         {
             "success": True,
-            "message": "OIDC authentication disabled. Users can still log in with passkeys.",
+            "message": "OIDC authentication disabled.",
         }
     )
 

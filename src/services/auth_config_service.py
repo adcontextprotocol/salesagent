@@ -287,7 +287,7 @@ def get_oidc_config_for_auth(tenant_id: str) -> dict | None:
             return None
 
         if not is_oidc_config_valid(tenant_id):
-            logger.warning(f"OIDC config invalid for tenant {tenant_id}, falling back to passkey")
+            logger.warning(f"OIDC config invalid for tenant {tenant_id}")
             return None
 
         return {
@@ -344,7 +344,6 @@ def get_auth_config_summary(tenant_id: str) -> dict:
                 "oidc_configured": False,
                 "oidc_enabled": False,
                 "redirect_uri": current_redirect_uri,
-                "passkey_available": True,
             }
 
         return {
@@ -359,5 +358,4 @@ def get_auth_config_summary(tenant_id: str) -> dict:
                 config.oidc_verified_redirect_uri is not None
                 and config.oidc_verified_redirect_uri != current_redirect_uri
             ),
-            "passkey_available": True,
         }

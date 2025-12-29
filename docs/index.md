@@ -17,6 +17,7 @@
 ## User Guide
 
 - **[Overview](user-guide/)** - Using the sales agent after deployment
+- **[SSO Setup](user-guide/sso-setup.md)** - Configure Single Sign-On with Google, Microsoft, Okta, Auth0, or Keycloak
 - **[Products](user-guide/products.md)** - Setting up your product catalog
 - **[Advertisers](user-guide/advertisers.md)** - Managing principals and API access
 - **[Creatives](user-guide/creatives.md)** - Creative approval workflow
@@ -55,6 +56,7 @@ docs/
 │       └── fly.md              # Fly.io
 ├── user-guide/
 │   ├── README.md               # Overview
+│   ├── sso-setup.md            # SSO configuration guide
 │   ├── products.md             # Product management
 │   ├── advertisers.md          # Principal management
 │   └── creatives.md            # Creative workflow

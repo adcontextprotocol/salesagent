@@ -717,24 +717,6 @@ def media_buys_list(tenant_id):
 @tenants_bp.route("/<tenant_id>/settings/auth")
 @require_tenant_access()
 def auth_settings(tenant_id):
-    """Show authentication settings page for a tenant."""
-    try:
-        with get_db_session() as db_session:
-            from sqlalchemy import select
-
-            stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-            tenant = db_session.scalars(stmt).first()
-            if not tenant:
-                flash("Tenant not found", "error")
-                return redirect(url_for("core.index"))
-
-            return render_template(
-                "auth_settings.html",
-                tenant=tenant,
-                tenant_id=tenant_id,
-            )
-
-    except Exception as e:
-        logger.error(f"Error loading auth settings for tenant {tenant_id}: {e}", exc_info=True)
-        flash(f"Error loading authentication settings: {str(e)}", "error")
-        return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
+    """Redirect to users page for authentication management."""
+    # SSO config moved to users page
+    return redirect(url_for("users.list_users", tenant_id=tenant_id))

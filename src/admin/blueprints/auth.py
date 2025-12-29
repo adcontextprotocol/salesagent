@@ -281,14 +281,16 @@ def login():
 @auth_bp.route("/tenant/<tenant_id>/login")
 def tenant_login(tenant_id):
     """Show tenant-specific login page or redirect to OAuth provider."""
-    # Verify tenant exists
+    # Verify tenant exists and get auth_setup_mode
     with get_db_session() as db_session:
         tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         if not tenant:
             abort(404)
         tenant_name = tenant.name
-
-    test_mode = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
+        # Use tenant's auth_setup_mode, with fallback to env var for backwards compatibility
+        test_mode = tenant.auth_setup_mode if hasattr(tenant, "auth_setup_mode") else True
+        if os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true":
+            test_mode = True  # Environment variable can override to enable test mode
 
     # Check if OAuth is configured
     client_id, client_secret, discovery_url, _ = get_oauth_config()
@@ -603,13 +605,35 @@ def logout():
 # Test authentication endpoints (only enabled in test mode)
 @auth_bp.route("/test/auth", methods=["POST"])
 def test_auth():
-    """Test authentication endpoint (only works when ADCP_AUTH_TEST_MODE=true)."""
-    if os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() != "true":
-        abort(404)
+    """Test authentication endpoint.
 
+    Works when:
+    - ADCP_AUTH_TEST_MODE=true (global override), OR
+    - The requested tenant has auth_setup_mode=True (per-tenant setting)
+    """
     email = request.form.get("email", "").lower()
     password = request.form.get("password")
     tenant_id = request.form.get("tenant_id")
+
+    # In single-tenant mode, default to "default" tenant if not specified
+    from src.core.config_loader import is_single_tenant_mode
+
+    if is_single_tenant_mode() and not tenant_id:
+        tenant_id = "default"
+
+    # Check if test auth is allowed
+    env_test_mode = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
+    tenant_setup_mode = False
+
+    if tenant_id:
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if tenant and hasattr(tenant, "auth_setup_mode"):
+                tenant_setup_mode = tenant.auth_setup_mode
+
+    # Allow if env var is set OR tenant is in setup mode
+    if not env_test_mode and not tenant_setup_mode:
+        abort(404)
 
     # Check for saved redirect URL from login page
     next_url = session.get("login_next_url")
@@ -632,12 +656,6 @@ def test_auth():
             "role": "tenant_user",
         },
     }
-
-    # In single-tenant mode, always use "default" as tenant_id
-    from src.core.config_loader import is_single_tenant_mode
-
-    if is_single_tenant_mode() and not tenant_id:
-        tenant_id = "default"
 
     # Check if email is a super admin (bypass password check for super admins in test mode)
     if is_super_admin(email) and password == "test123":
@@ -702,7 +720,11 @@ def test_auth():
 
 @auth_bp.route("/test/login")
 def test_login_form():
-    """Show test login form (only works when ADCP_AUTH_TEST_MODE=true)."""
+    """Show test login form.
+
+    Works when ADCP_AUTH_TEST_MODE=true as a global override.
+    For per-tenant setup mode, use /tenant/<tenant_id>/login instead.
+    """
     if os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() != "true":
         abort(404)
 

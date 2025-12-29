@@ -77,7 +77,12 @@ class DatabaseConfig:
 
     @staticmethod
     def get_connection_string() -> str:
-        """Get connection string for SQLAlchemy."""
+        """Get connection string for SQLAlchemy.
+
+        Handles both TCP and Unix socket connections:
+        - TCP: postgresql://user:pass@host:port/dbname?sslmode=...
+        - Unix socket: postgresql://user:pass@/dbname?host=/path/to/socket
+        """
         config = DatabaseConfig.get_db_config()
 
         password = config["password"]
@@ -86,7 +91,15 @@ class DatabaseConfig:
         else:
             auth = config["user"]
 
-        return f"postgresql://{auth}@{config['host']}:{config['port']}/{config['database']}?sslmode={config['sslmode']}"
+        host = config["host"]
+
+        # Check if host is a Unix socket path (starts with /)
+        if host.startswith("/"):
+            # Unix socket: put path in query string, not in authority
+            return f"postgresql://{auth}@/{config['database']}?host={host}"
+        else:
+            # TCP connection: standard format
+            return f"postgresql://{auth}@{host}:{config['port']}/{config['database']}?sslmode={config['sslmode']}"
 
 
 class DatabaseConnection:

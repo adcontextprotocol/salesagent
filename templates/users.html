@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Users - {{ tenant_name }}{% endblock %}
+{% block title %}Users & Access - {{ tenant_name }}{% endblock %}
 
 {% block content %}
 <style>
@@ -116,6 +116,11 @@
         font-size: 0.8125rem;
     }
 
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
     .form-group {
         margin-bottom: 1rem;
     }
@@ -145,14 +150,20 @@
         box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
 
-    .add-user-form {
+    .form-group .help-text {
+        font-size: 0.75rem;
+        color: #6b7280;
+        margin-top: 0.375rem;
+    }
+
+    .add-form {
         display: flex;
         gap: 1rem;
         align-items: flex-end;
         flex-wrap: wrap;
     }
 
-    .add-user-form .form-group {
+    .add-form .form-group {
         margin-bottom: 0;
         flex: 1;
         min-width: 200px;
@@ -203,51 +214,19 @@
         font-weight: 500;
     }
 
-    .status-active {
+    .status-active, .status-enabled {
         background: #d1fae5;
         color: #065f46;
     }
 
-    .status-inactive {
+    .status-inactive, .status-disabled {
         background: #f3f4f6;
         color: #6b7280;
     }
 
-    .role-badge {
-        display: inline-flex;
-        padding: 0.25rem 0.5rem;
-        border-radius: 6px;
-        font-size: 0.75rem;
-        font-weight: 500;
-        background: #eff6ff;
-        color: #1e40af;
-    }
-
-    .role-admin {
+    .status-warning {
         background: #fef3c7;
         color: #92400e;
-    }
-
-    .role-manager {
-        background: #e0e7ff;
-        color: #3730a3;
-    }
-
-    .role-viewer {
-        background: #f3f4f6;
-        color: #6b7280;
-    }
-
-    .passkey-indicator {
-        display: flex;
-        align-items: center;
-        gap: 0.375rem;
-        font-size: 0.75rem;
-        color: #6b7280;
-    }
-
-    .passkey-indicator.has-passkey {
-        color: #059669;
     }
 
     .user-actions {
@@ -297,7 +276,7 @@
 
     .empty-state {
         text-align: center;
-        padding: 3rem 1rem;
+        padding: 2rem 1rem;
         color: #6b7280;
     }
 
@@ -325,6 +304,94 @@
         font-size: 0.75rem;
         color: #9ca3af;
     }
+
+    .tag-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+
+    .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.375rem 0.75rem;
+        background: #f3f4f6;
+        border-radius: 6px;
+        font-size: 0.8125rem;
+        color: #374151;
+    }
+
+    .tag-remove {
+        cursor: pointer;
+        color: #9ca3af;
+        font-size: 1rem;
+        line-height: 1;
+    }
+
+    .tag-remove:hover {
+        color: #dc2626;
+    }
+
+    .redirect-uri-box {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .redirect-uri-box label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+
+    .redirect-uri-value {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .redirect-uri-value code {
+        flex: 1;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8125rem;
+        font-family: monospace;
+        word-break: break-all;
+    }
+
+    .button-group {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+
+    .alert-warning {
+        background: #fef3c7;
+        border: 1px solid #fcd34d;
+        color: #92400e;
+    }
+
+    .alert-info {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1e40af;
+    }
 </style>
 
 <div class="users-container">
@@ -333,12 +400,12 @@
         <span style="color: #9ca3af; margin: 0 0.5rem;">/</span>
         <a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant_id) }}">Settings</a>
         <span style="color: #9ca3af; margin: 0 0.5rem;">/</span>
-        <span style="color: #374151;">Users</span>
+        <span style="color: #374151;">Users & Access</span>
     </div>
 
     <div class="page-header">
-        <h1>User Management</h1>
-        <p>Manage who can access {{ tenant_name }}</p>
+        <h1>Users & Access</h1>
+        <p>Configure SSO and manage who can access {{ tenant_name }}</p>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -351,29 +418,140 @@
         {% endif %}
     {% endwith %}
 
-    <!-- Add User -->
+    <!-- Auth Setup Mode Banner -->
+    {% if auth_setup_mode %}
+    <div class="card" style="background: #fef3c7; border: 1px solid #fcd34d;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="font-size: 1rem; font-weight: 600; color: #92400e; margin-bottom: 0.25rem;">Setup Mode Active</h3>
+                <p style="font-size: 0.875rem; color: #92400e; margin: 0;">
+                    Test credentials are currently allowed.
+                    <a href="#oidc-form" style="color: #92400e; text-decoration: underline;">Configure SSO</a> below, then disable setup mode for production use.
+                    <a href="https://adcontextprotocol.org/sales-agent/user-guide/sso-setup" target="_blank" style="color: #92400e; margin-left: 0.5rem;">
+                        Need help?
+                    </a>
+                </p>
+            </div>
+            {% if oidc_enabled %}
+            <button class="btn btn-danger" id="disable-setup-mode-btn">Disable Setup Mode</button>
+            {% else %}
+            <span class="status-badge status-warning">Configure SSO first</span>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="card" style="background: #d1fae5; border: 1px solid #10b981;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="font-size: 1rem; font-weight: 600; color: #065f46; margin-bottom: 0.25rem;">Production Mode</h3>
+                <p style="font-size: 0.875rem; color: #065f46; margin: 0;">
+                    Only SSO authentication is allowed. Test credentials are disabled.
+                </p>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="enable-setup-mode-btn">Re-enable Setup Mode</button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- SSO Configuration -->
     <div class="card">
         <div class="card-header">
-            <h2>Add User</h2>
+            <h2>Single Sign-On (SSO)</h2>
+            <span class="status-badge" id="oidc-status-badge">Loading...</span>
         </div>
 
-        <form method="post" action="{{ url_for('users.add_user', tenant_id=tenant_id) }}" class="add-user-form">
-            <div class="form-group" style="flex: 2;">
-                <label for="email">Email Address</label>
-                <input type="email" id="email" name="email" placeholder="user@example.com" required>
-            </div>
+        <p style="color: #6b7280; margin-bottom: 1rem; font-size: 0.875rem;">
+            Configure SSO to allow users to authenticate with your organization's identity provider (Google, Microsoft, Okta, etc.).
+            <a href="https://adcontextprotocol.org/sales-agent/user-guide/sso-setup" target="_blank" style="color: #4f46e5; text-decoration: none;">
+                View setup guide &rarr;
+            </a>
+        </p>
 
-            <div class="form-group" style="flex: 1;">
-                <label for="role">Role</label>
-                <select id="role" name="role">
-                    <option value="viewer">Viewer</option>
-                    <option value="manager">Manager</option>
-                    <option value="admin">Admin</option>
+        <div id="redirect-uri-warning" class="alert alert-warning" style="display: none;">
+            <strong>Configuration Required:</strong> Your domain has changed. Please update your OAuth
+            provider with the new redirect URI and re-test the connection.
+        </div>
+
+        <div class="redirect-uri-box">
+            <label>Required Redirect URI</label>
+            <div class="redirect-uri-value">
+                <code id="redirect-uri">Loading...</code>
+                <button class="btn btn-secondary btn-sm" id="copy-uri-btn" type="button">Copy</button>
+            </div>
+            <p class="help-text" style="margin-top: 0.5rem;">
+                Configure this URI in your OAuth provider's allowed redirect URIs
+            </p>
+        </div>
+
+        <form id="oidc-form">
+            <div class="form-group">
+                <label for="provider">Provider</label>
+                <select id="provider" name="provider">
+                    <option value="">Select a provider...</option>
+                    <option value="google">Google</option>
+                    <option value="microsoft">Microsoft</option>
+                    <option value="custom">Custom OIDC</option>
                 </select>
             </div>
 
-            <button type="submit" class="btn btn-primary">Add User</button>
+            <div id="discovery-url-group" class="form-group" style="display: none;">
+                <label for="discovery_url">Discovery URL</label>
+                <input type="url" id="discovery_url" name="discovery_url"
+                       placeholder="https://your-idp.com/.well-known/openid-configuration">
+                <p class="help-text">The OIDC discovery endpoint URL</p>
+            </div>
+
+            <div class="form-group">
+                <label for="client_id">Client ID</label>
+                <input type="text" id="client_id" name="client_id"
+                       placeholder="your-client-id.apps.googleusercontent.com">
+            </div>
+
+            <div class="form-group">
+                <label for="client_secret">Client Secret</label>
+                <input type="password" id="client_secret" name="client_secret"
+                       placeholder="Enter client secret">
+                <p class="help-text">Your secret will be encrypted before storage</p>
+            </div>
+
+            <div class="button-group">
+                <button type="submit" class="btn btn-primary" id="save-oidc-btn">Save Configuration</button>
+                <button type="button" class="btn btn-secondary" id="test-oidc-btn" disabled>Test Connection</button>
+                <button type="button" class="btn btn-success" id="enable-oidc-btn" style="display: none;">Enable SSO</button>
+                <button type="button" class="btn btn-danger" id="disable-oidc-btn" style="display: none;">Disable SSO</button>
+            </div>
         </form>
+    </div>
+
+    <!-- Allowed Domains -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Allowed Domains</h2>
+        </div>
+
+        <p style="color: #6b7280; margin-bottom: 1rem; font-size: 0.875rem;">
+            Users from these email domains will automatically gain access when logging in via SSO.
+        </p>
+
+        <form id="add-domain-form" class="add-form">
+            <div class="form-group" style="flex: 1;">
+                <label for="domain">Domain</label>
+                <input type="text" id="domain" name="domain" placeholder="example.com">
+            </div>
+            <button type="submit" class="btn btn-secondary">Add Domain</button>
+        </form>
+
+        <div class="tag-list" id="domain-list">
+            {% for domain in authorized_domains %}
+            <span class="tag" data-domain="{{ domain }}">
+                {{ domain }}
+                <span class="tag-remove" onclick="removeDomain('{{ domain }}')">&times;</span>
+            </span>
+            {% endfor %}
+        </div>
+        {% if not authorized_domains %}
+        <p class="empty-state" id="no-domains-message" style="padding: 1rem;">No allowed domains configured.</p>
+        {% endif %}
     </div>
 
     <!-- Users List -->
@@ -387,9 +565,7 @@
             <thead>
                 <tr>
                     <th>User</th>
-                    <th>Role</th>
                     <th>Status</th>
-                    <th>Passkeys</th>
                     <th>Last Login</th>
                     <th></th>
                 </tr>
@@ -402,19 +578,11 @@
                         <div class="meta-text">Added {{ user.created_at.strftime('%b %d, %Y') if user.created_at else 'Unknown' }}</div>
                     </td>
                     <td>
-                        <span class="role-badge role-{{ user.role }}">{{ user.role|capitalize }}</span>
-                    </td>
-                    <td>
                         {% if user.is_active %}
                         <span class="status-badge status-active">Active</span>
                         {% else %}
                         <span class="status-badge status-inactive">Inactive</span>
                         {% endif %}
-                    </td>
-                    <td>
-                        <span class="passkey-indicator" id="passkey-count-{{ user.user_id }}">
-                            <span>-</span>
-                        </span>
                     </td>
                     <td>
                         {% if user.last_login %}
@@ -425,30 +593,13 @@
                     </td>
                     <td>
                         <div class="user-actions">
-                            <div class="dropdown">
-                                <button class="btn btn-secondary btn-sm">Actions</button>
-                                <div class="dropdown-content">
-                                    <form method="post" action="{{ url_for('users.toggle_user', tenant_id=tenant_id, user_id=user.user_id) }}" style="display: contents;">
-                                        {% if user.is_active %}
-                                        <button type="submit">Deactivate</button>
-                                        {% else %}
-                                        <button type="submit">Activate</button>
-                                        {% endif %}
-                                    </form>
-                                    <form method="post" action="{{ url_for('users.update_role', tenant_id=tenant_id, user_id=user.user_id) }}" style="display: contents;">
-                                        <input type="hidden" name="role" value="admin">
-                                        <button type="submit" {% if user.role == 'admin' %}disabled style="opacity:0.5"{% endif %}>Make Admin</button>
-                                    </form>
-                                    <form method="post" action="{{ url_for('users.update_role', tenant_id=tenant_id, user_id=user.user_id) }}" style="display: contents;">
-                                        <input type="hidden" name="role" value="manager">
-                                        <button type="submit" {% if user.role == 'manager' %}disabled style="opacity:0.5"{% endif %}>Make Manager</button>
-                                    </form>
-                                    <form method="post" action="{{ url_for('users.update_role', tenant_id=tenant_id, user_id=user.user_id) }}" style="display: contents;">
-                                        <input type="hidden" name="role" value="viewer">
-                                        <button type="submit" {% if user.role == 'viewer' %}disabled style="opacity:0.5"{% endif %}>Make Viewer</button>
-                                    </form>
-                                </div>
-                            </div>
+                            <form method="post" action="{{ url_for('users.toggle_user', tenant_id=tenant_id, user_id=user.user_id) }}" style="display: contents;">
+                                {% if user.is_active %}
+                                <button type="submit" class="btn btn-danger btn-sm">Deactivate</button>
+                                {% else %}
+                                <button type="submit" class="btn btn-success btn-sm">Activate</button>
+                                {% endif %}
+                            </form>
                         </div>
                     </td>
                 </tr>
@@ -457,18 +608,17 @@
         </table>
         {% else %}
         <div class="empty-state">
-            <p>No users yet. Add your first user above.</p>
+            <p>No users yet. Users will appear here after logging in via SSO.</p>
         </div>
         {% endif %}
     </div>
 
     <!-- Info Card -->
     <div class="card" style="background: #eff6ff; border: 1px solid #bfdbfe;">
-        <h3 style="font-size: 0.875rem; font-weight: 600; color: #1e40af; margin-bottom: 0.5rem;">About User Management</h3>
+        <h3 style="font-size: 0.875rem; font-weight: 600; color: #1e40af; margin-bottom: 0.5rem;">How Access Works</h3>
         <p style="font-size: 0.875rem; color: #1e40af; line-height: 1.6; margin: 0;">
-            Users must be added here before they can log in to this tenant. When a user logs in via
-            passkey or SSO, the system checks that they have an active User record. You can deactivate
-            users to revoke their access without deleting them.
+            Users from allowed domains are automatically granted access when they log in via SSO.
+            You can deactivate users to revoke access without deleting them.
         </p>
     </div>
 </div>
@@ -477,33 +627,307 @@
 const tenantId = '{{ tenant_id }}';
 const scriptRoot = '{{ request.script_root }}' || '';
 
-// Load passkey counts for all users
-async function loadPasskeyCounts() {
-    const userIds = {{ users|map(attribute='user_id')|list|tojson }};
+// Domain management
+document.getElementById('add-domain-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const domain = document.getElementById('domain').value.trim().toLowerCase();
+    if (!domain) return;
 
-    for (const userId of userIds) {
+    try {
+        const response = await fetch(`${scriptRoot}/tenant/${tenantId}/users/domains`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ domain: domain })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // Add tag to UI
+            const domainList = document.getElementById('domain-list');
+            const noDomainsMsg = document.getElementById('no-domains-message');
+            if (noDomainsMsg) noDomainsMsg.remove();
+
+            const tag = document.createElement('span');
+            tag.className = 'tag';
+            tag.dataset.domain = domain;
+            tag.innerHTML = `${domain} <span class="tag-remove" onclick="removeDomain('${domain}')">&times;</span>`;
+            domainList.appendChild(tag);
+
+            document.getElementById('domain').value = '';
+        } else {
+            alert(data.error || 'Failed to add domain');
+        }
+    } catch (err) {
+        console.error('Error adding domain:', err);
+        alert('Failed to add domain');
+    }
+});
+
+async function removeDomain(domain) {
+    if (!confirm(`Remove ${domain} from allowed domains?`)) return;
+
+    try {
+        const response = await fetch(`${scriptRoot}/tenant/${tenantId}/users/domains`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ domain: domain })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // Remove tag from UI
+            const tag = document.querySelector(`.tag[data-domain="${domain}"]`);
+            if (tag) tag.remove();
+
+            // Show empty message if no domains left
+            const domainList = document.getElementById('domain-list');
+            if (domainList.querySelectorAll('.tag').length === 0) {
+                const msg = document.createElement('p');
+                msg.id = 'no-domains-message';
+                msg.className = 'empty-state';
+                msg.style.padding = '1rem';
+                msg.textContent = 'No allowed domains configured.';
+                domainList.parentNode.appendChild(msg);
+            }
+        } else {
+            alert(data.error || 'Failed to remove domain');
+        }
+    } catch (err) {
+        console.error('Error removing domain:', err);
+        alert('Failed to remove domain');
+    }
+}
+
+// OIDC/SSO Management
+async function loadAuthConfig() {
+    try {
+        const response = await fetch(`${scriptRoot}/auth/oidc/config?tenant_id=${tenantId}`, {
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+
+        // Update redirect URI
+        document.getElementById('redirect-uri').textContent = data.redirect_uri || 'Not available';
+
+        // Update status badge
+        const statusBadge = document.getElementById('oidc-status-badge');
+        if (data.oidc_enabled) {
+            statusBadge.textContent = 'Enabled';
+            statusBadge.className = 'status-badge status-enabled';
+            document.getElementById('disable-oidc-btn').style.display = 'inline-flex';
+            document.getElementById('enable-oidc-btn').style.display = 'none';
+        } else if (data.oidc_configured) {
+            if (data.oidc_valid) {
+                statusBadge.textContent = 'Verified - Ready to Enable';
+                statusBadge.className = 'status-badge status-warning';
+                document.getElementById('enable-oidc-btn').style.display = 'inline-flex';
+            } else {
+                statusBadge.textContent = 'Not Verified';
+                statusBadge.className = 'status-badge status-warning';
+            }
+        } else {
+            statusBadge.textContent = 'Not Configured';
+            statusBadge.className = 'status-badge status-disabled';
+        }
+
+        // Show warning if redirect URI changed
+        if (data.redirect_uri_changed) {
+            document.getElementById('redirect-uri-warning').style.display = 'block';
+        }
+
+        // Populate form fields
+        if (data.config) {
+            document.getElementById('provider').value = data.config.provider || '';
+            document.getElementById('client_id').value = data.config.client_id || '';
+            document.getElementById('discovery_url').value = data.config.discovery_url || '';
+
+            // Show discovery URL field for custom provider
+            if (data.config.provider === 'custom') {
+                document.getElementById('discovery-url-group').style.display = 'block';
+            }
+
+            // Enable test button if we have config
+            if (data.config.client_id) {
+                document.getElementById('test-oidc-btn').disabled = false;
+            }
+        }
+    } catch (err) {
+        console.error('Failed to load auth config:', err);
+        document.getElementById('oidc-status-badge').textContent = 'Error';
+        document.getElementById('oidc-status-badge').className = 'status-badge status-disabled';
+    }
+}
+
+// Provider change handler
+document.getElementById('provider').addEventListener('change', function() {
+    const discoveryGroup = document.getElementById('discovery-url-group');
+    if (this.value === 'custom') {
+        discoveryGroup.style.display = 'block';
+    } else {
+        discoveryGroup.style.display = 'none';
+    }
+});
+
+// Copy redirect URI
+document.getElementById('copy-uri-btn').addEventListener('click', function() {
+    const uri = document.getElementById('redirect-uri').textContent;
+    navigator.clipboard.writeText(uri).then(() => {
+        this.textContent = 'Copied!';
+        setTimeout(() => { this.textContent = 'Copy'; }, 2000);
+    });
+});
+
+// Save OIDC config
+document.getElementById('oidc-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const config = {
+        provider: document.getElementById('provider').value,
+        client_id: document.getElementById('client_id').value,
+        client_secret: document.getElementById('client_secret').value,
+        discovery_url: document.getElementById('discovery_url').value
+    };
+
+    try {
+        const response = await fetch(`${scriptRoot}/auth/oidc/config?tenant_id=${tenantId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(config)
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            alert('Configuration saved');
+            document.getElementById('test-oidc-btn').disabled = false;
+            loadAuthConfig();
+        } else {
+            alert(data.error || 'Failed to save configuration');
+        }
+    } catch (err) {
+        console.error('Error saving config:', err);
+        alert('Failed to save configuration');
+    }
+});
+
+// Test OIDC connection
+document.getElementById('test-oidc-btn').addEventListener('click', async function() {
+    try {
+        const response = await fetch(`${scriptRoot}/auth/oidc/test?tenant_id=${tenantId}`, {
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+
+        if (data.redirect_url) {
+            window.location.href = data.redirect_url;
+        } else {
+            alert(data.error || 'Failed to start test');
+        }
+    } catch (err) {
+        console.error('Error testing OIDC:', err);
+        alert('Failed to start test');
+    }
+});
+
+// Enable SSO
+document.getElementById('enable-oidc-btn').addEventListener('click', async function() {
+    try {
+        const response = await fetch(`${scriptRoot}/auth/oidc/enable?tenant_id=${tenantId}`, {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert('SSO enabled');
+            loadAuthConfig();
+        } else {
+            alert(data.error || 'Failed to enable SSO');
+        }
+    } catch (err) {
+        console.error('Error enabling SSO:', err);
+        alert('Failed to enable SSO');
+    }
+});
+
+// Disable SSO
+document.getElementById('disable-oidc-btn').addEventListener('click', async function() {
+    if (!confirm('Disable SSO?')) return;
+
+    try {
+        const response = await fetch(`${scriptRoot}/auth/oidc/disable?tenant_id=${tenantId}`, {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            alert('SSO disabled');
+            loadAuthConfig();
+        } else {
+            alert(data.error || 'Failed to disable SSO');
+        }
+    } catch (err) {
+        console.error('Error disabling SSO:', err);
+        alert('Failed to disable SSO');
+    }
+});
+
+// Disable setup mode
+const disableSetupBtn = document.getElementById('disable-setup-mode-btn');
+if (disableSetupBtn) {
+    disableSetupBtn.addEventListener('click', async function() {
+        if (!confirm('Disable setup mode? Test credentials will no longer work and only SSO authentication will be allowed.')) return;
+
         try {
-            const response = await fetch(`${scriptRoot}/auth/passkey/check?tenant_id=${tenantId}&user_id=${userId}`, {
+            const response = await fetch(`${scriptRoot}/tenant/${tenantId}/users/disable-setup-mode`, {
+                method: 'POST',
                 credentials: 'same-origin'
             });
             const data = await response.json();
 
-            const indicator = document.getElementById(`passkey-count-${userId}`);
-            if (indicator) {
-                if (data.passkey_count > 0) {
-                    indicator.innerHTML = `<span style="color: #059669;">${data.passkey_count} passkey${data.passkey_count > 1 ? 's' : ''}</span>`;
-                    indicator.classList.add('has-passkey');
-                } else {
-                    indicator.innerHTML = '<span>None</span>';
-                }
+            if (data.success) {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert(data.error || 'Failed to disable setup mode');
             }
         } catch (err) {
-            console.error(`Failed to load passkey count for ${userId}:`, err);
+            console.error('Error disabling setup mode:', err);
+            alert('Failed to disable setup mode');
         }
-    }
+    });
+}
+
+// Enable setup mode
+const enableSetupBtn = document.getElementById('enable-setup-mode-btn');
+if (enableSetupBtn) {
+    enableSetupBtn.addEventListener('click', async function() {
+        if (!confirm('Re-enable setup mode? This allows test credentials to work again.')) return;
+
+        try {
+            const response = await fetch(`${scriptRoot}/tenant/${tenantId}/users/enable-setup-mode`, {
+                method: 'POST',
+                credentials: 'same-origin'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert(data.error || 'Failed to enable setup mode');
+            }
+        } catch (err) {
+            console.error('Error enabling setup mode:', err);
+            alert('Failed to enable setup mode');
+        }
+    });
 }
 
 // Initialize
-loadPasskeyCounts();
+loadAuthConfig();
 </script>
 {% endblock %}

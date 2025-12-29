@@ -17,7 +17,6 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
-    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -106,6 +105,10 @@ class Tenant(Base, JSONValidatorMixin):
     # Brand manifest policy - controls whether brand context is required
     # Values: "public" (default), "private", or other policy strings
     brand_manifest_policy: Mapped[str] = mapped_column(String(50), nullable=False, server_default="public")
+
+    # Auth setup mode - when True, test credentials work; when False, only SSO works
+    # New tenants start in setup mode until SSO is configured and tested
+    auth_setup_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
@@ -589,7 +592,6 @@ class User(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")
-    passkeys = relationship("UserPasskey", back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'manager', 'viewer')"),
@@ -597,38 +599,6 @@ class User(Base):
         Index("idx_users_tenant", "tenant_id"),
         Index("idx_users_email", "email"),
         Index("idx_users_google_id", "google_id"),
-    )
-
-
-class UserPasskey(Base):
-    """WebAuthn passkey credentials for passwordless authentication."""
-
-    __tablename__ = "user_passkeys"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String(50), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
-    tenant_id: Mapped[str] = mapped_column(
-        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False
-    )
-
-    # WebAuthn credential data
-    credential_id: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, unique=True)
-    public_key: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    sign_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
-    # Metadata
-    name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g., "MacBook Pro", "YubiKey"
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    # Relationships
-    user: Mapped["User"] = relationship(back_populates="passkeys")
-    tenant: Mapped["Tenant"] = relationship()
-
-    __table_args__ = (
-        Index("idx_user_passkeys_user_id", "user_id"),
-        Index("idx_user_passkeys_tenant_id", "tenant_id"),
-        Index("idx_user_passkeys_credential_id", "credential_id", unique=True),
     )
 
 

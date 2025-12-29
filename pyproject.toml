@@ -43,7 +43,6 @@ dependencies = [
     "babel>=2.17.0",
     "logfire>=4.16.0",
     "pydantic-ai>=0.3.0",
-    "webauthn>=2.7.0",
 ]
 
 

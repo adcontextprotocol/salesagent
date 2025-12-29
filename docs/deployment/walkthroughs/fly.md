@@ -25,6 +25,26 @@ fly apps create your-app-name
 
 ## Step 3: Create PostgreSQL Database
 
+Choose one of these database options:
+
+### Option A: Fly Managed Postgres (Recommended)
+
+[Fly Managed Postgres](https://fly.io/docs/mpg/) is Fly's fully-managed database service with automatic backups, high availability, and 24/7 support.
+
+```bash
+# Create Managed Postgres cluster
+fly mpg create --name your-app-db --region iad --plan basic
+
+# Attach to your app (automatically sets DATABASE_URL)
+fly mpg attach your-app-db -a your-app-name
+```
+
+> **Plan Options**: `basic` ($38/month, 1GB RAM) is sufficient for most deployments. See [Fly MPG pricing](https://fly.io/docs/mpg/) for other plans.
+
+### Option B: Fly Postgres (Self-Managed)
+
+[Fly Postgres](https://fly.io/docs/postgres/) runs PostgreSQL as a Fly app that you manage yourself. Lower cost, but you handle backups and maintenance.
+
 ```bash
 # Create PostgreSQL cluster
 fly postgres create --name your-app-db \
@@ -37,7 +57,8 @@ fly postgres create --name your-app-db \
 fly postgres attach your-app-db --app your-app-name
 ```
 
-Verify DATABASE_URL is set:
+### Verify Database Connection
+
 ```bash
 fly secrets list --app your-app-name
 ```
@@ -83,7 +104,16 @@ Add redirect URI to [Google OAuth credentials](https://console.cloud.google.com/
 
 ## Step 5: Deploy
 
+**Option A: Use prebuilt image (recommended)**
 ```bash
+fly deploy --image docker.io/adcontextprotocol/salesagent:latest
+```
+
+**Option B: Build from source**
+```bash
+# Clone the repository first
+git clone https://github.com/adcontextprotocol/salesagent.git
+cd salesagent
 fly deploy
 ```
 
@@ -147,8 +177,9 @@ fly scale memory 2048
 # Verify DATABASE_URL is set
 fly secrets list --app your-app-name | grep DATABASE
 
-# Check if postgres is attached
-fly postgres list
+# Check attached databases
+fly mpg list        # For Managed Postgres
+fly postgres list   # For self-managed Postgres
 
 # Test database connectivity
 fly ssh console --app your-app-name -C "python -c \"from src.core.database.db_config import get_db_connection; print(get_db_connection())\""
@@ -193,8 +224,14 @@ The deployment uses these files from the repository:
 
 ## Costs
 
-- **shared-cpu-1x VM**: ~$5/month
-- **PostgreSQL shared-cpu-1x**: ~$7/month
-- **Volume storage**: ~$0.15/GB/month
+**With Managed Postgres:**
+- App VM (shared-cpu-2x): ~$10/month
+- Managed Postgres (basic): $38/month
+- Storage: ~$0.28/GB/month
+- **Total: ~$50/month**
 
-Total for a basic deployment: ~$12-15/month
+**With Self-Managed Postgres:**
+- App VM (shared-cpu-1x): ~$5/month
+- Postgres VM (shared-cpu-1x): ~$7/month
+- Volume storage: ~$0.15/GB/month
+- **Total: ~$15/month**
