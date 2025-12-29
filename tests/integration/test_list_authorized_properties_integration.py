@@ -27,7 +27,7 @@ def test_list_authorized_properties_reads_from_publisher_partner(integration_db)
         session.add(tenant)
         session.commit()
 
-        # Create verified PublisherPartner records
+        # Create PublisherPartner records (mix of verified and unverified)
         partners = [
             PublisherPartner(
                 tenant_id="test_tenant",
@@ -43,7 +43,7 @@ def test_list_authorized_properties_reads_from_publisher_partner(integration_db)
                 is_verified=True,
                 sync_status="success",
             ),
-            # Unverified publisher (should NOT be included)
+            # Unverified publisher (should still be included - buyers see full portfolio)
             PublisherPartner(
                 tenant_id="test_tenant",
                 publisher_domain="pending.com",
@@ -61,15 +61,16 @@ def test_list_authorized_properties_reads_from_publisher_partner(integration_db)
             # Call list_authorized_properties
             response = _list_authorized_properties_impl(req=None, context=None)
 
-        # Verify response
-        assert response.publisher_domains == ["example.com", "test.org"]
-        assert "pending.com" not in response.publisher_domains
-        assert len(response.publisher_domains) == 2
+        # Verify all registered publishers are returned (regardless of verification status)
+        assert len(response.publisher_domains) == 3
+        assert "example.com" in response.publisher_domains
+        assert "test.org" in response.publisher_domains
+        assert "pending.com" in response.publisher_domains
 
 
 @pytest.mark.requires_db
-def test_list_authorized_properties_only_returns_verified_publishers(integration_db):
-    """Test that only verified publishers are returned."""
+def test_list_authorized_properties_returns_all_registered_publishers(integration_db):
+    """Test that all registered publishers are returned regardless of verification status."""
     with get_db_session() as session:
         # Create test tenant
         tenant = Tenant(
@@ -120,19 +121,18 @@ def test_list_authorized_properties_only_returns_verified_publishers(integration
         with patch("src.core.tools.properties.get_principal_from_context", return_value=(None, tenant_dict)):
             response = _list_authorized_properties_impl(req=None, context=None)
 
-        # Verify only verified publishers returned
-        assert len(response.publisher_domains) == 2
+        # Verify all registered publishers are returned (regardless of verification status)
+        # This allows buyers to see the full portfolio during publisher setup
+        assert len(response.publisher_domains) == 4
         assert "verified1.com" in response.publisher_domains
         assert "verified2.com" in response.publisher_domains
-        assert "unverified1.com" not in response.publisher_domains
-        assert "failed.com" not in response.publisher_domains
+        assert "unverified1.com" in response.publisher_domains
+        assert "failed.com" in response.publisher_domains
 
 
 @pytest.mark.requires_db
-def test_list_authorized_properties_error_when_no_publishers(integration_db):
-    """Test that clear error is raised when no verified publishers exist."""
-    from fastmcp.exceptions import ToolError
-
+def test_list_authorized_properties_returns_empty_when_no_publishers(integration_db):
+    """Test that empty list is returned when no verified publishers exist."""
     with get_db_session() as session:
         # Create test tenant with no publishers
         tenant = Tenant(
@@ -147,14 +147,13 @@ def test_list_authorized_properties_error_when_no_publishers(integration_db):
         # Mock get_principal_from_context
         tenant_dict = {"tenant_id": "test_tenant3"}
         with patch("src.core.tools.properties.get_principal_from_context", return_value=(None, tenant_dict)):
-            # Call list_authorized_properties - should raise error
-            with pytest.raises(ToolError) as exc_info:
-                _list_authorized_properties_impl(req=None, context=None)
+            # Call list_authorized_properties - should return empty list, not error
+            response = _list_authorized_properties_impl(req=None, context=None)
 
-        # Verify error message
-        assert "NO_PUBLISHERS_CONFIGURED" in str(exc_info.value)
-        assert "test_tenant3" in str(exc_info.value)
-        assert "/inventory#publishers-pane" in str(exc_info.value)
+        # Verify empty response with helpful description
+        assert response.publisher_domains == []
+        assert response.portfolio_description is not None
+        assert "No publisher partnerships" in response.portfolio_description
 
 
 @pytest.mark.requires_db

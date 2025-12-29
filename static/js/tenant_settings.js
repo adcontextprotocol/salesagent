@@ -266,6 +266,11 @@ function detectGAMNetwork() {
                     document.getElementById('gam_trafficker_id').value = data.trafficker_id;
                 }
 
+                // Store currency/timezone info for save
+                window.gamDetectedCurrency = data.currency_code || 'USD';
+                window.gamSecondaryCurrencies = data.secondary_currencies || [];
+                window.gamDetectedTimezone = data.timezone || null;
+
                 alert(`✅ Network code detected: ${data.network_code}`);
             }
         } else {
@@ -354,6 +359,11 @@ function confirmNetworkSelection(refreshToken) {
                 document.getElementById('gam_trafficker_id').value = data.trafficker_id;
             }
 
+            // Store currency/timezone info for save (use the selected network's values)
+            window.gamDetectedCurrency = selectedNetwork.currency_code || 'USD';
+            window.gamSecondaryCurrencies = selectedNetwork.secondary_currencies || [];
+            window.gamDetectedTimezone = selectedNetwork.timezone || null;
+
             alert(`✅ Network selected: ${selectedNetwork.network_name} (${selectedNetworkCode})`);
         } else {
             alert('❌ Error getting trafficker ID: ' + (data.error || 'Unknown error'));
@@ -426,6 +436,11 @@ function saveGAMConfig() {
     const orderNameTemplate = (document.getElementById('gam_order_name_template') || document.getElementById('order_name_template'))?.value || '';
     const lineItemNameTemplate = (document.getElementById('gam_line_item_name_template') || document.getElementById('line_item_name_template'))?.value || '';
 
+    // Get detected currency/timezone info (stored when network was detected)
+    const networkCurrency = window.gamDetectedCurrency || null;
+    const secondaryCurrencies = window.gamSecondaryCurrencies || [];
+    const networkTimezone = window.gamDetectedTimezone || null;
+
     if (!refreshToken) {
         alert('Please provide a Refresh Token');
         return;
@@ -447,7 +462,10 @@ function saveGAMConfig() {
             gam_refresh_token: refreshToken,
             gam_trafficker_id: traffickerId,
             order_name_template: orderNameTemplate,
-            line_item_name_template: lineItemNameTemplate
+            line_item_name_template: lineItemNameTemplate,
+            network_currency: networkCurrency,
+            secondary_currencies: secondaryCurrencies,
+            network_timezone: networkTimezone
         })
     })
     .then(response => response.json())
@@ -466,6 +484,67 @@ function saveGAMConfig() {
         button.disabled = false;
         button.textContent = originalText;
         alert('❌ Error: ' + error.message);
+    });
+}
+
+// Refresh GAM info (currencies, etc.) from GAM API and save to config
+function refreshGAMInfo() {
+    const refreshToken = document.getElementById('gam_refresh_token').value;
+    const networkCode = document.getElementById('gam_network_code').value;
+
+    if (!refreshToken) {
+        alert('Please configure OAuth first');
+        return;
+    }
+
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Refreshing...';
+
+    // First, call test-connection to get current GAM network info
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/test-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.networks && data.networks.length > 0) {
+            const network = data.networks[0];
+            // Save updated currency/timezone info via configure endpoint
+            // Note: test-connection returns currencyCode/secondaryCurrencyCodes/timeZone (camelCase from GAM API)
+            return fetch(`${config.scriptName}/tenant/${config.tenantId}/gam/configure`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    auth_method: 'oauth',
+                    network_code: networkCode || network.networkCode,
+                    refresh_token: refreshToken,
+                    trafficker_id: document.getElementById('gam_trafficker_id')?.value,
+                    network_currency: network.currencyCode,
+                    secondary_currencies: network.secondaryCurrencyCodes || [],
+                    network_timezone: network.timeZone
+                })
+            });
+        }
+        throw new Error(data.error || 'Failed to fetch GAM info');
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.textContent = originalText;
+        if (data.success) {
+            alert('GAM info refreshed successfully');
+            location.reload();
+        } else {
+            alert('Failed to save: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.textContent = originalText;
+        alert('Error: ' + error.message);
     });
 }
 
@@ -2011,3 +2090,275 @@ document.addEventListener('DOMContentLoaded', function() {
         updateNamingPreview();
     }
 });
+
+// =============================================================================
+// Publisher Partners Management
+// =============================================================================
+
+// Load publishers when the publishers section becomes active
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if we're on publishers section or hash indicates it
+    const hash = window.location.hash.substring(1);
+    if (hash === 'publishers') {
+        loadPublishers();
+    }
+
+    // Also load when switching to publishers section
+    const publishersNavItem = document.querySelector('[data-section="publishers"]');
+    if (publishersNavItem) {
+        publishersNavItem.addEventListener('click', function() {
+            loadPublishers();
+        });
+    }
+});
+
+// Load and display publishers
+function loadPublishers() {
+    const container = document.getElementById('publishers-list');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div style="text-align: center; padding: 2rem; color: #6b7280;">
+            <span style="font-size: 1.5rem;">⏳</span>
+            <p>Loading publishers...</p>
+        </div>
+    `;
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/publisher-partners`, {
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #dc2626;">
+                    <span style="font-size: 1.5rem;">❌</span>
+                    <p>Error: ${escapeHtml(data.error)}</p>
+                </div>
+            `;
+            return;
+        }
+
+        if (!data.partners || data.partners.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 3rem; background: #f9fafb; border: 2px dashed #e5e7eb; border-radius: 8px;">
+                    <span style="font-size: 2rem;">🌐</span>
+                    <h3 style="margin: 1rem 0 0.5rem 0; color: #374151;">No Publishers Yet</h3>
+                    <p style="color: #6b7280; margin-bottom: 1rem;">Add your first publisher partner to start selling their inventory.</p>
+                    <button onclick="showAddPublisherModal()" class="btn btn-primary">+ Add Publisher</button>
+                </div>
+            `;
+            return;
+        }
+
+        // Render publishers table
+        let html = `
+            <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px;">
+                <strong>${data.verified}</strong> verified, <strong>${data.pending}</strong> pending verification
+            </div>
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #e5e7eb;">
+                        <th style="text-align: left; padding: 0.75rem; font-weight: 600; color: #374151;">Publisher</th>
+                        <th style="text-align: left; padding: 0.75rem; font-weight: 600; color: #374151;">Status</th>
+                        <th style="text-align: left; padding: 0.75rem; font-weight: 600; color: #374151;">Properties</th>
+                        <th style="text-align: left; padding: 0.75rem; font-weight: 600; color: #374151;">Last Synced</th>
+                        <th style="text-align: right; padding: 0.75rem; font-weight: 600; color: #374151;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        data.partners.forEach(partner => {
+            const statusBadge = partner.is_verified
+                ? '<span style="display: inline-block; padding: 0.25rem 0.5rem; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Verified</span>'
+                : partner.sync_status === 'error'
+                    ? '<span style="display: inline-block; padding: 0.25rem 0.5rem; background: #fee2e2; color: #991b1b; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Error</span>'
+                    : '<span style="display: inline-block; padding: 0.25rem 0.5rem; background: #fef3c7; color: #92400e; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Pending</span>';
+
+            const lastSynced = partner.last_synced_at
+                ? new Date(partner.last_synced_at).toLocaleDateString()
+                : 'Never';
+
+            html += `
+                <tr style="border-bottom: 1px solid #f3f4f6;">
+                    <td style="padding: 0.75rem;">
+                        <div style="font-weight: 600;">${escapeHtml(partner.display_name)}</div>
+                        <div style="font-size: 0.875rem; color: #6b7280;">${escapeHtml(partner.publisher_domain)}</div>
+                    </td>
+                    <td style="padding: 0.75rem;">
+                        ${statusBadge}
+                        ${partner.sync_error ? `<div style="font-size: 0.75rem; color: #dc2626; margin-top: 0.25rem;">${escapeHtml(partner.sync_error)}</div>` : ''}
+                    </td>
+                    <td style="padding: 0.75rem; color: #6b7280;">${partner.property_count || 0}</td>
+                    <td style="padding: 0.75rem; color: #6b7280;">${lastSynced}</td>
+                    <td style="padding: 0.75rem; text-align: right;">
+                        <button onclick="deletePublisher(${partner.id}, '${escapeHtml(partner.publisher_domain)}')"
+                                class="btn btn-sm" style="background: #fee2e2; color: #991b1b; border: none; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer;">
+                            Delete
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    })
+    .catch(error => {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 2rem; color: #dc2626;">
+                <span style="font-size: 1.5rem;">❌</span>
+                <p>Error loading publishers: ${escapeHtml(error.message)}</p>
+            </div>
+        `;
+    });
+}
+
+// Show add publisher modal
+function showAddPublisherModal() {
+    const modal = document.getElementById('add-publisher-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        document.getElementById('publisher-domain').focus();
+    }
+}
+
+// Hide add publisher modal
+function hideAddPublisherModal() {
+    const modal = document.getElementById('add-publisher-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.getElementById('add-publisher-form').reset();
+    }
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', function(e) {
+    const modal = document.getElementById('add-publisher-modal');
+    if (modal && e.target === modal) {
+        hideAddPublisherModal();
+    }
+});
+
+// Add publisher
+function addPublisher(event) {
+    event.preventDefault();
+
+    const domain = document.getElementById('publisher-domain').value.trim();
+    const displayName = document.getElementById('publisher-display-name').value.trim();
+    const submitBtn = document.getElementById('add-publisher-submit');
+
+    if (!domain) {
+        alert('Please enter a publisher domain');
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Adding...';
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/publisher-partners`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            publisher_domain: domain,
+            display_name: displayName || domain
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add Publisher';
+
+        if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+        }
+
+        hideAddPublisherModal();
+        loadPublishers();
+
+        // Show success message
+        if (data.message) {
+            alert(data.message);
+        }
+    })
+    .catch(error => {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add Publisher';
+        alert('Error: ' + error.message);
+    });
+}
+
+// Delete publisher
+function deletePublisher(partnerId, domain) {
+    if (!confirm(`Are you sure you want to remove ${domain}? This will remove authorization to sell their inventory.`)) {
+        return;
+    }
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/publisher-partners/${partnerId}`, {
+        method: 'DELETE',
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+        }
+
+        loadPublishers();
+    })
+    .catch(error => {
+        alert('Error: ' + error.message);
+    });
+}
+
+// Sync all publishers
+function syncAllPublishers() {
+    const btn = document.getElementById('sync-publishers-btn');
+    const icon = document.getElementById('sync-publishers-icon');
+
+    btn.disabled = true;
+    icon.style.animation = 'spin 1s linear infinite';
+
+    fetch(`${config.scriptName}/tenant/${config.tenantId}/publisher-partners/sync`, {
+        method: 'POST',
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        icon.style.animation = '';
+
+        if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+        }
+
+        loadPublishers();
+
+        // Show summary
+        if (data.results) {
+            const verified = data.results.filter(r => r.is_verified).length;
+            const failed = data.results.filter(r => !r.is_verified).length;
+            alert(`Verification complete: ${verified} verified, ${failed} not verified`);
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        icon.style.animation = '';
+        alert('Error: ' + error.message);
+    });
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}

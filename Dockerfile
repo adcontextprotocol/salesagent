@@ -71,7 +71,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Install supercronic for cron jobs (container-friendly cron)
 ARG TARGETARCH
 RUN SUPERCRONIC_ARCH=$(case "${TARGETARCH}" in "arm64") echo "linux-arm64" ;; *) echo "linux-amd64" ;; esac) && \
-    curl -fsSL "https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-${SUPERCRONIC_ARCH}" \
+    curl -fsSL "https://github.com/aptible/supercronic/releases/download/v0.2.41/supercronic-${SUPERCRONIC_ARCH}" \
     -o /usr/local/bin/supercronic && \
     chmod +x /usr/local/bin/supercronic
 
@@ -88,11 +88,12 @@ RUN echo "Cache bust: $CACHE_BUST"
 # Copy application code
 COPY . .
 
-# Copy both nginx configs - run_all_services.py selects based on ADCP_MULTI_TENANT env var
-# Default: simple (single-tenant, path-based routing)
-# ADCP_MULTI_TENANT=true: full config with subdomain routing
-COPY config/nginx/nginx-simple.conf /etc/nginx/nginx-simple.conf
-COPY config/nginx/nginx.conf /etc/nginx/nginx-multi-tenant.conf
+# Copy nginx configs for production - run_all_services.py selects based on ADCP_MULTI_TENANT
+# Default: single-tenant (path-based routing)
+# ADCP_MULTI_TENANT=true: multi-tenant (subdomain routing)
+# Note: nginx-development.conf is only used by docker-compose, not copied to image
+COPY config/nginx/nginx-single-tenant.conf /etc/nginx/nginx-single-tenant.conf
+COPY config/nginx/nginx-multi-tenant.conf /etc/nginx/nginx-multi-tenant.conf
 
 # Create nginx directories with proper permissions
 RUN mkdir -p /var/log/nginx /var/run && \
@@ -111,8 +112,9 @@ RUN --mount=type=cache,target=/cache/uv \
     --mount=type=cache,target=/root/.cache/pip \
     uv sync --python=/usr/local/bin/python3.12 --frozen
 
-# Add .venv to PATH
+# Add .venv to PATH and set PYTHONPATH for module imports
 ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app"
 ENV PYTHONUNBUFFERED=1
 
 # Default port
@@ -127,5 +129,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Use ENTRYPOINT to ensure the script runs
-ENTRYPOINT ["/bin/bash", "./scripts/deploy/entrypoint.sh"]
+# Use venv Python directly as entrypoint (prepares for hardened images that lack bash)
+ENTRYPOINT ["/app/.venv/bin/python", "scripts/deploy/run_all_services.py"]
