@@ -99,6 +99,40 @@ from src.core.tools import (
 )
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
+
+def _get_sales_agent_version() -> str:
+    """Get the sales agent version from package metadata or pyproject.toml.
+
+    Returns:
+        Version string (e.g., "0.4.1")
+    """
+    # Try importlib.metadata first (works when package is installed)
+    try:
+        from importlib.metadata import version
+
+        return version("adcp-sales-agent")
+    except Exception:
+        pass
+
+    # Fall back to reading pyproject.toml directly (works in development)
+    try:
+        import tomllib
+        from pathlib import Path
+
+        # Look for pyproject.toml relative to this file
+        project_root = Path(__file__).parent.parent.parent
+        pyproject_path = project_root / "pyproject.toml"
+
+        if pyproject_path.exists():
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+                return data.get("project", {}).get("version", "0.0.0")
+    except Exception:
+        pass
+
+    return "0.0.0"
+
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -2227,6 +2261,9 @@ def create_agent_card() -> AgentCard:
     from a2a.types import AgentCapabilities, AgentSkill
     from adcp import get_adcp_version
 
+    # Get sales agent version from package metadata or pyproject.toml
+    sales_agent_version = _get_sales_agent_version()
+
     # Create AdCP extension (AdCP 2.5 spec)
     # As of adcp 2.12.1, get_adcp_version() returns the protocol version (e.g., "2.5.0")
     # Previously it returned the schema version (e.g., "v1"), but this was fixed upstream
@@ -2244,7 +2281,7 @@ def create_agent_card() -> AgentCard:
     agent_card = AgentCard(
         name="AdCP Sales Agent",
         description="AI agent for programmatic advertising campaigns via AdCP protocol",
-        version="1.0.0",
+        version=sales_agent_version,
         protocol_version="1.0",
         capabilities=AgentCapabilities(
             push_notifications=True,
