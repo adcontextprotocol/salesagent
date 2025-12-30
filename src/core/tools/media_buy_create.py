@@ -229,6 +229,38 @@ def _extract_creative_url_and_dimensions(
     return url, width, height
 
 
+def _get_format_spec_sync(agent_url: str, format_id: str) -> Any | None:
+    """Get format specification synchronously using asyncio event loop.
+    
+    This helper function wraps the async registry.get_format() call to make it
+    usable in synchronous contexts. The registry uses in-memory cache (30min TTL)
+    and falls back to the creative agent if not cached.
+    
+    Args:
+        agent_url: Creative agent URL
+        format_id: Format ID to fetch
+        
+    Returns:
+        Format specification object or None if not found
+    """
+    import asyncio
+
+    from src.core.creative_agent_registry import get_creative_agent_registry
+
+    registry = get_creative_agent_registry()
+    
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(registry.get_format(agent_url, format_id))
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.warning(f"Could not fetch format {format_id} from {agent_url}: {e}")
+        return None
+
+
 def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: str) -> None:
     """Validate all creatives have required fields BEFORE calling adapter.
 
@@ -244,11 +276,8 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
     Raises:
         ToolError: If any creative is missing required fields (URL, dimensions)
     """
-    import asyncio
-
     from sqlalchemy import select
 
-    from src.core.creative_agent_registry import get_creative_agent_registry
     from src.core.database.database_session import get_db_session
     from src.core.database.models import Creative as DBCreative
 
@@ -269,9 +298,6 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
         )
         creatives_list = list(session.scalars(stmt).all())
 
-    # Get creative registry for format lookup
-    registry = get_creative_agent_registry()
-
     # Validate each creative has required fields
     validation_errors = []
     for creative in creatives_list:
@@ -280,17 +306,7 @@ def _validate_creatives_before_adapter_call(packages: list[Package], tenant_id: 
         # Get format specification from creative agent (uses in-memory cache with 30min TTL)
         format_spec = None
         if creative.format:
-            try:
-                # Use asyncio event loop to run async registry.get_format() synchronously
-                # registry.get_format() uses in-memory cache (30min TTL) and falls back to agent
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    format_spec = loop.run_until_complete(registry.get_format(creative.agent_url, str(creative.format)))
-                finally:
-                    loop.close()
-            except Exception as e:
-                logger.warning(f"Could not fetch format {creative.format} from {creative.agent_url}: {e}")
+            format_spec = _get_format_spec_sync(creative.agent_url, str(creative.format))
 
         # Fail validation if format spec not found (no skipping!)
         if not format_spec:
@@ -2990,18 +3006,15 @@ async def _create_media_buy_impl(
                                     creative_data = creative.data or {}
 
                                     # Get format spec for proper extraction
-                                    # Use cache-based approach (same as validation section) to avoid asyncio event loop conflicts
-                                    from src.core.format_spec_cache import get_cached_format
-
+                                    # Uses shared helper with in-memory cache (30min TTL)
                                     format_spec = None
-                                    try:
-                                        # Try cache first (works in any context, no asyncio conflicts)
-                                        format_spec = get_cached_format(str(creative.format))
-                                    except (ValueError, Exception) as e:
-                                        logger.warning(
-                                            f"[AUTO-APPROVAL] Could not load format spec for creative {creative_id} "
-                                            f"(format={creative.format}): {e}"
-                                        )
+                                    if creative.format:
+                                        format_spec = _get_format_spec_sync(creative.agent_url, str(creative.format))
+                                        if not format_spec:
+                                            logger.warning(
+                                                f"[AUTO-APPROVAL] Could not fetch format {creative.format} "
+                                                f"from {creative.agent_url}"
+                                            )
 
                                     # Extract URL and dimensions using shared helper
                                     url, width, height = _extract_creative_url_and_dimensions(

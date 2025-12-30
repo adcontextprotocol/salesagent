@@ -977,6 +977,82 @@ class TestCreativeLifecycleMCP:
             assert response.query_summary.returned == 0
             assert response.pagination.has_more is False
 
+    def test_get_format_spec_sync_helper(self, mock_context):
+        """Test _get_format_spec_sync helper function for format specification retrieval."""
+        from src.core.tools.media_buy_create import _get_format_spec_sync
+
+        # Test successful format retrieval (uses mock_format_registry fixture)
+        format_spec = _get_format_spec_sync(
+            "https://creative.adcontextprotocol.org", "display_300x250_image"
+        )
+        assert format_spec is not None
+        assert format_spec.format_id.id == "display_300x250_image"
+        assert format_spec.name == "Display 300x250 Image"
+
+        # Test unknown format returns None
+        format_spec = _get_format_spec_sync(
+            "https://creative.adcontextprotocol.org", "unknown_format_xyz"
+        )
+        assert format_spec is None
+
+    def test_validate_creatives_missing_required_fields(self, mock_context):
+        """Test _validate_creatives_before_adapter_call detects missing required fields."""
+        from src.core.tools.media_buy_create import _validate_creatives_before_adapter_call
+        from src.core.schemas import PackageRequest
+        from fastmcp.exceptions import ToolError
+
+        with get_db_session() as session:
+            creative_no_url = DBCreative(
+                tenant_id=self.test_tenant_id,
+                creative_id="validate_test_no_url",
+                principal_id=self.test_principal_id,
+                name="Creative Missing URL",
+                agent_url="https://creative.adcontextprotocol.org",
+                format="display_300x250_image",
+                status="approved",
+                data={
+                    "assets": {
+                        "banner_image": {
+                            # Missing URL - only has dimensions
+                            "width": 300,
+                            "height": 250,
+                        },
+                        "click_url": {
+                            "url": "https://example.com/landing"
+                        }
+                    }
+                },
+            )
+            session.add(creative_no_url)
+            session.commit()
+
+        packages = [
+            PackageRequest(
+                product_id="prod_1",
+                buyer_ref="pkg_ref_3",
+                budget=1000.0,
+                creative_ids=["validate_test_no_url"],
+                pricing_option_id="price_1",
+            )
+        ]
+
+        from unittest.mock import MagicMock
+        mock_format = MagicMock()
+        mock_format.output_format_ids = None
+        
+        mock_asset_req = MagicMock()
+        mock_asset_req.asset_type = "image"
+        mock_asset_req.asset_id = "banner_image"
+        mock_format.assets_required = [mock_asset_req]
+        
+        with patch("src.core.tools.media_buy_create._get_format_spec_sync", return_value=mock_format):
+            with pytest.raises(ToolError) as exc_info:
+                _validate_creatives_before_adapter_call(packages, self.test_tenant_id)
+            
+            error_msg = str(exc_info.value).lower()
+            assert "validate_test_no_url" in error_msg
+            assert ("url" in error_msg or "required" in error_msg)
+
     async def test_create_media_buy_with_creative_ids(self, mock_context, sample_creatives):
         """Test create_media_buy accepts creative_ids in packages."""
         # First, sync creatives to have IDs to reference
