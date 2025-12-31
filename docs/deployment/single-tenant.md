@@ -14,7 +14,7 @@ Single-tenant mode is the default and recommended for most publishers deploying 
 
 - Docker and Docker Compose (or your cloud platform's container service)
 - PostgreSQL database (required)
-- Google OAuth credentials (for production Admin UI access)
+- OAuth credentials from your identity provider (Google, Microsoft, Okta, etc.) - configured via Admin UI
 
 ## Docker Images
 
@@ -60,12 +60,12 @@ docker pull ghcr.io/adcontextprotocol/salesagent:latest
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `SUPER_ADMIN_EMAILS` | Yes | Comma-separated admin emails |
-| `ADCP_AUTH_TEST_MODE` | No | Set to `true` for testing without OAuth |
-| `GOOGLE_CLIENT_ID` | For OAuth | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | For OAuth | Google OAuth client secret |
+| `CREATE_DEMO_TENANT` | No | Set to `true` for initial setup with demo data |
+| `GEMINI_API_KEY` | No | For AI-powered creative review |
 
-For a complete list including AI configuration, GAM integration, and all optional settings, see the **[Environment Variables Reference](environment-variables.md)**.
+Authentication is configured **per-tenant** via the Admin UI (Users & Access page). No OAuth environment variables required.
+
+For a complete list including GAM integration and all optional settings, see the **[Environment Variables Reference](environment-variables.md)**.
 
 > **Session Cookies**: In single-tenant mode (default), session cookies use the actual request domain, allowing the sales agent to work with any custom domain. In multi-tenant mode, cookies are scoped to a base domain to work across tenant subdomains. See [Multi-Tenant Setup](multi-tenant.md) for details.
 
@@ -76,11 +76,6 @@ For a complete list including AI configuration, GAM integration, and all optiona
 ```bash
 # Download compose file
 curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml
-
-# Create environment file (optional - test mode works without it)
-cat > .env << 'EOF'
-SUPER_ADMIN_EMAILS=your-email@example.com
-EOF
 
 # Start services
 docker compose up -d
@@ -144,12 +139,18 @@ docker compose exec adcp-server python migrate.py
 docker compose exec adcp-server alembic revision -m "description"
 ```
 
-## Google OAuth Setup
+## SSO Setup
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create OAuth 2.0 Client ID (Web application)
-3. Add redirect URI: `https://your-domain.com/auth/google/callback`
-4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` environment variables
+SSO is configured per-tenant via the Admin UI:
+
+1. Log in with test credentials (Setup Mode is enabled by default)
+2. Go to **Users & Access** page
+3. Configure your identity provider (Google, Microsoft, Okta, Auth0, Keycloak, or custom OIDC)
+4. Add redirect URI to your provider: `https://your-domain.com/auth/oidc/callback`
+5. Test the SSO login
+6. Disable Setup Mode once SSO is working
+
+See [SSO Setup Guide](../user-guide/sso-setup.md) for detailed provider-specific instructions.
 
 ## Custom Domain Configuration
 
@@ -172,7 +173,8 @@ docker compose exec postgres pg_isready
 
 - [ ] Use HTTPS in production
 - [ ] Set strong database passwords
-- [ ] Configure `SUPER_ADMIN_EMAILS` correctly
+- [ ] Configure SSO and disable Setup Mode
+- [ ] Restrict authorized email domains per-tenant
 - [ ] Rotate API tokens regularly
 - [ ] Never commit `.env` files
 - [ ] Implement backup strategy
@@ -189,10 +191,27 @@ docker compose exec -T postgres psql -U adcp_user adcp < backup.sql
 
 ## First-Time Setup
 
-On first startup:
-1. Super admins (from `SUPER_ADMIN_EMAILS`) get automatic access
-2. With `CREATE_DEMO_TENANT=false` (default): Clean slate - create your tenant via Admin UI signup
-3. With `CREATE_DEMO_TENANT=true`: Creates a "Default Publisher" tenant with mock adapter for evaluation
+On first startup, the system creates an empty default tenant with **Setup Mode** enabled. This allows you to log in with test credentials to configure SSO:
+
+- Email: `test_super_admin@example.com`
+- Password: `test123`
+
+**To complete setup:**
+1. Log in with test credentials
+2. Configure SSO in **Users & Access** (see [SSO Setup Guide](../user-guide/sso-setup.md))
+3. Test your SSO login works
+4. Disable Setup Mode to require SSO for all users
+
+### Local Testing with Demo Data
+
+For local development without a real ad server:
+
+```bash
+# Add to .env for local testing only - NOT for production
+CREATE_DEMO_TENANT=true
+```
+
+This creates a "Default Publisher" tenant with a mock adapter, sample currencies, and test data for exploring features.
 
 ## Next Steps
 

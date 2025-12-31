@@ -1,6 +1,20 @@
 # Single Sign-On (SSO) Setup Guide
 
-This guide walks you through configuring SSO for your tenant using OpenID Connect (OIDC). SSO allows your team to authenticate using your organization's identity provider instead of test credentials.
+This guide walks you through configuring SSO for your tenant using OpenID Connect (OIDC). SSO is the recommended authentication method for all deployments.
+
+## First-Time Setup
+
+New tenants start in **Setup Mode**, which enables test credentials for initial configuration:
+
+1. **Start the system** with `docker compose up -d`
+2. **Log in** with test credentials:
+   - Email: `test_super_admin@example.com`
+   - Password: `test123`
+3. **Configure SSO** following this guide
+4. **Test your SSO login** works
+5. **Disable Setup Mode** - after this, only SSO authentication works
+
+> **Important**: Setup Mode is only for initial configuration. Always disable it once SSO is working to ensure production security.
 
 ## Overview
 

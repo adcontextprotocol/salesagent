@@ -9,6 +9,14 @@
 #   - http://localhost:8000/mcp    -> MCP Server
 #   - http://localhost:8000/a2a    -> A2A Server
 #
+# First-time setup:
+#   1. Log in with test credentials (test_super_admin@example.com / test123)
+#   2. Configure SSO in Users & Access
+#   3. Disable Setup Mode once SSO is working
+#
+# Local testing only (not for production):
+#   Add CREATE_DEMO_TENANT=true to .env to create a demo tenant with mock adapter
+#
 # Uses pre-built images from GitHub Container Registry.
 # Pin to a specific version:
 #   IMAGE_TAG=0.1.0 docker compose up -d
@@ -60,7 +68,8 @@ services:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
       SKIP_CRON: "true"
-      ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
+      # Per-tenant Setup Mode enables test credentials for new tenants
+      # Configure SSO and disable Setup Mode for production security
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +92,6 @@ services:
     environment:
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       SKIP_NGINX: "true"
-      ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
     depends_on:
       postgres:
         condition: service_healthy
