@@ -255,9 +255,24 @@ def disable_setup_mode(tenant_id):
     """Disable auth setup mode for the tenant.
 
     Once disabled, test credentials no longer work and only SSO authentication is allowed.
-    This should only be called after SSO has been successfully tested.
+    Requires the user to be logged in via SSO to prevent lockout.
     """
     try:
+        # Require the user to be logged in via SSO (not test credentials)
+        # This ensures they can actually authenticate via SSO before disabling test auth
+        auth_method = session.get("auth_method")
+        if auth_method != "oidc":
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "You must be logged in via SSO to disable setup mode. "
+                        "Log out and log back in using 'Sign in with SSO' to verify SSO works.",
+                    }
+                ),
+                403,
+            )
+
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
@@ -278,7 +293,7 @@ def disable_setup_mode(tenant_id):
             tenant.auth_setup_mode = False
             db_session.commit()
 
-            logger.info(f"Auth setup mode disabled for tenant {tenant_id}")
+            logger.info(f"Auth setup mode disabled for tenant {tenant_id} by user {session.get('user')}")
             return jsonify({"success": True, "message": "Setup mode disabled. Only SSO authentication is now allowed."})
 
     except Exception as e:
