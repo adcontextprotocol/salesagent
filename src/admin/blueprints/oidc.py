@@ -62,7 +62,8 @@ def create_tenant_oauth_client(tenant_id: str):
 def get_config(tenant_id: str):
     """Get OIDC configuration summary for a tenant."""
     summary = get_auth_config_summary(tenant_id)
-    return jsonify(summary)
+    # Return with config key to match frontend expectations and save response format
+    return jsonify({"config": summary, **summary})
 
 
 @oidc_bp.route("/tenant/<tenant_id>/config", methods=["POST"])
