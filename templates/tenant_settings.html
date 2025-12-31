@@ -1686,6 +1686,62 @@ REJECT - Creative cannot be approved:
                     </div>
                 </div>
 
+                <!-- Product Ranking Section -->
+                <div class="form-section">
+                    <h3>Product Ranking</h3>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                        Optionally use AI to rank and filter products based on the buyer's brief
+                    </p>
+
+                    <div class="form-group">
+                        <label for="product_ranking_prompt">AI Ranking Prompt</label>
+                        <textarea id="product_ranking_prompt" name="product_ranking_prompt" class="form-control" rows="6"
+                                  placeholder="Leave empty to return all products without ranking..."
+                                  style="font-family: monospace; font-size: 0.875rem;">{{ tenant.product_ranking_prompt or '' }}</textarea>
+                        <small>When set, AI will use this prompt to rank products based on relevance to the buyer's brief. Leave empty to disable AI ranking and return all products.</small>
+                    </div>
+
+                    {% if not has_gemini_key %}
+                    <div class="alert alert-warning" style="padding: 0.75rem; background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px; margin-top: 1rem;">
+                        <strong>⚠️ Gemini API Key Required</strong>
+                        <p style="margin: 0.5rem 0 0;">Product ranking requires a Gemini API key. Please set your key in <a href="#" onclick="event.preventDefault(); switchSettingsSection('integrations')">Integrations → AI Services</a>.</p>
+                    </div>
+                    {% endif %}
+
+                    <details style="margin-top: 0.75rem;">
+                        <summary style="cursor: pointer; color: #2563eb; font-weight: 500; font-size: 0.875rem;">📝 Show Example Prompts</summary>
+                        <div style="margin-top: 0.75rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; font-size: 0.875rem;">
+                            <strong>Example 1: Simple Relevance Ranking</strong>
+                            <pre style="background: white; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto; white-space: pre-wrap;">Rank products by relevance to the campaign brief.
+Return the top 5 most relevant products.
+Consider: target audience alignment, format suitability, and campaign goals.</pre>
+
+                            <strong>Example 2: Budget-Aware Ranking</strong>
+                            <pre style="background: white; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto; white-space: pre-wrap;">Rank products by relevance to the brief, prioritizing:
+1. Target audience match
+2. Budget efficiency (lower CPM for similar reach)
+3. Format compatibility with campaign goals
+Return up to 10 products, sorted by overall fit.</pre>
+
+                            <strong>Example 3: Brand Safety Focus</strong>
+                            <pre style="background: white; padding: 0.5rem; border-radius: 4px; margin: 0.5rem 0; overflow-x: auto; white-space: pre-wrap;">Rank products considering:
+- Brand safety alignment with the advertiser
+- Premium placement priority
+- Audience quality over quantity
+Exclude any products that don't match the brand's tone.</pre>
+                        </div>
+                    </details>
+
+                    <div style="background: #f0fdf4; padding: 1rem; border-radius: 8px; border-left: 4px solid #22c55e; margin-top: 1rem; font-size: 0.875rem;">
+                        <strong>How It Works:</strong>
+                        <ul style="margin: 0.5rem 0 0 1.5rem;">
+                            <li><strong>Prompt set:</strong> AI ranks products based on brief and returns top matches</li>
+                            <li><strong>No prompt:</strong> All products returned without filtering (default behavior)</li>
+                            <li>Ranking happens during <code>get_products</code> tool calls</li>
+                        </ul>
+                    </div>
+                </div>
+
                 <div class="button-group">
                     <button type="button" onclick="saveBusinessRules()" class="btn btn-primary">
                         Save Business Rules

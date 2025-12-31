@@ -1157,6 +1157,11 @@ def parse_form_data_to_policy_updates(form_data) -> dict[str, Any]:
         if advertising_policy:
             updates["advertising_policy"] = advertising_policy
 
+    # Parse product ranking prompt
+    if "product_ranking_prompt" in form_data:
+        prompt_value = form_data.get("product_ranking_prompt", "").strip()
+        updates["product_ranking_prompt"] = prompt_value if prompt_value else None
+
     return updates
 
 

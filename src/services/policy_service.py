@@ -404,6 +404,10 @@ class PolicyService:
             if "brand_manifest_policy" in updates:
                 tenant.brand_manifest_policy = updates["brand_manifest_policy"]
 
+            # Update product ranking prompt
+            if "product_ranking_prompt" in updates:
+                tenant.product_ranking_prompt = updates["product_ranking_prompt"]
+
             # Commit all changes
             session.commit()
 
