@@ -433,7 +433,7 @@ class AdCPRequestHandler(RequestHandler):
             
             await push_notification_service.send_notification(
                 push_notification_config=push_notification_config,
-                payload=Task,
+                payload=task,
                 metadata=metadata
             )
         except Exception as e:

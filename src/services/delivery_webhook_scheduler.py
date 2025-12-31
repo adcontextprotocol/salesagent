@@ -306,7 +306,8 @@ class DeliveryWebhookScheduler:
             metadata = {
                 "task_type": "media_buy_delivery",
                 "tenant_id": media_buy.tenant_id,
-                "principal_id": media_buy.principal_id
+                "principal_id": media_buy.principal_id,
+                "media_buy_id": media_buy.media_buy_id,
             }
             
             media_buy_delivery_payload = create_mcp_webhook_payload(

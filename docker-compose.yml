@@ -81,7 +81,7 @@ services:
       - /app/.venv
 
       # Mount local adcp library directly into venv (replaces installed package)
-      - ../adcp-client-python/src/adcp:/app/.venv/lib/python3.12/site-packages/adcp:ro
+      # - ../adcp-client-python/src/adcp:/app/.venv/lib/python3.12/site-packages/adcp:ro - Uncomment this if you want to use locally installed adcp-python-client for e2e testing purposes
 
       # Optional: Mount audit logs
       - ./audit_logs:/app/audit_logs
@@ -120,7 +120,7 @@ services:
       - .:/app
       - /app/.venv
       # Mount local adcp library directly into venv (replaces installed package)
-      - ../adcp-client-python/src/adcp:/app/.venv/lib/python3.12/site-packages/adcp:ro
+      # - ../adcp-client-python/src/adcp:/app/.venv/lib/python3.12/site-packages/adcp:ro - Uncomment this if you want to use locally installed adcp-python-client for e2e testing purposes
 
       # Mount OAuth credentials file
       # - ./client_secret.json:/app/client_secret.json:ro

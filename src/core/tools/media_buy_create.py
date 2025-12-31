@@ -3625,23 +3625,16 @@ async def create_media_buy(
     Returns:
         ToolResult with CreateMediaBuyResponse data
     """
-<<<<<<< HEAD
     # Convert typed Pydantic models to dicts for the impl
     # FastMCP already coerced JSON inputs to these types
     brand_manifest_val = (
         brand_manifest.model_dump(mode="json") if isinstance(brand_manifest, BrandManifest) else brand_manifest
     )
     packages_dicts = [p.model_dump(mode="json") for p in packages]
-    targeting_overlay_dict = targeting_overlay.model_dump(mode="json") if targeting_overlay else None
-    creatives_dicts = [c.model_dump(mode="json") for c in creatives] if creatives else None
     reporting_webhook_dict = reporting_webhook.model_dump(mode="json") if reporting_webhook else None
-    push_config_dict = push_notification_config.model_dump(mode="json") if push_notification_config else None
     context_dict = context.model_dump(mode="json") if context else None
 
-    response = await _create_media_buy_impl(
-=======
     response, status = await _create_media_buy_impl(
->>>>>>> 4bb56958 (feat: wip)
         buyer_ref=buyer_ref,
         brand_manifest=brand_manifest_val,
         po_number=po_number,

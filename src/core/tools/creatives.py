@@ -1261,6 +1261,7 @@ def _sync_creatives_impl(
     # Track assignments per creative for response population
     assignments_by_creative: dict[str, list[str]] = {}  # creative_id -> [package_ids]
     assignment_errors_by_creative: dict[str, dict[str, str]] = {}  # creative_id -> {package_id: error}
+    media_buys_with_new_assignments: dict[str, Any] = {}  # media_buy_id -> MediaBuy object
 
     # Note: assignments should be a dict, but handle both dict and None
     if assignments and isinstance(assignments, dict):
@@ -1422,6 +1423,10 @@ def _sync_creatives_impl(
                             f"package={actual_package_id}, media_buy={media_buy_id}"
                         )
 
+                    # Track media buy for potential status update (for any assignment, new or existing)
+                    if media_buy_id and db_media_buy and media_buy_id not in media_buys_with_new_assignments:
+                        media_buys_with_new_assignments[media_buy_id] = db_media_buy
+
                     assignment_list.append(
                         CreativeAssignment(
                             assignment_id=assignment.assignment_id,
@@ -1435,6 +1440,14 @@ def _sync_creatives_impl(
                     # Track successful assignment
                     if actual_package_id is not None:
                         assignments_by_creative[creative_id].append(actual_package_id)
+
+            # Update media buy status if needed (draft -> pending_creatives)
+            for mb_id, mb_obj in media_buys_with_new_assignments.items():
+                if mb_obj.status == "draft" and mb_obj.approved_at is not None:
+                    mb_obj.status = "pending_creatives"
+                    logger.info(
+                        f"[SYNC_CREATIVES] Media buy {mb_id} transitioned from draft to pending_creatives"
+                    )
 
             session.commit()
 
