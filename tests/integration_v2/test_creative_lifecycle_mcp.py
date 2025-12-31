@@ -12,6 +12,7 @@ Test creatives use "https://test.com" as a default value.
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -976,6 +977,65 @@ class TestCreativeLifecycleMCP:
             assert response.query_summary.total_matching == 0
             assert response.query_summary.returned == 0
             assert response.pagination.has_more is False
+
+    def test_validate_creatives_missing_required_fields(self, mock_context):
+        """Test _validate_creatives_before_adapter_call detects missing required fields."""
+        from src.core.tools.media_buy_create import _validate_creatives_before_adapter_call
+        from src.core.schemas import PackageRequest
+        from fastmcp.exceptions import ToolError
+
+        with get_db_session() as session:
+            creative_no_url = DBCreative(
+                tenant_id=self.test_tenant_id,
+                creative_id="validate_test_no_url",
+                principal_id=self.test_principal_id,
+                name="Creative Missing URL",
+                agent_url="https://creative.adcontextprotocol.org",
+                format="display_300x250_image",
+                status="approved",
+                data={
+                    "assets": {
+                        "banner_image": {
+                            # Missing URL - only has dimensions
+                            "width": 300,
+                            "height": 250,
+                        },
+                        "click_url": {
+                            "url": "https://example.com/landing"
+                        }
+                    }
+                },
+            )
+            session.add(creative_no_url)
+            session.commit()
+
+        packages = [
+            PackageRequest(
+                product_id="prod_1",
+                buyer_ref="pkg_ref_3",
+                budget=1000.0,
+                creative_ids=["validate_test_no_url"],
+                pricing_option_id="price_1",
+            )
+        ]
+
+        mock_asset_req = SimpleNamespace(
+            asset_type="image",
+            asset_id="banner_image"
+        )
+        
+        mock_format = SimpleNamespace(
+            output_format_ids=None,
+            assets_required=[mock_asset_req]
+        )
+        
+        with patch("src.core.tools.media_buy_create._get_format_spec_sync", return_value=mock_format):
+            with pytest.raises(ToolError) as exc_info:
+                _validate_creatives_before_adapter_call(packages, self.test_tenant_id)
+            
+            error_msg = str(exc_info.value).lower()
+            assert "validate_test_no_url" in error_msg
+            assert ("url" in error_msg or "required" in error_msg)
 
     async def test_create_media_buy_with_creative_ids(self, mock_context, sample_creatives):
         """Test create_media_buy accepts creative_ids in packages."""
