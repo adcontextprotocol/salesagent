@@ -27,9 +27,8 @@ def validate_required_env():
 
     missing = []
 
-    # Super admin access - at least one must be set
-    if not os.environ.get("SUPER_ADMIN_EMAILS") and not os.environ.get("SUPER_ADMIN_DOMAINS"):
-        missing.append("SUPER_ADMIN_EMAILS or SUPER_ADMIN_DOMAINS")
+    # Note: SUPER_ADMIN_EMAILS is optional - per-tenant OIDC with Setup Mode is the default auth flow.
+    # New tenants start with auth_setup_mode=true, allowing test credentials to configure SSO.
 
     # Database URL is required
     if not os.environ.get("DATABASE_URL"):
@@ -46,10 +45,6 @@ def validate_required_env():
             print(f"   - {var}")
         print("")
         print("📖 See docs/deployment.md for configuration details.")
-        print("")
-        print("Quick fix for Fly.io:")
-        print('  fly secrets set SUPER_ADMIN_EMAILS="your-email@example.com"')
-        print("")
         sys.exit(1)
 
     print("✅ Required environment variables are set")

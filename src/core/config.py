@@ -137,10 +137,8 @@ def validate_configuration() -> None:
             # Configuration validation happens automatically via Pydantic
             pass
 
-        # Validate critical configuration (SUPER_ADMIN_EMAILS required)
         # Note: GEMINI_API_KEY is optional - tenants configure their own AI keys
-        if not config.superadmin.emails:
-            raise ValueError("Missing required environment variable: SUPER_ADMIN_EMAILS")
+        # Note: SUPER_ADMIN_EMAILS is optional - per-tenant OIDC with Setup Mode is the default auth flow
 
         print("✅ Configuration validation passed")
         print(f"   GAM OAuth: {'✅ Configured' if config.gam_oauth.client_id else '❌ Not configured'}")
@@ -148,7 +146,9 @@ def validate_configuration() -> None:
         print(
             f"   Gemini API: {'✅ Configured' if config.gemini_api_key else '⚪ Not configured (tenants use own keys)'}"
         )
-        print(f"   Super Admin: {'✅ Configured' if config.superadmin.emails else '❌ Not configured'}")
+        print(
+            f"   Super Admin: {'✅ Configured' if config.superadmin.emails else '⚪ Not configured (use per-tenant OIDC)'}"
+        )
 
     except Exception as e:
         raise RuntimeError(f"Configuration validation failed: {str(e)}") from e
