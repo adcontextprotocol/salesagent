@@ -65,7 +65,7 @@ def save_oidc_config(
     tenant_id: str,
     provider: str,
     client_id: str,
-    client_secret: str,
+    client_secret: str | None,
     discovery_url: str | None = None,
     scopes: str = "openid email profile",
 ) -> TenantAuthConfig:
@@ -75,7 +75,8 @@ def save_oidc_config(
         tenant_id: The tenant ID
         provider: Provider name (google, microsoft, custom)
         client_id: OAuth client ID
-        client_secret: OAuth client secret (will be encrypted)
+        client_secret: OAuth client secret (will be encrypted). If None/empty,
+                      keeps existing secret.
         discovery_url: OIDC discovery URL (auto-set for known providers)
         scopes: OAuth scopes
 
@@ -99,16 +100,27 @@ def save_oidc_config(
             )
             session.add(config)
 
+        # Check if key settings changed (requires re-verification)
+        settings_changed = (
+            config.oidc_provider != provider
+            or config.oidc_client_id != client_id
+            or config.oidc_discovery_url != discovery_url
+        )
+
         config.oidc_provider = provider
         config.oidc_client_id = client_id
-        config.oidc_client_secret = client_secret  # Uses setter for encryption
+        # Only update secret if a new one is provided
+        if client_secret:
+            config.oidc_client_secret = client_secret  # Uses setter for encryption
+            settings_changed = True
         config.oidc_discovery_url = discovery_url
         config.oidc_scopes = scopes
         config.updated_at = datetime.now(UTC)
 
-        # Reset verification when config changes
-        config.oidc_verified_at = None
-        config.oidc_verified_redirect_uri = None
+        # Reset verification only if key settings changed
+        if settings_changed:
+            config.oidc_verified_at = None
+            config.oidc_verified_redirect_uri = None
 
         session.commit()
         session.refresh(config)
@@ -358,4 +370,6 @@ def get_auth_config_summary(tenant_id: str) -> dict:
             "client_id": config.oidc_client_id,
             "discovery_url": config.oidc_discovery_url,
             "scopes": config.oidc_scopes,
+            # Indicate if secret is saved (don't return actual secret)
+            "has_client_secret": bool(config.oidc_client_secret_encrypted),
         }

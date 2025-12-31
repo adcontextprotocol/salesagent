@@ -84,12 +84,17 @@ def save_config(tenant_id: str):
 
     provider = data.get("provider")
     client_id = data.get("client_id")
-    client_secret = data.get("client_secret")
+    client_secret = data.get("client_secret")  # Can be empty to keep existing
     discovery_url = data.get("discovery_url")
     scopes = data.get("scopes", "openid email profile")
 
-    if not provider or not client_id or not client_secret:
-        return jsonify({"error": "provider, client_id, and client_secret are required"}), 400
+    if not provider or not client_id:
+        return jsonify({"error": "provider and client_id are required"}), 400
+
+    # Require client_secret for new configs (no existing secret)
+    existing_config = get_or_create_auth_config(tenant_id)
+    if not client_secret and not existing_config.oidc_client_secret_encrypted:
+        return jsonify({"error": "client_secret is required for new configuration"}), 400
 
     try:
         config = save_oidc_config(

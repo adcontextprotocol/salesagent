@@ -11,7 +11,7 @@
 # The *_PORT env vars configure where internal services bind. nginx proxies
 # external requests on 8000 to the appropriate internal service by path.
 
-app = "adcp-sales-agent"
+app = "wonderstruck-sales-agent"
 primary_region = "iad"
 
 [build]
@@ -56,18 +56,8 @@ primary_region = "iad"
 [env]
   PRODUCTION = "true"
   ENVIRONMENT = "production"
-  # Multi-tenant mode for reference deployment (subdomain routing)
-  # Publishers deploying their own instance should remove this
-  ADCP_MULTI_TENANT = "true"
-  BASE_DOMAIN = "adcontextprotocol.org"
-  SALES_AGENT_DOMAIN = "sales-agent.adcontextprotocol.org"
-  # URLs for OAuth redirects and notifications
-  ADMIN_UI_URL = "https://admin.sales-agent.adcontextprotocol.org"
-  GOOGLE_OAUTH_REDIRECT_URI = "https://admin.sales-agent.adcontextprotocol.org/auth/google/callback"
-  # GCP project for GAM service account management
-  GCP_PROJECT_ID = "adcp-manager"
 
 # Persistent storage for audit logs and data
 [mounts]
-  source = "adcp_data"
+  source = "wonderstruck_data"
   destination = "/data"

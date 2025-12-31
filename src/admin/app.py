@@ -120,7 +120,8 @@ def create_app(config=None):
         app.config["SESSION_COOKIE_SECURE"] = True  # Required for SameSite=None over HTTPS
         app.config["SESSION_COOKIE_HTTPONLY"] = False  # Allow EventSource to access cookies
         app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Required for EventSource cross-origin requests
-        app.config["SESSION_COOKIE_PATH"] = "/admin/"  # Ensure cookies work for all /admin/* paths
+        # Use root path so session works for both /admin/* and /auth/* (OAuth callbacks)
+        app.config["SESSION_COOKIE_PATH"] = "/"
         # Only set cookie domain in multi-tenant mode for subdomain sharing
         # In single-tenant mode, let Flask use the actual request domain
         if not is_single_tenant_mode():

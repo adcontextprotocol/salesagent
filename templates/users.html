@@ -766,6 +766,14 @@ async function loadAuthConfig() {
             document.getElementById('client_id').value = data.config.client_id || '';
             document.getElementById('discovery_url').value = data.config.discovery_url || '';
 
+            // Show indicator if client secret is saved
+            const secretField = document.getElementById('client_secret');
+            if (data.config.has_client_secret) {
+                secretField.placeholder = '••••••••••••••••  (secret saved - leave empty to keep)';
+            } else {
+                secretField.placeholder = 'Enter client secret';
+            }
+
             // Show discovery URL field for custom provider
             if (data.config.provider === 'custom') {
                 document.getElementById('discovery-url-group').style.display = 'block';
