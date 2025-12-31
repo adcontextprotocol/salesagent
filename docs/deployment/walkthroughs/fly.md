@@ -63,13 +63,24 @@ fly postgres attach your-app-db --app your-app-name
 fly secrets list --app your-app-name
 ```
 
-## Step 4: Authentication
+## Step 4: Set Required Secrets
+
+Before deploying, set the encryption key used for storing sensitive data (like OIDC client secrets):
+
+```bash
+# Generate and set encryption key
+fly secrets set ENCRYPTION_KEY="$(openssl rand -base64 32)"
+```
+
+> **Important**: Store this key securely. If lost, encrypted data (OIDC credentials) will need to be reconfigured.
+
+## Step 5: Authentication
 
 Authentication is configured **per-tenant** via the Admin UI. No OAuth environment variables are required for initial deployment.
 
 ### Initial Setup Flow
 
-1. Deploy the application (Step 5 below)
+1. Deploy the application (Step 6 below)
 2. Access the Admin UI at `https://your-app-name.fly.dev/admin`
 3. Log in with test credentials (Setup Mode is enabled by default for new tenants):
    - Email: `test_super_admin@example.com`
@@ -97,7 +108,7 @@ fly secrets set SUPER_ADMIN_DOMAINS="example.com"
 - `SUPER_ADMIN_EMAILS`: Comma-separated, no spaces: `user1@example.com,user2@example.com`
 - `SUPER_ADMIN_DOMAINS`: Comma-separated domains: `example.com,company.org`
 
-## Step 5: Deploy
+## Step 6: Deploy
 
 **Option A: Use prebuilt image (recommended)**
 ```bash
@@ -117,7 +128,7 @@ The first deploy runs database migrations automatically. Watch the logs:
 fly logs
 ```
 
-## Step 6: Verify
+## Step 7: Verify
 
 ```bash
 # Check health
