@@ -52,9 +52,24 @@
     </p>
     {% endif %}
 
+    {% if oidc_enabled %}
+    <!-- SSO Login available -->
+    <div style="margin: 2rem 0; padding: 2rem 0; border-top: 1px solid #ddd;">
+        <h3 style="margin-bottom: 1rem;">Sign In</h3>
+        <a href="{{ url_for('oidc.login', tenant_id=tenant_id or tenant_context or 'default') }}" class="btn" style="width: 100%; display: block; text-decoration: none; background: #2563eb;">
+            Sign in with SSO
+        </a>
+    </div>
+    {% endif %}
+
     {% if test_mode %}
     <div style="margin: 2rem 0; padding: 2rem 0; border-top: 1px solid #ddd;">
-        <h3 style="margin-bottom: 1rem;">{% if single_tenant_mode %}Quick Start{% else %}Setup Login{% endif %}</h3>
+        <h3 style="margin-bottom: 1rem;">{% if oidc_enabled %}Setup Access{% elif single_tenant_mode %}Quick Start{% else %}Setup Login{% endif %}</h3>
+        {% if oidc_enabled %}
+        <p style="color: #666; font-size: 13px; margin-bottom: 1rem;">
+            Test credentials for initial setup. <strong>Log in via SSO above to disable setup mode.</strong>
+        </p>
+        {% endif %}
 
         <div style="display: flex; flex-direction: column; gap: 0.75rem;">
             {% if not single_tenant_mode %}
@@ -77,8 +92,8 @@
                 {% elif tenant_id %}
                 <input type="hidden" name="tenant_id" value="{{ tenant_id }}">
                 {% endif %}
-                <button type="submit" class="btn" style="width: 100%; background: {% if single_tenant_mode %}#2563eb{% else %}#6b7280{% endif %};">
-                    {% if single_tenant_mode %}Log in to Dashboard{% else %}Log in as Tenant Admin{% endif %}
+                <button type="submit" class="btn" style="width: 100%; background: {% if oidc_enabled %}#6b7280{% elif single_tenant_mode %}#2563eb{% else %}#6b7280{% endif %};">
+                    {% if oidc_enabled %}Log in with Test Credentials{% elif single_tenant_mode %}Log in to Dashboard{% else %}Log in as Tenant Admin{% endif %}
                 </button>
             </form>
         </div>

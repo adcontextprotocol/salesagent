@@ -292,9 +292,19 @@ def tenant_login(tenant_id):
         if os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true":
             test_mode = True  # Environment variable can override to enable test mode
 
-    # Check if OAuth is configured
+        # Check if tenant-specific OIDC is configured and enabled
+        from src.services.auth_config_service import get_oidc_config_for_auth
+
+        oidc_config = get_oidc_config_for_auth(tenant_id)
+        oidc_enabled = bool(oidc_config)
+
+    # Check if global OAuth is configured (fallback)
     client_id, client_secret, discovery_url, _ = get_oauth_config()
     oauth_configured = bool(client_id and client_secret and discovery_url)
+
+    # If OIDC is enabled and not in test mode, redirect directly to OIDC
+    if oidc_enabled and not test_mode:
+        return redirect(url_for("oidc.login", tenant_id=tenant_id))
 
     # If OAuth is configured and not in test mode, redirect directly to OAuth
     if oauth_configured and not test_mode:
@@ -306,6 +316,7 @@ def tenant_login(tenant_id):
         tenant_name=tenant_name,
         test_mode=test_mode,
         oauth_configured=oauth_configured,
+        oidc_enabled=oidc_enabled,
     )
 
 
