@@ -63,44 +63,39 @@ fly postgres attach your-app-db --app your-app-name
 fly secrets list --app your-app-name
 ```
 
-## Step 4: Set Required Secrets
+## Step 4: Authentication
+
+Authentication is configured **per-tenant** via the Admin UI. No OAuth environment variables are required for initial deployment.
+
+### Initial Setup Flow
+
+1. Deploy the application (Step 5 below)
+2. Access the Admin UI at `https://your-app-name.fly.dev/admin`
+3. Log in with test credentials (Setup Mode is enabled by default for new tenants):
+   - Email: `test_super_admin@example.com`
+   - Password: `test123`
+4. Go to **Users & Access** and configure your SSO provider (Google, Microsoft, Okta, Auth0, Keycloak, or any OIDC provider)
+5. Add redirect URI to your provider: `https://your-app-name.fly.dev/auth/oidc/callback`
+6. Test your SSO login
+7. Disable Setup Mode once SSO is working
+
+See [SSO Setup Guide](../../user-guide/sso-setup.md) for detailed provider-specific instructions.
+
+### Legacy: Global Super Admin (Optional)
+
+For backward compatibility or multi-tenant deployments where you need global admin access:
 
 ```bash
-# Super admin configuration (required)
+# Optional: Global super admin access
 fly secrets set SUPER_ADMIN_EMAILS="admin@example.com,admin2@example.com"
 
 # Optional: Grant admin to all users in a domain
 fly secrets set SUPER_ADMIN_DOMAINS="example.com"
 ```
 
-**Format for admin configuration:**
+**Format:**
 - `SUPER_ADMIN_EMAILS`: Comma-separated, no spaces: `user1@example.com,user2@example.com`
 - `SUPER_ADMIN_DOMAINS`: Comma-separated domains: `example.com,company.org`
-
-### Authentication Options
-
-Choose one of these authentication methods:
-
-**Option A: Quick Start with Test Mode** (for evaluation/testing)
-```bash
-fly secrets set ADCP_AUTH_TEST_MODE="true"
-```
-This enables test login buttons that bypass OAuth. Not for production.
-
-**Option B: Generic OIDC** (Okta, Auth0, Azure AD, Keycloak, etc.)
-```bash
-fly secrets set OAUTH_DISCOVERY_URL="https://your-provider.com/.well-known/openid-configuration"
-fly secrets set OAUTH_CLIENT_ID="your-client-id"
-fly secrets set OAUTH_CLIENT_SECRET="your-client-secret"
-```
-Add redirect URI to your provider: `https://your-app-name.fly.dev/auth/google/callback`
-
-**Option C: Google OAuth**
-```bash
-fly secrets set GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
-fly secrets set GOOGLE_CLIENT_SECRET="your-client-secret"
-```
-Add redirect URI to [Google OAuth credentials](https://console.cloud.google.com/apis/credentials): `https://your-app-name.fly.dev/auth/google/callback`
 
 ## Step 5: Deploy
 
@@ -192,14 +187,18 @@ Migrations run automatically on startup. To run manually:
 fly ssh console --app your-app-name -C "cd /app && python scripts/ops/migrate.py"
 ```
 
-### Super admin access not working
+### Cannot access Admin UI
 
-1. Verify the secret is set correctly:
+1. **Using Setup Mode (recommended):** Log in with test credentials:
+   - Email: `test_super_admin@example.com`
+   - Password: `test123`
+
+   Then configure SSO in **Users & Access** and disable Setup Mode.
+
+2. **Using legacy global super admin:** If you set `SUPER_ADMIN_EMAILS`, verify the format:
    ```bash
    fly ssh console --app your-app-name -C "echo \$SUPER_ADMIN_EMAILS"
    ```
-
-2. Check format (must be comma-separated, no spaces around commas):
    - Correct: `user1@example.com,user2@example.com`
    - Wrong: `["user1@example.com"]` (JSON array)
    - Wrong: `user1@example.com, user2@example.com` (spaces)

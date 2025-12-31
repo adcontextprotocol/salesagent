@@ -44,23 +44,15 @@ def validate_startup_requirements() -> None:
     This is useful for health checks and lightweight validation.
     """
     try:
-        import os
-
         from src.core.config import get_config
 
         # Just check that config can be loaded
-        config = get_config()
+        get_config()
 
-        # In test mode, super admin validation is skipped (test accounts are used)
-        test_mode = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
-        if not test_mode:
-            # Super admin access - at least one must be set
-            super_admin_emails = os.environ.get("SUPER_ADMIN_EMAILS", "")
-            super_admin_domains = os.environ.get("SUPER_ADMIN_DOMAINS", "")
-            if not super_admin_emails and not super_admin_domains:
-                raise ValueError(
-                    "SUPER_ADMIN_EMAILS or SUPER_ADMIN_DOMAINS is required. " "Set at least one to grant admin access."
-                )
+        # Note: SUPER_ADMIN_EMAILS is no longer required at startup.
+        # Per-tenant OIDC with Setup Mode is the default authentication flow.
+        # New tenants start with auth_setup_mode=true, allowing test credentials
+        # to log in and configure SSO via the Admin UI.
 
         logger.info("Startup requirements validation passed")
 

@@ -26,11 +26,10 @@ The Admin UI (accessible at `/admin`) provides:
 
 | Role | Access |
 |------|--------|
-| **Super Admin** | Full system access, manage all tenants |
-| **Tenant Admin** | Manage products, advertisers, and campaigns for one tenant |
+| **Tenant Admin** | Full access to manage products, advertisers, campaigns, and users for one tenant |
 | **Tenant User** | Read-only access to view products and campaigns |
 
-Super admins are configured via the `SUPER_ADMIN_EMAILS` environment variable.
+Users and access levels are managed **per-tenant** via the **Users & Access** page in the Admin UI. See [SSO Setup](sso-setup.md) for configuring authentication.
 
 ## Guides
 
