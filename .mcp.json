@@ -1,5 +1,8 @@
 {
-  "name": "adcp-sales-agent",
-  "description": "AdCP Sales Agent MCP tools and services",
-  "mcpServers": {}
+  "mcpServers": {
+    "vidium": {
+      "command": "npx",
+      "args": ["vidium"]
+    }
+  }
 }
