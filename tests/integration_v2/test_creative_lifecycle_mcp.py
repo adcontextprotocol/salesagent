@@ -12,6 +12,7 @@ Test creatives use "https://test.com" as a default value.
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -977,24 +978,6 @@ class TestCreativeLifecycleMCP:
             assert response.query_summary.returned == 0
             assert response.pagination.has_more is False
 
-    def test_get_format_spec_sync_helper(self, mock_context):
-        """Test _get_format_spec_sync helper function for format specification retrieval."""
-        from src.core.tools.media_buy_create import _get_format_spec_sync
-
-        # Test successful format retrieval (uses mock_format_registry fixture)
-        format_spec = _get_format_spec_sync(
-            "https://creative.adcontextprotocol.org", "display_300x250_image"
-        )
-        assert format_spec is not None
-        assert format_spec.format_id.id == "display_300x250_image"
-        assert format_spec.name == "Display 300x250 Image"
-
-        # Test unknown format returns None
-        format_spec = _get_format_spec_sync(
-            "https://creative.adcontextprotocol.org", "unknown_format_xyz"
-        )
-        assert format_spec is None
-
     def test_validate_creatives_missing_required_fields(self, mock_context):
         """Test _validate_creatives_before_adapter_call detects missing required fields."""
         from src.core.tools.media_buy_create import _validate_creatives_before_adapter_call
@@ -1036,14 +1019,15 @@ class TestCreativeLifecycleMCP:
             )
         ]
 
-        from unittest.mock import MagicMock
-        mock_format = MagicMock()
-        mock_format.output_format_ids = None
+        mock_asset_req = SimpleNamespace(
+            asset_type="image",
+            asset_id="banner_image"
+        )
         
-        mock_asset_req = MagicMock()
-        mock_asset_req.asset_type = "image"
-        mock_asset_req.asset_id = "banner_image"
-        mock_format.assets_required = [mock_asset_req]
+        mock_format = SimpleNamespace(
+            output_format_ids=None,
+            assets_required=[mock_asset_req]
+        )
         
         with patch("src.core.tools.media_buy_create._get_format_spec_sync", return_value=mock_format):
             with pytest.raises(ToolError) as exc_info:

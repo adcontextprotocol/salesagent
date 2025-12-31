@@ -230,7 +230,7 @@ def _extract_creative_url_and_dimensions(
 
 
 def _get_format_spec_sync(agent_url: str, format_id: str) -> Any | None:
-    """Get format specification synchronously using asyncio event loop.
+    """Get format specification synchronously using asyncio.run().
     
     This helper function wraps the async registry.get_format() call to make it
     usable in synchronous contexts. The registry uses in-memory cache (30min TTL)
@@ -250,12 +250,7 @@ def _get_format_spec_sync(agent_url: str, format_id: str) -> Any | None:
     registry = get_creative_agent_registry()
     
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(registry.get_format(agent_url, format_id))
-        finally:
-            loop.close()
+        return asyncio.run(registry.get_format(agent_url, format_id))
     except Exception as e:
         logger.warning(f"Could not fetch format {format_id} from {agent_url}: {e}")
         return None
