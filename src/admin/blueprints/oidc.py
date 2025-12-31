@@ -197,51 +197,56 @@ def test_initiate(tenant_id: str):
 @oidc_bp.route("/callback")
 def callback():
     """Handle OAuth callback for both test and production flows."""
-    # Check if this is a test flow
-    is_test = session.pop("oidc_test_flow", False)
-    tenant_id = session.pop("oidc_test_tenant_id", None) or session.get("oidc_login_tenant_id")
+    try:
+        # Check if this is a test flow
+        is_test = session.pop("oidc_test_flow", False)
+        tenant_id = session.pop("oidc_test_tenant_id", None) or session.get("oidc_login_tenant_id")
 
-    if not tenant_id:
-        flash("Invalid OAuth callback - no tenant context", "error")
-        return redirect(url_for("auth.login"))
+        logger.info(f"OAuth callback: is_test={is_test}, tenant_id={tenant_id}")
 
-    with get_db_session() as db_session:
-        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-        if not tenant:
-            flash("Tenant not found", "error")
+        if not tenant_id:
+            flash("Invalid OAuth callback - no tenant context", "error")
             return redirect(url_for("auth.login"))
 
-        # Get OIDC config directly from this session to avoid nested session issues
-        from src.core.database.models import TenantAuthConfig
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("auth.login"))
 
-        config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
-        if not config or not config.oidc_client_id:
-            flash("OIDC not configured", "error")
-            return redirect(url_for("auth.login"))
+            # Get OIDC config directly from this session to avoid nested session issues
+            from src.core.database.models import TenantAuthConfig
 
-        # Get decrypted secret while session is still active
-        client_secret = config.oidc_client_secret
+            config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+            if not config or not config.oidc_client_id:
+                flash("OIDC not configured", "error")
+                return redirect(url_for("auth.login"))
 
-        # Create OAuth client
-        oauth = OAuth()
-        oauth.init_app(current_app)
+            # Get decrypted secret while session is still active
+            client_secret = config.oidc_client_secret
+            logger.info(f"OAuth callback: got config for {tenant_id}, client_id={config.oidc_client_id[:20]}...")
 
-        oauth.register(
-            name="callback_oidc",
-            client_id=config.oidc_client_id,
-            client_secret=client_secret,
-            server_metadata_url=config.oidc_discovery_url,
-            client_kwargs={"scope": config.oidc_scopes or "openid email profile"},
-        )
+            # Create OAuth client
+            oauth = OAuth()
+            oauth.init_app(current_app)
 
-        try:
-            token = oauth.callback_oidc.authorize_access_token()
-        except Exception as e:
-            logger.error(f"OAuth token exchange failed: {e}", exc_info=True)
-            flash(f"OAuth authentication failed: {e}", "error")
-            if is_test:
-                return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
-            return redirect(url_for("auth.login"))
+            oauth.register(
+                name="callback_oidc",
+                client_id=config.oidc_client_id,
+                client_secret=client_secret,
+                server_metadata_url=config.oidc_discovery_url,
+                client_kwargs={"scope": config.oidc_scopes or "openid email profile"},
+            )
+
+            try:
+                token = oauth.callback_oidc.authorize_access_token()
+                logger.info(f"OAuth callback: token exchange successful")
+            except Exception as e:
+                logger.error(f"OAuth token exchange failed: {e}", exc_info=True)
+                flash(f"OAuth authentication failed: {e}", "error")
+                if is_test:
+                    return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
+                return redirect(url_for("auth.login"))
 
         if not token:
             flash("OAuth token exchange failed", "error")
@@ -302,6 +307,11 @@ def callback():
 
         flash(f"Welcome {user.name or user.email}!", "success")
         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+    except Exception as e:
+        logger.error(f"OAuth callback error: {e}", exc_info=True)
+        flash(f"Authentication error: {e}", "error")
+        return redirect(url_for("auth.login"))
 
 
 @oidc_bp.route("/login/<tenant_id>")
