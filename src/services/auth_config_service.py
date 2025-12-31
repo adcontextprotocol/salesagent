@@ -201,26 +201,21 @@ def get_tenant_redirect_uri(tenant: Tenant) -> str:
         Full redirect URI
     """
     if tenant.virtual_host:
-        # Custom domain
+        # Custom domain takes highest priority
         base = f"https://{tenant.virtual_host}"
-    elif tenant.subdomain:
-        # Subdomain on main domain
-        base_domain = get_sales_agent_domain()
-        if base_domain:
-            base = f"https://{tenant.subdomain}.{base_domain}"
-        else:
-            # Fallback for local development
-            port = os.environ.get("ADMIN_UI_PORT", "8001")
-            base = f"http://localhost:{port}"
+    elif tenant.subdomain and get_sales_agent_domain():
+        # Subdomain on main domain (multi-tenant mode with SALES_AGENT_DOMAIN set)
+        base = f"https://{tenant.subdomain}.{get_sales_agent_domain()}"
+    elif main_url := get_sales_agent_url():
+        # Explicit SALES_AGENT_DOMAIN URL
+        base = main_url
+    elif fly_app := os.environ.get("FLY_APP_NAME"):
+        # Single-tenant mode on Fly.io - use the app's URL
+        base = f"https://{fly_app}.fly.dev"
     else:
-        # Fallback to main URL
-        main_url = get_sales_agent_url()
-        if main_url:
-            base = main_url
-        else:
-            # Ultimate fallback for local development
-            port = os.environ.get("ADMIN_UI_PORT", "8001")
-            base = f"http://localhost:{port}"
+        # Local development fallback
+        port = os.environ.get("ADMIN_UI_PORT", "8001")
+        base = f"http://localhost:{port}"
 
     return f"{base}/auth/oidc/callback"
 

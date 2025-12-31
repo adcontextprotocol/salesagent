@@ -57,16 +57,16 @@ def create_tenant_oauth_client(tenant_id: str):
     return getattr(oauth, f"tenant_{tenant_id}")
 
 
-@oidc_bp.route("/config", methods=["GET"])
-@require_tenant_access()
+@oidc_bp.route("/tenant/<tenant_id>/config", methods=["GET"])
+@require_tenant_access(api_mode=True)
 def get_config(tenant_id: str):
     """Get OIDC configuration summary for a tenant."""
     summary = get_auth_config_summary(tenant_id)
     return jsonify(summary)
 
 
-@oidc_bp.route("/config", methods=["POST"])
-@require_tenant_access()
+@oidc_bp.route("/tenant/<tenant_id>/config", methods=["POST"])
+@require_tenant_access(api_mode=True)
 def save_config(tenant_id: str):
     """Save OIDC configuration for a tenant.
 
@@ -117,8 +117,8 @@ def save_config(tenant_id: str):
         return jsonify({"error": "Failed to save configuration"}), 500
 
 
-@oidc_bp.route("/enable", methods=["POST"])
-@require_tenant_access()
+@oidc_bp.route("/tenant/<tenant_id>/enable", methods=["POST"])
+@require_tenant_access(api_mode=True)
 def enable(tenant_id: str):
     """Enable OIDC authentication for a tenant."""
     if enable_oidc(tenant_id):
@@ -132,8 +132,8 @@ def enable(tenant_id: str):
         return jsonify({"error": "Cannot enable OIDC. Please test the configuration first."}), 400
 
 
-@oidc_bp.route("/disable", methods=["POST"])
-@require_tenant_access()
+@oidc_bp.route("/tenant/<tenant_id>/disable", methods=["POST"])
+@require_tenant_access(api_mode=True)
 def disable(tenant_id: str):
     """Disable OIDC authentication for a tenant."""
     disable_oidc(tenant_id)

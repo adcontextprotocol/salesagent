@@ -292,8 +292,20 @@ def require_tenant_access(api_mode=False):
                 f"Auth check - tenant: {tenant_id}, method: {request.method}, has_session: {has_session}, has_cookies: {has_cookies}, session_keys: {list(session.keys())}"
             )
 
-            # Check for test mode
+            # Check for test mode (global env var OR per-tenant auth_setup_mode)
             test_mode = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
+
+            # Also check per-tenant auth_setup_mode if test_user is in session
+            if not test_mode and "test_user" in session:
+                try:
+                    with get_db_session() as db_session:
+                        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+                        if tenant and getattr(tenant, "auth_setup_mode", False):
+                            test_mode = True
+                            logger.debug(f"Auth setup mode enabled for tenant {tenant_id}")
+                except Exception as e:
+                    logger.warning(f"Error checking tenant auth_setup_mode: {e}")
+
             if test_mode and "test_user" in session:
                 g.user = session["test_user"]
                 # Test users can access their assigned tenant

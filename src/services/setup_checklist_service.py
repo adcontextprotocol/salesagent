@@ -339,9 +339,9 @@ class SetupChecklistService:
                 else:
                     config_details = "GAM selected but not authenticated - Complete OAuth flow and test connection"
             elif tenant.ad_server == "mock":
-                # Mock adapter is always ready once selected
-                ad_server_fully_configured = True
-                config_details = "Mock adapter configured - Ready for testing"
+                # Mock adapter is for testing only - not production ready
+                ad_server_fully_configured = False
+                config_details = "Mock adapter - Configure a real ad server for production"
             elif tenant.ad_server in ["kevel", "triton"]:
                 # Other adapters (Kevel, Triton) - assume configured once selected
                 ad_server_fully_configured = True
@@ -362,21 +362,49 @@ class SetupChecklistService:
             )
         )
 
-        # 2. Currency Limits
-        stmt = select(func.count()).select_from(CurrencyLimit).where(CurrencyLimit.tenant_id == self.tenant_id)
-        currency_count = session.scalar(stmt) or 0
+        # 2. SSO Configuration (CRITICAL for production security) - Second priority after ad server
+        # Check if tenant has configured and enabled SSO
+        auth_config_stmt = select(TenantAuthConfig).filter_by(tenant_id=self.tenant_id)
+        auth_config = session.scalars(auth_config_stmt).first()
+        sso_enabled = bool(auth_config and auth_config.oidc_enabled)
+
+        # Also check if setup mode is disabled (indicates production-ready auth)
+        setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
+
+        sso_details = (
+            "SSO enabled and setup mode disabled"
+            if sso_enabled and setup_mode_disabled
+            else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
+        )
+
         tasks.append(
             SetupTask(
-                key="currency_limits",
-                name="Currency Configuration",
-                description="At least one currency must be configured for media buys",
-                is_complete=currency_count > 0,
-                action_url=f"/tenant/{self.tenant_id}/settings#business-rules",
-                details=f"{currency_count} currencies configured" if currency_count > 0 else "No currencies configured",
+                key="sso_configuration",
+                name="⚠️ Single Sign-On (SSO)",
+                description="CRITICAL: Configure SSO and disable setup mode for production security",
+                is_complete=sso_enabled and setup_mode_disabled,
+                action_url=f"/tenant/{self.tenant_id}/users",
+                details=sso_details,
             )
         )
 
-        # 3. Authorized Properties
+        # 3. Currency Limits - Only show after ad server is configured (GAM auto-configures currency)
+        # Skip this task if no real ad server is configured yet
+        if ad_server_fully_configured:
+            stmt = select(func.count()).select_from(CurrencyLimit).where(CurrencyLimit.tenant_id == self.tenant_id)
+            currency_count = session.scalar(stmt) or 0
+            tasks.append(
+                SetupTask(
+                    key="currency_limits",
+                    name="Currency Configuration",
+                    description="At least one currency must be configured for media buys",
+                    is_complete=currency_count > 0,
+                    action_url=f"/tenant/{self.tenant_id}/settings#business-rules",
+                    details=f"{currency_count} currencies configured" if currency_count > 0 else "No currencies configured",
+                )
+            )
+
+        # 4. Authorized Properties
         # Single source of truth: AuthorizedProperty table
         # (Populated automatically when syncing verified PublisherPartners)
         stmt = (
@@ -410,96 +438,68 @@ class SetupChecklistService:
             )
         )
 
-        # 4. Inventory Synced (adapter-specific behavior)
-        # Check if tenant has synced inventory from ad server
-        # - None: No adapter selected, must configure ad server first (incomplete)
-        # - GAM: Requires sync from Google Ad Manager (checks GAMInventory table)
-        # - Mock: Has built-in inventory (no sync required)
-        # - Kevel/Triton: Check adapter documentation for inventory requirements
-        if tenant.ad_server is None or tenant.ad_server == "":
-            # No ad server configured - cannot proceed with inventory setup
-            tasks.append(
-                SetupTask(
-                    key="inventory_synced",
-                    name="Inventory Sync",
-                    description="Configure ad server before syncing inventory",
-                    is_complete=False,
-                    action_url=f"/tenant/{self.tenant_id}/settings#adserver",
-                    details="Ad server must be configured before inventory can be synced",
-                )
-            )
-        elif tenant.is_gam_tenant:
-            # GAM requires syncing inventory from Google Ad Manager
-            stmt = select(func.count()).select_from(GAMInventory).where(GAMInventory.tenant_id == self.tenant_id)
-            inventory_count = session.scalar(stmt) or 0
+        # 4. Inventory Synced - Only show after ad server is configured
+        if ad_server_fully_configured:
+            if tenant.is_gam_tenant:
+                # GAM requires syncing inventory from Google Ad Manager
+                stmt = select(func.count()).select_from(GAMInventory).where(GAMInventory.tenant_id == self.tenant_id)
+                inventory_count = session.scalar(stmt) or 0
 
-            inventory_synced = inventory_count > 0
-            inventory_details = (
-                f"{inventory_count:,} inventory items synced"
-                if inventory_synced
-                else "No inventory synced from ad server"
-            )
-            tasks.append(
-                SetupTask(
-                    key="inventory_synced",
-                    name="Inventory Sync",
-                    description="Sync ad units and placements from ad server",
-                    is_complete=inventory_synced,
-                    action_url=f"/tenant/{self.tenant_id}/settings#inventory",
-                    details=inventory_details,
+                inventory_synced = inventory_count > 0
+                inventory_details = (
+                    f"{inventory_count:,} inventory items synced"
+                    if inventory_synced
+                    else "No inventory synced from ad server"
                 )
-            )
-        elif tenant.ad_server == "mock":
-            # Mock adapter has built-in inventory, always complete
-            tasks.append(
-                SetupTask(
-                    key="inventory_synced",
-                    name="Inventory Sync",
-                    description="Mock adapter has built-in inventory (no sync required)",
-                    is_complete=True,
-                    action_url=None,
-                    details="Mock adapter provides built-in mock inventory automatically",
+                tasks.append(
+                    SetupTask(
+                        key="inventory_synced",
+                        name="Inventory Sync",
+                        description="Sync ad units and placements from ad server",
+                        is_complete=inventory_synced,
+                        action_url=f"/tenant/{self.tenant_id}/settings#inventory",
+                        details=inventory_details,
+                    )
                 )
-            )
-        elif tenant.ad_server in ["kevel", "triton"]:
-            # Kevel and Triton adapters - mark as complete (inventory configured per product)
-            # These adapters configure inventory targeting at the product level, not via global sync
-            tasks.append(
-                SetupTask(
-                    key="inventory_synced",
-                    name="Inventory Configuration",
-                    description=f"{tenant.ad_server.title()} adapter - inventory configured per product",
-                    is_complete=True,
-                    action_url=None,
-                    details=f"{tenant.ad_server.title()} adapter configures inventory targeting at product level",
+            elif tenant.ad_server in ["kevel", "triton"]:
+                # Kevel and Triton adapters - mark as complete (inventory configured per product)
+                tasks.append(
+                    SetupTask(
+                        key="inventory_synced",
+                        name="Inventory Configuration",
+                        description=f"{tenant.ad_server.title()} adapter - inventory configured per product",
+                        is_complete=True,
+                        action_url=None,
+                        details=f"{tenant.ad_server.title()} adapter configures inventory targeting at product level",
+                    )
                 )
-            )
-        else:
-            # Unknown adapter - show as complete but with note to verify
-            tasks.append(
-                SetupTask(
-                    key="inventory_synced",
-                    name="Inventory Configuration",
-                    description="Inventory configuration - check adapter documentation",
-                    is_complete=True,
-                    action_url=None,
-                    details=f"{tenant.ad_server} adapter - verify inventory configuration requirements",
+            else:
+                # Other adapters - show as complete but with note to verify
+                tasks.append(
+                    SetupTask(
+                        key="inventory_synced",
+                        name="Inventory Configuration",
+                        description="Inventory configuration - check adapter documentation",
+                        is_complete=True,
+                        action_url=None,
+                        details=f"{tenant.ad_server} adapter - verify inventory configuration requirements",
+                    )
                 )
-            )
 
-        # 5. Products Created
-        stmt = select(func.count()).select_from(Product).where(Product.tenant_id == self.tenant_id)
-        product_count = session.scalar(stmt) or 0
-        tasks.append(
-            SetupTask(
-                key="products_created",
-                name="Products",
-                description="Create at least one advertising product",
-                is_complete=product_count > 0,
-                action_url=f"/tenant/{self.tenant_id}/products",
-                details=f"{product_count} products created" if product_count > 0 else "No products created",
+        # 5. Products Created - Only show after ad server is configured
+        if ad_server_fully_configured:
+            stmt = select(func.count()).select_from(Product).where(Product.tenant_id == self.tenant_id)
+            product_count = session.scalar(stmt) or 0
+            tasks.append(
+                SetupTask(
+                    key="products_created",
+                    name="Products",
+                    description="Create at least one advertising product",
+                    is_complete=product_count > 0,
+                    action_url=f"/tenant/{self.tenant_id}/products",
+                    details=f"{product_count} products created" if product_count > 0 else "No products created",
+                )
             )
-        )
 
         # 6. Principals Created
         stmt = select(func.count()).select_from(Principal).where(Principal.tenant_id == self.tenant_id)
@@ -513,32 +513,6 @@ class SetupChecklistService:
                 action_url=f"/tenant/{self.tenant_id}/settings#advertisers",
                 details=(
                     f"{principal_count} advertisers configured" if principal_count > 0 else "No advertisers configured"
-                ),
-            )
-        )
-
-        # 7. Access Control Configured
-        has_domains = bool(tenant.authorized_domains and len(tenant.authorized_domains) > 0)
-        has_emails = bool(tenant.authorized_emails and len(tenant.authorized_emails) > 0)
-        access_control_configured = bool(has_domains or has_emails)
-
-        access_details: list[str] = []
-        if has_domains and tenant.authorized_domains:
-            access_details.append(f"{len(tenant.authorized_domains)} domain(s)")
-        if has_emails and tenant.authorized_emails:
-            access_details.append(f"{len(tenant.authorized_emails)} email(s)")
-
-        tasks.append(
-            SetupTask(
-                key="access_control",
-                name="Access Control",
-                description="Configure who can access this tenant (domains or emails)",
-                is_complete=access_control_configured,
-                action_url=f"/tenant/{self.tenant_id}/settings#account",
-                details=(
-                    ", ".join(access_details)
-                    if access_details
-                    else "No access control configured - only super admins can access"
                 ),
             )
         )
@@ -564,33 +538,7 @@ class SetupChecklistService:
             )
         )
 
-        # 2. SSO Configuration (important for production security)
-        # Check if tenant has configured and enabled SSO
-        auth_config_stmt = select(TenantAuthConfig).filter_by(tenant_id=self.tenant_id)
-        auth_config = session.scalars(auth_config_stmt).first()
-        sso_enabled = bool(auth_config and auth_config.oidc_enabled)
-
-        # Also check if setup mode is disabled (indicates production-ready auth)
-        setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
-
-        sso_details = (
-            "SSO enabled and setup mode disabled"
-            if sso_enabled and setup_mode_disabled
-            else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
-        )
-
-        tasks.append(
-            SetupTask(
-                key="sso_configuration",
-                name="Single Sign-On (SSO)",
-                description="Configure SSO and disable setup mode for production security",
-                is_complete=sso_enabled and setup_mode_disabled,
-                action_url=f"/tenant/{self.tenant_id}/users",
-                details=sso_details,
-            )
-        )
-
-        # 3. Creative Approval Guidelines
+        # 2. Creative Approval Guidelines
         # Only count as configured if user has set auto-approve formats (explicit configuration)
         # Default human_review_required=True doesn't count as "configured"
         has_approval_config = bool(tenant.auto_approve_format_ids)
@@ -788,8 +736,8 @@ class SetupChecklistService:
                 ad_server_fully_configured = True
                 config_details = "GAM configured - Test connection to verify"
             elif tenant.ad_server == "mock":
-                ad_server_fully_configured = True
-                config_details = "Mock adapter configured - Ready for testing"
+                ad_server_fully_configured = False
+                config_details = "Mock adapter - Configure a real ad server for production"
             elif tenant.ad_server in ["kevel", "triton"]:
                 ad_server_fully_configured = True
                 config_details = f"{tenant.ad_server} adapter configured"
@@ -808,19 +756,42 @@ class SetupChecklistService:
             )
         )
 
-        # 2. Currency Limits
+        # 2. SSO Configuration (CRITICAL for production security) - Second priority after ad server
+        auth_config = tenant.auth_config if hasattr(tenant, "auth_config") else None
+        sso_enabled = bool(auth_config and auth_config.oidc_enabled)
+        setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
+
+        sso_details = (
+            "SSO enabled and setup mode disabled"
+            if sso_enabled and setup_mode_disabled
+            else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
+        )
+
         tasks.append(
             SetupTask(
-                key="currency_limits",
-                name="Currency Configuration",
-                description="At least one currency must be configured for media buys",
-                is_complete=currency_count > 0,
-                action_url=f"/tenant/{self.tenant_id}/settings#business-rules",
-                details=f"{currency_count} currencies configured" if currency_count > 0 else "No currencies configured",
+                key="sso_configuration",
+                name="⚠️ Single Sign-On (SSO)",
+                description="CRITICAL: Configure SSO and disable setup mode for production security",
+                is_complete=sso_enabled and setup_mode_disabled,
+                action_url=f"/tenant/{self.tenant_id}/users",
+                details=sso_details,
             )
         )
 
-        # 3. Authorized Properties
+        # 3. Currency Limits - Only show after ad server is configured
+        if ad_server_fully_configured:
+            tasks.append(
+                SetupTask(
+                    key="currency_limits",
+                    name="Currency Configuration",
+                    description="At least one currency must be configured for media buys",
+                    is_complete=currency_count > 0,
+                    action_url=f"/tenant/{self.tenant_id}/settings#business-rules",
+                    details=f"{currency_count} currencies configured" if currency_count > 0 else "No currencies configured",
+                )
+            )
+
+        # 4. Authorized Properties
         # Single source of truth: AuthorizedProperty table
         # (Populated automatically when syncing verified PublisherPartners)
         # Note: property_count and verified_publisher_count are passed as parameters (pre-fetched)
@@ -842,68 +813,59 @@ class SetupChecklistService:
             )
         )
 
-        # 4. Inventory Synced
-        if tenant.ad_server is None or tenant.ad_server == "":
-            tasks.append(
-                SetupTask(
-                    key="inventory_synced",
-                    name="Inventory Sync",
-                    description="Configure ad server before syncing inventory",
-                    is_complete=False,
-                    action_url=f"/tenant/{self.tenant_id}/settings#adserver",
-                    details="Ad server must be configured before inventory can be synced",
+        # 4. Inventory Synced - Only show after ad server is configured
+        if ad_server_fully_configured:
+            if tenant.is_gam_tenant:
+                inventory_synced = gam_inventory_count > 0
+                tasks.append(
+                    SetupTask(
+                        key="inventory_synced",
+                        name="Inventory Sync",
+                        description="Sync ad units and placements from ad server",
+                        is_complete=inventory_synced,
+                        action_url=f"/tenant/{self.tenant_id}/settings#inventory",
+                        details=(
+                            f"{gam_inventory_count:,} inventory items synced"
+                            if inventory_synced
+                            else "No inventory synced from ad server"
+                        ),
+                    )
                 )
-            )
-        elif tenant.is_gam_tenant:
-            inventory_synced = gam_inventory_count > 0
-            tasks.append(
-                SetupTask(
-                    key="inventory_synced",
-                    name="Inventory Sync",
-                    description="Sync ad units and placements from ad server",
-                    is_complete=inventory_synced,
-                    action_url=f"/tenant/{self.tenant_id}/settings#inventory",
-                    details=(
-                        f"{gam_inventory_count:,} inventory items synced"
-                        if inventory_synced
-                        else "No inventory synced from ad server"
-                    ),
+            elif tenant.ad_server in ["kevel", "triton"]:
+                tasks.append(
+                    SetupTask(
+                        key="inventory_synced",
+                        name="Inventory Configuration",
+                        description=f"{tenant.ad_server.title()} adapter - inventory configured per product",
+                        is_complete=True,
+                        action_url=None,
+                        details=f"{tenant.ad_server.title()} adapter configures inventory targeting at product level",
+                    )
                 )
-            )
-        elif tenant.ad_server == "mock":
-            tasks.append(
-                SetupTask(
-                    key="inventory_synced",
-                    name="Inventory Sync",
-                    description="Mock adapter has built-in inventory (no sync required)",
-                    is_complete=True,
-                    action_url=None,
-                    details="Mock adapter provides built-in mock inventory automatically",
+            else:
+                tasks.append(
+                    SetupTask(
+                        key="inventory_synced",
+                        name="Inventory Configuration",
+                        description=f"{tenant.ad_server} adapter - inventory configured per product",
+                        is_complete=True,
+                        action_url=None,
+                        details=f"{tenant.ad_server} adapter configures inventory targeting at product level",
+                    )
                 )
-            )
-        else:
-            tasks.append(
-                SetupTask(
-                    key="inventory_synced",
-                    name="Inventory Configuration",
-                    description=f"{tenant.ad_server} adapter - inventory configured per product",
-                    is_complete=True,
-                    action_url=None,
-                    details=f"{tenant.ad_server} adapter configures inventory targeting at product level",
-                )
-            )
 
-        # 5. Products Created
-        tasks.append(
-            SetupTask(
-                key="products_created",
-                name="Products",
-                description="Create at least one advertising product",
-                is_complete=product_count > 0,
-                action_url=f"/tenant/{self.tenant_id}/products",
-                details=f"{product_count} products created" if product_count > 0 else "No products created",
+        # 5. Products Created - Only show after ad server is configured
+        if ad_server_fully_configured:
+            tasks.append(
+                SetupTask(
+                    key="products_created",
+                    name="Products",
+                    description="Create at least one advertising product",
+                    is_complete=product_count > 0,
+                    action_url=f"/tenant/{self.tenant_id}/products",
+                    details=f"{product_count} products created" if product_count > 0 else "No products created",
+                )
             )
-        )
 
         # 6. Principals Created
         tasks.append(
@@ -915,32 +877,6 @@ class SetupChecklistService:
                 action_url=f"/tenant/{self.tenant_id}/settings#advertisers",
                 details=(
                     f"{principal_count} advertisers configured" if principal_count > 0 else "No advertisers configured"
-                ),
-            )
-        )
-
-        # 7. Access Control
-        has_domains = bool(tenant.authorized_domains and len(tenant.authorized_domains) > 0)
-        has_emails = bool(tenant.authorized_emails and len(tenant.authorized_emails) > 0)
-        access_control_configured = bool(has_domains or has_emails)
-
-        access_details: list[str] = []
-        if has_domains and tenant.authorized_domains:
-            access_details.append(f"{len(tenant.authorized_domains)} domain(s)")
-        if has_emails and tenant.authorized_emails:
-            access_details.append(f"{len(tenant.authorized_emails)} email(s)")
-
-        tasks.append(
-            SetupTask(
-                key="access_control",
-                name="Access Control",
-                description="Configure who can access this tenant (domains or emails)",
-                is_complete=access_control_configured,
-                action_url=f"/tenant/{self.tenant_id}/settings#account",
-                details=(
-                    ", ".join(access_details)
-                    if access_details
-                    else "No access control configured - only super admins can access"
                 ),
             )
         )
@@ -966,32 +902,7 @@ class SetupChecklistService:
             )
         )
 
-        # 2. SSO Configuration (important for production security)
-        # Check if tenant has configured and enabled SSO
-        auth_config = tenant.auth_config if hasattr(tenant, "auth_config") else None
-        sso_enabled = bool(auth_config and auth_config.oidc_enabled)
-
-        # Also check if setup mode is disabled (indicates production-ready auth)
-        setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
-
-        sso_details = (
-            "SSO enabled and setup mode disabled"
-            if sso_enabled and setup_mode_disabled
-            else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
-        )
-
-        tasks.append(
-            SetupTask(
-                key="sso_configuration",
-                name="Single Sign-On (SSO)",
-                description="Configure SSO and disable setup mode for production security",
-                is_complete=sso_enabled and setup_mode_disabled,
-                action_url=f"/tenant/{self.tenant_id}/users",
-                details=sso_details,
-            )
-        )
-
-        # 3. Creative Approval Guidelines
+        # 2. Creative Approval Guidelines
         # Only count as configured if user has set auto-approve formats (explicit configuration)
         # Default human_review_required=True doesn't count as "configured"
         has_approval_config = bool(tenant.auto_approve_format_ids)

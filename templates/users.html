@@ -427,7 +427,7 @@
                 <p style="font-size: 0.875rem; color: #92400e; margin: 0;">
                     Test credentials are currently allowed.
                     <a href="#oidc-form" style="color: #92400e; text-decoration: underline;">Configure SSO</a> below, then disable setup mode for production use.
-                    <a href="https://adcontextprotocol.org/sales-agent/user-guide/sso-setup" target="_blank" style="color: #92400e; margin-left: 0.5rem;">
+                    <a href="https://github.com/adcontextprotocol/salesagent/blob/main/docs/user-guide/sso-setup.md" target="_blank" style="color: #92400e; margin-left: 0.5rem;">
                         Need help?
                     </a>
                 </p>
@@ -462,7 +462,7 @@
 
         <p style="color: #6b7280; margin-bottom: 1rem; font-size: 0.875rem;">
             Configure SSO to allow users to authenticate with your organization's identity provider (Google, Microsoft, Okta, etc.).
-            <a href="https://adcontextprotocol.org/sales-agent/user-guide/sso-setup" target="_blank" style="color: #4f46e5; text-decoration: none;">
+            <a href="https://github.com/adcontextprotocol/salesagent/blob/main/docs/user-guide/sso-setup.md" target="_blank" style="color: #4f46e5; text-decoration: none;">
                 View setup guide &rarr;
             </a>
         </p>
@@ -492,6 +492,9 @@
                     <option value="microsoft">Microsoft</option>
                     <option value="custom">Custom OIDC</option>
                 </select>
+                <p class="help-text" id="provider-help" style="margin-top: 0.5rem; display: none;">
+                    <a id="provider-guide-link" href="#" target="_blank" style="color: #4f46e5;">View setup guide for this provider &rarr;</a>
+                </p>
             </div>
 
             <div id="discovery-url-group" class="form-group" style="display: none;">
@@ -723,7 +726,7 @@ async function removeDomain(domain) {
 // OIDC/SSO Management
 async function loadAuthConfig() {
     try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/config?tenant_id=${tenantId}`, {
+        const response = await fetch(`${scriptRoot}/auth/oidc/tenant/${tenantId}/config`, {
             credentials: 'same-origin'
         });
         const data = await response.json();
@@ -783,10 +786,29 @@ async function loadAuthConfig() {
 // Provider change handler
 document.getElementById('provider').addEventListener('change', function() {
     const discoveryGroup = document.getElementById('discovery-url-group');
+    const providerHelp = document.getElementById('provider-help');
+    const providerGuideLink = document.getElementById('provider-guide-link');
+
+    // Show/hide discovery URL for custom provider
     if (this.value === 'custom') {
         discoveryGroup.style.display = 'block';
     } else {
         discoveryGroup.style.display = 'none';
+    }
+
+    // Update provider-specific help link
+    const guideBase = 'https://github.com/adcontextprotocol/salesagent/blob/main/docs/user-guide/sso-setup.md';
+    const providerAnchors = {
+        'google': '#google-workspace',
+        'microsoft': '#microsoft-entra-id-azure-ad',
+        'custom': '#quick-start'
+    };
+
+    if (this.value && providerAnchors[this.value]) {
+        providerHelp.style.display = 'block';
+        providerGuideLink.href = guideBase + providerAnchors[this.value];
+    } else {
+        providerHelp.style.display = 'none';
     }
 });
 
@@ -811,7 +833,7 @@ document.getElementById('oidc-form').addEventListener('submit', async function(e
     };
 
     try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/config?tenant_id=${tenantId}`, {
+        const response = await fetch(`${scriptRoot}/auth/oidc/tenant/${tenantId}/config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
@@ -832,29 +854,15 @@ document.getElementById('oidc-form').addEventListener('submit', async function(e
     }
 });
 
-// Test OIDC connection
-document.getElementById('test-oidc-btn').addEventListener('click', async function() {
-    try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/test?tenant_id=${tenantId}`, {
-            credentials: 'same-origin'
-        });
-        const data = await response.json();
-
-        if (data.redirect_url) {
-            window.location.href = data.redirect_url;
-        } else {
-            alert(data.error || 'Failed to start test');
-        }
-    } catch (err) {
-        console.error('Error testing OIDC:', err);
-        alert('Failed to start test');
-    }
+// Test OIDC connection - navigate directly (OAuth redirects don't work with fetch due to CORS)
+document.getElementById('test-oidc-btn').addEventListener('click', function() {
+    window.location.href = `${scriptRoot}/auth/oidc/test/${tenantId}`;
 });
 
 // Enable SSO
 document.getElementById('enable-oidc-btn').addEventListener('click', async function() {
     try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/enable?tenant_id=${tenantId}`, {
+        const response = await fetch(`${scriptRoot}/auth/oidc/tenant/${tenantId}/enable`, {
             method: 'POST',
             credentials: 'same-origin'
         });
@@ -877,7 +885,7 @@ document.getElementById('disable-oidc-btn').addEventListener('click', async func
     if (!confirm('Disable SSO?')) return;
 
     try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/disable?tenant_id=${tenantId}`, {
+        const response = await fetch(`${scriptRoot}/auth/oidc/tenant/${tenantId}/disable`, {
             method: 'POST',
             credentials: 'same-origin'
         });

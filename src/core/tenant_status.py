@@ -75,8 +75,9 @@ def is_tenant_ad_server_configured(tenant_id: str) -> bool:
                 return has_credentials
 
             elif adapter_type == "mock":
-                # Mock adapter is always ready
-                return True
+                # Mock adapter is NOT considered configured for production use
+                # Users should configure a real ad server (GAM, Kevel, etc.)
+                return False
 
             elif adapter_type == "triton":
                 # Triton requires API key

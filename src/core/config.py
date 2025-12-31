@@ -71,7 +71,7 @@ class GoogleOAuthConfig(BaseSettings):
 class SuperAdminConfig(BaseSettings):
     """Super admin configuration."""
 
-    emails: str = Field(..., description="Comma-separated list of super admin emails")
+    emails: str = Field(default="", description="Comma-separated list of super admin emails")
     domains: str | None = Field(default=None, description="Comma-separated list of super admin domains")
 
     model_config = SettingsConfigDict(env_prefix="SUPER_ADMIN_", case_sensitive=False)
