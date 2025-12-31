@@ -9,56 +9,64 @@ For a minimal working deployment:
 ```bash
 # Required
 DATABASE_URL=postgresql://user:password@host:5432/adcp
-SUPER_ADMIN_EMAILS=admin@example.com
 
-# Authentication (choose one)
-ADCP_AUTH_TEST_MODE=true  # For testing only
-# OR
-GOOGLE_CLIENT_ID=...      # For production
-GOOGLE_CLIENT_SECRET=...
+# Optional - AI features
+GEMINI_API_KEY=your-key
 ```
+
+Authentication is configured **per-tenant** via the Admin UI. No OAuth environment variables required.
 
 ## Authentication
 
-### Test Mode
+### Per-Tenant SSO (Recommended)
+
+Each tenant configures their own SSO provider via the Admin UI (**Users & Access** page). This is the recommended approach for all deployments.
+
+**Setup Flow:**
+1. Start with `CREATE_DEMO_TENANT=true` for initial access
+2. Log in with test credentials (Setup Mode is enabled by default for new tenants)
+3. Configure SSO in **Users & Access** - supports Google, Microsoft, Okta, Auth0, Keycloak, or any OIDC provider
+4. Test your SSO login
+5. Disable Setup Mode once SSO is working
+
+See [SSO Setup Guide](../user-guide/sso-setup.md) for detailed instructions.
+
+### Setup Mode (Per-Tenant)
+
+New tenants start with `auth_setup_mode=true`, which enables test credentials:
+- Email: `test_super_admin@example.com`
+- Password: `test123`
+
+Once SSO is configured and tested, disable Setup Mode from the Users & Access page. After that, only SSO authentication works for that tenant.
+
+### Legacy: Global Test Mode
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ADCP_AUTH_TEST_MODE` | `false` | Enable test authentication with pre-configured accounts. **Not for production.** |
+| `ADCP_AUTH_TEST_MODE` | `false` | Enable test authentication globally. **Deprecated - use per-tenant Setup Mode instead.** |
 
-When enabled, provides test login buttons with these accounts:
-- Super Admin: `test_super_admin@example.com` / `test123`
-- Tenant Admin: `test_tenant_admin@example.com` / `test123`
-- Tenant User: `test_tenant_user@example.com` / `test123`
+### Legacy: Environment Variable OAuth
 
-### OAuth - Generic OIDC
-
-Works with Okta, Auth0, Azure AD, Keycloak, and any OIDC-compliant provider.
+These variables configure a **global** OAuth provider shared by all tenants. For new deployments, use per-tenant SSO configuration instead.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OAUTH_DISCOVERY_URL` | - | OIDC discovery URL (e.g., `https://provider.com/.well-known/openid-configuration`) |
-| `OAUTH_CLIENT_ID` | - | OAuth client ID |
-| `OAUTH_CLIENT_SECRET` | - | OAuth client secret |
+| `GOOGLE_CLIENT_ID` | - | Google OAuth client ID (legacy) |
+| `GOOGLE_CLIENT_SECRET` | - | Google OAuth client secret (legacy) |
+| `OAUTH_DISCOVERY_URL` | - | OIDC discovery URL (legacy) |
+| `OAUTH_CLIENT_ID` | - | OAuth client ID (legacy) |
+| `OAUTH_CLIENT_SECRET` | - | OAuth client secret (legacy) |
 | `OAUTH_SCOPES` | `openid email profile` | OAuth scopes to request |
-| `OAUTH_PROVIDER` | `google` | Provider name for display purposes |
+| `OAUTH_PROVIDER` | `google` | Provider name for display |
 
-### OAuth - Google
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GOOGLE_CLIENT_ID` | - | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | - | Google OAuth client secret |
-| `GOOGLE_OAUTH_REDIRECT_URI` | auto | Custom redirect URI (usually auto-detected) |
-
-### Access Control
+### Legacy: Super Admin Access Control
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SUPER_ADMIN_EMAILS` | - | **Required.** Comma-separated list of super admin emails |
-| `SUPER_ADMIN_DOMAINS` | - | Comma-separated domains (grants admin to all users from these domains) |
+| `SUPER_ADMIN_EMAILS` | - | Comma-separated super admin emails. **Deprecated - use per-tenant user management.** |
+| `SUPER_ADMIN_DOMAINS` | - | Comma-separated domains for admin access. **Deprecated.** |
 
-Format: `user1@example.com,user2@example.com` (no spaces)
+> **Note**: Per-tenant SSO configuration replaces `SUPER_ADMIN_EMAILS`. Users are managed per-tenant via the Users & Access page, with authorized emails/domains configured per-tenant.
 
 ---
 
@@ -146,7 +154,7 @@ For GAM adapter integration:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CREATE_DEMO_TENANT` | `true` | Create "Default Publisher" tenant with mock adapter on startup |
+| `CREATE_DEMO_TENANT` | `false` | **Local testing only.** Creates "Default Publisher" tenant with mock adapter. Do NOT use in production. |
 | `CREATE_SAMPLE_DATA` | `false` | Create sample products, media buys, etc. |
 
 ### Security
@@ -193,13 +201,13 @@ These contain sensitive credentials and should never be in config files:
 
 - `DATABASE_URL`
 - `ENCRYPTION_KEY`
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`
-- `GAM_OAUTH_CLIENT_ID`, `GAM_OAUTH_CLIENT_SECRET`
-- `GOOGLE_APPLICATION_CREDENTIALS_JSON`
+- `GAM_OAUTH_CLIENT_ID`, `GAM_OAUTH_CLIENT_SECRET` (for GAM integration)
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` (for GAM service accounts)
 - `APPROXIMATED_API_KEY`
 - `WEBHOOK_SECRET`
 - `FLASK_SECRET_KEY`
+
+> **Note**: Admin OAuth credentials (`GOOGLE_CLIENT_ID`, etc.) are now configured per-tenant via the Admin UI instead of environment variables.
 
 ### Environment Variables (can be in fly.toml, docker-compose, etc.)
 
@@ -207,7 +215,7 @@ Non-sensitive configuration:
 
 - `ENVIRONMENT`, `PRODUCTION`
 - `ADCP_MULTI_TENANT`, `BASE_DOMAIN`, `SALES_AGENT_DOMAIN`
-- `ADMIN_UI_URL`, `GOOGLE_OAUTH_REDIRECT_URI`
+- `ADMIN_UI_URL`
 - `CREATE_DEMO_TENANT`
 - `SKIP_NGINX`, `SKIP_CRON`
 
@@ -217,4 +225,3 @@ Non-sensitive configuration:
 - All `*_PORT` variables (hardcoded in nginx)
 - `DATABASE_*_TIMEOUT` variables
 - `PYDANTIC_AI_*` variables
-- `OAUTH_SCOPES`

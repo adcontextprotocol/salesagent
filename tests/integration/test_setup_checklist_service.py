@@ -15,6 +15,7 @@ from src.core.database.models import (
     Principal,
     Product,
     Tenant,
+    TenantAuthConfig,
 )
 from src.services.setup_checklist_service import (
     SetupChecklistService,
@@ -429,6 +430,18 @@ class TestSetupChecklistService:
                 axe_macro_key="axe_macro_segment",
             )
             db_session.add(adapter_config3)
+
+            # Add SSO config for tenant 3 (makes it fully configured)
+            # Set auth_setup_mode to False to simulate production-ready auth
+            tenant3.auth_setup_mode = False
+            auth_config3 = TenantAuthConfig(
+                tenant_id=tenant_ids[2],
+                oidc_enabled=True,
+                oidc_provider="google",
+                oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+                oidc_client_id="test_client_id",
+            )
+            db_session.add(auth_config3)
 
             property3 = AuthorizedProperty(
                 property_id="prop_bulk_3",

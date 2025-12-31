@@ -106,6 +106,10 @@ class Tenant(Base, JSONValidatorMixin):
     # Values: "public" (default), "private", or other policy strings
     brand_manifest_policy: Mapped[str] = mapped_column(String(50), nullable=False, server_default="public")
 
+    # Auth setup mode - when True, test credentials work; when False, only SSO works
+    # New tenants start in setup mode until SSO is configured and tested
+    auth_setup_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
     principals = relationship("Principal", back_populates="tenant", cascade="all, delete-orphan")
@@ -129,6 +133,12 @@ class Tenant(Base, JSONValidatorMixin):
     signals_agents = relationship(
         "SignalsAgent",
         back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+    auth_config = relationship(
+        "TenantAuthConfig",
+        back_populates="tenant",
+        uselist=False,
         cascade="all, delete-orphan",
     )
 
@@ -590,6 +600,57 @@ class User(Base):
         Index("idx_users_email", "email"),
         Index("idx_users_google_id", "google_id"),
     )
+
+
+class TenantAuthConfig(Base):
+    """Per-tenant authentication configuration for OIDC/SSO."""
+
+    __tablename__ = "tenant_auth_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+
+    # OIDC configuration
+    oidc_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    oidc_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)  # google, microsoft, custom
+    oidc_discovery_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    oidc_client_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    oidc_client_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)  # Fernet encrypted
+    oidc_scopes: Mapped[str | None] = mapped_column(String(500), nullable=True, default="openid email profile")
+
+    # Verification state - tracks last successful OAuth test
+    oidc_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    oidc_verified_redirect_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
+
+    # Relationships
+    tenant: Mapped["Tenant"] = relationship(back_populates="auth_config")
+
+    __table_args__ = (Index("idx_tenant_auth_configs_tenant_id", "tenant_id", unique=True),)
+
+    @property
+    def oidc_client_secret(self) -> str | None:
+        """Decrypt and return the OIDC client secret."""
+        if not self.oidc_client_secret_encrypted:
+            return None
+        from src.core.utils.encryption import decrypt_api_key
+
+        return decrypt_api_key(self.oidc_client_secret_encrypted)
+
+    @oidc_client_secret.setter
+    def oidc_client_secret(self, value: str | None) -> None:
+        """Encrypt and store the OIDC client secret."""
+        if value is None:
+            self.oidc_client_secret_encrypted = None
+        else:
+            from src.core.utils.encryption import encrypt_api_key
+
+            self.oidc_client_secret_encrypted = encrypt_api_key(value)
 
 
 class Creative(Base):

@@ -23,6 +23,7 @@ from src.admin.blueprints.format_search import bp as format_search_bp
 from src.admin.blueprints.gam import gam_bp
 from src.admin.blueprints.inventory import inventory_bp
 from src.admin.blueprints.inventory_profiles import inventory_profiles_bp
+from src.admin.blueprints.oidc import oidc_bp
 from src.admin.blueprints.operations import operations_bp
 from src.admin.blueprints.policy import policy_bp
 from src.admin.blueprints.principals import principals_bp
@@ -314,6 +315,7 @@ def create_app(config=None):
     app.register_blueprint(public_bp)  # Public routes (no auth required) - MUST BE FIRST
     app.register_blueprint(core_bp)  # Core routes (/, /health, /static)
     app.register_blueprint(auth_bp)  # No url_prefix - auth routes are at root
+    app.register_blueprint(oidc_bp)  # OIDC/OAuth routes at /auth/oidc
     app.register_blueprint(tenant_management_settings_bp)  # Tenant management settings at /settings
     app.register_blueprint(tenants_bp, url_prefix="/tenant")
     app.register_blueprint(products_bp, url_prefix="/tenant/<tenant_id>/products")

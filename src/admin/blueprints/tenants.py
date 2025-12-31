@@ -712,3 +712,11 @@ def media_buys_list(tenant_id):
         logger.error(f"Error listing media buys for tenant {tenant_id}: {e}", exc_info=True)
         flash(f"Error loading media buys: {str(e)}", "error")
         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+
+@tenants_bp.route("/<tenant_id>/settings/auth")
+@require_tenant_access()
+def auth_settings(tenant_id):
+    """Redirect to users page for authentication management."""
+    # SSO config moved to users page
+    return redirect(url_for("users.list_users", tenant_id=tenant_id))

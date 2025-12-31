@@ -5,6 +5,7 @@ Get the AdCP Sales Agent running locally in under 5 minutes.
 ## Prerequisites
 
 - Docker and Docker Compose installed
+- OAuth credentials from your identity provider (Google, Microsoft, Okta, etc.)
 - (Optional) Gemini API key for AI-powered creative review
 
 ## Quick Start
@@ -13,11 +14,9 @@ Get the AdCP Sales Agent running locally in under 5 minutes.
 # 1. Download the compose file
 curl -O https://raw.githubusercontent.com/adcontextprotocol/salesagent/main/docker-compose.yml
 
-# 2. Create environment file with demo mode enabled
+# 2. Create environment file (optional - for local testing only)
 cat > .env << 'EOF'
-CREATE_DEMO_TENANT=true
-SUPER_ADMIN_EMAILS=your-email@example.com
-GEMINI_API_KEY=your-gemini-key
+GEMINI_API_KEY=your-gemini-key  # Optional
 EOF
 
 # 3. Start services
@@ -27,25 +26,41 @@ docker compose up -d
 curl http://localhost:8000/health
 ```
 
-## Access the Admin UI
+## First-Time Setup
 
-Open http://localhost:8000/admin
+1. Open http://localhost:8000/admin
+2. New tenants start in **Setup Mode** - test credentials work initially
+3. Log in with test credentials (see below)
+4. Configure SSO in **Users & Access** (see [SSO Setup Guide](user-guide/sso-setup.md))
+5. Test your SSO login works
+6. Disable Setup Mode to require SSO for all users
 
-In local development mode, use the test login:
+### Setup Mode
+
+New tenants start with `auth_setup_mode=true`, which allows test credentials:
 - Email: `test_super_admin@example.com`
 - Password: `test123`
 
-## What Gets Created
+Once you've configured and tested SSO, disable Setup Mode from the Users & Access page. After that, only SSO authentication works.
+
+## Local Testing with Demo Data
+
+For local testing without a real ad server, you can create a demo tenant with mock data:
+
+```bash
+# Add to .env for local testing only
+CREATE_DEMO_TENANT=true
+```
 
 With `CREATE_DEMO_TENANT=true`, the system creates:
-- A default tenant with the **Mock adapter** (simulates an ad server)
+- A "Default Publisher" tenant with the **Mock adapter** (simulates an ad server)
 - Sample currencies (USD, EUR, GBP)
 - A test principal/advertiser for API access
 - Sample products
 
-This demo data lets you explore all features without configuring a real ad server.
+This demo data lets you explore features without configuring Google Ad Manager or another ad server.
 
-> **Production deployments**: Omit `CREATE_DEMO_TENANT=true` to start with a clean slate and create your tenant via the Admin UI signup flow.
+> **Production deployments**: Do NOT set `CREATE_DEMO_TENANT=true`. Start with the default empty tenant, configure your real ad server adapter, set up SSO, and create users through the Admin UI.
 
 ## Services
 

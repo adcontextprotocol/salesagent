@@ -19,6 +19,7 @@ from src.core.database.models import (
     Product,
     PublisherPartner,
     Tenant,
+    TenantAuthConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -563,7 +564,33 @@ class SetupChecklistService:
             )
         )
 
-        # 2. Creative Approval Guidelines
+        # 2. SSO Configuration (important for production security)
+        # Check if tenant has configured and enabled SSO
+        auth_config_stmt = select(TenantAuthConfig).filter_by(tenant_id=self.tenant_id)
+        auth_config = session.scalars(auth_config_stmt).first()
+        sso_enabled = bool(auth_config and auth_config.oidc_enabled)
+
+        # Also check if setup mode is disabled (indicates production-ready auth)
+        setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
+
+        sso_details = (
+            "SSO enabled and setup mode disabled"
+            if sso_enabled and setup_mode_disabled
+            else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
+        )
+
+        tasks.append(
+            SetupTask(
+                key="sso_configuration",
+                name="Single Sign-On (SSO)",
+                description="Configure SSO and disable setup mode for production security",
+                is_complete=sso_enabled and setup_mode_disabled,
+                action_url=f"/tenant/{self.tenant_id}/users",
+                details=sso_details,
+            )
+        )
+
+        # 3. Creative Approval Guidelines
         # Only count as configured if user has set auto-approve formats (explicit configuration)
         # Default human_review_required=True doesn't count as "configured"
         has_approval_config = bool(tenant.auto_approve_format_ids)
@@ -939,7 +966,32 @@ class SetupChecklistService:
             )
         )
 
-        # 2. Creative Approval Guidelines
+        # 2. SSO Configuration (important for production security)
+        # Check if tenant has configured and enabled SSO
+        auth_config = tenant.auth_config if hasattr(tenant, "auth_config") else None
+        sso_enabled = bool(auth_config and auth_config.oidc_enabled)
+
+        # Also check if setup mode is disabled (indicates production-ready auth)
+        setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
+
+        sso_details = (
+            "SSO enabled and setup mode disabled"
+            if sso_enabled and setup_mode_disabled
+            else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
+        )
+
+        tasks.append(
+            SetupTask(
+                key="sso_configuration",
+                name="Single Sign-On (SSO)",
+                description="Configure SSO and disable setup mode for production security",
+                is_complete=sso_enabled and setup_mode_disabled,
+                action_url=f"/tenant/{self.tenant_id}/users",
+                details=sso_details,
+            )
+        )
+
+        # 3. Creative Approval Guidelines
         # Only count as configured if user has set auto-approve formats (explicit configuration)
         # Default human_review_required=True doesn't count as "configured"
         has_approval_config = bool(tenant.auto_approve_format_ids)

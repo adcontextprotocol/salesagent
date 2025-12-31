@@ -1,15 +1,16 @@
 """User management blueprint for admin UI."""
 
+import json
 import logging
 from datetime import UTC, datetime
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from src.admin.utils import require_tenant_access
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Tenant, User
+from src.core.database.models import Tenant, TenantAuthConfig, User
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +44,21 @@ def list_users(tenant_id):
                 }
             )
 
+        # Get authorized domains
+        authorized_domains = tenant.authorized_domains or []
+
+        # Get auth config to check if SSO is enabled
+        auth_config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+
         return render_template(
-            "tenant_users.html",
+            "users.html",
             tenant=tenant,
             tenant_id=tenant_id,
+            tenant_name=tenant.name,
             users=users_list,
+            authorized_domains=authorized_domains,
+            auth_setup_mode=tenant.auth_setup_mode,
+            oidc_enabled=auth_config.oidc_enabled if auth_config else False,
         )
 
 
@@ -156,3 +167,145 @@ def update_role(tenant_id, user_id):
         flash(f"Error updating role: {str(e)}", "error")
 
     return redirect(url_for("users.list_users", tenant_id=tenant_id))
+
+
+@users_bp.route("/domains", methods=["POST"])
+@require_tenant_access()
+@log_admin_action("add_domain", extract_details=lambda r, **kw: {"domain": request.json.get("domain")})
+def add_domain(tenant_id):
+    """Add an authorized domain for the tenant."""
+    try:
+        data = request.json
+        domain = data.get("domain", "").strip().lower()
+
+        if not domain:
+            return jsonify({"success": False, "error": "Domain is required"}), 400
+
+        # Basic domain validation
+        if "." not in domain or domain.startswith(".") or domain.endswith("."):
+            return jsonify({"success": False, "error": "Invalid domain format"}), 400
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            # Get current domains
+            domains = tenant.authorized_domains or []
+            if isinstance(domains, str):
+                domains = json.loads(domains)
+            domains = list(domains)
+
+            # Check if already exists
+            if domain in domains:
+                return jsonify({"success": False, "error": "Domain already exists"}), 400
+
+            # Add domain
+            domains.append(domain)
+            tenant.authorized_domains = domains
+            db_session.commit()
+
+            return jsonify({"success": True, "domain": domain})
+
+    except Exception as e:
+        logger.error(f"Error adding domain: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@users_bp.route("/domains", methods=["DELETE"])
+@require_tenant_access()
+@log_admin_action("remove_domain", extract_details=lambda r, **kw: {"domain": request.json.get("domain")})
+def remove_domain(tenant_id):
+    """Remove an authorized domain from the tenant."""
+    try:
+        data = request.json
+        domain = data.get("domain", "").strip().lower()
+
+        if not domain:
+            return jsonify({"success": False, "error": "Domain is required"}), 400
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            # Get current domains
+            domains = tenant.authorized_domains or []
+            if isinstance(domains, str):
+                domains = json.loads(domains)
+            domains = list(domains)
+
+            # Remove domain
+            if domain in domains:
+                domains.remove(domain)
+                tenant.authorized_domains = domains
+                db_session.commit()
+
+            return jsonify({"success": True})
+
+    except Exception as e:
+        logger.error(f"Error removing domain: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@users_bp.route("/disable-setup-mode", methods=["POST"])
+@require_tenant_access()
+@log_admin_action("disable_auth_setup_mode")
+def disable_setup_mode(tenant_id):
+    """Disable auth setup mode for the tenant.
+
+    Once disabled, test credentials no longer work and only SSO authentication is allowed.
+    This should only be called after SSO has been successfully tested.
+    """
+    try:
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            # Check if SSO is configured and enabled
+            auth_config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+
+            if not auth_config or not auth_config.oidc_enabled:
+                return (
+                    jsonify(
+                        {"success": False, "error": "SSO must be configured and enabled before disabling setup mode"}
+                    ),
+                    400,
+                )
+
+            # Disable setup mode
+            tenant.auth_setup_mode = False
+            db_session.commit()
+
+            logger.info(f"Auth setup mode disabled for tenant {tenant_id}")
+            return jsonify({"success": True, "message": "Setup mode disabled. Only SSO authentication is now allowed."})
+
+    except Exception as e:
+        logger.error(f"Error disabling setup mode: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@users_bp.route("/enable-setup-mode", methods=["POST"])
+@require_tenant_access()
+@log_admin_action("enable_auth_setup_mode")
+def enable_setup_mode(tenant_id):
+    """Re-enable auth setup mode for the tenant.
+
+    This allows test credentials to work again, useful for troubleshooting.
+    """
+    try:
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            tenant.auth_setup_mode = True
+            db_session.commit()
+
+            logger.info(f"Auth setup mode re-enabled for tenant {tenant_id}")
+            return jsonify({"success": True, "message": "Setup mode enabled. Test credentials now work."})
+
+    except Exception as e:
+        logger.error(f"Error enabling setup mode: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500

@@ -189,11 +189,29 @@ if not self.supports_feature and feature_requested:
 ## Common Operations
 
 ### Running Locally
+
+**For development (builds from local source with all dependencies):**
+```bash
+docker-compose -f docker-compose.dev.yml build   # Build images from source
+docker-compose -f docker-compose.dev.yml up -d   # Start all services
+docker-compose -f docker-compose.dev.yml logs -f # View logs
+docker-compose -f docker-compose.dev.yml down    # Stop
+
+# Run migrations after starting
+docker-compose -f docker-compose.dev.yml exec admin-ui python scripts/ops/migrate.py
+
+# Access at http://localhost:8000
+# Test login: test_super_admin@example.com / test123
+```
+
+**For quickstart (uses pre-built images from GHCR):**
 ```bash
 docker-compose up -d      # Start all services
 docker-compose logs -f    # View logs
 docker-compose down       # Stop
 ```
+
+**Note:** Use `docker-compose.dev.yml` when developing features that add new dependencies (like `webauthn`). The dev compose builds images from local source code including `pyproject.toml` and `uv.lock`.
 
 ### Testing
 ```bash
@@ -211,8 +229,11 @@ uv run pytest tests/unit/test_adcp_contract.py -v
 
 ### Database Migrations
 ```bash
-uv run python migrate.py                    # Run migrations
-uv run alembic revision -m "description"    # Create migration
+uv run python scripts/ops/migrate.py            # Run migrations locally
+uv run alembic revision -m "description"        # Create migration
+
+# In Docker:
+docker-compose -f docker-compose.dev.yml exec admin-ui python scripts/ops/migrate.py
 ```
 
 **Never modify existing migrations after commit!**
@@ -335,11 +356,17 @@ APPROXIMATED_API_KEY=your-approximated-api-key
 ## Deployment
 
 ### Three Environments
-- **Local Dev**: `docker-compose up` → localhost:8001/8080/8091
+- **Local Dev**: `docker-compose -f docker-compose.dev.yml up` → http://localhost:8000 (builds from source)
 - **Reference Sales Agent**: Fly.io → https://adcp-sales-agent.fly.dev (auto-deploys from main)
 - **Test Buyer**: https://testing.adcontextprotocol.org/ (OUR production tenant with mock adapter)
 
 **All three are INDEPENDENT** - Docker doesn't affect production.
+
+**Local Dev Notes:**
+- Use `docker-compose.dev.yml` for development (builds from local source)
+- Use `docker-compose.yml` for quickstart with pre-built images
+- Test mode enabled by default (`ADCP_AUTH_TEST_MODE=true`)
+- Test credentials: `test_super_admin@example.com` / `test123`
 
 ### Git Workflow (MANDATORY)
 **Never push directly to main**

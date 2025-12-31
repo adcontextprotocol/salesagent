@@ -67,14 +67,30 @@ Configure via the Admin UI:
 
 ## Development Setup
 
-For local development with hot-reload:
+For local development with hot-reload and all dependencies:
 
 ```bash
 git clone https://github.com/adcontextprotocol/salesagent.git
 cd salesagent
 cp .env.template .env
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Build and start (builds from source with all dependencies)
+docker compose -f docker-compose.dev.yml build
+docker compose -f docker-compose.dev.yml up -d
+
+# Run database migrations
+docker compose -f docker-compose.dev.yml exec admin-ui python scripts/ops/migrate.py
+
+# View logs
+docker compose -f docker-compose.dev.yml logs -f
 ```
+
+Access at http://localhost:8000:
+- **Admin UI:** `/admin` (test login: `test_super_admin@example.com` / `test123`)
+- **MCP Server:** `/mcp/`
+- **A2A Server:** `/a2a`
+
+**Important:** Use `docker-compose.dev.yml` for development. It builds from local source code, enabling hot-reload and including all dependencies. The standard `docker-compose.yml` uses pre-built images which may not have the latest packages.
 
 Run tests:
 ```bash
@@ -83,7 +99,7 @@ uv run pytest tests/integration/   # Integration tests (requires PostgreSQL)
 uv run pytest tests/e2e/           # E2E tests (uses Docker)
 ```
 
-See [Development Guide](docs/DEVELOPMENT.md) for contributing.
+See [Development Guide](docs/development/README.md) for contributing.
 
 ---
 

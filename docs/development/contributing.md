@@ -17,48 +17,60 @@
    cd salesagent
    ```
 
-2. **Install dependencies:**
+2. **Set up environment variables:**
+   ```bash
+   cp .env.template .env
+   # Edit .env with your configuration (optional for basic testing)
+   ```
+
+3. **Build and start development services:**
+   ```bash
+   docker compose -f docker-compose.dev.yml build
+   docker compose -f docker-compose.dev.yml up -d
+   ```
+
+4. **Run database migrations:**
+   ```bash
+   docker compose -f docker-compose.dev.yml exec admin-ui python scripts/ops/migrate.py
+   ```
+
+5. **Install local dependencies (for running tests outside Docker):**
    ```bash
    uv sync
    ```
 
-3. **Set up environment variables:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-4. **Start services:**
-   ```bash
-   docker-compose up -d
-   ```
-
-5. **Initialize database:**
-   ```bash
-   uv run python migrate.py
-   uv run python init_database.py
-   ```
-
 ### Running the Services
 
+**Development (recommended):**
 ```bash
-# Start all services
-docker-compose up
-
-# Start in background
-docker-compose up -d
+# Build from source (includes all dependencies, enables hot-reload)
+docker compose -f docker-compose.dev.yml build
+docker compose -f docker-compose.dev.yml up -d
 
 # View logs
-docker-compose logs -f
+docker compose -f docker-compose.dev.yml logs -f
 
 # Stop services
-docker-compose down
+docker compose -f docker-compose.dev.yml down
 ```
 
-Access points:
-- MCP Server: http://localhost:8080/mcp/
-- Admin UI: http://localhost:8001
-- PostgreSQL: localhost:5432
+**Production-style (uses pre-built images):**
+```bash
+docker compose up -d
+```
+
+Access points (all via nginx proxy on port 8000):
+- Admin UI: http://localhost:8000/admin
+- MCP Server: http://localhost:8000/mcp/
+- A2A Server: http://localhost:8000/a2a
+
+Test login: `test_super_admin@example.com` / `test123`
+
+**Why use `docker-compose.dev.yml`?**
+- Builds from local source code (not pre-built images)
+- Hot-reload for code changes
+- Includes all dependencies (new packages work immediately)
+- Source code mounted for live development
 
 ## Conductor Development Environment
 
@@ -312,8 +324,9 @@ uv run python simulation_full.py http://localhost:8080 \
 
 1. Check existing schema first:
 ```bash
-grep -r "Column(" models.py
-sqlite3 adcp_local.db ".schema table_name"
+grep -r "Column(" src/core/database/models.py
+# Connect to PostgreSQL in Docker
+docker compose -f docker-compose.dev.yml exec postgres psql -U adcp_user -d adcp -c "\d table_name"
 ```
 
 2. Create migration:
@@ -331,19 +344,21 @@ def downgrade():
     op.drop_column('table_name', 'new_column')
 ```
 
-4. Test migration:
+4. Run migration:
 ```bash
-# Test on copy
-cp adcp_local.db test.db
-DATABASE_URL=sqlite:///test.db uv run python migrate.py
+# Inside Docker (recommended)
+docker compose -f docker-compose.dev.yml exec admin-ui python scripts/ops/migrate.py
+
+# Or locally with uv
+uv run python scripts/ops/migrate.py
 ```
 
 ### Database Best Practices
 
 - Always use SQLAlchemy's `sa.table()` in migrations
-- Handle both SQLite and PostgreSQL differences
+- Use PostgreSQL-specific features (JSONType, etc.)
 - Use scoped sessions for thread safety
-- Test with both database types
+- Use SQLAlchemy 2.0 patterns: `select()` + `scalars()`, not `query()`
 
 ## API Development
 
