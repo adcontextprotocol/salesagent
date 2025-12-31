@@ -82,6 +82,8 @@ class TestTemplateUrlValidation:
                             test_params["profile_id"] = 1  # profile_id is an integer
                         if "filename" in params:
                             test_params["filename"] = "test.js"
+                        if "user_id" in params:
+                            test_params["user_id"] = "test_user"
 
                         # Try to build the URL
                         url = url_for(endpoint, **test_params)
@@ -180,6 +182,10 @@ class TestTemplateUrlValidation:
                             # Add media_buy_id for media buy endpoints
                             if "media_buy" in endpoint:
                                 test_params["media_buy_id"] = "test_buy"
+
+                            # Add user_id for user endpoints
+                            if "user" in endpoint and "toggle" in endpoint:
+                                test_params["user_id"] = "test_user"
 
                             url_for(endpoint, **test_params)
                         except BuildError as e:
