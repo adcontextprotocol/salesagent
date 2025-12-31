@@ -353,4 +353,9 @@ def get_auth_config_summary(tenant_id: str) -> dict:
                 config.oidc_verified_redirect_uri is not None
                 and config.oidc_verified_redirect_uri != current_redirect_uri
             ),
+            # Include actual config values for form population (not secret)
+            "provider": config.oidc_provider,
+            "client_id": config.oidc_client_id,
+            "discovery_url": config.oidc_discovery_url,
+            "scopes": config.oidc_scopes,
         }
