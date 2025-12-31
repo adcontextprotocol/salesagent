@@ -110,6 +110,10 @@ class Tenant(Base, JSONValidatorMixin):
     # New tenants start in setup mode until SSO is configured and tested
     auth_setup_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
+    # Product ranking prompt - optional AI prompt for ranking products based on brief
+    # When set, get_products will use AI to rank and filter products
+    product_ranking_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
     principals = relationship("Principal", back_populates="tenant", cascade="all, delete-orphan")

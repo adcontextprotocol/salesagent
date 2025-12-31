@@ -84,11 +84,11 @@ def main():
     all_errors = []
 
     for filepath in sys.argv[1:]:
-        # Only check Python files in src/ and product_catalog_providers/
+        # Only check Python files in src/
         if not filepath.endswith(".py"):
             continue
 
-        if not (filepath.startswith("src/") or filepath.startswith("product_catalog_providers/")):
+        if not filepath.startswith("src/"):
             continue
 
         errors = check_file(filepath)

@@ -22,7 +22,8 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 # Imports for implementation
-from product_catalog_providers.factory import get_product_catalog_provider
+from sqlalchemy.orm import joinedload
+
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import set_current_tenant
@@ -237,6 +238,9 @@ async def _get_products_impl(
     policy_check_enabled = advertising_policy.get("enabled", False)  # Default to False for new tenants
     policy_disabled_reason = None
 
+    # Extract brief text early - needed for policy checks, dynamic variants, and AI ranking
+    brief_text = req.brief if req.brief else ""
+
     if not policy_check_enabled:
         # Skip policy checks if disabled
         policy_result = None
@@ -267,8 +271,6 @@ async def _get_products_impl(
                     brand_manifest_dict = req.brand_manifest  # URL string
 
             try:
-                # Ensure brief is not None for policy check
-                brief_text = req.brief if req.brief else ""
                 policy_result = await policy_service.check_brief_compliance(
                     brief=brief_text,
                     promoted_offering=offering,  # Use extracted offering from brand_manifest
@@ -357,55 +359,36 @@ async def _get_products_impl(
             f"Request violates content policy: {policy_result.reason}. Restrictions: {', '.join(restrictions_list)}",
         )
 
-    # Determine product catalog configuration
-    # Priority: 1) explicit product_catalog config, 2) check signals_agents table, 3) default to database
-    if tenant.get("product_catalog"):
-        # Use explicit product_catalog configuration (new pattern)
-        catalog_config = tenant["product_catalog"]
-        logger.debug(f"Using explicit product_catalog config: {catalog_config}")
-    else:
-        # Check if tenant has any enabled signals agents
-        from src.core.database.models import SignalsAgent
+    # Query products directly from database
+    # This replaces the product_catalog_providers abstraction with simple direct access
+    from src.core.database.models import Product as ProductModel
 
-        with get_db_session() as db_session:
-            stmt = select(SignalsAgent).filter_by(tenant_id=tenant["tenant_id"], enabled=True)
-            enabled_agents = db_session.scalars(stmt).all()
+    with get_db_session() as db_session:
+        stmt = (
+            select(ProductModel)
+            .options(joinedload(ProductModel.pricing_options), joinedload(ProductModel.tenant))
+            .filter_by(tenant_id=tenant["tenant_id"])
+            .order_by(ProductModel.product_id)
+        )
+        result = db_session.execute(stmt).unique()
+        db_products = list(result.scalars().all())
 
-        if enabled_agents:
-            # Use signals discovery provider with enabled agents
-            logger.info(
-                f"Using signals provider with {len(enabled_agents)} enabled agent(s) for tenant {tenant['tenant_id']}"
-            )
-            catalog_config = {"provider": "signals", "config": {}}
-        else:
-            # Default to database provider
-            catalog_config = {"provider": "database", "config": {}}
+        # Convert database Product models to AdCP Product schema
+        products = []
+        for product_obj in db_products:
+            try:
+                validated_product = convert_product_model_to_schema(product_obj)
+                products.append(validated_product)
+                logger.debug(f"Successfully converted product {product_obj.product_id}")
+            except Exception as e:
+                error_msg = (
+                    f"Product '{product_obj.product_id}' failed to convert to AdCP schema. "
+                    f"This indicates data corruption or migration issue. Error: {e}"
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg) from e
 
-    # Get the product catalog provider for this tenant
-    # Factory expects a dict with "product_catalog" key, not the catalog_config directly
-    tenant_config_for_factory = {"product_catalog": catalog_config}
-    provider = await get_product_catalog_provider(
-        tenant["tenant_id"],
-        tenant_config_for_factory,
-    )
-
-    # Query products using the brief, including context for signals forwarding
-    context_data = {
-        "brand_name": offering,
-        "tenant_id": tenant["tenant_id"],
-        "principal_id": principal_id,
-    }
-
-    logger.info(f"[GET_PRODUCTS] Calling provider.get_products for tenant_id={tenant['tenant_id']}")
-    brief_text = req.brief if req.brief else ""
-    products = await provider.get_products(
-        brief=brief_text,
-        tenant_id=tenant["tenant_id"],
-        principal_id=principal_id,
-        principal_data=principal_data,
-        context=context_data,
-    )
-    logger.info(f"[GET_PRODUCTS] Got {len(products)} static products from provider")
+    logger.info(f"[GET_PRODUCTS] Got {len(products)} products from database for tenant {tenant['tenant_id']}")
 
     # Filter products by principal access control
     # Products with allowed_principal_ids set are only visible to those specific principals
@@ -685,6 +668,58 @@ async def _get_products_impl(
                     # Include non-guaranteed products without price_guidance (can't filter by exposure estimates)
                     filtered_products.append(product)
         eligible_products = filtered_products
+
+    # AI-powered product ranking (when tenant has product_ranking_prompt configured)
+    product_ranking_prompt = tenant.get("product_ranking_prompt")
+    if product_ranking_prompt and brief_text and eligible_products:
+        try:
+            from src.services.ai.agents.ranking_agent import (
+                create_ranking_agent,
+                rank_products_async,
+            )
+            from src.services.ai.factory import get_factory
+
+            factory = get_factory()
+            if factory.is_ai_enabled():
+                model = factory.create_model()
+                agent = create_ranking_agent(model)
+
+                # Convert products to dicts for ranking
+                products_for_ranking = [p.model_dump() for p in eligible_products]
+
+                # Run AI ranking
+                ranking_result = await rank_products_async(
+                    agent=agent,
+                    custom_prompt=product_ranking_prompt,
+                    brief=brief_text,
+                    products=products_for_ranking,
+                )
+
+                # Build a map of product_id -> (score, reason)
+                ranking_map = {r.product_id: (r.relevance_score, r.reason) for r in ranking_result.rankings}
+
+                # Sort products by relevance score (highest first)
+                # Products not in ranking_map get score 0
+                eligible_products.sort(
+                    key=lambda p: ranking_map.get(p.product_id, (0.0, ""))[0],
+                    reverse=True,
+                )
+
+                # Filter out products with very low relevance (score < 0.1)
+                eligible_products = [p for p in eligible_products if ranking_map.get(p.product_id, (0.0, ""))[0] >= 0.1]
+
+                # Log the ranking results
+                for r in ranking_result.rankings:
+                    logger.info(f"[AI_RANKING] {r.product_id}: score={r.relevance_score:.2f}, reason={r.reason}")
+
+                logger.info(
+                    f"[GET_PRODUCTS] AI ranking applied: {len(ranking_result.rankings)} products ranked, "
+                    f"{len(eligible_products)} products above threshold"
+                )
+            else:
+                logger.debug("[GET_PRODUCTS] AI ranking configured but AI not enabled (no API key)")
+        except Exception as e:
+            logger.warning(f"Failed to apply AI product ranking: {e}. Returning unranked products.")
 
     # Annotate pricing options with adapter support (AdCP PR #88)
     # Do this BEFORE serialization to avoid reconstruction issues

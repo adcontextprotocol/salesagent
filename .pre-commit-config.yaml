@@ -46,7 +46,7 @@ repos:
         name: Enforce SQLAlchemy 2.0 patterns (no session.query)
         entry: uv run python .pre-commit-hooks/check_sqlalchemy_2_0.py
         language: system
-        files: '^(src/|product_catalog_providers/).*\.py$'
+        files: '^src/.*\.py$'
         pass_filenames: true
 
       # Check for Flask route conflicts

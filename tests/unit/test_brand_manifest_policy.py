@@ -9,7 +9,7 @@ Tests verify that the three policy options work correctly:
 """
 
 import logging
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -43,7 +43,6 @@ async def test_public_policy_allows_no_brand_manifest():
         patch("src.core.tools.products.get_principal_object") as mock_get_principal_obj,
         patch("src.core.tools.products.get_testing_context") as mock_get_testing,
         patch("src.core.tools.products.set_current_tenant") as mock_set_tenant,
-        patch("src.core.tools.products.get_product_catalog_provider") as mock_get_provider,
         patch("src.services.dynamic_products.generate_variants_for_brief") as mock_generate_variants,
         patch("src.services.dynamic_pricing_service.DynamicPricingService") as mock_pricing_service,
         patch("src.core.tools.products.get_db_session") as mock_db_session,
@@ -57,11 +56,6 @@ async def test_public_policy_allows_no_brand_manifest():
         # Mock apply_testing_hooks to return data unchanged
         mock_apply_hooks.side_effect = lambda data, *args, **kwargs: data
 
-        # Mock provider to return empty product list
-        mock_provider = AsyncMock()
-        mock_provider.get_products = AsyncMock(return_value=[])
-        mock_get_provider.return_value = mock_provider
-
         # Mock variants generation
         mock_generate_variants.return_value = []
 
@@ -70,8 +64,11 @@ async def test_public_policy_allows_no_brand_manifest():
         mock_pricing_instance.enrich_products_with_pricing.return_value = []
         mock_pricing_service.return_value = mock_pricing_instance
 
-        # Mock database session
+        # Mock database session (returns no products)
         mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
         mock_db_session.return_value.__enter__.return_value = mock_session
 
         # Call implementation - should NOT raise error
@@ -148,7 +145,6 @@ async def test_require_brand_policy_accepts_with_brand_manifest():
         patch("src.core.tools.products.get_principal_object") as mock_get_principal_obj,
         patch("src.core.tools.products.get_testing_context") as mock_get_testing,
         patch("src.core.tools.products.set_current_tenant") as mock_set_tenant,
-        patch("src.core.tools.products.get_product_catalog_provider") as mock_get_provider,
         patch("src.services.dynamic_products.generate_variants_for_brief") as mock_generate_variants,
         patch("src.services.dynamic_pricing_service.DynamicPricingService") as mock_pricing_service,
         patch("src.core.tools.products.get_db_session") as mock_db_session,
@@ -162,11 +158,6 @@ async def test_require_brand_policy_accepts_with_brand_manifest():
         # Mock apply_testing_hooks to return data unchanged
         mock_apply_hooks.side_effect = lambda data, *args, **kwargs: data
 
-        # Mock provider
-        mock_provider = AsyncMock()
-        mock_provider.get_products = AsyncMock(return_value=[])
-        mock_get_provider.return_value = mock_provider
-
         # Mock variants
         mock_generate_variants.return_value = []
 
@@ -175,8 +166,11 @@ async def test_require_brand_policy_accepts_with_brand_manifest():
         mock_pricing_instance.enrich_products_with_pricing.return_value = []
         mock_pricing_service.return_value = mock_pricing_instance
 
-        # Mock database
+        # Mock database session (returns no products)
         mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
         mock_db_session.return_value.__enter__.return_value = mock_session
 
         # Call implementation - should NOT raise error
@@ -249,7 +243,6 @@ async def test_require_auth_policy_accepts_with_auth():
         patch("src.core.tools.products.get_principal_object") as mock_get_principal_obj,
         patch("src.core.tools.products.get_testing_context") as mock_get_testing,
         patch("src.core.tools.products.set_current_tenant") as mock_set_tenant,
-        patch("src.core.tools.products.get_product_catalog_provider") as mock_get_provider,
         patch("src.services.dynamic_products.generate_variants_for_brief") as mock_generate_variants,
         patch("src.services.dynamic_pricing_service.DynamicPricingService") as mock_pricing_service,
         patch("src.core.tools.products.get_db_session") as mock_db_session,
@@ -263,11 +256,6 @@ async def test_require_auth_policy_accepts_with_auth():
         # Mock apply_testing_hooks to return data unchanged
         mock_apply_hooks.side_effect = lambda data, *args, **kwargs: data
 
-        # Mock provider
-        mock_provider = AsyncMock()
-        mock_provider.get_products = AsyncMock(return_value=[])
-        mock_get_provider.return_value = mock_provider
-
         # Mock variants
         mock_generate_variants.return_value = []
 
@@ -276,8 +264,11 @@ async def test_require_auth_policy_accepts_with_auth():
         mock_pricing_instance.enrich_products_with_pricing.return_value = []
         mock_pricing_service.return_value = mock_pricing_instance
 
-        # Mock database
+        # Mock database session (returns no products)
         mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
         mock_db_session.return_value.__enter__.return_value = mock_session
 
         # Call implementation - should NOT raise error (brand_manifest optional)
