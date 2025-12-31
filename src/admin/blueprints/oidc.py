@@ -211,11 +211,16 @@ def callback():
             flash("Tenant not found", "error")
             return redirect(url_for("auth.login"))
 
-        # Get OIDC config
-        config = get_or_create_auth_config(tenant_id)
-        if not config.oidc_client_id:
+        # Get OIDC config directly from this session to avoid nested session issues
+        from src.core.database.models import TenantAuthConfig
+
+        config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+        if not config or not config.oidc_client_id:
             flash("OIDC not configured", "error")
             return redirect(url_for("auth.login"))
+
+        # Get decrypted secret while session is still active
+        client_secret = config.oidc_client_secret
 
         # Create OAuth client
         oauth = OAuth()
@@ -224,7 +229,7 @@ def callback():
         oauth.register(
             name="callback_oidc",
             client_id=config.oidc_client_id,
-            client_secret=config.oidc_client_secret,
+            client_secret=client_secret,
             server_metadata_url=config.oidc_discovery_url,
             client_kwargs={"scope": config.oidc_scopes or "openid email profile"},
         )
