@@ -745,8 +745,16 @@ class SetupChecklistService:
                 ad_server_fully_configured = True
                 config_details = "GAM configured - Test connection to verify"
             elif tenant.ad_server == "mock":
-                ad_server_fully_configured = False
-                config_details = "Mock adapter - Configure a real ad server for production"
+                # Mock adapter is for testing only - not production ready
+                # But allow it in testing environments (ADCP_TESTING=true)
+                import os
+
+                if os.environ.get("ADCP_TESTING") == "true":
+                    ad_server_fully_configured = True
+                    config_details = "Mock adapter configured (test mode)"
+                else:
+                    ad_server_fully_configured = False
+                    config_details = "Mock adapter - Configure a real ad server for production"
             elif tenant.ad_server in ["kevel", "triton"]:
                 ad_server_fully_configured = True
                 config_details = f"{tenant.ad_server} adapter configured"

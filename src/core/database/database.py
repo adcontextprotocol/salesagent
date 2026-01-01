@@ -7,7 +7,15 @@ from sqlalchemy import func, select
 
 from scripts.ops.migrate import run_migrations
 from src.core.database.database_session import get_db_session
-from src.core.database.models import AdapterConfig, AuthorizedProperty, CurrencyLimit, Principal, Product, Tenant
+from src.core.database.models import (
+    AdapterConfig,
+    AuthorizedProperty,
+    CurrencyLimit,
+    Principal,
+    Product,
+    Tenant,
+    TenantAuthConfig,
+)
 
 
 def init_db(exit_on_error=False):
@@ -60,6 +68,7 @@ def init_db(exit_on_error=False):
                     ),
                     human_review_required=False,
                     admin_token=admin_token,
+                    auth_setup_mode=False,  # Disable setup mode for demo (simulates SSO configured)
                 )
             else:
                 # Production mode: Create blank tenant requiring setup
@@ -124,6 +133,16 @@ def init_db(exit_on_error=False):
                 )
                 db_session.add(authorized_property)
 
+                # Add SSO configuration for demo (simulates configured SSO)
+                auth_config = TenantAuthConfig(
+                    tenant_id="default",
+                    oidc_enabled=True,
+                    oidc_provider="google",
+                    oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+                    oidc_client_id="demo-client-id",
+                )
+                db_session.add(auth_config)
+
             # Only create additional sample advertisers if this is a development environment
             if create_demo_tenant and os.environ.get("CREATE_SAMPLE_DATA", "false").lower() == "true":
                 principals_data = [
@@ -177,6 +196,7 @@ def init_db(exit_on_error=False):
 ║     • USD/EUR/GBP currencies                                     ║
 ║     • Test principal (ci-test-token)                             ║
 ║     • Sample authorized property                                 ║
+║     • SSO/OIDC configuration (demo mode)                         ║
 ║                                                                  ║
 ║  💡 Ready to test! No setup required.                            ║
 ║                                                                  ║
