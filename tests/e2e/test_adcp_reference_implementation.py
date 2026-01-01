@@ -115,7 +115,7 @@ class TestAdCPReferenceImplementation:
         # so we use x-adcp-tenant header for explicit tenant selection in E2E tests
         headers = {
             "x-adcp-auth": test_auth_token,
-            "x-adcp-tenant": "ci-test",  # Explicit tenant selection for E2E tests
+            "x-adcp-tenant": "default",  # Use default tenant where ci-test-token lives
         }
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 

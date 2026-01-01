@@ -219,7 +219,7 @@ class TestDailyDeliveryWebhookFlow:
 
         headers = {
             "x-adcp-auth": test_auth_token,
-            "x-adcp-tenant": "ci-test",  # Explicit tenant selection for E2E
+            "x-adcp-tenant": "default",  # Use default tenant where ci-test-token lives
         }
         print("live_server")
         print(live_server)

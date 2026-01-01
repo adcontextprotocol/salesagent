@@ -49,7 +49,7 @@ class TestCreativeAssignment:
         # Setup MCP client
         headers = {
             "x-adcp-auth": test_auth_token,
-            "x-adcp-tenant": "ci-test",
+            "x-adcp-tenant": "default",  # Use default tenant where ci-test-token lives
         }
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 
@@ -258,7 +258,7 @@ class TestCreativeAssignment:
 
         headers = {
             "x-adcp-auth": test_auth_token,
-            "x-adcp-tenant": "ci-test",
+            "x-adcp-tenant": "default",  # Use default tenant where ci-test-token lives
         }
         transport = StreamableHttpTransport(url=f"{live_server['mcp']}/mcp/", headers=headers)
 
