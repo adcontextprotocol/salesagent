@@ -340,8 +340,15 @@ class SetupChecklistService:
                     config_details = "GAM selected but not authenticated - Complete OAuth flow and test connection"
             elif tenant.ad_server == "mock":
                 # Mock adapter is for testing only - not production ready
-                ad_server_fully_configured = False
-                config_details = "Mock adapter - Configure a real ad server for production"
+                # But allow it in testing environments (ADCP_TESTING=true)
+                import os
+
+                if os.environ.get("ADCP_TESTING") == "true":
+                    ad_server_fully_configured = True
+                    config_details = "Mock adapter configured (test mode)"
+                else:
+                    ad_server_fully_configured = False
+                    config_details = "Mock adapter - Configure a real ad server for production"
             elif tenant.ad_server in ["kevel", "triton"]:
                 # Other adapters (Kevel, Triton) - assume configured once selected
                 ad_server_fully_configured = True
@@ -400,7 +407,9 @@ class SetupChecklistService:
                     description="At least one currency must be configured for media buys",
                     is_complete=currency_count > 0,
                     action_url=f"/tenant/{self.tenant_id}/settings#business-rules",
-                    details=f"{currency_count} currencies configured" if currency_count > 0 else "No currencies configured",
+                    details=(
+                        f"{currency_count} currencies configured" if currency_count > 0 else "No currencies configured"
+                    ),
                 )
             )
 
@@ -787,7 +796,9 @@ class SetupChecklistService:
                     description="At least one currency must be configured for media buys",
                     is_complete=currency_count > 0,
                     action_url=f"/tenant/{self.tenant_id}/settings#business-rules",
-                    details=f"{currency_count} currencies configured" if currency_count > 0 else "No currencies configured",
+                    details=(
+                        f"{currency_count} currencies configured" if currency_count > 0 else "No currencies configured"
+                    ),
                 )
             )
 

@@ -15,10 +15,10 @@ import pytest
 class TestSetupChecklistMockAdapter:
     """Test setup checklist service handles mock adapter correctly."""
 
-    def test_mock_adapter_not_fully_configured(self):
-        """Mock adapter is not considered fully configured for production.
+    def test_mock_adapter_not_fully_configured_in_production(self):
+        """Mock adapter is not considered fully configured for production (ADCP_TESTING not set).
 
-        When using mock adapter, only the first critical tasks appear:
+        When using mock adapter in non-test environments, only the first critical tasks appear:
         - Ad server configuration (incomplete - mock is not production-ready)
         - SSO configuration (always required)
         - Authorized properties (always shown)
@@ -30,53 +30,55 @@ class TestSetupChecklistMockAdapter:
 
         tenant_id = "test_tenant"
 
-        with patch("src.services.setup_checklist_service.get_db_session") as mock_db:
-            mock_session = MagicMock()
-            mock_db.return_value.__enter__.return_value = mock_session
+        # Ensure ADCP_TESTING is NOT set for this test (tests production behavior)
+        with patch.dict("os.environ", {"ADCP_TESTING": "false"}, clear=False):
+            with patch("src.services.setup_checklist_service.get_db_session") as mock_db:
+                mock_session = MagicMock()
+                mock_db.return_value.__enter__.return_value = mock_session
 
-            # Create mock tenant with mock adapter
-            mock_tenant = MagicMock()
-            mock_tenant.tenant_id = tenant_id
-            mock_tenant.name = "Test Tenant"
-            mock_tenant.ad_server = "mock"
-            mock_tenant.adapter_config = None
-            mock_tenant.is_gam_tenant = False
-            mock_tenant.authorized_domains = []
-            mock_tenant.authorized_emails = []
-            mock_tenant.human_review_required = None
-            mock_tenant.auto_approve_format_ids = None
-            mock_tenant.order_name_template = None
-            mock_tenant.line_item_name_template = None
-            mock_tenant.slack_webhook_url = None
-            mock_tenant.virtual_host = None
-            mock_tenant.enable_axe_signals = False
-            mock_tenant.policy_settings = {}
-            mock_tenant.auth_setup_mode = True  # Setup mode active
+                # Create mock tenant with mock adapter
+                mock_tenant = MagicMock()
+                mock_tenant.tenant_id = tenant_id
+                mock_tenant.name = "Test Tenant"
+                mock_tenant.ad_server = "mock"
+                mock_tenant.adapter_config = None
+                mock_tenant.is_gam_tenant = False
+                mock_tenant.authorized_domains = []
+                mock_tenant.authorized_emails = []
+                mock_tenant.human_review_required = None
+                mock_tenant.auto_approve_format_ids = None
+                mock_tenant.order_name_template = None
+                mock_tenant.line_item_name_template = None
+                mock_tenant.slack_webhook_url = None
+                mock_tenant.virtual_host = None
+                mock_tenant.enable_axe_signals = False
+                mock_tenant.policy_settings = {}
+                mock_tenant.auth_setup_mode = True  # Setup mode active
 
-            # Mock database queries
-            mock_session.scalars.return_value.first.return_value = mock_tenant
-            mock_session.scalar.return_value = 0
+                # Mock database queries
+                mock_session.scalars.return_value.first.return_value = mock_tenant
+                mock_session.scalar.return_value = 0
 
-            # Get setup status
-            service = SetupChecklistService(tenant_id)
-            status = service.get_setup_status()
+                # Get setup status
+                service = SetupChecklistService(tenant_id)
+                status = service.get_setup_status()
 
-            # Find critical tasks
-            critical_keys = {task["key"] for task in status["critical"]}
+                # Find critical tasks
+                critical_keys = {task["key"] for task in status["critical"]}
 
-            # Ad server and SSO should be present
-            assert "ad_server_connected" in critical_keys, "Ad server task should exist"
-            assert "sso_configuration" in critical_keys, "SSO task should exist"
-            assert "authorized_properties" in critical_keys, "Properties task should exist"
+                # Ad server and SSO should be present
+                assert "ad_server_connected" in critical_keys, "Ad server task should exist"
+                assert "sso_configuration" in critical_keys, "SSO task should exist"
+                assert "authorized_properties" in critical_keys, "Properties task should exist"
 
-            # Inventory sync, currency_limits, products, principals should NOT be present
-            # (these only appear after ad server is fully configured)
-            assert "inventory_synced" not in critical_keys, "Inventory task should not appear for mock adapter"
-            assert "currency_limits" not in critical_keys, "Currency task should not appear for mock adapter"
+                # Inventory sync, currency_limits, products, principals should NOT be present
+                # (these only appear after ad server is fully configured)
+                assert "inventory_synced" not in critical_keys, "Inventory task should not appear for mock adapter"
+                assert "currency_limits" not in critical_keys, "Currency task should not appear for mock adapter"
 
-            # Ad server should be marked incomplete for mock
-            ad_server_task = next(t for t in status["critical"] if t["key"] == "ad_server_connected")
-            assert ad_server_task["is_complete"] is False, "Mock adapter should not be considered fully configured"
+                # Ad server should be marked incomplete for mock
+                ad_server_task = next(t for t in status["critical"] if t["key"] == "ad_server_connected")
+                assert ad_server_task["is_complete"] is False, "Mock adapter should not be considered fully configured"
 
     def test_gam_adapter_inventory_sync_requires_database_records(self):
         """GAM adapter should require GAMInventory records to be synced."""

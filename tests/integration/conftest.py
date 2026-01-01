@@ -289,7 +289,7 @@ def test_tenant_with_data(integration_db):
             name=tenant_data["name"],
             subdomain=tenant_data["subdomain"],
             is_active=tenant_data["is_active"],
-            ad_server="kevel",  # Use "kevel" instead of "mock" - mock is not production-ready
+            ad_server="mock",  # Mock adapter is accepted in test environments (ADCP_TESTING=true)
             auth_setup_mode=False,  # Disable setup mode for production-ready auth
             auto_approve_format_ids=[],  # JSONType expects list, not json.dumps()
             human_review_required=False,
@@ -421,7 +421,7 @@ def sample_tenant(integration_db):
             name="Test Tenant",
             subdomain="test",
             is_active=True,
-            ad_server="kevel",  # Use "kevel" instead of "mock" - mock is not production-ready
+            ad_server="mock",  # Mock adapter is accepted in test environments (ADCP_TESTING=true)
             auth_setup_mode=False,  # Disable setup mode for production-ready auth
             enable_axe_signals=True,
             authorized_emails=["test@example.com"],

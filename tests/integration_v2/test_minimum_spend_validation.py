@@ -50,12 +50,12 @@ class TestMinimumSpendValidation:
         with get_db_session() as session:
             now = datetime.now(UTC)
 
-            # Create tenant (use kevel - mock is not production-ready)
+            # Create tenant (mock adapter accepted in test environments - ADCP_TESTING=true)
             tenant = Tenant(
                 tenant_id="test_minspend_tenant",
                 name="Test Minimum Spend Tenant",
                 subdomain="testminspend",
-                ad_server="kevel",  # Use kevel instead of mock - mock is not production-ready
+                ad_server="mock",  # Mock adapter is accepted in test environments
                 auth_setup_mode=False,  # Disable setup mode for production-ready auth
                 enable_axe_signals=True,
                 human_review_required=False,

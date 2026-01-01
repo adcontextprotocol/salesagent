@@ -416,12 +416,12 @@ class TestSetupChecklistService:
             )
             db_session.add(product2)
 
-            # Tenant 3: Complete setup (use kevel - mock is not production-ready)
+            # Tenant 3: Complete setup (mock adapter accepted in test mode - ADCP_TESTING=true)
             tenant3 = Tenant(
                 tenant_id=tenant_ids[2],
                 name="Bulk Test Tenant 3",
                 subdomain="bulk3",
-                ad_server="kevel",  # Use kevel instead of mock - mock is not production-ready
+                ad_server="mock",  # Mock adapter is accepted in test environments
                 created_at=now,
                 updated_at=now,
                 is_active=True,

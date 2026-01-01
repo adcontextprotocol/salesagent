@@ -188,7 +188,7 @@ def sample_tenant(integration_db):
             name=tenant_data["name"],
             subdomain=tenant_data["subdomain"],
             is_active=tenant_data["is_active"],
-            ad_server="kevel",  # Use "kevel" instead of "mock" - mock is not production-ready
+            ad_server="mock",  # Mock adapter is accepted in test environments (ADCP_TESTING=true)
             auth_setup_mode=False,  # Disable setup mode for production-ready auth
             # Required: Access control configuration
             authorized_emails=["test@example.com"],
@@ -396,9 +396,10 @@ def add_required_setup_data(session, tenant_id: str):
         # Disable auth_setup_mode to simulate production-ready auth
         tenant.auth_setup_mode = False
 
-        # Ensure ad_server is production-ready (mock is not considered configured)
-        if tenant.ad_server == "mock" or tenant.ad_server is None:
-            tenant.ad_server = "kevel"  # Use kevel as it's considered configured once selected
+        # Note: mock adapter is now accepted in test environments (ADCP_TESTING=true)
+        # If ad_server is None, set it to mock for testing
+        if tenant.ad_server is None:
+            tenant.ad_server = "mock"
 
         session.flush()  # Ensure changes are persisted immediately
 
