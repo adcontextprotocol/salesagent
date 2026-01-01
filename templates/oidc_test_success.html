@@ -86,8 +86,8 @@
             font-size: 14px;
         }
         .next-steps {
-            background: #fffbeb;
-            border: 1px solid #fcd34d;
+            background: #d1fae5;
+            border: 1px solid #10b981;
             border-radius: 8px;
             padding: 16px;
             margin-bottom: 24px;
@@ -95,11 +95,11 @@
         }
         .next-steps h3 {
             font-size: 14px;
-            color: #92400e;
+            color: #065f46;
             margin-bottom: 8px;
         }
         .next-steps p {
-            color: #92400e;
+            color: #065f46;
             font-size: 13px;
             line-height: 1.5;
         }
@@ -148,12 +148,12 @@
         </div>
 
         <div class="next-steps">
-            <h3>Next Steps</h3>
-            <p>Your OAuth configuration has been verified. You can now enable SSO for your users from the Authentication Settings page.</p>
+            <h3>SSO Enabled</h3>
+            <p>Your OAuth configuration has been verified and SSO is now enabled. Users can log in via SSO. You can disable setup mode when ready for production.</p>
         </div>
 
-        <a href="{{ url_for('tenants.tenant_settings', tenant_id=tenant_id) }}" class="btn btn-primary">
-            Return to Settings
+        <a href="{{ url_for('users.list_users', tenant_id=tenant_id) }}" class="btn btn-primary">
+            Return to Users & Access
         </a>
     </div>
 </body>

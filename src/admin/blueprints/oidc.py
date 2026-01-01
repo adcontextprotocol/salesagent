@@ -77,6 +77,7 @@ def save_config(tenant_id: str):
     - client_secret: OAuth client secret
     - discovery_url: (optional for known providers) OIDC discovery URL
     - scopes: (optional) OAuth scopes
+    - logout_url: (optional) IdP logout URL
     """
     data = request.get_json()
     if not data:
@@ -87,6 +88,7 @@ def save_config(tenant_id: str):
     client_secret = data.get("client_secret")  # Can be empty to keep existing
     discovery_url = data.get("discovery_url")
     scopes = data.get("scopes", "openid email profile")
+    logout_url = data.get("logout_url")
 
     if not provider or not client_id:
         return jsonify({"error": "provider and client_id are required"}), 400
@@ -104,6 +106,7 @@ def save_config(tenant_id: str):
             client_secret=client_secret,
             discovery_url=discovery_url,
             scopes=scopes,
+            logout_url=logout_url,
         )
 
         # Get updated summary
@@ -277,15 +280,22 @@ def callback():
         email = user_info["email"]
 
         if is_test:
-            # Test flow - mark config as verified and auto-enable SSO
+            # Test flow - mark config as verified and enable SSO in one transaction
             redirect_uri = get_tenant_redirect_uri(tenant)
-            mark_oidc_verified(tenant_id, redirect_uri)
+            from datetime import UTC, datetime
+            from src.core.database.models import TenantAuthConfig
 
-            # Auto-enable SSO since test succeeded
-            if enable_oidc(tenant_id):
-                logger.info(f"Auto-enabled SSO for tenant {tenant_id} after successful test")
-            else:
-                logger.warning(f"Failed to auto-enable SSO for tenant {tenant_id}")
+            with get_db_session() as db_session:
+                config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+                if config:
+                    config.oidc_verified_at = datetime.now(UTC)
+                    config.oidc_verified_redirect_uri = redirect_uri
+                    config.oidc_enabled = True
+                    config.updated_at = datetime.now(UTC)
+                    db_session.commit()
+                    logger.info(f"Verified and enabled SSO for tenant {tenant_id}")
+                else:
+                    logger.warning(f"No auth config found for tenant {tenant_id}")
 
             return render_template(
                 "oidc_test_success.html",
@@ -357,6 +367,10 @@ def callback():
             user_display_name = user.name or user.email
 
         flash(f"Welcome {user_display_name}!", "success")
+        # Redirect to original requested URL if available, otherwise dashboard
+        next_url = session.pop("login_next_url", None)
+        if next_url:
+            return redirect(next_url)
         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
     except Exception as e:

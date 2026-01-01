@@ -134,9 +134,10 @@ SSO is configured per-tenant via the Admin UI:
 1. Log in with test credentials (Setup Mode is enabled by default)
 2. Go to **Users & Access** page
 3. Configure your identity provider (Google, Microsoft, Okta, Auth0, Keycloak, or custom OIDC)
-4. Add redirect URI to your provider: `https://your-domain.com/auth/oidc/callback`
-5. Test the SSO login
-6. Disable Setup Mode once SSO is working
+4. Copy the **Redirect URI** shown and add it to your provider's allowed redirect URIs
+5. **Add yourself**: Add your email as a user OR add your domain to Allowed Domains
+6. Click **Save Configuration**, then **Test Connection** - SSO is automatically enabled on success
+7. **Disable Setup Mode** once SSO is working
 
 See [SSO Setup Guide](../user-guide/sso-setup.md) for detailed provider-specific instructions.
 
@@ -186,9 +187,13 @@ On first startup, the system creates an empty default tenant with **Setup Mode**
 
 **To complete setup:**
 1. Log in with test credentials
-2. Configure SSO in **Users & Access** (see [SSO Setup Guide](../user-guide/sso-setup.md))
-3. Test your SSO login works
-4. Disable Setup Mode to require SSO for all users
+2. Go to **Users & Access**
+3. Configure your SSO provider (Google, Microsoft, etc.)
+4. **Add yourself**: Add your email OR your domain to Allowed Domains
+5. Click **Test Connection** - SSO is automatically enabled on success
+6. Click **Disable Setup Mode** to require SSO for all users
+
+See [SSO Setup Guide](../user-guide/sso-setup.md) for detailed provider-specific instructions.
 
 ### Local Testing with Demo Data
 

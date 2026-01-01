@@ -232,6 +232,9 @@ def login():
 
     oidc_enabled = False
     oidc_configured = False
+    # Don't auto-redirect if user just logged out
+    just_logged_out = request.args.get("logged_out") == "1"
+
     if is_single_tenant_mode():
         # Check if OIDC is configured (has credentials) - for showing login option
         from src.core.database.models import TenantAuthConfig
@@ -243,12 +246,12 @@ def login():
                 oidc_enabled = config.oidc_enabled
             if tenant and hasattr(tenant, "auth_setup_mode") and tenant.auth_setup_mode:
                 test_mode = True  # Tenant has auth_setup_mode enabled
-        # Only redirect to OIDC if enabled AND not in test mode
-        if oidc_enabled and not test_mode:
+        # Only redirect to OIDC if enabled AND not in test mode AND not just logged out
+        if oidc_enabled and not test_mode and not just_logged_out:
             return redirect(url_for("oidc.login", tenant_id="default"))
 
-    # If OAuth is configured and not in test mode, redirect directly to OAuth
-    if oauth_configured and not test_mode:
+    # If OAuth is configured and not in test mode and not just logged out, redirect directly to OAuth
+    if oauth_configured and not test_mode and not just_logged_out:
         return redirect(url_for("auth.google_auth"))
 
     # Extract tenant from headers (Approximated routing or direct Host header)
@@ -304,6 +307,14 @@ def login():
 @auth_bp.route("/tenant/<tenant_id>/login")
 def tenant_login(tenant_id):
     """Show tenant-specific login page or redirect to OAuth provider."""
+    # Don't auto-redirect if user just logged out
+    just_logged_out = request.args.get("logged_out") == "1"
+
+    # Capture 'next' parameter for redirect after login
+    next_url = request.args.get("next")
+    if next_url:
+        session["login_next_url"] = next_url
+
     # Verify tenant exists and get auth_setup_mode
     with get_db_session() as db_session:
         tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
@@ -325,12 +336,12 @@ def tenant_login(tenant_id):
     client_id, client_secret, discovery_url, _ = get_oauth_config()
     oauth_configured = bool(client_id and client_secret and discovery_url)
 
-    # If OIDC is enabled and not in test mode, redirect directly to OIDC
-    if oidc_enabled and not test_mode:
+    # If OIDC is enabled and not in test mode and not just logged out, redirect directly to OIDC
+    if oidc_enabled and not test_mode and not just_logged_out:
         return redirect(url_for("oidc.login", tenant_id=tenant_id))
 
-    # If OAuth is configured and not in test mode, redirect directly to OAuth
-    if oauth_configured and not test_mode:
+    # If OAuth is configured and not in test mode and not just logged out, redirect directly to OAuth
+    if oauth_configured and not test_mode and not just_logged_out:
         return redirect(url_for("auth.tenant_google_auth", tenant_id=tenant_id))
 
     from src.core.config_loader import is_single_tenant_mode
@@ -655,9 +666,31 @@ def select_tenant():
 @auth_bp.route("/logout")
 def logout():
     """Log out the current user."""
+    # Get tenant_id before clearing session to check for IdP logout URL
+    tenant_id = session.get("tenant_id")
+    idp_logout_url = None
+
+    if tenant_id:
+        from src.core.database.models import TenantAuthConfig
+
+        with get_db_session() as db_session:
+            config = db_session.scalars(
+                select(TenantAuthConfig).filter_by(tenant_id=tenant_id)
+            ).first()
+            if config and config.oidc_logout_url:
+                idp_logout_url = config.oidc_logout_url
+
     session.clear()
+
+    # If IdP logout URL is configured, redirect there
+    if idp_logout_url:
+        # The IdP logout URL should redirect back to our login page after logout
+        # Some IdPs support a post_logout_redirect_uri parameter
+        return redirect(idp_logout_url)
+
     flash("You have been logged out", "info")
-    return redirect(url_for("auth.login"))
+    # Add logged_out param to prevent auto-redirect to SSO
+    return redirect(url_for("auth.login", logged_out=1))
 
 
 # Test authentication endpoints (only enabled in test mode)

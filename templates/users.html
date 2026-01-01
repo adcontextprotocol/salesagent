@@ -525,8 +525,7 @@
         <div class="button-group">
                 <button type="submit" class="btn btn-primary" id="save-oidc-btn">Save Configuration</button>
                 <button type="button" class="btn btn-secondary" id="test-oidc-btn" disabled>Test Connection</button>
-                <button type="button" class="btn btn-success" id="enable-oidc-btn" style="display: none;">Enable SSO</button>
-                <button type="button" class="btn btn-danger" id="disable-oidc-btn" style="display: none;">Disable SSO</button>
+                <button type="button" class="btn btn-danger" id="disable-oidc-btn" style="display: none;">Deactivate SSO</button>
             </div>
         </form>
     </div>
@@ -748,19 +747,20 @@ async function loadAuthConfig() {
             statusBadge.textContent = 'Enabled';
             statusBadge.className = 'status-badge status-enabled';
             document.getElementById('disable-oidc-btn').style.display = 'inline-flex';
-            document.getElementById('enable-oidc-btn').style.display = 'none';
         } else if (data.oidc_configured) {
             if (data.oidc_valid) {
-                statusBadge.textContent = 'Verified - Ready to Enable';
+                // SSO should auto-enable on test - this state means something went wrong
+                statusBadge.textContent = 'Verified - Click Test to Enable';
                 statusBadge.className = 'status-badge status-warning';
-                document.getElementById('enable-oidc-btn').style.display = 'inline-flex';
             } else {
                 statusBadge.textContent = 'Not Verified';
                 statusBadge.className = 'status-badge status-warning';
             }
+            document.getElementById('disable-oidc-btn').style.display = 'none';
         } else {
             statusBadge.textContent = 'Not Configured';
             statusBadge.className = 'status-badge status-disabled';
+            document.getElementById('disable-oidc-btn').style.display = 'none';
         }
 
         // Show warning if redirect URI changed
@@ -878,30 +878,9 @@ document.getElementById('test-oidc-btn').addEventListener('click', function() {
     window.location.href = `${scriptRoot}/auth/oidc/test/${tenantId}`;
 });
 
-// Enable SSO
-document.getElementById('enable-oidc-btn').addEventListener('click', async function() {
-    try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/tenant/${tenantId}/enable`, {
-            method: 'POST',
-            credentials: 'same-origin'
-        });
-        const data = await response.json();
-
-        if (data.success) {
-            alert('SSO enabled! The page will refresh to show the Disable Setup Mode option.');
-            window.location.reload();
-        } else {
-            alert(data.error || 'Failed to enable SSO');
-        }
-    } catch (err) {
-        console.error('Error enabling SSO:', err);
-        alert('Failed to enable SSO');
-    }
-});
-
-// Disable SSO
+// Deactivate SSO
 document.getElementById('disable-oidc-btn').addEventListener('click', async function() {
-    if (!confirm('Disable SSO?')) return;
+    if (!confirm('Deactivate SSO? Users will not be able to log in via SSO until you re-enable it.')) return;
 
     try {
         const response = await fetch(`${scriptRoot}/auth/oidc/tenant/${tenantId}/disable`, {
@@ -911,14 +890,14 @@ document.getElementById('disable-oidc-btn').addEventListener('click', async func
         const data = await response.json();
 
         if (data.success) {
-            alert('SSO disabled');
+            alert('SSO deactivated');
             loadAuthConfig();
         } else {
-            alert(data.error || 'Failed to disable SSO');
+            alert(data.error || 'Failed to deactivate SSO');
         }
     } catch (err) {
-        console.error('Error disabling SSO:', err);
-        alert('Failed to disable SSO');
+        console.error('Error deactivating SSO:', err);
+        alert('Failed to deactivate SSO');
     }
 });
 

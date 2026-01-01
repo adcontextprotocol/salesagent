@@ -22,6 +22,12 @@ OIDC_PROVIDERS = {
     "microsoft": "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
 }
 
+# Well-known OIDC logout URLs
+OIDC_LOGOUT_URLS = {
+    "google": "https://accounts.google.com/Logout",
+    "microsoft": "https://login.microsoftonline.com/common/oauth2/v2.0/logout",
+}
+
 
 def get_tenant_auth_config(tenant_id: str) -> TenantAuthConfig | None:
     """Get the authentication configuration for a tenant.
@@ -68,6 +74,7 @@ def save_oidc_config(
     client_secret: str | None,
     discovery_url: str | None = None,
     scopes: str = "openid email profile",
+    logout_url: str | None = None,
 ) -> TenantAuthConfig:
     """Save OIDC configuration for a tenant.
 
@@ -79,6 +86,7 @@ def save_oidc_config(
                       keeps existing secret.
         discovery_url: OIDC discovery URL (auto-set for known providers)
         scopes: OAuth scopes
+        logout_url: Optional IdP logout URL for proper OIDC logout
 
     Returns:
         Updated TenantAuthConfig
@@ -89,6 +97,10 @@ def save_oidc_config(
 
     if not discovery_url:
         raise ValueError("Discovery URL is required for custom OIDC providers")
+
+    # Auto-set logout URL for known providers
+    if not logout_url and provider in OIDC_LOGOUT_URLS:
+        logout_url = OIDC_LOGOUT_URLS[provider]
 
     with get_db_session() as session:
         config = session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
@@ -115,6 +127,7 @@ def save_oidc_config(
             settings_changed = True
         config.oidc_discovery_url = discovery_url
         config.oidc_scopes = scopes
+        config.oidc_logout_url = logout_url
         config.updated_at = datetime.now(UTC)
 
         # Reset verification only if key settings changed
