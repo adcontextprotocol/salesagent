@@ -222,9 +222,26 @@ def login():
     if next_url:
         session["login_next_url"] = next_url
 
-    # Check if OAuth is configured
+    # Check if OAuth is configured via environment
     client_id, client_secret, discovery_url, _ = get_oauth_config()
     oauth_configured = bool(client_id and client_secret and discovery_url)
+
+    # In single-tenant mode, also check for per-tenant OIDC config on default tenant
+    from src.core.config_loader import is_single_tenant_mode
+    from src.services.auth_config_service import get_oidc_config_for_auth
+
+    oidc_enabled = False
+    if is_single_tenant_mode():
+        oidc_config = get_oidc_config_for_auth("default")
+        oidc_enabled = bool(oidc_config)
+        # Also check tenant's auth_setup_mode for test_mode
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id="default")).first()
+            if tenant and hasattr(tenant, "auth_setup_mode") and tenant.auth_setup_mode:
+                test_mode = True  # Tenant has auth_setup_mode enabled
+        if oidc_enabled and not test_mode:
+            # OIDC configured and test mode disabled - redirect to OIDC
+            return redirect(url_for("oidc.login", tenant_id="default"))
 
     # If OAuth is configured and not in test mode, redirect directly to OAuth
     if oauth_configured and not test_mode:
@@ -265,15 +282,15 @@ def login():
                     tenant_name = tenant.name
                     logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
 
-    from src.core.config_loader import is_single_tenant_mode
-
     # Show login page (test mode or OAuth not configured)
     return render_template(
         "login.html",
         test_mode=test_mode,
         oauth_configured=oauth_configured,
+        oidc_enabled=oidc_enabled,
         tenant_context=tenant_context,
         tenant_name=tenant_name,
+        tenant_id="default" if is_single_tenant_mode() else None,
         single_tenant_mode=is_single_tenant_mode(),
     )
 
