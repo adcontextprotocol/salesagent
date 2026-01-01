@@ -40,10 +40,13 @@ Before configuring SSO, you'll need:
 1. Go to **Users & Access** in your tenant dashboard
 2. Note your **Redirect URI** (you'll need this when creating the OAuth app)
 3. Create an OAuth application in your identity provider (see provider guides below)
-4. Enter the **Client ID**, **Client Secret**, and **Discovery URL** in the SSO configuration form
-5. Click **Test SSO** to verify it works
-6. Click **Enable SSO** to activate
-7. Once verified, click **Disable Setup Mode** to require SSO for all logins
+4. Enter the **Client ID** and **Client Secret** in the SSO configuration form
+5. **Add yourself**: Either add your email as a user OR add your email domain to Allowed Domains
+6. Click **Save Configuration**, then **Test Connection**
+7. Complete the login flow - SSO is automatically enabled on success
+8. Click **Disable Setup Mode** to require SSO for all logins
+
+> **Important**: You must add yourself as a user or add your email domain BEFORE testing. Otherwise you'll see "Access denied" after authenticating with your identity provider.
 
 ---
 
@@ -262,17 +265,19 @@ Replace `your-server` and `your-realm` with your Keycloak server URL and realm n
 
 After entering your SSO configuration:
 
-1. Click **Save Configuration**
-2. Click **Test SSO** - this opens a new window to test the login flow
-3. Complete the login in your identity provider
-4. If successful, you'll see a confirmation message
-5. Click **Enable SSO** to activate SSO for your tenant
+1. **Add yourself first**: Add your email as a user OR add your email domain to Allowed Domains
+2. Click **Save Configuration**
+3. Click **Test Connection** - this redirects you to your identity provider
+4. Complete the login in your identity provider
+5. On success, you'll see a confirmation and SSO is automatically enabled
+
+> **Note**: SSO is automatically enabled when you successfully complete the test flow. No separate "Enable SSO" step is required.
 
 ## Transitioning to Production
 
 Once SSO is working:
 
-1. **Verify test logins work** - Have team members test the SSO flow
+1. **Verify test logins work** - Have team members test the SSO flow (add them as users or add their domain first)
 2. **Click "Disable Setup Mode"** on the Users & Access page
 3. After disabling setup mode:
    - Test credentials no longer work
@@ -295,7 +300,15 @@ Once SSO is working:
 
 ### "Access denied" Error
 
-- Check that the user is authorized to access the OAuth application
+This typically means you haven't added yourself as an authorized user:
+
+1. **Add yourself first**: Go to Users & Access and either:
+   - Add your email address under "Add User", OR
+   - Add your email domain under "Allowed Domains"
+2. Try the SSO test again
+
+If you've already added yourself:
+- Check that the user is authorized to access the OAuth application in your IdP
 - For Azure AD: Verify the user has been assigned to the application
 - For Okta: Check group assignments
 
@@ -307,8 +320,9 @@ Once SSO is working:
 
 ### SSO Works But Can't Disable Setup Mode
 
-- SSO must be **enabled** (not just configured) before setup mode can be disabled
-- Click "Enable SSO" after testing, then try disabling setup mode
+- SSO must be **enabled** before setup mode can be disabled
+- SSO is automatically enabled when you successfully complete the test flow
+- If SSO shows as "Not Verified", click **Test Connection** and complete the login flow
 
 ## Security Best Practices
 

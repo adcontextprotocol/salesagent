@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import select
 
 from src.admin.utils import require_tenant_access
@@ -37,6 +37,7 @@ def list_users(tenant_id):
                 {
                     "user_id": user.user_id,
                     "email": user.email,
+                    "name": user.name,
                     "role": user.role,
                     "is_active": user.is_active,
                     "created_at": user.created_at,
@@ -49,6 +50,8 @@ def list_users(tenant_id):
 
         # Get auth config to check if SSO is enabled
         auth_config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+        oidc_enabled = auth_config.oidc_enabled if auth_config else False
+        logger.info(f"list_users: tenant={tenant_id}, oidc_enabled={oidc_enabled}, auth_setup_mode={tenant.auth_setup_mode}")
 
         return render_template(
             "users.html",
@@ -58,7 +61,7 @@ def list_users(tenant_id):
             users=users_list,
             authorized_domains=authorized_domains,
             auth_setup_mode=tenant.auth_setup_mode,
-            oidc_enabled=auth_config.oidc_enabled if auth_config else False,
+            oidc_enabled=oidc_enabled,
         )
 
 
@@ -94,10 +97,14 @@ def add_user(tenant_id):
             # Create new user
             import uuid
 
+            # Use provided name or default to email username
+            name = request.form.get("name", "").strip() or email.split("@")[0]
+
             user = User(
                 tenant_id=tenant_id,
                 user_id=f"user_{uuid.uuid4().hex[:8]}",
                 email=email,
+                name=name,
                 role=role,
                 is_active=True,
                 created_at=datetime.now(UTC),
@@ -255,9 +262,24 @@ def disable_setup_mode(tenant_id):
     """Disable auth setup mode for the tenant.
 
     Once disabled, test credentials no longer work and only SSO authentication is allowed.
-    This should only be called after SSO has been successfully tested.
+    Requires the user to be logged in via SSO to prevent lockout.
     """
     try:
+        # Require the user to be logged in via SSO (not test credentials)
+        # This ensures they can actually authenticate via SSO before disabling test auth
+        auth_method = session.get("auth_method")
+        if auth_method != "oidc":
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": "You must be logged in via SSO to disable setup mode. "
+                        "Log out and log back in using 'Sign in with SSO' to verify SSO works.",
+                    }
+                ),
+                403,
+            )
+
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
             if not tenant:
@@ -278,7 +300,7 @@ def disable_setup_mode(tenant_id):
             tenant.auth_setup_mode = False
             db_session.commit()
 
-            logger.info(f"Auth setup mode disabled for tenant {tenant_id}")
+            logger.info(f"Auth setup mode disabled for tenant {tenant_id} by user {session.get('user')}")
             return jsonify({"success": True, "message": "Setup mode disabled. Only SSO authentication is now allowed."})
 
     except Exception as e:

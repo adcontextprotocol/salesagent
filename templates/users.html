@@ -427,7 +427,7 @@
                 <p style="font-size: 0.875rem; color: #92400e; margin: 0;">
                     Test credentials are currently allowed.
                     <a href="#oidc-form" style="color: #92400e; text-decoration: underline;">Configure SSO</a> below, then disable setup mode for production use.
-                    <a href="https://adcontextprotocol.org/sales-agent/user-guide/sso-setup" target="_blank" style="color: #92400e; margin-left: 0.5rem;">
+                    <a href="https://github.com/adcontextprotocol/salesagent/blob/main/docs/user-guide/sso-setup.md" target="_blank" style="color: #92400e; margin-left: 0.5rem;">
                         Need help?
                     </a>
                 </p>
@@ -462,7 +462,7 @@
 
         <p style="color: #6b7280; margin-bottom: 1rem; font-size: 0.875rem;">
             Configure SSO to allow users to authenticate with your organization's identity provider (Google, Microsoft, Okta, etc.).
-            <a href="https://adcontextprotocol.org/sales-agent/user-guide/sso-setup" target="_blank" style="color: #4f46e5; text-decoration: none;">
+            <a href="https://github.com/adcontextprotocol/salesagent/blob/main/docs/user-guide/sso-setup.md" target="_blank" style="color: #4f46e5; text-decoration: none;">
                 View setup guide &rarr;
             </a>
         </p>
@@ -492,6 +492,9 @@
                     <option value="microsoft">Microsoft</option>
                     <option value="custom">Custom OIDC</option>
                 </select>
+                <p class="help-text" id="provider-help" style="margin-top: 0.5rem; display: none;">
+                    <a id="provider-guide-link" href="#" target="_blank" style="color: #4f46e5;">View setup guide for this provider &rarr;</a>
+                </p>
             </div>
 
             <div id="discovery-url-group" class="form-group" style="display: none;">
@@ -514,11 +517,15 @@
                 <p class="help-text">Your secret will be encrypted before storage</p>
             </div>
 
-            <div class="button-group">
+            <div id="sso-access-warning" class="alert alert-warning" style="display: none; margin-top: 1rem;">
+            <strong>Before testing SSO:</strong> Add yourself as a user or add your email domain below.
+            Otherwise you'll see "Access denied" after authenticating.
+        </div>
+
+        <div class="button-group">
                 <button type="submit" class="btn btn-primary" id="save-oidc-btn">Save Configuration</button>
                 <button type="button" class="btn btn-secondary" id="test-oidc-btn" disabled>Test Connection</button>
-                <button type="button" class="btn btn-success" id="enable-oidc-btn" style="display: none;">Enable SSO</button>
-                <button type="button" class="btn btn-danger" id="disable-oidc-btn" style="display: none;">Disable SSO</button>
+                <button type="button" class="btn btn-danger" id="disable-oidc-btn" style="display: none;">Deactivate SSO</button>
             </div>
         </form>
     </div>
@@ -541,6 +548,7 @@
             <input type="hidden" name="role" value="viewer">
             <button type="submit" class="btn btn-primary">Add User</button>
         </form>
+        <p class="help-text" style="margin-top: 0.5rem;">Name will be populated when the user logs in via SSO.</p>
     </div>
 
     <!-- Allowed Domains -->
@@ -585,6 +593,7 @@
             <thead>
                 <tr>
                     <th>User</th>
+                    <th>Name</th>
                     <th>Status</th>
                     <th>Last Login</th>
                     <th></th>
@@ -597,6 +606,7 @@
                         <div class="user-email">{{ user.email }}</div>
                         <div class="meta-text">Added {{ user.created_at.strftime('%b %d, %Y') if user.created_at else 'Unknown' }}</div>
                     </td>
+                    <td>{{ user.name or '-' }}</td>
                     <td>
                         {% if user.is_active %}
                         <span class="status-badge status-active">Active</span>
@@ -723,7 +733,7 @@ async function removeDomain(domain) {
 // OIDC/SSO Management
 async function loadAuthConfig() {
     try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/config?tenant_id=${tenantId}`, {
+        const response = await fetch(`${scriptRoot}/auth/oidc/tenant/${tenantId}/config`, {
             credentials: 'same-origin'
         });
         const data = await response.json();
@@ -737,19 +747,20 @@ async function loadAuthConfig() {
             statusBadge.textContent = 'Enabled';
             statusBadge.className = 'status-badge status-enabled';
             document.getElementById('disable-oidc-btn').style.display = 'inline-flex';
-            document.getElementById('enable-oidc-btn').style.display = 'none';
         } else if (data.oidc_configured) {
             if (data.oidc_valid) {
-                statusBadge.textContent = 'Verified - Ready to Enable';
+                // SSO should auto-enable on test - this state means something went wrong
+                statusBadge.textContent = 'Verified - Click Test to Enable';
                 statusBadge.className = 'status-badge status-warning';
-                document.getElementById('enable-oidc-btn').style.display = 'inline-flex';
             } else {
                 statusBadge.textContent = 'Not Verified';
                 statusBadge.className = 'status-badge status-warning';
             }
+            document.getElementById('disable-oidc-btn').style.display = 'none';
         } else {
             statusBadge.textContent = 'Not Configured';
             statusBadge.className = 'status-badge status-disabled';
+            document.getElementById('disable-oidc-btn').style.display = 'none';
         }
 
         // Show warning if redirect URI changed
@@ -763,6 +774,14 @@ async function loadAuthConfig() {
             document.getElementById('client_id').value = data.config.client_id || '';
             document.getElementById('discovery_url').value = data.config.discovery_url || '';
 
+            // Show indicator if client secret is saved
+            const secretField = document.getElementById('client_secret');
+            if (data.config.has_client_secret) {
+                secretField.placeholder = '••••••••••••••••  (secret saved - leave empty to keep)';
+            } else {
+                secretField.placeholder = 'Enter client secret';
+            }
+
             // Show discovery URL field for custom provider
             if (data.config.provider === 'custom') {
                 document.getElementById('discovery-url-group').style.display = 'block';
@@ -773,6 +792,9 @@ async function loadAuthConfig() {
                 document.getElementById('test-oidc-btn').disabled = false;
             }
         }
+
+        // Update SSO access warning
+        updateSsoAccessWarning(data.oidc_configured);
     } catch (err) {
         console.error('Failed to load auth config:', err);
         document.getElementById('oidc-status-badge').textContent = 'Error';
@@ -783,10 +805,29 @@ async function loadAuthConfig() {
 // Provider change handler
 document.getElementById('provider').addEventListener('change', function() {
     const discoveryGroup = document.getElementById('discovery-url-group');
+    const providerHelp = document.getElementById('provider-help');
+    const providerGuideLink = document.getElementById('provider-guide-link');
+
+    // Show/hide discovery URL for custom provider
     if (this.value === 'custom') {
         discoveryGroup.style.display = 'block';
     } else {
         discoveryGroup.style.display = 'none';
+    }
+
+    // Update provider-specific help link
+    const guideBase = 'https://github.com/adcontextprotocol/salesagent/blob/main/docs/user-guide/sso-setup.md';
+    const providerAnchors = {
+        'google': '#google-workspace',
+        'microsoft': '#microsoft-entra-id-azure-ad',
+        'custom': '#quick-start'
+    };
+
+    if (this.value && providerAnchors[this.value]) {
+        providerHelp.style.display = 'block';
+        providerGuideLink.href = guideBase + providerAnchors[this.value];
+    } else {
+        providerHelp.style.display = 'none';
     }
 });
 
@@ -811,7 +852,7 @@ document.getElementById('oidc-form').addEventListener('submit', async function(e
     };
 
     try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/config?tenant_id=${tenantId}`, {
+        const response = await fetch(`${scriptRoot}/auth/oidc/tenant/${tenantId}/config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
@@ -832,66 +873,31 @@ document.getElementById('oidc-form').addEventListener('submit', async function(e
     }
 });
 
-// Test OIDC connection
-document.getElementById('test-oidc-btn').addEventListener('click', async function() {
-    try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/test?tenant_id=${tenantId}`, {
-            credentials: 'same-origin'
-        });
-        const data = await response.json();
-
-        if (data.redirect_url) {
-            window.location.href = data.redirect_url;
-        } else {
-            alert(data.error || 'Failed to start test');
-        }
-    } catch (err) {
-        console.error('Error testing OIDC:', err);
-        alert('Failed to start test');
-    }
+// Test OIDC connection - navigate directly (OAuth redirects don't work with fetch due to CORS)
+document.getElementById('test-oidc-btn').addEventListener('click', function() {
+    window.location.href = `${scriptRoot}/auth/oidc/test/${tenantId}`;
 });
 
-// Enable SSO
-document.getElementById('enable-oidc-btn').addEventListener('click', async function() {
-    try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/enable?tenant_id=${tenantId}`, {
-            method: 'POST',
-            credentials: 'same-origin'
-        });
-        const data = await response.json();
-
-        if (data.success) {
-            alert('SSO enabled');
-            loadAuthConfig();
-        } else {
-            alert(data.error || 'Failed to enable SSO');
-        }
-    } catch (err) {
-        console.error('Error enabling SSO:', err);
-        alert('Failed to enable SSO');
-    }
-});
-
-// Disable SSO
+// Deactivate SSO
 document.getElementById('disable-oidc-btn').addEventListener('click', async function() {
-    if (!confirm('Disable SSO?')) return;
+    if (!confirm('Deactivate SSO? Users will not be able to log in via SSO until you re-enable it.')) return;
 
     try {
-        const response = await fetch(`${scriptRoot}/auth/oidc/disable?tenant_id=${tenantId}`, {
+        const response = await fetch(`${scriptRoot}/auth/oidc/tenant/${tenantId}/disable`, {
             method: 'POST',
             credentials: 'same-origin'
         });
         const data = await response.json();
 
         if (data.success) {
-            alert('SSO disabled');
+            alert('SSO deactivated');
             loadAuthConfig();
         } else {
-            alert(data.error || 'Failed to disable SSO');
+            alert(data.error || 'Failed to deactivate SSO');
         }
     } catch (err) {
-        console.error('Error disabling SSO:', err);
-        alert('Failed to disable SSO');
+        console.error('Error deactivating SSO:', err);
+        alert('Failed to deactivate SSO');
     }
 });
 
@@ -945,6 +951,19 @@ if (enableSetupBtn) {
             alert('Failed to enable setup mode');
         }
     });
+}
+
+// Show SSO access warning if configured but no users/domains
+function updateSsoAccessWarning(oidcConfigured) {
+    const warning = document.getElementById('sso-access-warning');
+    const hasUsers = {{ users|length }} > 0;
+    const hasDomains = {{ authorized_domains|length }} > 0;
+
+    if (oidcConfigured && !hasUsers && !hasDomains) {
+        warning.style.display = 'block';
+    } else {
+        warning.style.display = 'none';
+    }
 }
 
 // Initialize

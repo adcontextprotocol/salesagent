@@ -93,8 +93,9 @@ def _generate_pending_configuration_page(tenant: dict, virtual_host: str | None 
         Simple HTML page indicating pending configuration
     """
     tenant_name = html.escape(tenant.get("name", "Unknown Publisher"))
+    tenant_id = tenant.get("tenant_id", "default")
     base_url = _determine_base_url(virtual_host)
-    admin_url = f"{base_url}/admin/"
+    admin_url = f"{base_url}/admin/tenant/{tenant_id}"
 
     return f"""
     <!DOCTYPE html>

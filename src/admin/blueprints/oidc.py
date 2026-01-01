@@ -57,16 +57,17 @@ def create_tenant_oauth_client(tenant_id: str):
     return getattr(oauth, f"tenant_{tenant_id}")
 
 
-@oidc_bp.route("/config", methods=["GET"])
-@require_tenant_access()
+@oidc_bp.route("/tenant/<tenant_id>/config", methods=["GET"])
+@require_tenant_access(api_mode=True)
 def get_config(tenant_id: str):
     """Get OIDC configuration summary for a tenant."""
     summary = get_auth_config_summary(tenant_id)
-    return jsonify(summary)
+    # Return with config key to match frontend expectations and save response format
+    return jsonify({"config": summary, **summary})
 
 
-@oidc_bp.route("/config", methods=["POST"])
-@require_tenant_access()
+@oidc_bp.route("/tenant/<tenant_id>/config", methods=["POST"])
+@require_tenant_access(api_mode=True)
 def save_config(tenant_id: str):
     """Save OIDC configuration for a tenant.
 
@@ -76,6 +77,7 @@ def save_config(tenant_id: str):
     - client_secret: OAuth client secret
     - discovery_url: (optional for known providers) OIDC discovery URL
     - scopes: (optional) OAuth scopes
+    - logout_url: (optional) IdP logout URL
     """
     data = request.get_json()
     if not data:
@@ -83,12 +85,18 @@ def save_config(tenant_id: str):
 
     provider = data.get("provider")
     client_id = data.get("client_id")
-    client_secret = data.get("client_secret")
+    client_secret = data.get("client_secret")  # Can be empty to keep existing
     discovery_url = data.get("discovery_url")
     scopes = data.get("scopes", "openid email profile")
+    logout_url = data.get("logout_url")
 
-    if not provider or not client_id or not client_secret:
-        return jsonify({"error": "provider, client_id, and client_secret are required"}), 400
+    if not provider or not client_id:
+        return jsonify({"error": "provider and client_id are required"}), 400
+
+    # Require client_secret for new configs (no existing secret)
+    existing_config = get_or_create_auth_config(tenant_id)
+    if not client_secret and not existing_config.oidc_client_secret_encrypted:
+        return jsonify({"error": "client_secret is required for new configuration"}), 400
 
     try:
         config = save_oidc_config(
@@ -98,6 +106,7 @@ def save_config(tenant_id: str):
             client_secret=client_secret,
             discovery_url=discovery_url,
             scopes=scopes,
+            logout_url=logout_url,
         )
 
         # Get updated summary
@@ -117,23 +126,32 @@ def save_config(tenant_id: str):
         return jsonify({"error": "Failed to save configuration"}), 500
 
 
-@oidc_bp.route("/enable", methods=["POST"])
-@require_tenant_access()
+@oidc_bp.route("/tenant/<tenant_id>/enable", methods=["POST"])
+@require_tenant_access(api_mode=True)
 def enable(tenant_id: str):
     """Enable OIDC authentication for a tenant."""
     if enable_oidc(tenant_id):
+        # Verify the change persisted
+        from src.core.database.models import TenantAuthConfig
+
+        with get_db_session() as db_session:
+            config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+            actual_enabled = config.oidc_enabled if config else False
+            logger.info(f"After enable_oidc, oidc_enabled={actual_enabled} for tenant {tenant_id}")
+
         return jsonify(
             {
                 "success": True,
                 "message": "OIDC authentication enabled",
+                "oidc_enabled": actual_enabled,
             }
         )
     else:
         return jsonify({"error": "Cannot enable OIDC. Please test the configuration first."}), 400
 
 
-@oidc_bp.route("/disable", methods=["POST"])
-@require_tenant_access()
+@oidc_bp.route("/tenant/<tenant_id>/disable", methods=["POST"])
+@require_tenant_access(api_mode=True)
 def disable(tenant_id: str):
     """Disable OIDC authentication for a tenant."""
     disable_oidc(tenant_id)
@@ -162,7 +180,7 @@ def test_initiate(tenant_id: str):
         config = get_or_create_auth_config(tenant_id)
         if not config.oidc_client_id:
             flash("OIDC not configured for this tenant", "error")
-            return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
         # Create OAuth client for this tenant
         oauth = OAuth()
@@ -191,51 +209,64 @@ def test_initiate(tenant_id: str):
 @oidc_bp.route("/callback")
 def callback():
     """Handle OAuth callback for both test and production flows."""
-    # Check if this is a test flow
-    is_test = session.pop("oidc_test_flow", False)
-    tenant_id = session.pop("oidc_test_tenant_id", None) or session.get("oidc_login_tenant_id")
+    try:
+        # Check if this is a test flow
+        is_test = session.pop("oidc_test_flow", False)
+        tenant_id = session.pop("oidc_test_tenant_id", None) or session.get("oidc_login_tenant_id")
 
-    if not tenant_id:
-        flash("Invalid OAuth callback - no tenant context", "error")
-        return redirect(url_for("auth.login"))
+        logger.info(f"OAuth callback: is_test={is_test}, tenant_id={tenant_id}")
 
-    with get_db_session() as db_session:
-        tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-        if not tenant:
-            flash("Tenant not found", "error")
+        if not tenant_id:
+            flash("Invalid OAuth callback - no tenant context", "error")
             return redirect(url_for("auth.login"))
 
-        # Get OIDC config
-        config = get_or_create_auth_config(tenant_id)
-        if not config.oidc_client_id:
-            flash("OIDC not configured", "error")
-            return redirect(url_for("auth.login"))
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("auth.login"))
 
-        # Create OAuth client
-        oauth = OAuth()
-        oauth.init_app(current_app)
+            # Get OIDC config directly from this session to avoid nested session issues
+            from src.core.database.models import TenantAuthConfig
 
-        oauth.register(
-            name="callback_oidc",
-            client_id=config.oidc_client_id,
-            client_secret=config.oidc_client_secret,
-            server_metadata_url=config.oidc_discovery_url,
-            client_kwargs={"scope": config.oidc_scopes or "openid email profile"},
-        )
+            config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+            if not config or not config.oidc_client_id:
+                flash("OIDC not configured", "error")
+                return redirect(url_for("auth.login"))
 
-        try:
-            token = oauth.callback_oidc.authorize_access_token()
-        except Exception as e:
-            logger.error(f"OAuth token exchange failed: {e}", exc_info=True)
-            flash(f"OAuth authentication failed: {e}", "error")
-            if is_test:
-                return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
-            return redirect(url_for("auth.login"))
+            # Get decrypted secret while session is still active
+            client_secret = config.oidc_client_secret
+            logger.info(f"OAuth callback: got config for {tenant_id}, client_id={config.oidc_client_id[:20]}...")
+
+            # Create OAuth client - must use same name as the initiate function
+            # test_initiate uses "test_oidc", login uses "login_oidc"
+            oauth = OAuth()
+            oauth.init_app(current_app)
+
+            client_name = "test_oidc" if is_test else "login_oidc"
+            oauth.register(
+                name=client_name,
+                client_id=config.oidc_client_id,
+                client_secret=client_secret,
+                server_metadata_url=config.oidc_discovery_url,
+                client_kwargs={"scope": config.oidc_scopes or "openid email profile"},
+            )
+
+            try:
+                oauth_client = getattr(oauth, client_name)
+                token = oauth_client.authorize_access_token()
+                logger.info(f"OAuth callback: token exchange successful")
+            except Exception as e:
+                logger.error(f"OAuth token exchange failed: {e}", exc_info=True)
+                flash(f"OAuth authentication failed: {e}", "error")
+                if is_test:
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
+                return redirect(url_for("auth.login"))
 
         if not token:
             flash("OAuth token exchange failed", "error")
             if is_test:
-                return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
             return redirect(url_for("auth.login"))
 
         # Extract user info
@@ -243,15 +274,28 @@ def callback():
         if not user_info or not user_info.get("email"):
             flash("Could not get user email from OAuth provider", "error")
             if is_test:
-                return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
             return redirect(url_for("auth.login"))
 
         email = user_info["email"]
 
         if is_test:
-            # Test flow - mark config as verified and show success
+            # Test flow - mark config as verified and enable SSO in one transaction
             redirect_uri = get_tenant_redirect_uri(tenant)
-            mark_oidc_verified(tenant_id, redirect_uri)
+            from datetime import UTC, datetime
+            from src.core.database.models import TenantAuthConfig
+
+            with get_db_session() as db_session:
+                config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+                if config:
+                    config.oidc_verified_at = datetime.now(UTC)
+                    config.oidc_verified_redirect_uri = redirect_uri
+                    config.oidc_enabled = True
+                    config.updated_at = datetime.now(UTC)
+                    db_session.commit()
+                    logger.info(f"Verified and enabled SSO for tenant {tenant_id}")
+                else:
+                    logger.warning(f"No auth config found for tenant {tenant_id}")
 
             return render_template(
                 "oidc_test_success.html",
@@ -264,33 +308,75 @@ def callback():
         # Production flow - check user exists and create session
         session.pop("oidc_login_tenant_id", None)
 
-        user = db_session.scalars(select(User).filter_by(email=email.lower(), tenant_id=tenant_id)).first()
+        with get_db_session() as db_session:
+            user = db_session.scalars(select(User).filter_by(email=email.lower(), tenant_id=tenant_id)).first()
 
-        if not user:
-            flash("Access denied. You don't have permission to access this tenant.", "error")
-            logger.warning(f"OIDC login denied: no User record for {email} in tenant {tenant_id}")
-            return redirect(url_for("auth.login"))
+            if not user:
+                # Check if user's domain is authorized - auto-create user if so
+                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+                email_domain = email.lower().split("@")[1] if "@" in email else None
+                authorized_domains = tenant.authorized_domains or [] if tenant else []
 
-        if not user.is_active:
-            flash("Your account has been disabled. Please contact your administrator.", "error")
-            logger.warning(f"OIDC login denied: user {email} is disabled in tenant {tenant_id}")
-            return redirect(url_for("auth.login"))
+                if email_domain and email_domain in authorized_domains:
+                    # Auto-create user from authorized domain
+                    from datetime import UTC, datetime
+                    import uuid
 
-        # Create session
-        session["user"] = user.email
-        session["user_name"] = user.name or user.email
-        session["tenant_id"] = tenant_id
-        session["authenticated"] = True
-        session["auth_method"] = "oidc"
+                    user = User(
+                        user_id=str(uuid.uuid4()),
+                        tenant_id=tenant_id,
+                        email=email.lower(),
+                        name=user_info.get("name", email),
+                        is_active=True,
+                        created_at=datetime.now(UTC),
+                    )
+                    db_session.add(user)
+                    db_session.commit()
+                    db_session.refresh(user)
+                    logger.info(f"Auto-created user {email} from authorized domain {email_domain}")
+                else:
+                    flash("Access denied. You don't have permission to access this tenant.", "error")
+                    logger.warning(f"OIDC login denied: no User record for {email} in tenant {tenant_id}")
+                    return redirect(url_for("auth.login"))
 
-        # Update last login
-        from datetime import UTC, datetime
+            if not user.is_active:
+                flash("Your account has been disabled. Please contact your administrator.", "error")
+                logger.warning(f"OIDC login denied: user {email} is disabled in tenant {tenant_id}")
+                return redirect(url_for("auth.login"))
 
-        user.last_login = datetime.now(UTC)
-        db_session.commit()
+            # Update user's name from SSO if we got one
+            sso_name = user_info.get("name")
+            if sso_name and sso_name != user.name:
+                user.name = sso_name
+                logger.info(f"Updated user {email} name from SSO: {sso_name}")
 
-        flash(f"Welcome {user.name or user.email}!", "success")
+            # Create session
+            session["user"] = user.email
+            session["user_name"] = user.name or user.email
+            session["tenant_id"] = tenant_id
+            session["authenticated"] = True
+            session["auth_method"] = "oidc"
+
+            # Update last login
+            from datetime import UTC, datetime
+
+            user.last_login = datetime.now(UTC)
+            db_session.commit()
+
+            # Extract user info before session closes
+            user_display_name = user.name or user.email
+
+        flash(f"Welcome {user_display_name}!", "success")
+        # Redirect to original requested URL if available, otherwise dashboard
+        next_url = session.pop("login_next_url", None)
+        if next_url:
+            return redirect(next_url)
         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
+
+    except Exception as e:
+        logger.error(f"OAuth callback error: {e}", exc_info=True)
+        flash(f"Authentication error: {e}", "error")
+        return redirect(url_for("auth.login"))
 
 
 @oidc_bp.route("/login/<tenant_id>")
@@ -302,11 +388,27 @@ def login(tenant_id: str):
             flash("Tenant not found", "error")
             return redirect(url_for("auth.login"))
 
-        # Check OIDC is enabled and valid
-        config = get_oidc_config_for_auth(tenant_id)
-        if not config:
+        # In setup mode, allow login when OIDC is configured (even if not enabled)
+        # This lets users test the full login flow before enabling
+        from src.core.database.models import TenantAuthConfig
+
+        auth_config = db_session.scalars(
+            select(TenantAuthConfig).filter_by(tenant_id=tenant_id)
+        ).first()
+
+        # Check if OIDC is available
+        if not auth_config or not auth_config.oidc_client_id:
             flash("SSO is not available for this tenant", "error")
             return redirect(url_for("auth.login"))
+
+        # If not in setup mode, require OIDC to be enabled
+        is_setup_mode = getattr(tenant, "auth_setup_mode", False)
+        if not is_setup_mode and not auth_config.oidc_enabled:
+            flash("SSO is not available for this tenant", "error")
+            return redirect(url_for("auth.login"))
+
+        # Get decrypted secret
+        client_secret = auth_config.oidc_client_secret
 
         # Create OAuth client
         oauth = OAuth()
@@ -314,10 +416,10 @@ def login(tenant_id: str):
 
         oauth.register(
             name="login_oidc",
-            client_id=config["client_id"],
-            client_secret=config["client_secret"],
-            server_metadata_url=config["discovery_url"],
-            client_kwargs={"scope": config["scopes"]},
+            client_id=auth_config.oidc_client_id,
+            client_secret=client_secret,
+            server_metadata_url=auth_config.oidc_discovery_url,
+            client_kwargs={"scope": auth_config.oidc_scopes or "openid email profile"},
         )
 
         # Store login state

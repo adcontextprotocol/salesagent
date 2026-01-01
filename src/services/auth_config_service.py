@@ -22,6 +22,12 @@ OIDC_PROVIDERS = {
     "microsoft": "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
 }
 
+# Well-known OIDC logout URLs
+OIDC_LOGOUT_URLS = {
+    "google": "https://accounts.google.com/Logout",
+    "microsoft": "https://login.microsoftonline.com/common/oauth2/v2.0/logout",
+}
+
 
 def get_tenant_auth_config(tenant_id: str) -> TenantAuthConfig | None:
     """Get the authentication configuration for a tenant.
@@ -65,9 +71,10 @@ def save_oidc_config(
     tenant_id: str,
     provider: str,
     client_id: str,
-    client_secret: str,
+    client_secret: str | None,
     discovery_url: str | None = None,
     scopes: str = "openid email profile",
+    logout_url: str | None = None,
 ) -> TenantAuthConfig:
     """Save OIDC configuration for a tenant.
 
@@ -75,9 +82,11 @@ def save_oidc_config(
         tenant_id: The tenant ID
         provider: Provider name (google, microsoft, custom)
         client_id: OAuth client ID
-        client_secret: OAuth client secret (will be encrypted)
+        client_secret: OAuth client secret (will be encrypted). If None/empty,
+                      keeps existing secret.
         discovery_url: OIDC discovery URL (auto-set for known providers)
         scopes: OAuth scopes
+        logout_url: Optional IdP logout URL for proper OIDC logout
 
     Returns:
         Updated TenantAuthConfig
@@ -89,6 +98,10 @@ def save_oidc_config(
     if not discovery_url:
         raise ValueError("Discovery URL is required for custom OIDC providers")
 
+    # Auto-set logout URL for known providers
+    if not logout_url and provider in OIDC_LOGOUT_URLS:
+        logout_url = OIDC_LOGOUT_URLS[provider]
+
     with get_db_session() as session:
         config = session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
 
@@ -99,16 +112,28 @@ def save_oidc_config(
             )
             session.add(config)
 
+        # Check if key settings changed (requires re-verification)
+        settings_changed = (
+            config.oidc_provider != provider
+            or config.oidc_client_id != client_id
+            or config.oidc_discovery_url != discovery_url
+        )
+
         config.oidc_provider = provider
         config.oidc_client_id = client_id
-        config.oidc_client_secret = client_secret  # Uses setter for encryption
+        # Only update secret if a new one is provided
+        if client_secret:
+            config.oidc_client_secret = client_secret  # Uses setter for encryption
+            settings_changed = True
         config.oidc_discovery_url = discovery_url
         config.oidc_scopes = scopes
+        config.oidc_logout_url = logout_url
         config.updated_at = datetime.now(UTC)
 
-        # Reset verification when config changes
-        config.oidc_verified_at = None
-        config.oidc_verified_redirect_uri = None
+        # Reset verification only if key settings changed
+        if settings_changed:
+            config.oidc_verified_at = None
+            config.oidc_verified_redirect_uri = None
 
         session.commit()
         session.refresh(config)
@@ -201,26 +226,21 @@ def get_tenant_redirect_uri(tenant: Tenant) -> str:
         Full redirect URI
     """
     if tenant.virtual_host:
-        # Custom domain
+        # Custom domain takes highest priority
         base = f"https://{tenant.virtual_host}"
-    elif tenant.subdomain:
-        # Subdomain on main domain
-        base_domain = get_sales_agent_domain()
-        if base_domain:
-            base = f"https://{tenant.subdomain}.{base_domain}"
-        else:
-            # Fallback for local development
-            port = os.environ.get("ADMIN_UI_PORT", "8001")
-            base = f"http://localhost:{port}"
+    elif tenant.subdomain and get_sales_agent_domain():
+        # Subdomain on main domain (multi-tenant mode with SALES_AGENT_DOMAIN set)
+        base = f"https://{tenant.subdomain}.{get_sales_agent_domain()}"
+    elif main_url := get_sales_agent_url():
+        # Explicit SALES_AGENT_DOMAIN URL
+        base = main_url
+    elif fly_app := os.environ.get("FLY_APP_NAME"):
+        # Single-tenant mode on Fly.io - use the app's URL
+        base = f"https://{fly_app}.fly.dev"
     else:
-        # Fallback to main URL
-        main_url = get_sales_agent_url()
-        if main_url:
-            base = main_url
-        else:
-            # Ultimate fallback for local development
-            port = os.environ.get("ADMIN_UI_PORT", "8001")
-            base = f"http://localhost:{port}"
+        # Local development fallback
+        port = os.environ.get("ADMIN_UI_PORT", "8001")
+        base = f"http://localhost:{port}"
 
     return f"{base}/auth/oidc/callback"
 
@@ -358,4 +378,11 @@ def get_auth_config_summary(tenant_id: str) -> dict:
                 config.oidc_verified_redirect_uri is not None
                 and config.oidc_verified_redirect_uri != current_redirect_uri
             ),
+            # Include actual config values for form population (not secret)
+            "provider": config.oidc_provider,
+            "client_id": config.oidc_client_id,
+            "discovery_url": config.oidc_discovery_url,
+            "scopes": config.oidc_scopes,
+            # Indicate if secret is saved (don't return actual secret)
+            "has_client_secret": bool(config.oidc_client_secret_encrypted),
         }

@@ -170,7 +170,14 @@ def sample_tenant(integration_db):
     from decimal import Decimal
 
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import AuthorizedProperty, CurrencyLimit, GAMInventory, PropertyTag, Tenant
+    from src.core.database.models import (
+        AuthorizedProperty,
+        CurrencyLimit,
+        GAMInventory,
+        PropertyTag,
+        Tenant,
+        TenantAuthConfig,
+    )
     from tests.fixtures import TenantFactory
 
     tenant_data = TenantFactory.create()
@@ -181,7 +188,8 @@ def sample_tenant(integration_db):
             name=tenant_data["name"],
             subdomain=tenant_data["subdomain"],
             is_active=tenant_data["is_active"],
-            ad_server="mock",
+            ad_server="mock",  # Mock adapter is accepted in test environments (ADCP_TESTING=true)
+            auth_setup_mode=False,  # Disable setup mode for production-ready auth
             # Required: Access control configuration
             authorized_emails=["test@example.com"],
         )
@@ -240,6 +248,17 @@ def sample_tenant(integration_db):
         ]
         for item in inventory_items:
             session.add(item)
+
+        # Create TenantAuthConfig with SSO enabled (required for setup validation)
+        auth_config = TenantAuthConfig(
+            tenant_id=tenant_data["tenant_id"],
+            oidc_enabled=True,
+            oidc_provider="google",
+            oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+            oidc_client_id="test_client_id_for_fixtures",
+            oidc_scopes="openid email profile",
+        )
+        session.add(auth_config)
 
         session.commit()
 
@@ -336,12 +355,14 @@ def add_required_setup_data(session, tenant_id: str):
 
     This helper ensures tenants have:
     1. Access control (authorized_emails)
-    2. Verified publisher partner (single source of truth for list_authorized_properties)
-    3. Authorized property (for property details)
-    4. Currency limit (for budget validation)
-    5. Property tag (for product configuration)
-    6. Principal (advertiser) (for setup completion validation)
-    7. GAM inventory (for inventory sync status)
+    2. SSO configuration (TenantAuthConfig with oidc_enabled=True)
+    3. Auth setup mode disabled (auth_setup_mode=False)
+    4. Verified publisher partner (single source of truth for list_authorized_properties)
+    5. Authorized property (for property details)
+    6. Currency limit (for budget validation)
+    7. Property tag (for product configuration)
+    8. Principal (advertiser) (for setup completion validation)
+    9. GAM inventory (for inventory sync status)
 
     Call this in test fixtures to avoid "Setup incomplete" errors.
     """
@@ -360,15 +381,40 @@ def add_required_setup_data(session, tenant_id: str):
         PropertyTag,
         PublisherPartner,
         Tenant,
+        TenantAuthConfig,
     )
 
     stmt = select(Tenant).filter_by(tenant_id=tenant_id)
     tenant = session.scalars(stmt).first()
-    if tenant and not tenant.authorized_emails:
-        tenant.authorized_emails = ["test@example.com"]
-        # CRITICAL: Mark JSON field as modified so SQLAlchemy persists the change
-        attributes.flag_modified(tenant, "authorized_emails")
+    if tenant:
+        # Set authorized_emails if not set
+        if not tenant.authorized_emails:
+            tenant.authorized_emails = ["test@example.com"]
+            # CRITICAL: Mark JSON field as modified so SQLAlchemy persists the change
+            attributes.flag_modified(tenant, "authorized_emails")
+
+        # Disable auth_setup_mode to simulate production-ready auth
+        tenant.auth_setup_mode = False
+
+        # Note: mock adapter is now accepted in test environments (ADCP_TESTING=true)
+        # If ad_server is None, set it to mock for testing
+        if tenant.ad_server is None:
+            tenant.ad_server = "mock"
+
         session.flush()  # Ensure changes are persisted immediately
+
+    # Create TenantAuthConfig with SSO enabled if not exists (required for setup validation)
+    stmt_auth_config = select(TenantAuthConfig).filter_by(tenant_id=tenant_id)
+    if not session.scalars(stmt_auth_config).first():
+        auth_config = TenantAuthConfig(
+            tenant_id=tenant_id,
+            oidc_enabled=True,
+            oidc_provider="google",
+            oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+            oidc_client_id="test_client_id_for_fixtures",
+            oidc_scopes="openid email profile",
+        )
+        session.add(auth_config)
 
     # Create PublisherPartner if not exists (single source of truth for list_authorized_properties)
     stmt_publisher = select(PublisherPartner).filter_by(
@@ -421,16 +467,28 @@ def add_required_setup_data(session, tenant_id: str):
         session.add(property_tag)
 
     # Create Principal (advertiser) if not exists - CRITICAL for setup validation
+    # Include both kevel and mock mappings to support ad_server="kevel" (which is production-ready)
     stmt_principal = select(Principal).filter_by(tenant_id=tenant_id)
-    if not session.scalars(stmt_principal).first():
+    existing_principal = session.scalars(stmt_principal).first()
+    if not existing_principal:
         principal = Principal(
             tenant_id=tenant_id,
             principal_id=f"{tenant_id}_default_principal",
             name="Default Test Principal",
             access_token=f"{tenant_id}_default_token",
-            platform_mappings={"mock": {"advertiser_id": f"mock_adv_{tenant_id}"}},
+            platform_mappings={
+                "kevel": {"advertiser_id": f"kevel_adv_{tenant_id}"},
+                "mock": {"advertiser_id": f"mock_adv_{tenant_id}"},
+            },
         )
         session.add(principal)
+    else:
+        # Update existing principal to include kevel mapping if missing
+        if existing_principal.platform_mappings and "kevel" not in existing_principal.platform_mappings:
+            existing_principal.platform_mappings["kevel"] = {
+                "advertiser_id": f"kevel_adv_{existing_principal.principal_id}"
+            }
+            attributes.flag_modified(existing_principal, "platform_mappings")
 
     # Create GAMInventory if not exists - CRITICAL for inventory sync status validation
     stmt_inventory = select(GAMInventory).filter_by(tenant_id=tenant_id)

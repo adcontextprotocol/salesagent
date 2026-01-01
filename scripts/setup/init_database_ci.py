@@ -29,6 +29,7 @@ def init_db_ci():
             Product,
             PropertyTag,
             Tenant,
+            TenantAuthConfig,
         )
 
         print("Applying database migrations for CI...")
@@ -140,6 +141,7 @@ def init_db_ci():
                     ai_policy=None,  # SQL NULL
                     auto_approve_format_ids=["display_300x250", "display_728x90"],
                     human_review_required=False,
+                    auth_setup_mode=False,  # Disable setup mode for CI (simulates SSO configured)
                     created_at=now,
                     updated_at=now,
                 )
@@ -162,6 +164,23 @@ def init_db_ci():
                             print("   ✓ Tenant findable with auth query (is_active=True filter)")
                         else:
                             print("   ❌ ERROR: Tenant NOT findable with auth query! This will cause auth to fail!")
+
+                        # Create SSO config (simulates configured SSO)
+                        stmt_auth_config = select(TenantAuthConfig).filter_by(tenant_id=tenant_id)
+                        existing_auth_config = session.scalars(stmt_auth_config).first()
+                        if not existing_auth_config:
+                            auth_config = TenantAuthConfig(
+                                tenant_id=tenant_id,
+                                oidc_enabled=True,
+                                oidc_provider="google",
+                                oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+                                oidc_client_id="ci-test-client-id",
+                            )
+                            session.add(auth_config)
+                            session.commit()
+                            print("   ✓ SSO configuration created")
+                        else:
+                            print("   ✓ SSO configuration already exists")
                     else:
                         print("   ⚠️  Warning: Could not verify tenant creation")
                 except Exception as e:

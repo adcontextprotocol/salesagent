@@ -63,21 +63,35 @@ fly postgres attach your-app-db --app your-app-name
 fly secrets list --app your-app-name
 ```
 
-## Step 4: Authentication
+## Step 4: Set Required Secrets
+
+Before deploying, set the encryption key used for storing sensitive data (like OIDC client secrets):
+
+```bash
+# Generate and set encryption key
+fly secrets set ENCRYPTION_KEY="$(openssl rand -base64 32)"
+```
+
+> **Important**: Store this key securely. If lost, encrypted data (OIDC credentials) will need to be reconfigured.
+
+## Step 5: Authentication
 
 Authentication is configured **per-tenant** via the Admin UI. No OAuth environment variables are required for initial deployment.
 
 ### Initial Setup Flow
 
-1. Deploy the application (Step 5 below)
+1. Deploy the application (Step 6 below)
 2. Access the Admin UI at `https://your-app-name.fly.dev/admin`
 3. Log in with test credentials (Setup Mode is enabled by default for new tenants):
    - Email: `test_super_admin@example.com`
    - Password: `test123`
 4. Go to **Users & Access** and configure your SSO provider (Google, Microsoft, Okta, Auth0, Keycloak, or any OIDC provider)
-5. Add redirect URI to your provider: `https://your-app-name.fly.dev/auth/oidc/callback`
-6. Test your SSO login
-7. Disable Setup Mode once SSO is working
+5. Copy the **Redirect URI** shown and add it to your provider: `https://your-app-name.fly.dev/auth/oidc/callback`
+6. **Add yourself**: Add your email as a user OR add your domain to Allowed Domains
+7. Click **Save Configuration**, then **Test Connection** - SSO is automatically enabled on success
+8. Click **Disable Setup Mode** to require SSO for all logins
+
+> **Important**: You must add yourself as a user or add your email domain BEFORE testing. Otherwise you'll see "Access denied" after authenticating.
 
 See [SSO Setup Guide](../../user-guide/sso-setup.md) for detailed provider-specific instructions.
 
@@ -97,7 +111,7 @@ fly secrets set SUPER_ADMIN_DOMAINS="example.com"
 - `SUPER_ADMIN_EMAILS`: Comma-separated, no spaces: `user1@example.com,user2@example.com`
 - `SUPER_ADMIN_DOMAINS`: Comma-separated domains: `example.com,company.org`
 
-## Step 5: Deploy
+## Step 6: Deploy
 
 **Option A: Use prebuilt image (recommended)**
 ```bash
@@ -117,7 +131,7 @@ The first deploy runs database migrations automatically. Watch the logs:
 fly logs
 ```
 
-## Step 6: Verify
+## Step 7: Verify
 
 ```bash
 # Check health
@@ -195,7 +209,13 @@ fly ssh console --app your-app-name -C "cd /app && python scripts/ops/migrate.py
 
    Then configure SSO in **Users & Access** and disable Setup Mode.
 
-2. **Using legacy global super admin:** If you set `SUPER_ADMIN_EMAILS`, verify the format:
+2. **"Access denied" after SSO login:** You need to add yourself first:
+   - Go back to the login page (use test credentials if Setup Mode is still enabled)
+   - Go to **Users & Access**
+   - Add your email as a user OR add your domain to Allowed Domains
+   - Try the SSO test again
+
+3. **Using legacy global super admin:** If you set `SUPER_ADMIN_EMAILS`, verify the format:
    ```bash
    fly ssh console --app your-app-name -C "echo \$SUPER_ADMIN_EMAILS"
    ```
@@ -203,7 +223,7 @@ fly ssh console --app your-app-name -C "cd /app && python scripts/ops/migrate.py
    - Wrong: `["user1@example.com"]` (JSON array)
    - Wrong: `user1@example.com, user2@example.com` (spaces)
 
-3. Restart to pick up changes:
+4. Restart to pick up changes:
    ```bash
    fly apps restart your-app-name
    ```

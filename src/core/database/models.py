@@ -623,6 +623,7 @@ class TenantAuthConfig(Base):
     oidc_client_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     oidc_client_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)  # Fernet encrypted
     oidc_scopes: Mapped[str | None] = mapped_column(String(500), nullable=True, default="openid email profile")
+    oidc_logout_url: Mapped[str | None] = mapped_column(String(500), nullable=True)  # IdP logout endpoint
 
     # Verification state - tracks last successful OAuth test
     oidc_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

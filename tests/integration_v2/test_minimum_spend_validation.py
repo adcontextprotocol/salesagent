@@ -30,6 +30,7 @@ from src.core.database.models import (
     Product,
     PropertyTag,
     Tenant,
+    TenantAuthConfig,
 )
 from src.core.tools.media_buy_create import _create_media_buy_impl
 from tests.helpers.adcp_factories import create_test_package_request
@@ -49,12 +50,13 @@ class TestMinimumSpendValidation:
         with get_db_session() as session:
             now = datetime.now(UTC)
 
-            # Create tenant
+            # Create tenant (mock adapter accepted in test environments - ADCP_TESTING=true)
             tenant = Tenant(
                 tenant_id="test_minspend_tenant",
                 name="Test Minimum Spend Tenant",
                 subdomain="testminspend",
-                ad_server="mock",
+                ad_server="mock",  # Mock adapter is accepted in test environments
+                auth_setup_mode=False,  # Disable setup mode for production-ready auth
                 enable_axe_signals=True,
                 human_review_required=False,
                 created_at=now,
@@ -103,13 +105,16 @@ class TestMinimumSpendValidation:
             )
             session.add(authorized_property)
 
-            # Create principal
+            # Create principal with both kevel and mock mappings
             principal = Principal(
                 tenant_id="test_minspend_tenant",
                 principal_id="test_principal",
                 name="Test Principal",
                 access_token="test_minspend_token",
-                platform_mappings={"mock": {"advertiser_id": "test_advertiser_id"}},
+                platform_mappings={
+                    "kevel": {"advertiser_id": "test_advertiser_id"},
+                    "mock": {"advertiser_id": "test_advertiser_id"},
+                },
                 created_at=now,
             )
             session.add(principal)
@@ -223,6 +228,17 @@ class TestMinimumSpendValidation:
             for item in inventory_items:
                 session.add(item)
 
+            # Create TenantAuthConfig with SSO enabled (required for setup validation)
+            auth_config = TenantAuthConfig(
+                tenant_id="test_minspend_tenant",
+                oidc_enabled=True,
+                oidc_provider="google",
+                oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+                oidc_client_id="test_client_id_for_minspend",
+                oidc_scopes="openid email profile",
+            )
+            session.add(auth_config)
+
             session.commit()
 
             # Set current tenant
@@ -271,6 +287,7 @@ class TestMinimumSpendValidation:
             session.execute(delete(CurrencyLimit).where(CurrencyLimit.tenant_id == "test_minspend_tenant"))
             session.execute(delete(PropertyTag).where(PropertyTag.tenant_id == "test_minspend_tenant"))
             session.execute(delete(AuthorizedProperty).where(AuthorizedProperty.tenant_id == "test_minspend_tenant"))
+            session.execute(delete(TenantAuthConfig).where(TenantAuthConfig.tenant_id == "test_minspend_tenant"))
             session.execute(delete(Tenant).where(Tenant.tenant_id == "test_minspend_tenant"))
             session.commit()
 
