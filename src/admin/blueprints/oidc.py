@@ -326,11 +326,27 @@ def login(tenant_id: str):
             flash("Tenant not found", "error")
             return redirect(url_for("auth.login"))
 
-        # Check OIDC is enabled and valid
-        config = get_oidc_config_for_auth(tenant_id)
-        if not config:
+        # In setup mode, allow login when OIDC is configured (even if not enabled)
+        # This lets users test the full login flow before enabling
+        from src.core.database.models import TenantAuthConfig
+
+        auth_config = db_session.scalars(
+            select(TenantAuthConfig).filter_by(tenant_id=tenant_id)
+        ).first()
+
+        # Check if OIDC is available
+        if not auth_config or not auth_config.oidc_client_id:
             flash("SSO is not available for this tenant", "error")
             return redirect(url_for("auth.login"))
+
+        # If not in setup mode, require OIDC to be enabled
+        is_setup_mode = getattr(tenant, "auth_setup_mode", False)
+        if not is_setup_mode and not auth_config.oidc_enabled:
+            flash("SSO is not available for this tenant", "error")
+            return redirect(url_for("auth.login"))
+
+        # Get decrypted secret
+        client_secret = auth_config.oidc_client_secret
 
         # Create OAuth client
         oauth = OAuth()
@@ -338,10 +354,10 @@ def login(tenant_id: str):
 
         oauth.register(
             name="login_oidc",
-            client_id=config["client_id"],
-            client_secret=config["client_secret"],
-            server_metadata_url=config["discovery_url"],
-            client_kwargs={"scope": config["scopes"]},
+            client_id=auth_config.oidc_client_id,
+            client_secret=client_secret,
+            server_metadata_url=auth_config.oidc_discovery_url,
+            client_kwargs={"scope": auth_config.oidc_scopes or "openid email profile"},
         )
 
         # Store login state
