@@ -94,10 +94,14 @@ def add_user(tenant_id):
             # Create new user
             import uuid
 
+            # Use provided name or default to email username
+            name = request.form.get("name", "").strip() or email.split("@")[0]
+
             user = User(
                 tenant_id=tenant_id,
                 user_id=f"user_{uuid.uuid4().hex[:8]}",
                 email=email,
+                name=name,
                 role=role,
                 is_active=True,
                 created_at=datetime.now(UTC),
