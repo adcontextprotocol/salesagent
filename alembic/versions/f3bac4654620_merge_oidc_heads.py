@@ -1,8 +1,8 @@
-"""merge_all_heads
+"""merge_oidc_heads
 
-Revision ID: d0c0d908f805
-Revises: 30acc1daf358, 58e9d3fdf1f6, add_oidc_logout_url
-Create Date: 2026-01-01 13:48:51.798646
+Revision ID: f3bac4654620
+Revises: 58e9d3fdf1f6, add_oidc_logout_url
+Create Date: 2026-01-01 14:00:41.717523
 
 """
 
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "d0c0d908f805"
-down_revision: Union[str, Sequence[str], None] = ("30acc1daf358", "58e9d3fdf1f6", "add_oidc_logout_url")
+revision: str = "f3bac4654620"
+down_revision: Union[str, Sequence[str], None] = ("58e9d3fdf1f6", "add_oidc_logout_url")
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
