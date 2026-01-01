@@ -277,9 +277,15 @@ def callback():
         email = user_info["email"]
 
         if is_test:
-            # Test flow - mark config as verified and show success
+            # Test flow - mark config as verified and auto-enable SSO
             redirect_uri = get_tenant_redirect_uri(tenant)
             mark_oidc_verified(tenant_id, redirect_uri)
+
+            # Auto-enable SSO since test succeeded
+            if enable_oidc(tenant_id):
+                logger.info(f"Auto-enabled SSO for tenant {tenant_id} after successful test")
+            else:
+                logger.warning(f"Failed to auto-enable SSO for tenant {tenant_id}")
 
             return render_template(
                 "oidc_test_success.html",
