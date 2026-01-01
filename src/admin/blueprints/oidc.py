@@ -319,6 +319,12 @@ def callback():
                 logger.warning(f"OIDC login denied: user {email} is disabled in tenant {tenant_id}")
                 return redirect(url_for("auth.login"))
 
+            # Update user's name from SSO if we got one
+            sso_name = user_info.get("name")
+            if sso_name and sso_name != user.name:
+                user.name = sso_name
+                logger.info(f"Updated user {email} name from SSO: {sso_name}")
+
             # Create session
             session["user"] = user.email
             session["user_name"] = user.name or user.email
