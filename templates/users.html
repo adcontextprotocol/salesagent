@@ -888,8 +888,8 @@ document.getElementById('enable-oidc-btn').addEventListener('click', async funct
         const data = await response.json();
 
         if (data.success) {
-            alert('SSO enabled');
-            loadAuthConfig();
+            alert('SSO enabled! The page will refresh to show the Disable Setup Mode option.');
+            window.location.reload();
         } else {
             alert(data.error || 'Failed to enable SSO');
         }
