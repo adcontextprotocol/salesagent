@@ -597,6 +597,7 @@
             <thead>
                 <tr>
                     <th>User</th>
+                    <th>Name</th>
                     <th>Status</th>
                     <th>Last Login</th>
                     <th></th>
@@ -609,6 +610,7 @@
                         <div class="user-email">{{ user.email }}</div>
                         <div class="meta-text">Added {{ user.created_at.strftime('%b %d, %Y') if user.created_at else 'Unknown' }}</div>
                     </td>
+                    <td>{{ user.name or '-' }}</td>
                     <td>
                         {% if user.is_active %}
                         <span class="status-badge status-active">Active</span>

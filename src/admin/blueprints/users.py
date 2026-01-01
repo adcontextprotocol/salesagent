@@ -37,6 +37,7 @@ def list_users(tenant_id):
                 {
                     "user_id": user.user_id,
                     "email": user.email,
+                    "name": user.name,
                     "role": user.role,
                     "is_active": user.is_active,
                     "created_at": user.created_at,
