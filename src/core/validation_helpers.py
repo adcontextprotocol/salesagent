@@ -132,7 +132,18 @@ def format_validation_error(validation_error: ValidationError, context: str = "r
         elif "missing" in error_type:
             error_details.append(f"  • {field_path}: Required field is missing")
         elif "extra_forbidden" in error_type:
-            error_details.append(f"  • {field_path}: Extra field not allowed by AdCP spec")
+            # For extra_forbidden, show the actual value to help debug what was passed
+            if input_val is not None:
+                # Format the input value more verbosely for debugging
+                try:
+                    input_repr = json.dumps(input_val, indent=2, default=str)
+                except (TypeError, ValueError):
+                    input_repr = repr(input_val)
+                error_details.append(
+                    f"  • {field_path}: Extra field not allowed by AdCP spec.\n" f"    Received value: {input_repr}"
+                )
+            else:
+                error_details.append(f"  • {field_path}: Extra field not allowed by AdCP spec")
         else:
             error_details.append(f"  • {field_path}: {msg}")
 
