@@ -231,16 +231,20 @@ def login():
     from src.services.auth_config_service import get_oidc_config_for_auth
 
     oidc_enabled = False
+    oidc_configured = False
     if is_single_tenant_mode():
-        oidc_config = get_oidc_config_for_auth("default")
-        oidc_enabled = bool(oidc_config)
-        # Also check tenant's auth_setup_mode for test_mode
+        # Check if OIDC is configured (has credentials) - for showing login option
+        from src.core.database.models import TenantAuthConfig
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id="default")).first()
+            config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id="default")).first()
+            if config and config.oidc_client_id:
+                oidc_configured = True
+                oidc_enabled = config.oidc_enabled
             if tenant and hasattr(tenant, "auth_setup_mode") and tenant.auth_setup_mode:
                 test_mode = True  # Tenant has auth_setup_mode enabled
+        # Only redirect to OIDC if enabled AND not in test mode
         if oidc_enabled and not test_mode:
-            # OIDC configured and test mode disabled - redirect to OIDC
             return redirect(url_for("oidc.login", tenant_id="default"))
 
     # If OAuth is configured and not in test mode, redirect directly to OAuth
@@ -283,11 +287,13 @@ def login():
                     logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
 
     # Show login page (test mode or OAuth not configured)
+    # Pass oidc_enabled=True if OIDC is configured (so user can test it)
+    # The actual oidc_enabled flag controls whether it's the only option
     return render_template(
         "login.html",
         test_mode=test_mode,
         oauth_configured=oauth_configured,
-        oidc_enabled=oidc_enabled,
+        oidc_enabled=oidc_configured,  # Show SSO button if configured (not just enabled)
         tenant_context=tenant_context,
         tenant_name=tenant_name,
         tenant_id="default" if is_single_tenant_mode() else None,

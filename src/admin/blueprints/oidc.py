@@ -168,7 +168,7 @@ def test_initiate(tenant_id: str):
         config = get_or_create_auth_config(tenant_id)
         if not config.oidc_client_id:
             flash("OIDC not configured for this tenant", "error")
-            return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
         # Create OAuth client for this tenant
         oauth = OAuth()
@@ -226,12 +226,14 @@ def callback():
             client_secret = config.oidc_client_secret
             logger.info(f"OAuth callback: got config for {tenant_id}, client_id={config.oidc_client_id[:20]}...")
 
-            # Create OAuth client
+            # Create OAuth client - must use same name as the initiate function
+            # test_initiate uses "test_oidc", login uses "login_oidc"
             oauth = OAuth()
             oauth.init_app(current_app)
 
+            client_name = "test_oidc" if is_test else "login_oidc"
             oauth.register(
-                name="callback_oidc",
+                name=client_name,
                 client_id=config.oidc_client_id,
                 client_secret=client_secret,
                 server_metadata_url=config.oidc_discovery_url,
@@ -239,19 +241,20 @@ def callback():
             )
 
             try:
-                token = oauth.callback_oidc.authorize_access_token()
+                oauth_client = getattr(oauth, client_name)
+                token = oauth_client.authorize_access_token()
                 logger.info(f"OAuth callback: token exchange successful")
             except Exception as e:
                 logger.error(f"OAuth token exchange failed: {e}", exc_info=True)
                 flash(f"OAuth authentication failed: {e}", "error")
                 if is_test:
-                    return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
+                    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
                 return redirect(url_for("auth.login"))
 
         if not token:
             flash("OAuth token exchange failed", "error")
             if is_test:
-                return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
             return redirect(url_for("auth.login"))
 
         # Extract user info
@@ -259,7 +262,7 @@ def callback():
         if not user_info or not user_info.get("email"):
             flash("Could not get user email from OAuth provider", "error")
             if is_test:
-                return redirect(url_for("settings.tenant_settings", tenant_id=tenant_id))
+                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
             return redirect(url_for("auth.login"))
 
         email = user_info["email"]
