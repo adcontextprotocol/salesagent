@@ -336,12 +336,14 @@ def add_required_setup_data(session, tenant_id: str):
 
     This helper ensures tenants have:
     1. Access control (authorized_emails)
-    2. Verified publisher partner (single source of truth for list_authorized_properties)
-    3. Authorized property (for property details)
-    4. Currency limit (for budget validation)
-    5. Property tag (for product configuration)
-    6. Principal (advertiser) (for setup completion validation)
-    7. GAM inventory (for inventory sync status)
+    2. SSO configuration (TenantAuthConfig with oidc_enabled=True)
+    3. Auth setup mode disabled (auth_setup_mode=False)
+    4. Verified publisher partner (single source of truth for list_authorized_properties)
+    5. Authorized property (for property details)
+    6. Currency limit (for budget validation)
+    7. Property tag (for product configuration)
+    8. Principal (advertiser) (for setup completion validation)
+    9. GAM inventory (for inventory sync status)
 
     Call this in test fixtures to avoid "Setup incomplete" errors.
     """
@@ -360,15 +362,35 @@ def add_required_setup_data(session, tenant_id: str):
         PropertyTag,
         PublisherPartner,
         Tenant,
+        TenantAuthConfig,
     )
 
     stmt = select(Tenant).filter_by(tenant_id=tenant_id)
     tenant = session.scalars(stmt).first()
-    if tenant and not tenant.authorized_emails:
-        tenant.authorized_emails = ["test@example.com"]
-        # CRITICAL: Mark JSON field as modified so SQLAlchemy persists the change
-        attributes.flag_modified(tenant, "authorized_emails")
+    if tenant:
+        # Set authorized_emails if not set
+        if not tenant.authorized_emails:
+            tenant.authorized_emails = ["test@example.com"]
+            # CRITICAL: Mark JSON field as modified so SQLAlchemy persists the change
+            attributes.flag_modified(tenant, "authorized_emails")
+
+        # Disable auth_setup_mode to simulate production-ready auth
+        tenant.auth_setup_mode = False
+
         session.flush()  # Ensure changes are persisted immediately
+
+    # Create TenantAuthConfig with SSO enabled if not exists (required for setup validation)
+    stmt_auth_config = select(TenantAuthConfig).filter_by(tenant_id=tenant_id)
+    if not session.scalars(stmt_auth_config).first():
+        auth_config = TenantAuthConfig(
+            tenant_id=tenant_id,
+            oidc_enabled=True,
+            oidc_provider="google",
+            oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+            oidc_client_id="test_client_id_for_fixtures",
+            oidc_scopes="openid email profile",
+        )
+        session.add(auth_config)
 
     # Create PublisherPartner if not exists (single source of truth for list_authorized_properties)
     stmt_publisher = select(PublisherPartner).filter_by(

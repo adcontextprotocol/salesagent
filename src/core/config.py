@@ -105,7 +105,7 @@ class AppConfig(BaseSettings):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     google_oauth: GoogleOAuthConfig = Field(default_factory=GoogleOAuthConfig)
-    superadmin: SuperAdminConfig = Field(default_factory=SuperAdminConfig)  # type: ignore[arg-type]
+    superadmin: SuperAdminConfig = Field(default_factory=SuperAdminConfig)
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
