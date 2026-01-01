@@ -99,14 +99,23 @@ class GAMCreativesManager:
         self.adapter = adapter
 
     def add_creative_assets(
-        self, media_buy_id: str, assets: list[dict[str, Any]], today: datetime
+        self,
+        media_buy_id: str,
+        assets: list[dict[str, Any]],
+        today: datetime,
+        placement_targeting_map: dict[str, str] | None = None,
     ) -> list[AssetStatus]:
         """Creates new Creatives in GAM and associates them with LineItems.
 
         Args:
             media_buy_id: GAM order ID
-            assets: List of creative asset dictionaries
+            assets: List of creative asset dictionaries (each may contain placement_ids
+                from creative assignments for placement targeting)
             today: Current datetime
+            placement_targeting_map: Optional map of placement_id → targeting_name for
+                creative-level targeting. Built from product impl_config.placement_targeting.
+                When provided, creatives with placement_ids will have their LICAs created
+                with the corresponding targetingName for GAM creative-level targeting.
 
         Returns:
             List of AssetStatus objects indicating success/failure for each creative
@@ -211,9 +220,13 @@ class GAMCreativesManager:
                     gam_creative_id = created_creatives[0]["id"]
                     logger.info(f"✓ Created GAM Creative ID: {gam_creative_id}")
 
-                # Associate creative with line items
+                # Associate creative with line items (includes placement targeting if configured)
                 self._associate_creative_with_line_items(
-                    gam_creative_id, asset, line_item_map, lica_service if not self.dry_run else None
+                    gam_creative_id,
+                    asset,
+                    line_item_map,
+                    lica_service if not self.dry_run else None,
+                    placement_targeting_map,
                 )
 
                 created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="approved"))
@@ -880,12 +893,29 @@ class GAMCreativesManager:
         logger.info(f"Configuring VAST creative {asset['creative_id']} for line items")
 
     def _associate_creative_with_line_items(
-        self, gam_creative_id: str, asset: dict[str, Any], line_item_map: dict[str, str], lica_service
+        self,
+        gam_creative_id: str,
+        asset: dict[str, Any],
+        line_item_map: dict[str, str],
+        lica_service,
+        placement_targeting_map: dict[str, str] | None = None,
     ) -> None:
         """Associate creative with its assigned line items.
 
         Supports creative rotation weights (AdCP 2.5). When weights differ from the default (100),
         the weight is passed to GAM's manualCreativeRotationWeight field for MANUAL rotation.
+
+        Supports creative-level placement targeting (adcp#208). When placement_ids are specified
+        in the creative assignment and a placement_targeting_map is provided, the LICA is created
+        with a targetingName that links to the line item's creativeTargetings rule.
+
+        Args:
+            gam_creative_id: The GAM creative ID to associate
+            asset: Creative asset dictionary (contains package_assignments, placement_ids)
+            line_item_map: Map of line item names to IDs
+            lica_service: GAM LICA service (None for dry run)
+            placement_targeting_map: Optional map of placement_id → targeting_name for
+                creative-level targeting. Built from product impl_config.placement_targeting.
         """
         # Extract package IDs and weights using helper (supports legacy and new formats)
         package_info = _extract_package_info(asset.get("package_assignments", []))
@@ -919,11 +949,29 @@ class GAMCreativesManager:
                 )
                 continue
 
+            # Determine targetingName for creative-level placement targeting (adcp#208)
+            targeting_name = None
+            first_placement_id = None
+            assignment_placement_ids = asset.get("placement_ids", [])
+            if assignment_placement_ids and placement_targeting_map:
+                # Use first placement_id - GAM LICA only supports one targetingName per association
+                first_placement_id = assignment_placement_ids[0]
+                if first_placement_id in placement_targeting_map:
+                    targeting_name = placement_targeting_map[first_placement_id]
+                    if len(assignment_placement_ids) > 1:
+                        logger.warning(
+                            f"Creative has {len(assignment_placement_ids)} placement_ids but GAM LICA "
+                            f"only supports one targetingName. Using first: {first_placement_id}"
+                        )
+
             if self.dry_run:
                 weight_info = f" with weight {weight}" if weight != 100 else ""
-                logger.info(f"Would associate creative {gam_creative_id} with line item {line_item_id}{weight_info}")
+                targeting_info = f" with targetingName '{targeting_name}'" if targeting_name else ""
+                logger.info(
+                    f"Would associate creative {gam_creative_id} with line item {line_item_id}{weight_info}{targeting_info}"
+                )
             else:
-                # Create Line Item Creative Association (AdCP 2.5 weight support)
+                # Create Line Item Creative Association (AdCP 2.5 weight support + adcp#208 placement targeting)
                 association: dict[str, str | int] = {
                     "creativeId": gam_creative_id,
                     "lineItemId": line_item_id,
@@ -935,10 +983,19 @@ class GAMCreativesManager:
                     association["manualCreativeRotationWeight"] = weight
                     logger.info(f"Setting creative weight to {weight} for LICA")
 
+                # Add targetingName for creative-level placement targeting (adcp#208)
+                # This links the LICA to a creativeTargetings rule defined on the line item
+                if targeting_name:
+                    association["targetingName"] = targeting_name
+                    logger.info(f"Setting targetingName '{targeting_name}' for LICA (placement: {first_placement_id})")
+
                 try:
                     lica_service.createLineItemCreativeAssociations([association])
                     weight_info = f" (weight: {weight})" if weight != 100 else ""
-                    logger.info(f"✓ Associated creative {gam_creative_id} with line item {line_item_id}{weight_info}")
+                    targeting_info = f" (targetingName: {targeting_name})" if targeting_name else ""
+                    logger.info(
+                        f"✓ Associated creative {gam_creative_id} with line item {line_item_id}{weight_info}{targeting_info}"
+                    )
                 except Exception as e:
                     logger.error(f"Failed to associate creative {gam_creative_id} with line item {line_item_id}: {e}")
                     raise

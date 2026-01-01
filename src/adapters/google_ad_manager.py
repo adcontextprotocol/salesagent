@@ -146,6 +146,9 @@ class GoogleAdManager(AdServerAdapter):
                 except Exception as e:
                     logger.warning(f"Could not auto-detect trafficker_id: {e}")
 
+            # Initialize placement_targeting_map (adcp#208) - built during create_order, used in add_creative_assets
+            self._placement_targeting_map: dict[str, str] = {}
+
             # Initialize manager components
             self.targeting_manager = GAMTargetingManager(tenant_id or "", gam_client=self.client)
 
@@ -172,6 +175,9 @@ class GoogleAdManager(AdServerAdapter):
             self.client_manager = None  # type: ignore[assignment]
             self.client = None
             self.log("[yellow]Running in dry-run mode - GAM client not initialized[/yellow]")
+
+            # Initialize placement_targeting_map (adcp#208) - built during create_order, used in add_creative_assets
+            self._placement_targeting_map = {}
 
             # Initialize managers for dry-run mode (they can work without real client)
             self.targeting_manager = GAMTargetingManager(tenant_id or "")
@@ -633,6 +639,31 @@ class GoogleAdManager(AdServerAdapter):
             if package.targeting_overlay:
                 package_targeting[package.package_id] = self._build_targeting(package.targeting_overlay)
 
+        # Build placement_targeting_map from all products' impl_configs (adcp#208)
+        # This maps placement_id → targeting_name for creative-level targeting
+        self._placement_targeting_map.clear()  # Reset for this order
+        for _pid, prod_info in products_map.items():
+            if not prod_info or not isinstance(prod_info, dict):
+                continue
+            prod_impl_config = cast(dict[str, Any], prod_info.get("implementation_config", {}) or {})
+            placement_targeting = cast(list[dict[str, Any]], prod_impl_config.get("placement_targeting", []))
+            for pt in placement_targeting:
+                placement_id = pt.get("placement_id")
+                targeting_name = pt.get("targeting_name")
+                if placement_id and targeting_name:
+                    # Warn if there's a collision from different products
+                    if placement_id in self._placement_targeting_map:
+                        existing = self._placement_targeting_map[placement_id]
+                        if existing != targeting_name:
+                            self.log(
+                                f"[yellow]Warning: placement_id '{placement_id}' has conflicting "
+                                f"targeting_names: '{existing}' vs '{targeting_name}'. Using '{targeting_name}'[/yellow]"
+                            )
+                    self._placement_targeting_map[placement_id] = targeting_name
+
+        if self._placement_targeting_map:
+            self.log(f"Built placement_targeting_map with {len(self._placement_targeting_map)} placements")
+
         # Create line items for each package
         try:
             line_item_ids = self.orders_manager.create_line_items(
@@ -904,7 +935,11 @@ class GoogleAdManager(AdServerAdapter):
                 return asset_statuses
 
         # Automatic mode - process creatives directly
-        return self.creatives_manager.add_creative_assets(media_buy_id, assets, today)
+        # Pass placement_targeting_map for creative-level targeting (adcp#208)
+        placement_targeting_map = getattr(self, "_placement_targeting_map", None)
+        return self.creatives_manager.add_creative_assets(
+            media_buy_id, assets, today, placement_targeting_map=placement_targeting_map
+        )
 
     def associate_creatives(self, line_item_ids: list[str], platform_creative_ids: list[str]) -> list[dict[str, Any]]:
         """Associate already-uploaded creatives with line items.

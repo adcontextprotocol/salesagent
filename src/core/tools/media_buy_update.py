@@ -10,7 +10,7 @@ Handles media buy updates including:
 
 import logging
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from adcp import PushNotificationConfig
 from adcp.types import Error
@@ -809,15 +809,18 @@ def _update_media_buy_impl(
                 from src.core.tools.creatives import _sync_creatives_impl
 
                 # Sync creatives (upload/update)
-                creative_dicts = [
-                    c.model_dump(mode="json") if hasattr(c, "model_dump") else c for c in pkg_update.creatives
-                ]
+                creative_dicts: list[dict[str, Any]] = []
+                for c in pkg_update.creatives:
+                    if hasattr(c, "model_dump"):
+                        creative_dicts.append(c.model_dump(mode="json"))
+                    else:
+                        creative_dicts.append(cast(dict[str, Any], c))
                 sync_response = _sync_creatives_impl(
                     creatives=creative_dicts,
                     assignments={
-                        c.get("creative_id") or c.creative_id: [pkg_update.package_id]
+                        (c.get("creative_id") if isinstance(c, dict) else c.creative_id): [pkg_update.package_id]
                         for c in pkg_update.creatives
-                        if hasattr(c, "creative_id") or c.get("creative_id")
+                        if (c.get("creative_id") if isinstance(c, dict) else getattr(c, "creative_id", None))
                     },
                     ctx=ctx,
                 )
@@ -851,8 +854,8 @@ def _update_media_buy_impl(
                     )
                 )
 
-            # Handle creative_assignments (weight/placement updates) - AdCP 2.5
-            if hasattr(pkg_update, "creative_assignments") and pkg_update.creative_assignments:
+            # Handle creative_assignments (weight/placement updates) - adcp#208
+            if pkg_update.creative_assignments:
                 # Validate package_id is provided
                 if not pkg_update.package_id:
                     error_msg = "package_id is required when updating creative_assignments"
@@ -871,6 +874,8 @@ def _update_media_buy_impl(
                 from src.core.database.database_session import get_db_session
                 from src.core.database.models import CreativeAssignment as DBAssignment
                 from src.core.database.models import MediaBuy as MediaBuyModel
+                from src.core.database.models import MediaPackage as MediaPackageModel
+                from src.core.database.models import Product as ProductModel
 
                 with get_db_session() as session:
                     # Resolve media_buy_id
@@ -893,20 +898,70 @@ def _update_media_buy_impl(
                         return response_data
 
                     actual_media_buy_id = media_buy_obj.media_buy_id
+
+                    # Validate placement_ids against product's available placements (adcp#208)
+                    # Build set of placement_ids from all creative_assignments
+                    all_requested_placement_ids: set[str] = set()
+                    for ca in pkg_update.creative_assignments:
+                        if ca.placement_ids:
+                            all_requested_placement_ids.update(ca.placement_ids)
+
+                    if all_requested_placement_ids:
+                        # Get package to find product_id
+                        pkg_stmt = select(MediaPackageModel).where(
+                            MediaPackageModel.media_buy_id == actual_media_buy_id,
+                            MediaPackageModel.package_id == pkg_update.package_id,
+                        )
+                        pkg_record = session.scalars(pkg_stmt).first()
+
+                        if not pkg_record:
+                            error_msg = (
+                                f"Package '{pkg_update.package_id}' not found for media buy '{actual_media_buy_id}'"
+                            )
+                            response_data = UpdateMediaBuyError(
+                                errors=[Error(code="package_not_found", message=error_msg)],
+                                context=to_context_object(req.context),
+                            )
+                            return response_data
+
+                        product_id = pkg_record.package_config.get("product_id") if pkg_record.package_config else None
+
+                        if product_id:
+                            # Get product's placements
+                            prod_stmt = select(ProductModel).where(
+                                ProductModel.tenant_id == tenant["tenant_id"],
+                                ProductModel.product_id == product_id,
+                            )
+                            product_obj = session.scalars(prod_stmt).first()
+
+                            if product_obj and product_obj.placements:
+                                available_placement_ids: set[str] = {
+                                    str(p.get("placement_id")) for p in product_obj.placements if p.get("placement_id")
+                                }
+                                invalid_ids = all_requested_placement_ids - available_placement_ids
+                                if invalid_ids:
+                                    error_msg = f"Invalid placement_ids: {sorted(invalid_ids)}. Available: {sorted(available_placement_ids)}"
+                                    response_data = UpdateMediaBuyError(
+                                        errors=[Error(code="invalid_placement_ids", message=error_msg)],
+                                        context=to_context_object(req.context),
+                                    )
+                                    return response_data
+                            elif product_obj and not product_obj.placements:
+                                # Product doesn't define placements, so placement targeting not supported
+                                error_msg = f"Product '{product_id}' does not support placement targeting (no placements defined)"
+                                response_data = UpdateMediaBuyError(
+                                    errors=[Error(code="placement_targeting_not_supported", message=error_msg)],
+                                    context=to_context_object(req.context),
+                                )
+                                return response_data
+
                     updated_assignments = []
 
-                    for assignment in pkg_update.creative_assignments:
-                        creative_id = (
-                            assignment.creative_id
-                            if hasattr(assignment, "creative_id")
-                            else assignment.get("creative_id")
-                        )
-                        weight = assignment.weight if hasattr(assignment, "weight") else assignment.get("weight")
-                        placement_ids = (
-                            assignment.placement_ids
-                            if hasattr(assignment, "placement_ids")
-                            else assignment.get("placement_ids")
-                        )
+                    for ca in pkg_update.creative_assignments:
+                        # Schema validates and coerces dict inputs to LibraryCreativeAssignment
+                        creative_id = ca.creative_id
+                        weight = ca.weight
+                        placement_ids = ca.placement_ids
 
                         # Find or create assignment record
                         assign_stmt = select(DBAssignment).where(
@@ -921,10 +976,12 @@ def _update_media_buy_impl(
                             # Update existing assignment
                             if weight is not None:
                                 db_assignment.weight = int(weight)
-                            # Note: placement_ids stored but not yet used by adapters
+                            # adcp#208: persist placement_ids for placement-specific targeting
+                            if placement_ids is not None:
+                                db_assignment.placement_ids = placement_ids
                             updated_assignments.append(creative_id)
                         else:
-                            # Create new assignment with weight
+                            # Create new assignment with weight and placement_ids
                             import uuid as uuid_module
 
                             assignment_id = f"assign_{uuid_module.uuid4().hex[:12]}"
@@ -935,6 +992,8 @@ def _update_media_buy_impl(
                                 package_id=pkg_update.package_id,
                                 creative_id=creative_id,
                                 weight=int(weight) if weight is not None else 100,
+                                # adcp#208: placement-specific targeting
+                                placement_ids=placement_ids,
                             )
                             session.add(new_assignment)
                             updated_assignments.append(creative_id)

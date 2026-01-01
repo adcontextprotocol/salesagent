@@ -173,7 +173,7 @@ class TestUpdateMediaBuyInlineCreatives:
 
 
 class TestUpdateMediaBuyCreativeAssignments:
-    """Test update_media_buy creative_assignments weight updates (AdCP 2.5)."""
+    """Test update_media_buy creative_assignments weight updates (AdCP 2.5 / adcp#208)."""
 
     def test_creative_assignment_model_has_weight(self):
         """Verify CreativeAssignment database model has weight column."""
@@ -190,6 +190,76 @@ class TestUpdateMediaBuyCreativeAssignments:
         # Check default value
         weight_column = CreativeAssignment.__table__.columns["weight"]
         assert weight_column.default.arg == 100, "Default weight should be 100"
+
+    def test_creative_assignment_model_has_placement_ids(self):
+        """Verify CreativeAssignment database model has placement_ids column (adcp#208)."""
+        from src.core.database.models import CreativeAssignment
+
+        columns = {c.name for c in CreativeAssignment.__table__.columns}
+        assert "placement_ids" in columns, "CreativeAssignment should have placement_ids column (adcp#208)"
+
+    def test_adcp_package_update_has_creative_assignments(self):
+        """Verify AdCPPackageUpdate schema has creative_assignments field (adcp#208)."""
+        from src.core.schemas import AdCPPackageUpdate
+
+        fields = AdCPPackageUpdate.model_fields
+        assert "creative_assignments" in fields, "AdCPPackageUpdate should have creative_assignments field"
+
+    def test_adcp_package_update_has_creatives(self):
+        """Verify AdCPPackageUpdate schema has creatives field (adcp#208)."""
+        from src.core.schemas import AdCPPackageUpdate
+
+        fields = AdCPPackageUpdate.model_fields
+        assert "creatives" in fields, "AdCPPackageUpdate should have creatives field"
+
+    def test_adcp_package_update_creative_assignments_accepts_dict(self):
+        """AdCPPackageUpdate should accept creative_assignments as dicts (JSON input)."""
+        from src.core.schemas import AdCPPackageUpdate
+
+        # Simulate JSON input - Pydantic should coerce to LibraryCreativeAssignment
+        pkg = AdCPPackageUpdate(
+            package_id="pkg_1",
+            creative_assignments=[
+                {"creative_id": "c1", "weight": 50},
+                {"creative_id": "c2", "weight": 50, "placement_ids": ["p1", "p2"]},
+            ],
+        )
+
+        assert len(pkg.creative_assignments) == 2
+        assert pkg.creative_assignments[0].creative_id == "c1"
+        assert pkg.creative_assignments[0].weight == 50.0
+        assert pkg.creative_assignments[1].placement_ids == ["p1", "p2"]
+
+    def test_adcp_package_update_creatives_accepts_dict(self):
+        """AdCPPackageUpdate should accept creatives as dicts (JSON input)."""
+        from src.core.schemas import AdCPPackageUpdate
+
+        # Simulate JSON input for inline creative upload
+        # Use library-compliant ImageAsset structure (requires width, height, url)
+        pkg = AdCPPackageUpdate(
+            package_id="pkg_1",
+            creatives=[
+                {
+                    "creative_id": "new_c1",
+                    "name": "New Creative",
+                    "format_id": {"agent_url": "https://example.com/", "id": "display_300x250"},
+                    "assets": {
+                        "banner": {
+                            "url": "https://example.com/banner.png",
+                            "width": 300,
+                            "height": 250,
+                        }
+                    },
+                    "weight": 75,
+                    "placement_ids": ["pl_1"],
+                },
+            ],
+        )
+
+        assert len(pkg.creatives) == 1
+        assert pkg.creatives[0].creative_id == "new_c1"
+        assert pkg.creatives[0].weight == 75.0
+        assert pkg.creatives[0].placement_ids == ["pl_1"]
 
 
 class TestAdCP25SchemaCompliance:
