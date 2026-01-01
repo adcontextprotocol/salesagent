@@ -101,7 +101,7 @@ def test_validation_error_formatting_missing_field():
 
 
 def test_validation_error_formatting_extra_field():
-    """Test formatting for extra forbidden fields."""
+    """Test formatting for extra forbidden fields shows the actual value."""
     try:
         raise ValidationError.from_exception_data(
             "CreateMediaBuyRequest",
@@ -118,3 +118,33 @@ def test_validation_error_formatting_extra_field():
         error_msg = format_validation_error(e)
 
         assert "unknown_field: Extra field not allowed by AdCP spec" in error_msg
+        # Now we show the actual value for debugging
+        assert "some_value" in error_msg
+        assert "Received value:" in error_msg
+
+
+def test_validation_error_formatting_extra_field_with_dict():
+    """Test formatting for extra forbidden fields with dict values shows full structure."""
+    # This tests the scenario from the bug where format_ids had an agent_url key
+    # that was incorrectly placed, and Pydantic truncated it
+    try:
+        raise ValidationError.from_exception_data(
+            "Package",
+            [
+                {
+                    "type": "extra_forbidden",
+                    "loc": ("format_ids", "agent_url"),
+                    "msg": "Extra inputs are not permitted",
+                    "input": {"agent_url": "https://creative.adcontextprotocol.org/", "id": "display_300x250"},
+                }
+            ],
+        )
+    except ValidationError as e:
+        error_msg = format_validation_error(e)
+
+        # Error message should show the full value, not truncated
+        assert "format_ids.agent_url: Extra field not allowed by AdCP spec" in error_msg
+        assert "Received value:" in error_msg
+        # The full URL should be visible, not truncated like "ht...id"
+        assert "https://creative.adcontextprotocol.org/" in error_msg
+        assert "display_300x250" in error_msg
