@@ -128,10 +128,19 @@ def save_config(tenant_id: str):
 def enable(tenant_id: str):
     """Enable OIDC authentication for a tenant."""
     if enable_oidc(tenant_id):
+        # Verify the change persisted
+        from src.core.database.models import TenantAuthConfig
+
+        with get_db_session() as db_session:
+            config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
+            actual_enabled = config.oidc_enabled if config else False
+            logger.info(f"After enable_oidc, oidc_enabled={actual_enabled} for tenant {tenant_id}")
+
         return jsonify(
             {
                 "success": True,
                 "message": "OIDC authentication enabled",
+                "oidc_enabled": actual_enabled,
             }
         )
     else:
