@@ -335,12 +335,16 @@ def test_tenant_with_data(integration_db):
         db_session.add(auth_property)
 
         # Principal (required for setup completion)
+        # Include both kevel and mock mappings to support ad_server="kevel" (which is production-ready)
         principal = Principal(
             tenant_id=tenant_id,
             principal_id=f"{tenant_id}_principal",
             name="Test Principal",
             access_token=f"{tenant_id}_token",
-            platform_mappings={"mock": {"advertiser_id": f"mock_adv_{tenant_id}"}},
+            platform_mappings={
+                "kevel": {"advertiser_id": f"kevel_adv_{tenant_id}"},
+                "mock": {"advertiser_id": f"mock_adv_{tenant_id}"},
+            },
         )
         db_session.add(principal)
 
@@ -520,7 +524,11 @@ def sample_principal(integration_db, sample_tenant):
             principal_id="test_principal",
             name="Test Advertiser",
             access_token="test_token_12345",
-            platform_mappings={"mock": {"id": "test_advertiser"}},
+            # Include both kevel and mock mappings for compatibility
+            platform_mappings={
+                "kevel": {"advertiser_id": "test_advertiser"},
+                "mock": {"id": "test_advertiser"},
+            },
             created_at=now,
         )
         session.add(principal)

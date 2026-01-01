@@ -466,16 +466,28 @@ def add_required_setup_data(session, tenant_id: str):
         session.add(property_tag)
 
     # Create Principal (advertiser) if not exists - CRITICAL for setup validation
+    # Include both kevel and mock mappings to support ad_server="kevel" (which is production-ready)
     stmt_principal = select(Principal).filter_by(tenant_id=tenant_id)
-    if not session.scalars(stmt_principal).first():
+    existing_principal = session.scalars(stmt_principal).first()
+    if not existing_principal:
         principal = Principal(
             tenant_id=tenant_id,
             principal_id=f"{tenant_id}_default_principal",
             name="Default Test Principal",
             access_token=f"{tenant_id}_default_token",
-            platform_mappings={"mock": {"advertiser_id": f"mock_adv_{tenant_id}"}},
+            platform_mappings={
+                "kevel": {"advertiser_id": f"kevel_adv_{tenant_id}"},
+                "mock": {"advertiser_id": f"mock_adv_{tenant_id}"},
+            },
         )
         session.add(principal)
+    else:
+        # Update existing principal to include kevel mapping if missing
+        if existing_principal.platform_mappings and "kevel" not in existing_principal.platform_mappings:
+            existing_principal.platform_mappings["kevel"] = {
+                "advertiser_id": f"kevel_adv_{existing_principal.principal_id}"
+            }
+            attributes.flag_modified(existing_principal, "platform_mappings")
 
     # Create GAMInventory if not exists - CRITICAL for inventory sync status validation
     stmt_inventory = select(GAMInventory).filter_by(tenant_id=tenant_id)

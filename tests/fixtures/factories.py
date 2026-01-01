@@ -79,7 +79,12 @@ class PrincipalFactory:
         name = name or f"Test Advertiser {principal_id[-4:]}"
         access_token = access_token or f"token_{secrets.token_urlsafe(32)}"
 
-        default_mappings = {"mock": {"advertiser_id": f"mock_adv_{uuid.uuid4().hex[:8]}"}}
+        # Include both kevel and mock mappings for compatibility with ad_server="kevel"
+        adv_id = f"adv_{uuid.uuid4().hex[:8]}"
+        default_mappings = {
+            "kevel": {"advertiser_id": f"kevel_{adv_id}"},
+            "mock": {"advertiser_id": f"mock_{adv_id}"},
+        }
 
         if platform_mappings:
             default_mappings.update(platform_mappings)
