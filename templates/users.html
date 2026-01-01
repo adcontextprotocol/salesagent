@@ -517,7 +517,12 @@
                 <p class="help-text">Your secret will be encrypted before storage</p>
             </div>
 
-            <div class="button-group">
+            <div id="sso-access-warning" class="alert alert-warning" style="display: none; margin-top: 1rem;">
+            <strong>Before testing SSO:</strong> Add yourself as a user or add your email domain below.
+            Otherwise you'll see "Access denied" after authenticating.
+        </div>
+
+        <div class="button-group">
                 <button type="submit" class="btn btn-primary" id="save-oidc-btn">Save Configuration</button>
                 <button type="button" class="btn btn-secondary" id="test-oidc-btn" disabled>Test Connection</button>
                 <button type="button" class="btn btn-success" id="enable-oidc-btn" style="display: none;">Enable SSO</button>
@@ -784,6 +789,9 @@ async function loadAuthConfig() {
                 document.getElementById('test-oidc-btn').disabled = false;
             }
         }
+
+        // Update SSO access warning
+        updateSsoAccessWarning(data.oidc_configured);
     } catch (err) {
         console.error('Failed to load auth config:', err);
         document.getElementById('oidc-status-badge').textContent = 'Error';
@@ -961,6 +969,19 @@ if (enableSetupBtn) {
             alert('Failed to enable setup mode');
         }
     });
+}
+
+// Show SSO access warning if configured but no users/domains
+function updateSsoAccessWarning(oidcConfigured) {
+    const warning = document.getElementById('sso-access-warning');
+    const hasUsers = {{ users|length }} > 0;
+    const hasDomains = {{ authorized_domains|length }} > 0;
+
+    if (oidcConfigured && !hasUsers && !hasDomains) {
+        warning.style.display = 'block';
+    } else {
+        warning.style.display = 'none';
+    }
 }
 
 // Initialize

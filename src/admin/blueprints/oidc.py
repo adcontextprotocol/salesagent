@@ -283,32 +283,59 @@ def callback():
         # Production flow - check user exists and create session
         session.pop("oidc_login_tenant_id", None)
 
-        user = db_session.scalars(select(User).filter_by(email=email.lower(), tenant_id=tenant_id)).first()
+        with get_db_session() as db_session:
+            user = db_session.scalars(select(User).filter_by(email=email.lower(), tenant_id=tenant_id)).first()
 
-        if not user:
-            flash("Access denied. You don't have permission to access this tenant.", "error")
-            logger.warning(f"OIDC login denied: no User record for {email} in tenant {tenant_id}")
-            return redirect(url_for("auth.login"))
+            if not user:
+                # Check if user's domain is authorized - auto-create user if so
+                tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+                email_domain = email.lower().split("@")[1] if "@" in email else None
+                authorized_domains = tenant.authorized_domains or [] if tenant else []
 
-        if not user.is_active:
-            flash("Your account has been disabled. Please contact your administrator.", "error")
-            logger.warning(f"OIDC login denied: user {email} is disabled in tenant {tenant_id}")
-            return redirect(url_for("auth.login"))
+                if email_domain and email_domain in authorized_domains:
+                    # Auto-create user from authorized domain
+                    from datetime import UTC, datetime
+                    import uuid
 
-        # Create session
-        session["user"] = user.email
-        session["user_name"] = user.name or user.email
-        session["tenant_id"] = tenant_id
-        session["authenticated"] = True
-        session["auth_method"] = "oidc"
+                    user = User(
+                        user_id=str(uuid.uuid4()),
+                        tenant_id=tenant_id,
+                        email=email.lower(),
+                        name=user_info.get("name", email),
+                        is_active=True,
+                        created_at=datetime.now(UTC),
+                    )
+                    db_session.add(user)
+                    db_session.commit()
+                    db_session.refresh(user)
+                    logger.info(f"Auto-created user {email} from authorized domain {email_domain}")
+                else:
+                    flash("Access denied. You don't have permission to access this tenant.", "error")
+                    logger.warning(f"OIDC login denied: no User record for {email} in tenant {tenant_id}")
+                    return redirect(url_for("auth.login"))
 
-        # Update last login
-        from datetime import UTC, datetime
+            if not user.is_active:
+                flash("Your account has been disabled. Please contact your administrator.", "error")
+                logger.warning(f"OIDC login denied: user {email} is disabled in tenant {tenant_id}")
+                return redirect(url_for("auth.login"))
 
-        user.last_login = datetime.now(UTC)
-        db_session.commit()
+            # Create session
+            session["user"] = user.email
+            session["user_name"] = user.name or user.email
+            session["tenant_id"] = tenant_id
+            session["authenticated"] = True
+            session["auth_method"] = "oidc"
 
-        flash(f"Welcome {user.name or user.email}!", "success")
+            # Update last login
+            from datetime import UTC, datetime
+
+            user.last_login = datetime.now(UTC)
+            db_session.commit()
+
+            # Extract user info before session closes
+            user_display_name = user.name or user.email
+
+        flash(f"Welcome {user_display_name}!", "success")
         return redirect(url_for("tenants.dashboard", tenant_id=tenant_id))
 
     except Exception as e:
