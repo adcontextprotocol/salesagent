@@ -170,7 +170,14 @@ def sample_tenant(integration_db):
     from decimal import Decimal
 
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import AuthorizedProperty, CurrencyLimit, GAMInventory, PropertyTag, Tenant
+    from src.core.database.models import (
+        AuthorizedProperty,
+        CurrencyLimit,
+        GAMInventory,
+        PropertyTag,
+        Tenant,
+        TenantAuthConfig,
+    )
     from tests.fixtures import TenantFactory
 
     tenant_data = TenantFactory.create()
@@ -181,7 +188,8 @@ def sample_tenant(integration_db):
             name=tenant_data["name"],
             subdomain=tenant_data["subdomain"],
             is_active=tenant_data["is_active"],
-            ad_server="mock",
+            ad_server="kevel",  # Use "kevel" instead of "mock" - mock is not production-ready
+            auth_setup_mode=False,  # Disable setup mode for production-ready auth
             # Required: Access control configuration
             authorized_emails=["test@example.com"],
         )
@@ -240,6 +248,17 @@ def sample_tenant(integration_db):
         ]
         for item in inventory_items:
             session.add(item)
+
+        # Create TenantAuthConfig with SSO enabled (required for setup validation)
+        auth_config = TenantAuthConfig(
+            tenant_id=tenant_data["tenant_id"],
+            oidc_enabled=True,
+            oidc_provider="google",
+            oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+            oidc_client_id="test_client_id_for_fixtures",
+            oidc_scopes="openid email profile",
+        )
+        session.add(auth_config)
 
         session.commit()
 
@@ -376,6 +395,10 @@ def add_required_setup_data(session, tenant_id: str):
 
         # Disable auth_setup_mode to simulate production-ready auth
         tenant.auth_setup_mode = False
+
+        # Ensure ad_server is production-ready (mock is not considered configured)
+        if tenant.ad_server == "mock" or tenant.ad_server is None:
+            tenant.ad_server = "kevel"  # Use kevel as it's considered configured once selected
 
         session.flush()  # Ensure changes are persisted immediately
 

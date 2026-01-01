@@ -277,6 +277,7 @@ def test_tenant_with_data(integration_db):
         GAMInventory,
         Principal,
         PropertyTag,
+        TenantAuthConfig,
     )
 
     tenant_data = TenantFactory.create()
@@ -288,7 +289,8 @@ def test_tenant_with_data(integration_db):
             name=tenant_data["name"],
             subdomain=tenant_data["subdomain"],
             is_active=tenant_data["is_active"],
-            ad_server="mock",
+            ad_server="kevel",  # Use "kevel" instead of "mock" - mock is not production-ready
+            auth_setup_mode=False,  # Disable setup mode for production-ready auth
             auto_approve_format_ids=[],  # JSONType expects list, not json.dumps()
             human_review_required=False,
             policy_settings={},  # JSONType expects dict, not json.dumps()
@@ -366,6 +368,17 @@ def test_tenant_with_data(integration_db):
         for item in inventory_items:
             db_session.add(item)
 
+        # TenantAuthConfig with SSO enabled (required for setup validation)
+        auth_config = TenantAuthConfig(
+            tenant_id=tenant_id,
+            oidc_enabled=True,
+            oidc_provider="google",
+            oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+            oidc_client_id="test_client_id_for_fixtures",
+            oidc_scopes="openid email profile",
+        )
+        db_session.add(auth_config)
+
         db_session.commit()
 
     return tenant_data
@@ -388,7 +401,14 @@ def sample_tenant(integration_db):
     from datetime import UTC, datetime
 
     from src.core.database.database_session import get_db_session
-    from src.core.database.models import AuthorizedProperty, CurrencyLimit, GAMInventory, PropertyTag, Tenant
+    from src.core.database.models import (
+        AuthorizedProperty,
+        CurrencyLimit,
+        GAMInventory,
+        PropertyTag,
+        Tenant,
+        TenantAuthConfig,
+    )
 
     now = datetime.now(UTC)
     with get_db_session() as session:
@@ -397,7 +417,8 @@ def sample_tenant(integration_db):
             name="Test Tenant",
             subdomain="test",
             is_active=True,
-            ad_server="mock",
+            ad_server="kevel",  # Use "kevel" instead of "mock" - mock is not production-ready
+            auth_setup_mode=False,  # Disable setup mode for production-ready auth
             enable_axe_signals=True,
             authorized_emails=["test@example.com"],
             authorized_domains=["example.com"],
@@ -463,6 +484,17 @@ def sample_tenant(integration_db):
         ]
         for item in inventory_items:
             session.add(item)
+
+        # TenantAuthConfig with SSO enabled (required for setup validation)
+        auth_config = TenantAuthConfig(
+            tenant_id=tenant.tenant_id,
+            oidc_enabled=True,
+            oidc_provider="google",
+            oidc_discovery_url="https://accounts.google.com/.well-known/openid-configuration",
+            oidc_client_id="test_client_id_for_fixtures",
+            oidc_scopes="openid email profile",
+        )
+        session.add(auth_config)
 
         session.commit()
 
