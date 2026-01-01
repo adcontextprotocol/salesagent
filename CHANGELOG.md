@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/adcontextprotocol/salesagent/compare/v0.4.1...v0.5.0) (2026-01-01)
+
+
+### Features
+
+* Add dynamic per-tenant OIDC/SSO authentication ([#903](https://github.com/adcontextprotocol/salesagent/issues/903)) ([ed05a41](https://github.com/adcontextprotocol/salesagent/commit/ed05a4131ea4fffa212ab1e72a243650d0a493b5))
+* Add format template picker UI for AdCP 2.5 parameterized formats ([#782](https://github.com/adcontextprotocol/salesagent/issues/782)) ([#882](https://github.com/adcontextprotocol/salesagent/issues/882)) ([532657e](https://github.com/adcontextprotocol/salesagent/commit/532657ec6b796f12d40a2c41860b67bc4c0fca62))
+* Add vidium MCP server to local configuration ([#904](https://github.com/adcontextprotocol/salesagent/issues/904)) ([ebcfdd1](https://github.com/adcontextprotocol/salesagent/commit/ebcfdd134afd1e752c43248454203792409d4092))
+* Convert advertising channel from single to multi-select ([#897](https://github.com/adcontextprotocol/salesagent/issues/897)) ([a1aa8e4](https://github.com/adcontextprotocol/salesagent/commit/a1aa8e42489726f610986d7b1822fe6cd4596968))
+* Display sales agent version in agent card ([#902](https://github.com/adcontextprotocol/salesagent/issues/902)) ([663702b](https://github.com/adcontextprotocol/salesagent/commit/663702b3095e1b860b9bb20bf569148c993b0f35))
+* Implement AI product ranking with simplified catalog ([#906](https://github.com/adcontextprotocol/salesagent/issues/906)) ([d59e76b](https://github.com/adcontextprotocol/salesagent/commit/d59e76b5f04cdf820118a84f41131e174fa0efda))
+* Simplify user authorization with User records as primary auth method ([#907](https://github.com/adcontextprotocol/salesagent/issues/907)) ([504b489](https://github.com/adcontextprotocol/salesagent/commit/504b4897167cce98b05517787904cb3ffeeeaf12))
+
+
+### Bug Fixes
+
+* Simplify Docker Compose setup to fix mount errors ([#910](https://github.com/adcontextprotocol/salesagent/issues/910)) ([723b0b2](https://github.com/adcontextprotocol/salesagent/commit/723b0b2858a27cdd4747be733f2442ac6f7f08de))
+* Single-tenant deployment and SSO configuration ([#908](https://github.com/adcontextprotocol/salesagent/issues/908)) ([e725781](https://github.com/adcontextprotocol/salesagent/commit/e7257818aa041577f328b1426384fc05df45f96e))
+* src.core.format_spec_cache undefined ([#901](https://github.com/adcontextprotocol/salesagent/issues/901)) ([e3e701c](https://github.com/adcontextprotocol/salesagent/commit/e3e701c69339402802dd3e5741495047083a41cf))
+* Update docs links and fix alembic migrations ([#911](https://github.com/adcontextprotocol/salesagent/issues/911)) ([e498a43](https://github.com/adcontextprotocol/salesagent/commit/e498a43139e243bfed91c5fb599ad8f59bd2be69))
+* Use pull_request_target for PR title check on fork PRs ([#909](https://github.com/adcontextprotocol/salesagent/issues/909)) ([bb9817d](https://github.com/adcontextprotocol/salesagent/commit/bb9817dcdb95d890d79f364b40cff8cf395b3db9))
+
+
+### Documentation
+
+* Clarify SUPER_ADMIN_EMAILS is optional with per-tenant OIDC ([#905](https://github.com/adcontextprotocol/salesagent/issues/905)) ([399b255](https://github.com/adcontextprotocol/salesagent/commit/399b2550dec405a42b9c41f5491b7e9cb67a952d))
+
 ## [0.4.1](https://github.com/adcontextprotocol/salesagent/compare/v0.4.0...v0.4.1) (2025-12-29)
 
 
