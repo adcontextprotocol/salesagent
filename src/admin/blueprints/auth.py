@@ -333,6 +333,8 @@ def tenant_login(tenant_id):
     if oauth_configured and not test_mode:
         return redirect(url_for("auth.tenant_google_auth", tenant_id=tenant_id))
 
+    from src.core.config_loader import is_single_tenant_mode
+
     return render_template(
         "login.html",
         tenant_id=tenant_id,
@@ -340,6 +342,7 @@ def tenant_login(tenant_id):
         test_mode=test_mode,
         oauth_configured=oauth_configured,
         oidc_enabled=oidc_enabled,
+        single_tenant_mode=is_single_tenant_mode(),
     )
 
 
