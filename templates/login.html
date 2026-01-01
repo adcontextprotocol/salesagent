@@ -67,7 +67,7 @@
         <h3 style="margin-bottom: 1rem;">{% if oidc_enabled %}Setup Access{% elif single_tenant_mode %}Quick Start{% else %}Setup Login{% endif %}</h3>
         {% if oidc_enabled %}
         <p style="color: #666; font-size: 13px; margin-bottom: 1rem;">
-            Test credentials for initial setup. <strong>Log in via SSO above to disable setup mode.</strong>
+            Test credentials for verifying setup. <strong>Disable setup mode in Settings &rarr; Users & Access when ready.</strong>
         </p>
         {% endif %}
 
@@ -104,13 +104,10 @@
         </p>
         {% endif %}
 
-        {% if single_tenant_mode %}
+        {% if single_tenant_mode and not oidc_enabled %}
         <div style="margin-top: 1.5rem; padding: 1rem; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 4px; text-align: left;">
             <p style="margin: 0 0 0.5rem 0; color: #0369a1; font-size: 13px;">
-                <strong>Next step:</strong> Configure authentication for production use.
-            </p>
-            <p style="margin: 0; color: #0c4a6e; font-size: 12px;">
-                Set up OAuth (<code>GOOGLE_CLIENT_ID</code>) or disable setup mode (<code>ADCP_AUTH_TEST_MODE=false</code>).
+                <strong>Next step:</strong> Configure SSO in Settings &rarr; Users & Access.
             </p>
             <p style="margin: 0.5rem 0 0 0; font-size: 12px;">
                 <a href="https://adcontextprotocol.org/sales-agent/deployment/environment-variables#authentication" target="_blank" style="color: #0066cc;">
