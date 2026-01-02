@@ -135,3 +135,54 @@ def test_list_creatives_response_with_optional_fields():
 
     # Spec fields should be present
     assert "status" in creative_data, "Status is a spec field, should be present"
+
+
+def test_query_summary_sort_applied_serializes_enum_values():
+    """Test that sort_applied serializes enum values, not enum repr strings.
+
+    Bug: Using str() on enums produces "SortDirection.desc" instead of "desc".
+    The sort_applied dict must contain enum VALUES for valid JSON schema compliance.
+
+    The client validates against a schema expecting:
+        "direction": "desc"  (valid)
+    Not:
+        "direction": "SortDirection.desc"  (invalid - fails schema validation)
+    """
+    # The sort_applied dict that gets built in _list_creatives_impl
+    # must use .value, not str()
+    from adcp.types.generated_poc.enums.creative_sort_field import CreativeSortField
+    from adcp.types.generated_poc.enums.sort_direction import SortDirection
+
+    # Simulate what the implementation should do
+    field_enum = CreativeSortField.created_date
+    direction_enum = SortDirection.desc
+
+    # CORRECT: Use .value to get the string value
+    correct_sort_applied = {"field": field_enum.value, "direction": direction_enum.value}
+
+    # WRONG: Using str() produces the enum repr
+    wrong_sort_applied = {"field": str(field_enum), "direction": str(direction_enum)}
+
+    # Verify correct serialization produces simple strings
+    assert correct_sort_applied["field"] == "created_date"
+    assert correct_sort_applied["direction"] == "desc"
+
+    # Verify wrong serialization produces enum repr (this is the bug we fixed)
+    assert wrong_sort_applied["field"] == "CreativeSortField.created_date"
+    assert wrong_sort_applied["direction"] == "SortDirection.desc"
+
+    # Create a QuerySummary with the correct sort_applied
+    query_summary = QuerySummary(
+        total_matching=10,
+        returned=5,
+        filters_applied=[],
+        sort_applied=correct_sort_applied,
+    )
+
+    result = query_summary.model_dump()
+
+    # Verify sort_applied contains valid string values, not enum repr
+    assert result["sort_applied"]["field"] == "created_date"
+    assert result["sort_applied"]["direction"] == "desc"
+    assert "SortDirection" not in result["sort_applied"]["direction"]
+    assert "CreativeSortField" not in result["sort_applied"]["field"]
