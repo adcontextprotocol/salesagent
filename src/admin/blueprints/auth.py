@@ -590,6 +590,11 @@ def google_callback():
             session.pop("signup_flow", None)
             session.pop("signup_step", None)
             flash(f"Welcome {user.get('name', email)}! (Super Admin)", "success")
+            session.modified = True
+            logger.warning(
+                f"========== SUPER ADMIN detected, redirecting to core.index. "
+                f"Session keys: {list(session.keys())} =========="
+            )
             # Check for saved redirect URL
             next_url = session.pop("login_next_url", None)
             if next_url:
@@ -704,7 +709,16 @@ def google_callback():
             f"========== available_tenants in session: {len(session.get('available_tenants', []))} =========="
         )
         session.modified = True
-        return redirect(url_for("auth.select_tenant"))
+
+        # Create response and explicitly save session to ensure cookie is set
+        from flask import make_response
+
+        response = make_response(redirect(url_for("auth.select_tenant")))
+
+        # Log what cookies will be sent
+        logger.warning(f"========== Response cookies being set: {response.headers.getlist('Set-Cookie')} ==========")
+
+        return response
 
     except Exception as e:
         logger.error(f"[OAUTH_DEBUG] OAuth callback error: {type(e).__name__}: {e}", exc_info=True)
