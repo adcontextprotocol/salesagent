@@ -179,6 +179,23 @@ def create_app(config=None):
 
     # Apply proxy fixes for production
     if os.environ.get("PRODUCTION") == "true":
+        # Create a middleware to copy Fly.io headers to standard headers
+        # Fly sends Fly-Forwarded-Proto but Werkzeug expects X-Forwarded-Proto
+        class FlyHeadersMiddleware:
+            def __init__(self, app):
+                self.app = app
+
+            def __call__(self, environ, start_response):
+                # Copy Fly-Forwarded-Proto to X-Forwarded-Proto if not already set
+                if "HTTP_FLY_FORWARDED_PROTO" in environ and "HTTP_X_FORWARDED_PROTO" not in environ:
+                    environ["HTTP_X_FORWARDED_PROTO"] = environ["HTTP_FLY_FORWARDED_PROTO"]
+                # Copy Fly-Client-Ip to X-Forwarded-For if not already set
+                if "HTTP_FLY_CLIENT_IP" in environ and "HTTP_X_FORWARDED_FOR" not in environ:
+                    environ["HTTP_X_FORWARDED_FOR"] = environ["HTTP_FLY_CLIENT_IP"]
+                return self.app(environ, start_response)
+
+        # Apply Fly headers middleware first
+        app.wsgi_app = FlyHeadersMiddleware(app.wsgi_app)
         # Use Werkzeug's ProxyFix to handle X-Forwarded headers
         # x_for=1 for X-Forwarded-For, x_proto=1 for X-Forwarded-Proto, x_host=1 for X-Forwarded-Host
         app.wsgi_app = WerkzeugProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=0)
