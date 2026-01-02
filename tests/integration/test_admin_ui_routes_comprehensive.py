@@ -81,9 +81,11 @@ class TestAuthRoutes:
     """Test authentication routes."""
 
     def test_login_page(self, admin_client):
-        """Test /login page renders."""
-        response = admin_client.get("/login")
-        assert response.status_code == 200
+        """Test /login page renders or redirects to OAuth."""
+        response = admin_client.get("/login", follow_redirects=False)
+        # 200: Login page rendered (test mode or OAuth not configured)
+        # 302: Redirect to OAuth provider (OAuth configured)
+        assert response.status_code in [200, 302]
 
     def test_test_login_page(self, admin_client):
         """Test /test/login page (test mode)."""
