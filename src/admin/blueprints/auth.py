@@ -441,11 +441,21 @@ def google_auth():
 
     logger.warning(f"========== FINAL OAuth redirect URI: {redirect_uri} ==========")
 
+    # Clear any existing session to start fresh for OAuth
+    # This ensures we don't have conflicting session state
+    session.clear()
+
     # Simple OAuth flow - no tenant context preservation needed
     response = oauth.google.authorize_redirect(redirect_uri)
 
     # Log what's in the session after Authlib stores the state
     logger.warning(f"Session keys after authorize_redirect: {list(session.keys())}")
+
+    # CRITICAL: Mark the session as modified to ensure Flask saves it
+    # Authlib stores OAuth state in session, but the redirect response may not
+    # trigger Flask's session save mechanism automatically
+    session.modified = True
+
     # Log the Set-Cookie header that will be sent
     set_cookie_header = response.headers.get("Set-Cookie", "")
     logger.warning(f"Set-Cookie header (first 200 chars): {set_cookie_header[:200] if set_cookie_header else 'NONE'}")
