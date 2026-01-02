@@ -52,22 +52,14 @@ primary_region = "iad"
   cpus = 2
 
 # Environment variables (non-sensitive config)
-# Sensitive values (API keys, credentials) should be set via `fly secrets set`
+# Sensitive values should be set via `fly secrets set`, including:
+#   - GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (OAuth)
+#   - GOOGLE_OAUTH_REDIRECT_URI, ADMIN_UI_URL (domain-specific URLs)
+#   - BASE_DOMAIN, SALES_AGENT_DOMAIN (domain config)
+#   - DATABASE_URL, ENCRYPTION_KEY, etc.
 [env]
   PRODUCTION = "true"
   ENVIRONMENT = "production"
-  # Multi-tenant mode for reference deployment (subdomain routing)
-  # Publishers deploying their own instance should remove this
-  ADCP_MULTI_TENANT = "true"
-  BASE_DOMAIN = "adcontextprotocol.org"
-  SALES_AGENT_DOMAIN = "sales-agent.adcontextprotocol.org"
-  # Additional admin domains (users are redirected to primary for OAuth)
-  ADMIN_DOMAINS = "sales-agent.scope3.com"
-  # URLs for OAuth redirects and notifications
-  ADMIN_UI_URL = "https://admin.sales-agent.adcontextprotocol.org"
-  GOOGLE_OAUTH_REDIRECT_URI = "https://admin.sales-agent.adcontextprotocol.org/auth/google/callback"
-  # GCP project for GAM service account management
-  GCP_PROJECT_ID = "adcp-manager"
 
 # Persistent storage for audit logs and data
 [mounts]
