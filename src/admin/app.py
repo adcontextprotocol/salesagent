@@ -218,12 +218,6 @@ def create_app(config=None):
 
         from src.core.config_loader import get_tenant_by_virtual_host
 
-        # Debug logging
-        logger.info(
-            f"[BEFORE_REQUEST DEBUG] script_root={repr(request.script_root)}, path={repr(request.path)}, "
-            f"Apx-Incoming-Host={request.headers.get('Apx-Incoming-Host')}"
-        )
-
         # Check if this is an /admin request
         # Note: CustomProxyFix middleware strips /admin from request.path, so we check script_root
         # In production with SCRIPT_NAME=/admin, script_root will be '/admin'
@@ -231,7 +225,6 @@ def create_app(config=None):
         is_admin_request = (request.script_root == "/admin" and request.path != "/") or request.path.startswith(
             "/admin"
         )
-        logger.info(f"[BEFORE_REQUEST DEBUG] is_admin_request={is_admin_request}")
         if not is_admin_request:
             return None
 
