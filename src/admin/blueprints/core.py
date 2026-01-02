@@ -27,6 +27,9 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 from src.core.domain_config import (
     extract_subdomain_from_host,
+    get_admin_domain,
+    get_admin_url,
+    is_admin_domain,
     is_sales_agent_domain,
 )
 
@@ -289,6 +292,23 @@ def index():
 def admin_index():
     """Admin UI entry point - requires authentication."""
     from src.core.config_loader import is_single_tenant_mode
+
+    # Get the effective host (Approximated proxy header takes precedence)
+    effective_host = request.headers.get("Apx-Incoming-Host") or request.headers.get("Host", "")
+
+    # If on a secondary admin domain, redirect to the primary admin domain
+    # This prevents OAuth state/session issues when the callback goes to a different domain
+    primary_admin_domain = get_admin_domain()
+    if (
+        primary_admin_domain
+        and is_admin_domain(effective_host)
+        and effective_host != primary_admin_domain
+        and not effective_host.startswith(f"{primary_admin_domain}:")
+    ):
+        primary_url = get_admin_url()
+        if primary_url:
+            logger.info(f"Redirecting from secondary admin domain {effective_host} to primary {primary_admin_domain}")
+            return redirect(f"{primary_url}/admin/")
 
     # Single-tenant mode: always redirect to default tenant dashboard
     # (the @require_tenant_access decorator handles auth redirect)

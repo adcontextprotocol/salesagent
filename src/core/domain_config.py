@@ -107,21 +107,52 @@ def is_sales_agent_domain(host: str) -> bool:
     return host.endswith(f".{sales_domain}") or host == sales_domain
 
 
+def get_admin_domains() -> list[str]:
+    """Get all configured admin domains.
+
+    Returns a list of admin domains from:
+    1. ADMIN_DOMAINS env var (comma-separated list of additional admin domains)
+    2. ADMIN_DOMAIN env var (single primary admin domain)
+    3. Constructed from SALES_AGENT_DOMAIN (admin.{sales_agent_domain})
+
+    Returns:
+        List of admin domains, may be empty if none configured.
+    """
+    domains = []
+
+    # Check for explicit multiple admin domains
+    if admin_domains := os.getenv("ADMIN_DOMAINS"):
+        domains.extend([d.strip() for d in admin_domains.split(",") if d.strip()])
+
+    # Add primary admin domain if configured and not already in list
+    if primary := get_admin_domain():
+        if primary not in domains:
+            domains.append(primary)
+
+    return domains
+
+
 def is_admin_domain(host: str) -> bool:
     """
-    Check if the given host is the admin domain.
+    Check if the given host is an admin domain.
 
     Args:
         host: The hostname to check
 
     Returns:
-        True if the host is the admin domain.
-        Returns False if admin domain is not configured.
+        True if the host is one of the configured admin domains.
+        Returns False if no admin domains are configured.
     """
-    admin_domain = get_admin_domain()
-    if not admin_domain:
+    admin_domains = get_admin_domains()
+    if not admin_domains:
         return False
-    return host == admin_domain or host.startswith(f"{admin_domain}:")
+
+    # Check against all configured admin domains
+    for admin_domain in admin_domains:
+        if host == admin_domain or host.startswith(f"{admin_domain}:"):
+            return True
+
+    return False
 
 
 def extract_subdomain_from_host(host: str) -> str | None:
