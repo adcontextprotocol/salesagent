@@ -415,9 +415,7 @@ def google_auth():
         f"DOMAIN={current_app.config.get('SESSION_COOKIE_DOMAIN')}, "
         f"PATH={current_app.config.get('SESSION_COOKIE_PATH')}"
     )
-
-    # Debug: Log incoming cookies
-    logger.warning(f"Incoming cookies: {list(request.cookies.keys())}")
+    logger.warning(f"Incoming cookies at OAuth start: {list(request.cookies.keys())}")
 
     redirect_uri = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
     if redirect_uri:
@@ -444,7 +442,15 @@ def google_auth():
     logger.warning(f"========== FINAL OAuth redirect URI: {redirect_uri} ==========")
 
     # Simple OAuth flow - no tenant context preservation needed
-    return oauth.google.authorize_redirect(redirect_uri)
+    response = oauth.google.authorize_redirect(redirect_uri)
+
+    # Log what's in the session after Authlib stores the state
+    logger.warning(f"Session keys after authorize_redirect: {list(session.keys())}")
+    # Log the Set-Cookie header that will be sent
+    set_cookie_header = response.headers.get("Set-Cookie", "")
+    logger.warning(f"Set-Cookie header (first 200 chars): {set_cookie_header[:200] if set_cookie_header else 'NONE'}")
+
+    return response
 
 
 @auth_bp.route("/tenant/<tenant_id>/auth/google")
@@ -491,6 +497,11 @@ def google_callback():
     logger.warning(f"Request args: {dict(request.args)}")
     logger.warning(f"Session keys at start: {list(session.keys())}")
     logger.warning(f"Incoming cookies: {list(request.cookies.keys())}")
+
+    # Debug: Log the raw session cookie value to check if it's the right one
+    raw_session = request.cookies.get("session", "")
+    logger.warning(f"Raw session cookie (first 100 chars): {raw_session[:100] if raw_session else 'EMPTY'}")
+
     logger.warning(
         f"Session config: SECURE={current_app.config.get('SESSION_COOKIE_SECURE')}, "
         f"SAMESITE={current_app.config.get('SESSION_COOKIE_SAMESITE')}, "
