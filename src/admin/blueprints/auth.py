@@ -23,9 +23,12 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
 from src.core.domain_config import (
     extract_subdomain_from_host,
+    get_admin_domain,
+    get_admin_url,
     get_oauth_redirect_uri,
     get_sales_agent_url,
     get_super_admin_domain,
+    is_admin_domain,
     is_sales_agent_domain,
 )
 
@@ -218,6 +221,28 @@ def login():
     For multi-tenant deployments, detects tenant from subdomain and checks
     for tenant-specific OIDC configuration first.
     """
+    # Get the effective host (Approximated proxy header takes precedence)
+    effective_host = request.headers.get("Apx-Incoming-Host") or request.headers.get("Host", "")
+
+    # If on a secondary admin domain, redirect to the primary admin domain for OAuth
+    # This prevents OAuth state/session issues when the callback goes to a different domain
+    primary_admin_domain = get_admin_domain()
+    if (
+        primary_admin_domain
+        and is_admin_domain(effective_host)
+        and effective_host != primary_admin_domain
+        and not effective_host.startswith(f"{primary_admin_domain}:")
+    ):
+        # Build redirect URL to primary admin domain
+        primary_url = get_admin_url()
+        if primary_url:
+            # Preserve any query parameters
+            redirect_path = "/login"
+            if request.query_string:
+                redirect_path = f"/login?{request.query_string.decode('utf-8')}"
+            logger.info(f"Redirecting from secondary admin domain {effective_host} to primary {primary_admin_domain}")
+            return redirect(f"{primary_url}{redirect_path}")
+
     # Capture 'next' parameter for redirect after login
     next_url = request.args.get("next")
     if next_url:
