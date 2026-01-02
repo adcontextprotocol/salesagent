@@ -155,6 +155,8 @@ Before a tenant can create media buys, they need:
 3. **Products**: At least one product configured (Products page)
 4. **Advertisers**: At least one advertiser/principal (Advertisers page)
 
+**Note:** In multi-tenant mode, SSO is **optional** per-tenant. The platform manages authentication centrally, so individual tenants can skip SSO configuration. In single-tenant mode, SSO is required before accepting orders.
+
 The Admin UI shows a setup checklist for each tenant.
 
 ## Subdomain Routing

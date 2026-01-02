@@ -31,7 +31,8 @@ class TestSetupChecklistMockAdapter:
         tenant_id = "test_tenant"
 
         # Ensure ADCP_TESTING is NOT set for this test (tests production behavior)
-        with patch.dict("os.environ", {"ADCP_TESTING": "false"}, clear=False):
+        # In single-tenant mode (default), SSO is critical
+        with patch.dict("os.environ", {"ADCP_TESTING": "false", "ADCP_MULTI_TENANT": "false"}, clear=False):
             with patch("src.services.setup_checklist_service.get_db_session") as mock_db:
                 mock_session = MagicMock()
                 mock_db.return_value.__enter__.return_value = mock_session
@@ -66,10 +67,14 @@ class TestSetupChecklistMockAdapter:
                 # Find critical tasks
                 critical_keys = {task["key"] for task in status["critical"]}
 
-                # Ad server and SSO should be present
+                # In single-tenant mode, SSO is critical
                 assert "ad_server_connected" in critical_keys, "Ad server task should exist"
-                assert "sso_configuration" in critical_keys, "SSO task should exist"
+                assert "sso_configuration" in critical_keys, "SSO is critical in single-tenant mode"
                 assert "authorized_properties" in critical_keys, "Properties task should exist"
+
+                # SSO should NOT be in optional tasks in single-tenant mode
+                optional_keys = {task["key"] for task in status["optional"]}
+                assert "sso_configuration" not in optional_keys, "SSO should not be optional in single-tenant mode"
 
                 # Inventory sync, currency_limits, products, principals should NOT be present
                 # (these only appear after ad server is fully configured)
@@ -182,122 +187,165 @@ class TestSetupChecklistMockAdapter:
 
         tenant_id = "test_tenant"
 
-        with patch("src.services.setup_checklist_service.get_db_session") as mock_db:
-            mock_session = MagicMock()
-            mock_db.return_value.__enter__.return_value = mock_session
+        # Test in single-tenant mode (default) where SSO is critical
+        with patch.dict("os.environ", {"ADCP_MULTI_TENANT": "false"}, clear=False):
+            with patch("src.services.setup_checklist_service.get_db_session") as mock_db:
+                mock_session = MagicMock()
+                mock_db.return_value.__enter__.return_value = mock_session
 
-            # Create mock tenant with no adapter selected
-            mock_tenant = MagicMock()
-            mock_tenant.tenant_id = tenant_id
-            mock_tenant.name = "Test Tenant"
-            mock_tenant.ad_server = None  # No adapter selected
-            mock_tenant.authorized_domains = []
-            mock_tenant.authorized_emails = []
-            mock_tenant.human_review_required = None
-            mock_tenant.auto_approve_format_ids = None
-            mock_tenant.order_name_template = None
-            mock_tenant.line_item_name_template = None
-            mock_tenant.slack_webhook_url = None
-            mock_tenant.virtual_host = None
-            mock_tenant.enable_axe_signals = False
-            mock_tenant.policy_settings = {}
-            mock_tenant.auth_setup_mode = True  # Setup mode active
+                # Create mock tenant with no adapter selected
+                mock_tenant = MagicMock()
+                mock_tenant.tenant_id = tenant_id
+                mock_tenant.name = "Test Tenant"
+                mock_tenant.ad_server = None  # No adapter selected
+                mock_tenant.authorized_domains = []
+                mock_tenant.authorized_emails = []
+                mock_tenant.human_review_required = None
+                mock_tenant.auto_approve_format_ids = None
+                mock_tenant.order_name_template = None
+                mock_tenant.line_item_name_template = None
+                mock_tenant.slack_webhook_url = None
+                mock_tenant.virtual_host = None
+                mock_tenant.enable_axe_signals = False
+                mock_tenant.policy_settings = {}
+                mock_tenant.auth_setup_mode = True  # Setup mode active
 
-            # Mock database queries
-            mock_session.scalars.return_value.first.return_value = mock_tenant
-            mock_session.scalar.return_value = 0
+                # Mock database queries
+                mock_session.scalars.return_value.first.return_value = mock_tenant
+                mock_session.scalar.return_value = 0
 
-            # Get setup status
-            service = SetupChecklistService(tenant_id)
-            status = service.get_setup_status()
+                # Get setup status
+                service = SetupChecklistService(tenant_id)
+                status = service.get_setup_status()
 
-            # Find critical tasks
-            critical_keys = {task["key"] for task in status["critical"]}
+                # Find critical tasks
+                critical_keys = {task["key"] for task in status["critical"]}
 
-            # Ad server, SSO, and properties should be present
-            assert "ad_server_connected" in critical_keys, "Ad server task should exist"
-            assert "sso_configuration" in critical_keys, "SSO task should exist"
-            assert "authorized_properties" in critical_keys, "Properties task should exist"
+                # In single-tenant mode, SSO is critical
+                assert "ad_server_connected" in critical_keys, "Ad server task should exist"
+                assert "sso_configuration" in critical_keys, "SSO is critical in single-tenant mode"
+                assert "authorized_properties" in critical_keys, "Properties task should exist"
 
-            # Inventory sync, currency_limits should NOT be present
-            # (these only appear after ad server is fully configured)
-            assert "inventory_synced" not in critical_keys, "Inventory task should not appear without ad server"
-            assert "currency_limits" not in critical_keys, "Currency task should not appear without ad server"
+                # SSO should NOT be in optional tasks in single-tenant mode
+                optional_keys = {task["key"] for task in status["optional"]}
+                assert "sso_configuration" not in optional_keys, "SSO should not be optional in single-tenant mode"
 
-            # Ad server should be marked incomplete
-            ad_server_task = next(t for t in status["critical"] if t["key"] == "ad_server_connected")
-            assert ad_server_task["is_complete"] is False, "Ad server should be incomplete when None"
+                # Inventory sync, currency_limits should NOT be present
+                # (these only appear after ad server is fully configured)
+                assert "inventory_synced" not in critical_keys, "Inventory task should not appear without ad server"
+                assert "currency_limits" not in critical_keys, "Currency task should not appear without ad server"
+
+                # Ad server should be marked incomplete
+                ad_server_task = next(t for t in status["critical"] if t["key"] == "ad_server_connected")
+                assert ad_server_task["is_complete"] is False, "Ad server should be incomplete when None"
+
+    def test_sso_optional_in_multi_tenant_mode(self):
+        """In multi-tenant mode, SSO is optional."""
+        from src.services.setup_checklist_service import SetupChecklistService
+
+        tenant_id = "test_tenant"
+
+        # Test in multi-tenant mode where SSO is optional
+        with patch.dict("os.environ", {"ADCP_MULTI_TENANT": "true"}, clear=False):
+            with patch("src.services.setup_checklist_service.get_db_session") as mock_db:
+                mock_session = MagicMock()
+                mock_db.return_value.__enter__.return_value = mock_session
+
+                # Create mock tenant
+                mock_tenant = MagicMock()
+                mock_tenant.tenant_id = tenant_id
+                mock_tenant.name = "Test Tenant"
+                mock_tenant.ad_server = "mock"
+                mock_tenant.authorized_domains = []
+                mock_tenant.authorized_emails = []
+                mock_tenant.human_review_required = None
+                mock_tenant.auto_approve_format_ids = None
+                mock_tenant.order_name_template = None
+                mock_tenant.line_item_name_template = None
+                mock_tenant.slack_webhook_url = None
+                mock_tenant.virtual_host = None
+                mock_tenant.enable_axe_signals = False
+                mock_tenant.policy_settings = {}
+                mock_tenant.auth_setup_mode = True  # Setup mode active
+
+                # Mock database queries
+                mock_session.scalars.return_value.first.return_value = mock_tenant
+                mock_session.scalar.return_value = 0
+
+                # Get setup status
+                service = SetupChecklistService(tenant_id)
+                status = service.get_setup_status()
+
+                # Find critical tasks
+                critical_keys = {task["key"] for task in status["critical"]}
+
+                # In multi-tenant mode, SSO is NOT critical
+                assert "sso_configuration" not in critical_keys, "SSO should not be critical in multi-tenant mode"
+
+                # SSO should be in optional tasks
+                optional_keys = {task["key"] for task in status["optional"]}
+                assert "sso_configuration" in optional_keys, "SSO should be optional in multi-tenant mode"
 
     def test_validate_setup_complete_with_all_requirements(self):
-        """validate_setup_complete() passes when all requirements are met including SSO."""
+        """validate_setup_complete() passes when all requirements are met (in multi-tenant mode)."""
         from src.services.setup_checklist_service import SetupIncompleteError, validate_setup_complete
 
         tenant_id = "test_tenant"
 
-        with patch("src.services.setup_checklist_service.get_db_session") as mock_db:
-            mock_session = MagicMock()
-            mock_db.return_value.__enter__.return_value = mock_session
+        # Test in multi-tenant mode where SSO is optional
+        with patch.dict("os.environ", {"ADCP_MULTI_TENANT": "true"}, clear=False):
+            with patch("src.services.setup_checklist_service.get_db_session") as mock_db:
+                mock_session = MagicMock()
+                mock_db.return_value.__enter__.return_value = mock_session
 
-            # Create mock tenant with GAM adapter - all critical tasks complete
-            mock_tenant = MagicMock()
-            mock_tenant.tenant_id = tenant_id
-            mock_tenant.name = "Test Tenant"
-            mock_tenant.ad_server = "google_ad_manager"  # Real ad server
-            mock_tenant.authorized_domains = ["example.com"]
-            mock_tenant.authorized_emails = []
-            mock_tenant.human_review_required = None
-            mock_tenant.auto_approve_format_ids = None
-            mock_tenant.order_name_template = None
-            mock_tenant.line_item_name_template = None
-            mock_tenant.slack_webhook_url = None
-            mock_tenant.virtual_host = None
-            mock_tenant.enable_axe_signals = False
-            mock_tenant.policy_settings = {}
-            mock_tenant.auth_setup_mode = False  # Setup mode disabled (SSO configured)
-            mock_tenant.adapter_config = MagicMock()  # Has adapter config (authenticated)
-            mock_tenant.adapter_config.gam_oauth_complete = True
+                # Create mock tenant with GAM adapter - all critical tasks complete
+                mock_tenant = MagicMock()
+                mock_tenant.tenant_id = tenant_id
+                mock_tenant.name = "Test Tenant"
+                mock_tenant.ad_server = "google_ad_manager"  # Real ad server
+                mock_tenant.authorized_domains = ["example.com"]
+                mock_tenant.authorized_emails = []
+                mock_tenant.human_review_required = None
+                mock_tenant.auto_approve_format_ids = None
+                mock_tenant.order_name_template = None
+                mock_tenant.line_item_name_template = None
+                mock_tenant.slack_webhook_url = None
+                mock_tenant.virtual_host = None
+                mock_tenant.enable_axe_signals = False
+                mock_tenant.policy_settings = {}
+                mock_tenant.auth_setup_mode = True  # Setup mode still active (SSO is optional in multi-tenant)
+                mock_tenant.adapter_config = MagicMock()  # Has adapter config (authenticated)
+                mock_tenant.adapter_config.gam_oauth_complete = True
 
-            # Create mock auth config with SSO enabled
-            mock_auth_config = MagicMock()
-            mock_auth_config.oidc_enabled = True
+                # SSO is optional in multi-tenant mode, so no need for mock auth config
 
-            # Track which query is being called and return appropriate mock
-            call_count = [0]
-
-            def scalars_side_effect(stmt):
-                result = MagicMock()
-                stmt_str = str(stmt)
-                call_count[0] += 1
-
-                # Check if this is a TenantAuthConfig query
-                if "TenantAuthConfig" in stmt_str or "tenant_auth_configs" in stmt_str:
-                    result.first.return_value = mock_auth_config
-                else:
-                    # Default to returning tenant for Tenant queries
+                # Track which query is being called and return appropriate mock
+                def scalars_side_effect(stmt):
+                    result = MagicMock()
+                    # Return tenant for all queries
                     result.first.return_value = mock_tenant
+                    result.all.return_value = []
+                    return result
 
-                result.all.return_value = []
-                return result
+                def scalar_side_effect(stmt):
+                    # Return counts for different queries (non-zero = requirements met)
+                    return 10  # At least 1 currency, property, product, principal, inventory
 
-            def scalar_side_effect(stmt):
-                # Return counts for different queries (non-zero = requirements met)
-                return 10  # At least 1 currency, property, product, principal, inventory
+                mock_session.scalars.side_effect = scalars_side_effect
+                mock_session.scalar.side_effect = scalar_side_effect
 
-            mock_session.scalars.side_effect = scalars_side_effect
-            mock_session.scalar.side_effect = scalar_side_effect
+                # Mock GEMINI_API_KEY env var
+                with patch("os.getenv") as mock_getenv:
+                    mock_getenv.return_value = "fake-api-key"
 
-            # Mock GEMINI_API_KEY env var
-            with patch("os.getenv") as mock_getenv:
-                mock_getenv.return_value = "fake-api-key"
-
-                # This should NOT raise SetupIncompleteError when all requirements met
-                try:
-                    validate_setup_complete(tenant_id)
-                    # If we get here, validation passed (expected)
-                    assert True
-                except SetupIncompleteError as e:
-                    # Should not happen when all requirements met
-                    pytest.fail(
-                        f"validate_setup_complete raised error unexpectedly: {e.message}. "
-                        f"Missing tasks: {e.missing_tasks}"
-                    )
+                    # This should NOT raise SetupIncompleteError when all requirements met
+                    try:
+                        validate_setup_complete(tenant_id)
+                        # If we get here, validation passed (expected)
+                        assert True
+                    except SetupIncompleteError as e:
+                        # Should not happen when all requirements met
+                        pytest.fail(
+                            f"validate_setup_complete raised error unexpectedly: {e.message}. "
+                            f"Missing tasks: {e.missing_tasks}"
+                        )

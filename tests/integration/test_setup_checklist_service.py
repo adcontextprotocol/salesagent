@@ -232,9 +232,10 @@ class TestSetupChecklistService:
         # Check critical tasks are incomplete
         # Note: Currency limits, inventory sync, products, and principals only appear
         # after ad server is configured. A minimal tenant (ad_server=None) won't have these tasks.
+        # In single-tenant mode (default), SSO is critical.
         critical = {task["key"]: task for task in status["critical"]}
         assert not critical["ad_server_connected"]["is_complete"]
-        assert not critical["sso_configuration"]["is_complete"]
+        assert not critical["sso_configuration"]["is_complete"]  # SSO is critical in single-tenant mode
         assert not critical["authorized_properties"]["is_complete"]
 
     def test_complete_tenant_ready_for_orders(self, integration_db, setup_complete_tenant, test_tenant_id):
@@ -247,10 +248,11 @@ class TestSetupChecklistService:
         critical_complete = all(task["is_complete"] for task in status["critical"])
         assert critical_complete
 
-        # Check specific critical tasks (Gemini moved to optional)
+        # Check specific critical tasks
+        # In single-tenant mode (default), SSO is critical and should be complete (fixture sets it up)
         critical = {task["key"]: task for task in status["critical"]}
         assert critical["ad_server_connected"]["is_complete"]
-        assert critical["sso_configuration"]["is_complete"]  # SSO now required
+        assert critical["sso_configuration"]["is_complete"]  # SSO is critical in single-tenant mode
         assert critical["currency_limits"]["is_complete"]
         assert critical["authorized_properties"]["is_complete"]
         assert critical["inventory_synced"]["is_complete"]
@@ -720,3 +722,109 @@ class TestTaskDetails:
 
         with pytest.raises(ValueError, match="Tenant nonexistent_tenant not found"):
             service.get_setup_status()
+
+    def test_sso_is_optional_not_critical_in_multi_tenant_mode(self, integration_db, test_tenant_id):
+        """Test that SSO is optional in multi-tenant mode."""
+        from datetime import UTC, datetime
+
+        from src.core.database.database_session import get_db_session
+
+        now = datetime.now(UTC)
+
+        with get_db_session() as db_session:
+            tenant = Tenant(
+                tenant_id=test_tenant_id,
+                name="Test",
+                subdomain="test_sso_opt",
+                ad_server="mock",
+                created_at=now,
+                updated_at=now,
+                is_active=True,
+            )
+            db_session.add(tenant)
+            db_session.commit()
+
+        # In multi-tenant mode, SSO is optional
+        with patch.dict(os.environ, {"ADCP_MULTI_TENANT": "true"}):
+            service = SetupChecklistService(test_tenant_id)
+            status = service.get_setup_status()
+
+            # SSO should NOT be in critical tasks
+            critical_keys = [t["key"] for t in status["critical"]]
+            assert "sso_configuration" not in critical_keys, "SSO should not be critical in multi-tenant mode"
+
+            # SSO should be in optional tasks
+            optional_keys = [t["key"] for t in status["optional"]]
+            assert "sso_configuration" in optional_keys, "SSO should be optional in multi-tenant mode"
+
+    def test_ready_for_orders_without_sso_in_multi_tenant_mode(self, integration_db, test_tenant_id):
+        """Test that tenant can be ready for orders without SSO in multi-tenant mode."""
+        from datetime import UTC, datetime
+
+        from src.core.database.database_session import get_db_session
+
+        now = datetime.now(UTC)
+
+        with get_db_session() as db_session:
+            tenant = Tenant(
+                tenant_id=test_tenant_id,
+                name="Multi-tenant Publisher",
+                subdomain="test_mtp",
+                ad_server="mock",
+                created_at=now,
+                updated_at=now,
+                is_active=True,
+            )
+            db_session.add(tenant)
+            db_session.flush()
+
+            # Add required items to complete critical tasks (SSO is NOT required in multi-tenant mode)
+            currency = CurrencyLimit(
+                tenant_id=test_tenant_id,
+                currency_code="USD",
+                min_package_budget=0.0,
+                max_daily_package_spend=10000.0,
+            )
+            db_session.add(currency)
+
+            prop = AuthorizedProperty(
+                tenant_id=test_tenant_id,
+                property_id="prop_1",
+                property_type="website",
+                name="Test Property",
+                publisher_domain="test.com",
+                identifiers=[{"type": "domain", "value": "test.com"}],
+            )
+            db_session.add(prop)
+
+            product = create_test_db_product(
+                tenant_id=test_tenant_id,
+                product_id="prod_1",
+                name="Test Product",
+                description="Test",
+                format_ids=[{"agent_url": "https://creative.adcontextprotocol.org", "id": "display"}],
+            )
+            db_session.add(product)
+
+            principal = Principal(
+                tenant_id=test_tenant_id,
+                principal_id="principal_1",
+                name="Test Advertiser",
+                access_token="test_token",
+                platform_mappings={"mock": {"advertiser_id": "12345"}},
+            )
+            db_session.add(principal)
+
+            db_session.commit()
+
+        # In multi-tenant mode with ADCP_TESTING, mock adapter is accepted and SSO is optional
+        with patch.dict(os.environ, {"ADCP_TESTING": "true", "ADCP_MULTI_TENANT": "true"}):
+            service = SetupChecklistService(test_tenant_id)
+            status = service.get_setup_status()
+
+            # Should be ready for orders without SSO in multi-tenant mode
+            assert status["ready_for_orders"], f"Not ready for orders. Critical tasks: {status['critical']}"
+
+            # All critical tasks should be complete
+            incomplete_critical = [t for t in status["critical"] if not t["is_complete"]]
+            assert len(incomplete_critical) == 0, f"Incomplete critical tasks: {incomplete_critical}"
