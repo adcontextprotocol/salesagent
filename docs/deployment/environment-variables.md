@@ -139,8 +139,6 @@ For GAM adapter integration:
 | `ADCP_MULTI_TENANT` | `false` | Enable multi-tenant mode with subdomain routing |
 | `SALES_AGENT_DOMAIN` | - | Base domain for tenant subdomains (e.g., `sales-agent.example.com`) |
 | `BASE_DOMAIN` | - | Top-level domain for cookies (e.g., `example.com`) |
-| `ADMIN_DOMAIN` | `admin.{SALES_AGENT_DOMAIN}` | Primary admin domain for super admin access |
-| `ADMIN_DOMAINS` | - | Comma-separated list of additional admin domains. Users on secondary admin domains are redirected to the primary for OAuth. |
 
 ---
 
