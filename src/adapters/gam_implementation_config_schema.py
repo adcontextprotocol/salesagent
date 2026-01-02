@@ -27,6 +27,25 @@ class FrequencyCap(BaseModel):
     time_range: int = Field(1, description="Number of time units")
 
 
+class PlacementTargeting(BaseModel):
+    """GAM targeting configuration for a specific placement.
+
+    This enables creative-level targeting in GAM. Each placement maps to:
+    - A targetingName used in LICA associations
+    - GAM targeting criteria (customTargeting, geoTargeting, etc.)
+
+    When a buyer assigns a creative to a placement_id, the LICA is created
+    with the corresponding targetingName, applying the targeting as an AND
+    with line item targeting.
+    """
+
+    placement_id: str = Field(..., description="AdCP placement_id (must match Product.placements[].placement_id)")
+    targeting_name: str = Field(..., description="GAM targetingName for LICA association")
+    targeting: dict[str, Any] = Field(
+        default_factory=dict, description="GAM targeting criteria (customTargeting, geoTargeting, etc.)"
+    )
+
+
 class GAMImplementationConfig(BaseModel):
     """
     Complete configuration for creating GAM line items.
@@ -103,6 +122,12 @@ class GAMImplementationConfig(BaseModel):
 
     # Native ad settings
     native_style_id: str | None = Field(None, description="GAM native style ID if using native ads")
+
+    # Creative-level placement targeting
+    placement_targeting: list[PlacementTargeting] = Field(
+        default_factory=list,
+        description="Creative-level targeting for placements. Maps placement_ids to GAM targeting rules.",
+    )
 
     # Automation settings for non-guaranteed orders
     non_guaranteed_automation: str = Field(

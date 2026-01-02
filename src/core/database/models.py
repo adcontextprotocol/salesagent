@@ -756,7 +756,12 @@ class CreativeReview(Base):
 
 
 class CreativeAssignment(Base):
-    """Creative assignments to media buy packages."""
+    """Creative assignments to media buy packages.
+
+    Supports adcp#208 creative management capabilities:
+    - weight: Rotation weight for creative delivery (0-100)
+    - placement_ids: Placement-specific targeting within package
+    """
 
     __tablename__ = "creative_assignments"
 
@@ -768,6 +773,8 @@ class CreativeAssignment(Base):
     media_buy_id: Mapped[str] = mapped_column(String(100), nullable=False)
     package_id: Mapped[str] = mapped_column(String(100), nullable=False)
     weight: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    # adcp#208: placement-specific targeting within package
+    placement_ids: Mapped[list[str] | None] = mapped_column(JSONType, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     # Relationships

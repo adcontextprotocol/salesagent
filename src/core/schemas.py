@@ -71,6 +71,10 @@ from adcp.types import (
     VcpmAuctionPricingOption,
     VcpmFixedRatePricingOption,
 )
+
+# AdCP creative types for schema definitions
+from adcp.types import CreativeAsset as LibraryCreativeAsset
+from adcp.types import CreativeAssignment as LibraryCreativeAssignment
 from adcp.types import DeliveryMeasurement as LibraryDeliveryMeasurement
 from adcp.types import Identifier as LibraryIdentifier
 from adcp.types import Measurement as LibraryMeasurement
@@ -2859,7 +2863,13 @@ class UpdatePackageRequest(AdCPBaseModel):
 
 # AdCP-compliant supporting models for update-media-buy-request
 class AdCPPackageUpdate(BaseModel):
-    """Package-specific update per AdCP update-media-buy-request schema."""
+    """Package-specific update per AdCP update-media-buy-request schema.
+
+    Supports three creative management modes (adcp#208):
+    - creative_ids: Simple list of existing creative IDs to assign
+    - creative_assignments: Update weight/placement for existing creatives
+    - creatives: Upload new creatives with optional weight/placement config
+    """
 
     package_id: str | None = None
     buyer_ref: str | None = None
@@ -2867,6 +2877,10 @@ class AdCPPackageUpdate(BaseModel):
     paused: bool | None = None  # adcp 2.12.0+: replaced 'active' with 'paused'
     targeting_overlay: Targeting | None = None
     creative_ids: list[str] | None = None
+    # adcp#208: creative_assignments for weight/placement updates on existing creatives
+    creative_assignments: list[LibraryCreativeAssignment] | None = None
+    # adcp#208: creatives for inline upload with optional weight/placement config
+    creatives: list[LibraryCreativeAsset] | None = None
 
     # NOTE: No Python validator needed - AdCP schema has oneOf constraint for package_id/buyer_ref
     # Schema validation at /schemas/v1/media-buy/update-media-buy-request.json enforces this

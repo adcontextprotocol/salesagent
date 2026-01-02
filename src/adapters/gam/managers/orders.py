@@ -990,6 +990,21 @@ class GAMOrdersManager:
             if impl_config.get("disable_viewability_avg_revenue_optimization"):
                 line_item["disableViewabilityAvgRevenueOptimization"] = True
 
+            # Creative-level placement targeting (adcp#208)
+            # Build creativeTargetings from placement_targeting in impl_config
+            if impl_config.get("placement_targeting"):
+                creative_targetings = []
+                for pt in impl_config["placement_targeting"]:
+                    creative_targeting = {
+                        "name": pt["targeting_name"],
+                        "targeting": pt.get("targeting", {}),
+                    }
+                    creative_targetings.append(creative_targeting)
+
+                if creative_targetings:
+                    line_item["creativeTargetings"] = creative_targetings
+                    log(f"Added {len(creative_targetings)} creative targeting rule(s) for placement targeting")
+
             if self.dry_run:
                 log(f"Would call: line_item_service.createLineItems(['{package.name}'])")
                 log(f"  Package: {package.name}")
