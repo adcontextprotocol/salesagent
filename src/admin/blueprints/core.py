@@ -63,17 +63,10 @@ def index():
     """Main index page - shows landing page or redirects based on mode."""
     from src.core.config_loader import is_single_tenant_mode
 
-    # Debug logging at entry point
-    logger.info(
-        f"[INDEX DEBUG] Entry - script_root={repr(request.script_root)}, path={repr(request.path)}, "
-        f"Apx-Incoming-Host={request.headers.get('Apx-Incoming-Host')}, user_in_session={'user' in session}"
-    )
-
     # Check if this is actually an /admin/ request that had its prefix stripped by CustomProxyFix.
     # When request.script_root is "/admin", it means the request came via /admin/ path
     # (e.g., wonderstruck.sales-agent.scope3.com/admin/). In this case, delegate to admin_index().
     if request.script_root == "/admin":
-        logger.info("[INDEX DEBUG] Delegating to admin_index() due to script_root=/admin")
         return admin_index()
 
     # Single-tenant mode: root URL ALWAYS shows the landing page (public API info)
