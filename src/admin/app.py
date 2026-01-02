@@ -284,6 +284,34 @@ def create_app(config=None):
         logger.info(f"Redirecting external domain {apx_host}/admin to subdomain: {redirect_url}")
         return redirect(redirect_url, code=302)
 
+    # Debug: Log Set-Cookie headers on auth-related responses
+    @app.after_request
+    def log_auth_cookies(response):
+        """Log Set-Cookie headers for auth-related routes to debug session persistence."""
+        # Only log for auth-related paths
+        if request.path.startswith(("/auth", "/login", "/admin")):
+            set_cookies = response.headers.getlist("Set-Cookie")
+            if set_cookies:
+                # Log just the cookie names and domain/path attributes (not values for security)
+                for cookie in set_cookies:
+                    # Parse cookie to show name and attributes
+                    parts = cookie.split(";")
+                    cookie_name = parts[0].split("=")[0] if parts else "unknown"
+                    attrs = "; ".join(p.strip() for p in parts[1:] if p.strip())
+                    logger.warning(
+                        f"[SESSION_DEBUG] Set-Cookie on {request.path}: " f"name={cookie_name}, attrs=[{attrs}]"
+                    )
+            else:
+                # Only log if session was modified
+                from flask import session
+
+                if session.modified:
+                    logger.warning(
+                        f"[SESSION_DEBUG] NO Set-Cookie on {request.path} "
+                        f"(session.modified={session.modified}, keys={list(session.keys())})"
+                    )
+        return response
+
     # Add context processor to make script_name and tenant available in templates
     @app.context_processor
     def inject_context():
