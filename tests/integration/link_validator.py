@@ -172,21 +172,30 @@ class LinkValidator:
             Tuple of (is_valid, status_code, error_message)
         """
         try:
-            # Try HEAD request first (faster, doesn't load full page)
-            response = self.client.head(url, follow_redirects=True)
+            # Don't follow redirects automatically - check where they go first
+            response = self.client.head(url, follow_redirects=False)
 
             # Some routes don't support HEAD, fallback to GET
             if response.status_code == 405:
                 response.close()  # Close HEAD response before making GET
-                response = self.client.get(url, follow_redirects=True)
+                response = self.client.get(url, follow_redirects=False)
 
             try:
-                # Consider 200, 302, 304 as valid
-                # 302: Redirect (common for auth flows)
+                # Handle redirects specially
+                if response.status_code in (301, 302, 303, 307, 308):
+                    location = response.headers.get("Location", "")
+                    # External redirects (OAuth, etc.) are valid - route exists and is working
+                    if location.startswith(("http://", "https://", "//")):
+                        return True, response.status_code, ""
+                    # Internal redirects - follow them to validate
+                    response.close()
+                    return self.validate_link(location)
+
+                # Consider 200, 304 as valid
                 # 304: Not Modified (common for cached resources)
                 # 401: Unauthorized (route exists but needs auth)
                 # 403: Forbidden (route exists but user lacks permission)
-                if response.status_code in (200, 302, 304, 401, 403):
+                if response.status_code in (200, 304, 401, 403):
                     return True, response.status_code, ""
 
                 # 404: Not Found (broken link!)
@@ -270,7 +279,17 @@ class LinkValidator:
         Returns:
             List of broken links (see validate_response())
         """
-        response = self.client.get(url, follow_redirects=True)
+        # First check if the page itself redirects externally (e.g., OAuth)
+        response = self.client.get(url, follow_redirects=False)
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("Location", "")
+            # External redirect (OAuth, etc.) - page is valid, no links to check
+            if location.startswith(("http://", "https://", "//")):
+                response.close()
+                return []
+            # Internal redirect - follow it
+            response.close()
+            response = self.client.get(url, follow_redirects=True)
         return self.validate_response(response, current_page=url, **kwargs)
 
 

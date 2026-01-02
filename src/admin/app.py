@@ -68,8 +68,15 @@ class CustomProxyFix:
             script_name = environ.get("HTTP_X_FORWARDED_PREFIX", "")
 
         # Use configured script_name if provided in production
+        # BUT only if this is NOT a custom domain request (via Approximated)
+        # Custom domains should have empty script_root to show landing page
         if not script_name and os.environ.get("PRODUCTION") == "true":
-            script_name = self.script_name
+            # Check if this is a custom domain request via Approximated
+            apx_host = environ.get("HTTP_APX_INCOMING_HOST", "")
+            if not apx_host:
+                # No Approximated header - use default /admin script_name
+                script_name = self.script_name
+            # If apx_host is set, leave script_name empty for custom domains
 
         if script_name:
             # Store for use in response wrapper

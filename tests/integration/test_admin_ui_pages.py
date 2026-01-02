@@ -97,10 +97,17 @@ class TestPublicPages:
         assert response.status_code == 200
 
     def test_login_page_renders(self, admin_client):
-        """Test that the login page renders successfully."""
-        response = admin_client.get("/login")
-        assert response.status_code == 200
-        assert b"Sign in" in response.data or b"Login" in response.data
+        """Test that the login page renders or redirects to OAuth.
+
+        When OAuth is configured, /login redirects to the OAuth provider (302).
+        When OAuth is not configured or in test mode, it renders the login page (200).
+        """
+        response = admin_client.get("/login", follow_redirects=False)
+        # 200: Login page rendered (test mode or OAuth not configured)
+        # 302: Redirect to OAuth provider (OAuth configured)
+        assert response.status_code in [200, 302], f"Unexpected status: {response.status_code}"
+        if response.status_code == 200:
+            assert b"Sign in" in response.data or b"Login" in response.data
 
 
 class TestAuthenticationRequired:
