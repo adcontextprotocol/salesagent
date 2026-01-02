@@ -486,6 +486,9 @@ def google_callback():
         flash("OAuth not configured", "error")
         return redirect(url_for("auth.login"))
 
+    # Get tenant context from session (stored during OAuth initiation)
+    tenant_context = session.get("oauth_tenant_context")
+
     try:
         logger.info("Attempting OAuth token exchange...")
         try:
@@ -496,21 +499,30 @@ def google_callback():
                 f"Authlib error during token exchange: {type(auth_error).__name__}: {auth_error}", exc_info=True
             )
             flash(f"Authentication error: {str(auth_error)}", "error")
-            return redirect(url_for("auth.login"))
+            # Preserve tenant context on error - redirect to tenant login to avoid redirect loop
+            if tenant_context:
+                return redirect(url_for("auth.tenant_login", tenant_id=tenant_context, logged_out=1))
+            return redirect(url_for("auth.login", logged_out=1))
 
         if not token:
             logger.error("OAuth token exchange failed - authorize_access_token() returned None")
             logger.error(f"Request args: {dict(request.args)}")
             logger.error(f"Session keys: {list(session.keys())}")
             flash("Authentication failed. Please try again.", "error")
-            return redirect(url_for("auth.login"))
+            # Preserve tenant context on error
+            if tenant_context:
+                return redirect(url_for("auth.tenant_login", tenant_id=tenant_context, logged_out=1))
+            return redirect(url_for("auth.login", logged_out=1))
 
         # Extract user info using provider-agnostic helper
         user = extract_user_info(token)
 
         if not user or not user.get("email"):
             flash("Could not retrieve user information from OAuth provider", "error")
-            return redirect(url_for("auth.login"))
+            # Preserve tenant context on error
+            if tenant_context:
+                return redirect(url_for("auth.tenant_login", tenant_id=tenant_context, logged_out=1))
+            return redirect(url_for("auth.login", logged_out=1))
 
         email = user["email"]
         session["user"] = email
@@ -644,7 +656,10 @@ def google_callback():
         logger.error(f"[OAUTH_DEBUG] Request args: {dict(request.args)}")
         logger.error(f"[OAUTH_DEBUG] Session keys: {list(session.keys())}")
         flash("Authentication failed. Please try again.", "error")
-        return redirect(url_for("auth.login"))
+        # Preserve tenant context on error to avoid redirect loop
+        if tenant_context:
+            return redirect(url_for("auth.tenant_login", tenant_id=tenant_context, logged_out=1))
+        return redirect(url_for("auth.login", logged_out=1))
 
 
 @auth_bp.route("/auth/select-tenant", methods=["GET", "POST"])
