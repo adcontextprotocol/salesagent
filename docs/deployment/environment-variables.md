@@ -140,6 +140,13 @@ For GAM adapter integration:
 | `SALES_AGENT_DOMAIN` | - | Base domain for tenant subdomains (e.g., `sales-agent.example.com`) |
 | `BASE_DOMAIN` | - | Top-level domain for cookies (e.g., `example.com`) |
 
+### SSO Requirements by Deployment Mode
+
+The SSO requirement varies based on deployment mode:
+
+- **Single-tenant mode** (default): SSO is **critical** - required before accepting orders. Each deployment needs its own authentication.
+- **Multi-tenant mode** (`ADCP_MULTI_TENANT=true`): SSO is **optional** per-tenant. The platform manages authentication centrally, so individual tenants can skip SSO configuration.
+
 ---
 
 ## Environment & Deployment

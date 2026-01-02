@@ -5,6 +5,7 @@ to help new users understand what they need to do before taking their first orde
 """
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -23,6 +24,19 @@ from src.core.database.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_multi_tenant_mode() -> bool:
+    """Check if running in multi-tenant mode.
+
+    In multi-tenant mode (ADCP_MULTI_TENANT=true), SSO is optional because
+    the platform manages authentication centrally.
+
+    In single-tenant mode, SSO is critical because each deployment needs
+    its own authentication configuration.
+    """
+    return os.environ.get("ADCP_MULTI_TENANT", "").lower() == "true"
+
 
 # Simple time-based cache for setup status (5 minute TTL)
 _setup_status_cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -369,31 +383,30 @@ class SetupChecklistService:
             )
         )
 
-        # 2. SSO Configuration (CRITICAL for production security) - Second priority after ad server
-        # Check if tenant has configured and enabled SSO
-        auth_config_stmt = select(TenantAuthConfig).filter_by(tenant_id=self.tenant_id)
-        auth_config = session.scalars(auth_config_stmt).first()
-        sso_enabled = bool(auth_config and auth_config.oidc_enabled)
+        # 2. SSO Configuration - Critical for single-tenant deployments, optional for multi-tenant
+        # In multi-tenant mode, the platform manages authentication centrally
+        if not _is_multi_tenant_mode():
+            auth_config_stmt = select(TenantAuthConfig).filter_by(tenant_id=self.tenant_id)
+            auth_config = session.scalars(auth_config_stmt).first()
+            sso_enabled = bool(auth_config and auth_config.oidc_enabled)
+            setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
 
-        # Also check if setup mode is disabled (indicates production-ready auth)
-        setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
-
-        sso_details = (
-            "SSO enabled and setup mode disabled"
-            if sso_enabled and setup_mode_disabled
-            else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
-        )
-
-        tasks.append(
-            SetupTask(
-                key="sso_configuration",
-                name="⚠️ Single Sign-On (SSO)",
-                description="CRITICAL: Configure SSO and disable setup mode for production security",
-                is_complete=sso_enabled and setup_mode_disabled,
-                action_url=f"/tenant/{self.tenant_id}/users",
-                details=sso_details,
+            sso_details = (
+                "SSO enabled and setup mode disabled"
+                if sso_enabled and setup_mode_disabled
+                else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
             )
-        )
+
+            tasks.append(
+                SetupTask(
+                    key="sso_configuration",
+                    name="⚠️ Single Sign-On (SSO)",
+                    description="CRITICAL: Configure SSO and disable setup mode for production security",
+                    is_complete=sso_enabled and setup_mode_disabled,
+                    action_url=f"/tenant/{self.tenant_id}/users",
+                    details=sso_details,
+                )
+            )
 
         # 3. Currency Limits - Only show after ad server is configured (GAM auto-configures currency)
         # Skip this task if no real ad server is configured yet
@@ -675,6 +688,31 @@ class SetupChecklistService:
         """Check optional enhancement tasks."""
         tasks = []
 
+        # SSO Configuration - Optional in multi-tenant mode (platform manages auth centrally)
+        # In single-tenant mode, SSO is critical and shown there instead
+        if _is_multi_tenant_mode():
+            auth_config_stmt = select(TenantAuthConfig).filter_by(tenant_id=self.tenant_id)
+            auth_config = session.scalars(auth_config_stmt).first()
+            sso_enabled = bool(auth_config and auth_config.oidc_enabled)
+            setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
+
+            sso_details = (
+                "SSO enabled and setup mode disabled"
+                if sso_enabled and setup_mode_disabled
+                else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
+            )
+
+            tasks.append(
+                SetupTask(
+                    key="sso_configuration",
+                    name="Single Sign-On (SSO)",
+                    description="Configure tenant-specific SSO authentication",
+                    is_complete=sso_enabled and setup_mode_disabled,
+                    action_url=f"/tenant/{self.tenant_id}/users",
+                    details=sso_details,
+                )
+            )
+
         # 1. Signals Discovery Agent
         signals_enabled = tenant.enable_axe_signals or False
         tasks.append(
@@ -773,27 +811,28 @@ class SetupChecklistService:
             )
         )
 
-        # 2. SSO Configuration (CRITICAL for production security) - Second priority after ad server
-        auth_config = tenant.auth_config if hasattr(tenant, "auth_config") else None
-        sso_enabled = bool(auth_config and auth_config.oidc_enabled)
-        setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
+        # 2. SSO Configuration - Critical for single-tenant deployments, optional for multi-tenant
+        if not _is_multi_tenant_mode():
+            auth_config = tenant.auth_config if hasattr(tenant, "auth_config") else None
+            sso_enabled = bool(auth_config and auth_config.oidc_enabled)
+            setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
 
-        sso_details = (
-            "SSO enabled and setup mode disabled"
-            if sso_enabled and setup_mode_disabled
-            else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
-        )
-
-        tasks.append(
-            SetupTask(
-                key="sso_configuration",
-                name="⚠️ Single Sign-On (SSO)",
-                description="CRITICAL: Configure SSO and disable setup mode for production security",
-                is_complete=sso_enabled and setup_mode_disabled,
-                action_url=f"/tenant/{self.tenant_id}/users",
-                details=sso_details,
+            sso_details = (
+                "SSO enabled and setup mode disabled"
+                if sso_enabled and setup_mode_disabled
+                else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
             )
-        )
+
+            tasks.append(
+                SetupTask(
+                    key="sso_configuration",
+                    name="⚠️ Single Sign-On (SSO)",
+                    description="CRITICAL: Configure SSO and disable setup mode for production security",
+                    is_complete=sso_enabled and setup_mode_disabled,
+                    action_url=f"/tenant/{self.tenant_id}/users",
+                    details=sso_details,
+                )
+            )
 
         # 3. Currency Limits - Only show after ad server is configured
         if ad_server_fully_configured:
@@ -1035,6 +1074,30 @@ class SetupChecklistService:
     def _build_optional_tasks(self, tenant: Tenant, currency_count: int) -> list[SetupTask]:
         """Build optional tasks from pre-fetched data (no session queries)."""
         tasks = []
+
+        # SSO Configuration - Optional in multi-tenant mode (platform manages auth centrally)
+        # In single-tenant mode, SSO is critical and shown there instead
+        if _is_multi_tenant_mode():
+            auth_config = tenant.auth_config if hasattr(tenant, "auth_config") else None
+            sso_enabled = bool(auth_config and auth_config.oidc_enabled)
+            setup_mode_disabled = bool(not tenant.auth_setup_mode) if hasattr(tenant, "auth_setup_mode") else False
+
+            sso_details = (
+                "SSO enabled and setup mode disabled"
+                if sso_enabled and setup_mode_disabled
+                else ("SSO enabled but setup mode still active" if sso_enabled else "SSO not configured")
+            )
+
+            tasks.append(
+                SetupTask(
+                    key="sso_configuration",
+                    name="Single Sign-On (SSO)",
+                    description="Configure tenant-specific SSO authentication",
+                    is_complete=sso_enabled and setup_mode_disabled,
+                    action_url=f"/tenant/{self.tenant_id}/users",
+                    details=sso_details,
+                )
+            )
 
         # 1. Signals Discovery Agent
         signals_enabled = tenant.enable_axe_signals or False
