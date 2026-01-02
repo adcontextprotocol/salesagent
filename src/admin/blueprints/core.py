@@ -63,6 +63,12 @@ def index():
     """Main index page - shows landing page or redirects based on mode."""
     from src.core.config_loader import is_single_tenant_mode
 
+    # Check if this is actually an /admin/ request that had its prefix stripped by CustomProxyFix.
+    # When request.script_root is "/admin", it means the request came via /admin/ path
+    # (e.g., wonderstruck.sales-agent.scope3.com/admin/). In this case, delegate to admin_index().
+    if request.script_root == "/admin":
+        return admin_index()
+
     # Single-tenant mode: root URL ALWAYS shows the landing page (public API info)
     # Admin UI is only accessible at /admin/
     if is_single_tenant_mode():
@@ -291,6 +297,11 @@ def admin_index():
 
     # Multi-tenant mode: check authentication
     if "user" not in session:
+        # If on a tenant subdomain, redirect to tenant-specific login
+        # This ensures tenant OIDC config is checked before global OAuth
+        tenant = get_tenant_from_hostname()
+        if tenant:
+            return redirect(url_for("auth.tenant_login", tenant_id=tenant.tenant_id))
         return redirect(url_for("auth.login"))
 
     # Multi-tenant mode: check for tenant context or show tenant selector
