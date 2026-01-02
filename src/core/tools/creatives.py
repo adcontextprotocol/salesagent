@@ -1894,6 +1894,10 @@ def _list_creatives_impl(
         # Build query - filter by tenant AND principal for security
         stmt = select(DBCreative).filter_by(tenant_id=tenant["tenant_id"], principal_id=principal_id)
 
+        # Filter out creatives without valid assets (legacy data)
+        # Using PostgreSQL JSONB ? operator to check if 'assets' key exists
+        stmt = stmt.where(DBCreative.data["assets"].isnot(None))
+
         # Apply filters using local variables (already processed above)
         # AdCP 2.5: Support plural media_buy_ids and buyer_refs filters
         if effective_media_buy_ids:
@@ -2007,11 +2011,11 @@ def _list_creatives_impl(
             # Get assets dict from database (all production data uses AdCP v2.4 format)
             assets_dict = db_creative.data.get("assets", {}) if db_creative.data else {}
 
-            # Safety check: Skip creatives with no assets (legacy data without proper migration)
+            # Safety check: Skip creatives with empty assets (should be filtered by query, but defensive)
             if not assets_dict:
-                logger.error(
-                    f"Creative {db_creative.creative_id} has no assets dict - "
-                    f"may be legacy format without proper migration. Skipping.",
+                logger.warning(
+                    f"Creative {db_creative.creative_id} has empty assets dict - "
+                    f"should have been filtered by query. Skipping.",
                     extra={"creative_id": db_creative.creative_id, "tenant_id": tenant["tenant_id"]},
                 )
                 continue
@@ -2066,8 +2070,8 @@ def _list_creatives_impl(
 
     # Build sort_applied dict from structured sort
     sort_applied = None
-    if req.sort:
-        sort_applied = {"field": str(req.sort.field), "direction": str(req.sort.direction)}
+    if req.sort and req.sort.field and req.sort.direction:
+        sort_applied = {"field": req.sort.field.value, "direction": req.sort.direction.value}
 
     # Audit logging
     audit_logger = get_audit_logger("AdCP", tenant["tenant_id"])
