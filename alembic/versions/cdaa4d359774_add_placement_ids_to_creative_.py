@@ -1,7 +1,7 @@
 """add_placement_ids_to_creative_assignments
 
 Revision ID: cdaa4d359774
-Revises: g1h2i3j4k5l6
+Revises: f3bac4654620
 Create Date: 2026-01-01 16:15:50.697111
 
 Adds placement_ids column to creative_assignments table for adcp#208 support.
@@ -17,7 +17,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "cdaa4d359774"
-down_revision: Union[str, Sequence[str], None] = "g1h2i3j4k5l6"
+down_revision: Union[str, Sequence[str], None] = "f3bac4654620"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
