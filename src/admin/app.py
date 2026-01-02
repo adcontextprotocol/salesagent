@@ -194,12 +194,12 @@ def create_app(config=None):
                     environ["HTTP_X_FORWARDED_FOR"] = environ["HTTP_FLY_CLIENT_IP"]
                 return self.app(environ, start_response)
 
-        # Apply Fly headers middleware first
-        app.wsgi_app = FlyHeadersMiddleware(app.wsgi_app)
-        # Use Werkzeug's ProxyFix to handle X-Forwarded headers
-        # x_for=1 for X-Forwarded-For, x_proto=1 for X-Forwarded-Proto, x_host=1 for X-Forwarded-Host
+        # Apply middlewares in correct order (last applied = first to run)
+        # 1. WerkzeugProxyFix processes X-Forwarded headers and sets wsgi.url_scheme
         app.wsgi_app = WerkzeugProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=0)
-        # Apply custom fix for X-Forwarded-Prefix
+        # 2. FlyHeadersMiddleware copies Fly headers to X-Forwarded headers BEFORE ProxyFix runs
+        app.wsgi_app = FlyHeadersMiddleware(app.wsgi_app)
+        # 3. CustomProxyFix handles X-Forwarded-Prefix (runs first, before Fly headers)
         app.wsgi_app = CustomProxyFix(app.wsgi_app)
     else:
         # In development, still apply custom proxy fix if needed
