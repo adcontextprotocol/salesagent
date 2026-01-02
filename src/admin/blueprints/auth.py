@@ -214,6 +214,9 @@ def login():
 
     If OAuth is configured and not in test mode, redirects directly to OAuth.
     Otherwise shows the login page with test mode buttons.
+
+    For multi-tenant deployments, detects tenant from subdomain and checks
+    for tenant-specific OIDC configuration first.
     """
     test_mode = os.environ.get("ADCP_AUTH_TEST_MODE", "").lower() == "true"
 
@@ -222,22 +225,75 @@ def login():
     if next_url:
         session["login_next_url"] = next_url
 
+    # Don't auto-redirect if user just logged out
+    just_logged_out = request.args.get("logged_out") == "1"
+
     # Check if OAuth is configured via environment
     client_id, client_secret, discovery_url, _ = get_oauth_config()
     oauth_configured = bool(client_id and client_secret and discovery_url)
 
-    # In single-tenant mode, also check for per-tenant OIDC config on default tenant
     from src.core.config_loader import is_single_tenant_mode
-    from src.services.auth_config_service import get_oidc_config_for_auth
 
     oidc_enabled = False
     oidc_configured = False
-    # Don't auto-redirect if user just logged out
-    just_logged_out = request.args.get("logged_out") == "1"
+    tenant_context = None
+    tenant_name = None
 
-    if is_single_tenant_mode():
-        # Check if OIDC is configured (has credentials) - for showing login option
+    # Extract tenant from headers FIRST (before any redirects)
+    # This is needed for multi-tenant subdomain routing
+    host = request.headers.get("Host", "")
+
+    # Check for Approximated routing headers first
+    approximated_host = request.headers.get("Apx-Incoming-Host")
+    if approximated_host:
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(virtual_host=approximated_host)).first()
+            if tenant:
+                tenant_context = tenant.tenant_id
+                tenant_name = tenant.name
+                # Check if tenant has auth_setup_mode enabled
+                if hasattr(tenant, "auth_setup_mode") and tenant.auth_setup_mode:
+                    test_mode = True
+                logger.info(
+                    f"Detected tenant context from Approximated headers: {approximated_host} -> {tenant_context}"
+                )
+
+    # Fallback to direct domain routing (subdomain detection)
+    if not tenant_context:
+        tenant_subdomain = None
+        if is_sales_agent_domain(host) and not host.startswith("admin."):
+            tenant_subdomain = extract_subdomain_from_host(host)
+
+        if tenant_subdomain:
+            with get_db_session() as db_session:
+                tenant = db_session.scalars(select(Tenant).filter_by(subdomain=tenant_subdomain)).first()
+                if tenant:
+                    tenant_context = tenant.tenant_id
+                    tenant_name = tenant.name
+                    # Check if tenant has auth_setup_mode enabled
+                    if hasattr(tenant, "auth_setup_mode") and tenant.auth_setup_mode:
+                        test_mode = True
+                    logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
+
+    # Check for tenant-specific OIDC configuration (multi-tenant or single-tenant)
+    if tenant_context:
+        # For detected tenant, check if it has OIDC configured
         from src.core.database.models import TenantAuthConfig
+
+        with get_db_session() as db_session:
+            config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_context)).first()
+            if config and config.oidc_client_id:
+                oidc_configured = True
+                oidc_enabled = config.oidc_enabled
+
+        # If tenant has OIDC enabled, redirect to tenant OIDC login
+        if oidc_enabled and not test_mode and not just_logged_out:
+            return redirect(url_for("oidc.login", tenant_id=tenant_context))
+
+    elif is_single_tenant_mode():
+        # Single-tenant mode: check default tenant's OIDC config
+        from src.core.database.models import TenantAuthConfig
+
         with get_db_session() as db_session:
             tenant = db_session.scalars(select(Tenant).filter_by(tenant_id="default")).first()
             config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id="default")).first()
@@ -245,49 +301,14 @@ def login():
                 oidc_configured = True
                 oidc_enabled = config.oidc_enabled
             if tenant and hasattr(tenant, "auth_setup_mode") and tenant.auth_setup_mode:
-                test_mode = True  # Tenant has auth_setup_mode enabled
-        # Only redirect to OIDC if enabled AND not in test mode AND not just logged out
+                test_mode = True
+
         if oidc_enabled and not test_mode and not just_logged_out:
             return redirect(url_for("oidc.login", tenant_id="default"))
 
-    # If OAuth is configured and not in test mode and not just logged out, redirect directly to OAuth
+    # Fall back to global OAuth if configured and no tenant-specific OIDC
     if oauth_configured and not test_mode and not just_logged_out:
         return redirect(url_for("auth.google_auth"))
-
-    # Extract tenant from headers (Approximated routing or direct Host header)
-    host = request.headers.get("Host", "")
-    tenant_context = None
-    tenant_name = None
-
-    # Check for Approximated routing headers first
-    # Approximated sends Apx-Incoming-Host with the original requested domain
-    approximated_host = request.headers.get("Apx-Incoming-Host")
-    if approximated_host:
-        # Approximated provides the original requested domain - look up tenant by virtual_host
-        with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(virtual_host=approximated_host)).first()
-            if tenant:
-                tenant_context = tenant.tenant_id
-                tenant_name = tenant.name
-                logger.info(
-                    f"Detected tenant context from Approximated headers: {approximated_host} -> {tenant_context}"
-                )
-
-    # Fallback to direct domain routing
-    if not tenant_context:
-        tenant_subdomain = None
-        if is_sales_agent_domain(host) and not host.startswith("admin."):
-            # Extract tenant subdomain from configured domain
-            tenant_subdomain = extract_subdomain_from_host(host)
-
-        if tenant_subdomain:
-            # Look up tenant by subdomain
-            with get_db_session() as db_session:
-                tenant = db_session.scalars(select(Tenant).filter_by(subdomain=tenant_subdomain)).first()
-                if tenant:
-                    tenant_context = tenant.tenant_id
-                    tenant_name = tenant.name
-                    logger.info(f"Detected tenant context from Host header: {tenant_subdomain} -> {tenant_context}")
 
     # Show login page (test mode or OAuth not configured)
     # Pass oidc_enabled=True if OIDC is configured (so user can test it)
@@ -299,7 +320,7 @@ def login():
         oidc_enabled=oidc_configured,  # Show SSO button if configured (not just enabled)
         tenant_context=tenant_context,
         tenant_name=tenant_name,
-        tenant_id="default" if is_single_tenant_mode() else None,
+        tenant_id=tenant_context if tenant_context else ("default" if is_single_tenant_mode() else None),
         single_tenant_mode=is_single_tenant_mode(),
     )
 
@@ -674,9 +695,7 @@ def logout():
         from src.core.database.models import TenantAuthConfig
 
         with get_db_session() as db_session:
-            config = db_session.scalars(
-                select(TenantAuthConfig).filter_by(tenant_id=tenant_id)
-            ).first()
+            config = db_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant_id)).first()
             if config and config.oidc_logout_url:
                 idp_logout_url = config.oidc_logout_url
 
