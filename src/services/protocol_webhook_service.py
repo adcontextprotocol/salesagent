@@ -19,7 +19,7 @@ import json
 import logging
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse, urlunparse
 from uuid import uuid4
 from a2a.types import Task, TaskStatusUpdateEvent
@@ -107,6 +107,16 @@ class ProtocolWebhookService:
         }
         logger.info(f"push_notification_config (sanitized): {safe_config}")
 
+        # Serialize payload to dict for signing and sending
+        # Task/TaskStatusUpdateEvent need serialization; McpWebhookPayload is already AdCPBaseModel
+        payload_dict: dict[str, Any]
+        if isinstance(payload, (Task, TaskStatusUpdateEvent)):
+            payload_dict = payload.model_dump(mode="json", exclude_none=True)
+        elif isinstance(payload, McpWebhookPayload):
+            payload_dict = payload.model_dump(mode="json", exclude_none=True)
+        else:
+            payload_dict = payload
+
         # Apply authentication based on schemes
         if (
             push_notification_config.authentication_type == "HMAC-SHA256"
@@ -114,7 +124,7 @@ class ProtocolWebhookService:
         ):
             # Sign payload with HMAC-SHA256
             timestamp = str(int(time.time()))
-            get_adcp_signed_headers_for_webhook(headers, push_notification_config.authentication_token, timestamp, payload)
+            get_adcp_signed_headers_for_webhook(headers, push_notification_config.authentication_token, timestamp, payload_dict)
 
         elif push_notification_config.authentication_type == "Bearer" and push_notification_config.authentication_token:
             # Use Bearer token authentication
@@ -124,7 +134,7 @@ class ProtocolWebhookService:
         # Send notification with retry logic and logging
         return await self._send_with_retry_and_logging(
             url=url,
-            payload=payload,
+            payload=payload_dict,
             headers=headers,
             metadata=metadata
         )
@@ -132,17 +142,12 @@ class ProtocolWebhookService:
     async def _send_with_retry_and_logging(
         self,
         url: str,
-        payload: Task | TaskStatusUpdateEvent | McpWebhookPayload,
+        payload: dict[str, Any],
         headers: dict,
         metadata: dict[str, Any],
         max_attempts: int = 3,
     ) -> bool:
         """Send webhook with exponential backoff retry logic, logging, and audit trail."""
-
-        # Serialize A2A types to dict for JSON serialization
-        if isinstance(payload, (Task, TaskStatusUpdateEvent)):
-            payload = payload.model_dump(mode="json", exclude_none=True)
-
         # Calculate payload size for metrics
         payload_size_bytes = len(json.dumps(payload).encode("utf-8"))
 
@@ -151,14 +156,16 @@ class ProtocolWebhookService:
         principal_id=metadata['principal_id'] if 'principal_id' in metadata else None
         media_buy_id=metadata['media_buy_id'] if 'media_buy_id' in metadata else None
 
-        result = extract_webhook_result_data(payload)
+        # TODO: Fix type annotation discrepancy in adcp library - extract_webhook_result_data
+        # returns dict at runtime but is typed as AdcpAsyncResponseData | None
+        result = cast(dict[str, Any] | None, extract_webhook_result_data(payload))
         # After serialization, payload is always a dict - extract task_id accordingly
         # A2A Task uses 'id', TaskStatusUpdateEvent uses 'task_id', MCP uses 'task_id'
         task_id = payload.get('id') or payload.get('task_id') or ''
 
         # If we are delivering media buy delivery report
-        notification_type_from_result=result["notification_type"] if result is not None and 'notification_type' in result else None
-        sequence_number_from_result=result["sequence_number"] if result is not None and 'sequence_number' in result else None
+        notification_type_from_result=result.get("notification_type") if result is not None else None
+        sequence_number_from_result=result.get("sequence_number") if result is not None else None
         notification_type=notification_type_from_result
         sequence_number=sequence_number_from_result if isinstance(sequence_number_from_result, int) else 1
 

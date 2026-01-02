@@ -271,6 +271,13 @@ def _update_media_buy_impl(
     if persistent_ctx is None:
         raise ValueError("Failed to create or get persistent context")
 
+    # Prepare request data with protocol detection
+    request_data_for_workflow = req.model_dump(mode="json")  # Convert dates to strings
+
+    # Store protocol type for webhook payload creation
+    # ToolContext = A2A, Context (FastMCP) = MCP
+    request_data_for_workflow["protocol"] = "a2a" if isinstance(ctx, ToolContext) else "mcp"
+
     # Create workflow step for this tool call
     step = ctx_manager.create_workflow_step(
         context_id=persistent_ctx.context_id,  # Now safe to access
@@ -278,7 +285,7 @@ def _update_media_buy_impl(
         owner="principal",
         status="in_progress",
         tool_name="update_media_buy",
-        request_data=req.model_dump(mode="json"),  # Convert dates to strings
+        request_data=request_data_for_workflow,
     )
 
     principal = get_principal_object(principal_id)  # Now guaranteed to be str

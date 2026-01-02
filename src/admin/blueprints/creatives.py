@@ -15,10 +15,12 @@ from src.core.database.models import (
 from src.core.database.models import (
     PushNotificationConfig as DBPushNotificationConfig,
 )
-from src.services.protocol_webhook_service import get_protocol_webhook_service
+from a2a.types import Task, TaskStatusUpdateEvent
 from adcp import create_a2a_webhook_payload, create_mcp_webhook_payload
-from adcp.types import SyncCreativesSuccessResponse, CreativeAction, SyncCreativeResult
-from a2a.types import TaskState
+from adcp.types import McpWebhookPayload, SyncCreativesSuccessResponse, CreativeAction, SyncCreativeResult
+from adcp.types.generated_poc.core.context import ContextObject
+from adcp.webhooks import GeneratedTaskStatus
+from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 # TODO: Missing module - these functions need to be implemented
 # from creative_formats import discover_creative_formats_from_url, parse_creative_spec
@@ -97,80 +99,6 @@ def _compute_media_buy_status_from_flight_dates(media_buy) -> str:
     return "scheduled"
 
 
-    """Call webhook to notify about creative status change with retry logic.
-
-    Args:
-        webhook_url: URL to POST notification to
-        creative_id: Creative ID
-        status: New status (approved, rejected, pending)
-        creative_data: Optional creative data to include
-        tenant_id: Optional tenant ID for signature verification
-
-    Returns:
-        bool: True if webhook delivered successfully, False otherwise
-    """
-    from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
-
-    try:
-        # Build payload
-        payload = {
-            "object_type": "creative",
-            "object_id": creative_id,
-            "status": status,
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
-
-        if creative_data:
-            payload["creative_data"] = creative_data
-
-        headers = {"Content-Type": "application/json"}
-
-        # Get signing secret from tenant
-        signing_secret = None
-        if tenant_id:
-            try:
-                with get_db_session() as db_session:
-                    stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-                    tenant = db_session.scalars(stmt).first()
-                    if tenant and hasattr(tenant, "admin_token") and tenant.admin_token:
-                        signing_secret = tenant.admin_token
-            except Exception as e:
-                logger.warning(f"Could not fetch tenant for signature: {e}")
-
-        # Create delivery configuration
-        delivery = WebhookDelivery(
-            webhook_url=webhook_url,
-            payload=payload,
-            headers=headers,
-            max_retries=3,
-            timeout=10,
-            signing_secret=signing_secret,
-            event_type="creative.status_changed",
-            tenant_id=tenant_id,
-            object_id=creative_id,
-        )
-
-        # Deliver with retry
-        success, result = deliver_webhook_with_retry(delivery)
-
-        if success:
-            logger.info(
-                f"Successfully delivered webhook for creative {creative_id} status={status} "
-                f"(attempts={result['attempts']}, delivery_id={result['delivery_id']})"
-            )
-        else:
-            logger.error(
-                f"Failed to deliver webhook for creative {creative_id} after {result['attempts']} attempts: "
-                f"{result.get('error', 'Unknown error')} (delivery_id={result['delivery_id']})"
-            )
-
-        return success
-
-    except Exception as e:
-        logger.error(f"Error setting up webhook delivery for creative {creative_id}: {e}", exc_info=True)
-        return False
-
-
 async def _call_webhook_for_creative_status(
     db_session,
     creative_id,
@@ -245,10 +173,16 @@ async def _call_webhook_for_creative_status(
             for c in all_creatives
         ]
         
+        # Convert context dict to ContextObject if present
+        context_data = step.request_data.get("context")
+        context_obj: ContextObject | None = None
+        if context_data and isinstance(context_data, dict):
+            context_obj = ContextObject.model_construct(**context_data)
+
         complete_result = SyncCreativesSuccessResponse(
             creatives=creatives,
             dry_run=False,
-            context=step.request_data.get("context") or {}
+            context=context_obj
         )
 
         # build push notification config from step request data
@@ -295,15 +229,22 @@ async def _call_webhook_for_creative_status(
             protocol = step.request_data.get("protocol", "mcp")  # Default to MCP for backward compatibility
 
             # Create appropriate webhook payload based on protocol
+            # Convert result to dict for webhook payload functions
+            result_dict = complete_result.model_dump(mode="json")
+
+            payload: Task | TaskStatusUpdateEvent | McpWebhookPayload
             if protocol == "a2a":
                 payload = create_a2a_webhook_payload(
                     task_id=step.step_id,
-                    status=TaskState.completed,
-                    result=complete_result,
+                    status=GeneratedTaskStatus.completed,
+                    result=result_dict,
                     context_id=step.context_id
                 )
             else:
-                payload = create_mcp_webhook_payload(step.step_id, TaskState.completed, complete_result)
+                # TODO: Fix in adcp python client - create_mcp_webhook_payload should return
+                # McpWebhookPayload instead of dict[str, Any] for proper type safety
+                mcp_payload_dict = create_mcp_webhook_payload(step.step_id, GeneratedTaskStatus.completed, result_dict)
+                payload = McpWebhookPayload.model_construct(**mcp_payload_dict)
 
             metadata = {
                 "task_type": step.tool_name
@@ -886,7 +827,7 @@ async def _ai_review_creative_async(
                     }
                     asyncio.run(
                         _call_webhook_for_creative_status(
-                            db_session=session, creative_id=creative_id, result=result, tenant_id=tenant_id
+                            db_session=session, creative_id=creative_id, tenant_id=tenant_id
                         )
                     )
                     logger.info(f"[AI Review Async] Webhook called for {creative_id}")

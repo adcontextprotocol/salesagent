@@ -425,7 +425,7 @@ class AdCPRequestHandler(RequestHandler):
                 is_active=True,
             )
 
-            task.status = TaskState(status=status)
+            task.status = TaskStatus(state=TaskState(status))
 
             metadata = {
                 "task_type": task.metadata['skills_requested'][0] if len(task.metadata['skills_requested']) > 0 else 'unknown',

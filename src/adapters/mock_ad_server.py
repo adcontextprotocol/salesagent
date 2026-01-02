@@ -171,12 +171,15 @@ class MockAdServer(AdServerAdapter):
         # Create a context for async operations if needed
         context = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=self.principal.principal_id)
 
+        # Add protocol field for webhook payload creation (mock adapter defaults to MCP)
+        request_data_with_protocol = {**request_data, "protocol": "mcp"}
+
         # Create workflow step
         step = ctx_manager.create_workflow_step(
             context_id=context.context_id,
             step_type=step_type,
             tool_name=step_type.replace("mock_", ""),
-            request_data=request_data,
+            request_data=request_data_with_protocol,
             status=status,
             owner="mock_adapter",
         )
