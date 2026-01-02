@@ -218,6 +218,12 @@ def login():
     For multi-tenant deployments, detects tenant from subdomain and checks
     for tenant-specific OIDC configuration first.
     """
+    logger.warning("========== LOGIN ROUTE HIT ==========")
+    logger.warning(f"Session keys at login: {list(session.keys())}")
+    logger.warning(f"'user' in session: {'user' in session}")
+    logger.warning(f"Request args: {dict(request.args)}")
+    logger.warning(f"Incoming cookies: {list(request.cookies.keys())}")
+
     # Capture 'next' parameter for redirect after login
     next_url = request.args.get("next")
     if next_url:
@@ -225,6 +231,7 @@ def login():
 
     # Don't auto-redirect if user just logged out
     just_logged_out = request.args.get("logged_out") == "1"
+    logger.warning(f"just_logged_out: {just_logged_out}")
 
     # Check if OAuth is configured via environment (fallback for all tenants)
     client_id, client_secret, discovery_url, _ = get_oauth_config()
@@ -568,6 +575,10 @@ def google_callback():
         session["user_name"] = user.get("name", email)
         session["user_picture"] = user.get("picture", "")
 
+        # Mark session as modified to ensure it's saved
+        session.modified = True
+        logger.warning(f"========== USER SET IN SESSION: {email} ==========")
+
         # Check if user is super admin FIRST (before signup flow check)
         # Super admins should never be redirected to signup/onboarding
         email_domain = email.split("@")[1] if "@" in email else ""
@@ -688,6 +699,11 @@ def google_callback():
 
         # Multi-tenant mode or multiple tenants: show tenant selector
         flash(f"Welcome {user.get('name', email)}!", "success")
+        logger.warning(f"========== REDIRECTING TO select_tenant, session keys: {list(session.keys())} ==========")
+        logger.warning(
+            f"========== available_tenants in session: {len(session.get('available_tenants', []))} =========="
+        )
+        session.modified = True
         return redirect(url_for("auth.select_tenant"))
 
     except Exception as e:
@@ -704,7 +720,14 @@ def google_callback():
 @auth_bp.route("/auth/select-tenant", methods=["GET", "POST"])
 def select_tenant():
     """Allow user to select a tenant when they have access to multiple."""
+    logger.warning("========== SELECT_TENANT HIT ==========")
+    logger.warning(f"Session keys at select_tenant: {list(session.keys())}")
+    logger.warning(f"'user' in session: {'user' in session}")
+    logger.warning(f"'available_tenants' in session: {'available_tenants' in session}")
+    logger.warning(f"Incoming cookies: {list(request.cookies.keys())}")
+
     if "user" not in session or "available_tenants" not in session:
+        logger.warning("========== REDIRECTING BACK TO LOGIN (session missing user or available_tenants) ==========")
         return redirect(url_for("auth.login"))
 
     if request.method == "POST":
