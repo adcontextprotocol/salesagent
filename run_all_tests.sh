@@ -85,9 +85,20 @@ setup_docker_stack() {
     local TEST_PROJECT_NAME="adcp-test-$$"  # $$ = process ID, ensures uniqueness
     export COMPOSE_PROJECT_NAME="$TEST_PROJECT_NAME"
 
+    # Create temporary override file to expose postgres port for tests
+    # (docker-compose.yml doesn't expose it by default for security)
+    TEST_COMPOSE_OVERRIDE="/tmp/docker-compose.test-override-$$.yml"
+    cat > "$TEST_COMPOSE_OVERRIDE" << 'OVERRIDE_EOF'
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5435}:5432"
+OVERRIDE_EOF
+    export TEST_COMPOSE_OVERRIDE
+
     # Clean up ONLY this test project's containers/volumes (not your local dev!)
     echo "Cleaning up any existing TEST containers (project: $TEST_PROJECT_NAME)..."
-    docker-compose -p "$TEST_PROJECT_NAME" down -v 2>/dev/null || true
+    docker-compose -f docker-compose.yml -f "$TEST_COMPOSE_OVERRIDE" -p "$TEST_PROJECT_NAME" down -v 2>/dev/null || true
     # DO NOT run docker volume prune - that affects ALL Docker volumes!
 
     # If ports are still in use, find new ones
@@ -135,15 +146,15 @@ print(' '.join(map(str, ports)))
 
     # Build and start services
     echo "Building Docker images (this may take 2-3 minutes on first run)..."
-    if ! docker-compose -p "$TEST_PROJECT_NAME" build --progress=plain 2>&1 | grep -E "(Step|#|Building|exporting)" | tail -20; then
+    if ! docker-compose -f docker-compose.yml -f "$TEST_COMPOSE_OVERRIDE" -p "$TEST_PROJECT_NAME" build --progress=plain 2>&1 | grep -E "(Step|#|Building|exporting)" | tail -20; then
         echo -e "${RED}❌ Docker build failed${NC}"
         exit 1
     fi
 
     echo "Starting Docker services..."
-    if ! docker-compose -p "$TEST_PROJECT_NAME" up -d; then
+    if ! docker-compose -f docker-compose.yml -f "$TEST_COMPOSE_OVERRIDE" -p "$TEST_PROJECT_NAME" up -d; then
         echo -e "${RED}❌ Docker services failed to start${NC}"
-        docker-compose -p "$TEST_PROJECT_NAME" logs
+        docker-compose -f docker-compose.yml -f "$TEST_COMPOSE_OVERRIDE" -p "$TEST_PROJECT_NAME" logs
         exit 1
     fi
 
@@ -157,12 +168,12 @@ print(' '.join(map(str, ports)))
 
         if [ $elapsed -gt $max_wait ]; then
             echo -e "${RED}❌ Services failed to start within ${max_wait}s${NC}"
-            docker-compose logs
+            docker-compose -f docker-compose.yml -f "$TEST_COMPOSE_OVERRIDE" -p "$TEST_PROJECT_NAME" logs
             exit 1
         fi
 
         # Check PostgreSQL
-        if docker-compose -p "$TEST_PROJECT_NAME" exec -T postgres pg_isready -U adcp_user >/dev/null 2>&1; then
+        if docker-compose -f docker-compose.yml -f "$TEST_COMPOSE_OVERRIDE" -p "$TEST_PROJECT_NAME" exec -T postgres pg_isready -U adcp_user >/dev/null 2>&1; then
             echo -e "${GREEN}✓ PostgreSQL is ready (${elapsed}s)${NC}"
             break
         fi
@@ -173,7 +184,7 @@ print(' '.join(map(str, ports)))
     # Run migrations
     echo "Running database migrations..."
     # Use docker-compose exec to run migrations inside the container
-    if ! docker-compose -p "$TEST_PROJECT_NAME" exec -T postgres psql -U adcp_user -d postgres -c "CREATE DATABASE adcp_test" 2>/dev/null; then
+    if ! docker-compose -f docker-compose.yml -f "$TEST_COMPOSE_OVERRIDE" -p "$TEST_PROJECT_NAME" exec -T postgres psql -U adcp_user -d postgres -c "CREATE DATABASE adcp_test" 2>/dev/null; then
         echo "Database adcp_test already exists, continuing..."
     fi
 
@@ -190,7 +201,10 @@ print(' '.join(map(str, ports)))
 # Docker teardown function
 teardown_docker_stack() {
     echo -e "${BLUE}🐳 Stopping TEST Docker stack (project: $COMPOSE_PROJECT_NAME)...${NC}"
-    docker-compose -p "$COMPOSE_PROJECT_NAME" down -v 2>/dev/null || true
+    docker-compose -f docker-compose.yml -f "$TEST_COMPOSE_OVERRIDE" -p "$COMPOSE_PROJECT_NAME" down -v 2>/dev/null || true
+
+    # Clean up temporary override file
+    rm -f "$TEST_COMPOSE_OVERRIDE" 2>/dev/null || true
 
     # Prune dangling volumes created by tests (only removes unused volumes)
     echo "Cleaning up dangling Docker volumes..."
