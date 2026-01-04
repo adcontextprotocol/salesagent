@@ -999,10 +999,8 @@ class TestCreativeLifecycleMCP:
                             # Missing URL - only has dimensions
                             "width": 300,
                             "height": 250,
-                        },
-                        "click_url": {
-                            "url": "https://example.com/landing"
                         }
+                        # Removed click_url so fallback logic has no URL to find
                     }
                 },
             )
@@ -1182,8 +1180,8 @@ class TestCreativeLifecycleMCP:
 
             # Verify response (domain response doesn't have status field)
             # Note: media_buy_id may be transformed by naming template (e.g., "buy_PO-TEST-123")
-            assert response.media_buy_id  # Just verify it exists
-            actual_media_buy_id = response.media_buy_id
+            assert response["media_buy_id"]  # Just verify it exists
+            actual_media_buy_id = response["media_buy_id"]
             # Protocol envelope adds status field - domain response just has media_buy_id
 
             # Verify creative assignments were created in database

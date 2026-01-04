@@ -32,7 +32,7 @@ from src.core.database.models import CurrencyLimit
 from src.core.database.models import Principal as ModelPrincipal
 from src.core.database.models import Product as ModelProduct
 from src.core.database.models import Tenant as ModelTenant
-from src.core.schemas import CreateMediaBuyError, CreateMediaBuyResponse, Error
+from src.core.schemas import CreateMediaBuyError, CreateMediaBuyResponse, CreateMediaBuySuccess, Error
 from src.core.tool_context import ToolContext
 from src.core.tools import create_media_buy_raw, list_creatives_raw, sync_creatives_raw
 from tests.helpers.adcp_factories import create_test_package_request_dict
@@ -160,7 +160,7 @@ class TestCreateMediaBuyErrorPaths:
         future_end = future_start + timedelta(days=7)
 
         # This should return error response, not raise NameError
-        response = await create_media_buy_raw(
+        response_dict = await create_media_buy_raw(
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
@@ -179,9 +179,19 @@ class TestCreateMediaBuyErrorPaths:
             ctx=context,
         )
 
+        # Validate and convert dict to Pydantic model
+        # This will raise ValidationError if the dict doesn't match the schema
+        status = response_dict.pop("status")  # Extract status field (not part of the model)
+
+        # Determine which model to construct based on presence of errors
+        if "errors" in response_dict and response_dict.get("errors"):
+            # Will raise ValidationError if response_dict doesn't match CreateMediaBuyError schema
+            response = CreateMediaBuyError.model_validate(response_dict)
+        else:
+            # Will raise ValidationError if response_dict doesn't match CreateMediaBuySuccess schema
+            response = CreateMediaBuySuccess.model_validate(response_dict)
+
         # Verify response structure - error cases return CreateMediaBuyError
-        assert isinstance(response, (CreateMediaBuyResponse, CreateMediaBuyError))
-        # CreateMediaBuyError is a discriminated union member of CreateMediaBuyResponse
         assert isinstance(response, CreateMediaBuyError)
         assert response.errors is not None
         assert len(response.errors) > 0
@@ -212,7 +222,7 @@ class TestCreateMediaBuyErrorPaths:
         past_end = past_start + timedelta(days=7)
 
         # This should return error response for past start time
-        response = await create_media_buy_raw(
+        response_dict = await create_media_buy_raw(
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
@@ -231,8 +241,15 @@ class TestCreateMediaBuyErrorPaths:
             ctx=context,
         )
 
+        # Validate and convert dict to Pydantic model
+        status = response_dict.pop("status")
+
+        if "errors" in response_dict and response_dict.get("errors"):
+            response = CreateMediaBuyError.model_validate(response_dict)
+        else:
+            response = CreateMediaBuySuccess.model_validate(response_dict)
+
         # Verify response structure - error cases return CreateMediaBuyError
-        assert isinstance(response, (CreateMediaBuyResponse, CreateMediaBuyError))
         assert isinstance(response, CreateMediaBuyError)
         assert response.errors is not None
         assert len(response.errors) > 0
@@ -258,7 +275,7 @@ class TestCreateMediaBuyErrorPaths:
         start = datetime.now(UTC) + timedelta(days=7)
         end = start - timedelta(days=1)  # Before start!
 
-        response = await create_media_buy_raw(
+        response_dict = await create_media_buy_raw(
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
@@ -276,8 +293,15 @@ class TestCreateMediaBuyErrorPaths:
             ctx=context,
         )
 
+        # Validate and convert dict to Pydantic model
+        status = response_dict.pop("status")
+
+        if "errors" in response_dict and response_dict.get("errors"):
+            response = CreateMediaBuyError.model_validate(response_dict)
+        else:
+            response = CreateMediaBuySuccess.model_validate(response_dict)
+
         # Verify response structure - error cases return CreateMediaBuyError
-        assert isinstance(response, (CreateMediaBuyResponse, CreateMediaBuyError))
         assert isinstance(response, CreateMediaBuyError)
         assert response.errors is not None
         assert len(response.errors) > 0
@@ -341,7 +365,7 @@ class TestCreateMediaBuyErrorPaths:
         future_start = datetime.now(UTC) + timedelta(days=1)
         future_end = future_start + timedelta(days=7)
 
-        response = await create_media_buy_raw(
+        response_dict = await create_media_buy_raw(
             po_number="error_test_po",
             brand_manifest={"name": "Test campaign"},
             buyer_ref="test_buyer",
@@ -352,8 +376,15 @@ class TestCreateMediaBuyErrorPaths:
             ctx=context,
         )
 
+        # Validate and convert dict to Pydantic model
+        status = response_dict.pop("status")
+
+        if "errors" in response_dict and response_dict.get("errors"):
+            response = CreateMediaBuyError.model_validate(response_dict)
+        else:
+            response = CreateMediaBuySuccess.model_validate(response_dict)
+
         # Verify response structure - error cases return CreateMediaBuyError
-        assert isinstance(response, (CreateMediaBuyResponse, CreateMediaBuyError))
         assert isinstance(response, CreateMediaBuyError)
         assert response.errors is not None
         assert len(response.errors) > 0

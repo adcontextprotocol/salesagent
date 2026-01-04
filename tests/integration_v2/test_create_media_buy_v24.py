@@ -239,7 +239,7 @@ class TestCreateMediaBuyV24Format:
         # Call _impl with individual parameters (not a request object)
         # This exercises the FULL serialization path including response_packages construction
         # NOTE: budget is at package level per AdCP v2.4 spec (not a top-level parameter)
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Nike Air Jordan 2025 basketball shoes"},
             packages=[p.model_dump() for p in packages],
@@ -305,7 +305,7 @@ class TestCreateMediaBuyV24Format:
         context = MagicMock()
         context.headers = {"x-adcp-auth": "test_token_v24"}
 
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_targeting",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Adidas UltraBoost 2025 running shoes"},
             packages=[p.model_dump() for p in packages],
@@ -381,7 +381,7 @@ class TestCreateMediaBuyV24Format:
         # Total budget is sum of all package budgets
         total_budget_value = sum(pkg.budget for pkg in packages)
 
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_multi",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Puma RS-X 2025 training shoes"},
             packages=[p.model_dump() for p in packages],
@@ -425,7 +425,7 @@ class TestCreateMediaBuyV24Format:
         context = MagicMock()
         context.headers = {"x-adcp-auth": "test_token_v24"}
 
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_a2a",  # REQUIRED per AdCP v2.2.0
             brand_manifest={"name": "Reebok Nano 2025 cross-training shoes"},
             packages=[p.model_dump() for p in packages],
@@ -467,7 +467,7 @@ class TestCreateMediaBuyV24Format:
 
         # Standard AdCP format with explicit package
         # pricing_option_id format: {model}_{currency}_{fixed|auction}
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="test_buyer_v24_standard",
             brand_manifest={"name": "Under Armour HOVR 2025 running shoes"},
             packages=[
