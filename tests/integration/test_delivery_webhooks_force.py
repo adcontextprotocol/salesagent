@@ -125,9 +125,10 @@ async def test_force_trigger_delivery_webhook_bypasses_duplicate_check(integrati
 
             # Verify call args
             args, kwargs = mock_send.await_args
-            result = kwargs.get("result")
-            assert result is not None
-            assert result["media_buy_deliveries"][0]["media_buy_id"] == media_buy_id
+            payload = kwargs.get("payload")
+            assert payload is not None
+            # Extract result from the McpWebhookPayload
+            assert payload.result["media_buy_deliveries"][0]["media_buy_id"] == media_buy_id
 
 
 @pytest.mark.requires_db
@@ -149,7 +150,7 @@ async def test_trigger_report_for_media_buy_public_method(integration_db):
             media_buy = session.scalars(select(MediaBuy).filter_by(media_buy_id=media_buy_id)).first()
 
             # 2. Call public method
-            result = await scheduler.trigger_report_for_media_buy(media_buy, session)
+            result = await scheduler.trigger_report_for_media_buy_by_id(media_buy_id, tenant_id)
 
             # 3. Verify result and call
             assert result is True
@@ -190,6 +191,6 @@ async def test_trigger_report_fails_gracefully_no_webhook(integration_db):
         scheduler = DeliveryWebhookScheduler()
 
         # Call public method
-        result = await scheduler.trigger_report_for_media_buy(media_buy, session)
+        result = await scheduler.trigger_report_for_media_buy_by_id(media_buy.media_buy_id, tenant_id)
 
         assert result is False

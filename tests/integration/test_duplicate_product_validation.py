@@ -83,7 +83,7 @@ class TestDuplicateProductValidation:
             end_time = start_time + timedelta(days=7)
 
             # Should return error response about duplicate products
-            result = await _create_media_buy_impl(
+            result, _ = await _create_media_buy_impl(
                 buyer_ref="test_media_buy_duplicate",
                 brand_manifest={"name": "Test Brand"},
                 packages=packages,
@@ -173,7 +173,7 @@ class TestDuplicateProductValidation:
             end_time = start_time + timedelta(days=7)
 
             # Should return error response listing both duplicate products
-            result = await _create_media_buy_impl(
+            result, _ = await _create_media_buy_impl(
                 buyer_ref="test_media_buy_multiple_duplicates",
                 brand_manifest={"name": "Test Brand"},
                 packages=packages,
