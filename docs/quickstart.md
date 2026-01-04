@@ -134,7 +134,7 @@ docker compose build && docker compose up -d
 
 ### "No tenant context" error
 - Ensure you're using the test login credentials
-- Check that migrations ran: `docker compose logs adcp-server | grep migration`
+- Check that migrations ran: `docker compose logs db-init`
 
 ### Port 8000 already in use
 ```bash
