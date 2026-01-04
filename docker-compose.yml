@@ -36,6 +36,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # Run database migrations before starting services
+  db-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: []
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
+      PYTHONPATH: "/app"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/.venv
+    command: ["python", "scripts/ops/migrate.py"]
+
   proxy:
     image: nginx:stable
     volumes:
@@ -73,6 +93,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -110,6 +132,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     volumes:
       # Mount source code for hot reloading
       - .:/app
