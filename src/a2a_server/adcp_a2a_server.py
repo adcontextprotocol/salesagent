@@ -97,6 +97,8 @@ from src.core.tools import (
 from src.core.tools import (
     update_performance_index_raw as core_update_performance_index_tool,
 )
+from adcp import create_a2a_webhook_payload
+from adcp.types import GeneratedTaskStatus
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 
@@ -392,7 +394,14 @@ class AdCPRequestHandler(RequestHandler):
         result: dict[str, Any] | None = None,
         error: str | None = None,
     ):
-        """Send protocol-level push notification if configured."""
+        """Send protocol-level push notification if configured.
+
+        Per AdCP A2A spec (https://docs.adcontextprotocol.org/docs/protocols/a2a-guide#push-notifications-a2a-specific):
+        - Final states (completed, failed, canceled): Send full Task object with artifacts
+        - Intermediate states (working, input-required, submitted): Send TaskStatusUpdateEvent
+
+        Uses create_a2a_webhook_payload from adcp library to automatically select correct type.
+        """
         try:
             # Check if task has push notification config in metadata
             if not task.metadata or "push_notification_config" not in task.metadata:
@@ -401,22 +410,20 @@ class AdCPRequestHandler(RequestHandler):
             webhook_config = task.metadata["push_notification_config"]
             push_notification_service = get_protocol_webhook_service()
 
-            # build push notification config from step request data
             from uuid import uuid4
 
-            cfg_dict = webhook_config.get("push_notification_config") or {}
-            url = cfg_dict.get("url")
+            url = webhook_config.get("url")
             if not url:
                 logger.info("[red]No push notification URL present; skipping webhook[/red]")
                 return
 
-            authentication = cfg_dict.get("authentication") or {}
+            authentication = webhook_config.get("authentication") or {}
             schemes = authentication.get("schemes") or []
             auth_type = schemes[0] if isinstance(schemes, list) and schemes else None
             auth_token = authentication.get("credentials")
 
             push_notification_config = DBPushNotificationConfig(
-                id=cfg_dict.get("id") or f"pnc_{uuid4().hex[:16]}",
+                id=webhook_config.get("id") or f"pnc_{uuid4().hex[:16]}",
                 tenant_id="",
                 principal_id="",
                 url=url,
@@ -425,15 +432,37 @@ class AdCPRequestHandler(RequestHandler):
                 is_active=True,
             )
 
-            task.status = TaskStatus(state=TaskState(status))
+            # Convert status string to GeneratedTaskStatus enum
+            try:
+                status_enum = GeneratedTaskStatus(status)
+            except ValueError:
+                # Fallback for unknown status values
+                logger.warning(f"Unknown status '{status}', defaulting to 'working'")
+                status_enum = GeneratedTaskStatus.working
+
+            # Build result data for the webhook payload
+            # Include error information in result if status is failed
+            result_data: dict[str, Any] = result or {}
+            if error and status == "failed":
+                result_data["error"] = error
+
+            # Use create_a2a_webhook_payload to get the correct payload type:
+            # - Task for final states (completed, failed, canceled)
+            # - TaskStatusUpdateEvent for intermediate states (working, input-required, submitted)
+            payload = create_a2a_webhook_payload(
+                task_id=task.id,
+                status=status_enum,
+                context_id=task.context_id or "",
+                result=result_data,
+            )
 
             metadata = {
                 "task_type": task.metadata['skills_requested'][0] if len(task.metadata['skills_requested']) > 0 else 'unknown',
             }
-            
+
             await push_notification_service.send_notification(
                 push_notification_config=push_notification_config,
-                payload=task,
+                payload=payload,
                 metadata=metadata
             )
         except Exception as e:
