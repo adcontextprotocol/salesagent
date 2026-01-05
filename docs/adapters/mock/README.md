@@ -86,7 +86,7 @@ docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publi
 ### 2. Get Your Access Token
 
 **Via Admin UI:**
-1. Navigate to http://localhost:8001
+1. Navigate to http://localhost:8000
 2. Select your tenant
 3. Go to Principals
 4. Copy the access token

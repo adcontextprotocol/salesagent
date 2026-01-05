@@ -260,7 +260,7 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 When creating your OAuth application in your identity provider:
 
 1. **Application Type**: Web application
-2. **Redirect URI**: `http://localhost:8001/auth/google/callback` (local) or `https://your-domain/admin/auth/google/callback` (production)
+2. **Redirect URI**: `http://localhost:8000/auth/google/callback` (local) or `https://your-domain/admin/auth/google/callback` (production)
 3. **Scopes**: At minimum `openid`, `email`, and `profile`
 4. **Grant Type**: Authorization Code
 

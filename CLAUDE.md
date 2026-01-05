@@ -135,12 +135,13 @@ Never hardcode `/api/endpoint` - breaks with nginx prefix.
 ## Project Overview
 
 Python-based AdCP sales agent with:
-- **Nginx Proxy** (8000): Unified entry point for all services
-- **MCP Server** (/mcp): FastMCP tools for AI agents
-- **Admin UI** (/): Google OAuth secured interface
-- **A2A Server** (/a2a): python-a2a agent-to-agent communication
+- **MCP Server**: FastMCP tools for AI agents (via nginx at `/mcp/`)
+- **Admin UI**: Google OAuth secured interface (via nginx at `/admin/` or `/tenant/<name>`)
+- **A2A Server**: python-a2a agent-to-agent communication (via nginx at `/a2a`)
 - **Multi-Tenant**: Database-backed isolation with subdomain routing
 - **PostgreSQL**: Production-ready with Docker deployment
+
+All services are accessed through the nginx proxy at **http://localhost:8000**.
 
 ---
 
@@ -192,22 +193,29 @@ if not self.supports_feature and feature_requested:
 ### Running Locally
 
 ```bash
-docker compose up         # Start all services (migrations run automatically)
-docker compose logs -f    # View logs
+# Clone and start
+git clone https://github.com/adcontextprotocol/salesagent.git
+cd salesagent
+docker compose up -d      # Build and start all services
+docker compose logs -f    # View logs (Ctrl+C to exit)
 docker compose down       # Stop
+
+# Migrations run automatically on startup
 ```
 
-**Access via nginx proxy at http://localhost:8000:**
-- http://localhost:8000/ - Admin UI (login here)
-- http://localhost:8000/mcp - MCP Server (for AI agents)
-- http://localhost:8000/a2a - A2A Server (agent-to-agent)
+**Access at http://localhost:8000:**
+- Admin UI: `/admin/` or `/tenant/default`
+- MCP Server: `/mcp/`
+- A2A Server: `/a2a`
 
-**Test credentials:** `test_super_admin@example.com` / `test123`
+**Test login:** `test_super_admin@example.com` / `test123`
 
-**Troubleshooting migrations:**
+**Test MCP interface:**
 ```bash
-docker compose logs db-init  # Check migration output
+uvx adcp http://localhost:8000/mcp/ --auth test-token list_tools
 ```
+
+**Note:** `docker compose` builds from local source. For a clean rebuild: `docker compose build --no-cache`
 
 ### Testing
 ```bash
@@ -227,9 +235,10 @@ uv run pytest tests/unit/test_adcp_contract.py -v
 ```bash
 uv run python scripts/ops/migrate.py            # Run migrations locally
 uv run alembic revision -m "description"        # Create migration
-```
 
-Migrations run automatically on `docker compose up` via the `db-init` service.
+# In Docker (migrations run automatically, but can be run manually):
+docker compose exec admin-ui python scripts/ops/migrate.py
+```
 
 **Never modify existing migrations after commit!**
 
@@ -350,16 +359,15 @@ APPROXIMATED_API_KEY=your-approximated-api-key
 
 ## Deployment
 
-### Three Environments
-- **Local Dev**: `docker compose up` → http://localhost:8000 (builds from source)
+### Environments
+- **Local Dev**: `docker compose up -d` → http://localhost:8000 (builds from source)
 - **Reference Sales Agent**: Fly.io → https://adcp-sales-agent.fly.dev (auto-deploys from main)
-- **Test Buyer**: https://testing.adcontextprotocol.org/ (OUR production tenant with mock adapter)
+- **Test Buyer**: https://testing.adcontextprotocol.org/ (production tenant with mock adapter)
 
-**All three are INDEPENDENT** - Docker doesn't affect production.
+**All environments are INDEPENDENT** - Docker doesn't affect production.
 
 **Local Dev Notes:**
-- All services accessible through nginx proxy at port 8000
-- Migrations run automatically via `db-init` service
+- Test mode enabled by default (`ADCP_AUTH_TEST_MODE=true`)
 - Test credentials: `test_super_admin@example.com` / `test123`
 
 ### Git Workflow (MANDATORY)
@@ -398,9 +406,10 @@ See `docs/deployment.md` for platform-specific guides.
 
 ### MCP Client
 ```python
-from fastmcp.client import Client, StreamableHttpTransport
+from fastmcp.client import Client
+from fastmcp.client.transports import StreamableHttpTransport
 
-headers = {"x-adcp-auth": "token"}
+headers = {"x-adcp-auth": "your_token"}
 transport = StreamableHttpTransport(url="http://localhost:8000/mcp/", headers=headers)
 client = Client(transport=transport)
 
@@ -409,14 +418,17 @@ async with client:
     result = await client.tools.create_media_buy(product_ids=["prod_1"], ...)
 ```
 
-### A2A Server
-```python
-from python_a2a.server.http import create_flask_app
-app = create_flask_app(agent)  # Provides all standard endpoints
+### CLI Testing
+```bash
+# List available tools
+uvx adcp http://localhost:8000/mcp/ --auth test-token list_tools
+
+# Get a real token from Admin UI → Advertisers → API Token
+uvx adcp http://localhost:8000/mcp/ --auth <real-token> get_products '{"brief":"video"}'
 ```
 
 ### Admin UI
-- Local: http://localhost:8000 (via nginx proxy)
+- Local: http://localhost:8000/admin/ (or `/tenant/default`)
 - Production: Configure based on your hosting
 
 ---

@@ -155,7 +155,7 @@ The SSO requirement varies based on deployment mode:
 |----------|---------|-------------|
 | `ENVIRONMENT` | `development` | `development` (strict validation) or `production` (lenient) |
 | `PRODUCTION` | `false` | Set to `true` for production deployments |
-| `ADMIN_UI_URL` | `http://localhost:8001` | Public URL for Admin UI (used in notifications) |
+| `ADMIN_UI_URL` | `http://localhost:8000` | Public URL for Admin UI (used in notifications) |
 
 ### Demo Data
 

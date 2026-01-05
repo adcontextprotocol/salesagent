@@ -165,7 +165,7 @@ The test suite includes comprehensive AdCP protocol schema validation:
 ```python
 # Automatic validation in E2E tests (enabled by default)
 async with AdCPTestClient(
-    mcp_url="http://localhost:8080",
+    mcp_url="http://localhost:8000/mcp/",
     auth_token="test-token",
     validate_schemas=True  # Default: True
 ) as client:
