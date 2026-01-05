@@ -304,7 +304,7 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Should fail validation and return errors in response
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="minspend_test_1",
             brand_manifest={"name": "Test Campaign"},
             packages=[
@@ -339,7 +339,7 @@ class TestMinimumSpendValidation:
 
         # Try to create media buy below product override ($5000)
         # Should fail validation and return errors in response
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="minspend_test_2",
             brand_manifest={"name": "Test Campaign"},
             packages=[
@@ -374,7 +374,7 @@ class TestMinimumSpendValidation:
 
         # Create media buy above product minimum ($500) but below currency limit ($1000)
         # Should succeed because product override is lower
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="minspend_test_3",
             brand_manifest={"name": "Test Campaign"},
             packages=[
@@ -405,7 +405,7 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Create media buy above minimum - should succeed
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="minspend_test_4",
             brand_manifest={"name": "Test Campaign"},
             packages=[
@@ -470,7 +470,7 @@ class TestMinimumSpendValidation:
 
         # $800 should fail (below $1000 USD minimum)
         # Should fail validation and return errors in response
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="minspend_test_6",
             brand_manifest={"name": "Test Campaign"},
             packages=[
@@ -515,7 +515,7 @@ class TestMinimumSpendValidation:
         end_time = start_time + timedelta(days=7)
 
         # Create media buy with low budget in GBP (should succeed - no minimum)
-        response = await _create_media_buy_impl(
+        response, _ = await _create_media_buy_impl(
             buyer_ref="minspend_test_7",
             brand_manifest={"name": "Test Campaign"},
             packages=[

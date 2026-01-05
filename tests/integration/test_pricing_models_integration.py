@@ -297,7 +297,7 @@ async def test_create_media_buy_with_cpm_fixed_pricing(setup_tenant_with_pricing
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -343,7 +343,7 @@ async def test_create_media_buy_with_cpm_auction_pricing(setup_tenant_with_prici
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -390,7 +390,7 @@ async def test_create_media_buy_auction_bid_below_floor_fails(setup_tenant_with_
     )
 
     # AdCP 2.4 spec: Errors are returned in response.errors, not raised as exceptions
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -433,7 +433,7 @@ async def test_create_media_buy_with_cpcv_pricing(setup_tenant_with_pricing_prod
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -479,7 +479,7 @@ async def test_create_media_buy_below_min_spend_fails(setup_tenant_with_pricing_
     )
 
     # AdCP 2.4 spec: Errors are returned in response.errors, not raised as exceptions
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -522,7 +522,7 @@ async def test_create_media_buy_multi_pricing_choose_cpp(setup_tenant_with_prici
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -568,7 +568,7 @@ async def test_create_media_buy_invalid_pricing_model_fails(setup_tenant_with_pr
     )
 
     # AdCP 2.4 spec: Errors are returned in response.errors, not raised as exceptions
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,

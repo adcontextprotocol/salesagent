@@ -192,6 +192,7 @@ def sample_tenant(integration_db):
             auth_setup_mode=False,  # Disable setup mode for production-ready auth
             # Required: Access control configuration
             authorized_emails=["test@example.com"],
+            human_review_required=False,  # Auto-approve media buys for testing (no manual approval)
         )
         session.add(tenant)
 

@@ -19,9 +19,12 @@ import json
 import logging
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse, urlunparse
 from uuid import uuid4
+from a2a.types import Task, TaskStatusUpdateEvent
+from adcp.types import McpWebhookPayload
+from adcp import get_adcp_signed_headers_for_webhook, extract_webhook_result_data
 
 import requests
 
@@ -30,7 +33,6 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import PushNotificationConfig, WebhookDeliveryLog
 
 logger = logging.getLogger(__name__)
-
 
 def _normalize_localhost_for_docker(url: str) -> str:
     """Replace localhost host with host.docker.internal while preserving userinfo and port."""
@@ -67,51 +69,28 @@ class ProtocolWebhookService:
 
     async def send_notification(
         self,
-        task_type: str,
-        task_id: str,
-        status: str,
         push_notification_config: PushNotificationConfig,
-        result: dict[str, Any] | None = None,
-        error: str | None = None,
-        tenant_id: str | None = None,
-        principal_id: str | None = None,
-        media_buy_id: str | None = None,
+        payload: Task | TaskStatusUpdateEvent | McpWebhookPayload,
+        metadata: dict[str, Any]
     ) -> bool:
         """
         Send a protocol-level push notification to the configured webhook.
 
         Args:
             push_notification_config: Push notification configuration from protocol layer
-            task_type: Type of task ("sync_creatives", "media_buy", "delivery_report", etc.)
-            task_id: Task/operation ID
-            status: Status of operation ("working", "completed", "failed")
-            result: Result data
-            error: Error message if failed
-            tenant_id: Tenant ID for audit logging
-            principal_id: Principal ID for audit logging
-            media_buy_id: Media buy ID (for delivery_report tasks)
-
+            payload: For A2A it can be Task or TaskStatusUpdateEvent types for MCP it wil be McpWebhookPayload. 
+                Use create_a2a_webhook_payload or create_mcp_webhook_payload from adcp's official python client to get the payload for particular task and status
+            metadata: Contains app specific metadata's such as task_type, tenant_id, principal_id
+                
         Returns:
             True if notification sent successfully, False otherwise
         """
         if not push_notification_config or not push_notification_config.url:
-            logger.debug(f"No webhook URL configured for task {task_id}, skipping notification")
+            # TODO: @yusuf - Double check logging actually works for Task, TaskStatusUpdateEvent and McpWebhookPayload types
+            logger.debug(f"No webhook URL configured in the push notification. Here's payload: {payload}, skipping notification")
             return False
 
         url = _normalize_localhost_for_docker(push_notification_config.url)
-
-        # Build notification payload (AdCP standard format)
-        payload: dict[str, Any] = {
-            "task_id": task_id,
-            "task_type": task_type,
-            "status": status,
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
-
-        if result:
-            payload["result"] = result
-        if error:
-            payload["error"] = error
 
         # Prepare headers
         headers = {"Content-Type": "application/json", "User-Agent": "AdCP-Sales-Agent/1.0"}
@@ -123,11 +102,20 @@ class ProtocolWebhookService:
                 push_notification_config.authentication_type
                 if hasattr(push_notification_config, "authentication_type")
                 else None
-            ),
-            "is_active": push_notification_config.is_active if hasattr(push_notification_config, "is_active") else None,
+            )
             # DO NOT log authentication_token - security risk
         }
         logger.info(f"push_notification_config (sanitized): {safe_config}")
+
+        # Serialize payload to dict for signing and sending
+        # Task/TaskStatusUpdateEvent need serialization; McpWebhookPayload is already AdCPBaseModel
+        payload_dict: dict[str, Any]
+        if isinstance(payload, (Task, TaskStatusUpdateEvent)):
+            payload_dict = payload.model_dump(mode="json", exclude_none=True)
+        elif isinstance(payload, McpWebhookPayload):
+            payload_dict = payload.model_dump(mode="json", exclude_none=True)
+        else:
+            payload_dict = payload
 
         # Apply authentication based on schemes
         if (
@@ -135,76 +123,52 @@ class ProtocolWebhookService:
             and push_notification_config.authentication_token
         ):
             # Sign payload with HMAC-SHA256
-
             timestamp = str(int(time.time()))
-            payload_str = json.dumps(payload, sort_keys=False, separators=(",", ":"))
-            message = f"{timestamp}.{payload_str}"
-            signature = hmac.new(
-                push_notification_config.authentication_token.encode("utf-8"), message.encode("utf-8"), hashlib.sha256
-            ).hexdigest()
-
-            headers["X-AdCP-Signature"] = f"sha256={signature}"
-            headers["X-AdCP-Timestamp"] = timestamp
+            get_adcp_signed_headers_for_webhook(headers, push_notification_config.authentication_token, timestamp, payload_dict)
 
         elif push_notification_config.authentication_type == "Bearer" and push_notification_config.authentication_token:
             # Use Bearer token authentication
             headers["Authorization"] = f"Bearer {push_notification_config.authentication_token}"
-
-        # Calculate payload size for metrics
-        payload_size_bytes = len(json.dumps(payload).encode("utf-8"))
-
-        notification_type_from_request = result.get("notification_type") if result is not None else None
-        sequence_number_from_result = result.get("sequence_number") if result is not None else None
+        
 
         # Send notification with retry logic and logging
         return await self._send_with_retry_and_logging(
             url=url,
-            payload=payload,
+            payload=payload_dict,
             headers=headers,
-            task_id=task_id,
-            task_type=task_type,
-            tenant_id=tenant_id,
-            principal_id=principal_id,
-            media_buy_id=media_buy_id,
-            notification_type=notification_type_from_request,
-            sequence_number=sequence_number_from_result if isinstance(sequence_number_from_result, int) else 1,
-            payload_size_bytes=payload_size_bytes,
+            metadata=metadata
         )
 
     async def _send_with_retry_and_logging(
         self,
         url: str,
-        payload: dict,
+        payload: dict[str, Any],
         headers: dict,
-        task_id: str,
-        task_type: str,
-        tenant_id: str | None = None,
-        principal_id: str | None = None,
-        media_buy_id: str | None = None,
-        notification_type: str | None = None,
-        sequence_number: int = 1,
-        payload_size_bytes: int = 0,
+        metadata: dict[str, Any],
         max_attempts: int = 3,
     ) -> bool:
-        """Send webhook with exponential backoff retry logic, logging, and audit trail.
+        """Send webhook with exponential backoff retry logic, logging, and audit trail."""
+        # Calculate payload size for metrics
+        payload_size_bytes = len(json.dumps(payload).encode("utf-8"))
 
-        Args:
-            url: Webhook URL
-            payload: JSON payload
-            headers: HTTP headers
-            task_id: Task ID for logging
-            task_type: Task type ("delivery_report", etc.)
-            tenant_id: Tenant ID for logging
-            principal_id: Principal ID for logging
-            media_buy_id: Media buy ID (for delivery_report tasks)
-            notification_type: Notification type for AdCP
-            sequence_number: Sequence number for this webhook
-            payload_size_bytes: Size of payload in bytes
-            max_attempts: Maximum retry attempts (default: 3)
+        task_type=metadata['task_type'] if 'task_type' in metadata else None
+        tenant_id=metadata['tenant_id'] if 'tenant_id' in metadata else None
+        principal_id=metadata['principal_id'] if 'principal_id' in metadata else None
+        media_buy_id=metadata['media_buy_id'] if 'media_buy_id' in metadata else None
 
-        Returns:
-            True if successful, False if all attempts failed
-        """
+        # TODO: Fix type annotation discrepancy in adcp library - extract_webhook_result_data
+        # returns dict at runtime but is typed as AdcpAsyncResponseData | None
+        result = cast(dict[str, Any] | None, extract_webhook_result_data(payload))
+        # After serialization, payload is always a dict - extract task_id accordingly
+        # A2A Task uses 'id', TaskStatusUpdateEvent uses 'task_id', MCP uses 'task_id'
+        task_id = payload.get('id') or payload.get('task_id') or ''
+
+        # If we are delivering media buy delivery report
+        notification_type_from_result=result.get("notification_type") if result is not None else None
+        sequence_number_from_result=result.get("sequence_number") if result is not None else None
+        notification_type=notification_type_from_result
+        sequence_number=sequence_number_from_result if isinstance(sequence_number_from_result, int) else 1
+
         # Create webhook delivery log entry
         log_id = str(uuid4())
         start_time = time.time()

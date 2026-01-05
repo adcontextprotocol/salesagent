@@ -271,6 +271,13 @@ def _update_media_buy_impl(
     if persistent_ctx is None:
         raise ValueError("Failed to create or get persistent context")
 
+    # Prepare request data with protocol detection
+    request_data_for_workflow = req.model_dump(mode="json")  # Convert dates to strings
+
+    # Store protocol type for webhook payload creation
+    # ToolContext = A2A, Context (FastMCP) = MCP
+    request_data_for_workflow["protocol"] = "a2a" if isinstance(ctx, ToolContext) else "mcp"
+
     # Create workflow step for this tool call
     step = ctx_manager.create_workflow_step(
         context_id=persistent_ctx.context_id,  # Now safe to access
@@ -278,7 +285,7 @@ def _update_media_buy_impl(
         owner="principal",
         status="in_progress",
         tool_name="update_media_buy",
-        request_data=req.model_dump(mode="json"),  # Convert dates to strings
+        request_data=request_data_for_workflow,
     )
 
     principal = get_principal_object(principal_id)  # Now guaranteed to be str
@@ -770,6 +777,16 @@ def _update_media_buy_impl(
                         )
                         session.add(assignment)
 
+                    # If media buy was approved (approved_at set) but is in draft status
+                    # (meaning it was approved without creatives), transition to pending_creatives
+                    # Check whenever creative_ids are being set (not just when new ones added)
+                    if pkg_update.creative_ids and media_buy_obj.status == "draft" and media_buy_obj.approved_at is not None:
+                        media_buy_obj.status = "pending_creatives"
+                        logger.info(
+                            f"[UPDATE] Media buy {actual_media_buy_id} transitioned from draft to pending_creatives "
+                            f"(creative_ids: {pkg_update.creative_ids})"
+                        )
+
                     session.commit()
 
                     # Store results for affected_packages response
@@ -956,6 +973,7 @@ def _update_media_buy_impl(
                                 return response_data
 
                     updated_assignments = []
+                    new_assignments_created = []
 
                     for ca in pkg_update.creative_assignments:
                         # Schema validates and coerces dict inputs to LibraryCreativeAssignment
@@ -997,6 +1015,17 @@ def _update_media_buy_impl(
                             )
                             session.add(new_assignment)
                             updated_assignments.append(creative_id)
+                            new_assignments_created.append(creative_id)
+
+                    # If media buy was approved (approved_at set) but is in draft status
+                    # (meaning it was approved without creatives), transition to pending_creatives
+                    # Check whenever creative_assignments are being set (not just when new ones created)
+                    if pkg_update.creative_assignments and media_buy_obj.status == "draft" and media_buy_obj.approved_at is not None:
+                        media_buy_obj.status = "pending_creatives"
+                        logger.info(
+                            f"[UPDATE] Media buy {actual_media_buy_id} transitioned from draft to pending_creatives "
+                            f"(creative_assignments processed: {updated_assignments})"
+                        )
 
                     session.commit()
 

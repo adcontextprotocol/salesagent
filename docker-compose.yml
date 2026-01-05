@@ -75,7 +75,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    entrypoint: []  # Override image entrypoint for local dev
+    entrypoint: [] # Override image entrypoint for local dev
     env_file:
       - path: .env
         required: false
@@ -101,6 +101,11 @@ services:
       # Mount source code for hot reloading
       - .:/app
       - /app/.venv
+
+      # Mount local adcp library directly into venv (replaces installed package)
+      # - ../adcp-client-python/src/adcp:/app/.venv/lib/python3.12/site-packages/adcp:ro - Uncomment this if you want to use locally installed adcp-python-client for e2e testing purposes
+
+      # Optional: Mount audit logs
       - ./audit_logs:/app/audit_logs
       # Shared cache volumes for faster builds
       - adcp_global_pip_cache:/root/.cache/pip
@@ -116,7 +121,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    entrypoint: []  # Override image entrypoint for local dev
+    entrypoint: [] # Override image entrypoint for local dev
     env_file:
       - path: .env
         required: false
@@ -138,6 +143,9 @@ services:
       # Mount source code for hot reloading
       - .:/app
       - /app/.venv
+      # Mount local adcp library directly into venv (replaces installed package)
+      # - ../adcp-client-python/src/adcp:/app/.venv/lib/python3.12/site-packages/adcp:ro - Uncomment this if you want to use locally installed adcp-python-client for e2e testing purposes
+
       - ./audit_logs:/app/audit_logs
       # Shared cache volumes for faster builds
       - adcp_global_pip_cache:/root/.cache/pip

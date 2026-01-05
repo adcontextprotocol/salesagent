@@ -1916,7 +1916,7 @@ class WebhookDeliveryLog(Base):
         String, ForeignKey("media_buys.media_buy_id", ondelete="CASCADE"), nullable=False
     )
     webhook_url: Mapped[str] = mapped_column(String, nullable=False)
-    task_type: Mapped[str] = mapped_column(String, nullable=False)  # "delivery_report"
+    task_type: Mapped[str] = mapped_column(String, nullable=False)  # "media_buy_delivery"
 
     # AdCP webhook metadata
     sequence_number: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")

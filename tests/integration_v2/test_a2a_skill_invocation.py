@@ -10,7 +10,7 @@ import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
-from a2a.types import DataPart, Message, MessageSendParams, Part, Role, Task, TaskStatus
+from a2a.types import DataPart, Message, MessageSendParams, Part, Role, Task, TaskState, TaskStatus
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from tests.utils.a2a_helpers import create_a2a_message_with_skill, create_a2a_text_message
@@ -405,6 +405,62 @@ class TestA2ASkillInvocation:
             # Verify packages are properly serialized (this would have caught the bug!)
             assert "packages" in artifact_data
             assert isinstance(artifact_data["packages"], list)
+
+    @pytest.mark.asyncio
+    async def test_explicit_skill_create_media_buy_manual_approval(
+        self, handler, sample_tenant, sample_principal, sample_products, validator
+    ):
+        """Test create_media_buy returns status=submitted when manual approval required."""
+        # Update tenant to require manual approval
+        from src.core.database.database_session import get_db_session
+        from src.core.database.models import Tenant
+
+        with get_db_session() as session:
+            tenant = session.get(Tenant, sample_tenant["tenant_id"])
+            tenant.human_review_required = True
+            session.commit()
+
+        # Mock authentication token
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        # Mock tenant detection
+        with (patch("src.a2a_server.adcp_a2a_server.get_principal_from_token") as mock_get_principal,):
+            mock_get_principal.return_value = sample_principal["principal_id"]
+            from src.a2a_server import adcp_a2a_server
+
+            adcp_a2a_server._request_headers.set({"host": f"{sample_tenant['subdomain']}.example.com"})
+
+            # Create explicit skill invocation message
+            from datetime import UTC, datetime, timedelta
+
+            start_date = datetime.now(UTC) + timedelta(days=1)
+            end_date = start_date + timedelta(days=30)
+
+            skill_params = {
+                "brand_manifest": {"name": "Test Campaign"},
+                "packages": [
+                    {
+                        "buyer_ref": f"pkg_{sample_products[0]}",
+                        "product_id": sample_products[0],
+                        "budget": 10000.0,
+                        "pricing_option_id": "cpm_usd_fixed",
+                    }
+                ],
+                "budget": {"total": 10000.0, "currency": "USD"},
+                "start_time": start_date.isoformat(),
+                "end_time": end_date.isoformat(),
+            }
+            message = create_a2a_message_with_skill("create_media_buy", skill_params)
+            params = MessageSendParams(message=message)
+
+            # Process the message
+            result = await handler.on_message_send(params)
+
+            # Verify the result has status=submitted (manual approval required)
+            assert isinstance(result, Task)
+            assert result.status.state == TaskState.submitted
+            # Per A2A spec, tasks requiring approval should not have artifacts until approved
+            assert result.artifacts is None
 
     @pytest.mark.asyncio
     async def test_hybrid_invocation(self, handler, sample_tenant, sample_principal, sample_products, validator):

@@ -396,7 +396,7 @@ async def test_gam_cpm_guaranteed_creates_standard_line_item(setup_gam_tenant_wi
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -453,7 +453,7 @@ async def test_gam_cpc_creates_price_priority_line_item_with_clicks_goal(setup_g
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -511,7 +511,7 @@ async def test_gam_vcpm_creates_standard_line_item_with_viewable_impressions(set
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -570,7 +570,7 @@ async def test_gam_flat_rate_calculates_cpd_correctly(setup_gam_tenant_with_all_
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,
@@ -640,7 +640,7 @@ async def test_gam_multi_package_mixed_pricing_models(setup_gam_tenant_with_all_
         testing_context={"dry_run": True, "test_session_id": "test_session"},
     )
 
-    response = await _create_media_buy_impl(
+    response, _ = await _create_media_buy_impl(
         buyer_ref=request.buyer_ref,
         brand_manifest=request.brand_manifest,
         packages=request.packages,

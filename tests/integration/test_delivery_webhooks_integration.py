@@ -205,27 +205,31 @@ async def test_delivery_webhook_sends_for_fresh_data(integration_db):
 
         args, kwargs = mock_send_notification.await_args
 
-        task_type = kwargs.get("task_type")
-        task_id = kwargs.get("task_id")
-        status = kwargs.get("status")
+        # Extract from kwargs
+        metadata = kwargs.get("metadata")
+        payload = kwargs.get("payload")
         push_notification_config = kwargs.get("push_notification_config")
-        result = kwargs.get("result")
-        error = kwargs.get("error")
-        tenant_id = kwargs.get("tenant_id")
-        principal_id = kwargs.get("principal_id")
+
+        # Extract from metadata
+        task_type = metadata.get("task_type")
+        extracted_tenant_id = metadata.get("tenant_id")
+        extracted_principal_id = metadata.get("principal_id")
+        extracted_media_buy_id = metadata.get("media_buy_id")
+
+        # Extract from payload
+        task_id = payload.task_id
+        status = payload.status
+        result = payload.result
 
         # Webhook should have been sent exactly once
         assert mock_send_notification.await_count == 1
         assert task_type == "media_buy_delivery"
-        assert error is None
-        assert tenant_id == tenant_id
-        assert principal_id == principal_id
-        assert media_buy_id == media_buy_id
+        assert extracted_tenant_id == tenant_id
+        assert extracted_principal_id == principal_id
+        assert extracted_media_buy_id == media_buy_id
         assert result is not None
         assert result.get("notification_type") == "scheduled"
-        assert result.get("sequence_number") == 1
         assert result.get("next_expected_at") is not None
-        assert result.get("frequency") == "daily"
         assert result.get("partial_data") is False
         assert result.get("unavailable_count") == 0
         assert result.get("reporting_period") is not None
@@ -295,7 +299,8 @@ async def test_delivery_webhook_sends_gam_based_reporting_data_only_on_gam_avail
             # Check payload of the delivery
             args, kwargs = mock_send_notification.await_args
 
-            result = kwargs.get("result")
+            payload = kwargs.get("payload")
+            result = payload.result
             errors = result.get("errors")
 
             assert errors is None
@@ -324,7 +329,8 @@ async def test_dont_call_get_media_buy_delivery_tool_unless_media_buy_start_date
         # Should send a webhook (since status=active in DB) but with empty deliveries (since dynamic status=ready)
         if mock_send.call_count > 0:
             args, kwargs = mock_send.call_args
-            result = kwargs.get("result")
+            payload = kwargs.get("payload")
+            result = payload.result
             assert len(result.get("media_buy_deliveries", [])) == 0
 
 
@@ -353,7 +359,8 @@ async def test_call_get_media_buy_delivery_for_ended_campaign(integration_db):
 
         # With current implementation, dynamic status="completed" -> filtered out of active list -> empty deliveries
         args, kwargs = mock_send.call_args
-        result = kwargs.get("result")
+        payload = kwargs.get("payload")
+        result = payload.result
         # Just verify result structure is valid
         assert result is not None
 

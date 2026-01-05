@@ -15,6 +15,11 @@ from src.core.database.models import (
 from src.core.database.models import (
     PushNotificationConfig as DBPushNotificationConfig,
 )
+from a2a.types import Task, TaskStatusUpdateEvent
+from adcp import create_a2a_webhook_payload, create_mcp_webhook_payload
+from adcp.types import McpWebhookPayload, SyncCreativesSuccessResponse, CreativeAction, SyncCreativeResult
+from adcp.types.generated_poc.core.context import ContextObject
+from adcp.webhooks import GeneratedTaskStatus
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 # TODO: Missing module - these functions need to be implemented
@@ -67,94 +72,42 @@ def _cleanup_completed_tasks():
         for task_id in completed_tasks:
             del _ai_review_tasks[task_id]
             logger.debug(f"Cleaned up completed AI review task: {task_id}")
-    """Call webhook to notify about creative status change with retry logic.
 
-    Args:
-        webhook_url: URL to POST notification to
-        creative_id: Creative ID
-        status: New status (approved, rejected, pending)
-        creative_data: Optional creative data to include
-        tenant_id: Optional tenant ID for signature verification
 
-    Returns:
-        bool: True if webhook delivered successfully, False otherwise
-    """
-    from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
+def _compute_media_buy_status_from_flight_dates(media_buy) -> str:
+    """Compute status based on flight dates: 'active' if within window, else 'scheduled'."""
+    now = datetime.now(UTC)
 
-    try:
-        # Build payload
-        payload = {
-            "object_type": "creative",
-            "object_id": creative_id,
-            "status": status,
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
+    start_time = None
+    if media_buy.start_time:
+        raw_start = media_buy.start_time
+        start_time = raw_start.replace(tzinfo=UTC) if raw_start.tzinfo is None else raw_start.astimezone(UTC)
+    elif media_buy.start_date:
+        start_time = datetime.combine(media_buy.start_date, datetime.min.time()).replace(tzinfo=UTC)
 
-        if creative_data:
-            payload["creative_data"] = creative_data
+    end_time = None
+    if media_buy.end_time:
+        raw_end = media_buy.end_time
+        end_time = raw_end.replace(tzinfo=UTC) if raw_end.tzinfo is None else raw_end.astimezone(UTC)
+    elif media_buy.end_date:
+        end_time = datetime.combine(media_buy.end_date, datetime.max.time()).replace(tzinfo=UTC)
 
-        headers = {"Content-Type": "application/json"}
+    # If start time passed and end time not passed, set to active
+    if start_time and end_time and now >= start_time and now <= end_time:
+        return "active"
 
-        # Get signing secret from tenant
-        signing_secret = None
-        if tenant_id:
-            try:
-                with get_db_session() as db_session:
-                    stmt = select(Tenant).filter_by(tenant_id=tenant_id)
-                    tenant = db_session.scalars(stmt).first()
-                    if tenant and hasattr(tenant, "admin_token") and tenant.admin_token:
-                        signing_secret = tenant.admin_token
-            except Exception as e:
-                logger.warning(f"Could not fetch tenant for signature: {e}")
-
-        # Create delivery configuration
-        delivery = WebhookDelivery(
-            webhook_url=webhook_url,
-            payload=payload,
-            headers=headers,
-            max_retries=3,
-            timeout=10,
-            signing_secret=signing_secret,
-            event_type="creative.status_changed",
-            tenant_id=tenant_id,
-            object_id=creative_id,
-        )
-
-        # Deliver with retry
-        success, result = deliver_webhook_with_retry(delivery)
-
-        if success:
-            logger.info(
-                f"Successfully delivered webhook for creative {creative_id} status={status} "
-                f"(attempts={result['attempts']}, delivery_id={result['delivery_id']})"
-            )
-        else:
-            logger.error(
-                f"Failed to deliver webhook for creative {creative_id} after {result['attempts']} attempts: "
-                f"{result.get('error', 'Unknown error')} (delivery_id={result['delivery_id']})"
-            )
-
-        return success
-
-    except Exception as e:
-        logger.error(f"Error setting up webhook delivery for creative {creative_id}: {e}", exc_info=True)
-        return False
+    return "scheduled"
 
 
 async def _call_webhook_for_creative_status(
     db_session,
     creative_id,
-    result,
     tenant_id: str | None = None,
 ):
     """Send protocol-level push notification for creative status update.
 
     Checks if all creatives in the sync_creatives task have been reviewed.
     Only fires the webhook when ALL creatives have been reviewed (approved or rejected).
-
-    This implements the semantic that sync_creatives task status should be:
-    - 'submitted' when any creatives are pending review
-    - 'completed' when all creatives have been reviewed
 
     Returns:
         bool: True if webhook delivered successfully, False otherwise (or if no config found)
@@ -209,18 +162,28 @@ async def _call_webhook_for_creative_status(
         logger.info(f"All {len(all_creatives)} creatives in task {step.step_id} have been reviewed; firing webhook")
 
         # Build SyncCreativesResponse with all creative results
-        complete_result = {
-            "creatives": [
-                {
-                    "creative_id": c.creative_id,
-                    "name": c.name,
-                    "format": c.format,
-                    "status": c.status,
-                    "action": "updated",  # They were reviewed/updated
-                }
-                for c in all_creatives
-            ]
-        }
+
+        creatives: list[SyncCreativeResult] = [
+            SyncCreativeResult(
+                creative_id=c.creative_id,
+                platform_id="", # we need to populate this. Currently not storing any internal id of our own per creative
+                action=CreativeAction.failed if c.status != "approved" else CreativeAction.created,
+                errors=[c.data.get("rejection_reason")] if c.data and c.data.get("rejection_reason") else []
+            )
+            for c in all_creatives
+        ]
+        
+        # Convert context dict to ContextObject if present
+        context_data = step.request_data.get("context")
+        context_obj: ContextObject | None = None
+        if context_data and isinstance(context_data, dict):
+            context_obj = ContextObject.model_construct(**context_data)
+
+        complete_result = SyncCreativesSuccessResponse(
+            creatives=creatives,
+            dry_run=False,
+            context=context_obj
+        )
 
         # build push notification config from step request data
         # this is because we don't store push notification config in the database when creating the creative
@@ -262,13 +225,37 @@ async def _call_webhook_for_creative_status(
             logger.info("error: None")
             logger.info(f"push_notification_config: {push_notification_config}")
 
+            # Determine protocol type from workflow step request_data
+            protocol = step.request_data.get("protocol", "mcp")  # Default to MCP for backward compatibility
+
+            # Create appropriate webhook payload based on protocol
+            # Convert result to dict for webhook payload functions
+            result_dict = complete_result.model_dump(mode="json")
+
+            payload: Task | TaskStatusUpdateEvent | McpWebhookPayload
+            if protocol == "a2a":
+                payload = create_a2a_webhook_payload(
+                    task_id=step.step_id,
+                    status=GeneratedTaskStatus.completed,
+                    result=result_dict,
+                    context_id=step.context_id
+                )
+            else:
+                # TODO: Fix in adcp python client - create_mcp_webhook_payload should return
+                # McpWebhookPayload instead of dict[str, Any] for proper type safety
+                mcp_payload_dict = create_mcp_webhook_payload(step.step_id, GeneratedTaskStatus.completed, result_dict)
+                payload = McpWebhookPayload.model_construct(**mcp_payload_dict)
+
+            metadata = {
+                "task_type": step.tool_name
+                # TODO: @yusuf - check if we were passing principal_id and tenant to this previously
+                # TODO: @yusuf - check if we want to make metadata typed
+            }
+
             await service.send_notification(
                 push_notification_config=push_notification_config,
-                task_id=step.step_id,
-                task_type=step.tool_name,
-                status="completed",
-                result=complete_result,
-                error=None,
+                payload=payload,
+                metadata=metadata
             )
 
             logger.info(
@@ -480,25 +467,10 @@ def approve_creative(tenant_id, creative_id, **kwargs):
 
             db_session.commit()
 
-            # need to make sure this is complient with AdCP standard
-            result = {
-                "creatives": [
-                    {
-                        "creative_id": creative.creative_id,
-                        "name": creative.name,
-                        "format": creative.format,
-                        "status": "approved",
-                        "approved_by": approved_by,
-                        "approved_at": creative.approved_at.isoformat(),
-                    }
-                ]
-            }
-
             asyncio.run(
                 _call_webhook_for_creative_status(
                     db_session=db_session,
                     creative_id=creative_id,
-                    result=result,
                     tenant_id=tenant_id,
                 )
             )
@@ -566,7 +538,7 @@ def approve_creative(tenant_id, creative_id, **kwargs):
                 logger.info(f"[CREATIVE APPROVAL] Media buy {media_buy_id} status: {media_buy.status}")
 
                 # Only check if media buy is waiting for creatives
-                if media_buy.status == "pending_creatives":
+                if media_buy.status == "pending_creatives" or media_buy.status == "draft":
                     # Get all creative assignments for this media buy
                     stmt_all_assignments = select(CreativeAssignment).filter_by(media_buy_id=media_buy_id)
                     all_assignments = db_session.scalars(stmt_all_assignments).all()
@@ -596,13 +568,14 @@ def approve_creative(tenant_id, creative_id, **kwargs):
                         success, error_msg = execute_approved_media_buy(media_buy_id, tenant_id)
 
                         if success:
-                            # Update media buy status
-                            media_buy.status = "scheduled"
+                            # Update media buy status based on flight dates
+                            new_status = _compute_media_buy_status_from_flight_dates(media_buy)
+                            media_buy.status = new_status
                             media_buy.approved_at = datetime.now(UTC)
                             media_buy.approved_by = "system"
                             db_session.commit()
 
-                            logger.info(f"[CREATIVE APPROVAL] Media buy {media_buy_id} successfully created in adapter")
+                            logger.info(f"[CREATIVE APPROVAL] Media buy {media_buy_id} successfully created in adapter, status={new_status}")
                         else:
                             logger.error(f"[CREATIVE APPROVAL] Adapter creation failed for {media_buy_id}: {error_msg}")
                             # Leave status as pending_creatives so admin can retry
@@ -693,24 +666,9 @@ def reject_creative(tenant_id, creative_id, **kwargs):
 
             db_session.commit()
 
-            # need to make sure this is complient with AdCP standard
-            result = {
-                "creatives": [
-                    {
-                        "creative_id": creative.creative_id,
-                        "name": creative.name,
-                        "format": creative.format,
-                        "status": "rejected",
-                        "rejected_by": rejected_by,
-                        "rejection_reason": rejection_reason,
-                        "rejected_at": creative.data["rejected_at"],
-                    }
-                ]
-            }
-
             asyncio.run(
                 _call_webhook_for_creative_status(
-                    db_session=db_session, creative_id=creative_id, result=result, tenant_id=tenant_id
+                    db_session=db_session, creative_id=creative_id, tenant_id=tenant_id
                 )
             )
 
@@ -869,7 +827,7 @@ async def _ai_review_creative_async(
                     }
                     asyncio.run(
                         _call_webhook_for_creative_status(
-                            db_session=session, creative_id=creative_id, result=result, tenant_id=tenant_id
+                            db_session=session, creative_id=creative_id, tenant_id=tenant_id
                         )
                     )
                     logger.info(f"[AI Review Async] Webhook called for {creative_id}")

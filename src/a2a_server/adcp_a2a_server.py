@@ -97,6 +97,8 @@ from src.core.tools import (
 from src.core.tools import (
     update_performance_index_raw as core_update_performance_index_tool,
 )
+from adcp import create_a2a_webhook_payload
+from adcp.types import GeneratedTaskStatus
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 
@@ -392,7 +394,14 @@ class AdCPRequestHandler(RequestHandler):
         result: dict[str, Any] | None = None,
         error: str | None = None,
     ):
-        """Send protocol-level push notification if configured."""
+        """Send protocol-level push notification if configured.
+
+        Per AdCP A2A spec (https://docs.adcontextprotocol.org/docs/protocols/a2a-guide#push-notifications-a2a-specific):
+        - Final states (completed, failed, canceled): Send full Task object with artifacts
+        - Intermediate states (working, input-required, submitted): Send TaskStatusUpdateEvent
+
+        Uses create_a2a_webhook_payload from adcp library to automatically select correct type.
+        """
         try:
             # Check if task has push notification config in metadata
             if not task.metadata or "push_notification_config" not in task.metadata:
@@ -401,22 +410,20 @@ class AdCPRequestHandler(RequestHandler):
             webhook_config = task.metadata["push_notification_config"]
             push_notification_service = get_protocol_webhook_service()
 
-            # build push notification config from step request data
             from uuid import uuid4
 
-            cfg_dict = webhook_config.get("push_notification_config") or {}
-            url = cfg_dict.get("url")
+            url = webhook_config.get("url")
             if not url:
                 logger.info("[red]No push notification URL present; skipping webhook[/red]")
                 return
 
-            authentication = cfg_dict.get("authentication") or {}
+            authentication = webhook_config.get("authentication") or {}
             schemes = authentication.get("schemes") or []
             auth_type = schemes[0] if isinstance(schemes, list) and schemes else None
             auth_token = authentication.get("credentials")
 
             push_notification_config = DBPushNotificationConfig(
-                id=cfg_dict.get("id") or f"pnc_{uuid4().hex[:16]}",
+                id=webhook_config.get("id") or f"pnc_{uuid4().hex[:16]}",
                 tenant_id="",
                 principal_id="",
                 url=url,
@@ -425,13 +432,38 @@ class AdCPRequestHandler(RequestHandler):
                 is_active=True,
             )
 
+            # Convert status string to GeneratedTaskStatus enum
+            try:
+                status_enum = GeneratedTaskStatus(status)
+            except ValueError:
+                # Fallback for unknown status values
+                logger.warning(f"Unknown status '{status}', defaulting to 'working'")
+                status_enum = GeneratedTaskStatus.working
+
+            # Build result data for the webhook payload
+            # Include error information in result if status is failed
+            result_data: dict[str, Any] = result or {}
+            if error and status == "failed":
+                result_data["error"] = error
+
+            # Use create_a2a_webhook_payload to get the correct payload type:
+            # - Task for final states (completed, failed, canceled)
+            # - TaskStatusUpdateEvent for intermediate states (working, input-required, submitted)
+            payload = create_a2a_webhook_payload(
+                task_id=task.id,
+                status=status_enum,
+                context_id=task.context_id or "",
+                result=result_data,
+            )
+
+            metadata = {
+                "task_type": task.metadata['skills_requested'][0] if len(task.metadata['skills_requested']) > 0 else 'unknown',
+            }
+
             await push_notification_service.send_notification(
                 push_notification_config=push_notification_config,
-                task_id=task.id,
-                task_type="task",
-                status=status,
-                result=result,
-                error=error,
+                payload=payload,
+                metadata=metadata
             )
         except Exception as e:
             # Don't fail the task if webhook fails
@@ -560,11 +592,12 @@ class AdCPRequestHandler(RequestHandler):
         # Extract push notification config from protocol layer (A2A MessageSendConfiguration)
         push_notification_config = None
         if hasattr(params, "configuration") and params.configuration:
-            if hasattr(params.configuration, "pushNotificationConfig"):
-                push_notification_config = params.configuration.pushNotificationConfig
-                logger.info(
-                    f"Protocol-level push notification config provided for task {task_id}: {push_notification_config.url}"
-                )
+            if hasattr(params.configuration, "push_notification_config"):
+                push_notification_config = params.configuration.push_notification_config
+                if push_notification_config:
+                    logger.info(
+                        f"Protocol-level push notification config provided for task {task_id}: {push_notification_config.url}"
+                    )
 
         # Prepare task metadata with both invocation types
         task_metadata: dict[str, Any] = {
@@ -637,7 +670,10 @@ class AdCPRequestHandler(RequestHandler):
                     logger.info(f"Processing explicit skill: {skill_name} with parameters: {parameters}")
 
                     try:
-                        result = await self._handle_explicit_skill(skill_name, parameters, auth_token)
+                        result = await self._handle_explicit_skill(
+                            skill_name, parameters, auth_token,
+                            push_notification_config=task_metadata.get("push_notification_config")
+                        )
                         results.append({"skill": skill_name, "result": result, "success": True})
                     except ServerError:
                         # ServerError should bubble up immediately (JSON-RPC error)
@@ -645,6 +681,20 @@ class AdCPRequestHandler(RequestHandler):
                     except Exception as e:
                         logger.error(f"Error in explicit skill {skill_name}: {e}")
                         results.append({"skill": skill_name, "error": str(e), "success": False})
+
+                # Check for submitted status (manual approval required) - return early without artifacts
+                # Per AdCP spec, async operations should return Task with status=submitted and no artifacts
+                for res in results:
+                    if res["success"] and isinstance(res["result"], dict):
+                        result_status = res["result"].get("status")
+                        if result_status == "submitted":
+                            task.status = TaskStatus(state=TaskState.submitted)
+                            task.artifacts = None  # No artifacts for pending tasks
+                            logger.info(f"Task {task_id} requires manual approval, returning status=submitted with no artifacts")
+                            # Send protocol-level webhook notification
+                            await self._send_protocol_webhook(task, status="submitted")
+                            self.tasks[task_id] = task
+                            return task
 
                 # Create artifacts for all skill results with human-readable text
                 for i, res in enumerate(results):
@@ -924,11 +974,17 @@ class AdCPRequestHandler(RequestHandler):
                                         task_state = TaskState.submitted
                                         task_status_str = "submitted"
 
+                                    # Check for explicit status field (e.g., create_media_buy returns this)
+                                    result_status = part.data.get("status")
+                                    if result_status == "submitted":
+                                        task_state = TaskState.submitted
+                                        task_status_str = "submitted"
+
             # Mark task with appropriate status
             task.status = TaskStatus(state=task_state)
 
             # Send protocol-level webhook notification if configured
-            await self._send_protocol_webhook(task, status=task_status_str, result=result_data)
+            await self._send_protocol_webhook(task, status=task_status_str)
 
         except ServerError:
             # Re-raise ServerError as-is (will be caught by JSON-RPC handler)
@@ -960,7 +1016,16 @@ class AdCPRequestHandler(RequestHandler):
 
             # Send protocol-level webhook notification for failure if configured
             task.status = TaskStatus(state=TaskState.failed)
-            await self._send_protocol_webhook(task, status="failed", error=str(e))
+            # Attach error to task artifacts
+            task.artifacts = [
+                Artifact(
+                    artifact_id="error_1",
+                    name="processing_error",
+                    parts=[Part(root=DataPart(data={"error": str(e), "error_type": type(e).__name__}))],
+                )
+            ]
+
+            await self._send_protocol_webhook(task, status="failed")
 
             # Raise ServerError instead of creating failed task
             raise ServerError(InternalError(message=f"Message processing failed: {str(e)}"))
@@ -1338,7 +1403,13 @@ class AdCPRequestHandler(RequestHandler):
             logger.error(f"Error deleting push notification config: {e}")
             raise ServerError(InternalError(message=f"Failed to delete push notification config: {str(e)}"))
 
-    async def _handle_explicit_skill(self, skill_name: str, parameters: dict, auth_token: str | None) -> dict:
+    async def _handle_explicit_skill(
+        self,
+        skill_name: str,
+        parameters: dict,
+        auth_token: str | None,
+        push_notification_config: dict | None = None,
+    ) -> dict:
         """Handle explicit AdCP skill invocations.
 
         Maps skill names to appropriate handlers and validates parameters.
@@ -1347,6 +1418,7 @@ class AdCPRequestHandler(RequestHandler):
             skill_name: The AdCP skill name (e.g., "get_products")
             parameters: Dictionary of skill-specific parameters
             auth_token: Bearer token for authentication (optional for discovery endpoints)
+            push_notification_config: Push notification config from A2A protocol layer
 
         Returns:
             Dictionary containing the skill result
@@ -1354,6 +1426,9 @@ class AdCPRequestHandler(RequestHandler):
         Raises:
             ValueError: For unknown skills or invalid parameters
         """
+        # Inject push_notification_config into parameters for skills that need it
+        if push_notification_config and skill_name in ("create_media_buy", "sync_creatives"):
+            parameters = {**parameters, "push_notification_config": push_notification_config}
         logger.info(f"Handling explicit skill: {skill_name} with parameters: {list(parameters.keys())}")
 
         # Validate auth_token for non-discovery skills
@@ -1584,6 +1659,11 @@ class AdCPRequestHandler(RequestHandler):
     async def _handle_sync_creatives_skill(self, parameters: dict, auth_token: str) -> dict:
         """Handle explicit sync_creatives skill invocation (AdCP spec endpoint)."""
         try:
+            # DEBUG: Log incoming parameters
+            logger.info(f"[A2A sync_creatives] Received parameters keys: {list(parameters.keys())}")
+            logger.info(f"[A2A sync_creatives] assignments param: {parameters.get('assignments')}")
+            logger.info(f"[A2A sync_creatives] creatives count: {len(parameters.get('creatives', []))}")
+
             # Create ToolContext from A2A auth info
             tool_context = self._create_tool_context_from_a2a(
                 auth_token=auth_token,

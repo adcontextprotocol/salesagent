@@ -9,6 +9,11 @@ from typing import Any
 from rich.console import Console
 from sqlalchemy import select
 
+from a2a.types import Task, TaskStatusUpdateEvent
+from adcp import create_a2a_webhook_payload, create_mcp_webhook_payload
+from adcp.types import McpWebhookPayload
+from adcp.webhooks import GeneratedTaskStatus
+
 from src.core.database.database_session import DatabaseManager
 from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
 from src.services.protocol_webhook_service import get_protocol_webhook_service
@@ -328,6 +333,7 @@ class ContextManager(DatabaseManager):
             request_data={
                 "reason": reason,
                 "details": clarification_details,
+                "protocol": "mcp",  # Default to MCP for internal system actions
             },
             initial_comment=reason,
         )
@@ -650,6 +656,34 @@ class ContextManager(DatabaseManager):
                         f"[cyan]📤 Sending webhook to {push_notification_config.url} for {mapping.object_type} {mapping.object_id}[/cyan]"
                     )
 
+                    # Build webhook payload based on protocol type
+                    task_type_str = step.tool_name or mapping.action or "unknown"
+                    protocol = (step.request_data or {}).get("protocol", "mcp")  # Default to MCP
+                    try:
+                        status_enum = GeneratedTaskStatus(new_status)
+                    except ValueError:
+                        status_enum = GeneratedTaskStatus.unknown
+
+                    payload: Task | TaskStatusUpdateEvent | McpWebhookPayload
+                    if protocol == "a2a":
+                        payload = create_a2a_webhook_payload(
+                            task_id=step.step_id,
+                            status=status_enum,
+                            context_id=step.context_id,
+                            result=step.response_data or {},
+                        )
+                    else:
+                        # TODO: Fix in adcp python client - create_mcp_webhook_payload should return
+                        # McpWebhookPayload instead of dict[str, Any] for proper type safety
+                        mcp_payload_dict = create_mcp_webhook_payload(step.step_id, status_enum, step.response_data)
+                        payload = McpWebhookPayload.model_construct(**mcp_payload_dict)
+
+                    metadata: dict[str, Any] = {
+                        "task_type": task_type_str,
+                        "tenant_id": derived_tenant_id,
+                        "principal_id": derived_principal_id,
+                    }
+
                     try:
                         # If we're already in an event loop, schedule the send; otherwise run it directly
                         try:
@@ -657,11 +691,8 @@ class ContextManager(DatabaseManager):
                             task = loop.create_task(
                                 service.send_notification(
                                     push_notification_config=push_notification_config,
-                                    task_id=step.step_id,
-                                    task_type=step.tool_name or mapping.action or "unknown",
-                                    status=new_status,
-                                    result=step.response_data,
-                                    error=step.error_message,
+                                    payload=payload,
+                                    metadata=metadata,
                                 )
                             )
 
@@ -680,11 +711,8 @@ class ContextManager(DatabaseManager):
                             asyncio.run(
                                 service.send_notification(
                                     push_notification_config=push_notification_config,
-                                    task_id=step.step_id,
-                                    task_type=step.tool_name or mapping.action or "unknown",
-                                    status=new_status,
-                                    result=step.response_data,
-                                    error=step.error_message,
+                                    payload=payload,
+                                    metadata=metadata,
                                 )
                             )
                             console.print(
