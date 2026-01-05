@@ -401,7 +401,7 @@ See `docs/deployment.md` for platform-specific guides.
 from fastmcp.client import Client, StreamableHttpTransport
 
 headers = {"x-adcp-auth": "token"}
-transport = StreamableHttpTransport(url="http://localhost:8080/mcp/", headers=headers)
+transport = StreamableHttpTransport(url="http://localhost:8000/mcp/", headers=headers)
 client = Client(transport=transport)
 
 async with client:
