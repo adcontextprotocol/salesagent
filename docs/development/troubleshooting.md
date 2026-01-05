@@ -338,7 +338,7 @@ docker-compose exec postgres psql -U adcp_user adcp -c \
 #### "Tool not found" Error
 ```bash
 # List available tools
-curl -X POST http://localhost:8080/mcp/ \
+curl -X POST http://localhost:8000/mcp/ \
   -H "x-adcp-auth: YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"method": "list_tools"}'
@@ -495,15 +495,14 @@ services:
 ## Check System Health
 
 ```bash
-# Service health endpoints
-curl http://localhost:8080/health
-curl http://localhost:8001/health
+# Service health endpoints (via nginx proxy)
+curl http://localhost:8000/health
 
 # Database health
-docker-compose exec postgres pg_isready
+docker compose exec postgres pg_isready
 
 # Container health
-docker-compose ps adcp-server
+docker compose ps adcp-server
 ```
 
 ## Getting Help
@@ -565,15 +564,14 @@ Access via Admin UI Operations Dashboard.
 ### Health Monitoring
 
 ```bash
-# Check service health
-curl http://localhost:8080/health
-curl http://localhost:8001/health
+# Check service health (via nginx proxy)
+curl http://localhost:8000/health
 
 # Database status
-docker-compose exec postgres pg_isready
+docker compose exec postgres pg_isready
 
 # Container status
-docker-compose ps
+docker compose ps
 ```
 
 ## Operations Troubleshooting
