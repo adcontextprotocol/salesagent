@@ -273,15 +273,15 @@ def _extract_creative_url_and_dimensions(
 
 def _get_format_spec_sync(agent_url: str, format_id: str) -> Any | None:
     """Get format specification synchronously using asyncio.run().
-    
+
     This helper function wraps the async registry.get_format() call to make it
     usable in synchronous contexts. The registry uses in-memory cache (30min TTL)
     and falls back to the creative agent if not cached.
-    
+
     Args:
         agent_url: Creative agent URL
         format_id: Format ID to fetch
-        
+
     Returns:
         Format specification object or None if not found
     """
@@ -290,7 +290,7 @@ def _get_format_spec_sync(agent_url: str, format_id: str) -> Any | None:
     from src.core.creative_agent_registry import get_creative_agent_registry
 
     registry = get_creative_agent_registry()
-    
+
     try:
         return asyncio.run(registry.get_format(agent_url, format_id))
     except Exception as e:
@@ -1576,7 +1576,9 @@ async def _create_media_buy_impl(
                     # Use the first pricing option from the product
                     if product.pricing_options and len(product.pricing_options) > 0:
                         # Use the generated pricing_option_id format from the product's first option
+                        # Unwrap RootModel wrapper if present (adcp 2.14.0+ uses RootModel)
                         first_option = product.pricing_options[0]
+                        first_option = getattr(first_option, "root", first_option)
                         pricing_model = first_option.pricing_model.lower()
                         currency = first_option.currency.lower()
                         is_fixed = "fixed" if first_option.is_fixed else "auction"
@@ -1597,18 +1599,27 @@ async def _create_media_buy_impl(
                     product = product_map[package_product_ids[0]]
                     pricing_options = product.pricing_options or []
 
+                    # Helper to unwrap RootModel wrapper (adcp 2.14.0+ uses RootModel)
+                    def unwrap_po(po: Any) -> Any:
+                        return getattr(po, "root", po)
+
                     # Find the pricing option matching the package's pricing_model (legacy field)
                     first_package_pricing_model = getattr(first_package, "pricing_model", None)
                     if first_package_pricing_model and pricing_options:
                         matching_option = next(
-                            (po for po in pricing_options if po.pricing_model == first_package_pricing_model), None
+                            (
+                                unwrap_po(po)
+                                for po in pricing_options
+                                if unwrap_po(po).pricing_model == first_package_pricing_model
+                            ),
+                            None,
                         )
                         if matching_option:
                             request_currency = matching_option.currency
 
                     # If no pricing_model specified, use first pricing option's currency
                     if not request_currency and pricing_options:
-                        request_currency = pricing_options[0].currency
+                        request_currency = unwrap_po(pricing_options[0]).currency
 
             # Fallback to deprecated/legacy sources
             # Note: currency and budget fields no longer exist on CreateMediaBuyRequest per AdCP spec
