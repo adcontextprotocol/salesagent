@@ -135,9 +135,10 @@ Never hardcode `/api/endpoint` - breaks with nginx prefix.
 ## Project Overview
 
 Python-based AdCP sales agent with:
-- **MCP Server** (8080): FastMCP tools for AI agents
-- **Admin UI** (8001): Google OAuth secured interface
-- **A2A Server** (8091): python-a2a agent-to-agent communication
+- **Nginx Proxy** (8000): Unified entry point for all services
+- **MCP Server** (/mcp): FastMCP tools for AI agents
+- **Admin UI** (/): Google OAuth secured interface
+- **A2A Server** (/a2a): python-a2a agent-to-agent communication
 - **Multi-Tenant**: Database-backed isolation with subdomain routing
 - **PostgreSQL**: Production-ready with Docker deployment
 
@@ -190,28 +191,23 @@ if not self.supports_feature and feature_requested:
 
 ### Running Locally
 
-**For development (builds from local source with all dependencies):**
 ```bash
-docker-compose -f docker-compose.dev.yml build   # Build images from source
-docker-compose -f docker-compose.dev.yml up -d   # Start all services
-docker-compose -f docker-compose.dev.yml logs -f # View logs
-docker-compose -f docker-compose.dev.yml down    # Stop
-
-# Run migrations after starting
-docker-compose -f docker-compose.dev.yml exec admin-ui python scripts/ops/migrate.py
-
-# Access at http://localhost:8000
-# Test login: test_super_admin@example.com / test123
+docker compose up         # Start all services (migrations run automatically)
+docker compose logs -f    # View logs
+docker compose down       # Stop
 ```
 
-**For quickstart (uses pre-built images from GHCR):**
-```bash
-docker-compose up -d      # Start all services
-docker-compose logs -f    # View logs
-docker-compose down       # Stop
-```
+**Access via nginx proxy at http://localhost:8000:**
+- http://localhost:8000/ - Admin UI (login here)
+- http://localhost:8000/mcp - MCP Server (for AI agents)
+- http://localhost:8000/a2a - A2A Server (agent-to-agent)
 
-**Note:** Use `docker-compose.dev.yml` when developing features that add new dependencies (like `webauthn`). The dev compose builds images from local source code including `pyproject.toml` and `uv.lock`.
+**Test credentials:** `test_super_admin@example.com` / `test123`
+
+**Troubleshooting migrations:**
+```bash
+docker compose logs db-init  # Check migration output
+```
 
 ### Testing
 ```bash
@@ -231,10 +227,9 @@ uv run pytest tests/unit/test_adcp_contract.py -v
 ```bash
 uv run python scripts/ops/migrate.py            # Run migrations locally
 uv run alembic revision -m "description"        # Create migration
-
-# In Docker:
-docker-compose -f docker-compose.dev.yml exec admin-ui python scripts/ops/migrate.py
 ```
+
+Migrations run automatically on `docker compose up` via the `db-init` service.
 
 **Never modify existing migrations after commit!**
 
@@ -356,16 +351,15 @@ APPROXIMATED_API_KEY=your-approximated-api-key
 ## Deployment
 
 ### Three Environments
-- **Local Dev**: `docker-compose -f docker-compose.dev.yml up` → http://localhost:8000 (builds from source)
+- **Local Dev**: `docker compose up` → http://localhost:8000 (builds from source)
 - **Reference Sales Agent**: Fly.io → https://adcp-sales-agent.fly.dev (auto-deploys from main)
 - **Test Buyer**: https://testing.adcontextprotocol.org/ (OUR production tenant with mock adapter)
 
 **All three are INDEPENDENT** - Docker doesn't affect production.
 
 **Local Dev Notes:**
-- Use `docker-compose.dev.yml` for development (builds from local source)
-- Use `docker-compose.yml` for quickstart with pre-built images
-- Test mode enabled by default (`ADCP_AUTH_TEST_MODE=true`)
+- All services accessible through nginx proxy at port 8000
+- Migrations run automatically via `db-init` service
 - Test credentials: `test_super_admin@example.com` / `test123`
 
 ### Git Workflow (MANDATORY)
@@ -422,7 +416,7 @@ app = create_flask_app(agent)  # Provides all standard endpoints
 ```
 
 ### Admin UI
-- Local: http://localhost:8001
+- Local: http://localhost:8000 (via nginx proxy)
 - Production: Configure based on your hosting
 
 ---
