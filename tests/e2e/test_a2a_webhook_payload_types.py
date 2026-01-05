@@ -265,6 +265,13 @@ class TestA2AWebhookPayloadTypes:
             assert "id" in payload, "Task payload must have 'id' field"
             assert "status" in payload, "Task payload must have 'status' field"
 
+            # Per AdCP spec: completed status MUST have result in artifacts[0].parts[]
+            assert "artifacts" in payload, "Completed Task must have 'artifacts' field"
+            assert len(payload["artifacts"]) > 0, "Completed Task must have at least one artifact"
+            artifact = payload["artifacts"][0]
+            assert "parts" in artifact, "Artifact must have 'parts' field"
+            assert len(artifact["parts"]) > 0, "Artifact must have at least one part"
+
     @pytest.mark.asyncio
     async def test_submitted_status_sends_task_status_update_event(
         self,
@@ -362,6 +369,7 @@ class TestA2AWebhookPayloadTypes:
             payload = webhook["payload"]
             assert "taskId" in payload, "TaskStatusUpdateEvent payload must have 'taskId' field"
             assert "status" in payload, "TaskStatusUpdateEvent payload must have 'status' field"
+            assert "state" in payload["status"], "TaskStatusUpdateEvent.status must have 'state' field"
 
     @pytest.mark.asyncio
     async def test_webhook_payload_type_matches_status(
@@ -556,11 +564,13 @@ class TestWebhookPayloadStructure:
             status = payload["status"]
             assert "state" in status, "Task.status must have 'state' field"
 
-            # For completed/failed, artifacts should contain result data
+            # Per AdCP spec: completed/failed MUST have result in artifacts[0].parts[]
             if status["state"] in ("completed", "failed"):
-                # artifacts is optional but recommended for final states
-                if "artifacts" in payload:
-                    assert isinstance(payload["artifacts"], list), "artifacts must be a list"
+                assert "artifacts" in payload, f"Task with status '{status['state']}' must have 'artifacts'"
+                assert isinstance(payload["artifacts"], list), "artifacts must be a list"
+                assert len(payload["artifacts"]) > 0, "artifacts must have at least one item"
+                assert "parts" in payload["artifacts"][0], "artifact must have 'parts'"
+                assert len(payload["artifacts"][0]["parts"]) > 0, "artifact.parts must have at least one part"
 
     @pytest.mark.asyncio
     async def test_task_status_update_event_has_required_fields(
