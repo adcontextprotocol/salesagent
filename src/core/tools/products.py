@@ -190,23 +190,27 @@ async def _get_products_impl(
     # Extract offering text from brand_manifest
     offering = None
     if req.brand_manifest:
-        if isinstance(req.brand_manifest, str):
+        # Handle RootModel wrappers (e.g., BrandManifestReference wraps BrandManifest)
+        # adcp library uses RootModel for union types, so we need to unwrap
+        brand_manifest: Any = req.brand_manifest
+        if hasattr(brand_manifest, "root"):
+            brand_manifest = brand_manifest.root
+
+        if isinstance(brand_manifest, str):
             # brand_manifest is a URL string - use it as-is for now
-            # TODO: In future, fetch and parse the URL
-            offering = f"Brand at {req.brand_manifest}"
-        elif hasattr(req.brand_manifest, "__str__") and str(req.brand_manifest).startswith("http"):
-            # brand_manifest is AnyUrl object from Pydantic (schema_helpers converts str → AnyUrl)
-            offering = f"Brand at {req.brand_manifest}"
+            offering = f"Brand at {brand_manifest}"
+        elif hasattr(brand_manifest, "__str__") and str(brand_manifest).startswith("http"):
+            # brand_manifest is AnyUrl object from Pydantic
+            offering = f"Brand at {brand_manifest}"
         else:
             # brand_manifest is a BrandManifest object or dict
-            # Try to access as object first, then as dict
             # Per AdCP spec: either name OR url is required
-            if hasattr(req.brand_manifest, "name") and req.brand_manifest.name:
-                offering = req.brand_manifest.name
-            elif hasattr(req.brand_manifest, "url") and req.brand_manifest.url:
-                offering = f"Brand at {req.brand_manifest.url}"
-            elif isinstance(req.brand_manifest, dict):
-                offering = req.brand_manifest.get("name") or req.brand_manifest.get("url", "")
+            if hasattr(brand_manifest, "name") and brand_manifest.name:
+                offering = brand_manifest.name
+            elif hasattr(brand_manifest, "url") and brand_manifest.url:
+                offering = f"Brand at {brand_manifest.url}"
+            elif isinstance(brand_manifest, dict):
+                offering = brand_manifest.get("name") or brand_manifest.get("url", "")
 
     # Check brand_manifest_policy from tenant settings
     brand_manifest_policy = tenant.get("brand_manifest_policy", "require_auth")
