@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0](https://github.com/adcontextprotocol/salesagent/compare/v0.5.0...v0.6.0) (2026-01-05)
+
+
+### Features
+
+* Add GAM placement targeting for creative-level targeting (adcp[#208](https://github.com/adcontextprotocol/salesagent/issues/208)) ([#915](https://github.com/adcontextprotocol/salesagent/issues/915)) ([b2f9585](https://github.com/adcontextprotocol/salesagent/commit/b2f9585660eee9098c26f22adcf49636e1472ca7))
+* apply suggestions ([362513f](https://github.com/adcontextprotocol/salesagent/commit/362513fdfdcae1323d48b3d3ec2076142c131c66))
+* apply suggestions ([9b75990](https://github.com/adcontextprotocol/salesagent/commit/9b759903506f7cd9b49be5de068b65e848351c28))
+* improve e2e test for a2a push notification delivery v2 ([f9008b9](https://github.com/adcontextprotocol/salesagent/commit/f9008b9ccb4e96fdcbaba93bc2234e2f2f1804c5))
+* Make SSO optional for multi-tenant deployments ([#931](https://github.com/adcontextprotocol/salesagent/issues/931)) ([8ac80a1](https://github.com/adcontextprotocol/salesagent/commit/8ac80a143957dcf29e8b51457ec4f4e4cf44237d))
+* migrate push notification sending for media_buy ([6fa4cda](https://github.com/adcontextprotocol/salesagent/commit/6fa4cda0a587d7d4846f22641c5b6f44dab13298))
+* undo unrelated changes ([9a7e45f](https://github.com/adcontextprotocol/salesagent/commit/9a7e45f38f130b9de6efbb1b362dba2555ba4e62))
+* update webhook delivery function to support both mcp and a2a payloads ([7f41d98](https://github.com/adcontextprotocol/salesagent/commit/7f41d989ad254280b6cfd6c138352e4404242bff))
+* update webhook delivery function to support both mcp and a2a payloads ([27b2eaa](https://github.com/adcontextprotocol/salesagent/commit/27b2eaad01a7ad94939de710743f39bb79d2e61d))
+* wip ([0713543](https://github.com/adcontextprotocol/salesagent/commit/07135438371946932469d6676bc9bbd45add0acc))
+
+
+### Bug Fixes
+
+* adcp version; media buy status change; media buy delivery look up ([41dd1dc](https://github.com/adcontextprotocol/salesagent/commit/41dd1dc5a9fae67020e106589d9471a5eb8705e6))
+* Add Fly.io header middleware for proper HTTPS detection ([#920](https://github.com/adcontextprotocol/salesagent/issues/920)) ([a115fc9](https://github.com/adcontextprotocol/salesagent/commit/a115fc9f0e0f1a4f71385843ed80e074833b7482))
+* Add multi-admin domain support for cross-domain OAuth ([#919](https://github.com/adcontextprotocol/salesagent/issues/919)) ([f373ebb](https://github.com/adcontextprotocol/salesagent/commit/f373ebb1350fe55798b270a9ad8155c905593e5f))
+* Clear session before OAuth to prevent stale cookie conflicts ([#924](https://github.com/adcontextprotocol/salesagent/issues/924)) ([addab84](https://github.com/adcontextprotocol/salesagent/commit/addab84e7d3b280d3d157c416fb988d468b14d87))
+* Correct middleware ordering for Fly.io header processing ([#921](https://github.com/adcontextprotocol/salesagent/issues/921)) ([c4d373d](https://github.com/adcontextprotocol/salesagent/commit/c4d373dcc04ccae7074e426f24997f2c4d5ab212))
+* e2e webhook delivery check ([1599266](https://github.com/adcontextprotocol/salesagent/commit/159926689db9a986ef3bb8ef55359a864b3cd3b9))
+* Explicitly save session on OAuth redirect to persist state cookie ([#928](https://github.com/adcontextprotocol/salesagent/issues/928)) ([e78ae67](https://github.com/adcontextprotocol/salesagent/commit/e78ae67a1cd2f7638117a87f6a37823e678d2c8f))
+* Fix list_creatives enum serialization and invalid creative count ([#930](https://github.com/adcontextprotocol/salesagent/issues/930)) ([3d9c643](https://github.com/adcontextprotocol/salesagent/commit/3d9c64368a8956f8acc7948201be1c55c31906a5))
+* improve tests ([676690b](https://github.com/adcontextprotocol/salesagent/commit/676690bf82ef3aa750e553e0e9f3a75933344ec1))
+* integration test v2 ([756d6d4](https://github.com/adcontextprotocol/salesagent/commit/756d6d4cf7381fd63c9acdd6a2721bc33ac3fbcf))
+* integrations ([8050605](https://github.com/adcontextprotocol/salesagent/commit/805060535f16c5fb3bf7ce3d5168fa91af27efff))
+* link validator check for cyclic bugs ([91fe6f7](https://github.com/adcontextprotocol/salesagent/commit/91fe6f70e8d7ee0919bc79f72657c8bd76b3ae02))
+* mypy failures ([79de36d](https://github.com/adcontextprotocol/salesagent/commit/79de36d4393aac56614e19b83a32a2963f028a24))
+* Preserve tenant context on OAuth callback errors ([#918](https://github.com/adcontextprotocol/salesagent/issues/918)) ([c82760b](https://github.com/adcontextprotocol/salesagent/commit/c82760beddae4a9c4f376ae22395b680a2412466))
+* Preserve X-Forwarded-Proto from Fly.io through nginx ([#922](https://github.com/adcontextprotocol/salesagent/issues/922)) ([5eddd36](https://github.com/adcontextprotocol/salesagent/commit/5eddd36dd2d2e118e47db9f1f810470f2bde89ab))
+* Prevent redirect loop for super admins accessing /admin/ ([#929](https://github.com/adcontextprotocol/salesagent/issues/929)) ([95d7cac](https://github.com/adcontextprotocol/salesagent/commit/95d7cac07d98fe06b292f90de6a65f04689e8ab8))
+* Restore deleted migration to fix Fly.io deploy ([#914](https://github.com/adcontextprotocol/salesagent/issues/914)) ([2cfbccc](https://github.com/adcontextprotocol/salesagent/commit/2cfbccce8a0a2850f30d22f73970b3642cc28f1a))
+* Reuse unwrapped brand_manifest for policy checks ([#932](https://github.com/adcontextprotocol/salesagent/issues/932)) ([#935](https://github.com/adcontextprotocol/salesagent/issues/935)) ([03ba408](https://github.com/adcontextprotocol/salesagent/commit/03ba40841de09a85656f1d17cc864348ab8836eb))
+* Route multi-tenant subdomain requests to tenant-specific login ([#916](https://github.com/adcontextprotocol/salesagent/issues/916)) ([c0152db](https://github.com/adcontextprotocol/salesagent/commit/c0152dbce4d1965cf7f500e366cc5013092c6e87))
+* Run database migrations automatically on docker compose up ([#933](https://github.com/adcontextprotocol/salesagent/issues/933)) ([c5c73a8](https://github.com/adcontextprotocol/salesagent/commit/c5c73a80f356ca5c149026938ffdd7ae6b515c94))
+* run_all_tests ci ([3a1b1d2](https://github.com/adcontextprotocol/salesagent/commit/3a1b1d2f05780ad8990d149073d8fb38c6838aa2))
+* Show full values in Pydantic extra_forbidden errors ([#912](https://github.com/adcontextprotocol/salesagent/issues/912)) ([165d985](https://github.com/adcontextprotocol/salesagent/commit/165d985805edd5b35bdfbfec0768150f1b7a4696))
+* Task and TaskStatusUpdate serializations ([a8e7792](https://github.com/adcontextprotocol/salesagent/commit/a8e77926bfa5237e7dc2bdf74ba09d092bba7488))
+* Use global OAuth as fallback, not setup mode for multi-tenant ([#917](https://github.com/adcontextprotocol/salesagent/issues/917)) ([ef63349](https://github.com/adcontextprotocol/salesagent/commit/ef63349191e0f8002d304db6f9feda92b8b0cbc4))
+
+
+### Documentation
+
+* Update Docker Compose documentation to reflect nginx proxy architecture ([#934](https://github.com/adcontextprotocol/salesagent/issues/934)) ([5503768](https://github.com/adcontextprotocol/salesagent/commit/55037689c4ed5e58bebf24e65710c2ae8e646349))
+
 ## [0.5.0](https://github.com/adcontextprotocol/salesagent/compare/v0.4.1...v0.5.0) (2026-01-01)
 
 
