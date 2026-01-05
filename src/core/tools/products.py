@@ -187,30 +187,33 @@ async def _get_products_impl(
     principal = get_principal_object(principal_id) if principal_id else None
     principal_data = principal.model_dump() if principal else None
 
+    # Handle RootModel wrappers for brand_manifest (e.g., BrandManifestReference wraps BrandManifest)
+    # adcp library uses RootModel for union types, so we need to unwrap
+    # This unwrapped value is used for both offering extraction and policy checks
+    brand_manifest_unwrapped: Any = None
+    if req.brand_manifest:
+        brand_manifest_unwrapped = req.brand_manifest
+        if hasattr(brand_manifest_unwrapped, "root"):
+            brand_manifest_unwrapped = brand_manifest_unwrapped.root
+
     # Extract offering text from brand_manifest
     offering = None
-    if req.brand_manifest:
-        # Handle RootModel wrappers (e.g., BrandManifestReference wraps BrandManifest)
-        # adcp library uses RootModel for union types, so we need to unwrap
-        brand_manifest: Any = req.brand_manifest
-        if hasattr(brand_manifest, "root"):
-            brand_manifest = brand_manifest.root
-
-        if isinstance(brand_manifest, str):
+    if brand_manifest_unwrapped:
+        if isinstance(brand_manifest_unwrapped, str):
             # brand_manifest is a URL string - use it as-is for now
-            offering = f"Brand at {brand_manifest}"
-        elif hasattr(brand_manifest, "__str__") and str(brand_manifest).startswith("http"):
+            offering = f"Brand at {brand_manifest_unwrapped}"
+        elif hasattr(brand_manifest_unwrapped, "__str__") and str(brand_manifest_unwrapped).startswith("http"):
             # brand_manifest is AnyUrl object from Pydantic
-            offering = f"Brand at {brand_manifest}"
+            offering = f"Brand at {brand_manifest_unwrapped}"
         else:
             # brand_manifest is a BrandManifest object or dict
             # Per AdCP spec: either name OR url is required
-            if hasattr(brand_manifest, "name") and brand_manifest.name:
-                offering = brand_manifest.name
-            elif hasattr(brand_manifest, "url") and brand_manifest.url:
-                offering = f"Brand at {brand_manifest.url}"
-            elif isinstance(brand_manifest, dict):
-                offering = brand_manifest.get("name") or brand_manifest.get("url", "")
+            if hasattr(brand_manifest_unwrapped, "name") and brand_manifest_unwrapped.name:
+                offering = brand_manifest_unwrapped.name
+            elif hasattr(brand_manifest_unwrapped, "url") and brand_manifest_unwrapped.url:
+                offering = f"Brand at {brand_manifest_unwrapped.url}"
+            elif isinstance(brand_manifest_unwrapped, dict):
+                offering = brand_manifest_unwrapped.get("name") or brand_manifest_unwrapped.get("url", "")
 
     # Check brand_manifest_policy from tenant settings
     brand_manifest_policy = tenant.get("brand_manifest_policy", "require_auth")
@@ -265,14 +268,15 @@ async def _get_products_impl(
             tenant_policies = advertising_policy if advertising_policy else {}
 
             # Convert brand_manifest to dict if it's a BrandManifest object
+            # Use brand_manifest_unwrapped (already unwrapped from RootModel above)
             brand_manifest_dict = None
-            if req.brand_manifest:
-                if hasattr(req.brand_manifest, "model_dump"):
-                    brand_manifest_dict = req.brand_manifest.model_dump()
-                elif isinstance(req.brand_manifest, dict):
-                    brand_manifest_dict = req.brand_manifest
+            if brand_manifest_unwrapped:
+                if hasattr(brand_manifest_unwrapped, "model_dump"):
+                    brand_manifest_dict = brand_manifest_unwrapped.model_dump()
+                elif isinstance(brand_manifest_unwrapped, dict):
+                    brand_manifest_dict = brand_manifest_unwrapped
                 else:
-                    brand_manifest_dict = req.brand_manifest  # URL string
+                    brand_manifest_dict = brand_manifest_unwrapped  # URL string
 
             try:
                 policy_result = await policy_service.check_brief_compliance(
