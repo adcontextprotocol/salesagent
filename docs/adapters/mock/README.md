@@ -86,7 +86,7 @@ docker-compose exec adcp-server python -m scripts.setup.setup_tenant "Test Publi
 ### 2. Get Your Access Token
 
 **Via Admin UI:**
-1. Navigate to http://localhost:8001
+1. Navigate to http://localhost:8000
 2. Select your tenant
 3. Go to Principals
 4. Copy the access token
@@ -106,7 +106,7 @@ from fastmcp.client.transports import StreamableHttpTransport
 # Configure client
 headers = {"x-adcp-auth": "your_access_token"}
 transport = StreamableHttpTransport(
-    url="http://localhost:8080/mcp/",
+    url="http://localhost:8000/mcp/",
     headers=headers
 )
 
@@ -565,7 +565,7 @@ docker-compose exec postgres psql -U adcp_user -d adcp \
   -c "SELECT access_token FROM principals WHERE tenant_id = 'test';"
 
 # Test with curl (MCP)
-curl -X POST http://localhost:8080/mcp/ \
+curl -X POST http://localhost:8000/mcp/ \
   -H "x-adcp-auth: YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"method": "tools/list", "params": {}}'

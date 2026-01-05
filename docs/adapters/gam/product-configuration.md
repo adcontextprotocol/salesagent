@@ -249,10 +249,10 @@ python scripts/migrate_product_configs.py --tenant tenant_id --apply
 **In Development:**
 ```bash
 # Start Docker services
-docker-compose up -d
+docker compose up -d
 
 # Access Admin UI
-open http://localhost:8001
+open http://localhost:8000
 
 # Navigate to Products → GAM Config
 # Test inventory picker, priority slider, save/validation

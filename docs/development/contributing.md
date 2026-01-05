@@ -313,7 +313,7 @@ uv run python run_simulation.py
 uv run python run_simulation.py --dry-run --adapter gam
 
 # Custom scenarios
-uv run python simulation_full.py http://localhost:8080 \
+uv run python simulation_full.py http://localhost:8000 \
   --token "test_token" \
   --principal "test_principal"
 ```
@@ -597,14 +597,14 @@ python -m pdb script.py
 ```bash
 # Use MCP Inspector
 npm install -g @modelcontextprotocol/inspector
-npx inspector http://localhost:8080/mcp/
+npx inspector http://localhost:8000/mcp/
 
 # View server logs
-docker-compose logs -f adcp-server
+docker compose logs -f adcp-server
 
 # Test with curl
 curl -H "x-adcp-auth: your_token" \
-     http://localhost:8080/mcp/tools/get_products
+     http://localhost:8000/mcp/tools/get_products
 ```
 
 ### Database Debugging

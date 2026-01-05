@@ -118,7 +118,7 @@ If you haven't set these up yet, see your system administrator or cloud platform
 
 ### Step 1: Request Service Account Creation
 
-1. Log into the Admin UI (http://localhost:8001 or your production URL)
+1. Log into the Admin UI (http://localhost:8000 or your production URL)
 2. Navigate to **Tenant Settings** → **Ad Server**
 3. Select **Google Ad Manager** as your adapter
 4. Scroll to the **Service Account Integration** section
@@ -189,7 +189,7 @@ If you haven't set these up yet, see your system administrator or cloud platform
 
 #### Via Admin UI:
 
-1. Log into the Admin UI (http://localhost:8001 or your production URL)
+1. Log into the Admin UI (http://localhost:8000 or your production URL)
 2. Navigate to **Tenant Settings** → **Ad Server**
 3. Select **Service Account** as authentication method
 4. Upload or paste the contents of the JSON key file downloaded in Step 2
@@ -200,7 +200,7 @@ If you haven't set these up yet, see your system administrator or cloud platform
 #### Via API:
 
 ```bash
-curl -X POST http://localhost:8001/tenant/{tenant_id}/gam/configure \
+curl -X POST http://localhost:8000/tenant/{tenant_id}/gam/configure \
   -H "Content-Type: application/json" \
   -d '{
     "auth_method": "service_account",

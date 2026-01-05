@@ -71,7 +71,7 @@ These errors are resolved by the workflow system migration.
 The activity feed uses Server-Sent Events (SSE) for real-time updates.
 
 **Check:**
-1. SSE endpoint is accessible: `http://localhost:8001/admin/tenant/{tenant_id}/events`
+1. SSE endpoint is accessible: `http://localhost:8000/admin/tenant/{tenant_id}/events`
 2. Database audit_logs table is being populated
 3. No browser extensions blocking SSE connections
 
@@ -144,17 +144,17 @@ echo $SUPER_ADMIN_DOMAINS
 echo $GOOGLE_CLIENT_ID
 echo $GOOGLE_CLIENT_SECRET
 
-# Check redirect URI matches your deployment mode:
-# - Docker standalone (docker-compose): http://localhost:8001/auth/google/callback
-# - Production with nginx: https://your-domain.com/admin/auth/google/callback
+# Check redirect URI matches your deployment:
+# - Local Docker: http://localhost:8000/auth/google/callback
+# - Production: https://your-domain.com/admin/auth/google/callback
 ```
 
-#### OAuth Callback 404 in Docker Standalone
-If you get redirected to `/admin/auth/google/callback` but get a 404, your Google OAuth
-credentials are configured with the production path but you're running Docker standalone.
+#### OAuth Callback 404
+If you get redirected to a callback URL but get a 404, your Google OAuth
+credentials redirect URI doesn't match your deployment.
 
-**Fix**: Update your Google OAuth credentials to use `http://localhost:8001/auth/google/callback`
-(without the `/admin` prefix).
+**Fix**: Update your Google OAuth credentials to use `http://localhost:8000/auth/google/callback`
+for local development.
 
 #### Invalid Token for MCP API
 ```bash
@@ -288,7 +288,7 @@ See `docker-compose.override.example.yml` for complete configuration.
 
 3. Create OAuth credentials at [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
    - Create OAuth 2.0 Client ID (Web application)
-   - Add redirect URI: `http://localhost:8001/tenant/callback/gam`
+   - Add redirect URI: `http://localhost:8000/tenant/callback/gam`
 
 4. Restart services:
    ```bash
@@ -338,7 +338,7 @@ docker-compose exec postgres psql -U adcp_user adcp -c \
 #### "Tool not found" Error
 ```bash
 # List available tools
-curl -X POST http://localhost:8080/mcp/ \
+curl -X POST http://localhost:8000/mcp/ \
   -H "x-adcp-auth: YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"method": "list_tools"}'
@@ -451,7 +451,7 @@ docker-compose exec admin-ui python -c \
 # Or use incognito mode
 
 # Verify redirect URI in Google Console
-# Must match exactly: http://localhost:8001/auth/google/callback
+# Must match exactly: http://localhost:8000/auth/google/callback
 
 # Check session secret
 echo $FLASK_SECRET_KEY
@@ -495,15 +495,14 @@ services:
 ## Check System Health
 
 ```bash
-# Service health endpoints
-curl http://localhost:8080/health
-curl http://localhost:8001/health
+# Service health endpoints (via nginx proxy)
+curl http://localhost:8000/health
 
 # Database health
-docker-compose exec postgres pg_isready
+docker compose exec postgres pg_isready
 
 # Container health
-docker-compose ps adcp-server
+docker compose ps adcp-server
 ```
 
 ## Getting Help
@@ -565,15 +564,14 @@ Access via Admin UI Operations Dashboard.
 ### Health Monitoring
 
 ```bash
-# Check service health
-curl http://localhost:8080/health
-curl http://localhost:8001/health
+# Check service health (via nginx proxy)
+curl http://localhost:8000/health
 
 # Database status
-docker-compose exec postgres pg_isready
+docker compose exec postgres pg_isready
 
 # Container status
-docker-compose ps
+docker compose ps
 ```
 
 ## Operations Troubleshooting
