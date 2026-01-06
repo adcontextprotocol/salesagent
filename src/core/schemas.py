@@ -1277,11 +1277,13 @@ class Product(LibraryProduct):
         adcp_data = {}
         for key, value in data.items():
             # Include core fields always, and non-null optional fields
-            # Exclude empty pricing_options (for anonymous users)
-            if key == "pricing_options" and value == []:
-                continue
+            # Note: pricing_options=[] is valid for anonymous users (no pricing shown)
+            # Per AdCP spec, pricing_options is required but can be empty array
             if key in core_fields or value is not None:
                 adcp_data[key] = value
+            # Include empty pricing_options explicitly (required per AdCP schema)
+            elif key == "pricing_options" and value == []:
+                adcp_data[key] = []
 
         return adcp_data
 
