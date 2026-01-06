@@ -327,6 +327,7 @@ def callback():
                         tenant_id=tenant_id,
                         email=email.lower(),
                         name=user_info.get("name", email),
+                        role="admin",  # RBAC not yet implemented
                         is_active=True,
                         created_at=datetime.now(UTC),
                     )
