@@ -535,7 +535,74 @@
                             <small>Cannot be changed after creation</small>
                         </div>
                         {% endif %}
+                    </div>
+                </div>
 
+                <!-- Branding Section -->
+                <div class="form-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e5e7eb;">
+                    <h3>Branding</h3>
+                    <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1.5rem;">
+                        Customize the appearance of your admin interface
+                    </p>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Favicon</label>
+                            <p style="color: #6b7280; font-size: 0.875rem; margin-bottom: 1rem;">
+                                Upload a custom favicon or provide a URL. Supported formats: ICO, PNG, SVG (max 1MB)
+                            </p>
+
+                            <!-- Current favicon preview -->
+                            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                                <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: white; border: 1px solid #e2e8f0; border-radius: 6px;">
+                                    {% if tenant.favicon_url %}
+                                    <img src="{{ script_name }}{{ tenant.favicon_url }}" alt="Current favicon" style="max-width: 32px; max-height: 32px;">
+                                    {% else %}
+                                    <img src="{{ script_name }}/static/favicons/default/favicon.jpg" alt="Default favicon" style="max-width: 32px; max-height: 32px;">
+                                    {% endif %}
+                                </div>
+                                <div style="flex: 1;">
+                                    {% if tenant.favicon_url %}
+                                    <div style="font-weight: 500; font-size: 0.875rem;">Custom Favicon</div>
+                                    <div style="color: #6b7280; font-size: 0.75rem; word-break: break-all;">{{ tenant.favicon_url }}</div>
+                                    {% else %}
+                                    <div style="font-weight: 500; font-size: 0.875rem;">Default Favicon</div>
+                                    <div style="color: #6b7280; font-size: 0.75rem;">Using the default AdCP favicon</div>
+                                    {% endif %}
+                                </div>
+                                {% if tenant.favicon_url %}
+                                <form method="POST" action="{{ script_name }}/tenant/{{ tenant.tenant_id }}/remove_favicon" style="margin: 0;">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Remove custom favicon and use the default?')">
+                                        Remove
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+
+                            <!-- Upload form -->
+                            <div style="margin-bottom: 1rem;">
+                                <form method="POST" action="{{ script_name }}/tenant/{{ tenant.tenant_id }}/upload_favicon" enctype="multipart/form-data" style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <input type="file" name="favicon" accept=".ico,.png,.svg" style="flex: 1;">
+                                    <button type="submit" class="btn btn-secondary btn-sm">Upload</button>
+                                </form>
+                            </div>
+
+                            <!-- URL form -->
+                            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #e2e8f0;">
+                                <label style="font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; display: block;">Or provide a URL:</label>
+                                <form method="POST" action="{{ script_name }}/tenant/{{ tenant.tenant_id }}/update_favicon_url" style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <input type="url" name="favicon_url" value="{{ tenant.favicon_url or '' }}" placeholder="https://example.com/favicon.ico" style="flex: 1; padding: 0.5rem; border: 1px solid #e2e8f0; border-radius: 6px;">
+                                    <button type="submit" class="btn btn-secondary btn-sm">Save URL</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Domain Configuration Section -->
+                <div class="form-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e5e7eb;">
+                    <h3>Domain Configuration</h3>
+                    <div class="form-grid">
                         <div class="form-group">
                             <label for="virtual_host">Custom Domain (Optional)</label>
                             <input type="text" id="virtual_host" name="virtual_host" value="{{ tenant.virtual_host or '' }}" placeholder="e.g. sales-agent.yourcompany.com">

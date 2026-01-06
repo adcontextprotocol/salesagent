@@ -720,3 +720,188 @@ def auth_settings(tenant_id):
     """Redirect to users page for authentication management."""
     # SSO config moved to users page
     return redirect(url_for("users.list_users", tenant_id=tenant_id))
+
+
+# Constants for favicon upload
+ALLOWED_FAVICON_EXTENSIONS = {"ico", "png", "svg", "jpg", "jpeg"}
+MAX_FAVICON_SIZE = 1 * 1024 * 1024  # 1MB
+
+
+def _get_favicon_upload_dir() -> str:
+    """Get the favicon upload directory path."""
+    # Get the project root (where static/ lives)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+    return os.path.join(project_root, "static", "favicons")
+
+
+def _allowed_favicon_file(filename: str) -> bool:
+    """Check if the file extension is allowed for favicons."""
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_FAVICON_EXTENSIONS
+
+
+def _is_safe_favicon_path(base_dir: str, tenant_id: str) -> bool:
+    """Validate that the tenant favicon path doesn't escape the base directory."""
+    tenant_dir = os.path.join(base_dir, tenant_id)
+    resolved_base = os.path.realpath(base_dir)
+    resolved_tenant = os.path.realpath(tenant_dir)
+    return resolved_tenant.startswith(resolved_base + os.sep)
+
+
+def _is_valid_favicon_url(url: str) -> bool:
+    """Validate that a favicon URL is safe (HTTP/HTTPS only, no javascript: etc.)."""
+    if not url:
+        return True  # Empty URL is valid (clears the favicon)
+    url_lower = url.lower()
+    # Only allow HTTP and HTTPS URLs
+    if not (url_lower.startswith("http://") or url_lower.startswith("https://")):
+        return False
+    # Block javascript: and data: schemes that could be obfuscated
+    if "javascript:" in url_lower or "data:" in url_lower:
+        return False
+    return True
+
+
+@tenants_bp.route("/<tenant_id>/upload_favicon", methods=["POST"])
+@log_admin_action("upload_favicon")
+@require_tenant_access()
+def upload_favicon(tenant_id):
+    """Upload a custom favicon for the tenant."""
+    try:
+        if "favicon" not in request.files:
+            flash("No file selected", "error")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="account"))
+
+        file = request.files["favicon"]
+        if file.filename == "":
+            flash("No file selected", "error")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="account"))
+
+        if not file.filename or not _allowed_favicon_file(file.filename):
+            flash(f"Invalid file type. Allowed: {', '.join(ALLOWED_FAVICON_EXTENSIONS)}", "error")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="account"))
+
+        # Check file size
+        file.seek(0, 2)  # Seek to end
+        file_size = file.tell()
+        file.seek(0)  # Reset to beginning
+
+        if file_size > MAX_FAVICON_SIZE:
+            flash(f"File too large. Maximum size: {MAX_FAVICON_SIZE // 1024}KB", "error")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="account"))
+
+        # Create tenant-specific favicon directory
+        upload_dir = _get_favicon_upload_dir()
+        if not _is_safe_favicon_path(upload_dir, tenant_id):
+            logger.error(f"Path traversal attempt detected for tenant: {tenant_id}")
+            flash("Invalid tenant ID", "error")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="account"))
+        tenant_favicon_dir = os.path.join(upload_dir, tenant_id)
+        os.makedirs(tenant_favicon_dir, exist_ok=True)
+
+        # Get the file extension
+        ext = file.filename.rsplit(".", 1)[1].lower()
+        # Save as favicon.{ext} in the tenant's directory
+        filename = f"favicon.{ext}"
+        filepath = os.path.join(tenant_favicon_dir, filename)
+
+        # Remove any existing favicon files for this tenant
+        for old_ext in ALLOWED_FAVICON_EXTENSIONS:
+            old_file = os.path.join(tenant_favicon_dir, f"favicon.{old_ext}")
+            if os.path.exists(old_file):
+                os.remove(old_file)
+
+        # Save the new favicon
+        file.save(filepath)
+
+        # Update the tenant's favicon_url in the database
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if tenant:
+                # Store as a relative URL path
+                tenant.favicon_url = f"/static/favicons/{tenant_id}/{filename}"
+                tenant.updated_at = datetime.now(UTC)
+                db_session.commit()
+
+        flash("Favicon uploaded successfully", "success")
+
+    except Exception as e:
+        logger.error(f"Error uploading favicon for tenant {tenant_id}: {e}", exc_info=True)
+        flash("Error uploading favicon. Please try again.", "error")
+
+    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="account"))
+
+
+@tenants_bp.route("/<tenant_id>/update_favicon_url", methods=["POST"])
+@log_admin_action("update_favicon_url")
+@require_tenant_access()
+def update_favicon_url(tenant_id):
+    """Update the tenant's favicon URL (for external URLs)."""
+    try:
+        form_data = sanitize_form_data(request.form.to_dict())
+        favicon_url = form_data.get("favicon_url", "").strip()
+
+        # Validate URL is safe (HTTP/HTTPS only)
+        if favicon_url and not _is_valid_favicon_url(favicon_url):
+            flash("Invalid favicon URL. Only HTTP and HTTPS URLs are allowed.", "error")
+            return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="account"))
+
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # Clear or update the favicon URL
+            tenant.favicon_url = favicon_url if favicon_url else None
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+            if favicon_url:
+                flash("Favicon URL updated successfully", "success")
+            else:
+                flash("Favicon URL cleared - using default favicon", "success")
+
+    except Exception as e:
+        logger.error(f"Error updating favicon URL for tenant {tenant_id}: {e}", exc_info=True)
+        flash("Error updating favicon URL. Please try again.", "error")
+
+    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="account"))
+
+
+@tenants_bp.route("/<tenant_id>/remove_favicon", methods=["POST"])
+@log_admin_action("remove_favicon")
+@require_tenant_access()
+def remove_favicon(tenant_id):
+    """Remove the tenant's custom favicon."""
+    try:
+        with get_db_session() as db_session:
+            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
+            if not tenant:
+                flash("Tenant not found", "error")
+                return redirect(url_for("core.index"))
+
+            # If it's an uploaded file, try to delete it
+            if tenant.favicon_url and tenant.favicon_url.startswith("/static/favicons/"):
+                upload_dir = _get_favicon_upload_dir()
+                if _is_safe_favicon_path(upload_dir, tenant_id):
+                    tenant_favicon_dir = os.path.join(upload_dir, tenant_id)
+                    for ext in ALLOWED_FAVICON_EXTENSIONS:
+                        filepath = os.path.join(tenant_favicon_dir, f"favicon.{ext}")
+                        if os.path.exists(filepath):
+                            os.remove(filepath)
+                else:
+                    logger.error(f"Path traversal attempt detected for tenant: {tenant_id}")
+
+            # Clear the favicon URL
+            tenant.favicon_url = None
+            tenant.updated_at = datetime.now(UTC)
+            db_session.commit()
+
+        flash("Favicon removed - using default favicon", "success")
+
+    except Exception as e:
+        logger.error(f"Error removing favicon for tenant {tenant_id}: {e}", exc_info=True)
+        flash("Error removing favicon. Please try again.", "error")
+
+    return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="account"))

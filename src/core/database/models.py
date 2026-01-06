@@ -114,6 +114,10 @@ class Tenant(Base, JSONValidatorMixin):
     # When set, get_products will use AI to rank and filter products
     product_ranking_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Favicon URL - custom favicon for the tenant's admin UI
+    # Can be an absolute URL or a path to an uploaded file (e.g., /static/favicons/tenant_id/favicon.ico)
+    favicon_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     # Relationships
     products = relationship("Product", back_populates="tenant", cascade="all, delete-orphan")
     principals = relationship("Principal", back_populates="tenant", cascade="all, delete-orphan")
