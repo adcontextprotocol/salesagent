@@ -219,7 +219,7 @@ class ProtocolWebhookService:
                                 response_time_ms=response_time_ms,
                                 completed_at=datetime.now(UTC),
                             )
-                            session.add(log_entry)
+                            session.merge(log_entry)
                             session.commit()
                     except Exception as e:
                         logger.error(f"Failed to write webhook delivery log: {e}")
@@ -268,7 +268,7 @@ class ProtocolWebhookService:
                                     response_time_ms=response_time_ms,
                                     completed_at=datetime.now(UTC),
                                 )
-                                session.add(log_entry)
+                                session.merge(log_entry)
                                 session.commit()
                         except Exception as e:
                             logger.error(f"Failed to write webhook delivery log: {e}")
@@ -316,7 +316,7 @@ class ProtocolWebhookService:
                                     response_time_ms=response_time_ms,
                                     next_retry_at=next_retry,
                                 )
-                                session.add(log_entry)
+                                session.merge(log_entry)
                                 session.commit()
                         except Exception as e:
                             logger.error(f"Failed to write webhook delivery log: {e}")
@@ -351,7 +351,7 @@ class ProtocolWebhookService:
                                     response_time_ms=response_time_ms,
                                     completed_at=datetime.now(UTC),
                                 )
-                                session.add(log_entry)
+                                session.merge(log_entry)
                                 session.commit()
                         except Exception as e:
                             logger.error(f"Failed to write webhook delivery log: {e}")
@@ -404,7 +404,7 @@ class ProtocolWebhookService:
                                     response_time_ms=response_time_ms,
                                     completed_at=datetime.now(UTC),
                                 )
-                                session.add(log_entry)
+                                session.merge(log_entry)
                                 session.commit()
                         except Exception as log_err:
                             logger.error(f"Failed to write webhook delivery log: {log_err}")
@@ -442,7 +442,7 @@ class ProtocolWebhookService:
                                 payload_size_bytes=payload_size_bytes,
                                 completed_at=datetime.now(UTC),
                             )
-                            session.add(log_entry)
+                            session.merge(log_entry)
                             session.commit()
                     except Exception as log_err:
                         logger.error(f"Failed to write webhook delivery log: {log_err}")
