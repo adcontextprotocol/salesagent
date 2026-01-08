@@ -334,8 +334,8 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
             # Extract media_buy data to dict to avoid detached instance errors after commit
             media_buy_data = None
             if media_buy:
-                raw_request = media_buy.raw_request or {}
-                push_config = raw_request.get("push_notification_config") or {}
+                # Get push_notification_config from workflow step request_data (same pattern as sync_creatives)
+                push_config = step.request_data.get("push_notification_config") or {} if step.request_data else {}
                 media_buy_data = {
                     "principal_id": media_buy.principal_id,
                     "buyer_ref": media_buy.buyer_ref,

@@ -11,6 +11,20 @@ no subdomain routing. In multi-tenant mode, you must set SALES_AGENT_DOMAIN.
 import os
 
 
+def _is_localhost(domain: str | None) -> bool:
+    """Check if domain is localhost or 127.0.0.1."""
+    if not domain:
+        return False
+    # Strip port if present
+    host = domain.split(":")[0]
+    return host in ("localhost", "127.0.0.1")
+
+
+def _get_protocol_for_domain(domain: str | None) -> str:
+    """Return http for localhost, https for production domains."""
+    return "http" if _is_localhost(domain) else "https"
+
+
 def get_sales_agent_domain() -> str | None:
     """Get the sales agent domain (e.g., sales-agent.example.com).
 
@@ -68,12 +82,22 @@ def get_admin_url(protocol: str = "https") -> str | None:
     return None
 
 
-def get_a2a_server_url(protocol: str = "https") -> str | None:
+def get_a2a_server_url(protocol: str | None = None) -> str | None:
     """Get the A2A server URL (e.g., https://sales-agent.example.com/a2a).
+
+    Args:
+        protocol: The protocol to use. If None, auto-detects based on domain
+                  (http for localhost, https for production).
 
     Returns:
         The full URL, or None if SALES_AGENT_DOMAIN is not configured.
     """
+    domain = get_sales_agent_domain()
+    if not domain:
+        return None
+    # Auto-detect protocol if not specified
+    if protocol is None:
+        protocol = _get_protocol_for_domain(domain)
     if url := get_sales_agent_url(protocol):
         return f"{url}/a2a"
     return None

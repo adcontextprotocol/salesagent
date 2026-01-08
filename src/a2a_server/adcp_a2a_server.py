@@ -1630,6 +1630,7 @@ class AdCPRequestHandler(RequestHandler):
                 budget=parameters.get("budget"),  # Optional legacy field - ignored if provided
                 targeting_overlay=parameters.get("custom_targeting", {}),
                 push_notification_config=parameters.get("push_notification_config"),
+                reporting_webhook=parameters.get("reporting_webhook"),
                 context=parameters.get("context"),
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )

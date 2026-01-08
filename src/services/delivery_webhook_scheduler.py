@@ -314,6 +314,7 @@ class DeliveryWebhookScheduler:
             # McpWebhookPayload instead of dict[str, Any] for proper type safety
             mcp_payload_dict = create_mcp_webhook_payload(
                 task_id=media_buy.media_buy_id,  # TODO: @yusuf - double check if using media buy id is correct for media buy delivery???
+                task_type="media_buy_delivery",
                 result=media_buy_delivery_result,
                 status=AdcpTaskStatus.completed
             )

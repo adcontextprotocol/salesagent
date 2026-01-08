@@ -518,7 +518,14 @@ def execute_approved_media_buy(media_buy_id: str, tenant_id: str) -> tuple[bool,
 
             # Reconstruct CreateMediaBuyRequest from raw_request
             try:
-                request = CreateMediaBuyRequest(**media_buy.raw_request)
+                # Strip package_id from packages - it was added for UI tracking but isn't
+                # part of the AdCP CreateMediaBuyRequest schema (package_id is assigned by system)
+                raw_request_data = dict(media_buy.raw_request)
+                if "packages" in raw_request_data:
+                    for pkg in raw_request_data["packages"]:
+                        pkg.pop("package_id", None)
+
+                request = CreateMediaBuyRequest(**raw_request_data)
                 # Mark this request as already approved to skip adapter's approval workflow
                 setattr(request, "_already_approved", True)  # noqa: B010
             except ValidationError as ve:
@@ -1389,6 +1396,10 @@ async def _create_media_buy_impl(
     # Store protocol type for webhook payload creation
     # ToolContext = A2A, Context (FastMCP) = MCP
     request_data_for_workflow["protocol"] = "a2a" if isinstance(ctx, ToolContext) else "mcp"
+
+    # Store push_notification_config in workflow step request_data (same pattern as sync_creatives)
+    if push_notification_config:
+        request_data_for_workflow["push_notification_config"] = push_notification_config
 
     step = ctx_manager.create_workflow_step(
         context_id=persistent_ctx.context_id,
@@ -3724,6 +3735,7 @@ async def create_media_buy_raw(
         start_time=start_time,
         end_time=end_time,
         reporting_webhook=reporting_webhook,
+        push_notification_config=push_notification_config,
         context=context,
         ctx=ctx,
     )
