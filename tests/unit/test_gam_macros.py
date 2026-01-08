@@ -42,7 +42,7 @@ class TestMacroMapping:
         assert ADCP_TO_GAM_MACRO_MAP["{GDPR}"] == "${GDPR}"
         assert ADCP_TO_GAM_MACRO_MAP["{GDPR_CONSENT}"] == "${GDPR_CONSENT_XXXX}"
         assert ADCP_TO_GAM_MACRO_MAP["{US_PRIVACY}"] == "%%TAG_PARAM:us_privacy%%"
-        assert ADCP_TO_GAM_MACRO_MAP["{GPP_STRING}"] is None
+        assert ADCP_TO_GAM_MACRO_MAP["{GPP_STRING}"] == "${GPP_STRING_XXXXX}"
         assert ADCP_TO_GAM_MACRO_MAP["{LIMIT_AD_TRACKING}"] == "%%ADVERTISING_IDENTIFIER_IS_LAT%%"
 
     # ==========================================================================
