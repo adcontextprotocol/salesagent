@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0](https://github.com/adcontextprotocol/salesagent/compare/v0.6.0...v0.7.0) (2026-01-08)
+
+
+### Features
+
+* Add tenant-configurable favicon support ([#940](https://github.com/adcontextprotocol/salesagent/issues/940)) ([f8b1696](https://github.com/adcontextprotocol/salesagent/commit/f8b1696f2939314d6c3973eed1a7b66108b5ebc1))
+
+
+### Bug Fixes
+
+* a2a bugs with media buy and media buy delivery ([c5325b9](https://github.com/adcontextprotocol/salesagent/commit/c5325b9982f4d3afa1559542cac8e4a023834fba))
+* a2a bugs with media buy and media buy delivery ([ea98357](https://github.com/adcontextprotocol/salesagent/commit/ea98357d30e6ded327cc0eda8ed8ea4d2c91aaa5))
+* Add security audit to CI and upgrade fastmcp ([#941](https://github.com/adcontextprotocol/salesagent/issues/941)) ([ec592ed](https://github.com/adcontextprotocol/salesagent/commit/ec592edf3789b7e3b92a7060ca89e29d1721dfab))
+* Include empty pricing_options in serialization for anonymous users ([#939](https://github.com/adcontextprotocol/salesagent/issues/939)) ([4e57265](https://github.com/adcontextprotocol/salesagent/commit/4e57265631d73258959dcb8021601d4346599ae9))
+* Set default role to admin for SSO auto-provisioned users ([#937](https://github.com/adcontextprotocol/salesagent/issues/937)) ([e64440c](https://github.com/adcontextprotocol/salesagent/commit/e64440c2c5253ab9b387132403d5ab1ae66378b0))
+
 ## [0.6.0](https://github.com/adcontextprotocol/salesagent/compare/v0.5.0...v0.6.0) (2026-01-05)
 
 
