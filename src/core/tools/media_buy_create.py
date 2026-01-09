@@ -22,6 +22,7 @@ from adcp.types.generated_poc.core.creative_asset import CreativeAsset
 from adcp.types.generated_poc.core.targeting import TargetingOverlay
 from adcp.types.generated_poc.media_buy.create_media_buy_request import ReportingWebhook
 from adcp.types.generated_poc.media_buy.package_request import PackageRequest as AdcpPackageRequest
+from adcp.utils.format_assets import get_format_assets, has_assets
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -161,16 +162,16 @@ def _extract_creative_url_and_dimensions(
 ) -> tuple[str | None, int | None, int | None]:
     """Extract URL and dimensions from creative data.
 
-    All production creatives now use AdCP v2.4 format with data.assets[asset_id]
+    All production creatives now use AdCP v2.4+ format with data.assets[asset_id]
     containing typed asset objects per the creative format specification.
 
     Extraction priority:
-    1. Format spec assets_required (most specific - AdCP v2.4 compliant)
+    1. Format spec assets (using get_format_assets utility for backward compat - AdCP 2.6 format spec)
     2. First available asset with URL (fallback if no format spec)
 
     Args:
         creative_data: Creative data dict from database
-        format_spec: Format specification with assets_required
+        format_spec: Format specification with assets (or deprecated assets_required)
 
     Returns:
         Tuple of (url, width, height). Values are None if not found.
@@ -179,12 +180,13 @@ def _extract_creative_url_and_dimensions(
         - URL extracted from asset types: image, video, url
         - Dimensions extracted from asset types: image, video
         - Type validation: width/height must be int or coercible to int
+        - Uses adcp.utils.get_format_assets() for backward compatibility with assets_required
     """
     # Extract URL from assets using format specification
     url = None
-    if creative_data.get("assets") and format_spec and format_spec.assets_required:
+    if creative_data.get("assets") and format_spec and has_assets(format_spec):
         # Use format spec to find the correct asset_id for image/video/url assets
-        for asset_req in format_spec.assets_required:
+        for asset_req in get_format_assets(format_spec):
             asset_type = str(asset_req.asset_type).lower()
             if asset_type in ["image", "video", "url"]:
                 asset_id = asset_req.asset_id
@@ -197,9 +199,9 @@ def _extract_creative_url_and_dimensions(
     # Extract dimensions from assets using format specification
     width = None
     height = None
-    if creative_data.get("assets") and format_spec and format_spec.assets_required:
+    if creative_data.get("assets") and format_spec and has_assets(format_spec):
         # Use format spec to find the correct asset_id for image/video assets
-        for asset_req in format_spec.assets_required:
+        for asset_req in get_format_assets(format_spec):
             asset_type = str(asset_req.asset_type).lower()
             if asset_type in ["image", "video"]:
                 asset_id = asset_req.asset_id

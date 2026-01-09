@@ -1875,7 +1875,7 @@ class TestAdCPContract:
                     is_standard=True,
                     iab_specification="IAB Display",
                     requirements={"width": 300, "height": 250, "file_types": ["jpg", "png", "gif"]},
-                    assets_required=None,
+                    assets=None,  # Use new 'assets' field (assets_required is deprecated)
                 )
             ],
             # errors omitted - per AdCP spec, optional fields with None/empty values should be omitted
