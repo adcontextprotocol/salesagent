@@ -7,8 +7,10 @@ implementation pattern from CLAUDE.md.
 import logging
 import time
 
+from typing import TypeVar
+
 from adcp import FormatId
-from adcp.types import Format
+from adcp.types import Format as AdcpFormat
 from adcp.types.generated_poc.core.context import ContextObject
 from adcp.types.generated_poc.core.format import Assets, Assets1, AssetsRequired, AssetsRequired1
 from adcp.types.generated_poc.enums.asset_content_type import AssetContentType
@@ -20,6 +22,9 @@ from adcp.utils.format_assets import (
     normalize_assets_required,
     uses_deprecated_assets_field,
 )
+
+# TypeVar for Format to preserve subclass type through backward compatibility function
+FormatT = TypeVar("FormatT", bound=AdcpFormat)
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -30,7 +35,7 @@ from src.core.tool_context import ToolContext
 logger = logging.getLogger(__name__)
 
 
-def _ensure_backward_compatible_format(f: Format) -> Format:
+def _ensure_backward_compatible_format(f: FormatT) -> FormatT:
     """Ensure a Format has both `assets` and `assets_required` fields for backward compatibility.
 
     AdCP 2.18.0 introduced the new `assets` field which includes both required and optional assets.

@@ -22,7 +22,8 @@ from adcp.types.generated_poc.core.creative_asset import CreativeAsset
 from adcp.types.generated_poc.core.targeting import TargetingOverlay
 from adcp.types.generated_poc.media_buy.create_media_buy_request import ReportingWebhook
 from adcp.types.generated_poc.media_buy.package_request import PackageRequest as AdcpPackageRequest
-from adcp.utils.format_assets import get_format_assets, has_assets
+from adcp.types.generated_poc.core.format import Assets
+from adcp.utils.format_assets import get_individual_assets, has_assets
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
@@ -180,13 +181,17 @@ def _extract_creative_url_and_dimensions(
         - URL extracted from asset types: image, video, url
         - Dimensions extracted from asset types: image, video
         - Type validation: width/height must be int or coercible to int
-        - Uses adcp.utils.get_format_assets() for backward compatibility with assets_required
+        - Uses adcp.utils.get_individual_assets() for backward compatibility with assets_required
     """
     # Extract URL from assets using format specification
     url = None
     if creative_data.get("assets") and format_spec and has_assets(format_spec):
         # Use format spec to find the correct asset_id for image/video/url assets
-        for asset_req in get_format_assets(format_spec):
+        # Only check individual assets (not repeatable groups) which have asset_type/asset_id
+        for asset_req in get_individual_assets(format_spec):
+            # Type guard: get_individual_assets only returns Assets, not Assets1 (repeatable groups)
+            if not isinstance(asset_req, Assets):
+                continue
             asset_type = str(asset_req.asset_type).lower()
             if asset_type in ["image", "video", "url"]:
                 asset_id = asset_req.asset_id
@@ -201,7 +206,11 @@ def _extract_creative_url_and_dimensions(
     height = None
     if creative_data.get("assets") and format_spec and has_assets(format_spec):
         # Use format spec to find the correct asset_id for image/video assets
-        for asset_req in get_format_assets(format_spec):
+        # Only check individual assets (not repeatable groups) which have asset_type/asset_id
+        for asset_req in get_individual_assets(format_spec):
+            # Type guard: get_individual_assets only returns Assets, not Assets1 (repeatable groups)
+            if not isinstance(asset_req, Assets):
+                continue
             asset_type = str(asset_req.asset_type).lower()
             if asset_type in ["image", "video"]:
                 asset_id = asset_req.asset_id
