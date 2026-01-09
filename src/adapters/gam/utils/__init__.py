@@ -65,6 +65,11 @@ from .logging import (
     log_gam_operation,
     log_validation_error,
 )
+from .macros import (
+    ADCP_TO_GAM_MACRO_MAP,
+    substitute_macros,
+    substitute_tracking_urls,
+)
 from .validation import GAMValidationError, GAMValidator, validate_gam_creative
 
 __all__ = [
@@ -119,4 +124,8 @@ __all__ = [
     "GAM_CREATIVE_SIZE_LIMITS",
     "GAM_MAX_DIMENSIONS",
     "GAM_ALLOWED_EXTENSIONS",
+    # Macros
+    "ADCP_TO_GAM_MACRO_MAP",
+    "substitute_macros",
+    "substitute_tracking_urls",
 ]

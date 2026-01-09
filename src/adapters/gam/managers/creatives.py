@@ -861,24 +861,51 @@ class GAMCreativesManager:
         return variables
 
     def _add_tracking_urls_to_creative(self, creative: dict[str, Any], asset: dict[str, Any]) -> None:
-        """Add tracking URLs to the creative if available."""
-        tracking_events = asset.get("tracking_events", {})
+        """Add tracking URLs to the creative with AdCP-to-GAM macro substitution.
 
-        # Add impression tracking - append to existing trackingUrls, don't replace
-        if tracking_events.get("impression"):
-            existing_tracking = creative.get("trackingUrls", [])
-            new_tracking = [{"url": url} for url in tracking_events["impression"]]
-            # Merge tracking URLs, avoiding duplicates
-            creative["trackingUrls"] = existing_tracking + [t for t in new_tracking if t not in existing_tracking]
+        Extracts impression tracking URLs from asset's delivery_settings.tracking_urls
+        and applies AdCP->GAM macro substitution before adding to the GAM creative.
 
-        # Add click tracking (for supported creative types) - only if not already set
-        if tracking_events.get("click") and creative.get("xsi_type") in ["ImageCreative", "ThirdPartyCreative"]:
+        For ThirdPartyCreative, uses thirdPartyImpressionTrackingUrls (array of strings)
+        per GAM API documentation. Other creative types use trackingUrls (array of dicts).
+        """
+        from ..utils.macros import substitute_tracking_urls
+
+        # Extract tracking URLs from delivery_settings (populated by creative_helpers.py)
+        delivery_settings = asset.get("delivery_settings", {})
+        tracking_urls = delivery_settings.get("tracking_urls", {})
+        impression_urls = tracking_urls.get("impression", [])
+
+        if impression_urls:
+            # Apply AdCP->GAM macro substitution
+            processed_urls = substitute_tracking_urls(impression_urls)
+            creative_type = creative.get("xsi_type", "")
+
+            if creative_type == "ThirdPartyCreative":
+                # Per GAM docs: ThirdPartyCreative uses thirdPartyImpressionTrackingUrls
+                # This is an array of strings (not dicts with url key)
+                existing_urls = creative.get("thirdPartyImpressionTrackingUrls", [])
+                creative["thirdPartyImpressionTrackingUrls"] = existing_urls + [
+                    url for url in processed_urls if url not in existing_urls
+                ]
+            else:
+                # For other creative types, use trackingUrls (dict format with url key)
+                existing_tracking = creative.get("trackingUrls", [])
+                new_tracking = [{"url": url} for url in processed_urls]
+                creative["trackingUrls"] = existing_tracking + [t for t in new_tracking if t not in existing_tracking]
+
+        # Handle click tracking URLs
+        click_urls = tracking_urls.get("click", [])
+        if click_urls and creative.get("xsi_type") in ["ImageCreative", "ThirdPartyCreative"]:
             if not creative.get("destinationUrl"):
-                creative["destinationUrl"] = tracking_events["click"][0]  # Use first click URL
+                # Apply macro substitution to click URL too
+                processed_click_urls = substitute_tracking_urls(click_urls[:1])
+                if processed_click_urls:
+                    creative["destinationUrl"] = processed_click_urls[0]
             else:
                 logger.info(
                     f"Preserving existing destinationUrl={creative.get('destinationUrl')}, "
-                    f"not overwriting with tracking event click URL"
+                    f"not overwriting with tracking click URL"
                 )
 
     def _configure_vast_for_line_items(
