@@ -188,13 +188,13 @@ def _extract_creative_url_and_dimensions(
     if creative_data.get("assets") and format_spec and has_assets(format_spec):
         # Use format spec to find the correct asset_id for image/video/url assets
         # Only check individual assets (not repeatable groups) which have asset_type/asset_id
-        for asset_req in get_individual_assets(format_spec):
+        for asset_spec in get_individual_assets(format_spec):
             # Type guard: get_individual_assets only returns Assets, not Assets1 (repeatable groups)
-            if not isinstance(asset_req, Assets):
+            if not isinstance(asset_spec, Assets):
                 continue
-            asset_type = str(asset_req.asset_type).lower()
+            asset_type = str(asset_spec.asset_type).lower()
             if asset_type in ["image", "video", "url"]:
-                asset_id = asset_req.asset_id
+                asset_id = asset_spec.asset_id
                 if asset_id in creative_data["assets"]:
                     asset_obj = creative_data["assets"][asset_id]
                     if isinstance(asset_obj, dict) and asset_obj.get("url"):
@@ -207,13 +207,13 @@ def _extract_creative_url_and_dimensions(
     if creative_data.get("assets") and format_spec and has_assets(format_spec):
         # Use format spec to find the correct asset_id for image/video assets
         # Only check individual assets (not repeatable groups) which have asset_type/asset_id
-        for asset_req in get_individual_assets(format_spec):
+        for asset_spec in get_individual_assets(format_spec):
             # Type guard: get_individual_assets only returns Assets, not Assets1 (repeatable groups)
-            if not isinstance(asset_req, Assets):
+            if not isinstance(asset_spec, Assets):
                 continue
-            asset_type = str(asset_req.asset_type).lower()
+            asset_type = str(asset_spec.asset_type).lower()
             if asset_type in ["image", "video"]:
-                asset_id = asset_req.asset_id
+                asset_id = asset_spec.asset_id
                 if asset_id in creative_data["assets"]:
                     asset_obj = creative_data["assets"][asset_id]
                     if isinstance(asset_obj, dict):
