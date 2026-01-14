@@ -26,11 +26,7 @@ from tests.e2e.adcp_request_builder import (
 class TestCreativeAssignment:
     """E2E tests for creative assignment to media buy packages."""
 
-    @pytest.mark.skip_ci(
-        reason="Creative agent schema mismatch: creative.adcontextprotocol.org returns "
-        "formats with 'assets' field that adcp library schema rejects. "
-        "See https://github.com/adcontextprotocol/salesagent/pull/950"
-    )
+    @pytest.mark.skipif(True, reason="Creative agent schema mismatch (skip_ci)")  # skip_ci
     @pytest.mark.asyncio
     async def test_creative_sync_with_assignment_in_single_call(
         self, docker_services_e2e, live_server, test_auth_token
@@ -242,11 +238,7 @@ class TestCreativeAssignment:
             print("  ✓ Listing creatives to verify state")
             print("=" * 80)
 
-    @pytest.mark.skip_ci(
-        reason="Creative agent schema mismatch: creative.adcontextprotocol.org returns "
-        "formats with 'assets' field that adcp library schema rejects. "
-        "See https://github.com/adcontextprotocol/salesagent/pull/950"
-    )
+    @pytest.mark.skipif(True, reason="Creative agent schema mismatch (skip_ci)")  # skip_ci
     @pytest.mark.asyncio
     async def test_multiple_creatives_multiple_packages(self, docker_services_e2e, live_server, test_auth_token):
         """
