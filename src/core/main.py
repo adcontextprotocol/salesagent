@@ -3,6 +3,12 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+# Set up structured logging BEFORE any other imports that might log
+# This ensures JSON logging in production environments (Fly.io, etc.)
+from src.core.logging_config import setup_structured_logging
+
+setup_structured_logging(service="mcp")
+
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context

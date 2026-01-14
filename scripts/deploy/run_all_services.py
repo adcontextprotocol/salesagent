@@ -20,6 +20,10 @@ import time
 # Store process references for cleanup
 processes = []
 
+# Check if we're in production mode (JSON logging enabled)
+# In production, each service includes its name in JSON output, so we don't need prefixes
+IS_PRODUCTION = bool(os.environ.get("FLY_APP_NAME") or os.environ.get("PRODUCTION"))
+
 
 def validate_required_env():
     """Validate required environment variables."""
@@ -36,7 +40,9 @@ def validate_required_env():
 
     # Encryption key is required for storing OIDC client secrets
     if not os.environ.get("ENCRYPTION_KEY"):
-        missing.append("ENCRYPTION_KEY (generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')")
+        missing.append(
+            "ENCRYPTION_KEY (generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+        )
 
     # Multi-tenant mode requires SALES_AGENT_DOMAIN
     if os.environ.get("ADCP_MULTI_TENANT", "false").lower() == "true":
@@ -235,9 +241,11 @@ def run_mcp_server():
     processes.append(proc)
 
     # Monitor the process output
+    # In production, JSON logs include service name, so no prefix needed
+    prefix = "" if IS_PRODUCTION else "[MCP] "
     for line in iter(proc.stdout.readline, b""):
         if line:
-            print(f"[MCP] {line.decode().rstrip()}")
+            print(f"{prefix}{line.decode().rstrip()}")
     print("MCP server stopped")
 
 
@@ -256,9 +264,11 @@ def run_admin_ui():
     processes.append(proc)
 
     # Monitor the process output
+    # In production, JSON logs include service name, so no prefix needed
+    prefix = "" if IS_PRODUCTION else "[Admin] "
     for line in iter(proc.stdout.readline, b""):
         if line:
-            print(f"[Admin] {line.decode().rstrip()}")
+            print(f"{prefix}{line.decode().rstrip()}")
     print("Admin UI stopped")
 
 
@@ -266,13 +276,14 @@ def run_a2a_server():
     """Run the A2A server for agent-to-agent interactions."""
     try:
         print("Starting A2A server on port 8091...")
-        print("[A2A] Waiting 10 seconds for MCP server to be ready...")
+        prefix = "" if IS_PRODUCTION else "[A2A] "
+        print(f"{prefix}Waiting 10 seconds for MCP server to be ready...")
         time.sleep(10)  # Wait for MCP server to be ready
 
         env = os.environ.copy()
         env["A2A_MOCK_MODE"] = "true"  # Use mock mode in production for now
 
-        print("[A2A] Launching official a2a-sdk server...")
+        print(f"{prefix}Launching official a2a-sdk server...")
         # Use official a2a-sdk implementation with JSON-RPC 2.0 support
         proc = subprocess.Popen(
             [sys.executable, "src/a2a_server/adcp_a2a_server.py"],
@@ -282,14 +293,15 @@ def run_a2a_server():
         )
         processes.append(proc)
 
-        print("[A2A] Process started, monitoring output...")
+        print(f"{prefix}Process started, monitoring output...")
         # Monitor the process output
+        # In production, JSON logs include service name, so no prefix needed
         for line in iter(proc.stdout.readline, b""):
             if line:
-                print(f"[A2A] {line.decode().rstrip()}")
+                print(f"{prefix}{line.decode().rstrip()}")
         print("A2A server stopped")
     except Exception as e:
-        print(f"[A2A] ERROR: Failed to start A2A server: {e}")
+        print(f"{prefix}ERROR: Failed to start A2A server: {e}")
         import traceback
 
         traceback.print_exc()
@@ -298,6 +310,7 @@ def run_a2a_server():
 def run_nginx():
     """Run nginx as reverse proxy."""
     print("Starting nginx reverse proxy on port 8000...")
+    prefix = "" if IS_PRODUCTION else "[Nginx] "
 
     # Create nginx directories if they don't exist
     os.makedirs("/var/log/nginx", exist_ok=True)
@@ -309,10 +322,10 @@ def run_nginx():
     multi_tenant = os.environ.get("ADCP_MULTI_TENANT", "false").lower() == "true"
     if multi_tenant:
         config_path = "/etc/nginx/nginx-multi-tenant.conf"
-        print("[Nginx] Using multi-tenant config (subdomain routing enabled)")
+        print(f"{prefix}Using multi-tenant config (subdomain routing enabled)")
     else:
         config_path = "/etc/nginx/nginx-single-tenant.conf"
-        print("[Nginx] Using single-tenant config (path-based routing only)")
+        print(f"{prefix}Using single-tenant config (path-based routing only)")
 
     # Copy selected config to active location
     import shutil
@@ -338,15 +351,16 @@ def run_nginx():
     # Monitor the process output
     for line in iter(proc.stdout.readline, b""):
         if line:
-            print(f"[Nginx] {line.decode().rstrip()}")
+            print(f"{prefix}{line.decode().rstrip()}")
     print("Nginx stopped")
 
 
 def run_cron():
     """Run supercronic for scheduled tasks."""
+    prefix = "" if IS_PRODUCTION else "[Cron] "
     crontab_path = "/app/crontab"
     if not os.path.exists(crontab_path):
-        print("[Cron] No crontab found, skipping scheduled tasks")
+        print(f"{prefix}No crontab found, skipping scheduled tasks")
         return
 
     print("Starting supercronic for scheduled tasks...")
@@ -361,7 +375,7 @@ def run_cron():
     # Monitor the process output
     for line in iter(proc.stdout.readline, b""):
         if line:
-            print(f"[Cron] {line.decode().rstrip()}")
+            print(f"{prefix}{line.decode().rstrip()}")
     print("Supercronic stopped")
 
 

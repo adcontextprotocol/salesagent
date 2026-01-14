@@ -18,10 +18,15 @@ class JSONFormatter(logging.Formatter):
     Outputs single-line JSON that Fly.io and other log aggregators handle correctly.
     """
 
+    def __init__(self, service: str = "adcp"):
+        super().__init__()
+        self.service = service
+
     def format(self, record: logging.LogRecord) -> str:
         log_entry: dict[str, Any] = {
             "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
+            "service": self.service,
             "logger": record.name,
             "message": record.getMessage(),
         }
@@ -63,13 +68,21 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_entry)
 
 
-def setup_structured_logging() -> None:
+def setup_structured_logging(service: str | None = None) -> None:
     """Setup structured JSON logging for production environments.
 
     In production (Fly.io), configures all loggers to output single-line JSON.
     This prevents multiline log messages from appearing as separate log entries.
+
+    Args:
+        service: Optional service name to include in JSON logs (e.g., "mcp", "a2a", "admin").
+                 If not provided, attempts to auto-detect from environment.
     """
     is_production = bool(os.environ.get("FLY_APP_NAME") or os.environ.get("PRODUCTION"))
+
+    # Auto-detect service name from environment or caller context
+    if service is None:
+        service = os.environ.get("ADCP_SERVICE_NAME", "adcp")
 
     if is_production:
         # Configure root logger with JSON formatter
@@ -80,19 +93,28 @@ def setup_structured_logging() -> None:
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
 
-        # Add JSON formatter handler
+        # Add JSON formatter handler with service identifier
         handler = logging.StreamHandler()
-        handler.setFormatter(JSONFormatter())
+        handler.setFormatter(JSONFormatter(service=service))
         root_logger.addHandler(handler)
 
         # Also configure common library loggers that might have their own handlers
-        for logger_name in ["uvicorn", "uvicorn.access", "uvicorn.error", "fastmcp", "starlette"]:
+        for logger_name in [
+            "uvicorn",
+            "uvicorn.access",
+            "uvicorn.error",
+            "fastmcp",
+            "starlette",
+            "httpx",
+            "mcp",
+            "adcp",
+        ]:
             lib_logger = logging.getLogger(logger_name)
             lib_logger.handlers = []
             lib_logger.addHandler(handler)
             lib_logger.propagate = False
 
-        logging.info("JSON structured logging enabled for production")
+        logging.info("JSON structured logging enabled", extra={"service": service, "production": True})
     else:
         # Development mode - use standard format
         # force=True ensures configuration is applied even if logging was already configured

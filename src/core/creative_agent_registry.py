@@ -259,8 +259,31 @@ class CreativeAgentRegistry:
                 )
                 return []
 
+            elif result.status == "failed":
+                # Log the actual error from the creative agent
+                error_msg = result.error or "No error message provided"
+                logger.error(
+                    f"Creative agent {agent.name} returned FAILED status: {error_msg}",
+                    extra={
+                        "agent_name": agent.name,
+                        "agent_url": agent.agent_url,
+                        "error": error_msg,
+                        "result_message": getattr(result, "message", None),
+                        "operation": "list_creative_formats",
+                    },
+                )
+                return []
+
             else:
-                logger.warning(f"Unexpected result status: {result.status}")
+                logger.warning(
+                    f"Unexpected result status from {agent.name}: {result.status}",
+                    extra={
+                        "agent_name": agent.name,
+                        "agent_url": agent.agent_url,
+                        "status": str(result.status),
+                        "operation": "list_creative_formats",
+                    },
+                )
                 return []
 
         except ADCPAuthenticationError as e:

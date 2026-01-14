@@ -274,6 +274,7 @@ repos:
           - types-python-dateutil
           - types-pytz
           - types-Markdown
+          - types-waitress
           - adcp==2.14.0
           - fastmcp
           - alembic

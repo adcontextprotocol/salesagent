@@ -11,8 +11,12 @@ import logging
 import os
 import sys
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+# Set up structured logging BEFORE any other imports that might log
+# This ensures JSON logging in production environments (Fly.io, etc.)
+from src.core.logging_config import setup_structured_logging
+
+setup_structured_logging(service="admin")
+
 logger = logging.getLogger(__name__)
 
 
