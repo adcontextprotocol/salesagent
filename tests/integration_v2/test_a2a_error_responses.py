@@ -147,6 +147,25 @@ class TestA2AErrorPropagation:
         """Helper to create message with explicit skill invocation."""
         return create_a2a_message_with_skill(skill_name, parameters)
 
+    def extract_data_from_artifact(self, artifact) -> dict:
+        """Extract DataPart data from A2A artifact.
+
+        A2A artifacts may have multiple parts: optional TextPart followed by DataPart.
+        This helper iterates through parts to find the one with structured data.
+        """
+        if not artifact or not artifact.parts:
+            return {}
+
+        for part in artifact.parts:
+            # Check for DataPart with root.data structure
+            if hasattr(part, "root") and hasattr(part.root, "data"):
+                return part.root.data
+            # Check for direct data attribute
+            if hasattr(part, "data") and isinstance(part.data, dict):
+                return part.data
+
+        return {}
+
     async def test_create_media_buy_validation_error_includes_errors_field(self, handler, test_tenant, test_principal):
         """Test that validation errors include errors field in A2A response."""
         # Mock authentication
@@ -175,13 +194,9 @@ class TestA2AErrorPropagation:
             assert result.artifacts is not None
             assert len(result.artifacts) > 0
 
-            # Extract response data
+            # Extract response data from artifact (handles TextPart + DataPart structure)
             artifact = result.artifacts[0]
-            artifact_data = (
-                artifact.parts[0].root.data
-                if hasattr(artifact.parts[0], "root") and hasattr(artifact.parts[0].root, "data")
-                else {}
-            )
+            artifact_data = self.extract_data_from_artifact(artifact)
 
             # CRITICAL ASSERTIONS: Error propagation
             assert "success" in artifact_data, "Response must include 'success' field"
@@ -231,13 +246,9 @@ class TestA2AErrorPropagation:
             # Process the message - should return auth error
             result = await handler.on_message_send(params)
 
-            # Extract response data
+            # Extract response data from artifact (handles TextPart + DataPart structure)
             artifact = result.artifacts[0]
-            artifact_data = (
-                artifact.parts[0].root.data
-                if hasattr(artifact.parts[0], "root") and hasattr(artifact.parts[0].root, "data")
-                else {}
-            )
+            artifact_data = self.extract_data_from_artifact(artifact)
 
             # CRITICAL ASSERTIONS: Error propagation for auth failures
             assert artifact_data["success"] is False, "success must be False for auth errors"
@@ -285,13 +296,9 @@ class TestA2AErrorPropagation:
             # Process the message - should succeed
             result = await handler.on_message_send(params)
 
-            # Extract response data
+            # Extract response data from artifact (handles TextPart + DataPart structure)
             artifact = result.artifacts[0]
-            artifact_data = (
-                artifact.parts[0].root.data
-                if hasattr(artifact.parts[0], "root") and hasattr(artifact.parts[0].root, "data")
-                else {}
-            )
+            artifact_data = self.extract_data_from_artifact(artifact)
 
             # CRITICAL ASSERTIONS: Success response
             assert artifact_data["success"] is True, "success must be True for successful operation"
@@ -346,13 +353,9 @@ class TestA2AErrorPropagation:
             # Process the message
             result = await handler.on_message_send(params)
 
-            # Extract response data
+            # Extract response data from artifact (handles TextPart + DataPart structure)
             artifact = result.artifacts[0]
-            artifact_data = (
-                artifact.parts[0].root.data
-                if hasattr(artifact.parts[0], "root") and hasattr(artifact.parts[0].root, "data")
-                else {}
-            )
+            artifact_data = self.extract_data_from_artifact(artifact)
 
             # CRITICAL ASSERTIONS: All AdCP domain fields from CreateMediaBuyResponse schema
             # Required AdCP domain field
