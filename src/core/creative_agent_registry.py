@@ -259,6 +259,19 @@ class CreativeAgentRegistry:
                 )
                 return []
 
+            elif result.status == "failed":
+                # Log detailed error information for debugging
+                # Use getattr for safe access in case response structure varies
+                error_msg = (
+                    getattr(result, "error", None) or getattr(result, "message", None) or "No error details provided"
+                )
+                logger.error(f"Creative agent {agent.name} returned FAILED status. " f"Error: {error_msg}")
+                debug_info = getattr(result, "debug_info", None)
+                if debug_info:
+                    logger.debug(f"Debug info: {debug_info}")
+                # Raise ValueError so format_resolver error handling catches it
+                raise ValueError(f"Creative agent format fetch failed: {error_msg}")
+
             else:
                 logger.warning(f"Unexpected result status: {result.status}")
                 return []
