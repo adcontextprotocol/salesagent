@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0](https://github.com/adcontextprotocol/salesagent/compare/v0.7.0...v0.8.0) (2026-01-14)
+
+
+### Features
+
+* update to adcp 2.18.0 with new assets field support ([6d19499](https://github.com/adcontextprotocol/salesagent/commit/6d1949929b24f35299bd6ef60f73626fc9e10e55))
+* update to adcp 2.18.0 with new assets field support ([4c94434](https://github.com/adcontextprotocol/salesagent/commit/4c944340338ca0d12b1942e7bebf82d559670ec2))
+
+
+### Bug Fixes
+
+* Accept Authorization: Bearer header for MCP authentication ([#948](https://github.com/adcontextprotocol/salesagent/issues/948)) ([a1ae3ff](https://github.com/adcontextprotocol/salesagent/commit/a1ae3ffd6704a0dbf670964f021f305bb44be8b0))
+* Fix CI test failures and security vulnerabilities ([f1e4c40](https://github.com/adcontextprotocol/salesagent/commit/f1e4c40a172dbaddf74b951bf12052ddd7a0daff))
+* Improve onboarding experience and resolve first-run issues ([#946](https://github.com/adcontextprotocol/salesagent/issues/946)) ([e803e85](https://github.com/adcontextprotocol/salesagent/commit/e803e8521d7cc3b6a40a0a359bfee0fb26e278e5))
+* resolve mypy type errors for adcp 2.18.0 format assets ([7d0a021](https://github.com/adcontextprotocol/salesagent/commit/7d0a0214cfe14aad667be0663e066fae3a1fb731))
+* Update adcp to 2.18.0 for assets field support ([9693fcc](https://github.com/adcontextprotocol/salesagent/commit/9693fccf5a56cde40e07045315b5cdf238bde0ae))
+* Update adcp to 2.18.0 for assets field support ([ebfb27d](https://github.com/adcontextprotocol/salesagent/commit/ebfb27dfdfc2586def28c43313bc5084cb89ede3))
+* update tests for adcp 2.18.0 compatibility ([0a60085](https://github.com/adcontextprotocol/salesagent/commit/0a60085e7c3bf402e008ed7c1c707da7c043bd66))
+* update urllib3 and werkzeug to fix security vulnerabilities ([9490db8](https://github.com/adcontextprotocol/salesagent/commit/9490db82b9cb369b31d7ed0af0ea9d8a2b6cf6df))
+* use dynamic adcp version in e2e tests instead of hardcoded 2.5.0 ([ecee6f2](https://github.com/adcontextprotocol/salesagent/commit/ecee6f297c47be85a348620e2f642e22ab619525))
+
+
+### Code Refactoring
+
+* rename asset_req to asset_spec for clarity ([f15c9ea](https://github.com/adcontextprotocol/salesagent/commit/f15c9ea944ff9c80969909620ddf8ae82657207a))
+
+
+### Documentation
+
+* clarify that repeatable groups were never supported in asset extraction ([dbee49e](https://github.com/adcontextprotocol/salesagent/commit/dbee49ef5d847d90127fe90f026dc5fe9e60f9ca))
+
 ## [0.7.0](https://github.com/adcontextprotocol/salesagent/compare/v0.6.0...v0.7.0) (2026-01-08)
 
 
