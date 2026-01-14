@@ -43,6 +43,10 @@ dependencies = [
     "babel>=2.17.0",
     "logfire>=4.16.0",
     "pydantic-ai>=0.3.0",
+    # Security patches for transitive dependencies
+    "filelock>=3.20.3",  # GHSA-qmgc-5h2g-mvrw
+    "urllib3>=2.6.3",  # GHSA-38jv-5279-wg99
+    "werkzeug>=3.1.5",  # GHSA-87hc-h4r5-73f7
 ]
 
 
