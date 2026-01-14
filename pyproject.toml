@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 
 dependencies = [
-    "adcp==2.17.0", # Official AdCP Python client for external agent communication and adagents.json validation
+    "adcp==2.18.0", # Official AdCP Python client for external agent communication and adagents.json validation
     "fastmcp>=2.14.0", # Minimum for MCP 2025-11-25 spec and all security patches
     "google-generativeai>=0.5.4",
     "google-cloud-iam>=2.19.1",
@@ -43,6 +43,10 @@ dependencies = [
     "babel>=2.17.0",
     "logfire>=4.16.0",
     "pydantic-ai>=0.3.0",
+    # Security patches for transitive dependencies
+    "filelock>=3.20.3",  # GHSA-qmgc-5h2g-mvrw
+    "urllib3>=2.6.3",  # GHSA-38jv-5279-wg99
+    "werkzeug>=3.1.5",  # GHSA-87hc-h4r5-73f7
 ]
 
 

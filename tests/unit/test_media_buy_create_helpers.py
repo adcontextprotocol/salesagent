@@ -20,7 +20,7 @@ class TestGetFormatSpecSync:
         mock_format_spec.format_id.id = "display_300x250_image"
         mock_format_spec.name = "Medium Rectangle - Image"
 
-        # Mock the registry
+        # Mock the registry to avoid HTTP calls
         mock_registry = MagicMock()
         mock_registry.get_format = AsyncMock(return_value=mock_format_spec)
 
@@ -31,8 +31,8 @@ class TestGetFormatSpecSync:
             assert format_spec.name == "Medium Rectangle - Image"
 
     def test_unknown_format_returns_none(self):
-        """Test unknown format returns None."""
-        # Mock the registry to return None for unknown format
+        """Test that unknown format returns None."""
+        # Mock registry returning None for unknown format
         mock_registry = MagicMock()
         mock_registry.get_format = AsyncMock(return_value=None)
 
