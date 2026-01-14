@@ -14,6 +14,7 @@ import sys
 
 import pytest
 import requests
+from adcp import get_adcp_version
 
 # Add parent directories to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -70,7 +71,6 @@ class TestA2AEndpointsActual:
                         break
 
                 assert adcp_ext is not None, "AdCP extension not found in live agent card"
-                from adcp import get_adcp_version
                 assert adcp_ext["params"]["adcp_version"] == get_adcp_version()
                 assert "media_buy" in adcp_ext["params"]["protocols_supported"]
 
@@ -199,15 +199,14 @@ class TestA2AAgentCardCreation:
         assert adcp_ext is not None, "AdCP extension not found in capabilities.extensions"
 
         # Validate AdCP extension structure
-        from adcp import get_adcp_version
-        expected_version = get_adcp_version()
-        assert adcp_ext.uri == f"https://adcontextprotocol.org/schemas/{expected_version}/protocols/adcp-extension.json"
+        adcp_version = get_adcp_version()
+        assert adcp_ext.uri == f"https://adcontextprotocol.org/schemas/{adcp_version}/protocols/adcp-extension.json"
         assert adcp_ext.params is not None
         assert "adcp_version" in adcp_ext.params
         assert "protocols_supported" in adcp_ext.params
 
         # Validate AdCP extension values
-        assert adcp_ext.params["adcp_version"] == expected_version
+        assert adcp_ext.params["adcp_version"] == adcp_version
         protocols = adcp_ext.params["protocols_supported"]
         assert isinstance(protocols, list)
         assert len(protocols) >= 1

@@ -561,16 +561,15 @@ class TestA2ASkillInvocation:
             assert "list_creative_formats" in result.metadata["skills_requested"]
             assert len(result.artifacts) == 2
 
-            # Verify both artifacts have data (handles TextPart + DataPart pattern)
+            # Verify both artifacts have data (parts may have TextPart before DataPart)
             for artifact in result.artifacts:
-                # Find DataPart in parts list (may be after TextPart)
-                data_found = False
+                data_part_found = False
                 for part in artifact.parts:
                     if hasattr(part, "root") and hasattr(part.root, "data"):
                         assert part.root.data is not None
-                        data_found = True
+                        data_part_found = True
                         break
-                assert data_found, "Each artifact must contain a DataPart with data"
+                assert data_part_found, "Expected DataPart in artifact.parts"
 
     # TODO: Add test_missing_authentication once we understand how A2A server handles auth errors
     # TODO: Needs investigation of proper error handling approach (ServerError not in current a2a library)
