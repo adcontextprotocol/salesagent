@@ -351,6 +351,24 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
                 if isinstance(click_list, list):
                     click_list.append(asset_data["url"])
 
+    # Role name fallback for impression tracker (same pattern as click_url)
+    if "impression" not in tracking_urls:
+        for role_name in ["impression_tracker", "tracker_pixel", "pixel"]:
+            if role_name in assets_dict:
+                tracker_asset = assets_dict[role_name]
+                if isinstance(tracker_asset, dict) and "url" in tracker_asset:
+                    tracking_urls.setdefault("impression", []).append(tracker_asset["url"])
+                    break
+
+    # Role name fallback for click tracker
+    if "click" not in tracking_urls:
+        for role_name in ["click_tracker", "tracker_redirect", "redirect_tracker"]:
+            if role_name in assets_dict:
+                tracker_asset = assets_dict[role_name]
+                if isinstance(tracker_asset, dict) and "url" in tracker_asset:
+                    tracking_urls.setdefault("click", []).append(tracker_asset["url"])
+                    break
+
     if tracking_urls:
         asset["delivery_settings"] = {"tracking_urls": tracking_urls}
 

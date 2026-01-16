@@ -586,8 +586,8 @@ class TestAddTrackingUrlsToCreative:
 
         assert creative["destinationUrl"] == "https://click-tracker.com/click"
 
-    def test_click_url_with_redirection_url_macro(self):
-        """Click tracker URL has {REDIRECTION_URL} replaced with original destination."""
+    def test_click_url_with_redirect_url_macro(self):
+        """Click tracker URL has {REDIRECT_URL} replaced with original destination."""
         manager = self._get_manager()
         creative = {
             "xsi_type": "ImageRedirectCreative",
@@ -597,7 +597,7 @@ class TestAddTrackingUrlsToCreative:
         asset = {
             "delivery_settings": {
                 "tracking_urls": {
-                    "click": ["https://click-tracker.com/c?redir={REDIRECTION_URL}"]
+                    "click": ["https://click-tracker.com/c?redir={REDIRECT_URL}"]
                 }
             }
         }
