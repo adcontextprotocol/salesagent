@@ -609,7 +609,7 @@ class GoogleAdManager(AdServerAdapter):
             if tenant:
                 tenant_gemini_key = tenant.gemini_api_key
 
-        context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key)
+        context = build_order_name_context(request, packages, start_time, end_time, tenant_gemini_key=tenant_gemini_key)
         base_order_name = apply_naming_template(order_name_template, context)
 
         # Add unique identifier to prevent duplicate order names

@@ -634,6 +634,7 @@ class GAMCreativesManager:
             "creativeTemplateVariableValues": template_variables,
         }
 
+        self._add_tracking_urls_to_creative(creative, asset)
         return creative
 
     def _create_html5_creative(self, asset: dict[str, Any]) -> dict[str, Any]:
@@ -861,25 +862,96 @@ class GAMCreativesManager:
         return variables
 
     def _add_tracking_urls_to_creative(self, creative: dict[str, Any], asset: dict[str, Any]) -> None:
-        """Add tracking URLs to the creative if available."""
-        tracking_events = asset.get("tracking_events", {})
+        """Add tracking URLs to the creative with AdCP-to-GAM macro substitution.
 
-        # Add impression tracking - append to existing trackingUrls, don't replace
-        if tracking_events.get("impression"):
-            existing_tracking = creative.get("trackingUrls", [])
-            new_tracking = [{"url": url} for url in tracking_events["impression"]]
-            # Merge tracking URLs, avoiding duplicates
-            creative["trackingUrls"] = existing_tracking + [t for t in new_tracking if t not in existing_tracking]
+        Extracts impression tracking URLs from asset's delivery_settings.tracking_urls
+        and applies AdCP->GAM macro substitution before adding to the GAM creative.
 
-        # Add click tracking (for supported creative types) - only if not already set
-        if tracking_events.get("click") and creative.get("xsi_type") in ["ImageCreative", "ThirdPartyCreative"]:
-            if not creative.get("destinationUrl"):
-                creative["destinationUrl"] = tracking_events["click"][0]  # Use first click URL
-            else:
-                logger.info(
-                    f"Preserving existing destinationUrl={creative.get('destinationUrl')}, "
-                    f"not overwriting with tracking event click URL"
+        GAM creative types use different fields for impression tracking:
+        - ThirdPartyCreative, ImageRedirectCreative, CustomCreative:
+          Use thirdPartyImpressionTrackingUrls (array of strings)
+        - VideoRedirectCreative:
+          Use trackingUrls with ConversionEvent_TrackingUrlsMapEntry format
+        """
+        from ..utils.macros import substitute_tracking_urls
+
+        # Extract tracking URLs from delivery_settings
+        delivery_settings = asset.get("delivery_settings", {})
+        tracking_urls = delivery_settings.get("tracking_urls", {})
+        impression_urls = tracking_urls.get("impression", [])
+
+        if impression_urls:
+            # Apply AdCP->GAM macro substitution
+            processed_urls = substitute_tracking_urls(impression_urls)
+            creative_type = creative.get("xsi_type", "")
+
+            # Creative types that use thirdPartyImpressionTrackingUrls (string[])
+            if creative_type in ["ThirdPartyCreative", "ImageRedirectCreative", "CustomCreative", "TemplateCreative"]:
+                existing_urls = creative.get("thirdPartyImpressionTrackingUrls", [])
+                creative["thirdPartyImpressionTrackingUrls"] = existing_urls + [
+                    url for url in processed_urls if url not in existing_urls
+                ]
+            elif creative_type == "VideoRedirectCreative":
+                # VideoRedirectCreative uses trackingUrls with ConversionEvent_TrackingUrlsMapEntry format
+                # CREATIVE_VIEW is the standard event for impression tracking in video
+                existing_tracking = creative.get("trackingUrls", [])
+
+                # Check if CREATIVE_VIEW entry already exists
+                creative_view_entry = None
+                for entry in existing_tracking:
+                    if entry.get("key") == "CREATIVE_VIEW":
+                        creative_view_entry = entry
+                        break
+
+                if creative_view_entry:
+                    # Add to existing CREATIVE_VIEW entry
+                    existing_entry_urls = creative_view_entry.get("value", {}).get("urls", [])
+                    creative_view_entry["value"]["urls"] = existing_entry_urls + [
+                        url for url in processed_urls if url not in existing_entry_urls
+                    ]
+                else:
+                    # Create new CREATIVE_VIEW entry
+                    existing_tracking.append({
+                        "key": "CREATIVE_VIEW",
+                        "value": {"urls": processed_urls}
+                    })
+                    creative["trackingUrls"] = existing_tracking
+
+        click_urls = tracking_urls.get("click", [])
+        if click_urls:
+            from urllib.parse import quote
+
+            if len(click_urls) > 1:
+                logger.warning(f"Multiple click trackers provided, only first will be used")
+
+            original_destination = creative.get("destinationUrl", "")
+            click_url = click_urls[0]
+
+            if "{REDIRECT_URL}" in click_url:
+                if original_destination:
+                    # Replace {REDIRECT_URL} with URL-encoded landing page
+                    click_url = click_url.replace("{REDIRECT_URL}", quote(original_destination, safe=""))
+                    processed_click_urls = substitute_tracking_urls([click_url])
+                    if processed_click_urls:
+                        creative["destinationUrl"] = processed_click_urls[0]
+                else:
+                    # No landing page to embed - ignore click tracker to avoid broken redirect
+                    logger.warning(
+                        "Click tracker has {REDIRECT_URL} macro but no landing page provided. "
+                        "Click tracker ignored."
+                    )
+            elif original_destination:
+                # Click tracker missing {REDIRECT_URL} - would lose landing page
+                logger.warning(
+                    f"Click tracker missing {{REDIRECT_URL}} macro. "
+                    f"Landing page '{original_destination}' would be lost. Click tracker ignored."
                 )
+                # Keep original destinationUrl (landing page) instead of overwriting with tracker
+            else:
+                # No landing page and no {REDIRECT_URL} - just use click tracker as-is
+                processed_click_urls = substitute_tracking_urls([click_url])
+                if processed_click_urls:
+                    creative["destinationUrl"] = processed_click_urls[0]
 
     def _configure_vast_for_line_items(
         self, media_buy_id: str, asset: dict[str, Any], line_item_map: dict[str, str]
