@@ -19,7 +19,7 @@ from src.adapters.gam_inventory_discovery import (
     GAMInventoryDiscovery,
 )
 from src.core.database.db_config import DatabaseConfig
-from src.core.database.models import GAMInventory, Product, ProductInventoryMapping
+from src.core.database.models import AdapterConfig, GAMInventory, Product, ProductInventoryMapping
 
 # Create database session factory
 engine = create_engine(DatabaseConfig.get_connection_string())
@@ -589,6 +589,44 @@ class GAMInventoryService:
 
         # Flush remaining
         self._flush_batch(to_insert, to_update)
+
+    def _update_adapter_config_targeting_keys(self, tenant_id: str):
+        """Update adapter_config.custom_targeting_keys from gam_inventory table.
+
+        This ensures GAMTargetingManager.resolve_custom_targeting_key_id()
+        can find the key name → GAM ID mapping needed for Media Buy approval.
+
+        Args:
+            tenant_id: Tenant ID to update
+        """
+        try:
+            # Build mapping from gam_inventory table
+            stmt = select(GAMInventory.name, GAMInventory.inventory_id).where(
+                and_(
+                    GAMInventory.tenant_id == tenant_id,
+                    GAMInventory.inventory_type == "custom_targeting_key",
+                )
+            )
+            results = self.db.execute(stmt).all()
+            key_mapping = {row.name: row.inventory_id for row in results}
+
+            if key_mapping:
+                # Update adapter_config
+                adapter_config = self.db.scalars(
+                    select(AdapterConfig).filter_by(tenant_id=tenant_id)
+                ).first()
+                if adapter_config:
+                    adapter_config.custom_targeting_keys = key_mapping
+                    self.db.commit()
+                    logger.info(
+                        f"Updated adapter_config.custom_targeting_keys with {len(key_mapping)} keys for tenant {tenant_id}"
+                    )
+                else:
+                    logger.warning(f"No adapter_config found for tenant {tenant_id}, skipping targeting key mapping update")
+            else:
+                logger.info(f"No custom targeting keys found in gam_inventory for tenant {tenant_id}")
+        except Exception as e:
+            logger.error(f"Failed to update adapter_config.custom_targeting_keys: {e}", exc_info=True)
 
     def _convert_item_to_db_format(self, tenant_id: str, inventory_type: str, item, sync_time: datetime) -> dict:
         """Convert inventory item to database format.
