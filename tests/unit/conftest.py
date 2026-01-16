@@ -17,6 +17,13 @@ def mock_all_external_dependencies():
     mock_session = MagicMock()
     mock_session.__enter__ = MagicMock(return_value=mock_session)
     mock_session.__exit__ = MagicMock(return_value=None)
+    # Configure mock to return None for tenant-specific attributes that would otherwise
+    # return MagicMock objects and cause type validation errors (e.g., Pydantic validation)
+    # The .first() result is a MagicMock, but these specific attributes are set to None
+    mock_first_result = MagicMock()
+    mock_first_result.gemini_api_key = None  # Prevents str type validation errors in naming
+    mock_first_result.order_name_template = None
+    mock_session.scalars.return_value.first.return_value = mock_first_result
 
     with patch("src.core.database.database_session.get_db_session") as mock_db:
         mock_db.return_value = mock_session

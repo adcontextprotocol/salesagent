@@ -226,6 +226,9 @@ class TestGAMActivationWorkflowPath:
                 mock_product = Mock()
                 mock_product.product_id = "prod_test"
                 mock_product.implementation_config = {"targeted_ad_unit_ids": ["123456"]}
+                # Prevent MagicMock auto-generation for tenant attributes
+                mock_product.gemini_api_key = None
+                mock_product.order_name_template = None
 
                 # Simpler approach: Always return mock_product for .first(), empty for .all()
                 mock_result = Mock()
@@ -312,6 +315,9 @@ class TestGAMSuccessPath:
                 mock_product = Mock()
                 mock_product.product_id = "prod_test"
                 mock_product.implementation_config = {"targeted_ad_unit_ids": ["123456"]}
+                # Prevent MagicMock auto-generation for tenant attributes
+                mock_product.gemini_api_key = None
+                mock_product.order_name_template = None
 
                 # Simpler approach: Always return mock_product for .first(), empty for .all()
                 mock_result = Mock()
