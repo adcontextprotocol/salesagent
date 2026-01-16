@@ -357,7 +357,9 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
             if role_name in assets_dict:
                 tracker_asset = assets_dict[role_name]
                 if isinstance(tracker_asset, dict) and "url" in tracker_asset:
-                    tracking_urls.setdefault("impression", []).append(tracker_asset["url"])
+                    impression_list = tracking_urls.setdefault("impression", [])
+                    if isinstance(impression_list, list):
+                        impression_list.append(tracker_asset["url"])
                     break
 
     # Role name fallback for click tracker
@@ -366,7 +368,9 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
             if role_name in assets_dict:
                 tracker_asset = assets_dict[role_name]
                 if isinstance(tracker_asset, dict) and "url" in tracker_asset:
-                    tracking_urls.setdefault("click", []).append(tracker_asset["url"])
+                    click_list = tracking_urls.setdefault("click", [])
+                    if isinstance(click_list, list):
+                        click_list.append(tracker_asset["url"])
                     break
 
     if tracking_urls:
