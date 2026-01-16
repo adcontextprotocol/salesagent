@@ -270,6 +270,7 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
             if isinstance(asset_data, dict) and asset_data.get("url_type") not in [
                 "tracker_pixel",
                 "tracker_script",
+                "tracker_redirect",
                 "clickthrough",
             ]:
                 primary_role = role
@@ -341,14 +342,14 @@ def _convert_creative_to_adapter_asset(creative: Creative, package_assignments: 
     for _role, asset_data in assets_dict.items():
         if isinstance(asset_data, dict) and "url" in asset_data:
             url_type = asset_data.get("url_type", "")
-            # Per spec: tracker_pixel for impression tracking, tracker_script for SDK
             if url_type in ["tracker_pixel", "tracker_script"]:
-                # setdefault with [] always returns list, but mypy sees union type
                 impression_list = tracking_urls.setdefault("impression", [])
                 if isinstance(impression_list, list):
                     impression_list.append(asset_data["url"])
-            # Note: clickthrough URLs go to asset["click_url"], not tracking_urls
-            # (already extracted above in the click URL extraction section)
+            elif url_type == "tracker_redirect":
+                click_list = tracking_urls.setdefault("click", [])
+                if isinstance(click_list, list):
+                    click_list.append(asset_data["url"])
 
     if tracking_urls:
         asset["delivery_settings"] = {"tracking_urls": tracking_urls}

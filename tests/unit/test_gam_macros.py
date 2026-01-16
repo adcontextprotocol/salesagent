@@ -566,8 +566,8 @@ class TestAddTrackingUrlsToCreative:
         assert "destinationUrl" in creative
         assert "%%CLICK_URL_ESC%%" in creative["destinationUrl"]
 
-    def test_click_url_not_applied_when_destination_exists(self):
-        """Click tracking URL does not overwrite existing destinationUrl."""
+    def test_click_url_replaces_existing_destination(self):
+        """Click tracking URL replaces existing destinationUrl."""
         manager = self._get_manager()
         creative = {
             "xsi_type": "ImageRedirectCreative",
@@ -584,7 +584,29 @@ class TestAddTrackingUrlsToCreative:
 
         manager._add_tracking_urls_to_creative(creative, asset)
 
-        assert creative["destinationUrl"] == "https://landing-page.com/"
+        assert creative["destinationUrl"] == "https://click-tracker.com/click"
+
+    def test_click_url_with_redirection_url_macro(self):
+        """Click tracker URL has {REDIRECTION_URL} replaced with original destination."""
+        manager = self._get_manager()
+        creative = {
+            "xsi_type": "ImageRedirectCreative",
+            "name": "Test Image",
+            "destinationUrl": "https://landing-page.com/path?param=value"
+        }
+        asset = {
+            "delivery_settings": {
+                "tracking_urls": {
+                    "click": ["https://click-tracker.com/c?redir={REDIRECTION_URL}"]
+                }
+            }
+        }
+
+        manager._add_tracking_urls_to_creative(creative, asset)
+
+        assert "destinationUrl" in creative
+        # Original URL should be URL-encoded
+        assert "https%3A%2F%2Flanding-page.com%2Fpath%3Fparam%3Dvalue" in creative["destinationUrl"]
 
     def test_click_url_with_macros_substituted(self):
         """Click tracking URL has macros substituted."""

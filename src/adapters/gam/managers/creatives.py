@@ -917,8 +917,14 @@ class GAMCreativesManager:
                     creative["trackingUrls"] = existing_tracking
 
         click_urls = tracking_urls.get("click", [])
-        if click_urls and not creative.get("destinationUrl"):
-            processed_click_urls = substitute_tracking_urls(click_urls[:1])
+        if click_urls:
+            from urllib.parse import quote
+
+            original_destination = creative.get("destinationUrl", "")
+            click_url = click_urls[0]
+            if original_destination and "{REDIRECTION_URL}" in click_url:
+                click_url = click_url.replace("{REDIRECTION_URL}", quote(original_destination, safe=""))
+            processed_click_urls = substitute_tracking_urls([click_url])
             if processed_click_urls:
                 creative["destinationUrl"] = processed_click_urls[0]
 
