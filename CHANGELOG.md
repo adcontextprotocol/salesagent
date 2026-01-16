@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0](https://github.com/adcontextprotocol/salesagent/compare/v0.8.0...v0.9.0) (2026-01-16)
+
+
+### Features
+
+* Add role name fallback for tracker detection and fix REDIRECT_URL macro ([4054133](https://github.com/adcontextprotocol/salesagent/commit/405413384895081ad7f8d10d02680e04f14aa322))
+* Add tracker_redirect support with REDIRECTION_URL macro ([6b34831](https://github.com/adcontextprotocol/salesagent/commit/6b348318df29e0c856886a56097c2daa75c85d06))
+* Add tracking pixel macro substitution for GAM adapter ([a3dd2d1](https://github.com/adcontextprotocol/salesagent/commit/a3dd2d1d77146bb8d7b5edacf683c5f82c729e46))
+
+
+### Bug Fixes
+
+* Add isinstance check for list before append in creative_helpers ([8b42656](https://github.com/adcontextprotocol/salesagent/commit/8b4265681c879059f790304b5ced1e105f121278))
+* Improve click tracker and native creative tracking handling ([ade8de4](https://github.com/adcontextprotocol/salesagent/commit/ade8de43cbcebab42d4109206e28e24b8506c054))
+* Pass tenant_gemini_key as keyword argument to build_order_name_context ([5f4f1f1](https://github.com/adcontextprotocol/salesagent/commit/5f4f1f1d9ba353b989370482b49674ccd04c173c))
+* Restore click tracking URL support via destinationUrl ([c3eeab7](https://github.com/adcontextprotocol/salesagent/commit/c3eeab7bf0c76f6470bdf0d497d530fdc78e29db))
+
 ## [0.8.0](https://github.com/adcontextprotocol/salesagent/compare/v0.7.0...v0.8.0) (2026-01-14)
 
 
