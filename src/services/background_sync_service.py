@@ -339,6 +339,11 @@ def _run_sync_thread(
             discovery.custom_targeting_values.clear()  # Clear from memory
             logger.info(f"[{sync_id}] Wrote {targeting_count} targeting keys to database")
 
+            # Also update adapter_config.custom_targeting_keys for GAMTargetingManager
+            # This mapping is used by resolve_custom_targeting_key_id() during Media Buy approval
+            inventory_service._update_adapter_config_targeting_keys(tenant_id)
+            logger.info(f"[{sync_id}] Updated adapter_config targeting key mapping")
+
             # Phase 5: Audience Segments (fetch → write → clear memory)
             # NOTE: Audience segments ALWAYS use full sync because GAM API doesn't support
             # lastModifiedDateTime filtering (returns ParseError.UNPARSABLE).
