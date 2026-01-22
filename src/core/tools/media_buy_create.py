@@ -2282,8 +2282,13 @@ async def _create_media_buy_impl(
                                         creative = creatives_map.get(creative_id)
                                         if creative:
                                             # Simple binary check: does creative's format_id match product?
+                                            # Construct FormatId from database creative's agent_url and format columns
+                                            # (DBCreative stores these as separate string columns, not a FormatId object)
+                                            creative_format_id = FormatId(
+                                                agent_url=creative.agent_url, id=creative.format
+                                            )
                                             format_is_valid, format_error = validate_creative_format_against_product(
-                                                creative_format_id=creative.format,
+                                                creative_format_id=creative_format_id,
                                                 product=product_for_format_validation,
                                             )
 
@@ -3029,8 +3034,13 @@ async def _create_media_buy_impl(
                                     creative = creatives_by_id.get(creative_id)
                                     if creative:
                                         # Simple binary check: does creative's format_id match product?
+                                        # Construct FormatId from database creative's agent_url and format columns
+                                        # (DBCreative stores these as separate string columns, not a FormatId object)
+                                        creative_format_id = FormatId(
+                                            agent_url=creative.agent_url, id=creative.format
+                                        )
                                         format_is_valid, format_error = validate_creative_format_against_product(
-                                            creative_format_id=creative.format,
+                                            creative_format_id=creative_format_id,
                                             product=product_format_check,
                                         )
 
