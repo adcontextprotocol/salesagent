@@ -435,12 +435,17 @@ def validate_creative_format_against_product(
 
     # Simple equality check: does creative's format_id match any product format_id?
     for product_format in product_format_ids:
-        # Type assertion for mypy - format_ids should be list[FormatId]
-        assert hasattr(product_format, "agent_url"), "product_format must be FormatId object"
-        assert hasattr(product_format, "id"), "product_format must be FormatId object"
-
-        product_agent_url = product_format.agent_url
-        product_fmt_id = product_format.id
+        # Handle both FormatId objects and dicts (database stores as dicts)
+        if isinstance(product_format, dict):
+            product_agent_url: str | None = product_format.get("agent_url")
+            product_fmt_id: str | None = product_format.get("id") or product_format.get("format_id")
+        elif hasattr(product_format, "agent_url") and hasattr(product_format, "id"):
+            # Convert AnyUrl to string for consistent comparison
+            product_agent_url = str(product_format.agent_url) if product_format.agent_url else None
+            product_fmt_id = product_format.id
+        else:
+            # Skip invalid format entries
+            continue
 
         if not product_agent_url or not product_fmt_id:
             continue
@@ -452,12 +457,17 @@ def validate_creative_format_against_product(
     # Build error message with supported formats
     supported_formats = []
     for fmt in product_format_ids:
-        # Type assertion for mypy
-        assert hasattr(fmt, "agent_url"), "format must be FormatId object"
-        assert hasattr(fmt, "id"), "format must be FormatId object"
+        # Handle both FormatId objects and dicts
+        if isinstance(fmt, dict):
+            agent_url: str | None = fmt.get("agent_url")
+            fmt_id: str | None = fmt.get("id") or fmt.get("format_id")
+        elif hasattr(fmt, "agent_url") and hasattr(fmt, "id"):
+            # Convert AnyUrl to string for consistent handling
+            agent_url = str(fmt.agent_url) if fmt.agent_url else None
+            fmt_id = fmt.id
+        else:
+            continue
 
-        agent_url = fmt.agent_url
-        fmt_id = fmt.id
         if agent_url and fmt_id:
             supported_formats.append(f"{agent_url}/{fmt_id}")
 
