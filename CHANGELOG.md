@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3](https://github.com/adcontextprotocol/salesagent/compare/v0.9.2...v0.9.3) (2026-01-25)
+
+
+### Bug Fixes
+
+* Handle product.format_ids as dicts in creative validation ([#965](https://github.com/adcontextprotocol/salesagent/issues/965)) ([1c760e6](https://github.com/adcontextprotocol/salesagent/commit/1c760e68c43a975505555214c7357f570c0df572))
+* ignore url not configured when use mock adapters ([#943](https://github.com/adcontextprotocol/salesagent/issues/943)) ([7f55e02](https://github.com/adcontextprotocol/salesagent/commit/7f55e021d9bc53273c55b9394a4173a81fd62e69))
+
 ## [0.9.2](https://github.com/adcontextprotocol/salesagent/compare/v0.9.1...v0.9.2) (2026-01-22)
 
 
