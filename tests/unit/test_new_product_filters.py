@@ -178,10 +178,13 @@ class TestNewProductFiltersLogic:
         assert "channels" in fields
 
     def test_product_filters_can_be_constructed_with_countries_and_channels(self):
-        """Test that ProductFilters can be constructed with countries and channels."""
+        """Test that ProductFilters can be constructed with countries and channels.
+
+        V3 Migration: Channel taxonomy updated - 'video' is now 'olv' (online video).
+        """
         filters = ProductFilters(
             countries=["US", "CA"],
-            channels=["display", "video"],
+            channels=["display", "olv"],  # V3: video→olv
         )
 
         assert filters.countries is not None

@@ -16,13 +16,14 @@ from typing import Any, Literal, TypedDict, cast
 from urllib.parse import urlparse
 
 from adcp import BrandManifest, PushNotificationConfig
-from adcp.types import GeneratedTaskStatus as AdcpTaskStatus, MediaBuyStatus
+from adcp.types import GeneratedTaskStatus as AdcpTaskStatus
+from adcp.types import MediaBuyStatus
 from adcp.types.generated_poc.core.context import ContextObject
 from adcp.types.generated_poc.core.creative_asset import CreativeAsset
-from adcp.types.generated_poc.core.targeting import TargetingOverlay
-from adcp.types.generated_poc.media_buy.create_media_buy_request import ReportingWebhook
-from adcp.types.generated_poc.media_buy.package_request import PackageRequest as AdcpPackageRequest
 from adcp.types.generated_poc.core.format import Assets
+from adcp.types.generated_poc.core.reporting_webhook import ReportingWebhook
+from adcp.types.generated_poc.core.targeting import TargetingOverlay
+from adcp.types.generated_poc.media_buy.package_request import PackageRequest as AdcpPackageRequest
 from adcp.utils.format_assets import get_individual_assets, has_assets
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
@@ -190,7 +191,7 @@ def _extract_creative_url_and_dimensions(
         # Note: We only support individual assets here (not repeatable groups).
         # This matches previous behavior - repeatable groups were never supported in this function.
         for asset_spec in get_individual_assets(format_spec):
-            # Type guard: get_individual_assets only returns Assets, not Assets1 (repeatable groups)
+            # Type guard: get_individual_assets only returns Assets, not Assets5 (repeatable groups)
             if not isinstance(asset_spec, Assets):
                 continue
             asset_type = str(asset_spec.asset_type).lower()
@@ -210,7 +211,7 @@ def _extract_creative_url_and_dimensions(
         # Note: We only support individual assets here (not repeatable groups).
         # This matches previous behavior - repeatable groups were never supported in this function.
         for asset_spec in get_individual_assets(format_spec):
-            # Type guard: get_individual_assets only returns Assets, not Assets1 (repeatable groups)
+            # Type guard: get_individual_assets only returns Assets, not Assets5 (repeatable groups)
             if not isinstance(asset_spec, Assets):
                 continue
             asset_type = str(asset_spec.asset_type).lower()
@@ -249,7 +250,7 @@ def _extract_creative_url_and_dimensions(
                         url = asset_obj["url"]
 
                     # Extract dimensions if not found yet
-                    if (not width or not height):
+                    if not width or not height:
                         raw_width = asset_obj.get("width")
                         raw_height = asset_obj.get("height")
                         if raw_width is not None and not width:
@@ -2423,7 +2424,9 @@ async def _create_media_buy_impl(
                 ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return (
                     CreateMediaBuyError(
-                        errors=[Error(code="invalid_configuration", message=err, details=None) for err in config_errors],
+                        errors=[
+                            Error(code="invalid_configuration", message=err, details=None) for err in config_errors
+                        ],
                         context=to_context_object(req.context),
                     ),
                     AdcpTaskStatus.failed,
@@ -3036,9 +3039,7 @@ async def _create_media_buy_impl(
                                         # Simple binary check: does creative's format_id match product?
                                         # Construct FormatId from database creative's agent_url and format columns
                                         # (DBCreative stores these as separate string columns, not a FormatId object)
-                                        creative_format_id = FormatId(
-                                            agent_url=creative.agent_url, id=creative.format
-                                        )
+                                        creative_format_id = FormatId(agent_url=creative.agent_url, id=creative.format)
                                         format_is_valid, format_error = validate_creative_format_against_product(
                                             creative_format_id=creative_format_id,
                                             product=product_format_check,
