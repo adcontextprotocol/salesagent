@@ -1904,45 +1904,11 @@ async def _create_media_buy_impl(
             AdcpTaskStatus.failed,
         )
 
-    # Dry-run mode: Return simulated response without any database writes
-    # Validation has passed, so we return what WOULD be created
-    if testing_ctx.dry_run:
-        logger.info("[DRY_RUN] Returning simulated response without database writes")
-
-        # Generate simulated IDs
-        simulated_media_buy_id = f"dry_run_mb_{uuid.uuid4().hex[:12]}"
-
-        # Build simulated packages from request
-        simulated_packages = []
-        for idx, pkg in enumerate(req.packages or [], 1):
-            simulated_package_id = f"dry_run_pkg_{uuid.uuid4().hex[:8]}_{idx}"
-            simulated_pkg = {
-                "package_id": simulated_package_id,
-                "paused": False,
-                "buyer_ref": pkg.buyer_ref,
-                "product_id": pkg.product_id,
-            }
-            if pkg.budget is not None:
-                simulated_pkg["budget"] = float(pkg.budget) if isinstance(pkg.budget, (int, float)) else pkg.budget
-            if pkg.bid_price is not None:
-                simulated_pkg["bid_price"] = float(pkg.bid_price)
-            if pkg.pricing_option_id is not None:
-                simulated_pkg["pricing_option_id"] = pkg.pricing_option_id
-            simulated_packages.append(simulated_pkg)
-
-        # Build simulated response
-        dry_run_response = CreateMediaBuySuccess(
-            buyer_ref=req.buyer_ref,
-            media_buy_id=simulated_media_buy_id,
-            packages=cast(list[Any], simulated_packages),
-            context=to_context_object(req.context),
-        )
-
-        return dry_run_response, AdcpTaskStatus.completed
-
-    # Type narrowing: after dry_run early return, step and persistent_ctx are guaranteed to exist
-    assert step is not None, "step should be created when not in dry_run mode"
-    assert persistent_ctx is not None, "persistent_ctx should be created when not in dry_run mode"
+    # Type narrowing: in non-dry_run mode, step and persistent_ctx are guaranteed to exist
+    # In dry_run mode, they may be None (database operations are skipped)
+    if not testing_ctx.dry_run:
+        assert step is not None, "step should be created when not in dry_run mode"
+        assert persistent_ctx is not None, "persistent_ctx should be created when not in dry_run mode"
 
     # Principal already validated earlier (before context creation) to avoid foreign key errors
 
@@ -2004,7 +1970,10 @@ async def _create_media_buy_impl(
         auto_create_enabled = tenant.get("auto_create_media_buys", True)
         product_auto_create = True  # Will be set correctly when we get products later
 
-        if manual_approval_required and "create_media_buy" in manual_approval_operations:
+        # Skip manual approval path in dry_run mode - we're only validating, not creating workflow
+        if not testing_ctx.dry_run and manual_approval_required and "create_media_buy" in manual_approval_operations:
+            # Type narrowing: step and persistent_ctx exist in non-dry_run mode
+            assert step is not None and persistent_ctx is not None
             # Update existing workflow step to require approval
             ctx_manager.update_workflow_step(
                 step.step_id,
@@ -2491,7 +2460,8 @@ async def _create_media_buy_impl(
                 error_detail = "GAM configuration validation failed:\n" + "\n".join(
                     f"  • {err}" for err in config_errors
                 )
-                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
+                if step:
+                    ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return (
                     CreateMediaBuyError(
                         errors=[
@@ -2508,9 +2478,11 @@ async def _create_media_buy_impl(
         )
 
         # Check if either tenant or product disables auto-creation
-        if not auto_create_enabled or not product_auto_create:
+        # Skip in dry_run mode - we're only validating, not creating workflow
+        if not testing_ctx.dry_run and (not auto_create_enabled or not product_auto_create):
             reason = "Tenant configuration" if not auto_create_enabled else "Product configuration"
-
+            # Type narrowing: step and persistent_ctx exist in non-dry_run mode
+            assert step is not None and persistent_ctx is not None
             # Update existing workflow step to require approval
             ctx_manager.update_workflow_step(step.step_id, status="requires_approval")
 
@@ -2816,7 +2788,8 @@ async def _create_media_buy_impl(
         # Defensive null check: ensure start_time and end_time are set
         if not req.start_time or not req.end_time:
             error_msg = "start_time and end_time are required but were not properly set"
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+            if step:
+                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return (
                 CreateMediaBuyError(
                     errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
@@ -2831,8 +2804,11 @@ async def _create_media_buy_impl(
             _validate_creatives_before_adapter_call(packages, tenant["tenant_id"])
         except ToolError:
             # Validation failed - creative validation errors already logged
-            # Update workflow step as failed and re-raise
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message="Creative validation failed")
+            # Update workflow step as failed and re-raise (only if step exists - not created in dry_run mode)
+            if step:
+                ctx_manager.update_workflow_step(
+                    step.step_id, status="failed", error_message="Creative validation failed"
+                )
             raise
 
         # Call adapter using shared creation logic
@@ -2862,6 +2838,17 @@ async def _create_media_buy_impl(
             for i, pkg_item in enumerate(response.packages):
                 # pkg_item is dict[str, Any] here (response.packages), different scope from earlier Package usage
                 logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg_item}")
+
+        # Dry-run mode: Return adapter response without database writes
+        # Adapter validation has run, so errors (like unsupported pricing) are already caught above
+        if testing_ctx.dry_run:
+            logger.info("[DRY_RUN] Adapter validation passed, returning response without database writes")
+            return (response, AdcpTaskStatus.completed)
+
+        # Type narrowing: after dry_run return, step and persistent_ctx are guaranteed to exist
+        # This is needed for mypy to understand these won't be None in the code below
+        assert step is not None, "step should be created when not in dry_run mode"
+        assert persistent_ctx is not None, "persistent_ctx should be created when not in dry_run mode"
 
         # Store the media buy in memory (for backward compatibility)
         # Lazy import to avoid circular dependency

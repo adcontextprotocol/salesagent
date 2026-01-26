@@ -84,7 +84,8 @@ class TestCreateMediaBuyDryRunResponseStructure:
 
         # Verify key structural elements exist
         assert "testing_ctx.dry_run" in source, "dry_run check should exist"
-        assert "dry_run_mb_" in source, "simulated media_buy_id prefix should exist"
+        # dry_run mode returns adapter response without database writes (adapter generates IDs)
+        assert "DRY_RUN" in source, "dry_run logging should exist"
         assert "if not testing_ctx.dry_run:" in source, "workflow step should be guarded by dry_run check"
 
 
