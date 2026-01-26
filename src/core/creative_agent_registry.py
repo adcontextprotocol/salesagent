@@ -21,12 +21,11 @@ Testing:
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from adcp import ADCPMultiAgentClient, AgentConfig, ListCreativeFormatsRequest, Protocol
 from adcp.exceptions import ADCPAuthenticationError, ADCPConnectionError, ADCPError, ADCPTimeoutError
 from adcp.types import AssetContentType as AssetType
-from adcp.types import Format as AdcpFormat
 from adcp.types import FormatCategory as FormatType
 from adcp.types.generated_poc.core.format import Assets
 
@@ -34,7 +33,7 @@ from src.core.schemas import Format, FormatId, url
 from src.core.utils.mcp_client import create_mcp_client  # Keep for custom tools (preview, build)
 
 
-def _create_mock_format(format_id_str: str, name: str, format_type: FormatType, asset_type: str) -> AdcpFormat:
+def _create_mock_format(format_id_str: str, name: str, format_type: FormatType, asset_type: str) -> Format:
     """Create a single mock format with proper typing for testing."""
     from adcp.types.generated_poc.core.format import Assets5
 
@@ -46,11 +45,19 @@ def _create_mock_format(format_id_str: str, name: str, format_type: FormatType, 
             required=True,
         )
     ]
-    return AdcpFormat(
+    # Use Format (our extended class) instead of AdcpFormat to include is_standard field
+    # Explicitly pass None for optional internal fields to satisfy mypy
+    return Format(
         format_id=FormatId(id=format_id_str, agent_url=url("https://creative.adcontextprotocol.org")),
         name=name,
         type=format_type,
         assets=assets,
+        is_standard=True,  # Mock formats are standard formats
+        platform_config=None,
+        category=None,
+        requirements=None,
+        iab_specification=None,
+        accepts_3p_tags=None,
     )
 
 
@@ -60,8 +67,8 @@ def _get_mock_formats() -> list[Format]:
     These formats match what the real creative agent returns, but without
     making external HTTP calls. Used in CI to avoid timeouts.
     """
-    # Create mock formats with proper typing
-    mock_formats = [
+    # Create mock formats using our Format class (which includes is_standard field)
+    return [
         _create_mock_format("display_300x250", "Medium Rectangle", FormatType.display, "image"),
         _create_mock_format("display_728x90", "Leaderboard", FormatType.display, "image"),
         _create_mock_format("display_300x600", "Half Page", FormatType.display, "image"),
@@ -73,8 +80,6 @@ def _get_mock_formats() -> list[Format]:
         _create_mock_format("display_html", "Display HTML", FormatType.display, "image"),
         _create_mock_format("display_js", "Display JavaScript", FormatType.display, "image"),
     ]
-    # AdcpFormat and Format (which extends it) are compatible at runtime
-    return cast(list[Format], mock_formats)
 
 
 @dataclass
