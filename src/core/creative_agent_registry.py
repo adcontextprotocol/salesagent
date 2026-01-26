@@ -12,19 +12,69 @@ Architecture:
 - Format resolution: Query agents via MCP, cache results
 - Preview generation: Delegate to creative agent
 - Generative creative: Use agent's create_generative_creative tool
+
+Testing:
+- When ADCP_TESTING=true, returns mock formats instead of calling external services
+- This avoids timeouts in CI when external creative agents are unreachable
 """
 
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from adcp import ADCPMultiAgentClient, AgentConfig, ListCreativeFormatsRequest, Protocol
 from adcp.exceptions import ADCPAuthenticationError, ADCPConnectionError, ADCPError, ADCPTimeoutError
 from adcp.types import AssetContentType as AssetType
+from adcp.types import Format as AdcpFormat
 from adcp.types import FormatCategory as FormatType
+from adcp.types.generated_poc.core.format import Assets
 
-from src.core.schemas import Format, FormatId
+from src.core.schemas import Format, FormatId, url
 from src.core.utils.mcp_client import create_mcp_client  # Keep for custom tools (preview, build)
+
+
+def _create_mock_format(format_id_str: str, name: str, format_type: FormatType, asset_type: str) -> AdcpFormat:
+    """Create a single mock format with proper typing for testing."""
+    from adcp.types.generated_poc.core.format import Assets5
+
+    assets: list[Assets | Assets5] = [
+        Assets(
+            item_type="individual",
+            asset_id="primary",
+            asset_type=AssetType(asset_type),
+            required=True,
+        )
+    ]
+    return AdcpFormat(
+        format_id=FormatId(id=format_id_str, agent_url=url("https://creative.adcontextprotocol.org")),
+        name=name,
+        type=format_type,
+        assets=assets,
+    )
+
+
+def _get_mock_formats() -> list[Format]:
+    """Return mock formats for testing mode (ADCP_TESTING=true).
+
+    These formats match what the real creative agent returns, but without
+    making external HTTP calls. Used in CI to avoid timeouts.
+    """
+    # Create mock formats with proper typing
+    mock_formats = [
+        _create_mock_format("display_300x250", "Medium Rectangle", FormatType.display, "image"),
+        _create_mock_format("display_728x90", "Leaderboard", FormatType.display, "image"),
+        _create_mock_format("display_300x600", "Half Page", FormatType.display, "image"),
+        _create_mock_format("display_160x600", "Wide Skyscraper", FormatType.display, "image"),
+        _create_mock_format("display_320x50", "Mobile Leaderboard", FormatType.display, "image"),
+        _create_mock_format("video_standard", "Standard Video", FormatType.video, "video"),
+        _create_mock_format("video_vast", "VAST Video", FormatType.video, "video"),
+        _create_mock_format("display_image", "Display Image", FormatType.display, "image"),
+        _create_mock_format("display_html", "Display HTML", FormatType.display, "image"),
+        _create_mock_format("display_js", "Display JavaScript", FormatType.display, "image"),
+    ]
+    # AdcpFormat and Format (which extends it) are compatible at runtime
+    return cast(list[Format], mock_formats)
 
 
 @dataclass
@@ -319,6 +369,10 @@ class CreativeAgentRegistry:
         Returns:
             List of Format objects
         """
+        # In testing mode (ADCP_TESTING=true), return mock formats to avoid external HTTP calls
+        if os.environ.get("ADCP_TESTING", "").lower() == "true":
+            return _get_mock_formats()
+
         # Check cache - only use cache if no filtering parameters provided
         has_filters = any(
             [
@@ -392,12 +446,19 @@ class CreativeAgentRegistry:
         Returns:
             List of all Format objects across all agents
         """
-        agents = self._get_tenant_agents(tenant_id)
-        all_formats = []
-
         import logging
 
         logger = logging.getLogger(__name__)
+
+        # In testing mode (ADCP_TESTING=true), return mock formats to avoid external HTTP calls
+        # This prevents timeouts in CI when external creative agents are unreachable
+        if os.environ.get("ADCP_TESTING", "").lower() == "true":
+            logger.info("list_all_formats: Using mock formats (ADCP_TESTING=true)")
+            return _get_mock_formats()
+
+        agents = self._get_tenant_agents(tenant_id)
+        all_formats = []
+
         logger.info(f"list_all_formats: Found {len(agents)} agents for tenant {tenant_id}")
 
         # Build client for all agents

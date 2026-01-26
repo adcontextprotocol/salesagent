@@ -342,8 +342,9 @@ class MockAdServer(AdServerAdapter):
             if package_pricing_info and package.package_id in package_pricing_info:
                 pricing_model = package_pricing_info[package.package_id].get("pricing_model")
 
-            # Apply higher limit for video-based pricing models (CPCV, CPV)
-            limit = 100000000 if pricing_model in ["cpcv", "cpv"] else 1000000
+            # Apply higher limit for video-based and non-impression pricing models (CPCV, CPV, CPP)
+            # These models calculate impressions as if CPM which can inflate the number
+            limit = 100000000 if pricing_model in ["cpcv", "cpv", "cpp"] else 1000000
 
             if package.impressions > limit:  # Mock limit
                 errors.append(
