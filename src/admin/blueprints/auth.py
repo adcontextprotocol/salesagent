@@ -218,11 +218,7 @@ def login():
     For multi-tenant deployments, detects tenant from subdomain and checks
     for tenant-specific OIDC configuration first.
     """
-    logger.warning("========== LOGIN ROUTE HIT ==========")
-    logger.warning(f"Session keys at login: {list(session.keys())}")
-    logger.warning(f"'user' in session: {'user' in session}")
-    logger.warning(f"Request args: {dict(request.args)}")
-    logger.warning(f"Incoming cookies: {list(request.cookies.keys())}")
+    logger.debug("login route hit, has_user=%s, args=%s", "user" in session, dict(request.args))
 
     # Capture 'next' parameter for redirect after login
     next_url = request.args.get("next")
@@ -231,7 +227,7 @@ def login():
 
     # Don't auto-redirect if user just logged out
     just_logged_out = request.args.get("logged_out") == "1"
-    logger.warning(f"just_logged_out: {just_logged_out}")
+    logger.debug("just_logged_out=%s", just_logged_out)
 
     # Check if OAuth is configured via environment (fallback for all tenants)
     client_id, client_secret, discovery_url, _ = get_oauth_config()
@@ -416,13 +412,11 @@ def google_auth():
     logger.info(f"OAuth initiation - Request scheme: {request.scheme}")
 
     # Debug: Log session cookie configuration
-    logger.warning(
-        f"Session config: SECURE={current_app.config.get('SESSION_COOKIE_SECURE')}, "
-        f"SAMESITE={current_app.config.get('SESSION_COOKIE_SAMESITE')}, "
-        f"DOMAIN={current_app.config.get('SESSION_COOKIE_DOMAIN')}, "
-        f"PATH={current_app.config.get('SESSION_COOKIE_PATH')}"
+    logger.debug(
+        "session config: SECURE=%s, SAMESITE=%s",
+        current_app.config.get("SESSION_COOKIE_SECURE"),
+        current_app.config.get("SESSION_COOKIE_SAMESITE"),
     )
-    logger.warning(f"Incoming cookies at OAuth start: {list(request.cookies.keys())}")
 
     redirect_uri = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI")
     if redirect_uri:
@@ -446,7 +440,7 @@ def google_auth():
             redirect_uri = base_url
             logger.info(f"Using base URL without /admin prefix: {redirect_uri}")
 
-    logger.warning(f"========== FINAL OAuth redirect URI: {redirect_uri} ==========")
+    logger.debug("OAuth redirect URI: %s", redirect_uri)
 
     # Clear any existing session to start fresh for OAuth
     # This ensures we don't have conflicting session state
@@ -456,7 +450,7 @@ def google_auth():
     response = oauth.google.authorize_redirect(redirect_uri)
 
     # Log what's in the session after Authlib stores the state
-    logger.warning(f"Session keys after authorize_redirect: {list(session.keys())}")
+    logger.debug("session keys after authorize_redirect: %s", list(session.keys()))
 
     # CRITICAL FIX: Authlib's authorize_redirect() returns a redirect response,
     # but this response bypasses Flask's normal session-saving mechanism.
@@ -519,23 +513,7 @@ def tenant_google_auth(tenant_id):
 @auth_bp.route("/auth/google/callback")
 def google_callback():
     """Handle Google OAuth callback - simplified version."""
-    # Log immediately when callback is hit
-    logger.warning("========== GOOGLE OAUTH CALLBACK HIT ==========")
-    logger.warning(f"Request URL: {request.url}")
-    logger.warning(f"Request args: {dict(request.args)}")
-    logger.warning(f"Session keys at start: {list(session.keys())}")
-    logger.warning(f"Incoming cookies: {list(request.cookies.keys())}")
-
-    # Debug: Log the raw session cookie value to check if it's the right one
-    raw_session = request.cookies.get("session", "")
-    logger.warning(f"Raw session cookie (first 100 chars): {raw_session[:100] if raw_session else 'EMPTY'}")
-
-    logger.warning(
-        f"Session config: SECURE={current_app.config.get('SESSION_COOKIE_SECURE')}, "
-        f"SAMESITE={current_app.config.get('SESSION_COOKIE_SAMESITE')}, "
-        f"DOMAIN={current_app.config.get('SESSION_COOKIE_DOMAIN')}, "
-        f"PATH={current_app.config.get('SESSION_COOKIE_PATH')}"
-    )
+    logger.debug("google_callback hit, args=%s", dict(request.args))
 
     oauth = current_app.oauth if hasattr(current_app, "oauth") else None
     if not oauth:
@@ -563,8 +541,6 @@ def google_callback():
 
         if not token:
             logger.error("OAuth token exchange failed - authorize_access_token() returned None")
-            logger.error(f"Request args: {dict(request.args)}")
-            logger.error(f"Session keys: {list(session.keys())}")
             flash("Authentication failed. Please try again.", "error")
             # Preserve tenant context on error
             if tenant_context:
@@ -588,7 +564,7 @@ def google_callback():
 
         # Mark session as modified to ensure it's saved
         session.modified = True
-        logger.warning(f"========== USER SET IN SESSION: {email} ==========")
+        logger.info("User authenticated: %s", email)
 
         # Check if user is super admin FIRST (before signup flow check)
         # Super admins should never be redirected to signup/onboarding
@@ -715,10 +691,7 @@ def google_callback():
 
         # Multi-tenant mode or multiple tenants: show tenant selector
         flash(f"Welcome {user.get('name', email)}!", "success")
-        logger.warning(f"========== REDIRECTING TO select_tenant, session keys: {list(session.keys())} ==========")
-        logger.warning(
-            f"========== available_tenants in session: {len(session.get('available_tenants', []))} =========="
-        )
+        logger.debug("redirecting to select_tenant, tenants=%d", len(session.get("available_tenants", [])))
         session.modified = True
 
         # Create response and explicitly save session to ensure cookie is set
@@ -726,15 +699,10 @@ def google_callback():
 
         response = make_response(redirect(url_for("auth.select_tenant")))
 
-        # Log what cookies will be sent
-        logger.warning(f"========== Response cookies being set: {response.headers.getlist('Set-Cookie')} ==========")
-
         return response
 
     except Exception as e:
-        logger.error(f"[OAUTH_DEBUG] OAuth callback error: {type(e).__name__}: {e}", exc_info=True)
-        logger.error(f"[OAUTH_DEBUG] Request args: {dict(request.args)}")
-        logger.error(f"[OAUTH_DEBUG] Session keys: {list(session.keys())}")
+        logger.error("OAuth callback error: %s: %s", type(e).__name__, e, exc_info=True)
         flash("Authentication failed. Please try again.", "error")
         # Preserve tenant context on error to avoid redirect loop
         if tenant_context:
@@ -745,14 +713,10 @@ def google_callback():
 @auth_bp.route("/auth/select-tenant", methods=["GET", "POST"])
 def select_tenant():
     """Allow user to select a tenant when they have access to multiple."""
-    logger.warning("========== SELECT_TENANT HIT ==========")
-    logger.warning(f"Session keys at select_tenant: {list(session.keys())}")
-    logger.warning(f"'user' in session: {'user' in session}")
-    logger.warning(f"'available_tenants' in session: {'available_tenants' in session}")
-    logger.warning(f"Incoming cookies: {list(request.cookies.keys())}")
+    logger.debug("select_tenant hit, has_user=%s, has_tenants=%s", "user" in session, "available_tenants" in session)
 
     if "user" not in session or "available_tenants" not in session:
-        logger.warning("========== REDIRECTING BACK TO LOGIN (session missing user or available_tenants) ==========")
+        logger.debug("redirecting to login (missing session data)")
         return redirect(url_for("auth.login"))
 
     if request.method == "POST":
