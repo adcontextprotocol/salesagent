@@ -28,6 +28,7 @@ from src.core.audit_logger import get_audit_logger
 from src.core.auth import get_principal_from_context, get_principal_object
 from src.core.config_loader import set_current_tenant
 from src.core.database.database_session import get_db_session
+from src.core.product_conversion import add_v2_compat_to_products
 from src.core.schema_helpers import create_get_products_request
 from src.core.schemas import (
     GetProductsResponse,
@@ -832,7 +833,11 @@ async def get_products(
     response = await _get_products_impl(req, ctx)
 
     # Return ToolResult with human-readable text and structured data
-    return ToolResult(content=str(response), structured_content=response.model_dump())
+    # Apply v2.x backward-compat fields to pricing_options for older clients
+    response_dict = response.model_dump()
+    if "products" in response_dict:
+        response_dict["products"] = add_v2_compat_to_products(response_dict["products"])
+    return ToolResult(content=str(response), structured_content=response_dict)
 
 
 async def get_products_raw(

@@ -67,6 +67,7 @@ from src.core.auth_utils import get_principal_from_token
 from src.core.config_loader import get_current_tenant
 from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 from src.core.domain_config import get_a2a_server_url, get_sales_agent_domain
+from src.core.product_conversion import add_v2_compat_to_products
 from src.core.schemas import CreativeStatusEnum
 from src.core.testing_hooks import AdCPTestContext
 from src.core.tool_context import ToolContext
@@ -2168,9 +2169,11 @@ class AdCPRequestHandler(RequestHandler):
                 ctx=self._tool_context_to_mcp_context(tool_context),
             )
 
-            # Convert to A2A response format
+            # Convert to A2A response format with v2.x backward compatibility
+            products = [product.model_dump() for product in response.products]
+            products = add_v2_compat_to_products(products)
             return {
-                "products": [product.model_dump() for product in response.products],
+                "products": products,
                 "message": str(response),  # Use __str__ method for human-readable message
             }
 

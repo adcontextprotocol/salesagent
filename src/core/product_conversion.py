@@ -69,11 +69,11 @@ def convert_pricing_option_to_adcp(
     pricing_option_id = f"{pricing_model}_{currency.lower()}_{'fixed' if is_fixed else 'auction'}"
 
     # Build common fields shared across all pricing options (V3 format)
+    # Note: is_fixed and rate are added during serialization for v2.x compat
     common_fields = {
         "pricing_model": pricing_model,
         "currency": currency,
         "pricing_option_id": pricing_option_id,
-        # Note: is_fixed is NOT included - V3 uses field presence instead
     }
 
     # Add min_spend_per_package if present
@@ -100,7 +100,7 @@ def convert_pricing_option_to_adcp(
                 raise ValueError(f"Fixed CPM pricing option {pricing_option_id} requires rate")
             return CpmPricingOption(
                 **common_fields,
-                fixed_price=float(rate),  # V3: rate → fixed_price
+                fixed_price=float(rate),
             )
         else:
             if not price_guidance:
@@ -124,7 +124,7 @@ def convert_pricing_option_to_adcp(
                 raise ValueError(f"Fixed VCPM pricing option {pricing_option_id} requires rate")
             return VcpmPricingOption(
                 **common_fields,
-                fixed_price=float(rate),  # V3: rate → fixed_price
+                fixed_price=float(rate),
             )
         else:
             if not price_guidance:
@@ -152,14 +152,17 @@ def convert_pricing_option_to_adcp(
             raise ValueError(f"Fixed CPC pricing option {pricing_option_id} requires rate")
         return CpcPricingOption(
             **common_fields,
-            fixed_price=float(rate),  # V3: rate → fixed_price
+            fixed_price=float(rate),
         )
 
     elif pricing_model == "cpcv":
         # CPCV (Cost Per Completed View) - typically fixed rate
         if not rate:
             raise ValueError(f"CPCV pricing option {pricing_option_id} requires rate")
-        result_fields = {**common_fields, "fixed_price": float(rate)}
+        result_fields = {
+            **common_fields,
+            "fixed_price": float(rate),
+        }
         # CPCV may have optional parameters for view completion threshold
         if parameters:
             result_fields["parameters"] = parameters
@@ -187,7 +190,7 @@ def convert_pricing_option_to_adcp(
             raise ValueError(f"CPP pricing option {pricing_option_id} requires parameters (demographic)")
         return CppPricingOption(
             **common_fields,
-            fixed_price=float(rate),  # V3: rate → fixed_price
+            fixed_price=float(rate),
             parameters=parameters,
         )
 
@@ -197,7 +200,7 @@ def convert_pricing_option_to_adcp(
             raise ValueError(f"Flat rate pricing option {pricing_option_id} requires rate")
         result_fields = {
             **common_fields,
-            "fixed_price": float(rate),  # V3: rate → fixed_price (flat rate is always fixed)
+            "fixed_price": float(rate),
         }
         # Flat rate may have optional parameters (DOOH venue packages, SOV, etc.)
         if parameters:
@@ -311,3 +314,56 @@ def convert_product_model_to_schema(product_model) -> Product:
     product_data["allowed_principal_ids"] = getattr(product_model, "allowed_principal_ids", None)
 
     return Product(**product_data)
+
+
+def add_v2_compat_to_pricing_options(product_dict: dict) -> dict:
+    """Add v2.x backward-compatible fields to pricing_options in a serialized product.
+
+    V3.0 changes that need v2.x compat:
+    - is_fixed removed: V2.x clients expect this discriminator field
+    - rate renamed to fixed_price: V2.x clients expect rate field
+    - floor moved from price_guidance.floor to top-level floor_price
+
+    This function adds backward-compat fields during serialization:
+    - is_fixed: True if fixed_price is present, False otherwise
+    - rate: Copy of fixed_price when present (v2.x field name)
+    - price_guidance.floor: Copy of floor_price when present
+
+    Args:
+        product_dict: Serialized product dictionary (from model_dump)
+
+    Returns:
+        Product dictionary with v2.x backward-compat fields added
+    """
+    if "pricing_options" not in product_dict:
+        return product_dict
+
+    for po in product_dict["pricing_options"]:
+        # Add is_fixed discriminator (v2.x expected this field)
+        fixed_price = po.get("fixed_price")
+        po["is_fixed"] = fixed_price is not None
+
+        # Add rate field (v2.x name for fixed_price)
+        if fixed_price is not None:
+            po["rate"] = fixed_price
+
+        # If floor_price is set, add floor to price_guidance for v2.x compat
+        floor_price = po.get("floor_price")
+        if floor_price is not None:
+            if "price_guidance" not in po:
+                po["price_guidance"] = {}
+            po["price_guidance"]["floor"] = floor_price
+
+    return product_dict
+
+
+def add_v2_compat_to_products(products: list[dict]) -> list[dict]:
+    """Add v2.x backward-compatible fields to a list of serialized products.
+
+    Args:
+        products: List of serialized product dictionaries
+
+    Returns:
+        Products with v2.x backward-compat fields added
+    """
+    return [add_v2_compat_to_pricing_options(p) for p in products]

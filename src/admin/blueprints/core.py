@@ -293,10 +293,7 @@ def admin_index():
     """Admin UI entry point - requires authentication."""
     from src.core.config_loader import is_single_tenant_mode
 
-    logger.warning("========== ADMIN_INDEX HIT ==========")
-    logger.warning(f"Session keys: {list(session.keys())}")
-    logger.warning(f"'user' in session: {'user' in session}")
-    logger.warning(f"Incoming cookies: {list(request.cookies.keys())}")
+    logger.debug("admin_index hit, session_keys=%s, has_user=%s", list(session.keys()), "user" in session)
 
     # Single-tenant mode: always redirect to default tenant dashboard
     # (the @require_tenant_access decorator handles auth redirect)

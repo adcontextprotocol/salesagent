@@ -43,10 +43,14 @@ audit_logger.setLevel(logging.INFO)
 audit_logger.addHandler(audit_handler)
 audit_logger.addHandler(error_handler)
 
-# Also log to console for debugging
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
-audit_logger.addHandler(console_handler)
+# In development, also log to console for debugging
+# In production, the root logger already handles console output with JSON formatting
+import os
+
+if not os.environ.get("FLY_APP_NAME") and not os.environ.get("PRODUCTION"):
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
+    audit_logger.addHandler(console_handler)
 
 
 class AuditLogger:
