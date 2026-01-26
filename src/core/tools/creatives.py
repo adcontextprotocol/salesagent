@@ -2020,13 +2020,24 @@ def _list_creatives_impl(
 
             format_obj = FormatId(**format_kwargs)
 
-            # Ensure datetime fields are datetime (not SQLAlchemy DateTime)
-            created_at_dt: datetime = (
-                db_creative.created_at if isinstance(db_creative.created_at, datetime) else datetime.now(UTC)
-            )
-            updated_at_dt: datetime = (
-                db_creative.updated_at if isinstance(db_creative.updated_at, datetime) else datetime.now(UTC)
-            )
+            # Ensure datetime fields are timezone-aware (database may store naive datetimes)
+            if isinstance(db_creative.created_at, datetime):
+                created_at_dt = (
+                    db_creative.created_at.replace(tzinfo=UTC)
+                    if db_creative.created_at.tzinfo is None
+                    else db_creative.created_at
+                )
+            else:
+                created_at_dt = datetime.now(UTC)
+
+            if isinstance(db_creative.updated_at, datetime):
+                updated_at_dt = (
+                    db_creative.updated_at.replace(tzinfo=UTC)
+                    if db_creative.updated_at.tzinfo is None
+                    else db_creative.updated_at
+                )
+            else:
+                updated_at_dt = datetime.now(UTC)
 
             # AdCP v1 spec compliant - only spec fields
             # Get assets dict from database (all production data uses AdCP v2.4 format)
