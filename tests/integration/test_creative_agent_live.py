@@ -5,17 +5,11 @@ to verify format discovery and resolution works correctly.
 
 The creative agent is stable production infrastructure that doesn't change frequently,
 making it suitable for integration testing.
-
-NOTE: These tests are marked skip_ci because they depend on external service availability.
-Run manually with: pytest tests/integration/test_creative_agent_live.py -v
 """
 
 import pytest
 
 from src.core.creative_agent_registry import CreativeAgent, CreativeAgentRegistry
-
-# Skip all tests in this module in CI - they depend on external service availability
-pytestmark = pytest.mark.skip_ci
 
 # The live creative agent URL
 CREATIVE_AGENT_URL = "https://creative.adcontextprotocol.org"
