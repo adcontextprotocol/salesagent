@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/adcontextprotocol/salesagent/compare/v1.0.0...v1.1.0) (2026-01-26)
+
+
+### Features
+
+* Add dry_run mode support for create/update media buy operations ([#970](https://github.com/adcontextprotocol/salesagent/issues/970)) ([e9aac61](https://github.com/adcontextprotocol/salesagent/commit/e9aac61b0cf08c1861d2b287853737cd68475dd2))
+
+
+### Bug Fixes
+
+* Add v2.x backward compatibility for pricing_options and clean up production logs ([#971](https://github.com/adcontextprotocol/salesagent/issues/971)) ([0992131](https://github.com/adcontextprotocol/salesagent/commit/0992131a5ccbd7b93a66409a262d20aeeb83ce28))
+
 ## [1.0.0](https://github.com/adcontextprotocol/salesagent/compare/v0.9.3...v1.0.0) (2026-01-26)
 
 
