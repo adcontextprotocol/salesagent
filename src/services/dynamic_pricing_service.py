@@ -257,12 +257,16 @@ class DynamicPricingService:
             # Create new CPM pricing option with price_guidance
             # V3: floor_price at top level, price_guidance only for percentiles
             if floor_cpm is not None:
-                price_guidance_obj = PriceGuidance(
-                    p25=None,
-                    p50=None,
-                    p75=recommended_cpm,  # p75 is the recommended value
-                    p90=None,
-                ) if recommended_cpm is not None else None
+                price_guidance_obj = (
+                    PriceGuidance(
+                        p25=None,
+                        p50=None,
+                        p75=recommended_cpm,  # p75 is the recommended value
+                        p90=None,
+                    )
+                    if recommended_cpm is not None
+                    else None
+                )
 
                 new_option = PricingOption(  # type: ignore[call-arg]
                     pricing_option_id=f"{product.product_id}_dynamic_cpm",

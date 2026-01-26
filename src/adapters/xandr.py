@@ -561,7 +561,7 @@ class XandrAdapter(AdServerAdapter):
             package_responses = []
 
             # Create line items for each package
-            for idx, package in enumerate(packages):
+            for _idx, package in enumerate(packages):
                 if not self.advertiser_id:
                     raise ValueError("Advertiser ID is required for creating line items")
 

@@ -35,9 +35,6 @@ from adcp.types import ListCreativeFormatsRequest as LibraryListCreativeFormatsR
 from adcp.types import ListCreativeFormatsResponse as LibraryListCreativeFormatsResponse
 from adcp.types import ListCreativesRequest as LibraryListCreativesRequest
 from adcp.types import PackageRequest as LibraryPackageRequest
-
-# V3: Two Pagination types - batch-based for delivery, page-based for list responses
-from adcp.types.generated_poc.media_buy.list_creatives_response import Pagination as LibraryResponsePagination
 from adcp.types import (
     ProductFilters as LibraryFilters,  # For GetProductsRequest (was Filters pre-2.11.0)
 )
@@ -54,6 +51,9 @@ from adcp.types.aliases import (
 from adcp.types.aliases import (
     UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
 )
+
+# V3: Two Pagination types - batch-based for delivery, page-based for list responses
+from adcp.types.generated_poc.media_buy.list_creatives_response import Pagination as LibraryResponsePagination
 
 # For backward compatibility, alias AdCPPackage as LibraryPackage (TypeAlias for mypy)
 LibraryPackage: TypeAlias = AdCPPackage
