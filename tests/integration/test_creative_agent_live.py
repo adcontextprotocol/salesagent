@@ -5,7 +5,15 @@ to verify format discovery and resolution works correctly.
 
 The creative agent is stable production infrastructure that doesn't change frequently,
 making it suitable for integration testing.
+
+NOTE: These tests are skipped when ADCP_TESTING=true because mock mode
+returns mock formats instead of calling the live creative agent. The skip
+is checked at runtime via the fixture below (not collection time), because
+the test_environment fixture in conftest.py sets ADCP_TESTING=true after
+module collection.
 """
+
+import os
 
 import pytest
 
@@ -14,6 +22,17 @@ from src.core.creative_agent_registry import CreativeAgent, CreativeAgentRegistr
 # The live creative agent URL
 CREATIVE_AGENT_URL = "https://creative.adcontextprotocol.org"
 CREATIVE_AGENT_URL_WITH_SLASH = "https://creative.adcontextprotocol.org/"
+
+
+@pytest.fixture(autouse=True)
+def skip_in_testing_mode():
+    """Skip tests when ADCP_TESTING=true (mock mode bypasses live creative agent).
+
+    This is a runtime check because test_environment fixture sets ADCP_TESTING
+    after module collection (when pytestmark.skipif would be evaluated).
+    """
+    if os.environ.get("ADCP_TESTING", "").lower() == "true":
+        pytest.skip("Skipped: ADCP_TESTING=true enables mock mode, bypassing live creative agent")
 
 
 @pytest.fixture

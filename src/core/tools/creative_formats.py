@@ -51,9 +51,9 @@ def _ensure_backward_compatible_format(f: FormatT) -> FormatT:
     Returns:
         Format with both asset fields populated for backward compatibility
     """
-    if uses_deprecated_assets_field(f):
+    if uses_deprecated_assets_field(f) and f.assets_required is not None:
         # Old format with deprecated assets_required only - populate new assets field
-        normalized: list[Assets | Assets5] = normalize_assets_required(f.assets_required)  # type: ignore[arg-type]
+        normalized: list[Assets | Assets5] = normalize_assets_required(f.assets_required)
         if normalized:
             return f.model_copy(update={"assets": normalized})
 

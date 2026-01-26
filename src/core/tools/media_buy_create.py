@@ -1405,96 +1405,99 @@ async def _create_media_buy_impl(
         )
 
     # Context management and workflow step creation - create workflow step FIRST
+    # Skip for dry_run mode (no side effects, no database writes)
     ctx_manager = get_context_manager()
     ctx_id = ctx.headers.get("x-context-id") if ctx and hasattr(ctx, "headers") else None
     persistent_ctx = None
     step = None
 
-    # Create workflow step immediately for tracking all operations
-    if not persistent_ctx:
-        # Check if we have an existing context ID
-        if ctx_id:
-            persistent_ctx = ctx_manager.get_context(ctx_id)
-
-        # Create new context if needed (principal already validated above)
+    if not testing_ctx.dry_run:
+        # Create workflow step immediately for tracking all operations
         if not persistent_ctx:
-            persistent_ctx = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
+            # Check if we have an existing context ID
+            if ctx_id:
+                persistent_ctx = ctx_manager.get_context(ctx_id)
 
-    # Create workflow step for tracking this operation
-    # Prepare request data with protocol detection
-    request_data_for_workflow = req.model_dump(mode="json")
+            # Create new context if needed (principal already validated above)
+            if not persistent_ctx:
+                persistent_ctx = ctx_manager.create_context(tenant_id=tenant["tenant_id"], principal_id=principal_id)
 
-    # Store protocol type for webhook payload creation
-    # ToolContext = A2A, Context (FastMCP) = MCP
-    request_data_for_workflow["protocol"] = "a2a" if isinstance(ctx, ToolContext) else "mcp"
+        # Create workflow step for tracking this operation
+        # Prepare request data with protocol detection
+        request_data_for_workflow = req.model_dump(mode="json")
 
-    # Store push_notification_config in workflow step request_data (same pattern as sync_creatives)
-    if push_notification_config:
-        request_data_for_workflow["push_notification_config"] = push_notification_config
+        # Store protocol type for webhook payload creation
+        # ToolContext = A2A, Context (FastMCP) = MCP
+        request_data_for_workflow["protocol"] = "a2a" if isinstance(ctx, ToolContext) else "mcp"
 
-    step = ctx_manager.create_workflow_step(
-        context_id=persistent_ctx.context_id,
-        step_type="media_buy_creation",
-        owner="system",
-        status="in_progress",
-        tool_name="create_media_buy",
-        request_data=request_data_for_workflow,
-    )
+        # Store push_notification_config in workflow step request_data (same pattern as sync_creatives)
+        if push_notification_config:
+            request_data_for_workflow["push_notification_config"] = push_notification_config
 
-    # Register push notification config if provided (MCP/A2A protocol support)
-    if push_notification_config:
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
+        step = ctx_manager.create_workflow_step(
+            context_id=persistent_ctx.context_id,
+            step_type="media_buy_creation",
+            owner="system",
+            status="in_progress",
+            tool_name="create_media_buy",
+            request_data=request_data_for_workflow,
+        )
 
-        logger.info(f"[MCP/A2A] Registering push notification config from request: {push_notification_config}")
+        # Register push notification config if provided (MCP/A2A protocol support)
+        # Skip for dry_run mode (no database writes)
+        if push_notification_config:
+            from src.core.database.database_session import get_db_session
+            from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 
-        # Extract config details
-        url = push_notification_config.get("url")
-        authentication = push_notification_config.get("authentication", {})
+            logger.info(f"[MCP/A2A] Registering push notification config from request: {push_notification_config}")
 
-        if url:
-            # Extract authentication details (A2A format: schemes + credentials)
-            schemes = authentication.get("schemes", []) if authentication else []
-            auth_type = schemes[0] if schemes else None
-            credentials = authentication.get("credentials") if authentication else None
+            # Extract config details
+            url = push_notification_config.get("url")
+            authentication = push_notification_config.get("authentication", {})
 
-            # Generate config ID
-            config_id = push_notification_config.get("id") or f"pnc_{uuid.uuid4().hex[:16]}"
+            if url:
+                # Extract authentication details (A2A format: schemes + credentials)
+                schemes = authentication.get("schemes", []) if authentication else []
+                auth_type = schemes[0] if schemes else None
+                credentials = authentication.get("credentials") if authentication else None
 
-            # Save to database
-            with get_db_session() as db:
-                # Check if config already exists
-                from sqlalchemy import select
+                # Generate config ID
+                config_id = push_notification_config.get("id") or f"pnc_{uuid.uuid4().hex[:16]}"
 
-                stmt = select(DBPushNotificationConfig).filter_by(
-                    id=config_id, tenant_id=tenant["tenant_id"], principal_id=principal_id
-                )
-                existing_config = db.scalars(stmt).first()
+                # Save to database
+                with get_db_session() as db:
+                    # Check if config already exists
+                    from sqlalchemy import select
 
-                if existing_config:
-                    # Update existing
-                    existing_config.url = url
-                    existing_config.authentication_type = auth_type
-                    existing_config.authentication_token = credentials
-                    # updated_at automatically updated via onupdate=func.now()
-                    existing_config.is_active = True
-                else:
-                    # Create new
-                    new_config = DBPushNotificationConfig(
-                        id=config_id,
-                        tenant_id=tenant["tenant_id"],
-                        principal_id=principal_id,
-                        url=url,
-                        authentication_type=auth_type,
-                        authentication_token=credentials,
-                        is_active=True,
+                    stmt = select(DBPushNotificationConfig).filter_by(
+                        id=config_id, tenant_id=tenant["tenant_id"], principal_id=principal_id
                     )
-                    db.add(new_config)
+                    existing_config = db.scalars(stmt).first()
 
-                db.commit()
-                logger.info(
-                    f"[MCP/A2A] Push notification config {'updated' if existing_config else 'created'}: {config_id}"
-                )
+                    if existing_config:
+                        # Update existing
+                        existing_config.url = url
+                        existing_config.authentication_type = auth_type
+                        existing_config.authentication_token = credentials
+                        # updated_at automatically updated via onupdate=func.now()
+                        existing_config.is_active = True
+                    else:
+                        # Create new
+                        new_config = DBPushNotificationConfig(
+                            id=config_id,
+                            tenant_id=tenant["tenant_id"],
+                            principal_id=principal_id,
+                            url=url,
+                            authentication_type=auth_type,
+                            authentication_token=credentials,
+                            is_active=True,
+                        )
+                        db.add(new_config)
+
+                    db.commit()
+                    logger.info(
+                        f"[MCP/A2A] Push notification config {'updated' if existing_config else 'created'}: {config_id}"
+                    )
 
     try:
         # Validate input parameters
@@ -1888,8 +1891,9 @@ async def _create_media_buy_impl(
                         raise ValueError(error_msg)
 
     except (ValueError, PermissionError) as e:
-        # Update workflow step as failed
-        ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
+        # Update workflow step as failed (only if step exists - not created in dry_run mode)
+        if step:
+            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
 
         # Return error response with failed status
         return (
@@ -1899,6 +1903,12 @@ async def _create_media_buy_impl(
             ),
             AdcpTaskStatus.failed,
         )
+
+    # Type narrowing: in non-dry_run mode, step and persistent_ctx are guaranteed to exist
+    # In dry_run mode, they may be None (database operations are skipped)
+    if not testing_ctx.dry_run:
+        assert step is not None, "step should be created when not in dry_run mode"
+        assert persistent_ctx is not None, "persistent_ctx should be created when not in dry_run mode"
 
     # Principal already validated earlier (before context creation) to avoid foreign key errors
 
@@ -1926,8 +1936,9 @@ async def _create_media_buy_impl(
                 if uploaded_ids:
                     logger.info(f"Successfully uploaded creatives for {len(uploaded_ids)} packages: {uploaded_ids}")
             except ToolError as e:
-                # Update workflow step on failure
-                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
+                # Update workflow step on failure (only if step exists)
+                if step:
+                    ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=str(e))
                 raise
 
         # Get the appropriate adapter with testing context
@@ -1959,7 +1970,10 @@ async def _create_media_buy_impl(
         auto_create_enabled = tenant.get("auto_create_media_buys", True)
         product_auto_create = True  # Will be set correctly when we get products later
 
-        if manual_approval_required and "create_media_buy" in manual_approval_operations:
+        # Skip manual approval path in dry_run mode - we're only validating, not creating workflow
+        if not testing_ctx.dry_run and manual_approval_required and "create_media_buy" in manual_approval_operations:
+            # Type narrowing: step and persistent_ctx exist in non-dry_run mode
+            assert step is not None and persistent_ctx is not None
             # Update existing workflow step to require approval
             ctx_manager.update_workflow_step(
                 step.step_id,
@@ -2446,7 +2460,8 @@ async def _create_media_buy_impl(
                 error_detail = "GAM configuration validation failed:\n" + "\n".join(
                     f"  • {err}" for err in config_errors
                 )
-                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
+                if step:
+                    ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_detail)
                 return (
                     CreateMediaBuyError(
                         errors=[
@@ -2463,9 +2478,11 @@ async def _create_media_buy_impl(
         )
 
         # Check if either tenant or product disables auto-creation
-        if not auto_create_enabled or not product_auto_create:
+        # Skip in dry_run mode - we're only validating, not creating workflow
+        if not testing_ctx.dry_run and (not auto_create_enabled or not product_auto_create):
             reason = "Tenant configuration" if not auto_create_enabled else "Product configuration"
-
+            # Type narrowing: step and persistent_ctx exist in non-dry_run mode
+            assert step is not None and persistent_ctx is not None
             # Update existing workflow step to require approval
             ctx_manager.update_workflow_step(step.step_id, status="requires_approval")
 
@@ -2771,7 +2788,8 @@ async def _create_media_buy_impl(
         # Defensive null check: ensure start_time and end_time are set
         if not req.start_time or not req.end_time:
             error_msg = "start_time and end_time are required but were not properly set"
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
+            if step:
+                ctx_manager.update_workflow_step(step.step_id, status="failed", error_message=error_msg)
             return (
                 CreateMediaBuyError(
                     errors=[Error(code="invalid_datetime", message=error_msg, details=None)],
@@ -2786,8 +2804,11 @@ async def _create_media_buy_impl(
             _validate_creatives_before_adapter_call(packages, tenant["tenant_id"])
         except ToolError:
             # Validation failed - creative validation errors already logged
-            # Update workflow step as failed and re-raise
-            ctx_manager.update_workflow_step(step.step_id, status="failed", error_message="Creative validation failed")
+            # Update workflow step as failed and re-raise (only if step exists - not created in dry_run mode)
+            if step:
+                ctx_manager.update_workflow_step(
+                    step.step_id, status="failed", error_message="Creative validation failed"
+                )
             raise
 
         # Call adapter using shared creation logic
@@ -2817,6 +2838,17 @@ async def _create_media_buy_impl(
             for i, pkg_item in enumerate(response.packages):
                 # pkg_item is dict[str, Any] here (response.packages), different scope from earlier Package usage
                 logger.info(f"[DEBUG] create_media_buy: Response package {i} = {pkg_item}")
+
+        # Dry-run mode: Return adapter response without database writes
+        # Adapter validation has run, so errors (like unsupported pricing) are already caught above
+        if testing_ctx.dry_run:
+            logger.info("[DRY_RUN] Adapter validation passed, returning response without database writes")
+            return (response, AdcpTaskStatus.completed)
+
+        # Type narrowing: after dry_run return, step and persistent_ctx are guaranteed to exist
+        # This is needed for mypy to understand these won't be None in the code below
+        assert step is not None, "step should be created when not in dry_run mode"
+        assert persistent_ctx is not None, "persistent_ctx should be created when not in dry_run mode"
 
         # Store the media buy in memory (for backward compatibility)
         # Lazy import to avoid circular dependency

@@ -257,36 +257,44 @@ def _update_media_buy_impl(
     # Verify principal owns this media buy
     _verify_principal(media_buy_id_to_use, ctx)
 
-    # Create or get persistent context
+    # Extract testing context early (needed for dry_run check)
+    testing_ctx = get_testing_context(ctx)
+
+    # Create or get persistent context and workflow step
+    # Skip for dry_run mode (no side effects, no database writes)
     ctx_manager = get_context_manager()
     ctx_id = ctx.headers.get("x-context-id") if hasattr(ctx, "headers") else None
-    persistent_ctx = ctx_manager.get_or_create_context(
-        tenant_id=tenant["tenant_id"],
-        principal_id=principal_id,  # Now guaranteed to be str
-        context_id=ctx_id,
-        is_async=True,
-    )
+    persistent_ctx = None
+    step = None
 
-    # Verify persistent_ctx is not None
-    if persistent_ctx is None:
-        raise ValueError("Failed to create or get persistent context")
+    if not testing_ctx.dry_run:
+        persistent_ctx = ctx_manager.get_or_create_context(
+            tenant_id=tenant["tenant_id"],
+            principal_id=principal_id,  # Now guaranteed to be str
+            context_id=ctx_id,
+            is_async=True,
+        )
 
-    # Prepare request data with protocol detection
-    request_data_for_workflow = req.model_dump(mode="json")  # Convert dates to strings
+        # Verify persistent_ctx is not None
+        if persistent_ctx is None:
+            raise ValueError("Failed to create or get persistent context")
 
-    # Store protocol type for webhook payload creation
-    # ToolContext = A2A, Context (FastMCP) = MCP
-    request_data_for_workflow["protocol"] = "a2a" if isinstance(ctx, ToolContext) else "mcp"
+        # Prepare request data with protocol detection
+        request_data_for_workflow = req.model_dump(mode="json")  # Convert dates to strings
 
-    # Create workflow step for this tool call
-    step = ctx_manager.create_workflow_step(
-        context_id=persistent_ctx.context_id,  # Now safe to access
-        step_type="tool_call",
-        owner="principal",
-        status="in_progress",
-        tool_name="update_media_buy",
-        request_data=request_data_for_workflow,
-    )
+        # Store protocol type for webhook payload creation
+        # ToolContext = A2A, Context (FastMCP) = MCP
+        request_data_for_workflow["protocol"] = "a2a" if isinstance(ctx, ToolContext) else "mcp"
+
+        # Create workflow step for this tool call
+        step = ctx_manager.create_workflow_step(
+            context_id=persistent_ctx.context_id,  # Now safe to access
+            step_type="tool_call",
+            owner="principal",
+            status="in_progress",
+            tool_name="update_media_buy",
+            request_data=request_data_for_workflow,
+        )
 
     principal = get_principal_object(principal_id)  # Now guaranteed to be str
     if not principal:
@@ -295,19 +303,50 @@ def _update_media_buy_impl(
             errors=[Error(code="principal_not_found", message=error_msg)],
             context=to_context_object(req.context),
         )
-        ctx_manager.update_workflow_step(
-            step.step_id,
-            status="failed",
-            response_data=response_data.model_dump(mode="json"),
-            error_message=error_msg,
-        )
+        if step:
+            ctx_manager.update_workflow_step(
+                step.step_id,
+                status="failed",
+                response_data=response_data.model_dump(mode="json"),
+                error_message=error_msg,
+            )
         return response_data
-
-    # Extract testing context for dry_run and testing_context parameters
-    testing_ctx = get_testing_context(ctx)
 
     adapter = get_adapter(principal, dry_run=testing_ctx.dry_run, testing_context=testing_ctx)
     today = req.today or date.today()
+
+    # Dry-run mode: Return simulated response without any database writes
+    # Validation has passed (principal verified, media buy exists), so we return what WOULD be updated
+    if testing_ctx.dry_run:
+        logger.info(f"[DRY_RUN] Returning simulated update response for media_buy_id={req.media_buy_id}")
+
+        # Build simulated affected packages from request
+        simulated_affected: list[AffectedPackage] = []
+        if req.packages:
+            for pkg_update in req.packages:
+                simulated_affected.append(
+                    AffectedPackage(
+                        buyer_ref=req.buyer_ref or "",
+                        package_id=pkg_update.package_id or "",
+                        paused=pkg_update.paused if pkg_update.paused is not None else False,
+                        buyer_package_ref=pkg_update.package_id,
+                        changes_applied={"dry_run": True, "would_update": pkg_update.model_dump(exclude_none=True)},
+                    )
+                )
+
+        # Build simulated response
+        dry_run_response = UpdateMediaBuySuccess(
+            media_buy_id=req.media_buy_id or "",
+            buyer_ref=req.buyer_ref or "",
+            affected_packages=simulated_affected,
+            context=to_context_object(req.context),
+        )
+
+        return dry_run_response
+
+    # Type narrowing: after dry_run early return, step and persistent_ctx are guaranteed to exist
+    assert step is not None, "step should be created when not in dry_run mode"
+    assert persistent_ctx is not None, "persistent_ctx should be created when not in dry_run mode"
 
     # Check if manual approval is required
     manual_approval_required = (
