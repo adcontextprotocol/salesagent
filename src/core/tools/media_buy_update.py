@@ -16,7 +16,7 @@ from adcp import PushNotificationConfig
 from adcp.types import Error
 from adcp.types.generated_poc.core.context import ContextObject
 from adcp.types.generated_poc.core.targeting import TargetingOverlay
-from adcp.types.generated_poc.media_buy.update_media_buy_request import Packages as UpdatePackage
+from adcp.types.generated_poc.media_buy.package_update import PackageUpdate as UpdatePackage
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
 from fastmcp.tools.tool import ToolResult
