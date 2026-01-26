@@ -12,6 +12,32 @@ from datetime import UTC, datetime
 from typing import Any
 
 
+class ClientDisconnectFilter(logging.Filter):
+    """Filter out noisy ClientDisconnect errors from MCP library.
+
+    These are normal occurrences when clients disconnect mid-request.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Filter out ClientDisconnect stack traces
+        if "ClientDisconnect" in record.getMessage():
+            return False
+        if record.exc_info and record.exc_info[0]:
+            exc_name = record.exc_info[0].__name__
+            if exc_name == "ClientDisconnect":
+                return False
+        return True
+
+
+class DeprecationFilter(logging.Filter):
+    """Filter out deprecation warnings from MCP library."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if "DeprecationWarning" in record.getMessage():
+            return False
+        return True
+
+
 class JSONFormatter(logging.Formatter):
     """JSON log formatter for production environments.
 
@@ -91,6 +117,20 @@ def setup_structured_logging() -> None:
             lib_logger.handlers = []
             lib_logger.addHandler(handler)
             lib_logger.propagate = False
+
+        # Suppress noisy MCP library loggers
+        # ClientDisconnect is a normal event when clients disconnect mid-request
+        mcp_loggers = [
+            "mcp.server.streamable_http",
+            "mcp.server.streamable_http_manager",
+            "mcp.server.lowlevel.server",
+        ]
+        for logger_name in mcp_loggers:
+            mcp_logger = logging.getLogger(logger_name)
+            mcp_logger.addFilter(ClientDisconnectFilter())
+            mcp_logger.addFilter(DeprecationFilter())
+            # Set to WARNING to reduce INFO-level noise (session creation messages)
+            mcp_logger.setLevel(logging.WARNING)
 
         logging.info("JSON structured logging enabled for production")
     else:
