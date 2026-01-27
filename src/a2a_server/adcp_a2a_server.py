@@ -819,10 +819,14 @@ class AdCPRequestHandler(RequestHandler):
                     )
                 ]
             elif any(word in combined_text for word in ["price", "pricing", "cost", "cpm", "budget"]):
-                result = self._get_pricing()
+                # Redirect pricing queries to get_products which has real price_guidance
+                result = await self._handle_get_products_skill(
+                    {"brief": combined_text},
+                    auth_token,
+                )
                 # Extract tenant and principal for logging
                 try:
-                    tool_context = self._create_tool_context_from_a2a(auth_token, "get_pricing")
+                    tool_context = self._create_tool_context_from_a2a(auth_token, "get_products")
                     tenant_id = tool_context.tenant_id
                     principal_id = tool_context.principal_id
                 except Exception as e:
@@ -831,13 +835,14 @@ class AdCPRequestHandler(RequestHandler):
                     principal_id = "unknown"
 
                 self._log_a2a_operation(
-                    "get_pricing",
+                    "get_products",
                     tenant_id,
                     principal_id,
                     True,
                     {
                         "query": combined_text[:100],
-                        "pricing_models": len(result.get("pricing_models", [])) if isinstance(result, dict) else 0,
+                        "query_type": "pricing",
+                        "products_count": len(result.get("products", [])) if isinstance(result, dict) else 0,
                     },
                 )
                 task.artifacts = [
@@ -848,10 +853,11 @@ class AdCPRequestHandler(RequestHandler):
                     )
                 ]
             elif any(word in combined_text for word in ["target", "audience"]):
-                result = self._get_targeting()
+                # Redirect targeting queries to get_adcp_capabilities which has real targeting info
+                result = await self._handle_get_adcp_capabilities_skill({}, auth_token)
                 # Extract tenant and principal for logging
                 try:
-                    tool_context = self._create_tool_context_from_a2a(auth_token, "get_targeting")
+                    tool_context = self._create_tool_context_from_a2a(auth_token, "get_adcp_capabilities")
                     tenant_id = tool_context.tenant_id
                     principal_id = tool_context.principal_id
                 except Exception as e:
@@ -860,15 +866,13 @@ class AdCPRequestHandler(RequestHandler):
                     principal_id = "unknown"
 
                 self._log_a2a_operation(
-                    "get_targeting",
+                    "get_adcp_capabilities",
                     tenant_id,
                     principal_id,
                     True,
                     {
                         "query": combined_text[:100],
-                        "targeting_categories": (
-                            len(result.get("targeting_options", {})) if isinstance(result, dict) else 0
-                        ),
+                        "query_type": "targeting",
                     },
                 )
                 task.artifacts = [
@@ -1463,10 +1467,8 @@ class AdCPRequestHandler(RequestHandler):
             "approve_creative": self._handle_approve_creative_skill,
             "get_media_buy_status": self._handle_get_media_buy_status_skill,
             "optimize_media_buy": self._handle_optimize_media_buy_skill,
-            # Signals skills removed - should come from dedicated signals agents
-            # Legacy skill names (for backward compatibility)
-            "get_pricing": lambda params, token: self._get_pricing(),
-            "get_targeting": lambda params, token: self._get_targeting(),
+            # Note: signals skills removed - should come from dedicated signals agents
+            # Note: legacy get_pricing/get_targeting removed - use get_products and get_adcp_capabilities instead
         }
 
         if skill_name not in skill_handlers:
@@ -1477,14 +1479,9 @@ class AdCPRequestHandler(RequestHandler):
 
         try:
             handler = skill_handlers[skill_name]
-            if skill_name in ["get_pricing", "get_targeting"]:
-                # These are simple handlers without async
-                result = cast(Any, handler)(parameters, auth_token)
-                return result
-            else:
-                # These are async handlers that call core tools
-                result = await cast(Any, handler)(parameters, auth_token)
-                return result
+            # All handlers are async and call core tools
+            result = await cast(Any, handler)(parameters, auth_token)
+            return result
         except ServerError:
             # Re-raise ServerError as-is (already properly formatted)
             raise
@@ -2269,79 +2266,6 @@ class AdCPRequestHandler(RequestHandler):
             # Generic fallback that should pass AdCP validation
             return "Business advertising products and services"
 
-    def _get_pricing(self) -> dict:
-        """Get pricing information.
-
-        Returns:
-            Dictionary containing pricing models and information
-        """
-        return {
-            "pricing_models": [
-                {
-                    "type": "CPM",
-                    "description": "Cost per thousand impressions",
-                    "ranges": {
-                        "video": {"min": 15, "max": 50},
-                        "display": {"min": 2, "max": 10},
-                        "native": {"min": 5, "max": 20},
-                    },
-                },
-                {
-                    "type": "CPC",
-                    "description": "Cost per click",
-                    "ranges": {"min": 0.50, "max": 5.00},
-                },
-                {
-                    "type": "Guaranteed",
-                    "description": "Fixed price for guaranteed delivery",
-                    "minimum_commitment": 10000,
-                },
-            ],
-            "volume_discounts": [
-                {"threshold": 50000, "discount": "5%"},
-                {"threshold": 100000, "discount": "10%"},
-                {"threshold": 500000, "discount": "15%"},
-            ],
-        }
-
-    def _get_targeting(self) -> dict:
-        """Get available targeting options.
-
-        Returns:
-            Dictionary containing targeting capabilities
-        """
-        return {
-            "targeting_options": {
-                "demographics": {
-                    "age_ranges": ["18-24", "25-34", "35-44", "45-54", "55+"],
-                    "gender": ["male", "female", "unknown"],
-                    "household_income": ["0-50k", "50-100k", "100-150k", "150k+"],
-                },
-                "geography": {
-                    "levels": ["country", "state", "dma", "city", "zip"],
-                    "available_countries": ["US", "CA", "UK", "AU"],
-                },
-                "interests": {
-                    "categories": [
-                        "Technology",
-                        "Sports",
-                        "Entertainment",
-                        "Travel",
-                        "Food & Dining",
-                        "Health & Fitness",
-                    ]
-                },
-                "contextual": {
-                    "content_categories": ["News", "Sports", "Entertainment", "Business"],
-                    "keywords": "Custom keyword targeting available",
-                },
-                "devices": {
-                    "types": ["desktop", "mobile", "tablet", "ctv"],
-                    "operating_systems": ["ios", "android", "windows", "macos"],
-                },
-            }
-        }
-
     async def _create_media_buy(self, request: str, auth_token: str | None) -> dict:
         """Create a media buy based on the request.
 
@@ -2516,20 +2440,8 @@ def create_agent_card() -> AgentCard:
                 description="Optimize media buy performance and targeting",
                 tags=["optimization", "performance", "targeting", "adcp"],
             ),
-            # Signals skills removed - should come from dedicated signals agents
-            # Legacy Skills (for backward compatibility)
-            AgentSkill(
-                id="get_pricing",
-                name="get_pricing",
-                description="Get pricing information and rate cards",
-                tags=["pricing", "cost", "budget", "legacy"],
-            ),
-            AgentSkill(
-                id="get_targeting",
-                name="get_targeting",
-                description="Explore available targeting options",
-                tags=["targeting", "audience", "demographics", "legacy"],
-            ),
+            # Note: signals skills removed - should come from dedicated signals agents
+            # Note: legacy get_pricing/get_targeting removed - use get_products and get_adcp_capabilities instead
         ],
         url=server_url,
         documentation_url="https://github.com/your-org/adcp-sales-agent",
