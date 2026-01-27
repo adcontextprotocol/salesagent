@@ -273,9 +273,26 @@ async def get_adcp_capabilities(
     # Call shared implementation
     response = _get_adcp_capabilities_impl(req, ctx)
 
+    # Build human-readable summary
+    protocols = [p.value if hasattr(p, "value") else str(p) for p in response.supported_protocols]
+    summary_parts = [
+        f"AdCP v{response.adcp.major_versions[0].root} Capabilities",
+        f"Supported protocols: {', '.join(protocols)}",
+    ]
+
+    if response.media_buy and response.media_buy.portfolio:
+        portfolio = response.media_buy.portfolio
+        if portfolio.description:
+            summary_parts.append(f"Portfolio: {portfolio.description}")
+        if portfolio.primary_channels:
+            channels = [c.value if hasattr(c, "value") else str(c) for c in portfolio.primary_channels]
+            summary_parts.append(f"Channels: {', '.join(channels)}")
+
+    summary = "\n".join(summary_parts)
+
     # Return ToolResult with human-readable text and structured data
-    response_dict = response.model_dump()
-    return ToolResult(content=str(response), structured_content=response_dict)
+    response_dict = response.model_dump(mode="json")
+    return ToolResult(content=summary, structured_content=response_dict)
 
 
 async def get_adcp_capabilities_raw(

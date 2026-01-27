@@ -150,6 +150,7 @@ logger = logging.getLogger(__name__)
 #   4. Must be safe to call without authentication
 DISCOVERY_SKILLS = frozenset(
     {
+        "get_adcp_capabilities",  # Agent capabilities (always public per AdCP spec)
         "list_creative_formats",  # Creative specifications (always public)
         "list_authorized_properties",  # Property catalog (always public)
         "get_products",  # Conditional: depends on tenant brand_manifest_policy setting
@@ -1443,6 +1444,8 @@ class AdCPRequestHandler(RequestHandler):
 
         # Map skill names to handlers
         skill_handlers = {
+            # Core AdCP Discovery Skills
+            "get_adcp_capabilities": self._handle_get_adcp_capabilities_skill,
             # Core AdCP Media Buy Skills
             "get_products": self._handle_get_products_skill,
             "create_media_buy": self._handle_create_media_buy_skill,
@@ -1881,6 +1884,57 @@ class AdCPRequestHandler(RequestHandler):
             "message": "optimize_media_buy skill not yet implemented in explicit invocation",
             "parameters_received": parameters,
         }
+
+    async def _handle_get_adcp_capabilities_skill(self, parameters: dict, auth_token: str | None) -> dict:
+        """Handle explicit get_adcp_capabilities skill invocation (CRITICAL AdCP discovery endpoint).
+
+        NOTE: Authentication is OPTIONAL for this endpoint since it returns public discovery data.
+        Returns agent capabilities including supported protocols, targeting, and portfolio info.
+        """
+        try:
+            # Create ToolContext from A2A auth info (if provided)
+            tool_context: ToolContext | MinimalContext
+
+            if auth_token:
+                # Token provided - authentication MUST succeed (don't silently fall back)
+                tool_context = self._create_tool_context_from_a2a(
+                    auth_token=auth_token,
+                    tool_name="get_adcp_capabilities",
+                )
+            else:
+                # No auth token - create minimal Context-like object with headers for tenant detection
+                tool_context = MinimalContext.from_request_context()
+
+            # Import and call the core implementation
+            from src.core.tools.capabilities import get_adcp_capabilities_raw
+
+            # Call core function with context
+            if isinstance(tool_context, ToolContext):
+                mcp_ctx = self._tool_context_to_mcp_context(tool_context)
+            else:
+                # MinimalContext works with core tools directly
+                mcp_ctx = cast(ToolContext, tool_context)
+
+            response = await get_adcp_capabilities_raw(
+                protocols=parameters.get("protocols"),
+                ctx=mcp_ctx,
+            )
+
+            # Convert response to dict
+            if isinstance(response, dict):
+                response_data = response
+            else:
+                response_data = response.model_dump(mode="json")
+
+            # Add A2A protocol field: message for agent communication
+            response_data["message"] = "AdCP capabilities for this sales agent"
+
+            # Return A2A-compatible response with message field
+            return response_data
+
+        except Exception as e:
+            logger.error(f"Error in get_adcp_capabilities skill: {e}")
+            raise ServerError(InternalError(message=f"Unable to retrieve AdCP capabilities: {str(e)}"))
 
     async def _handle_list_creative_formats_skill(self, parameters: dict, auth_token: str | None) -> dict:
         """Handle explicit list_creative_formats skill invocation (CRITICAL AdCP endpoint).
@@ -2378,6 +2432,13 @@ def create_agent_card() -> AgentCard:
         default_input_modes=["message"],
         default_output_modes=["message"],
         skills=[
+            # Core AdCP Discovery Skills
+            AgentSkill(
+                id="get_adcp_capabilities",
+                name="get_adcp_capabilities",
+                description="Get the capabilities of this AdCP sales agent including supported protocols and targeting",
+                tags=["capabilities", "discovery", "adcp"],
+            ),
             # Core AdCP Media Buy Skills
             AgentSkill(
                 id="get_products",

@@ -4,6 +4,8 @@ Tests the capabilities endpoint that returns what this sales agent supports
 per the AdCP spec.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from adcp.types import GetAdcpCapabilitiesResponse
 from adcp.types.generated_poc.protocol.get_adcp_capabilities_response import (
@@ -162,3 +164,133 @@ class TestGetAdcpCapabilitiesImpl:
         assert "adcp" in data
         assert "supported_protocols" in data
         assert data["supported_protocols"] == ["media_buy"]
+
+
+class TestGetAdcpCapabilitiesWithTenant:
+    """Test get_adcp_capabilities with mocked tenant context."""
+
+    def test_impl_returns_full_response_with_tenant(self):
+        """Test that impl returns full capabilities when tenant context is available."""
+        from src.core.config_loader import current_tenant
+        from src.core.tools.capabilities import _get_adcp_capabilities_impl
+
+        # Set up mock tenant
+        mock_tenant = {
+            "tenant_id": "test-tenant-123",
+            "name": "Test Publisher",
+            "subdomain": "testpub",
+            "advertising_policy": {"description": "Family-friendly content only"},
+        }
+        current_tenant.set(mock_tenant)
+
+        try:
+            # Mock the database session to avoid actual DB calls
+            with patch("src.core.tools.capabilities.get_db_session") as mock_db:
+                mock_session = MagicMock()
+                mock_db.return_value.__enter__ = MagicMock(return_value=mock_session)
+                mock_db.return_value.__exit__ = MagicMock(return_value=False)
+                mock_session.scalars.return_value.all.return_value = []
+
+                # Mock get_principal_from_context to return tenant info
+                with patch("src.core.tools.capabilities.get_principal_from_context") as mock_auth:
+                    mock_auth.return_value = (None, mock_tenant)
+
+                    response = _get_adcp_capabilities_impl(None, None)
+
+                    # Verify full response structure
+                    assert response.adcp is not None
+                    assert response.adcp.major_versions[0].root == 3
+                    assert SupportedProtocol.media_buy in response.supported_protocols
+
+                    # Should have media_buy capabilities with portfolio
+                    assert response.media_buy is not None
+                    assert response.media_buy.portfolio is not None
+                    assert response.media_buy.portfolio.description == "Advertising inventory from Test Publisher"
+
+                    # Should have features
+                    assert response.media_buy.features is not None
+                    assert response.media_buy.features.inline_creative_management is True
+
+                    # Should have execution with targeting
+                    assert response.media_buy.execution is not None
+                    assert response.media_buy.execution.targeting is not None
+        finally:
+            # Reset tenant context
+            current_tenant.set(None)
+
+    def test_impl_includes_targeting_from_adapter(self):
+        """Test that targeting capabilities come from adapter."""
+        from src.adapters.base import TargetingCapabilities
+        from src.core.config_loader import current_tenant
+        from src.core.tools.capabilities import _get_adcp_capabilities_impl
+
+        mock_tenant = {
+            "tenant_id": "test-tenant-456",
+            "name": "GAM Publisher",
+            "subdomain": "gampub",
+        }
+        current_tenant.set(mock_tenant)
+
+        try:
+            # Create mock adapter with targeting capabilities
+            mock_adapter = MagicMock()
+            mock_adapter.default_channels = ["display", "video"]
+            mock_adapter.get_targeting_capabilities.return_value = TargetingCapabilities(
+                geo_countries=True,
+                geo_regions=True,
+                nielsen_dma=True,
+                us_zip=True,
+            )
+
+            with patch("src.core.tools.capabilities.get_db_session") as mock_db:
+                mock_session = MagicMock()
+                mock_db.return_value.__enter__ = MagicMock(return_value=mock_session)
+                mock_db.return_value.__exit__ = MagicMock(return_value=False)
+                mock_session.scalars.return_value.all.return_value = []
+
+                with patch("src.core.tools.capabilities.get_principal_from_context") as mock_auth:
+                    mock_auth.return_value = ("principal-123", mock_tenant)
+
+                    with patch("src.core.tools.capabilities.get_principal_object") as mock_principal:
+                        mock_principal.return_value = MagicMock()
+
+                        with patch("src.core.tools.capabilities.get_adapter") as mock_get_adapter:
+                            mock_get_adapter.return_value = mock_adapter
+
+                            response = _get_adcp_capabilities_impl(None, None)
+
+                            # Verify targeting from adapter
+                            assert response.media_buy is not None
+                            assert response.media_buy.execution is not None
+                            targeting = response.media_buy.execution.targeting
+                            assert targeting is not None
+                            assert targeting.geo_countries is True
+                            assert targeting.geo_regions is True
+
+                            # Should have geo_metros with nielsen_dma
+                            assert targeting.geo_metros is not None
+                            assert targeting.geo_metros.nielsen_dma is True
+
+                            # Should have geo_postal_areas with us_zip
+                            assert targeting.geo_postal_areas is not None
+                            assert targeting.geo_postal_areas.us_zip is True
+        finally:
+            current_tenant.set(None)
+
+
+class TestGetAdcpCapabilitiesA2AIntegration:
+    """Test A2A integration for get_adcp_capabilities."""
+
+    def test_skill_in_discovery_skills(self):
+        """Test that get_adcp_capabilities is in DISCOVERY_SKILLS."""
+        from src.a2a_server.adcp_a2a_server import DISCOVERY_SKILLS
+
+        assert "get_adcp_capabilities" in DISCOVERY_SKILLS
+
+    def test_skill_handler_exists(self):
+        """Test that the skill handler method exists."""
+        from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
+
+        handler = AdCPRequestHandler.__new__(AdCPRequestHandler)
+        assert hasattr(handler, "_handle_get_adcp_capabilities_skill")
+        assert callable(handler._handle_get_adcp_capabilities_skill)
