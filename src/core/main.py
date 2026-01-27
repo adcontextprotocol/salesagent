@@ -45,7 +45,6 @@ from src.core.domain_config import (
 # Schema models (explicit imports to avoid collisions)
 # Schema adapters (wrapping generated schemas)
 from src.core.schemas import (
-    CreateMediaBuyRequest,
     Creative,
     CreativeAssignment,
     CreativeGroup,
@@ -170,28 +169,11 @@ creative_engine_config: dict[str, Any] = {}
 creative_engine = MockCreativeEngine(creative_engine_config)
 
 
-def load_media_buys_from_db():
-    """Load existing media buys from database into memory on startup."""
-    try:
-        # We can't load tenant-specific media buys at startup since we don't have tenant context
-        # Media buys will be loaded on-demand when needed
-        console.print("[dim]Media buys will be loaded on-demand from database[/dim]")
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not initialize media buys from database: {e}[/yellow]")
+# REMOVED: load_tasks_from_db() and get_task_from_db - tasks now use workflow-based system
 
 
-def load_tasks_from_db():
-    """[DEPRECATED] This function is no longer needed - tasks are queried directly from database."""
-    # This function is kept for backward compatibility but does nothing
-    # All task operations now use direct database queries
-    pass
-
-
-# Removed get_task_from_db - replaced by workflow-based system
-
-
-# --- In-Memory State ---
-media_buys: dict[str, tuple[CreateMediaBuyRequest, str]] = {}
+# --- In-Memory State (legacy - consider removing) ---
+# REMOVED: media_buys dict - was never read, only written to
 creative_assignments: dict[str, dict[str, list[str]]] = {}
 creative_statuses: dict[str, CreativeStatus] = {}
 product_catalog: list[Product] = []
@@ -199,8 +181,6 @@ creative_library: dict[str, Creative] = {}  # creative_id -> Creative
 creative_groups: dict[str, CreativeGroup] = {}  # group_id -> CreativeGroup
 creative_assignments_v2: dict[str, CreativeAssignment] = {}  # assignment_id -> CreativeAssignment
 # REMOVED: human_tasks dictionary - now using direct database queries only
-
-# Note: load_tasks_from_db() is no longer needed - tasks are queried directly from database
 
 # Authentication cache removed - FastMCP v2.11.0+ properly forwards headers
 
@@ -218,8 +198,7 @@ SELECTED_ADAPTER = (
 ).lower()  # noqa: F841 - used below for adapter selection
 AVAILABLE_ADAPTERS = ["mock", "gam", "kevel", "triton", "triton_digital"]
 
-# --- In-Memory State (already initialized above, just adding context_map) ---
-context_map: dict[str, str] = {}  # Maps context_id to media_buy_id
+# REMOVED: context_map dict - was never written to or read
 
 # --- Dry Run Mode ---
 DRY_RUN_MODE = config.get("dry_run", False)
