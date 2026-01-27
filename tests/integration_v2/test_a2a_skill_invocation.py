@@ -657,6 +657,7 @@ class TestA2ASkillInvocation:
                 # We can't easily test the actual execution without full setup,
                 # but we can at least verify the skill name is recognized
                 assert skill_name in [
+                    "get_adcp_capabilities",  # AdCP v3 discovery endpoint
                     "get_products",
                     "create_media_buy",
                     "update_media_buy",  # Added for media buy management
