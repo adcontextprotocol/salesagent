@@ -2317,7 +2317,7 @@ def create_agent_card() -> AgentCard:
     """Create the agent card describing capabilities.
 
     Returns:
-        AgentCard with Prebid Sales Agent capabilities
+        AgentCard with AdCP Sales Agent capabilities
     """
     # Use configured domain for agent card
     # Note: This will be overridden dynamically in the endpoint handlers
