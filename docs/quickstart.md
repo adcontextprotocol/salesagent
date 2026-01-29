@@ -1,6 +1,10 @@
 # Quickstart Guide
 
-Get the AdCP Sales Agent running locally in under 5 minutes.
+Get the Prebid Sales Agent running locally in under 5 minutes.
+
+## Warning
+
+Some of the instructions below are not yet fixed to work in the new repo location
 
 ## Prerequisites
 
