@@ -501,7 +501,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2025-01-29
 
-Initial release of the AdCP Sales Agent reference implementation.
+Initial release of the Prebid Sales Agent reference implementation.
 
 ### Added
 - MCP server implementation with AdCP v2.3 support

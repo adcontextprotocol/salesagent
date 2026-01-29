@@ -478,7 +478,7 @@ class GAMWorkflowManager:
                                 "short": False,
                             },
                         ],
-                        "footer": "AdCP Sales Agent",
+                        "footer": "Prebid Sales Agent",
                         "ts": int(datetime.now().timestamp()),
                     }
                 ]
