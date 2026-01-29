@@ -1,9 +1,8 @@
 # INTELLECTUAL PROPERTY POLICY
 
 *Version 1.0*  
-*August 7, 2017*
 
-The following policy may be changed by the Organization only as allowed in the Bylaws.
+The following policy may be changed by the Organization as allowed in its Bylaws.
 
 1. **Outbound License.** Prebid Sales Agent code and related material, including documentation, will be made
    publicly available under the Apache 2.0 license.
@@ -15,7 +14,7 @@ The following policy may be changed by the Organization only as allowed in the B
    Corporate Contributor License Agreement or an Individual Contributor License Agreement, as applicable,
    each of which will be based on The Apache Software Organization's forms of contributor license
    agreements, and if the applicable license agreement is not executed and delivered to the Organization, such
-   contribution shall not be contributed.
+   contribution shall not be contributed. Contributions shall be subject to the [Prebid.org Code of Conduct](https://prebid.org/code-of-conduct/).
 4. **Confidentiality.** The Organization will accept contributions to the Prebid Sales Agent and future software projects
    only on a non-confidential basis.
 5. **Trademark.** No Member will claim any exclusive rights in the "Prebid" name or brand. The Organization will
