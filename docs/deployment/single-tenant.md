@@ -22,17 +22,17 @@ Pre-built images are published to two registries on every release:
 
 | Registry | Image | Best For |
 |----------|-------|----------|
-| **Docker Hub** | `adcontextprotocol/salesagent` | Universal access, simpler for most cloud providers |
-| **GitHub Container Registry** | `ghcr.io/adcontextprotocol/salesagent` | GitHub-integrated workflows |
+| **Docker Hub** | `prebid/salesagent` | Universal access, simpler for most cloud providers |
+| **GitHub Container Registry** | `ghcr.io/prebid/salesagent` | GitHub-integrated workflows |
 
 ### Pulling Images
 
 ```bash
 # Docker Hub (recommended for simplicity)
-docker pull adcontextprotocol/salesagent:latest
+docker pull prebid/salesagent:latest
 
 # GitHub Container Registry
-docker pull ghcr.io/adcontextprotocol/salesagent:latest
+docker pull ghcr.io/prebid/salesagent:latest
 ```
 
 ### Version Tags
@@ -72,7 +72,7 @@ For a complete list including GAM integration and all optional settings, see the
 ## Docker Compose Deployment
 
 ```bash
-git clone https://github.com/adcontextprotocol/salesagent.git
+git clone https://github.com/prebid/salesagent.git
 cd salesagent
 cp .env.template .env
 # Edit .env with your configuration

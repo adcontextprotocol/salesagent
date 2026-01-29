@@ -194,7 +194,7 @@ if not self.supports_feature and feature_requested:
 
 ```bash
 # Clone and start
-git clone https://github.com/adcontextprotocol/salesagent.git
+git clone https://github.com/prebid/salesagent.git
 cd salesagent
 docker compose up -d      # Build and start all services
 docker compose logs -f    # View logs (Ctrl+C to exit)

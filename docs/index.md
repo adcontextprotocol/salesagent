@@ -116,4 +116,4 @@ docs/
 
 - [AdCP Protocol Specification](https://adcontextprotocol.org/docs/)
 - [MCP Protocol Documentation](https://modelcontextprotocol.io)
-- [GitHub Repository](https://github.com/adcontextprotocol/salesagent)
+- [GitHub Repository](https://github.com/prebid/salesagent)

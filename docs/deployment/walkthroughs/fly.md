@@ -115,13 +115,13 @@ fly secrets set SUPER_ADMIN_DOMAINS="example.com"
 
 **Option A: Use prebuilt image (recommended)**
 ```bash
-fly deploy --image docker.io/adcontextprotocol/salesagent:latest
+fly deploy --image docker.io/prebid/salesagent:latest
 ```
 
 **Option B: Build from source**
 ```bash
 # Clone the repository first
-git clone https://github.com/adcontextprotocol/salesagent.git
+git clone https://github.com/prebid/salesagent.git
 cd salesagent
 fly deploy
 ```

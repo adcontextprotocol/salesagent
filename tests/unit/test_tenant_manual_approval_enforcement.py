@@ -4,7 +4,7 @@ This test suite ensures that the tenant's human_review_required setting
 is respected during media buy creation, with the tenant setting taking
 precedence over adapter-specific settings.
 
-Issue: https://github.com/adcontextprotocol/salesagent/issues/845
+Issue: https://github.com/prebid/salesagent/issues/845
 
 ## Test Strategy
 

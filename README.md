@@ -26,7 +26,7 @@ Try the sales agent locally:
 
 ```bash
 # Clone and start
-git clone https://github.com/adcontextprotocol/salesagent.git
+git clone https://github.com/prebid/salesagent.git
 cd salesagent
 docker compose up -d
 
@@ -71,7 +71,7 @@ Configure via the Admin UI:
 For local development with hot-reload:
 
 ```bash
-git clone https://github.com/adcontextprotocol/salesagent.git
+git clone https://github.com/prebid/salesagent.git
 cd salesagent
 cp .env.template .env
 
@@ -388,8 +388,8 @@ New users can self-provision tenants:
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/adcontextprotocol/salesagent/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/adcontextprotocol/salesagent/discussions)
+- **Issues**: [GitHub Issues](https://github.com/prebid/salesagent/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/prebid/salesagent/discussions)
 - **Documentation**: [docs/](docs/)
 
 ## License

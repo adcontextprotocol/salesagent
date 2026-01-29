@@ -45,7 +45,7 @@ Fastest way to get started - uses the official Docker Hub image:
 
 ```bash
 gcloud run deploy adcp-sales-agent \
-  --image adcontextprotocol/salesagent:latest \
+  --image prebid/salesagent:latest \
   --region us-central1 \
   --platform managed \
   --allow-unauthenticated \

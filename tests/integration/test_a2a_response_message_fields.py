@@ -7,7 +7,7 @@ response type doesn't have a message attribute).
 Key principle: Test the ACTUAL dict construction that happens in _handle_*_skill
 methods, not just the response object structure.
 
-Regression prevention: https://github.com/adcontextprotocol/salesagent/pull/337
+Regression prevention: https://github.com/prebid/salesagent/pull/337
 
 NOTE: Some tests connect to external creative agents (creative.adcontextprotocol.org).
 If these services are unavailable (HTTP 5xx, connection errors), tests will skip
