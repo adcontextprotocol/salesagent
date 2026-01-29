@@ -4,17 +4,17 @@ commit your changes, and [open a pull request](https://help.github.com/articles/
 main branch.
 
 ## Intellectual Property Rights
-Before contributing to the AdCP project, ensure that you have read and agree with our [Intellectual Property Rights Policy](IPR_POLICY.md).
+Before contributing to the Prebid Sales Agent project, ensure that you have read and agree with our [Intellectual Property Rights Policy](IPR_POLICY.md).
 
 ## Contributing
 Before contributing please see:
 - [README.md](README.md)
 
 ## Issues
-[adcontextprotocol.org](http://adcontextprotocol.org/) contains documentation that may help answer questions you have about using AdCP.
+[adcontextprotocol.org](https://adcontextprotocol.org/) contains documentation that may help answer questions you have about using Prebid Sales Agent. This documentation is moving to [Prebid.org](https://prebid.org/).
 If you can't find the answer there, try searching for a similar issue on the [issues page](https://github.com/adcontextprotocol/salesagent/issues).
 If you don't find an answer there, [open a new issue](https://github.com/adcontextprotocol/salesagent/issues/new).
 
 ## License
-Please see [LICENSE](LICENSE) for the license associated with the adcontextprotocol/salesagent repository.
+Please see [LICENSE](LICENSE) for the license associated with the prebid/salesagent repository.
 All source code, documentation, and supporting materials making up this repository are subject to the license.
