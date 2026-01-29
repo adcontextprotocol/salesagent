@@ -27,6 +27,10 @@ fly apps create your-app-name
 
 Choose one of these database options:
 
+## Warning
+
+Option A below is not yet fixed to work in the new repo location
+
 ### Option A: Fly Managed Postgres (Recommended)
 
 [Fly Managed Postgres](https://fly.io/docs/mpg/) is Fly's fully-managed database service with automatic backups, high availability, and 24/7 support.
