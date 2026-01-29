@@ -336,4 +336,4 @@ If you've already added yourself:
 
 - [Environment Variables Reference](../deployment/environment-variables.md)
 - [Security Documentation](../security.md)
-- [GitHub Issues](https://github.com/adcontextprotocol/salesagent/issues)
+- [GitHub Issues](https://github.com/prebid/salesagent/issues)

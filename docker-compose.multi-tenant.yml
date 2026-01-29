@@ -54,7 +54,7 @@ services:
       retries: 3
 
   adcp-server:
-    image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    image: ghcr.io/prebid/salesagent:${IMAGE_TAG:-latest}
     env_file:
       - path: .env
         required: false
@@ -84,7 +84,7 @@ services:
       retries: 3
 
   admin-ui:
-    image: ghcr.io/adcontextprotocol/salesagent:${IMAGE_TAG:-latest}
+    image: ghcr.io/prebid/salesagent:${IMAGE_TAG:-latest}
     command: python -m src.admin.server
     env_file:
       - path: .env

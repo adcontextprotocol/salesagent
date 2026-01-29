@@ -13,7 +13,7 @@
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/adcontextprotocol/salesagent.git
+   git clone https://github.com/prebid/salesagent.git
    cd salesagent
    ```
 
