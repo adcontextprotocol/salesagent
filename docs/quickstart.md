@@ -1,6 +1,10 @@
 # Quickstart Guide
 
-Get the AdCP Sales Agent running locally in under 5 minutes.
+Get the Prebid Sales Agent running locally in under 5 minutes.
+
+## Warning
+
+Some of the instructions below are not yet fixed to work in the new repo location
 
 ## Prerequisites
 
@@ -13,14 +17,14 @@ If you have an existing PostgreSQL database:
 
 ```bash
 # Generate an encryption key (run once, save the output)
-docker run --rm ghcr.io/adcontextprotocol/salesagent:latest \
+docker run --rm ghcr.io/prebid/salesagent:latest \
   python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 
 # Run the sales agent (replace YOUR_KEY with the generated key)
 docker run -p 8000:8000 \
   -e DATABASE_URL=postgresql://user:pass@host:5432/dbname \
   -e ENCRYPTION_KEY=YOUR_KEY \
-  ghcr.io/adcontextprotocol/salesagent:latest
+  ghcr.io/prebid/salesagent:latest
 
 # Verify it's running
 curl http://localhost:8000/health
@@ -30,7 +34,7 @@ curl http://localhost:8000/health
 
 ```bash
 # Clone the repository
-git clone https://github.com/adcontextprotocol/salesagent.git
+git clone https://github.com/prebid/salesagent.git
 cd salesagent
 
 # Start all services (includes PostgreSQL)

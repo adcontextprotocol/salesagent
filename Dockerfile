@@ -45,9 +45,9 @@ FROM python:3.12-slim
 # OCI labels for GitHub Container Registry
 LABEL org.opencontainers.image.title="AdCP Sales Agent"
 LABEL org.opencontainers.image.description="Reference implementation of an AdCP (Ad Context Protocol) Sales Agent. See docs/quickstart.md for deployment options."
-LABEL org.opencontainers.image.url="https://github.com/adcontextprotocol/salesagent"
-LABEL org.opencontainers.image.source="https://github.com/adcontextprotocol/salesagent"
-LABEL org.opencontainers.image.documentation="https://github.com/adcontextprotocol/salesagent/blob/main/docs/quickstart.md"
+LABEL org.opencontainers.image.url="https://github.com/prebid/salesagent"
+LABEL org.opencontainers.image.source="https://github.com/prebid/salesagent"
+LABEL org.opencontainers.image.documentation="https://github.com/prebid/salesagent/blob/main/docs/quickstart.md"
 LABEL org.opencontainers.image.vendor="Agentic Advertising Foundation"
 LABEL org.opencontainers.image.licenses="MIT"
 

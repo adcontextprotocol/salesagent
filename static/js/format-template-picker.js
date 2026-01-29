@@ -11,7 +11,7 @@
  * - Backward compatible with legacy format_ids
  * - Support for custom formats from tenant creative agents
  *
- * @see https://github.com/adcontextprotocol/salesagent/issues/782
+ * @see https://github.com/prebid/salesagent/issues/782
  */
 
 /**
