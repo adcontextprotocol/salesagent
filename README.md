@@ -1,6 +1,6 @@
 # AdCP Sales Agent
 
-A reference implementation of the [Ad Context Protocol (AdCP)](https://adcontextprotocol.org) sales agent, enabling AI agents to buy advertising inventory through a standardized MCP interface.
+A reference implementation of the Prebid Sales Agent, fka the [Ad Context Protocol (AdCP)](https://adcontextprotocol.org) sales agent, enabling AI agents to buy advertising inventory through a standardized MCP interface.
 
 ## What is this?
 
