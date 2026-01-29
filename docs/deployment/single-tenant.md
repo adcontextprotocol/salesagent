@@ -16,6 +16,10 @@ Single-tenant mode is the default and recommended for most publishers deploying 
 - PostgreSQL database (required)
 - OAuth credentials from your identity provider (Google, Microsoft, Okta, etc.) - configured via Admin UI
 
+## Warning
+
+The instructions below are not yet fixed to work in the new repo location
+
 ## Docker Images
 
 Pre-built images are published to two registries on every release:
