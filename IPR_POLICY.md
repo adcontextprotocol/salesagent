@@ -2,7 +2,7 @@
 
 *Version 1.0*  
 
-The following policy may be changed by the Organization as allowed in its Bylaws.
+Fake pr to test the signatures workflow. The following policy may be changed by the Organization as allowed in its Bylaws.
 
 1. **Outbound License.** Prebid Sales Agent code and related material, including documentation, will be made
    publicly available under the Apache 2.0 license.
