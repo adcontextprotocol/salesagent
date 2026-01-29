@@ -21,7 +21,6 @@ jobs:
         uses: contributor-assistant/github-action@v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.IPR_PAT }}
         with:
           path-to-signatures: 'signatures/ipr-signatures.json'
           path-to-document: 'https://github.com/prebid/salesagent/blob/main/IPR_POLICY.md'
