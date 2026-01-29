@@ -26,8 +26,8 @@ jobs:
           path-to-signatures: 'signatures/ipr-signatures.json'
           path-to-document: 'https://github.com/prebid/salesagent/blob/main/IPR_POLICY.md'
           branch: 'ipr-signatures'
-          remote-organization-name: 'adcontextprotocol'
-          remote-repository-name: 'adcp'
+          remote-organization-name: 'prebid'
+          remote-repository-name: 'salesagent'
           allowlist: 'bot*,dependabot*,renovate*,github-actions*'
 
           custom-notsigned-prcomment: |
