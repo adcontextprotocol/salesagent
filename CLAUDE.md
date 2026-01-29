@@ -1,8 +1,8 @@
-# AdCP Sales Agent - Development Guide
+# Prebid Sales Agent - Development Guide
 
 ## 🤖 For Claude (AI Assistant)
 
-This guide helps you work effectively with the AdCP sales agent codebase. Key principles:
+This guide helps you work effectively with the Prebid Sales Agent codebase maintained under Prebid.org. Key principles:
 
 ### Working with This Codebase
 1. **Always read before writing** - Use Read/Glob to understand existing patterns
@@ -134,7 +134,7 @@ Never hardcode `/api/endpoint` - breaks with nginx prefix.
 
 ## Project Overview
 
-Python-based AdCP sales agent with:
+Python-based Prebid Sales Agent with:
 - **MCP Server**: FastMCP tools for AI agents (via nginx at `/mcp/`)
 - **Admin UI**: Google OAuth secured interface (via nginx at `/admin/` or `/tenant/<name>`)
 - **A2A Server**: python-a2a agent-to-agent communication (via nginx at `/a2a`)
