@@ -427,7 +427,9 @@ class TestSyncCreativesA2ASuggestionParity:
         from tests.harness.transport import Transport
 
         class _RealA2AWireCreativeSyncEnv(CreativeSyncEnv):
-            def call_a2a(self, **kwargs):
+            # Overrides the DELIVER point; _run_a2a_handler already returns a
+            # DeliverResult carrying the real artifact wire.
+            def deliver_a2a(self, **kwargs):
                 return self._run_a2a_handler("sync_creatives", SyncCreativesResponse, **kwargs)
 
         with _RealA2AWireCreativeSyncEnv() as env:

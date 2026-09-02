@@ -31,6 +31,14 @@ REQUIRED_RENDERED_CHECKS = {
     # In-network bdd (e2e_rest transport) — grades the known-failures ledger
     # (PR #1430 review). Mirror this into branch protection's required checks.
     "CI / BDD In-Network (e2e_rest)",
+    # Grades tests/storyboard/ against a live in-network stack. The
+    # known-failures ledger IS seeded from a real run, so what still gates
+    # promotion to a required check is a branch-protection change, which is an
+    # out-of-band GitHub settings edit rather than anything in this repo. Until
+    # that happens it stays out of the Summary job's `needs` — but it is
+    # rendered unconditionally by rendered_ci_check_names(), so it must be
+    # listed here regardless of blocking status.
+    "CI / Storyboard Conformance",
     "CI / Migration Roundtrip",
     "CI / Coverage",
     "CI / Summary",

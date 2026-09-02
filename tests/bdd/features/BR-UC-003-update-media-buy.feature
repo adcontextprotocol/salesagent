@@ -2013,7 +2013,7 @@ Feature: BR-UC-003 Update Media Buy
     # POST-F1: System state unchanged
     # POST-F2: Error code BUDGET_TOO_LOW with structured details
     # POST-F3: Buyer Agent can adjust budget without re-querying products (suggestion guides the fix)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-v31-error-conflict-version @error @v3.1 @error-details @concurrency @ext-s @post-f1 @post-f2 @post-f3
   Scenario: CONFLICT error carries v3.1 details shape (resource_id + expected/current version)
@@ -2033,7 +2033,7 @@ Feature: BR-UC-003 Update Media Buy
     # POST-F1: System state unchanged (no partial write)
     # POST-F2: CONFLICT details enable optimistic-concurrency retry
     # POST-F3: Buyer Agent re-reads at current_version and retries (suggestion guides the fix)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-v31-error-idempotency-conflict @error @v3.1 @error-details @idempotency @post-f1 @post-f2 @post-f3
   Scenario: IDEMPOTENCY_CONFLICT error carries v3.1 details shape with ETag versions
@@ -2067,7 +2067,7 @@ Feature: BR-UC-003 Update Media Buy
     # media_buy_id. The seller MUST return MEDIA_BUY_NOT_FOUND with recovery=correctable
     # and context echoed unchanged. Sellers returning 500s or silent successes fail.
     # invalid_transitions: unknown media_buy_id surfaces as structured MEDIA_BUY_NOT_FOUND
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/invalid_transitions.yaml
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/scenarios/invalid_transitions.yaml phase=unknown_media_buy step=update_unknown_media_buy
 
   @T-UC-003-storyboard-package-not-found @storyboard-v3.1 @v3-1 @structured-errors @package-not-found
   Scenario: update_media_buy with known media_buy_id but unknown package_id returns PACKAGE_NOT_FOUND
@@ -2082,7 +2082,7 @@ Feature: BR-UC-003 Update Media Buy
     # PACKAGE_NOT_FOUND, distinguishing from MEDIA_BUY_NOT_FOUND so the buyer knows
     # whether to retry against the buy or fix the package reference.
     # invalid_transitions: distinct PACKAGE_NOT_FOUND error code separates buy-level from package-level lookup failure
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/invalid_transitions.yaml
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/scenarios/invalid_transitions.yaml phase=unknown_package step=update_unknown_package
 
   @T-UC-003-storyboard-not-cancellable-on-recancel @storyboard-v3.1 @v3-1 @structured-errors @not-cancellable @terminal-state
   Scenario: Re-cancel of a canceled media buy returns NOT_CANCELLABLE, not silent success
@@ -2090,7 +2090,15 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends update_media_buy with canceled true on the already-canceled buy
     Then the operation should fail
     And the error code should be "NOT_CANCELLABLE"
+    And the error recovery hint should indicate correctable
+    And the response should NOT be a 500 or non-AdCP error shape
     And the response should echo the context.correlation_id unchanged
+    # The recovery-hint and envelope-shape lines pin the two halves the bare code
+    # check leaves open: the pinned vocabulary classifies NOT_CANCELLABLE as
+    # recovery "correctable" (adcp v3.1.1 enums/error-code.json, recovery
+    # classification block), and the storyboard runner parses the two-layer AdCP
+    # envelope, so a 500 or a non-AdCP body is a distinct failure from a wrong
+    # code. Both bind to steps the sibling storyboard scenario already uses.
     # invalid_transitions Phase 4 (double_cancel): cancel a buy (success), then try to
     # cancel the same buy again. canceled is terminal per the AdCP spec; the second
     # cancel cannot succeed. Seller MUST return NOT_CANCELLABLE (the schema reserves
@@ -2098,7 +2106,7 @@ Feature: BR-UC-003 Update Media Buy
     # the existing terminal_canceled INVALID_STATE scenario which targets non-cancel
     # updates; NOT_CANCELLABLE is reserved for re-cancel attempts specifically.
     # invalid_transitions: re-cancel of terminal canceled buy is NOT_CANCELLABLE, not silent success
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/scenarios/invalid_transitions.yaml phase=double_cancel step=second_cancel
 
   @T-UC-003-storyboard-creative-fate-after-cancellation @storyboard-v3.1 @v3-1 @cancellation @creative-library @lifecycle-decoupling
   Scenario: Canceling a media buy releases package-creative assignments but leaves creatives in the library with review state intact
@@ -2117,6 +2125,7 @@ Feature: BR-UC-003 Update Media Buy
     # containing buy was canceled -- a rejection MUST be a deliberate review
     # decision with its own rejection_reason.
     # creative_fate_after_cancellation: creative lifecycle decoupled from media buy lifecycle
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml phase=verify_creative_persists_post_cancel step=list_creatives_after_cancel
 
   @T-UC-003-partition-revision @partition @revision @schema-v3.1
   Scenario Outline: Revision optimistic-concurrency partition validation - <partition>
@@ -2129,7 +2138,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
     # v3.1 (revision_optimistic_concurrency.yaml): revision optional; minimum 1; mismatch -> CONFLICT
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: Valid partitions
       | partition       | value          | outcome |
@@ -2153,7 +2162,7 @@ Feature: BR-UC-003 Update Media Buy
     And the request revision is set to <value>
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: Boundary values
       | boundary_point                  | current | value          | outcome                            |
@@ -2179,7 +2188,7 @@ Feature: BR-UC-003 Update Media Buy
     # BR-RULE-215 INV-4: a mutating update increments the stored revision and returns the new value
     # INT-002: success response carries valid_actions so the buyer can plan the next call without a get_media_buys round-trip
     # POST-S1: Buyer knows the media buy was updated (new revision)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-revision-and-idempotency-independent @invariant @BR-RULE-215 @concurrency @idempotency @schema-v3.1
   Scenario: revision and idempotency_key are evaluated independently (INV-6)
@@ -2195,7 +2204,7 @@ Feature: BR-UC-003 Update Media Buy
     Then the response status should be "completed"
     # BR-RULE-215 INV-6: idempotency-replay check (BR-RULE-211) and revision check are independent; neither subsumes the other
     # ---------- BR-RULE-214: Billing Arrangement Eligibility ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-ext-t @extension @ext-t @error @schema-v3.1 @post-f1 @post-f2 @post-f3
   Scenario: Invoice recipient not authorized for the account is rejected (ext-t)
@@ -2212,7 +2221,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error should include "suggestion" field
     # BR-RULE-214 INV-8: invoice_recipient override must be authorized for the account before the operation proceeds
     # POST-F1: System state unchanged (no billing redirected); POST-F3: omit override or supply an authorized recipient
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-billing-not-supported @invariant @BR-RULE-214 @billing @error @schema-v3.1 @post-f2 @post-f3
   Scenario Outline: Billing party not supported is rejected with scope - <partition>
@@ -2230,7 +2239,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error "details" object should include "scope" with value "<scope>"
     And the error should include "suggestion" field
     # BR-RULE-214 INV-2/INV-3 (billing_eligibility.yaml)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples:
       | partition            | billing_party | supported              | acct_relationship | scope      |
@@ -2254,7 +2263,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error should include "suggestion" field
     # BR-RULE-214 INV-4: per-agent rejection; details carry rejected_billing and MAY carry one suggested_billing only
     # INV-6/INV-7: present suggested_billing -> autonomous retry; absent -> terminal-pending-onboarding (surface to human)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-billing-unauth-identity @invariant @BR-RULE-214 @billing @error @schema-v3.1 @post-f2
   Scenario: Unestablished agent identity falls back to BILLING_NOT_SUPPORTED with no scope (INV-5)
@@ -2272,7 +2281,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error should include "suggestion" field
     # BR-RULE-214 INV-5: per-agent gate MUST NOT fire without established identity; return BILLING_NOT_SUPPORTED (scope omitted)
     # ---------- BR-RULE-217: Mid-Flight Package Addition ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-ext-u @extension @ext-u @error @schema-v3.1 @post-f1 @post-f2 @post-f3
   Scenario: New packages on a seller that does not support mid-flight additions (ext-u)
@@ -2287,7 +2296,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error should include "suggestion" field
     # BR-RULE-217 INV-1: new_packages on a non-supporting seller -> UNSUPPORTED_FEATURE
     # POST-F3: create the additional packages via a separate create_media_buy
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-new-packages-add @invariant @BR-RULE-217 @schema-v3.1 @post-s1 @post-s2
   Scenario: Supporting seller adds new packages atomically (INV-2/INV-4)
@@ -2302,7 +2311,7 @@ Feature: BR-UC-003 Update Media Buy
     And both new packages should appear in the affected_packages
     # BR-RULE-217 INV-2/INV-4: supporting seller advertises add_packages and adds all entries atomically (all-or-none)
     # POST-S1/S2: Buyer knows the media buy was updated and which packages were affected
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-new-packages-incomplete @invariant @BR-RULE-217 @error @schema-v3.1 @post-f2 @post-f3
   Scenario: New package entry missing a required package-request field is rejected (INV-3)
@@ -2316,7 +2325,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error code should be "VALIDATION_ERROR"
     And the error should include "suggestion" field
     # BR-RULE-217 INV-3: each new_packages entry must be a complete package-request (product_id, budget, pricing_option_id)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-new-packages-duplicate @invariant @BR-RULE-010 @error @schema-v3.1 @post-f1 @post-f2
   Scenario: New package duplicating an existing product on the media buy is rejected (BR-RULE-010 INV-4)
@@ -2332,7 +2341,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error should include "suggestion" field
     # BR-RULE-010 INV-4: on update, a new_packages product_id duplicating another entry or an existing package is rejected
     # ---------- BR-RULE-216: Campaign & Package Cancellation Semantics ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-ext-v @extension @ext-v @error @schema-v3.1 @post-f1 @post-f2 @post-f3
   Scenario: Cancellation refused when the buy cannot be canceled in its current state (ext-v)
@@ -2361,7 +2370,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
     # BR-RULE-216 INV-2: cancellation_reason MUST be at most 500 characters
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: Boundary values
       | boundary_point         | value             | outcome                                 |
@@ -2384,7 +2393,7 @@ Feature: BR-UC-003 Update Media Buy
     And package "pkg_001" should be canceled
     And the media buy status should NOT be "canceled"
     # BR-RULE-216 INV-6: per-package canceled:true cancels only that package; the media buy is not canceled
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-cancel-irreversible @invariant @BR-RULE-216 @cancellation @error @schema-v3.1 @post-f2 @post-f3
   Scenario: canceled:false is rejected -- cancellation is irreversible (INV-1/3)
@@ -2399,7 +2408,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error should include "suggestion" field
     # BR-RULE-216 INV-1: canceled only valid value is const true; INV-3: cancellation is irreversible (no "uncancel")
     # ---------- BR-RULE-198: Package Immutable Fields After Creation (immutable field guard on package update) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-ext-w @extension @ext-w @error @schema-v3.1 @post-f1 @post-f2 @post-f3
   Scenario: Package update including an immutable field is rejected (ext-w)
@@ -2416,7 +2425,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error should include "suggestion" field
     # BR-RULE-198 INV-1: product_id is immutable post-create; package-update root `not` constraint rejects it
     # POST-F3: remove the immutable field, or create a new media buy to change product/formats/pricing
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-partition-immutable-package-field @partition @immutable_field_guard @schema-v3.1
   Scenario Outline: Immutable package-field guard partition validation - <partition>
@@ -2428,7 +2437,7 @@ Feature: BR-UC-003 Update Media Buy
     Then the result should be <outcome>
     # BR-RULE-198 (immutable_field_guard.yaml): product_id / format_ids / pricing_option_id forbidden in package-update
     # ---------- BR-RULE-219: Committed Metrics Append-Only ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: Valid partitions
       | partition         | forbidden_field          | outcome |
@@ -2451,7 +2460,7 @@ Feature: BR-UC-003 Update Media Buy
     And the committed metric "impressions" should remain present with committed_at "2026-04-29T10:53:00Z"
     And the committed metric "viewable_rate" should be present with its own committed_at
     # BR-RULE-219 INV-1: append new (scope, metric_id, qualifier) accepted; INV-4: prior entries preserved (monotonic)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
   @T-UC-003-committed-metrics-immutable @invariant @BR-RULE-219 @error @schema-v3.1 @post-f1 @post-f2
   Scenario Outline: Modifying or removing a committed metric is rejected - <partition>
@@ -2462,7 +2471,7 @@ Feature: BR-UC-003 Update Media Buy
     And the error code should be "VALIDATION_ERROR"
     And the error should include "suggestion" field
     # BR-RULE-219 INV-2/INV-3: existing committed entries cannot be modified or removed (suggested code IMMUTABLE_FIELD)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples:
       | partition                | mutation                                                  |
@@ -2479,7 +2488,7 @@ Feature: BR-UC-003 Update Media Buy
     Then the response status should be "completed"
     And the committed metric "impressions" should remain unchanged
     # ---------- BR-RULE-209 INV-10: Sandbox on update non-success shapes ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples:
       | partition                 | case                                                       |
@@ -2497,7 +2506,7 @@ Feature: BR-UC-003 Update Media Buy
     Then the response payload should NOT contain a "sandbox" field
     # BR-RULE-209 INV-10: update_media_buy three-way oneOf -- sandbox appears only on synchronous success
     # ---------- BR-RULE-013 INV-6: package-level start_time 'asap' forbidden ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples:
       | shape            | trigger                                            |
@@ -2527,7 +2536,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the sandbox response-field outcome should be <outcome>
     # ---------- start_time package-scope boundary (start_time.yaml) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: sandbox response semantics (BR-UC-003)
       | boundary                                                            | account_context    | response_shape      | outcome                              |
@@ -2546,7 +2555,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
     # ---------- billing eligibility boundaries (billing_eligibility.yaml, BR-RULE-214) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: start_time package-scope boundary (BR-UC-003)
       | boundary                | value | outcome                            |
@@ -2558,7 +2567,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
     # ---------- targeting_overlay collection_list boundaries (targeting_overlay.yaml, BR-RULE-014) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: billing eligibility (BR-UC-002/003)
       | boundary                                                                                                            | outcome                                       |
@@ -2576,7 +2585,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
     # ---------- immutable_field_guard boundaries (immutable_field_guard.yaml, BR-RULE-198) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: collection_list overlay (BR-UC-002/003)
       | boundary                                              | outcome  |
@@ -2591,7 +2600,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
     # ---------- package_immutable_fields boundaries (uc026_immutable_fields.yaml, BR-RULE-198) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: package-update root guard (BR-UC-003)
       | boundary                                                            | outcome                              |
@@ -2608,7 +2617,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
     # ---------- committed_metrics append-only boundaries (committed_metrics_append_only.yaml, BR-RULE-219) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: PackageUpdate immutable-field guard (BR-UC-003)
       | boundary                              | outcome                                 |
@@ -2627,7 +2636,7 @@ Feature: BR-UC-003 Update Media Buy
     # v3.1 core/package.json committed_metrics: sellers MUST reject modify/remove of existing
     # entries with validation_error, suggested code IMMUTABLE_FIELD (BR-RULE-219 INV-2/INV-3).
     # ---------- idempotency_key boundaries (idempotency_key.yaml, BR-RULE-081) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: committed_metrics append-only (BR-UC-003)
       | boundary                                          | outcome                                       |
@@ -2646,7 +2655,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
     # ---------- product_uniqueness boundaries (product_uniqueness.yaml, BR-RULE-010) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: idempotency_key boundaries (BR-UC-003)
       | boundary                                       | outcome                                            |
@@ -2659,7 +2668,7 @@ Feature: BR-UC-003 Update Media Buy
     When the Buyer Agent sends the update_media_buy request
     Then the result should be <outcome>
     # ---------- approval_workflow submitted-envelope boundaries (approval_workflow.yaml) ----------
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/update-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
 
     Examples: product uniqueness across packages (BR-UC-002/003)
       | boundary                                                                | outcome              |

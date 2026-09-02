@@ -30,6 +30,7 @@ import pytest
 from src.core.schemas._base import GetMediaBuysRequest
 from tests.harness.media_buy_create import MediaBuyCreateEnv
 from tests.harness.media_buy_list import MediaBuyListDispatchMixin
+from tests.harness.transport import DeliverResult
 
 
 def _is_list_request(kwargs: dict[str, Any]) -> bool:
@@ -57,15 +58,21 @@ class MediaBuyCreateListEnv(MediaBuyListDispatchMixin, MediaBuyCreateEnv):
             return self._call_list_impl(**kwargs)
         return super().call_impl(**kwargs)
 
-    def call_a2a(self, **kwargs: Any) -> Any:
-        if _is_list_request(kwargs):
-            return self._call_list_a2a(**kwargs)
-        return super().call_a2a(**kwargs)
+    def deliver_a2a(self, **kwargs: Any) -> DeliverResult:
+        """Route by request CONTENT: list requests to the list mixin, else create.
 
-    def call_mcp(self, **kwargs: Any) -> Any:
+        Overrides ``deliver_*`` rather than ``call_*`` so the wire envelope
+        survives; the base's ``call_a2a`` stays ``deliver_a2a(...).payload``.
+        """
         if _is_list_request(kwargs):
-            return self._call_list_mcp(**kwargs)
-        return super().call_mcp(**kwargs)
+            return self._deliver_list_a2a(**kwargs)
+        return super().deliver_a2a(**kwargs)
+
+    def deliver_mcp(self, **kwargs: Any) -> DeliverResult:
+        """Content router; see :meth:`deliver_a2a`."""
+        if _is_list_request(kwargs):
+            return self._deliver_list_mcp(**kwargs)
+        return super().deliver_mcp(**kwargs)
 
     def build_rest_body(self, **kwargs: Any) -> dict[str, Any]:
         """Refuse to build a REST body for a list request; delegate everything else.

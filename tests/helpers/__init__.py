@@ -84,6 +84,7 @@ from tests.helpers.idempotency_seeds import (
     seed_media_buy,
     seed_principal,
 )
+from tests.helpers.ledger import load_ledger_nodeids
 from tests.helpers.log_assertions import rendered_log_calls
 from tests.helpers.orm_constraints import (
     check_constraint_sql,
@@ -107,6 +108,8 @@ __all__ = [
     # Concurrency harness
     "concurrent_commit_in_write_window",
     "operator_answer",
+    # Known-failures ledger parsing
+    "load_ledger_nodeids",
     # Log-call assertions
     "rendered_log_calls",
     # Idempotency cache seeding

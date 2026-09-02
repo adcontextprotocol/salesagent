@@ -1,0 +1,415 @@
+# Storyboard -> GitHub issue map (AdCP 3.1.1)
+#
+# THE ONE HAND-CURATED INPUT to scripts/audit/storyboard_roadmap.py.
+# Everything else in that table is derived from the pinned compliance tree and
+# this repo's .feature files. This file records the single thing a program
+# cannot derive: whether an existing issue already tracks a storyboard's gap.
+#
+# WHY IT IS A FILE AND NOT 51 NEW ISSUES
+# --------------------------------------
+# The uncovered storyboards are a conformance gap, not a work plan. Turning
+# each into a ticket unilaterally would assert a priority and a decomposition
+# that belong to the project, not to this PR (#1247 is "gap analysis and
+# roadmap", not "file the backlog"). This file lets the gap be published,
+# reviewed, and mapped onto whatever roadmap the project already has.
+#
+# SCHEMA
+#   <storyboard path relative to dist/compliance/<version>/>:
+#     issues:   [int, ...]   open issues that track some or all of this gap
+#     coverage: full | partial | none
+#     note:     one line -- what the issues do NOT cover, when partial
+#
+# `coverage: none` with no issues is a legitimate, informative answer: it means
+# "3.1.1 grades this, we do not test it, and nobody is tracking it." Those rows
+# are the point of the document.
+#
+# RULES
+#   * Every ON-PATH storyboard must appear here. The roadmap generator fails if
+#     one is missing, so a spec bump cannot silently add an untracked gap.
+#   * Issue numbers are claims about scope, not about status. A closed issue is
+#     not an error here; it means the gap may now be covered -- re-check it.
+#   * Do not add an issue number unless you have read the issue and it really
+#     covers this storyboard's checks. A wrong mapping is worse than `none`:
+#     it makes a gap look tracked.
+
+storyboards:
+  # ---------------------------------------------------------------- universal
+  universal/version-negotiation.yaml:
+    issues: [1512]
+    coverage: partial
+    note: >-
+      #1512 covers accepting adcp_version/adcp_major_version on the wire. The
+      storyboard additionally grades VERSION_UNSUPPORTED on cross-major
+      mismatch and same-major downshift, which no issue tracks.
+
+  universal/schema-validation.yaml:
+    issues: [1442]
+    coverage: partial
+    note: >-
+      #1442 is scoped to api_v1 REST *Body models. The storyboard grades
+      unknown-field handling on every transport, and the SDK-generated request
+      models carry no extra= policy at all.
+  universal/schema-validation-signals.yaml:
+    issues: [1442]
+    coverage: partial
+    note: Same as universal/schema-validation.yaml, on the signals tools.
+
+  universal/security.yaml:
+    issues: [1859]
+    coverage: partial
+    note: >-
+      #1859 covers unauthenticated calls returning 200 instead of 401. The
+      storyboard also grades credential-rejection semantics (#1743 is adjacent)
+      and cross-principal isolation.
+
+  universal/signed-requests.yaml:
+    issues: [1291]
+    coverage: partial
+    # RETRACTION. This entry used to read: "the first real
+    # in-network run disproved [the skip]: it grades them and they FAIL ... Not
+    # advertising a capability does not exempt you from its storyboard." That
+    # conclusion is wrong. The storyboard's gating clause — byte-identical at
+    # 3.1.0 and 3.1.1 — says the opposite ("agents that do not advertise support
+    # are not tested against this storyboard; absence of advertisement is not a
+    # failure"), and @adcp/sdk@11.0.0 implements exactly it, as an implicit
+    # request_signer requirement whose absence-skip semantics are deliberately
+    # INVERTED from the general requires_capability rule
+    # (dist/lib/testing/storyboard/runner.js checkRequires, citing
+    # adcontextprotocol/adcp-client#1702).
+    #
+    # It grades us anyway because that gate no-ops when the runner could not
+    # READ our capabilities, and our probe is rejected — the run's own first
+    # step reports `signed_requests/get_capabilities (error) — VALIDATION_ERROR:
+    # Unexpected keyword argument`. AdCP 3.1 composes core/version-envelope.json
+    # into every request; our MCP tools are pydantic-validated on their
+    # signatures before our code runs and declare neither envelope field. 31
+    # graded checks in the 2026-08-12 in-network run fail the same way, all on
+    # mcp:: (A2A reads a params dict and tolerates the extras).
+    #
+    # Nothing is owed upstream: the CLI threads the discovered profile correctly
+    # (bin/adcp.js builds runOptions with no _client/_profile, so
+    # runStoryboardBody discovers its own and hands it to checkRequires).
+    note: >-
+      #1291 is the implementation epic. MEASURED 2026-08-21
+      (test-results/innet_210826_1048/, in-network, MCP pass): the 40 checks
+      here are GRADED AND FAILING. They are not a conformance obligation --
+      3.1.1 exempts agents that do not advertise request_signing.supported, and
+      request_signing appears nowhere in src/ -- but they are collected anyway
+      because the capability probe is REJECTED (#1512), which no-ops the skip
+      gate. They are ledgered against #1291, which is open and owns the RFC 9421
+      implementation, per this repo's known_failures.txt policy that signing
+      entries are "regular shrinking genuine-gap entries tied to #1291".
+      When #1546 lands the envelope fix, the gate closes and these 40 stop being
+      COLLECTED rather than starting to pass -- remove them in that same change.
+      A previous revision of this note claimed the 40 "are now gone" and that
+      the roadmap dropped "from 80 checks to 48". That was measured against a
+      branch carrying a production fix this PR reverts; on the reverted tree it
+      is false. The roadmap reports 80 ledgered checks at the re-seeded head.
+      The remaining gap here is the unwritten scenario, not a measured failure.
+
+  universal/idempotency.yaml:
+    issues: [1683, 1685, 1470, 1075]
+    coverage: partial
+    note: >-
+      Issues cover create replay, update same-key CONFLICT, and the
+      idempotency_key schema/impl mismatch. The storyboard's cross-tool
+      key-scoping and replay-equality checks are untracked.
+  universal/read-tool-idempotency.yaml:
+    coverage: none
+    note: Read-tool idempotency is graded by 3.1.1 and tracked nowhere.
+
+  universal/error-compliance.yaml:
+    issues: [1604, 1680, 1753]
+    coverage: partial
+    note: >-
+      #1604/#1680 align the code enum; #1753 covers scenarios asserting codes
+      production never emits. The storyboard's per-code recovery-hint grading
+      is untracked.
+  universal/error-compliance-signals.yaml:
+    issues: [1604, 1680]
+    coverage: partial
+    note: Same enum work, signals tools. No signals-specific tracking.
+
+  universal/capability-discovery.yaml:
+    issues: [1825, 1684, 1408, 1525, 1724]
+    coverage: partial
+    note: >-
+      Issues cover individual capability fields and the BR-UC-010 wiring. The
+      storyboard grades the discovery document as a whole against what the
+      agent actually implements -- the "5 hand-maintained discovery surfaces"
+      class defect (#1210) is the real shape of this.
+
+  universal/v3-envelope-integrity.yaml:
+    issues: [1449, 1706, 1684]
+    coverage: partial
+    note: >-
+      Issues cover cross-transport envelope inconsistencies. The storyboard
+      grades the v3 envelope's own required fields, which is untracked.
+
+  universal/webhook-emission.yaml:
+    issues: [1869, 1291, 1639, 1735, 1712]
+    coverage: partial
+    note: >-
+      MEASURED, not inferred: hosting a webhook receiver turned this storyboard
+      from wholly skipped into 8 graded failures (capability_discovery,
+      fetch_brand_json, trigger_webhook_operation, trigger_operation_id_echo,
+      trigger_idempotent_webhook_initial, trigger_retry_scenario,
+      trigger_signed_webhook, assert_webhook_signing_key_present).
+      The three webhook issues that were mapped here first cover NONE of them:
+      #1639 is lifecycle emission — WHEN a terminal webhook is enqueued — and
+      says so ("lifecycle-final largely ungraded in conformance"); #1735 and
+      #1712 are test-infra, grading our own UC-004 BDD scenarios on a real
+      receiver rather than production behaviour, and #1735 targets the
+      DEPRECATED HMAC fallback rather than RFC 9421.
+      The 3 signing-side checks (fetch_brand_json, trigger_signed_webhook,
+      assert_webhook_signing_key_present) ARE addressed by #1291, whose
+      implementation branch signs webhook deliveries under the webhook profile
+      tag ("adcp/webhook-signing/v1") and publishes JWKS at
+      /.well-known/jwks.json governed by brand.json's jwks_uri. Judge #1291 by
+      that branch, not by its TL;DR: the issue text argues REQUEST signing is
+      optional and capability-advertised, which is true and is a different
+      thing — webhook signing is a separate profile and baseline in 3.0 unless
+      the buyer opts into the deprecated HMAC fallback.
+      Genuinely untracked are the payload-correlation and idempotency
+      requirements: operation_id echoed from push_notification_config (sellers
+      MUST NOT derive it by parsing the receiver URL), idempotency_key present
+      and byte-stable across retries (adcp#2417), and replay of an idempotent
+      request not emitting a second logical webhook. Those are #1869.
+  universal/webhook-receiver-envelope.yaml:
+    issues: [1735]
+    coverage: partial
+    note: >-
+      #1735 stands up a real receiver, which is the precondition. The envelope
+      shape the receiver must accept is not itself tracked.
+
+  universal/notification-config-lifecycle.yaml:
+    issues: [1727, 1608]
+    coverage: partial
+    note: >-
+      #1727 is the registration acknowledgement; #1608 is sync_accounts
+      honoring the config. Lifecycle transitions beyond those are untracked.
+  universal/notification-config-rejections.yaml:
+    issues: [1747]
+    coverage: partial
+    note: >-
+      #1747 covers update_media_buy accepting the config without validation.
+      The storyboard grades the rejection codes themselves.
+  universal/notification-config-event-scope.yaml:
+    coverage: none
+    note: Event-scope filtering on notification configs is tracked nowhere.
+
+  universal/pagination-integrity.yaml:
+    issues: [1033]
+    coverage: partial
+    note: >-
+      #1033 adds cursor pagination to artifacts and delivery tools only. The
+      generic integrity storyboard grades every paginated tool.
+  universal/get-products-pagination-integrity.yaml:
+    coverage: none
+    note: get_products pagination integrity is graded by 3.1.1 and untracked.
+  universal/get-media-buys-pagination-integrity.yaml:
+    coverage: none
+    note: get_media_buys pagination integrity is graded by 3.1.1 and untracked.
+  universal/get-signals-pagination-integrity.yaml:
+    coverage: none
+    note: get_signals pagination integrity is graded by 3.1.1 and untracked.
+  universal/pagination-integrity-creative-formats.yaml:
+    coverage: none
+    note: >-
+      list_creative_formats pagination is untracked, and is the storyboard the
+      repin-uc005-baseline proposal collided with (57 formats, max_results 50).
+  universal/pagination-integrity-list-accounts.yaml:
+    coverage: none
+    note: list_accounts pagination integrity is graded by 3.1.1 and untracked.
+
+  universal/stale-response-advisory.yaml:
+    coverage: none
+    note: Stale-response advisory emission is graded by 3.1.1 and untracked.
+
+  universal/billing-gate-dispatch.yaml:
+    issues: [1772]
+    coverage: partial
+    note: >-
+      #1772 emits BILLING_NOT_PERMITTED_FOR_AGENT from a commercial-
+      relationship model. The storyboard grades the dispatch gate across tools.
+
+  universal/wholesale-feed-products.yaml:
+    coverage: none
+    note: >-
+      Wholesale feed is an entire unimplemented surface (5 storyboards). No
+      issue references it. Likely a scope decision rather than a bug.
+  universal/wholesale-feed-signals.yaml:
+    coverage: none
+    note: See universal/wholesale-feed-products.yaml.
+  universal/wholesale-feed-bulk-webhooks.yaml:
+    coverage: none
+    note: See universal/wholesale-feed-products.yaml.
+  universal/wholesale-feed-product-webhooks.yaml:
+    coverage: none
+    note: See universal/wholesale-feed-products.yaml.
+  universal/wholesale-feed-signal-webhooks.yaml:
+    coverage: none
+    note: See universal/wholesale-feed-products.yaml.
+
+  # -------------------------------------------------------- protocols/media-buy
+  protocols/media-buy/scenarios/create_media_buy_async.yaml:
+    issues: [1305, 1531]
+    coverage: partial
+    note: >-
+      #1305 is the spec-conformant async/submitted envelope; #1531 finishes the
+      update write path's async lifecycle. create's own async path is covered
+      by #1305 only at the envelope level.
+  protocols/media-buy/scenarios/get_products_async.yaml:
+    issues: [1305]
+    coverage: partial
+    note: Envelope shape only; get_products has no async path today.
+
+  protocols/media-buy/scenarios/canonical_formats.yaml:
+    issues: [1789, 1172]
+    coverage: partial
+    note: >-
+      #1789 is the closest match -- 3.1+ format selectors accepted then
+      silently ignored, with a non-conformant satisfaction test. The
+      storyboard's canonical_format_satisfaction checks are the graded form
+      of exactly that defect.
+
+  protocols/media-buy/scenarios/pricing_currency_filter.yaml:
+    issues: [1525]
+    coverage: partial
+    note: >-
+      #1525 advertises supported_pricing_models. Currency filtering on
+      get_products is untracked.
+
+  protocols/media-buy/scenarios/audience_buy_flow.yaml:
+    issues: [1059]
+    coverage: partial
+    note: >-
+      #1059 implements sync_audiences, a required_tool for this storyboard.
+      The buy flow itself is untracked.
+  protocols/media-buy/scenarios/product_signal_targeting.yaml:
+    issues: [1593, 1783]
+    coverage: partial
+    note: >-
+      Issues cover activate_signal exposure and get_signals matching. Signal
+      targeting applied to a product is untracked.
+
+  protocols/media-buy/scenarios/clicks_buy_flow.yaml:
+    coverage: none
+    note: CPC buy-flow delivery grading is untracked.
+  protocols/media-buy/scenarios/completed_views_buy_flow.yaml:
+    coverage: none
+    note: >-
+      completed_views was renamed in #1545 but the buy flow is not graded.
+  protocols/media-buy/scenarios/reach_buy_flow.yaml:
+    coverage: none
+    note: Reach buy-flow delivery grading is untracked.
+  protocols/media-buy/scenarios/performance_buy_flow.yaml:
+    coverage: none
+    note: Performance buy-flow delivery grading is untracked.
+  protocols/media-buy/scenarios/performance_buy_flow_roas.yaml:
+    coverage: none
+    note: ROAS buy-flow delivery grading is untracked.
+
+  protocols/media-buy/scenarios/billing_finality_delivery.yaml:
+    issues: [1772]
+    coverage: partial
+    note: >-
+      #1772 is the billing gate. Billing finality on the delivery record --
+      which fields freeze and when -- is untracked.
+
+  protocols/media-buy/scenarios/vendor_metric_catalog_precondition.yaml:
+    coverage: none
+    note: Vendor-metric catalog preconditions are graded and untracked.
+  protocols/media-buy/scenarios/vendor_metric_optimization_flow.yaml:
+    coverage: none
+    note: Vendor-metric optimization flow is graded and untracked.
+
+  protocols/media-buy/scenarios/dependency_impairment.yaml:
+    coverage: none
+    note: Dependency-impairment reporting is graded and untracked.
+  protocols/media-buy/scenarios/dependency_impairment_cardinality.yaml:
+    coverage: none
+    note: See dependency_impairment.yaml.
+
+  protocols/media-buy/scenarios/frequency_cap_enforcement.yaml:
+    coverage: none
+    note: Frequency-cap enforcement is graded and untracked.
+
+  protocols/media-buy/scenarios/package_correlation_legacy_fallback.yaml:
+    coverage: none
+    note: Legacy package-correlation fallback is graded and untracked.
+
+  protocols/media-buy/scenarios/provenance_audit_observation.yaml:
+    coverage: none
+    note: >-
+      Provenance is graded by 3.1.1 with no issue anywhere in the tracker,
+      despite UC-006 scenarios asserting provenance rejection behaviour.
+  protocols/media-buy/scenarios/provenance_truth_of_claim.yaml:
+    coverage: none
+    note: See provenance_audit_observation.yaml.
+
+  protocols/media-buy/scenarios/refine_products.yaml:
+    coverage: none
+    note: Product refinement round-trip is graded and untracked.
+
+  # ------------------------------------------------------------- specialisms
+  specialisms/sales-non-guaranteed/index.yaml:
+    coverage: none
+    note: >-
+      Declared specialism with no scenario and no issue. Its index pulls in the
+      non-guaranteed buy flows.
+
+  # -------------------------------------------- storyboards WITH a scenario
+  # The roadmap derives the scenario list itself; these rows exist so the
+  # completeness check passes and so a scenario's EXISTENCE is not mistaken for
+  # its check inventory being satisfied. A scenario touching a storyboard is
+  # not the same as grading all of its checks -- see the check counts in the
+  # roadmap table.
+  protocols/media-buy/index.yaml:
+    coverage: partial
+    note: >-
+      Three scenarios (UC-005/006/019) against 102 graded checks. The index is
+      the protocol's whole surface; scenario coverage of it is incidental.
+  protocols/media-buy/scenarios/invalid_transitions.yaml:
+    coverage: partial
+    note: >-
+      T-UC-003-storyboard-media-buy-not-found was wired through AdCPTestClient
+      in this PR -- the demonstrator. Its two siblings remain in the binding
+      allowlist.
+  protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml:
+    coverage: partial
+    note: Both covering UC-003 scenarios are in the binding allowlist.
+  protocols/media-buy/scenarios/creative_reception.yaml:
+    coverage: partial
+    note: >-
+      Sole covering scenario (T-UC-006-storyboard-format-id-roundtrip-on-sync)
+      is in the binding allowlist and gated by the UC-006 harness tag.
+  protocols/media-buy/scenarios/delivery_reporting.yaml:
+    coverage: partial
+    note: >-
+      Covered by one controller-driven scenario. comply_test_controller is a
+      required_tool we will not implement, so the graded injection path is
+      permanently unreachable -- see the roadmap's DETERMINISTIC INJECTION rows.
+  protocols/media-buy/scenarios/inventory_list_no_match.yaml:
+    coverage: partial
+    note: Covering scenario is in the binding allowlist.
+  protocols/media-buy/scenarios/inventory_list_targeting.yaml:
+    coverage: partial
+    note: One of two covering scenarios is in the binding allowlist.
+  protocols/media-buy/scenarios/measurement_accountability.yaml:
+    coverage: partial
+    note: Covering scenario is in the binding allowlist.
+  protocols/media-buy/scenarios/measurement_terms_rejected.yaml:
+    coverage: partial
+    note: Covering scenario is in the binding allowlist.
+  protocols/media-buy/scenarios/provenance_enforcement.yaml:
+    coverage: partial
+    note: >-
+      Four UC-006 scenarios, two of them in the binding allowlist. This is the
+      storyboard whose standalone reachability is UNRESOLVED in the coverage
+      map -- see scripts/audit/storyboard_coverage_map.py's module docstring.
+  protocols/media-buy/scenarios/vendor_metric_accountability.yaml:
+    coverage: partial
+    note: >-
+      Covered by two UC-004 scenarios. The sibling vendor_metric storyboards
+      (catalog_precondition, optimization_flow) have no scenario at all.

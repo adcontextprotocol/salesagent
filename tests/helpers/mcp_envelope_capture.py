@@ -12,19 +12,18 @@ from fastmcp import Client
 
 from src.core.main import mcp
 from tests.factories.principal import PrincipalFactory
-
-_AUTO_IDENTITY = object()
+from tests.harness.transport import NO_IDENTITY_OVERRIDE
 
 
 def call_mcp_tool_capturing_envelope(
     tool_name: str,
     params: dict[str, Any],
-    identity: Any = _AUTO_IDENTITY,
+    identity: Any = NO_IDENTITY_OVERRIDE,
     *,
     stub_lifecycle_schedulers: bool = False,
 ) -> tuple[bool, dict[str, Any] | None]:
     """Invoke an MCP tool and return its error flag and parsed wire envelope."""
-    resolved_identity = PrincipalFactory.make_identity(protocol="mcp") if identity is _AUTO_IDENTITY else identity
+    resolved_identity = PrincipalFactory.make_identity(protocol="mcp") if identity is NO_IDENTITY_OVERRIDE else identity
 
     async def _call() -> tuple[bool, str | None]:
         with ExitStack() as stack:

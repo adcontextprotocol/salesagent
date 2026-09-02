@@ -159,7 +159,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    timeout-minutes: 15
+    # 15 was enough while the six storyboard structural guards SKIPPED for want
+    # of a pinned tree. Provisioning the release bundle below un-skips 25 of
+    # them, and they parse all 121 pinned storyboards — the job went 9m38s ->
+    # over 15m and was cancelled at the ceiling. Raised with headroom rather
+    # than trimmed, because the point of provisioning the tree is that these
+    # guards actually run.
+    timeout-minutes: 30
     steps:
       - uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
         with:
@@ -169,6 +175,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/_setup-env
+      # The storyboard structural guards resolve the pinned AdCP tree via
+      # storyboard_spec.adcp_home(), which prefers this extracted release
+      # bundle. Without it they skip, which silently disabled 23 guards in every
+      # unit run — they all pass once a tree is actually resolvable.
+      - uses: ./.github/actions/_adcp-bundle
       - uses: ./.github/actions/_pytest
         with:
           paths: tests/unit/ tests/harness/
@@ -414,6 +425,127 @@ jobs:
           # No host uvx in this job (no _setup-env); the dedicated Security
           # Audit check owns the uv-secure scan.
           RUN_ALL_SKIP_AUDIT: 1
+      - name: Cleanup Docker services
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v 2>/dev/null || true
+
+  storyboard-conformance:
+    # (#1858) Grades a MEASURED run of the real @adcp/sdk
+    # storyboard runner as ordinary parametrized pytest tests
+    # (tests/storyboard/), reusing the e2e_rest ledger/xfail/lock-test
+    # discipline instead of a new comparator. The ledger
+    # (tests/storyboard/known_failures.txt) IS seeded from a real in-network
+    # run; its exact contents are pinned by EXPECTED_LEDGER in
+    # tests/unit/test_storyboard_ledger_state.py — read the count there rather
+    # than from a literal here, which has re-rotted on every re-seed. Still
+    # NOT in the required-checks gate below (summary job's `needs`) — landing
+    # report-only was deliberate so drift could be observed before making it
+    # merge-blocking; flipping it in requires re-verifying the ledger against
+    # a fresh in-network run first (branch-protection enforcement is a
+    # separate, out-of-band GitHub settings change either way — matches
+    # e2e_rest_known_failures.txt's own comment on this).
+    name: Storyboard Conformance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 30
+    steps:
+      - uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Clean up lingering containers
+        run: |
+          docker compose -f docker-compose.e2e.yml down -v 2>/dev/null || true
+          docker container prune -f 2>/dev/null || true
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The report generators below import `adcp` and `pyyaml`, and the bundle
+      # action resolves the pin from that same installed SDK, so this job needs
+      # the project venv. It did not before: it only ever drove docker compose.
+      - uses: ./.github/actions/_setup-env
+      # The pinned compliance/schema bundle is a GitHub release asset, not an npm
+      # dependency, so it is fetched host-side into the bind-mounted tree that the
+      # runner container sees at /app. npm deps are NOT installed here: the
+      # `storyboard` tox env's commands_pre runs `npm ci` inside that container,
+      # where the Node that executes the runner actually lives.
+      #
+      # Same action as the unit job, so both take the version from ONE source —
+      # the installed SDK. This job hardcoded v3.1.1 while the unit job
+      # regex-parsed it out of the prose of docs/adcp-spec-version.md; the two
+      # could disagree with each other and both could disagree with the wheel.
+      - id: bundle
+        uses: ./.github/actions/_adcp-bundle
+      # No host Postgres / host ports: run_all_tests.sh builds the pinned
+      # creative agent, brings the stack up, waits for health, and executes tox
+      # inside the compose network — the runner reaches the agent at proxy:8000
+      # by service name, which is tests/storyboard's own default. (_setup-env IS
+      # present above, but only so the report-publishing step below has a venv;
+      # the conformance run itself uses none of it.)
+      # Identical shape to the BDD In-Network job above; hand-rolling a compose
+      # lifecycle here is what made this job fail on every earlier attempt.
+      - name: Run storyboard conformance in-network
+        run: ./run_all_tests.sh storyboard
+        env:
+          DOCKER_BUILDKIT: 1
+          COMPOSE_DOCKER_CLI_BUILD: 1
+          # run_all_tests.sh builds the pinned creative agent host-side; prefer
+          # the pin-keyed ghcr pull (~5m faster) over building from source.
+          CREATIVE_AGENT_GHCR_IMAGE: ghcr.io/${{ github.repository }}/adcp-creative-agent
+          # The dedicated Security Audit check owns the uv-secure scan, so it
+          # is skipped here even though _setup-env now provides a host uv.
+          RUN_ALL_SKIP_AUDIT: 1
+      # Publish the machinery's OUTPUT, not a committed copy of it (#1858).
+      # These three reports used to live in docs/test-obligations/; a committed
+      # report obliges you to prove regeneration is byte-identical, and the
+      # liveness input only exists on a host that has run the full BDD suite, so
+      # that proof could never be given and the committed copies drifted twice.
+      # Regenerating here means a reviewer reads the numbers from the run that
+      # produced them.
+      #
+      # `--adcp` is passed EXPLICITLY: run_cli defaults it to ~/projects/adcp, a
+      # personal clone that does not exist on a runner. The bundle below is the
+      # sha256-verified release asset downloaded above.
+      #
+      # if: always() — a failing conformance run is exactly when the reports are
+      # worth reading.
+      - name: Publish storyboard reports to the job summary
+        if: always()
+        env:
+          ADCP_BUNDLE: ${{ steps.bundle.outputs.bundle-dir }}
+        run: |
+          set -uo pipefail
+          emit() {  # $1 = generator stem, $2 = human title
+            printf '\n<details>\n<summary><b>%s</b></summary>\n\n' "$2" >> "$GITHUB_STEP_SUMMARY"
+            if uv run python "scripts/audit/$1.py" --repo . --adcp "$ADCP_BUNDLE" --markdown \
+                 >> "$GITHUB_STEP_SUMMARY" 2>/tmp/"$1".err; then
+              :
+            else
+              {
+                printf '\n> generator FAILED — stderr below\n\n```\n'
+                tail -40 /tmp/"$1".err
+                printf '\n```\n'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+            printf '\n</details>\n' >> "$GITHUB_STEP_SUMMARY"
+          }
+          emit storyboard_coverage_map "Storyboard coverage map"
+          emit storyboard_roadmap      "Storyboard roadmap"
+          emit storyboard_check_index  "Storyboard check index (one row per graded check)"
+          # GitHub caps a job summary at 1 MiB and silently truncates past it.
+          # The three total ~562 KB today; say so out loud if that changes.
+          size=$(wc -c < "$GITHUB_STEP_SUMMARY")
+          echo "job summary: ${size} bytes (GitHub cap: 1048576)"
+          if [ "$size" -gt 1000000 ]; then
+            echo "::warning::storyboard job summary is ${size} bytes, near GitHub's 1 MiB cap — it will truncate"
+          fi
       - name: Cleanup Docker services
         if: always()
         run: docker compose -f docker-compose.e2e.yml down -v 2>/dev/null || true

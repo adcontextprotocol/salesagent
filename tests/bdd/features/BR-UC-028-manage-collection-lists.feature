@@ -46,7 +46,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the response contains a lists array with 3 items
     And each list includes list_id, name, and metadata
     And the request context is echoed in the response
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | transport |
@@ -58,7 +58,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given the tenant has 5 collection lists
     When the Buyer Agent sends a list_collection_lists request with no filters
     Then the response contains a lists array with 5 items
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-main-list-by-account @list @filter @post-s3
   Scenario: List collection lists -- account filter returns only owned lists
@@ -67,7 +67,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent filters list_collection_lists by account "acct-alpha"
     Then the response contains 1 collection list
     And the list is owned by account "acct-alpha"
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-main-list-by-name @list @filter @post-s3 @boundary
   Scenario: List collection lists -- name_contains filter returns substring matches
@@ -77,7 +77,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent filters list_collection_lists by name_contains "drama"
     Then the response contains 2 collection lists
     And the Sports Podcasts list is not included
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-main-list-empty @list @post-s3 @boundary
   Scenario: List collection lists -- tenant with zero lists returns empty array
@@ -85,7 +85,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent sends a list_collection_lists request with no filters
     Then the response contains an empty lists array
     And the response is not an error
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-main-list-tenant-isolation @list @tenant @post-s3
   Scenario: List collection lists -- only own tenant lists returned
@@ -104,7 +104,7 @@ Feature: BR-UC-028 Manage Collection Lists
     And the auth_token is a non-empty string
     And the cache_duration_hours defaults to 168
     And the request context is echoed in the response
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | transport |
@@ -116,7 +116,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent authenticated as tenant-A creates a collection list with name "Tenant A List"
     Then the list is stored under tenant-A
     And a list_collection_lists request from tenant-B does not include this list
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-a-name-missing @create @validation @error @post-f1 @post-f2
   Scenario: Create collection list -- missing name is rejected
@@ -124,14 +124,14 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And no collection list is created
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-a-idempotency-missing @create @validation @error @post-f2
   Scenario: Create collection list -- missing idempotency_key is rejected
     When the Buyer Agent creates a collection list with name "X" and no idempotency_key
     Then the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-a-idempotency-format @create @validation @error @boundary @post-f2
   Scenario Outline: Create collection list -- idempotency_key <case> is rejected
@@ -139,7 +139,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the error code should be "<error_code>"
     And the error should include "suggestion" field
     # boundary: 15-char key (below min), 256-char key (above max), invalid char
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | case        | key_value                                                                                                                                  | error_code                     |
@@ -155,13 +155,13 @@ Feature: BR-UC-028 Manage Collection Lists
     And the response includes replayed equal to true
     And no new collection list is created
     # --- Create: base_collections discriminated union validation ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-a-base-collections-valid @create @validation @boundary
   Scenario Outline: Create collection list -- base_collections <source_type> is valid
     When the Buyer Agent creates a collection list with name "Source Test" and base_collections <source_value>
     Then the response contains a generated list_id
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | source_type           | boundary_point                                              | source_value                                                                                                                                |
@@ -177,7 +177,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the error code should be "<error_code>"
     And the error should include "suggestion" field
     # --- Create: filters validation ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | source_type                | boundary_point                                                  | source_value                                                                                                | error_code                              |
@@ -194,7 +194,7 @@ Feature: BR-UC-028 Manage Collection Lists
   Scenario Outline: Create collection list -- filters <filter_type> is valid
     When the Buyer Agent creates a collection list with name "Filter Test" and filters <filter_value>
     Then the response contains a generated list_id
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | filter_type          | boundary_point                                       | filter_value                                                                  |
@@ -210,7 +210,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent creates a collection list with name "Invalid Filter" and filters <filter_value>
     Then the error code should be "<error_code>"
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | filter_type           | boundary_point                            | filter_value                          | error_code           |
@@ -225,7 +225,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the error code should be "FIELD_NOT_PERMITTED"
     And the error should include "suggestion" field
     # --- Create: idempotency conflict (same key, divergent payload) ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-a-idempotency-conflict @create @idempotency @error @post-f1 @post-f2
   Scenario: Create collection list -- same idempotency_key with a different payload is rejected
@@ -235,7 +235,7 @@ Feature: BR-UC-028 Manage Collection Lists
     And the error should include "suggestion" field
     And no new collection list is created
     # --- Create: account-ref resolution (default vs ambiguous) ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-a-account-default @create @account-ref @post-s1
   Scenario: Create collection list -- account omitted defaults to the agent's sole account
@@ -243,7 +243,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent creates a collection list with name "Defaulted" and no account field
     Then the response contains a generated list_id
     And the list is owned by account "acct-solo"
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-a-account-ambiguous @create @account-ref @error @post-f1 @post-f2
   Scenario: Create collection list -- account omitted is rejected when agent has multiple accounts
@@ -263,7 +263,7 @@ Feature: BR-UC-028 Manage Collection Lists
     And the response includes resolved_at timestamp
     And the response includes cache_valid_until timestamp
     And the request context is echoed in the response
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | transport |
@@ -277,7 +277,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the response contains the full list metadata
     And the response does not contain a collections array
     And the response does not contain a resolved_at timestamp
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-b-auth-token-not-reexposed @get @post-s2 @post-s7 @boundary
   Scenario: Get collection list -- response never re-exposes the auth_token
@@ -285,7 +285,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent sends a get_collection_list request for "list-secret"
     Then the response contains the full list metadata
     And the response does not contain an auth_token field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-b-pagination-default @get @pagination @post-s2 @boundary
   Scenario: Get collection list -- pagination defaults max_results to 1000
@@ -293,7 +293,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent sends a get_collection_list request for "list-big" with no pagination
     Then the response collections array contains at most 1000 items
     And the response pagination includes a cursor
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-b-pagination-max @get @pagination @post-s2 @boundary
   Scenario: Get collection list -- pagination max_results 10000 is accepted
@@ -301,7 +301,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent sends a get_collection_list request for "list-big" with max_results 10000
     Then the response collections array contains at most 10000 items
     And the response pagination includes a cursor
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-b-pagination-invalid @get @pagination @validation @error @boundary @post-f2
   Scenario Outline: Get collection list -- pagination max_results <case> is rejected
@@ -309,7 +309,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent sends a get_collection_list request for "list-x" with max_results <value>
     Then the error code should be "<error_code>"
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | case      | value | error_code                       |
@@ -323,7 +323,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent sends a get_collection_list request for "list-gaps"
     Then the response includes coverage_gaps for the "genre" dimension
     And the coverage_gaps map dimension to arrays of distribution identifiers
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-b-not-found @get @ext-e @error @post-f1 @post-f2 @post-f4
   Scenario: Get collection list -- list_id not found returns REFERENCE_NOT_FOUND
@@ -332,7 +332,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the error code should be "REFERENCE_NOT_FOUND"
     And the error message references list_id "list-missing"
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-b-access-denied @get @ext-f @error @post-f1 @post-f2
   Scenario: Get collection list -- principal without permission returns LIST_ACCESS_DENIED
@@ -349,7 +349,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the response contains the updated list with name "New Name"
     And the updated_at timestamp is more recent than created_at
     And the request context is echoed in the response
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | transport |
@@ -362,21 +362,21 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent updates "list-rep" with base_collections replaced by a single entry
     Then the updated list contains exactly one base_collections entry
     And the prior entries are not retained
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-c-webhook-set @update @webhook @post-s4
   Scenario: Update collection list -- webhook_url can be set
     Given an existing collection list "list-wh" without webhook_url
     When the Buyer Agent updates "list-wh" with webhook_url "https://example.com/cb"
     Then the response contains webhook_url "https://example.com/cb"
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-c-webhook-remove @update @webhook @post-s4 @boundary
   Scenario: Update collection list -- empty webhook_url removes subscription
     Given an existing collection list "list-wh" with webhook_url "https://example.com/cb"
     When the Buyer Agent updates "list-wh" with webhook_url ""
     Then the response shows the webhook_url field cleared
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-c-webhook-ssrf @update @webhook @error @post-f1 @post-f2
   Scenario: Update collection list -- webhook_url targeting a blocked host is rejected
@@ -384,7 +384,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent updates "list-ssrf" with webhook_url "http://169.254.169.254/latest/meta-data"
     Then the error code should be "WEBHOOK_URL_SSRF_BLOCKED"
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-c-webhook-invalid-format @update @webhook @error @post-f1 @post-f2
   Scenario: Update collection list -- malformed webhook_url is rejected
@@ -392,7 +392,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent updates "list-badwh" with webhook_url "not-a-valid-url"
     Then the error code should be "WEBHOOK_URL_INVALID_FORMAT"
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-c-idempotency-replay @update @idempotency @post-s4
   Scenario: Update collection list -- replay returns cached response with replayed=true
@@ -400,7 +400,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent updates "list-r" again with the same idempotency_key "k-upd-xxxxxxxxxxxxxxxx"
     Then the response is the original update response
     And the response includes replayed equal to true
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-c-not-found @update @ext-e @error @post-f1 @post-f2 @post-f4
   Scenario: Update collection list -- list_id not found returns REFERENCE_NOT_FOUND
@@ -409,7 +409,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the error code should be "REFERENCE_NOT_FOUND"
     And the error message references list_id "list-missing"
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-c-access-denied @update @ext-f @error @post-f1 @post-f2
   Scenario: Update collection list -- principal without permission returns LIST_ACCESS_DENIED
@@ -428,7 +428,7 @@ Feature: BR-UC-028 Manage Collection Lists
     And the response echoes list_id "list-del"
     And a subsequent get_collection_list for "list-del" returns REFERENCE_NOT_FOUND
     And the auth_token for "list-del" is revoked
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-d-idempotency-replay @delete @idempotency @post-s5
   Scenario: Delete collection list -- replay returns cached deletion with replayed=true
@@ -436,7 +436,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the Buyer Agent deletes "list-d" with the same idempotency_key "k-del-yyyyyyyyyyyyyyyy"
     Then the response contains deleted equal to true
     And the response includes replayed equal to true
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-d-not-found @delete @ext-e @error @post-f1 @post-f2 @post-f4
   Scenario: Delete collection list -- list_id not found returns REFERENCE_NOT_FOUND
@@ -445,7 +445,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the error code should be "REFERENCE_NOT_FOUND"
     And the error message references list_id "list-missing"
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-d-access-denied @delete @ext-f @error @post-f1 @post-f2
   Scenario: Delete collection list -- principal without permission returns LIST_ACCESS_DENIED
@@ -455,7 +455,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Then the error code should be "LIST_ACCESS_DENIED"
     And the error should include "suggestion" field
     And the list "list-other-acct" still exists
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-d-in-use @delete @ext-g @error @post-f1 @post-f2 @post-f4
   Scenario: Delete collection list -- in use by active media buy returns LIST_IN_USE
@@ -476,14 +476,14 @@ Feature: BR-UC-028 Manage Collection Lists
     And the payload includes a change_summary object
     And the payload includes resolved_at and cache_valid_until timestamps
     And the request carries X-ADCP-Signature and X-ADCP-Timestamp headers
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-h-dedupe @webhook @ext-h @idempotency @happy-path
   Scenario: collection_list_changed -- recipient dedupes by idempotency_key per sender
     Given a collection_list_changed webhook with idempotency_key "wh-1234567890abcdef-aa" is received and processed
     When the governance agent retries the same webhook with the same idempotency_key
     Then the recipient discards the retry as a duplicate
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-h-header-missing @webhook @ext-h @error @abstract-rejection
   Scenario: collection_list_changed -- recipient rejects a webhook missing signature headers
@@ -491,7 +491,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the recipient validates the request headers
     Then the recipient rejects the request as unauthorized
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
   @T-UC-028-ext-h-payload-missing-field @webhook @ext-h @error
   Scenario: collection_list_changed -- payload omitting a required field is rejected
@@ -505,7 +505,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a create_collection_list request is prepared for the idempotency_key boundary
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point           | expected                                |
@@ -519,7 +519,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a state-mutating collection list request carrying an idempotency_key
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                                                          | expected                                       |
@@ -536,7 +536,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a collection list operation is retried under an idempotency_key
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                              | expected                       |
@@ -550,7 +550,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a collection list model or request is constructed at the required-fields boundary
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                          | expected                                         |
@@ -563,7 +563,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a collection list operation that touches the one-shot auth_token
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                                  | expected |
@@ -578,7 +578,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a create_collection_list request with a base_collections selection
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                                              | expected                                        |
@@ -592,7 +592,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a create_collection_list request carrying a filters object
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                      | expected                   |
@@ -605,7 +605,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a base_collections entry carrying a publisher_domain
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                            | expected                            |
@@ -617,7 +617,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a create_collection_list request without an explicit cache_duration_hours
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                          | expected          |
@@ -628,7 +628,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given an agent invokes a collection list operation under account-resolution rules
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                                            | expected                          |
@@ -643,7 +643,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a list_collection_lists request at the filter boundary
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                       | expected                  |
@@ -656,7 +656,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a get_collection_list request that may report coverage gaps
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                                       | expected                  |
@@ -668,7 +668,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a get_collection_list request with a pagination parameter
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point    | expected                              |
@@ -682,7 +682,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                              | expected                         |
@@ -697,7 +697,7 @@ Feature: BR-UC-028 Manage Collection Lists
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
     And the error should include "suggestion" field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                       | expected                     |
@@ -709,7 +709,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given an existing collection list and an update request
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                                       | expected                          |
@@ -722,7 +722,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a create or update collection list request carrying webhook_url
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                              | expected                              |
@@ -738,7 +738,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a collection list with media buy references
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                        | expected             |
@@ -751,7 +751,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a delete or update request against a (possibly referenced) collection list
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                      | expected             |
@@ -765,7 +765,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a collection_list_changed webhook body with an event field
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                  | expected                          |
@@ -778,7 +778,7 @@ Feature: BR-UC-028 Manage Collection Lists
     Given a collection_list_changed webhook received with signature and timestamp headers
     When the boundary case <boundary_point> is evaluated
     Then the outcome is <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/collection/list-collection-lists-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/collection/list-collection-lists-request.json
 
     Examples:
       | boundary_point                                       | expected                  |

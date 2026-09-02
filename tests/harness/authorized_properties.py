@@ -23,6 +23,11 @@ class AuthorizedPropertiesEnv(IntegrationEnv):
     No patches — discovery is read-only, no external service calls.
     """
 
+    # Dispatch declaration: the base owns call_mcp/call_a2a.
+    MCP_TOOL = "list_authorized_properties"
+    A2A_SKILL = "list_authorized_properties"
+    RESPONSE_MODEL = ListAuthorizedPropertiesResponse
+
     EXTERNAL_PATCHES: dict[str, str] = {}
     REST_ENDPOINT = "/api/v1/authorized-properties"
 
@@ -39,14 +44,6 @@ class AuthorizedPropertiesEnv(IntegrationEnv):
         if req is None:
             req = ListAuthorizedPropertiesRequest(**kwargs)
         return _list_authorized_properties_impl(req=req, identity=identity)
-
-    def call_a2a(self, **kwargs: Any) -> Any:
-        """Dispatch list_authorized_properties through the REAL A2A pipeline."""
-        return self._run_a2a_handler("list_authorized_properties", ListAuthorizedPropertiesResponse, **kwargs)
-
-    def call_mcp(self, **kwargs: Any) -> Any:
-        """Call list_authorized_properties via Client(mcp) — full pipeline dispatch."""
-        return self._run_mcp_client("list_authorized_properties", ListAuthorizedPropertiesResponse, **kwargs)
 
     def parse_rest_response(self, data: dict[str, Any]) -> ListAuthorizedPropertiesResponse:
         """Parse REST JSON into ListAuthorizedPropertiesResponse."""

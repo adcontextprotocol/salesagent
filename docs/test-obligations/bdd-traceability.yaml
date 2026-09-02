@@ -4117,6 +4117,24 @@ mappings:
       business_rules: []
       status: new
   UC-006:
+    - adcp_scenario_id: "T-UC-006-storyboard-multi-format-sync-status"
+      adcp_feature: "BR-UC-006-sync-creatives.feature"
+      obligation_id: null
+      upstream_refs: ["BR-UC-006-main-sync"]
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-UC-006-idempotency-replay"
+      adcp_feature: "BR-UC-006-sync-creatives.feature"
+      obligation_id: null
+      upstream_refs: ["BR-UC-006-main-sync"]
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-UC-006-idempotency-conflict"
+      adcp_feature: "BR-UC-006-sync-creatives.feature"
+      obligation_id: null
+      upstream_refs: ["BR-UC-006-main-sync"]
+      business_rules: []
+      status: new
     - adcp_scenario_id: "T-UC-006-all-failed-success-variant"
       adcp_feature: "BR-UC-006-creatives-invariants.feature"
       obligation_id: null

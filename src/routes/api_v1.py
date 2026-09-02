@@ -262,13 +262,13 @@ async def get_products(body: GetProductsBody, identity: ResolvedIdentity | None 
 
 
 @router.get("/capabilities")
-async def get_capabilities(identity: ResolvedIdentity | None = resolve_auth):
+async def get_adcp_capabilities(identity: ResolvedIdentity | None = resolve_auth):
     """Get AdCP capabilities (auth-optional discovery skill)."""
     response = await capabilities_module.get_adcp_capabilities_raw(identity=identity)
     return response.model_dump(mode="json")
 
 
-@router.post("/capabilities")
+@router.post("/capabilities", operation_id="get_adcp_capabilities")
 async def post_capabilities(body: GetCapabilitiesBody, identity: ResolvedIdentity | None = resolve_auth):
     """Get AdCP capabilities with request parameters (auth-optional discovery skill).
 
@@ -276,6 +276,15 @@ async def post_capabilities(body: GetCapabilitiesBody, identity: ResolvedIdentit
     2026-07-24): protocols filtering and context echo need a real request
     body, which a bare GET cannot carry — matches the POST+JSON-body
     convention every other route in this file follows.
+
+    ``operation_id`` declares the AdCP tool this route implements. The Python
+    handler cannot be named ``get_adcp_capabilities`` — the GET route above
+    already owns that name in this module — so the route publishes its tool
+    identity explicitly instead. This is the route's own public metadata: it
+    is the ``operationId`` FastAPI emits into the OpenAPI schema, which names
+    the method on every generated client (without it the id is the
+    verb/path-derived ``post_capabilities_api_v1_capabilities_post``, which
+    tells a client author nothing about which AdCP tool it calls).
     """
     response = await capabilities_module.get_adcp_capabilities_raw(
         protocols=body.protocols,

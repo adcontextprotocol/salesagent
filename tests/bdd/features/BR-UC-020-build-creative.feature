@@ -183,7 +183,7 @@ Feature: BR-UC-020 Build Creative
     # POST-F1: Operation failed
     # POST-F2: Error explains asset incompatibility
     # POST-F3: Suggestion advises providing compatible assets
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-b-width-no-height @extension @ext-b @error @rest @post-f1 @post-f2 @post-f3
   Scenario: Invalid manifest - width provided without height in format_id
@@ -215,7 +215,7 @@ Feature: BR-UC-020 Build Creative
     # POST-F1: Operation failed
     # POST-F2: Error identifies unsatisfied disclosure
     # POST-F3: Suggestion advises compatible format or position change
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-c-mcp @extension @ext-c @error @mcp @post-f1 @post-f2 @post-f3
   Scenario: Compliance unsatisfied - single disclosure unsatisfiable via MCP
@@ -233,7 +233,7 @@ Feature: BR-UC-020 Build Creative
     # POST-F1: Operation failed
     # POST-F2: Error identifies unsatisfied disclosure
     # POST-F3: Suggestion advises compatible format or position change
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-c-multiple @extension @ext-c @error @rest @post-f1 @post-f2 @post-f3
   Scenario: Compliance unsatisfied - multiple disclosures with one unsatisfiable
@@ -266,7 +266,7 @@ Feature: BR-UC-020 Build Creative
     # POST-F1: Operation failed
     # POST-F2: Error explains creative agent is temporarily unavailable
     # POST-F3: Suggestion advises retrying after delay
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-d-mcp @extension @ext-d @error @mcp @post-f1 @post-f2 @post-f3
   Scenario: Creative agent unavailable - connection refused via MCP
@@ -283,7 +283,7 @@ Feature: BR-UC-020 Build Creative
     # POST-F1: Operation failed
     # POST-F2: Error explains creative agent is temporarily unavailable
     # POST-F3: Suggestion advises retrying after delay
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-d-timeout @extension @ext-d @error @rest @post-f1 @post-f2 @post-f3
   Scenario: Creative agent unavailable - timeout during delegation
@@ -300,7 +300,7 @@ Feature: BR-UC-020 Build Creative
     # POST-F1: Operation failed
     # POST-F2: Error explains timeout
     # POST-F3: Suggestion advises retrying
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-d-malformed @extension @ext-d @error @rest @post-f1 @post-f2 @post-f3
   Scenario: Creative agent unavailable - non-parseable response from agent
@@ -331,7 +331,7 @@ Feature: BR-UC-020 Build Creative
     # POST-F1: Operation failed
     # POST-F2: Error explains the account quota constraint
     # POST-F3: Suggestion advises raising quota or omitting billable options
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-e-entitlement-denied @extension @ext-e @error @post-f1 @post-f2 @post-f3
   Scenario: Account entitlement denied - no applicable pricing option
@@ -371,7 +371,7 @@ Feature: BR-UC-020 Build Creative
     Then the response should have status "submitted" and a task_id
     And the response should not contain creative_manifest or creative_manifests inline
     # POST-S5: Buyer holds a task_id to poll tasks/get or receive a completion webhook
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-g-async-working @extension @ext-g @async
   Scenario: Async build reports working progress while running
@@ -380,7 +380,7 @@ Feature: BR-UC-020 Build Creative
     Then the task status should be "working"
     And the task should report progress with current_step and total_steps
     # SM-001: submitted -> working
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-g-async-input-required @extension @ext-g @async
   Scenario: Async build pauses for required creative direction
@@ -402,7 +402,7 @@ Feature: BR-UC-020 Build Creative
     And no duplicate vendor_cost should be charged
     # POST-S1: Buyer receives the prior creative manifest(s) or prior task handle
     # POST-S6: No duplicate charge on the retry
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-h-conflict @extension @ext-h @error @BR-RULE-211
   Scenario: Idempotency conflict - same key, divergent payload
@@ -415,7 +415,7 @@ Feature: BR-UC-020 Build Creative
     And the error should include "suggestion" field
     And no new creative should be generated
     # BR-RULE-211 INV-3: divergent payload under reused key -> IDEMPOTENCY_CONFLICT
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-h-in-flight @extension @ext-h @error @BR-RULE-211
   Scenario: Idempotency in-flight - same key while first request still running
@@ -427,7 +427,7 @@ Feature: BR-UC-020 Build Creative
     And the error should include "suggestion" field
     And the error recovery should be "transient"
     # BR-RULE-211 INV-4: in-flight first call -> IDEMPOTENCY_IN_FLIGHT (transient)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-ext-h-expired @extension @ext-h @error @BR-RULE-211
   Scenario: Idempotency expired - cached response evicted past replay TTL
@@ -457,7 +457,7 @@ Feature: BR-UC-020 Build Creative
     And the suggestion should contain "target_format_id"
     # POST-F3: Suggestion for recovery
     # BR-RULE-155 INV-1: neither target_format_id nor target_format_ids present -> rejected
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-155-2-violated @invariant @BR-RULE-155 @error
   Scenario: BR-RULE-155 INV-2 violated - agent_url absent in target_format_id
@@ -539,7 +539,7 @@ Feature: BR-UC-020 Build Creative
     And the suggestion should contain "exactly one"
     # POST-F3: Suggestion for recovery
     # BR-RULE-155 INV-1: target_format_id and target_format_ids are mutually exclusive -> rejected
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-155-7-violated @invariant @BR-RULE-155 @error
   Scenario: BR-RULE-155 INV-7 violated - idempotency_key absent
@@ -551,7 +551,7 @@ Feature: BR-UC-020 Build Creative
     And the suggestion should contain "idempotency_key"
     # POST-F3: Suggestion for recovery
     # BR-RULE-155 INV-7: idempotency_key is the sole required top-level field -> rejected when absent
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-155-8-violated @invariant @BR-RULE-155 @error
   Scenario: BR-RULE-155 INV-8 violated - idempotency_key fails length or pattern
@@ -564,7 +564,7 @@ Feature: BR-UC-020 Build Creative
     And the suggestion should contain "16"
     # POST-F3: Suggestion for recovery
     # BR-RULE-155 INV-8: idempotency_key must match ^[A-Za-z0-9_.:-]{16,255}$ -> rejected
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-155-9-violated @invariant @BR-RULE-155 @error
   Scenario: BR-RULE-155 INV-9 violated - target_format_ids present but empty
@@ -576,7 +576,7 @@ Feature: BR-UC-020 Build Creative
     And the suggestion should contain "at least one"
     # POST-F3: Suggestion for recovery
     # BR-RULE-155 INV-9: target_format_ids requires minItems 1 -> rejected when empty
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-155-10-violated @invariant @BR-RULE-155 @error
   Scenario: BR-RULE-155 INV-10 violated - retrieval by creative_id without concept_id
@@ -590,7 +590,7 @@ Feature: BR-UC-020 Build Creative
     And the suggestion should contain "concept_id"
     # POST-F3: Suggestion for recovery
     # BR-RULE-155 INV-10: concept_id required to disambiguate a retrieved creative -> rejected
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-155-11-violated @invariant @BR-RULE-155 @error
   Scenario: BR-RULE-155 INV-11 violated - item_limit below minimum
@@ -646,7 +646,7 @@ Feature: BR-UC-020 Build Creative
     Then the response should contain a creative_manifests array with exactly 3 manifests
     And each requested format should have exactly one matching manifest with no duplicates or extras
     # BR-RULE-156 INV-4: multi-format -> exactly one manifest per requested format
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-156-5-holds @invariant @BR-RULE-156
   Scenario: BR-RULE-156 INV-5 holds - multi-format response order matches request order
@@ -656,7 +656,7 @@ Feature: BR-UC-020 Build Creative
     Then creative_manifests[0].format_id.id should equal "display_300x250"
     And creative_manifests[1].format_id.id should equal "display_728x90"
     # BR-RULE-156 INV-5: creative_manifests order corresponds to target_format_ids request order
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-156-6-violated @invariant @BR-RULE-156 @error
   Scenario: BR-RULE-156 INV-6 violated - manifest format_id matches no requested target
@@ -691,7 +691,7 @@ Feature: BR-UC-020 Build Creative
     And the suggestion should contain "format that supports"
     # POST-F3: Suggestion for recovery
     # BR-RULE-157 INV-2: any disclosure unsatisfiable -> entire request fails with CREATIVE_REJECTED (correctable)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-157-3-holds @invariant @BR-RULE-157
   Scenario: BR-RULE-157 INV-3 holds - no brief asset, compliance check skipped
@@ -829,7 +829,7 @@ Feature: BR-UC-020 Build Creative
     Then the response should match exactly one of single-format success, multi-format success, or terminal failure
     And the terminal-failure shape should not carry creative_manifest, creative_manifests, or status "submitted"
     # BR-RULE-018 INV-9: synchronous build_creative -> exactly one of three shapes
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-018-10-violated @invariant @BR-RULE-018 @error
   Scenario: BR-RULE-018 INV-10 violated - multi-format build is not atomic
@@ -842,7 +842,7 @@ Feature: BR-UC-020 Build Creative
     And the error should include "suggestion" field
     # POST-F3: Suggestion for recovery
     # BR-RULE-018 INV-10: multi-format is all-or-none -> no partial creative_manifests
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-inv-018-11-holds @invariant @BR-RULE-018
   Scenario: BR-RULE-018 INV-11 holds - submitted envelope defers the manifest
@@ -871,7 +871,7 @@ Feature: BR-UC-020 Build Creative
     And the response should include pricing_option_id
     And the response should include a consumption breakdown
     # POST-S6: Buyer knows the cost applied (vendor_cost, currency, pricing_option_id)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-cost-disclosure-absent @post-s6 @cost
   Scenario: Cost disclosure omitted for a free build
@@ -880,7 +880,7 @@ Feature: BR-UC-020 Build Creative
     Then the response should be a successful BuildCreativeResponse
     And the response should omit the cost-disclosure fields
     # POST-S6: free build -> economic fields absent
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-preview-supported @post-s7 @preview
   Scenario: Inline preview requested and supported - preview renders returned
@@ -889,7 +889,7 @@ Feature: BR-UC-020 Build Creative
     When the build_creative response is received
     Then the response should include preview renders
     # POST-S7: Buyer receives preview renders without a separate round trip
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-preview-failed @post-s7 @preview
   Scenario: Inline preview requested but generation fails - preview_error explains why
@@ -899,7 +899,7 @@ Feature: BR-UC-020 Build Creative
     Then the response should include a creative_manifest
     And the response should include a preview_error explaining the preview failure
     # POST-S7: preview generation failure surfaces a preview_error, manifest still returned
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-preview-not-requested @post-s7 @preview
   Scenario: Inline preview not requested - no preview field
@@ -908,7 +908,7 @@ Feature: BR-UC-020 Build Creative
     Then the response should be a successful BuildCreativeResponse
     And the response should not include a preview field
     # POST-S7: preview opt-out -> no preview field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-sandbox-happy @invariant @br-rule-209 @sandbox
   Scenario: Sandbox account build_creative produces simulated output with sandbox flag
@@ -923,7 +923,7 @@ Feature: BR-UC-020 Build Creative
     # BR-RULE-209 INV-2: real ad platform calls suppressed
     # BR-RULE-209 INV-3: real billing suppressed
     # BR-RULE-209 INV-4: response includes sandbox: true
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-sandbox-production @invariant @br-rule-209 @sandbox
   Scenario: Production account build_creative response does not include sandbox flag
@@ -933,7 +933,7 @@ Feature: BR-UC-020 Build Creative
     Then the response should be a successful BuildCreativeResponse
     And the response should not include a sandbox field
     # BR-RULE-209 INV-5: production account -> sandbox absent
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-sandbox-validation @invariant @br-rule-209 @sandbox
   Scenario: Sandbox account with invalid format returns real validation error
@@ -971,7 +971,7 @@ Feature: BR-UC-020 Build Creative
     And the output creative_manifest should include a CreativeVariable with variable_id "headline_text" and variable_type "text"
     # POST-S1: output ready for serve-time DCO population
     # POST-S3: declared variables retained alongside required assets
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-creative-variable-required-flag @v3-1 @creative-variable
   Scenario: build_creative preserves required flag on CreativeVariable
@@ -982,7 +982,7 @@ Feature: BR-UC-020 Build Creative
     Then the response should be a successful BuildCreativeResponse
     And the output CreativeVariable should retain required equal to true
     # POST-S1: serve-time substitution contract preserved across build
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/build-creative-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/build-creative-request.json
 
   @T-UC-020-creative-variable-invalid-type @v3-1 @creative-variable @ext-b
   Scenario: build_creative rejects CreativeVariable with invalid variable_type
@@ -1012,7 +1012,7 @@ Feature: BR-UC-020 Build Creative
     # POST-F2: rejection rationale is structured, not free text
     # POST-F3: buyer knows what to revise via the suggestion + policy_url
 
-  @T-UC-020-storyboard-build-vast-tag-from-synced-creative @storyboard-v3.1 @v3-1 @build-from-library @vast
+  @T-UC-020-storyboard-build-vast-tag-from-synced-creative @schema-v3.1 @v3-1 @build-from-library @vast
   Scenario: Build a VAST-compatible serving tag from a synced video creative referenced by creative_id
     Given a video creative has been synced to the library with creative_id "video_30s_trail_pro"
     When the Buyer Agent sends build_creative referencing the creative_id and a target_format_id with id "vast_30s"

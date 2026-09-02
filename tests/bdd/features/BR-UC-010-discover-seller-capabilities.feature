@@ -2,8 +2,16 @@
 # DO NOT EDIT -- re-run: python scripts/compile_bdd.py --merge
 # Locally reconciled to AdCP 3.1.1 on 2026-07-13 per #1592 (P0 audit salesagent-y2vz).
 # Local edits survive semantic merge (project policy); true divergences to be mirrored upstream.
-# Spec authority: adcp tag v3.1.1 — dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json
-# (JSON pointers below), dist/docs prose, dist/compliance/3.1.1/capability-discovery.yaml.
+# Spec authority: adcp tag v3.1.1 (commit 467fd93d7) —
+# dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json (JSON pointers below),
+# repository-root docs/ prose at the tag (NOT dist/docs/, which stops at 3.1.0),
+# and dist/compliance/3.1.1/universal/capability-discovery.yaml.
+#
+# Merged 2026-09-02 with upstream 1d93e3721 (PR #1858). Upstream's regeneration changed
+# nothing in this file but the @source ref (v3.1-04f59d2d5 -> v3.1.1 commit=467fd93d7);
+# every scenario here is ours. Citation form is the union: upstream's immutable
+# commit= pin plus our path= + pointer= locating the exact constraint. Both path roots
+# resolve at v3.1.1; dist/schemas/3.1.1/ is kept because it carries JSON pointers.
 #
 # Retired 2026-07-13 (P0.4 reconcile):
 #   - @T-UC-010-ext-e-gap: pinned non-echo as expected while its siblings assert the spec-true
@@ -120,13 +128,13 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # supported_pricing_models / reporting_delivery_methods SETS and per-flag feature VALUES are
     # config-derived (spec-silent on value) — the enum/shape is graded; the set is a production
     # config surface (#1592, reported not improvised).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/media-buy-features.json pointer=/properties
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/pricing-model.json pointer=/enum
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/billing-party.json pointer=/enum
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/reporting_delivery_methods
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/media-buy-features.json pointer=/properties
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/pricing-model.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/billing-party.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/reporting_delivery_methods
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/required
 
   @T-UC-010-main-readonly @main-flow @post-f1
   Scenario: Capabilities discovery is read-only — no state change
@@ -138,7 +146,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Observable set pinned (was "system state should be unchanged"): the storyboard
     # defines the read-only obligation (stateful: false); the exact tables snapshot is
     # the local observable — the four mutable tables a capabilities call could touch.
-    # @source repo=adcp ref=v3.1.1 path=dist/compliance/3.1.1/capability-discovery.yaml pointer=/steps (stateful: false on both storyboard steps)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/compliance/3.1.1/universal/capability-discovery.yaml pointer=/phases/0/steps (stateful: false on both storyboard steps)
     # Step definition must pin a concrete state snapshot (row counts / updated-at) — spec
     # defines the read-only obligation, the observable set is a local choice.
 
@@ -153,7 +161,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # must parse as a JSON-Schema date-time (RFC 3339), e.g. "2025-10-14T14:25:30Z".
     # NOT-IN-SPEC presence: last_updated is optional at 3.1.1 — always emitting it is a local
     # guarantee, not a spec mandate. The format contract (date-time) is the spec part.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/last_updated
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/last_updated
 
   @T-UC-010-pricing @main-flow @post-s10
   Scenario: Capabilities response includes supported pricing models
@@ -165,8 +173,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And media_buy.supported_pricing_models should contain no duplicates
     # POST-S10: Buyer knows supported pricing models across seller's portfolio
     # 3.1.1 enum is 9 values (adds cpa, time vs the pre-release snapshot); minItems 1, uniqueItems.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/supported_pricing_models
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/pricing-model.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/supported_pricing_models
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/pricing-model.json pointer=/enum
 
   @T-UC-010-audience-caps @main-flow @post-s12
   Scenario: Capabilities response includes audience targeting capabilities when supported
@@ -189,9 +197,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # integer minimum 1 (1000 used); supported_uid_types items from uid-type enum (uid2, rampid
     # are enum members); supports_platform_customer_id boolean; matching_latency_hours object of
     # integer min/max (both minimum 0). Production does not emit audience_targeting yet (#1855).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/audience_targeting/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/uid-type.json pointer=/enum
-    # @source repo=adcp ref=v3.1.1 path=docs/protocol/get_adcp_capabilities.mdx (L183: flag replaced by object presence)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/audience_targeting/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/uid-type.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=docs/protocol/get_adcp_capabilities.mdx (L183: flag replaced by object presence)
 
   @T-UC-010-conversion-caps @main-flow @post-s13
   Scenario: Capabilities response includes conversion tracking capabilities when supported
@@ -217,12 +225,12 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # durations. The exact per-seller SET is config-derived (spec-silent on value) — a
     # production config surface; production does not emit conversion_tracking at all yet
     # (#1855), so the scenario executes and fails at "should be present" (strict xfail).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/conversion_tracking
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/event-type.json pointer=/enum
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/uid-type.json pointer=/enum
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/action-source.json pointer=/enum
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/duration.json pointer=/required
-    # @source repo=adcp ref=v3.1.1 path=docs/protocol/get_adcp_capabilities.mdx (L184: flag replaced by object presence)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/conversion_tracking
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/event-type.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/uid-type.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/action-source.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/duration.json pointer=/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=docs/protocol/get_adcp_capabilities.mdx (L184: flag replaced by object presence)
 
   @T-UC-010-creative-caps @main-flow @post-s14
   Scenario: Capabilities response includes creative protocol when supported
@@ -241,7 +249,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # with no declared fixture; mirrors the concrete sibling row). Production emits only the
     # media_buy protocol (creative not in supported_protocols), so the scenario executes and
     # fails at "should include the creative section" (strict xfail, #1724).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties/supports_compliance
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties/supports_compliance
 
   # Deliberately transport-specific: auth policy genuinely differs per channel and the
   # channel column is the subject of the outline. Spec is silent on auth for this task
@@ -268,8 +276,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # (canonical code; graduated salesagent-7moz — A2A now validates a presented token and
     # rejects invalid ones with AUTH_INVALID, so the row passes; the former AUTH_REQUIRED
     # production gap is closed).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/AUTH_INVALID
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/AUTH_INVALID
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/required
     # REST rows pin the same treat-as-absent local contract as MCP (spec-silent -> production
     # authoritative; confirm on wiring).
 
@@ -295,7 +303,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # INV-4: Unauthenticated and authenticated callers receive identical data — the response
     # is the seller's surface, not caller-scoped (get_adcp_capabilities.mdx L23).
     # Comparison excludes volatile fields (last_updated, context echo) to avoid flake.
-    # @source repo=adcp ref=v3.1.1 path=docs/protocol/get_adcp_capabilities.mdx (L23)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=docs/protocol/get_adcp_capabilities.mdx (L23)
 
   @T-UC-010-ext-a @extension @ext-a @degradation @partition @boundary
   Scenario: no_tenant — tenant absent, minimal capabilities
@@ -322,13 +330,13 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # as wire-key absence (was "NOT include media_buy details" — there is no `media_buy.details`
     # wire key). Graduated: _build_adcp_block() now always emits adcp.supported_versions
     # (derived from SUPPORTED_ADCP_VERSIONS) on both the no-tenant and tenant-resolved paths.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/supported_versions
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf/1
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/supported_versions
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf/1
     # Design tension (flagged, production decision): advertising "media_buy" in
     # supported_protocols while omitting the media_buy block is schema-valid but against the
     # storyboard's spirit ("Expected when media_buy is in supported_protocols").
     # @bva capabilities_degradation: tenant absent
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/required
 
   @T-UC-010-ext-b-degradation @extension @ext-b @degradation @invariant @partition @boundary
   Scenario Outline: Graceful degradation when dependencies fail
@@ -344,7 +352,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Symbolic expectations concretized 2026-07-13: fixture seeds channels
     # "display, social, ctv" on the adapter and domains "news.com, sports.com" in the DB;
     # placeholder domain is "example.com" (pin to production's actual placeholder on wiring).
-    # @source repo=adcp ref=v3.1.1 path=dist/compliance/3.1.1/capability-discovery.yaml pointer=/steps/0/validations (response_schema)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/compliance/3.1.1/universal/capability-discovery.yaml pointer=/phases/0/steps/0/validations (response_schema)
 
     Examples:
       | partition_boundary                                         | adapter_state | db_state  | expected_channels    | expected_domains       |
@@ -378,9 +386,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # honest, schema-legal response with no real domain is to OMIT portfolio entirely (and
     # primary_channels along with it, since it lives inside portfolio). Same correction as the
     # adapter_and_db_fail row of the sibling ext-b-degradation outline.
-    # @source repo=adcp ref=v3.1.1 path=dist/compliance/3.1.1/universal/capability-discovery.yaml pointer=/phases/0/steps/0/validations (check: response_schema)
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/bundled/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/portfolio/properties/publisher_domains (required, minItems 1)
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/adcp_error (envelope error-signal for fatal failures — absent on a successful degraded response)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/compliance/3.1.1/universal/capability-discovery.yaml pointer=/phases/0/steps/0/validations (check: response_schema)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/bundled/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/portfolio/properties/publisher_domains (required, minItems 1)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/adcp_error (envelope error-signal for fatal failures — absent on a successful degraded response)
 
   @T-UC-010-degradation-account @extension @degradation @partition @boundary @post-s3
   Scenario Outline: Account section presence depends on tenant resolution
@@ -394,7 +402,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # (minItems 1) — there is no schema-legal "partially populated without supported_billing".
     # The former "partial" row now pins the schema-legal degraded shape: block present with
     # supported_billing only, all optional fields omitted.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/required
 
     Examples:
       | partition_boundary                                            | tenant_condition                                   | account_state                                             |
@@ -416,7 +424,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # present the schema REQUIRES supported_identifier_types + minimum_audience_size;
     # conversion_tracking has no required subfields.
     # NOT-IN-SPEC: adapter-dependence of the sections is production choice.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/audience_targeting/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/audience_targeting/required
 
     Examples:
       | partition_boundary                                                                       | adapter_state | capability          | capability_state | section              | section_state |
@@ -437,7 +445,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Row 1 is spec-true (schema: creative "Only present if creative is in supported_protocols").
     # Row 2 (present-when-declared) is NOT-IN-SPEC strictly — "only present if" is a necessary
     # condition, not an emission mandate; presence-when-declared is the sensible local choice.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative
 
     Examples:
       | partition_boundary                                                             | creative_condition                        | creative_state |
@@ -463,9 +471,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # and adcp_a2a_server.py emits "Authentication token is invalid or expired." —
     # both contain "token" and "invalid", and neither is the AUTH_REQUIRED
     # missing-credential wording ("authentication required"), the deprecated 3.x alias.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/AUTH_INVALID
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/error.json pointer=/properties/message (free string — content pinned to production)
-    # @source repo=adcp ref=v3.1.1 path=docs/protocol/get_adcp_capabilities.mdx (error table L1083-1084)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/AUTH_INVALID
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/error.json pointer=/properties/message (free string — content pinned to production)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=docs/protocol/get_adcp_capabilities.mdx (error table L1083-1084)
 
   # Deliberately MCP-specific: this scenario IS the MCP auth policy (treat-invalid-as-absent).
   @T-UC-010-ext-c-mcp @extension @ext-c @auth @mcp @degradation
@@ -484,12 +492,12 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # AUTH_INVALID seller-MUST, which governs an Authorization header; this project's MCP
     # token rides x-adcp-auth and discovery is the spec's no-prerequisite first call —
     # production is authoritative on the policy (spec-silent), the reading is pinned here.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/AUTH_INVALID
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/AUTH_INVALID
     # INV-4: capabilities describe the seller, not the caller — the invalid
     # token must not degrade adapter-derived data (channels). Graduated: MCP ToolResult now
     # pre-serializes via model_dump(mode="json"), so audience_targeting is correctly omitted
     # instead of serialized as null.
-    # @source repo=adcp ref=v3.1.1 path=docs/protocol/get_adcp_capabilities.mdx (L23)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=docs/protocol/get_adcp_capabilities.mdx (L23)
 
   @T-UC-010-ext-d-filter @extension @ext-d @boundary @partition
   Scenario: media_buy (first enum value) — protocol filter honored, response filtered to requested domain
@@ -506,8 +514,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # expects only the requested domain details (filtering is storyboard-prose expected;
     # machine validations grade response_schema + context echo — note: partially graded).
     # @bva protocols: media_buy (first enum value)
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-request.json pointer=/properties/protocols
-    # @source repo=adcp ref=v3.1.1 path=dist/compliance/3.1.1/capability-discovery.yaml pointer=/steps (get_capabilities_filtered)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-request.json pointer=/properties/protocols
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/compliance/3.1.1/universal/capability-discovery.yaml pointer=/phases/0/steps/1 (get_capabilities_filtered)
 
   @T-UC-010-ext-d-all-protocols @extension @ext-d @boundary @partition
   Scenario: signals governance sponsored_intelligence creative (last enum value) — filter naming all protocols returns full response
@@ -524,7 +532,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # asymmetry: the response supported_protocols enum adds "brand" and "measurement", which
     # the request filter cannot select.
     # @bva protocols: creative (last enum value)
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-request.json pointer=/properties/protocols/items/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-request.json pointer=/properties/protocols/items/enum
 
   @T-UC-010-ext-d-invalid-value @extension @ext-d @error @boundary @partition
   Scenario: unknown_protocol — filter with invalid enum value is rejected
@@ -538,7 +546,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Inverted 2026-07-13 from a @known-gap pin. Transport note: MCP may reject at the
     # FastMCP validation layer before _impl — assert the wire envelope on each transport.
     # @bva protocols: Unknown string not in enum
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-request.json pointer=/properties/protocols/items/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-request.json pointer=/properties/protocols/items/enum
 
   @T-UC-010-ext-d-empty @extension @ext-d @error @boundary @partition
   Scenario: empty_array — protocol filter with empty array is rejected
@@ -550,7 +558,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # GetAdcpCapabilitiesRequest — Pydantic enforces minItems:1, so an empty protocols
     # array is rejected. Inverted 2026-07-13 from a @known-gap pin.
     # @bva protocols: Empty array
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-request.json pointer=/properties/protocols (minItems 1)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-request.json pointer=/properties/protocols (minItems 1)
 
   @T-UC-010-ext-e-echo @context @post-s9 @invariant @partition @boundary
   Scenario: context_provided — context echoed unchanged in capabilities response
@@ -564,8 +572,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # on every transport — echo is a MUST at 3.1.1 ("MUST preserve byte-for-byte") and is
     # machine-graded by capability-discovery.yaml on both storyboard steps.
     # POST-S9: Application context echoed unchanged
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/context
-    # @source repo=adcp ref=v3.1.1 path=dist/compliance/3.1.1/capability-discovery.yaml pointer=/steps/0/validations (field_value context.correlation_id)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/context
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/compliance/3.1.1/universal/capability-discovery.yaml pointer=/phases/0/steps/1/validations (field_value context.correlation_id)
 
   @T-UC-010-ext-e-absent @context @invariant @partition @boundary
   Scenario: context_absent — no context in request means no context in response
@@ -576,7 +584,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Implied by echo semantics (context is defined purely as caller-supplied echo; optional
     # in the protocol envelope) — no explicit MUST-omit in the spec; storyboard does not
     # grade absence. Assert on the wire response, not the typed payload.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/context.json pointer=/description
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/context.json pointer=/description
 
   @T-UC-010-ext-e-nested @context @invariant @boundary @partition
   Scenario: context_nested — deeply nested context object echoed unchanged
@@ -586,7 +594,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Graduated: _get_adcp_capabilities_impl echoes req.context verbatim.
     # Context is opaque — never parsed, modified, or validated; arbitrary nesting is valid
     # (core/context.json: object, additionalProperties true) and preserved byte-for-byte.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/context
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/context
 
   @T-UC-010-ext-e-empty @context @invariant @boundary @partition
   Scenario: context_empty_object — empty context echoed, context = {}
@@ -596,7 +604,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Graduated: _get_adcp_capabilities_impl echoes req.context verbatim.
     # Empty object validates against core/context.json; echo-unchanged applies. Assert on the
     # wire (typed payloads may coerce empty-object/None ambiguously).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/context.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/context.json
 
   @T-UC-010-channel-mapping @channel @invariant @partition @boundary
   Scenario Outline: Channel name resolution from adapter to channels enum
@@ -612,7 +620,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # the display fallback is a product choice.
     # @bva primary_channels: 0 channels from adapter, 1 recognized channel,
     # 1 unrecognized channel, alias 'video', alias 'audio'
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/portfolio/properties/primary_channels
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/portfolio/properties/primary_channels
 
     Examples:
       | partition_boundary                           | adapter_channels       | expected_result      |
@@ -645,7 +653,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # sponsored_intelligence is dropped as "unrecognized" (MediaChannel.sponsored_intelligence
     # exists in the adcp enum; only the production mapping lags). Executes and fails at
     # the 20-value equality until the mapping gains the 20th channel.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/channels.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/channels.json pointer=/enum
 
   @T-UC-010-features @validation @post-s4
   Scenario: Capabilities response reflects the 3.1.1 media-buy feature model
@@ -673,9 +681,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # content_standards / conversion_tracking / audience_targeting presence-objects nor the
     # account block (account.sandbox) — the scenario executes, grades the features shape,
     # then fails at the first missing presence-object (#1855).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/media-buy-features.json pointer=/properties
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/audience_targeting/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/sandbox
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/media-buy-features.json pointer=/properties
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/audience_targeting/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/sandbox
 
   @T-UC-010-features-partitions @partition @boundary @features @post-s4
   Scenario Outline: Feature capability configurations - <partition>
@@ -688,8 +696,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # content_standards incl. audience_targeting's required members; account.sandbox
     # partition). The former @T-UC-010-features-boundaries outline's negative boundaries are
     # the *_absent / *_false rows here.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/media-buy-features.json
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/audience_targeting/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/media-buy-features.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/audience_targeting/required
 
     Examples:
       | partition                                                        | capability_config                                                                                        | expected_assertion                                                                                                  |
@@ -742,8 +750,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # aliases like us_zip are deprecated: true). device_platform/device_type removed
     # ("implied by media_buy support"); audience_include/exclude moved to the presence of
     # media_buy.audience_targeting.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/targeting/properties
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/postal-area-support.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/targeting/properties
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/postal-area-support.json
 
   @T-UC-010-targeting-partitions @partition @boundary @targeting @post-s5
   Scenario Outline: Targeting capability configurations - <partition>
@@ -756,8 +764,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # one legacy-alias migration row retained (deprecated-compat). Emission-threshold rows
     # (nested_absent, adapter_unavailable_defaults) are NOT-IN-SPEC production contract
     # (spec-silent -> production authoritative).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/targeting
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/postal-area-support.json pointer=/properties/us_zip (deprecated: true)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/targeting
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/postal-area-support.json pointer=/properties/us_zip (deprecated: true)
 
     Examples:
       | partition                                                                            | targeting_config                                                                                             | expected_targeting                                                                                    |
@@ -781,7 +789,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Concretized 2026-07-13 (the outline previously had NO expected column at all). The
     # former postal-threshold and at_plz rows duplicated targeting-partitions rows 4/5/9/10
     # and were dropped (scenario-level DRY); the surviving rows are unique coverage.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/targeting/properties/geo_proximity
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/targeting/properties/geo_proximity
 
     Examples:
       | boundary_point                                                       | expected                                                                          |
@@ -829,9 +837,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # supersedes the earlier db_fail reading ("other sections unaffected" → placeholder
     # publisher_domains + intact [display, social, ctv] channels): there is no placeholder
     # domain any more, so neither observable exists on that row.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/bundled/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/portfolio/properties/publisher_domains (required, minItems 1)
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/bundled/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/portfolio/properties/publisher_domains (required, minItems 1)
 
     Examples:
       | partition                  | precondition                                                                | expected_degradation                                                                                                      |
@@ -858,8 +866,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # schema — presence is a seller-quality contract for a 3.1-speaking seller.
     # adcp.major_versions remains REQUIRED and MUST be emitted through 3.x (removed in 4.0).
     # POST-S16: Buyer knows release-precision AdCP versions for pinning
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/supported_versions
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/major_versions
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/supported_versions
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/major_versions
 
   @T-UC-010-v31-build-version @v31 @main-flow @post-s17 @boundary
   Scenario: build-version — optional advisory build_version is semver and not used for negotiation
@@ -872,7 +880,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # obligation — kept as a comment, not a Then: negotiation outcome is a function of
     # supported_versions only, invariant under build_version changes).
     # POST-S17: build_version surfaced for incident triage
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/build_version
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/build_version
 
   @T-UC-010-v31-idempotency-supported @v31 @main-flow @post-s15 @partition @boundary
   Scenario Outline: idempotency-supported — IdempotencySupported discriminated union shape
@@ -887,7 +895,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # account_id_is_opaque boolean default false. IdempotencyUnsupported: supported const
     # false AND replay_ttl_seconds/in_flight_max_seconds MUST be absent (not.anyOf).
     # @bva idempotency: supported=true / supported=false / replay_ttl_seconds boundary
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency
 
     Examples:
       | partition_boundary                                                                | posture                                                                                     | supported | expected_fields                                                                       |
@@ -912,8 +920,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # schema's not.anyOf forbids replay_ttl_seconds and in_flight_max_seconds. Production
     # emits Idempotency(supported=true, replay_ttl_seconds=DEFAULT_REPLAY_TTL), so this
     # scenario passes on the wire (adcp.idempotency is REQUIRED and present).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf
 
   @T-UC-010-v31-idempotency-in-flight-bound @v31 @invariant @boundary
   Scenario: idempotency-in-flight-bound — in_flight_max_seconds must not exceed replay_ttl_seconds
@@ -924,7 +932,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Cross-field rule ("MUST be no greater than replay_ttl_seconds ... validators MUST
     # enforce this cross-field constraint at the test layer since JSON Schema cannot express
     # field-relative bounds"). Equality is allowed — this boundary row is valid.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf/0/properties/in_flight_max_seconds
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf/0/properties/in_flight_max_seconds
 
   @T-UC-010-v31-supported-protocols-extended @v31 @main-flow @post-s2 @partition @boundary
   Scenario: supported-protocols-extended — v3.1 enum extends supported_protocols to seven values
@@ -935,7 +943,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And if supported_protocols contains "measurement" then experimental_features should contain "measurement.core"
     # v3.1: enum adds "brand" and "measurement"; measurement is experimental in 3.1 — agents
     # implementing it MUST also list measurement.core in experimental_features.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/supported_protocols/items/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/supported_protocols/items/enum
 
   @T-UC-010-v31-supports-proposals @v31 @main-flow @post-s18 @partition @boundary
   Scenario Outline: supports-proposals — proposal lifecycle commitment flag (v3.1)
@@ -949,7 +957,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # materializing false ("When false or absent, conformance runners skip proposal-lifecycle
     # storyboards"), so the omitted row asserts absent-or-false, not a forced false.
     # POST-S18: Buyer knows proposal-lifecycle support
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/supports_proposals
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/supports_proposals
 
     Examples:
       | partition_boundary                                          | supports_proposals_state             | expected        |
@@ -970,8 +978,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # enums/cloud-storage-protocol.json [s3, gcs, azure_blob], only meaningful with offline.
     # 3.1.1 cross-field (added 2026-07-13): webhook_signing.supported MUST be true when
     # reporting_delivery_methods contains "webhook" (x-adcp-validation must_equal_when).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/reporting_delivery_methods
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/supported/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/reporting_delivery_methods
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/supported/x-adcp-validation
 
     Examples:
       | partition_boundary                                          | methods            | protocols | expected_methods            | expected_protocols | webhook_signing_supported  |
@@ -994,8 +1002,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # signal. supports_webhook_delivery=true triggers the webhook_signing.supported MUST-true
     # cross-field (x-adcp-validation must_equal_when).
     # POST-S19: Buyer knows content_standards capability surface
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/content_standards
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/supported/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/content_standards
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/supported/x-adcp-validation
 
   @T-UC-010-v31-trusted-match-surfaces @v31 @main-flow @post-s20 @partition @boundary
   Scenario Outline: trusted-match-surfaces — TMP surfaces declaration (v3.1)
@@ -1007,7 +1015,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # media_buy.execution.trusted_match.surfaces (x-status experimental); presence of the
     # object indicates deployed TMP infrastructure; axe_integrations DEPRECATED.
     # POST-S20: Buyer knows the trusted_match TMP surfaces
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/trusted_match
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/trusted_match
 
     Examples:
       | partition_boundary                                      | surfaces                                       |
@@ -1028,7 +1036,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # trusted_match for new integrations.") — no deprecated keyword; the testable seller
     # contract is exact echo of the configured legacy URIs through 3.x (the former "is
     # treated as deprecated" Then graded documentation, not the response — demoted here).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/axe_integrations
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/axe_integrations
 
   @T-UC-010-v31-creative-specs @v31 @main-flow @post-s21
   Scenario: creative-specs — VAST/MRAID/VPAID/SIMID creative specification support
@@ -1042,7 +1050,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Strengthened 2026-07-13 from pattern/type-only checks to exact echo of the declared
     # fixture values (item pattern ^[0-9]+\.[0-9]+$ is schema-enforced on both version arrays).
     # POST-S21: Buyer knows creative specification capabilities
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/creative_specs
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/execution/properties/creative_specs
 
   @T-UC-010-v31-brand-block @v31 @main-flow @post-s22 @partition @boundary
   Scenario: brand-block — brand protocol capabilities (experimental in v3.1)
@@ -1064,9 +1072,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # motion_capture, signature, catchphrase, sync, background_music, editorial, commercial,
     # ai_generated_image]; generation_providers is an array of open strings.
     # POST-S22: Buyer knows brand protocol capabilities
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/brand
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/right-type.json pointer=/enum
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/right-use.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/brand
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/right-type.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/right-use.json pointer=/enum
 
   @T-UC-010-v31-request-signing-posture @v31 @main-flow @post-s23 @partition @boundary
   Scenario Outline: request-signing-posture — RFC 9421 request signing declaration
@@ -1080,7 +1088,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # omits it (the default is buyer interpretation, not a seller emission obligation), so
     # the row-4 assert is presence-conditional; rows 1-3 exact-echo the declared value.
     # POST-S23: Buyer knows the request_signing posture
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing
 
     Examples:
       | partition_boundary                                                            | posture                                        | supported | expected_digest                                          |
@@ -1103,8 +1111,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # rules; a conformant seller must never emit that posture. The no-slash rule on
     # required_for is description prose (test-layer encoding is fine); protocol_methods_*
     # items carry the schema pattern.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/required_for/x-adcp-validation
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/protocol_methods_required_for
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/required_for/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/protocol_methods_required_for
 
   @T-UC-010-v31-request-signing-subset @v31 @invariant @boundary
   Scenario: request-signing-subset — required_for and warn_for must be subset of supported_for
@@ -1116,8 +1124,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And request_signing.warn_for should be disjoint from request_signing.required_for
     # The three x-adcp-validation relations (test-layer constraints — JSON Schema cannot
     # express them; a BDD assertion is precisely where the spec says enforcement lives).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/required_for/x-adcp-validation
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/warn_for/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/required_for/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/warn_for/x-adcp-validation
 
   @T-UC-010-v31-webhook-signing @v31 @main-flow @post-s24 @partition @boundary
   Scenario Outline: webhook-signing — RFC 9421 webhook signing posture
@@ -1132,7 +1140,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # profile equality unconditionally, row 3 asserts legacy_hmac_fallback, row 4 asserts
     # profile/algorithms ABSENT.
     # POST-S24: Buyer knows the webhook_signing posture
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing
 
     Examples:
       | partition_boundary                                                       | posture                                                                                       | supported | expected_extras                                                                    |
@@ -1153,7 +1161,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # be true" — a non-emitting seller MAY still declare supported=true, so the negative row
     # asserts schema-validity for either value instead of forcing false; the third trigger
     # (wholesale_feed_webhooks) row added.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/supported/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/supported/x-adcp-validation
 
     Examples:
       | partition_boundary                                                        | emission_state                                              | expected                             |
@@ -1178,7 +1186,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # brand_url so the distinctness comparison is non-vacuous. Storyboard-enforced in 3.x;
     # schema-required under 4.x supported_versions.
     # POST-S25: Trust-root pointer for signing-key discovery
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/brand_json_url/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/brand_json_url/x-adcp-validation
 
   @T-UC-010-v31-identity-key-origins @v31 @main-flow @post-s25 @partition
   Scenario Outline: identity-key-origins — JWKS origin separation per signing purpose
@@ -1192,7 +1200,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # the vague "corresponding posture declared elsewhere" step is concretized per row.
     # Nuance: webhooks are signed with request-signing keys; the webhook_signing origin names
     # the delivery surface, not a distinct live key purpose.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/key_origins
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/key_origins
 
     Examples:
       | partition_boundary                                        | purpose            | origin                            | posture_anchor                                   |
@@ -1210,7 +1218,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And identity.compromise_notification.accepts should equal true
     # Strengthened 2026-07-13 from type-only to value equality (type checks passed even with
     # inverted values). Schema: {emits, accepts} booleans default false, additionalProperties false.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/compromise_notification
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/compromise_notification
 
   @T-UC-010-v31-identity-required-when-signing @v31 @invariant @boundary @post-s25
   Scenario Outline: identity-required-when-signing — signing posture without brand_json_url is rejected
@@ -1229,9 +1237,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # brand_json_url; "a valid capabilities response" = a success carrying adcp +
     # supported_protocols and no adcp_error. CONFIGURATION_ERROR is enums/error-code.json with
     # enumMetadata.recovery = "terminal".
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/brand_json_url/x-adcp-validation/required_when
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/CONFIGURATION_ERROR
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/brand_json_url/x-adcp-validation/required_when
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/CONFIGURATION_ERROR
 
     Examples:
       | partition_boundary                                                  | signing_posture                                  | identity_state | verdict                                     |
@@ -1257,8 +1265,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # replaced by the schema's own item constraints (vendor-metric-id.json: pattern
     # ^[a-z][a-z0-9_]*$, minLength 1, maxLength 64; examples attention_units, demographic_reach).
     # POST-S26: Buyer knows measurement vendor metric catalog
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/measurement
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/vendor-metric-id.json pointer=/pattern
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/measurement
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/vendor-metric-id.json pointer=/pattern
 
   @T-UC-010-v31-measurement-accreditations @v31 @main-flow @post-s26 @partition @boundary
   Scenario Outline: measurement-accreditations — third-party accreditation entries on metrics
@@ -1269,7 +1277,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # accreditations[] items: accrediting_body required (open string), optional
     # certification_id, valid_until (date), evidence_url (uri); additionalProperties false.
     # The former "may include" pseudo-assert replaced by per-row exact-field equality.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/measurement/properties/metrics/items/properties/accreditations
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/measurement/properties/metrics/items/properties/accreditations
 
     Examples:
       | partition_boundary                                              | accreditation                                                                                            |
@@ -1297,7 +1305,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # exposes no comply_test_controller in production (#1724) — the scenario strict-xfails on
     # the unemitted compliance_testing block.
     # POST-S27: Buyer knows compliance testing scenarios
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/compliance_testing
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/compliance_testing
 
   @T-UC-010-v31-specialisms @v31 @main-flow @post-s28
   Scenario: specialisms — kebab-case specialism claims graded by AAO compliance runner
@@ -1314,8 +1322,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # specialism claim whose parent protocol is missing") — concrete mapping asserted for the
     # fixture values, whose parent protocols the Given declares.
     # POST-S28: Buyer knows the seller's specialisms
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/specialisms
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/specialism.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/specialisms
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/specialism.json pointer=/enum
 
   @T-UC-010-v31-experimental-features @v31 @main-flow @post-s28
   Scenario: experimental-features — dot-separated ids of implemented experimental surfaces
@@ -1326,7 +1334,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And each id should match pattern "^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
     # experimental_features[] pattern-enforced, uniqueItems; both fixture ids appear in the
     # schema's own examples.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/experimental_features
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/experimental_features
 
   @T-UC-010-v31-advisory-errors @v31 @main-flow @post-s29
   Scenario: advisory-errors — top-level errors[] is advisory and does not fail discovery
@@ -1344,11 +1352,11 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # restated to the pinned envelope contract — status MUST equal "completed" for this
     # synchronous read-only metadata call, and the envelope MUST NOT carry adcp_error for a
     # non-failure (non-fatal warnings populate ONLY payload.errors[] with severity warning).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/status
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/adcp_error
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/status
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/protocol-envelope.json pointer=/properties/adcp_error
     # POST-S29: Advisory errors do not fail capabilities discovery
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/errors
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/error.json pointer=/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/errors
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/error.json pointer=/required
 
   @T-UC-010-v31-creative-extended @v31 @main-flow @post-s14
   Scenario: creative-extended — creative protocol exposes library / generation / transformation in v3.1
@@ -1368,7 +1376,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # supported_formats, bills_through_adcp, canonical_catalog_version — covered by the
     # @T-UC-010-v31-creative-multiplicity / @T-UC-010-v31-creative-agentic-flags scenarios.
     # POST-S14 (v3.1 extension)
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties
 
   @T-UC-010-v31-version-unsupported @v31 @extension @ext-f @error @post-f2 @post-f4 @partition
   Scenario: version-unsupported — VERSION_UNSUPPORTED error carries authoritative supported_versions
@@ -1389,9 +1397,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Recovery pinned 2026-07-24 (salesagent-e4ad, triage :1197): VERSION_UNSUPPORTED is
     # "Recovery: correctable (re-pin to a release in supported_versions and retry ...)".
     # POST-F2, POST-F4
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/error.json pointer=/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/VERSION_UNSUPPORTED
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/core/error.json pointer=/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/VERSION_UNSUPPORTED
 
   @T-UC-010-v31-version-unsupported-major-fallback @v31 @extension @ext-f @error @post-f4 @partition
   Scenario: version-unsupported-major-fallback — major-version negotiation falls back to supported_versions
@@ -1408,8 +1416,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Recovery pinned 2026-07-24 (salesagent-e4ad, triage :1217): VERSION_UNSUPPORTED recovery
     # is correctable (re-pin to a supported release and retry).
     # POST-F4: supported_versions is authoritative even for major-version pins
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/error-details/version-unsupported.json
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/VERSION_UNSUPPORTED
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/error-details/version-unsupported.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumDescriptions/VERSION_UNSUPPORTED
 
   @T-UC-010-v31-version-unsupported-build-version-advisory @v31 @extension @ext-f @error @post-f4 @boundary
   Scenario: version-unsupported-build-version-advisory — build_version is advisory triage only
@@ -1431,9 +1439,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # in supported_versions and retry") to match the sibling version-unsupported Thens, and
     # tightened the "non-empty array" duty with the release-precision pattern each entry must
     # match (build_version stays the exact advisory value; buyers MUST NOT use it for negotiation).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/properties/build_version
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/properties/supported_versions
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/VERSION_UNSUPPORTED
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/properties/build_version
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/properties/supported_versions
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/VERSION_UNSUPPORTED
 
   @T-UC-010-v31-request-signing-monotonicity @v31 @invariant @boundary @partition
   Scenario Outline: request-signing posture sets boundary - <boundary_point>
@@ -1456,10 +1464,10 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # config with CONFIGURATION_ERROR (seller-side deployment fault, recovery terminal) rather
     # than emitting the violating posture. The capabilities builder emits no request_signing
     # block today (#1291), so every row strict-xfails.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/required_for/x-adcp-validation
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/warn_for/x-adcp-validation
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/protocol_methods_required_for/x-adcp-validation
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/CONFIGURATION_ERROR
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/required_for/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/warn_for/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/request_signing/properties/protocol_methods_required_for/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/CONFIGURATION_ERROR
 
     Examples:
       | boundary_point                                                                      | expected |
@@ -1489,8 +1497,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Graduated: get_idempotency_posture() now returns a typed IdempotencyPosture whose
     # check_bounds() enforces the replay_ttl_seconds/in_flight_max_seconds schema bounds,
     # raising CONFIGURATION_ERROR (terminal) on the invalid rows.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf/0
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/CONFIGURATION_ERROR
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/idempotency/oneOf/0
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/CONFIGURATION_ERROR
 
     Examples:
       | boundary_point                              | expected |
@@ -1510,7 +1518,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # row 4 ("capability not declared, sandbox provisioning requested → invalid") was a
     # sync_accounts obligation, not a get_adcp_capabilities behavior — rescoped to UC-011
     # 2026-07-13 (see file header).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/sandbox
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/sandbox
 
     Examples:
       | boundary_point                                          | expected_value            |
@@ -1540,8 +1548,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # versions the seller speaks, ["3.0", "3.1"] — never an empty array and never omitted.
     # Graduated: version negotiation now implemented (src/core/version_negotiation.py), emitting
     # a non-empty, release-precision supported_versions in VERSION_UNSUPPORTED details.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/properties/supported_versions
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/error-details/version-unsupported.json pointer=/properties/supported_versions
 
     Examples:
       | boundary_point                 |
@@ -1568,9 +1576,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # the identity-required-when-signing sibling grades. The builder never builds identity/the
     # signing posture (#1291), so the invalid rows strict-xfail (selective) while the valid rows
     # pass on the degraded-but-schema-valid baseline response.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/brand_json_url
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/brand_json_url/x-adcp-validation/required_when
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/CONFIGURATION_ERROR
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/brand_json_url
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/identity/properties/brand_json_url/x-adcp-validation/required_when
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/error-code.json pointer=/enumMetadata/CONFIGURATION_ERROR
 
     Examples:
       | boundary_point                                                              | expected |
@@ -1592,8 +1600,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # MUST NOT be emitted under adcp/webhook-signing/v1"). Invalid rows grade the seller's
     # config validation / schema rejection. (@source corrected 2026-07-13: the former
     # citation pointed at core/agent-signing-key.json — wrong file.)
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/supported/x-adcp-validation
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/algorithms
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/supported/x-adcp-validation
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/webhook_signing/properties/algorithms
 
     Examples:
       | boundary_point                                          | expected |
@@ -1627,7 +1635,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # singleton list_accounts (MAY omit only with another declared account_id path). The
     # list_accounts exposure duty itself is graded in UC-011 — this scenario grades the
     # declaration. When false (default): buyer-declared accounts via sync_accounts natural keys.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/require_operator_auth
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/require_operator_auth
 
     Examples:
       | partition_boundary                                       | configured | expected        |
@@ -1645,7 +1653,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # Present (format uri) when the seller supports OAuth for operator authentication; if
     # absent while require_operator_auth is true, operators obtain credentials out-of-band
     # (seller portal, API key).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/authorization_endpoint
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/authorization_endpoint
 
     Examples:
       | partition_boundary                                   | oauth_state                                        | expected                                                  |
@@ -1661,7 +1669,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # XFAIL-EXPECTED: production gap — #1856 (account.required_for_products not emitted)
     # default false: buyer can browse products without an account (price comparison and
     # discovery before committing); true requires establishing an account before get_products.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/required_for_products
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/required_for_products
 
     Examples:
       | partition_boundary                                        | configured | expected        |
@@ -1685,8 +1693,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # pass in sync_accounts" has to match what billing-policy enforcement accepts (#1521
     # class drift otherwise). Note the advertiser member is exercised here (scenario-side
     # twin of #1521).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/supported_billing
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/billing-party.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/supported_billing
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/billing-party.json pointer=/enum
 
     Examples:
       | partition_boundary                                      | billing_config                        | expected_set                     |
@@ -1707,7 +1715,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # gating behavior side is graded in BR-UC-017; this scenario grades the declaration side
     # on the capabilities response: false/omitted until get_account_financials is implemented.
     # Only applicable to operator-billed accounts.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/account_financials
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/properties/account_financials
 
   @T-UC-010-account-block-presence @v31 @account @post-s3 @post-s30 @invariant
   Scenario: account-block-presence — sellers declaring media_buy should declare the account block
@@ -1726,9 +1734,9 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # [adcp, supported_protocols]); the block is all-or-nothing (account/required =
     # [supported_billing], minItems 1). Under "full capabilities" the seller supports every
     # billing party, so supported_billing echoes the complete billing-party enum.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/description
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/required
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/billing-party.json pointer=/enum
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/description
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/account/required
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/enums/billing-party.json pointer=/enum
 
   # ── New scenarios (2026-07-13, P0.2 gap closure): fields new at 3.1.1 ───────────────
 
@@ -1751,7 +1759,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # CLAMPED, not rejected). Absent means no fan-out. Experimental members
     # (supports_signal_fanout, max_signal_conditions_limit, selection_strategies) require
     # creative.signal_fanout in experimental_features when declared — not in this fixture.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties/multiplicity
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties/multiplicity
 
   @T-UC-010-v31-creative-agentic-flags @v31 @main-flow @post-s31 @partition
   Scenario: creative-agentic-flags — 3.1.1 creative refinement/transformer/spend-control/evaluator discriminators
@@ -1774,8 +1782,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # ceiling + mode:estimate; meaningful only alongside bills_through_adcp true),
     # supports_evaluator (experimental — MUST also list creative.evaluator in
     # experimental_features, hence the coupling assert).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties/supports_refinement
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties/supports_evaluator
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties/supports_refinement
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/creative/properties/supports_evaluator
 
   @T-UC-010-v31-creative-approval-mode @v31 @main-flow @post-s31 @partition
   Scenario Outline: creative-approval-mode — tenant-wide creative approval applicability signal
@@ -1790,7 +1798,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # applicability signal; require_human is a worst-case ceiling across the portfolio; when
     # ABSENT approval behavior is legacy-unspecified and runners SHOULD NOT treat omission as
     # an affirmative auto-approval claim (hence the omitted row asserts absence, not a default).
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/creative_approval_mode
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/creative_approval_mode
 
     Examples:
       | partition_boundary                                              | configured    | expected                  |
@@ -1811,7 +1819,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # committing a media buy and surfaces GOVERNANCE_DENIED. true opts into governance-denial
     # grading; false/absent -> runners skip those storyboards. Independent of baseline
     # sync_governance registration.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/governance_aware
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/governance_aware
 
     Examples:
       | partition_boundary                                     | configured | expected        |
@@ -1833,4 +1841,4 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # "Sellers MUST keep this in sync with product-level vendor_metric_optimization
     # declarations". supported_targets: enum [cost_per, threshold_rate], minItems 1,
     # uniqueItems; a target-less vendor_metric goal needs no target-kind declaration.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/vendor_metric_optimization
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/media_buy/properties/vendor_metric_optimization

@@ -6,9 +6,19 @@ used across UC-004, UC-011, and future domain step files.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-_SENTINEL = object()
+from tests.harness.transport import NO_IDENTITY_OVERRIDE
+
+if TYPE_CHECKING:
+    from tests.harness.transport import TransportResult
+
+# NOTE: NO_IDENTITY_OVERRIDE is IMPORTED, never re-declared. A local
+# `_SENTINEL = object()` renamed into this name would be a SECOND distinct
+# object wearing the canonical name, and `identity is not NO_IDENTITY_OVERRIDE`
+# would then compare against the local one — so a caller passing the harness's
+# real sentinel (meaning "no override") would be misread as HAVING overridden
+# identity. One object, one name.
 
 #: Opt-in: a Given sets this when the scenario's claim is about WEBHOOK CREDENTIALS
 #: rather than about one request. The seller must then answer the same way at every
@@ -23,7 +33,42 @@ GRADE_EVERY_CREDENTIAL_LOCATION = "grade_every_credential_location"
 CREDENTIAL_REGISTRATIONS = "credential_registrations"
 
 
-def dispatch_request(ctx: dict, *, identity: Any = _SENTINEL, **kwargs: Any) -> None:
+def _populate_ctx_from_result(ctx: dict, result: TransportResult) -> None:
+    """Populate ctx's dispatch-result contract from a ``TransportResult``.
+
+    Shared post-processing for every dispatch path (``dispatch_request`` via
+    ``env.call_via``, ``dispatch_via_client`` via ``AdCPTestClient.call``) so
+    they populate the identical six-key contract the wire-first Then steps
+    (``then_error.py``'s ``_wire_code``/``_wire_suggestion``/``_wire_error_object``)
+    read — ``ctx['result']`` is the only key with exactly one producer; leaving
+    it unset silently downgrades those Then steps to the lossy reconstructed
+    ``ctx['error']`` fallback (disease scan).
+    """
+    # Expose the normalized TransportResult so Then-steps can use the
+    # harness-provided, transport-independent assertions (result.assert_wire_error)
+    # instead of hand-rolling envelope parsing.
+    ctx["result"] = result
+    if result.is_error:
+        ctx["error"] = result.error
+        # Capture the real wire envelope (A2A/REST/MCP) and the
+        # synthesized envelope (IMPL has no wire) so Then steps can
+        # assert the two-layer AdCP shape per the Error Verification
+        # Policy. Both are None-safe; absent keys mean "no envelope".
+        ctx["wire_error_envelope"] = result.wire_error_envelope
+        ctx["synthesized_error_envelope"] = result.synthesized_error_envelope
+    else:
+        ctx["response"] = result.payload
+        # Propagate the real serialized success-path wire body so Then steps
+        # can assert on what the buyer actually receives (ctx["wire_response"]),
+        # not the reconstructed typed payload (REST HTTP body; A2A/MCP artifact
+        # only when the env routes through _run_a2a_handler/_run_mcp_client).
+        # None on IMPL / non-stashing envs; the wire_field() helper guards
+        # against silent tautologies (#1417). See tests/CLAUDE.md
+        # "TransportResult.wire_response".
+        ctx["wire_response"] = result.wire_response
+
+
+def dispatch_request(ctx: dict, *, identity: Any = NO_IDENTITY_OVERRIDE, **kwargs: Any) -> None:
     """Dispatch a request through ctx['transport'] via call_via, or direct call_impl.
 
     Stores result in ctx["response"] on success, ctx["error"] on failure.
@@ -36,7 +81,7 @@ def dispatch_request(ctx: dict, *, identity: Any = _SENTINEL, **kwargs: Any) -> 
     (which uses kwargs.setdefault, so an explicit identity won't be clobbered).
     Use ``identity=None`` for no-auth scenarios.
     """
-    if identity is not _SENTINEL:
+    if identity is not NO_IDENTITY_OVERRIDE:
         kwargs["identity"] = identity
 
     transport = ctx.get("transport")
@@ -68,28 +113,7 @@ def dispatch_request(ctx: dict, *, identity: Any = _SENTINEL, **kwargs: Any) -> 
         transport = transport_map[transport]
     try:
         result = env.call_via(transport, **kwargs)
-        # Expose the normalized TransportResult so Then-steps can use the
-        # harness-provided, transport-independent assertions (result.assert_wire_error)
-        # instead of hand-rolling envelope parsing.
-        ctx["result"] = result
-        if result.is_error:
-            ctx["error"] = result.error
-            # Capture the real wire envelope (A2A/REST/MCP) and the
-            # synthesized envelope (IMPL has no wire) so Then steps can
-            # assert the two-layer AdCP shape per the Error Verification
-            # Policy. Both are None-safe; absent keys mean "no envelope".
-            ctx["wire_error_envelope"] = result.wire_error_envelope
-            ctx["synthesized_error_envelope"] = result.synthesized_error_envelope
-        else:
-            ctx["response"] = result.payload
-            # Propagate the real serialized success-path wire body so Then steps
-            # can assert on what the buyer actually receives (ctx["wire_response"]),
-            # not the reconstructed typed payload (REST HTTP body; A2A/MCP artifact
-            # only when the env routes through _run_a2a_handler/_run_mcp_client).
-            # None on IMPL / non-stashing envs; the wire_field() helper guards
-            # against silent tautologies (#1417). See tests/CLAUDE.md
-            # "TransportResult.wire_response".
-            ctx["wire_response"] = result.wire_response
+        _populate_ctx_from_result(ctx, result)
     except Exception as exc:
         ctx["error"] = exc
     else:
@@ -133,3 +157,44 @@ def _record_credential_registrations(ctx: dict, transport: Any, result: Any, kwa
         result,
         signed=kwargs.get("signed", False),
     )
+
+
+def dispatch_via_client(ctx: dict, tool: str, payload: dict[str, Any], *, identity: Any = NO_IDENTITY_OVERRIDE) -> None:
+    """Dispatch through ``AdCPTestClient.call`` instead of ``env.call_via``.
+
+    Additive alternative to ``dispatch_request`` for scenarios wired onto the
+    transport-generic ``AdCPTestClient`` (``tests/harness/client.py``, whose
+    module docstring states the design). Populates the identical ctx contract via
+    ``_populate_ctx_from_result`` so every existing wire-first Then step works
+    unmodified regardless of dispatch path.
+
+    Deliberately does NOT wrap ``client.call()`` in a blanket
+    ``except Exception`` the way ``dispatch_request`` does for
+    ``env.call_via``: ``AdCPTestClient.call`` already converts ordinary
+    transport errors into an error ``TransportResult`` internally, and
+    re-raises ``NotImplementedError`` / lets ``NoAddressForTransport``
+    propagate on purpose — a harness wiring gap must surface as a hard
+    failure, not get silently downgraded into ``ctx["error"]`` where
+    ``then_operation_fails`` would mistake it for a real AdCP rejection
+    (client.py's own anti-vacuity comment on ``call()``).
+    """
+    # The two dispatch paths converge on the same ctx contract but NOT on the
+    # same credential-location grading: ``AdCPTestClient.call`` takes a single
+    # ``payload`` and has no ``signed`` parameter, so this path cannot ask the
+    # env for the seller's answer at every credential location. Silently
+    # skipping ``_record_credential_registrations`` here would let an opted-in
+    # scenario grade ONE location and pass — the exact vacuity that helper
+    # exists to prevent. Fail loudly instead; no scenario wires both today.
+    if ctx.get(GRADE_EVERY_CREDENTIAL_LOCATION):
+        raise RuntimeError(
+            "dispatch_via_client: scenario opted into "
+            f"{GRADE_EVERY_CREDENTIAL_LOCATION!r}, which only dispatch_request grades. "
+            "Dispatch through dispatch_request, or teach AdCPTestClient.call the "
+            "credential-registration contract first."
+        )
+    client = ctx["client"]
+    if identity is not NO_IDENTITY_OVERRIDE:
+        result = client.call(tool, payload, ctx["transport"], identity=identity)
+    else:
+        result = client.call(tool, payload, ctx["transport"])
+    _populate_ctx_from_result(ctx, result)

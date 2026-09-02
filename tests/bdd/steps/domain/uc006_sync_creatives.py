@@ -264,6 +264,8 @@ def _setup_account_by_natural_key(brand_domain: str, operator: str, tenant: obje
 @when("the Buyer Agent syncs the creative via the REST/A2A endpoint")
 @when("the Buyer Agent syncs the creative via the MCP tool")
 @when("the Buyer Agent sends a sync_creatives request")
+@when("the Buyer Agent sends sync_creatives")
+@when("the Buyer Agent sends sync_creatives with the corrected manifest")
 def when_sync_creative(ctx: dict) -> None:
     """Send sync_creatives request with account reference through transport dispatch.
 
@@ -2748,6 +2750,7 @@ def given_creative_with_provenance(ctx: dict) -> None:
 @given("a creative without provenance metadata")
 @given("a creative with a known format_id but no provenance metadata")
 @given("a creative with no provenance metadata")
+@given("the Buyer Agent submits a creative whose manifest carries no provenance object at all")
 def given_creative_without_provenance(ctx: dict) -> None:
     """Set up a creative that has no provenance metadata."""
     _build_creative_payload(ctx, provenance=None)
@@ -5390,7 +5393,7 @@ def then_user_assets_priority_over_generated(ctx: dict) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Missing step definitions — , pzlv, 28p6, wsc1,
+# Missing step definitions, pzlv, 28p6, wsc1,
 # thm4, bkbu, yqpf
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -7031,4 +7034,98 @@ def then_no_operation_level_errors(ctx: dict) -> None:
     operation_errors = getattr(response, "errors", None)
     assert operation_errors is None, (
         f"success variant must not carry operation-level errors[]; got {operation_errors!r}"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GIVEN / THEN steps — idempotency_key BEHAVIOR (replay + conflict)
+#
+# AdCP 3.1.1 dist/compliance/3.1.1/universal/idempotency.yaml: a replay with the
+# same key and an equivalent payload "returns the cached response without
+# re-executing resource mutations"; the same key with a materially different
+# payload rejects with IDEMPOTENCY_CONFLICT. sync_creatives' pinned request
+# schema marks idempotency_key REQUIRED, but the universal storyboard has no
+# `task: sync_creatives` step at 3.1.1 — these scenarios are the obligation's
+# only grading for this tool.
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@given(parsers.parse('that creative was already synced with idempotency_key "{key}"'))
+def given_creative_already_synced_with_key(ctx: dict, key: str) -> None:
+    """Perform the FIRST sync under *key*, through the scenario's own transport.
+
+    The retry the When step issues must be indistinguishable from a network
+    retry of THIS call, so the first call goes through the same
+    ``dispatch_request`` path with the same payload rather than being seeded
+    behind production's back.
+
+    The first sync is asserted to have succeeded: a Given that silently failed
+    would leave the retry looking like a first call, and every Then in the
+    scenario would pass vacuously. The pre-retry approval-workflow-step count is
+    stashed so the re-execution assertion has an exact baseline.
+    """
+    ctx["idempotency_key"] = key
+    when_sync_creative(ctx)
+
+    assert ctx.get("error") is None, f"the first sync under idempotency_key {key!r} failed: {ctx['error']}"
+    first = ctx.get("response")
+    assert first is not None, f"the first sync under idempotency_key {key!r} returned no response"
+    assert [_action_str(c.action) for c in first.creatives] == ["created"], (
+        "the first sync must CREATE the creative so the retry has something to replay; got "
+        f"{[_action_str(c.action) for c in first.creatives]}"
+    )
+
+    ctx["workflow_steps_before_retry"] = len(ctx["env"].get_workflow_steps())
+
+
+@given(parsers.parse('the creative name is changed to "{name}"'))
+def given_creative_name_changed(ctx: dict, name: str) -> None:
+    """Materially change the pending creative payload, keeping the same key.
+
+    This is the spec's "same key, materially different payload" input: the key
+    the buyer reuses no longer describes the request it originally identified.
+    """
+    creatives = ctx.get("creatives")
+    assert creatives, "no creative payload to modify — the creative Given must run first"
+    creatives[0]["name"] = name
+
+
+@then("the per-creative result should carry no changes list")
+def then_no_changes_list(ctx: dict) -> None:
+    """A verbatim replay returns the ORIGINAL result, which recorded no changes.
+
+    ``changes`` is populated only when the sync actually re-wrote fields
+    (sync-creatives-response.json: "Field names that were modified (only present
+    when action='updated')"), so a NON-EMPTY list on the retry is the seller
+    admitting it re-executed the write.
+
+    Empty, not None, is the spec-valid "nothing was re-written" value here:
+    ``SyncCreativeResult`` pins ``changes`` to ``list[str]`` with
+    ``default_factory=list`` on purpose — spec 3.1.1 types it ``array``, and a
+    None default serializes to the spec-invalid ``null`` on MCP (see the comment
+    on that field). Asserting ``is None`` was unsatisfiable by construction.
+    """
+    response = ctx.get("response")
+    assert response is not None, "expected a sync_creatives response payload"
+    assert response.creatives, "expected at least one per-creative result"
+    changes = [c.changes for c in response.creatives]
+    assert not any(changes), (
+        f"a replayed sync must record no field changes; got {changes} — the retry re-wrote the creative"
+    )
+
+
+@then("no additional creative approval workflow step should have been created")
+def then_no_additional_workflow_step(ctx: dict) -> None:
+    """The retry executed NO resource mutation.
+
+    Each executed sync_creatives under the tenant's require-human approval mode
+    mints an approval workflow step. A second step for one buyer intent is the
+    concrete double-execution the idempotency contract forbids.
+    """
+    before = ctx.get("workflow_steps_before_retry")
+    assert before is not None, "baseline workflow-step count missing — the first-sync Given must run first"
+    after = len(ctx["env"].get_workflow_steps())
+    assert after == before, (
+        f"the retry minted {after - before} additional approval workflow step(s) "
+        f"({before} -> {after}) — the mutation re-executed instead of replaying"
     )

@@ -33,13 +33,18 @@ TWO pinned sources, selected by the ref itself
    is a CROSS-CHECK, not the authority. A producer graded against the SDK's
    derived copy would be graded against something the spec never said.
 
+The version segment in a version-prefixed ref is never written literally at a
+call site: callers spell ``f"{EXPECTED_SPEC_VERSION}/brand.json"``, reading the
+one pin constant in ``tests/helpers/adcp_pin.py``, so this module adds no
+second place the spec version is recorded.
+
 The two sources use two DIFFERENT internal ``$ref`` conventions (the SDK's
 plain tree uses file-relative refs; the tag tree uses site-rooted
 ``/schemas/<version>/…`` refs), which is exactly what ``_PinnedSource``
-parameterizes — resolution, containment and canonicalization each have ONE
-implementation, taking the source as an argument. Two implementations of ref
-resolution with different rules used to exist here and silently disagreed (see
-``normalize_ref``); do not reintroduce that.
+parameterizes — containment, ``$id`` stamping and canonicalization each have
+ONE implementation, taking the source as an argument. Two implementations of
+ref resolution with different rules used to exist here and silently disagreed
+(see ``normalize_ref``); do not reintroduce that.
 
 For source (1), the plain tree (not ``bundled/``) is deliberately the source: ``bundled/``
 only physically ships 8 of the SDK's 16 top-level schema categories (no
@@ -53,7 +58,15 @@ before handing it to ``jsonschema``/``referencing``. ``file://`` is a real
 scheme that ``referencing``'s ``urljoin``-based resolution handles natively,
 and it maps back to a path with no invented naming convention in between.
 
-Two surfaces, matching the two distinct things callers need:
+Where the pieces live
+---------------------
+The pure, stdlib-only resolution primitives for source (1) — ``schema_root``,
+``normalize_ref``, ``PinnedSchemaError``, and the SDK tree's file search and
+file read — live in ``tests/helpers/adcp_pinned_schema.py``, so a caller that
+only needs to LOCATE a pinned schema does not pull in the
+``jsonschema``/``referencing`` dependency stack. This module re-exports those
+names and adds, on top of them, the jsonschema-validation pieces plus the
+source (2) layer:
 
 - ``validator_for(ref)`` — a ready-to-use ``Draft7Validator`` with full
   ``$ref`` resolution wired, for validating a payload against a schema
@@ -64,7 +77,17 @@ Two surfaces, matching the two distinct things callers need:
   synthetic-example generator) rather than validating a concrete payload.
   Callers that want to follow the refs they find should use
   ``load_canonicalized``, which rewrites them into the root-relative form
-  ``load`` itself accepts.
+  ``load`` itself accepts. This module's ``load`` is the two-source one; the
+  extracted module's same-named function reads source (1) only.
+
+Resolution of a source (1) ref is DELEGATED to the extracted module
+(``_resolve_in_sdk_tree``), never copied, so the SDK search rule the
+single-source guard grades (``tests/unit/test_pinned_schema_single_source.py``)
+has exactly one implementation. The vendored trees need that same search
+against a different root, and the extracted resolver hardcodes the SDK root and
+takes no root argument — ``_resolve_in_tree`` below is that rule expressed once
+for any root, and it is the natural home for the SDK branch too if the
+extracted module ever grows a root parameter.
 
 A missing schema (the SDK layout changed, a version-prefixed ref names a tree
 that was never vendored, or a ``$ref`` is outside the resolvable tree) is a
@@ -74,7 +97,6 @@ onto the other source.
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -85,13 +107,32 @@ import referencing
 from jsonschema.validators import Draft7Validator
 from referencing.jsonschema import DRAFT7
 
-# The SDK's bundled/ subtree pre-inlines a partial (8-of-16-category) mirror
-# of the plain tree under the same filenames — searching it too would make
-# every mirrored bare filename ambiguous (e.g. "list-creatives-response.json"
-# exists at both creative/list-creatives-response.json and
-# bundled/creative/list-creatives-response.json). Bare-filename lookups are
-# scoped to the plain tree only; bundled/ is never read by this module.
-_EXCLUDED_TOP_LEVEL_DIR = "bundled"
+from tests.helpers.adcp_pinned_schema import (
+    _EXCLUDED_TOP_LEVEL_DIR,
+    PinnedSchemaError,
+    normalize_ref,
+    schema_root,
+)
+from tests.helpers.adcp_pinned_schema import (
+    # The ONE file read + ``$id`` stamp, reused for both trees (see
+    # ``_load_with_id``), and the ONE SDK-tree file search (see
+    # ``_resolve_ref``). Aliased rather than shadowed so the two-source
+    # wrappers below can keep the unprefixed names.
+    _load_with_id as _load_with_file_uri_id,
+)
+from tests.helpers.adcp_pinned_schema import (
+    _resolve_filename as _resolve_in_sdk_tree,
+)
+
+__all__ = [
+    "PinnedSchemaError",
+    "load",
+    "load_canonicalized",
+    "normalize_ref",
+    "schema_root",
+    "validate_against_pinned_schema",
+    "validator_for",
+]
 
 # Root of the vendored, version-namespaced trees (source 2 in the module
 # docstring). Each immediate child named <major>.<minor>.<patch> is one tag's
@@ -106,42 +147,12 @@ _VERSION_PREFIX = re.compile(r"^(\d+\.\d+\.\d+)/(.+)$")
 _SITE_ROOT_PREFIX = "/schemas/"
 
 
-class PinnedSchemaError(Exception):
-    """A pinned schema could not be resolved or loaded.
-
-    One type for every "the instrument is broken or the ref is unresolvable"
-    failure in this module, so callers can catch resolution failure without
-    also catching an assertion (which in a test process means "a payload
-    violated the contract" — a completely different outcome).
-    """
-
-
-def schema_root() -> Path:
-    """The installed adcp SDK's schema tree for the pinned spec version.
-
-    The SDK stores schemas under ``adcp/_schemas/<major.minor>/`` (e.g. the
-    3.1.1 spec lives in ``_schemas/3.1/``; its ``index.json`` carries the full
-    ``adcp_version``).
-    """
-    import adcp
-
-    spec_version = adcp.get_adcp_spec_version()
-    major_minor = ".".join(spec_version.split(".")[:2])
-    root = Path(adcp.__file__).parent / "_schemas" / major_minor
-    if not root.is_dir():
-        raise PinnedSchemaError(
-            f"Installed adcp SDK (spec {spec_version}) has no schema tree at {root} — "
-            "the SDK layout changed; update schema_root()."
-        )
-    return root
-
-
 class _PinnedSource(NamedTuple):
     """One pinned schema tree, and everything that differs between the two.
 
-    Every resolution/containment/canonicalization step below takes one of
-    these instead of hardcoding a root, so each rule has exactly ONE
-    implementation rather than a per-source copy.
+    Every containment/``$id``/canonicalization step below takes one of these
+    instead of hardcoding a root, so each rule has exactly ONE implementation
+    rather than a per-source copy.
 
     - ``label`` — names the tree in error messages.
     - ``root`` — the containment boundary; a ref's remainder is joined onto it.
@@ -167,6 +178,22 @@ class _PinnedSource(NamedTuple):
             return path.as_uri()
         return self.uri_prefix + path.resolve().relative_to(self.ref_base.resolve()).as_posix()
 
+    def contained(self, candidate: Path, *, what: str) -> Path:
+        """Resolve *candidate* and assert it stays inside this source's tree.
+
+        The single containment check for this module, always against whichever
+        tree the ref itself selected. A ref can embed traversal
+        (``"media-buy/../../../../etc/hosts"``), and probing an UNRESOLVED path
+        lets the OS follow the ``..`` segments — so resolution and the check
+        have to happen together, here, once, rather than at each of the call
+        sites that used to spell it out in three different shapes with three
+        different messages.
+        """
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(self.root.resolve()):
+            raise PinnedSchemaError(f"{what} escapes the pinned {self.label} schema tree: {resolved}")
+        return resolved
+
 
 def _sdk_source() -> _PinnedSource:
     root = schema_root()
@@ -191,83 +218,25 @@ def _vendored_source(version: str) -> _PinnedSource:
     return _PinnedSource(label=f"vendored {version}", root=root, ref_base=_VENDORED_DIR, uri_prefix=_SITE_ROOT_PREFIX)
 
 
-def _select_source(ref: str) -> tuple[_PinnedSource, str]:
-    """Pick the pinned tree a ref names, plus the path within that tree.
+def _resolve_in_tree(source: _PinnedSource, rel: str, ref: str) -> Path:
+    """The file *rel* names inside *source*'s tree, or a hard failure.
 
-    An explicit ``<major>.<minor>.<patch>/`` prefix — and ONLY that — selects
-    the vendored tree for that version; every other ref resolves against the
-    installed SDK's tree.
+    The same rule the extracted module applies to the SDK tree, expressed once
+    for an arbitrary root: a category-qualified path is joined and must exist;
+    a bare filename is searched (``bundled/`` excluded — see module docstring),
+    and a true same-basename collision raises rather than silently picking one.
+
+    Only the vendored trees route through here — the SDK branch of
+    ``_resolve_ref`` delegates to ``_resolve_in_sdk_tree`` so that rule is not
+    duplicated — because the extracted, stdlib-only resolver hardcodes the SDK
+    root and takes no root argument.
     """
-    match = _VERSION_PREFIX.match(ref)
-    if match:
-        return _vendored_source(match.group(1)), match.group(2)
-    return _sdk_source(), ref
-
-
-def normalize_ref(ref: str) -> str:
-    """The one place a caller-supplied schema ref becomes a resolvable one.
-
-    Two accepted forms, one per pinned source (see the module docstring): the
-    form the SDK index itself uses — a category-qualified path relative to the
-    version root (``media-buy/get-products-request.json``) — and that same form
-    prefixed with an explicit vendored spec version
-    (``3.1.1/core/authorized-agent-base.json``), which selects the vendored
-    tag-verbatim tree for that version and nothing else. A ``#fragment`` is
-    stripped. Everything else — an absolute URL, a site-rooted ``/schemas/…``
-    path, a traversal — is a ``PinnedSchemaError``.
-
-    Two implementations of this used to exist with DIFFERENT rules, and fed
-    the version-free form the repo uses internally they disagreed: one ate the
-    category segment as if it were a version and survived only because the
-    fallback rglob happened to find the file anyway. Rejecting rather than
-    rewriting is still the point: a ref naming a version in any OTHER shape (a
-    site-rooted ``/schemas/3.1.1/…``, a live registry URL) means the caller
-    believes it is validating against something other than either pin, and
-    quietly redirecting it would hide that the version it named was ignored.
-    The explicit prefix is legal precisely because it is NOT redirected — it
-    resolves against that version's vendored tree, or it fails.
-    """
-    stripped = ref.split("#", 1)[0]
-    if not stripped or "://" in stripped or stripped.startswith(("/", "..")):
-        raise PinnedSchemaError(f"Cannot resolve schema reference {ref!r} against the pinned schema trees")
-    return stripped
-
-
-def _contained_path(candidate: Path, *, source: _PinnedSource, what: str) -> Path:
-    """Resolve *candidate* and assert it stays inside *source*'s tree.
-
-    The single containment check for this module, always against whichever
-    tree the ref itself selected. A ref can embed traversal
-    (``"media-buy/../../../../etc/hosts"``), and probing an UNRESOLVED path
-    lets the OS follow the ``..`` segments — so resolution and the check have
-    to happen together, here, once, rather than at each of the call sites that
-    used to spell it out in three different shapes with three different
-    messages.
-    """
-    resolved = candidate.resolve()
-    if not resolved.is_relative_to(source.root.resolve()):
-        raise PinnedSchemaError(f"{what} escapes the pinned {source.label} schema tree: {resolved}")
-    return resolved
-
-
-def _resolve_ref(ref: str) -> tuple[_PinnedSource, Path]:
-    """Resolve *ref* to the pinned source it selects and the file within it.
-
-    A bare filename (``"list-creatives-response.json"``, or the remainder left
-    by a version prefix, ``"3.1.1/brand.json"`` -> ``"brand.json"``) is searched
-    across the selected tree (``bundled/`` excluded — see module docstring). If
-    that search is ambiguous (a true same-basename collision within the tree
-    itself, e.g. ``core/error.json`` vs ``trusted-match/error.json``), this
-    raises rather than silently picking one — pass a category-qualified ref
-    (``"core/error.json"``) instead.
-    """
-    source, rel = _select_source(ref)
     root = source.root
     if "/" in rel:
-        path = _contained_path(root / rel, source=source, what=f"Schema ref {ref!r}")
+        path = source.contained(root / rel, what=f"Schema ref {ref!r}")
         if not path.exists():
             raise PinnedSchemaError(f"Pinned schema not found: {ref} -> {path}")
-        return source, path
+        return path
 
     matches = sorted(p for p in root.rglob(rel) if _EXCLUDED_TOP_LEVEL_DIR not in p.relative_to(root).parts)
     if not matches:
@@ -278,7 +247,22 @@ def _resolve_ref(ref: str) -> tuple[_PinnedSource, Path]:
             f"Pinned schema filename {ref!r} is ambiguous ({rels}) — pass a "
             f"category-qualified ref (e.g. {rels[0]!r}) instead of a bare filename."
         )
-    return source, matches[0]
+    return matches[0]
+
+
+def _resolve_ref(ref: str) -> tuple[_PinnedSource, Path]:
+    """Resolve *ref* to the pinned source it selects and the file within it.
+
+    An explicit ``<major>.<minor>.<patch>/`` prefix — and ONLY that — selects
+    the vendored tree for that version (``"3.1.1/brand.json"`` -> the vendored
+    3.1.1 tree's ``brand.json``); every other ref resolves against the installed
+    SDK's tree, through the extracted module's own resolver.
+    """
+    match = _VERSION_PREFIX.match(ref)
+    if match:
+        source = _vendored_source(match.group(1))
+        return source, _resolve_in_tree(source, match.group(2), ref)
+    return _sdk_source(), _resolve_in_sdk_tree(ref)
 
 
 def _resolve_filename(filename: str) -> Path:
@@ -289,9 +273,14 @@ def _resolve_filename(filename: str) -> Path:
 def _load_with_id(path: Path, source: _PinnedSource) -> dict[str, Any]:
     """Load a schema file, stamping the ``$id`` its own tree's convention gives
     it (``source.uri_for``) so its ``$ref``s — and any ``$ref``s INTO it from a
-    sibling schema — resolve deterministically."""
-    schema = json.loads(path.read_text())
-    return {**schema, "$id": source.uri_for(path)}
+    sibling schema — resolve deterministically.
+
+    The read itself is the extracted module's — the ONE place a pinned schema
+    file is opened. That loader stamps the ``file://`` form, which IS
+    ``uri_for`` for the SDK source; re-stamping is what gives a vendored
+    document its site-rooted ``$id`` instead.
+    """
+    return {**_load_with_file_uri_id(path), "$id": source.uri_for(path)}
 
 
 def _resolve_and_load(ref: str) -> tuple[_PinnedSource, Path, dict[str, Any]]:
@@ -317,13 +306,13 @@ def _ref_target(target_part: str, *, file_dir: Path, source: _PinnedSource, what
 
     Site-rooted (``/schemas/<version>/…``, the vendored tag tree's own form)
     resolves against that version's vendored tree — the same explicit-version
-    selection ``_select_source`` makes, never a fallback. Anything else is a
+    selection ``_resolve_ref`` makes, never a fallback. Anything else is a
     path relative to the referring file's own directory (the SDK plain tree's
     form) and stays inside *source*.
     """
     if target_part.startswith(_SITE_ROOT_PREFIX):
         return _site_rooted_target(target_part, what=what)
-    return source, _contained_path(file_dir / target_part, source=source, what=what)
+    return source, source.contained(file_dir / target_part, what=what)
 
 
 def _site_rooted_target(uri_path: str, *, what: str) -> tuple[_PinnedSource, Path]:
@@ -341,7 +330,7 @@ def _site_rooted_target(uri_path: str, *, what: str) -> tuple[_PinnedSource, Pat
             f"({_SITE_ROOT_PREFIX}<major>.<minor>.<patch>/...); got {uri_path!r}"
         )
     source = _vendored_source(match.group(1))
-    return source, _contained_path(source.root / match.group(2), source=source, what=what)
+    return source, source.contained(source.root / match.group(2), what=what)
 
 
 def _canonicalize_refs(node: Any, *, file_dir: Path, source: _PinnedSource) -> Any:
@@ -400,7 +389,7 @@ def _retrieve(uri: str) -> referencing.Resource:
         source, path = _site_rooted_target(uri, what=f"Schema URI {uri!r}")
     else:
         source = _sdk_source()
-        path = _contained_path(Path(url2pathname(urlparse(uri).path)), source=source, what=f"Schema URI {uri!r}")
+        path = source.contained(Path(url2pathname(urlparse(uri).path)), what=f"Schema URI {uri!r}")
     if not path.exists():
         raise PinnedSchemaError(f"Pinned schema not found: {uri} -> {path}")
     return DRAFT7.create_resource(_load_with_id(path, source))

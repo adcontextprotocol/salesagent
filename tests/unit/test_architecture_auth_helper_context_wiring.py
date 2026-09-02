@@ -17,11 +17,14 @@ impls — ``_sync_creatives_impl`` / ``_list_creatives_impl`` / ``_activate_sign
 — and the threaded ``_verify_principal``).
 
 Deliberately NOT enforced: functions whose only context-like parameter is the
-FastMCP transport ``Context`` / ``ToolContext`` (the ``task_management`` tools). The
+FastMCP transport ``Context`` / ``ToolContext`` (``get_task`` / ``complete_task`` in
+``task_management`` — they have no pinned SDK request model, so no ``context``
+field is ever published for them). ``list_tasks`` DOES declare a ``context:
+ContextObject`` parameter and is wired like every other qualifying call site. The
 auth helpers take an AdCP ``ContextObject``, never the transport object — passing the
-transport ``Context`` would be a type error, so those call sites stay context-less.
-That exclusion falls out of the ``ContextObject`` annotation check, so it needs no
-allowlist.
+transport ``Context`` would be a type error, so those two call sites stay
+context-less. That exclusion falls out of the ``ContextObject`` annotation check, so
+it needs no allowlist.
 
 Allowlist is empty: every qualifying call site is wired. A new tool that resolves
 identity without echoing its request context fails the build.

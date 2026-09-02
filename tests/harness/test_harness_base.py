@@ -274,19 +274,21 @@ class TestBaseClassContract:
         assert isinstance(result.error, NotImplementedError)
 
     def test_call_via_mcp_routes_through_call_mcp(self):
-        """call_via(Transport.MCP) dispatches through McpDispatcher → call_mcp."""
+        """call_via(Transport.MCP) dispatches through McpDispatcher → deliver_mcp."""
 
         from pydantic import BaseModel
 
         from tests.harness._base import BaseTestEnv
-        from tests.harness.transport import Transport
+        from tests.harness.transport import DeliverResult, Transport
 
         class _Resp(BaseModel):
             ok: bool = True
 
         class _TestEnv(BaseTestEnv):
-            def call_mcp(self, **kwargs):
-                return _Resp()
+            # Test double: overrides the DELIVER point, which is what the
+            # dispatchers call.
+            def deliver_mcp(self, **kwargs):
+                return DeliverResult(payload=_Resp(), wire_response=None)
 
         env = _TestEnv()
         result = env.call_via(Transport.MCP)

@@ -1,0 +1,16 @@
+{
+  "name": "sb1b-storyboard-runner",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Storyboard measurement sidecar: runs the real @adcp/sdk runStoryboard/adcp-CLI conformance runner against the salesagent e2e MCP endpoint. Not part of the application build; ephemeral scaffold committed for reproducibility.",
+  "type": "commonjs",
+  "dependencies": {
+    "@adcp/sdk": "11.0.0"
+  },
+  "scripts": {
+    "postinstall": "patch-package"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
+  }
+}

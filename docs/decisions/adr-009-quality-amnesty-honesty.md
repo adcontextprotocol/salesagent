@@ -11,6 +11,15 @@ baseline file; drop inline stale counts); **vocabulary align 2026-07-14** (quote
 shipped `pyproject.toml` comment strings); **residual honesty 2026-07-15** (quote
 shipped `mypy.ini` F2 wording; align boy-scout header with `(not gated; …)`).
 
+> **G2 enforcement retired 2026-08-25 (#1858).** The obligation guards this ADR
+> names as G2's mechanism — `tests/unit/test_architecture_obligation_coverage.py`,
+> `test_architecture_obligation_test_quality.py`, `test_architecture_bdd_obligation_sync.py`
+> and both allowlists — no longer exist in the tree. The ADR's decision stands as
+> the historical record of why G2 was ratcheted rather than amnestied; the
+> references below describe that mechanism as it was, not as it is. Any future
+> obligation ratchet needs a new guard and a new ADR, not a revival of these
+> paths.
+
 ## Context
 
 Issue [#1228](https://github.com/prebid/salesagent/issues/1228) Cluster F/G called out

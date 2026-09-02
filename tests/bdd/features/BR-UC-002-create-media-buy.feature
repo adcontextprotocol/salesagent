@@ -304,7 +304,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     # BR-RULE-015 INV-6: assets value lacking asset_type or carrying an unregistered value (not one of the 14 AssetVariant types) -> INVALID_REQUEST
     # --- ext-h: Format ID Validation Failure ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-ext-h @extension @ext-h @error @post-f1 @post-f2 @post-f3
   Scenario: Format ID is a plain string instead of object
@@ -454,7 +454,8 @@ Feature: BR-UC-002 Create Media Buy
     # push-config endpoints (message/send configuration,
     # setTaskPushNotificationConfig) map the same gate to InvalidParamsError
     # with the AdCP VALIDATION_ERROR envelope in data= — unit-pinned, not this scenario.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json (recovery via enumMetadata)
+    # recovery=correctable comes from error-code.json's enumMetadata.
+    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json
 
   @T-UC-002-ext-o @extension @ext-o @error @post-f1 @post-f2 @post-f3
   Scenario: Creative IDs not found in library
@@ -648,7 +649,7 @@ Feature: BR-UC-002 Create Media Buy
     And the seller may clear at any price between the floor_price and the bid_price
     # BR-RULE-006 INV-5 (v3.1): max_bid=true on cpm/cpc/cpcv/cpv/vcpm makes bid_price a ceiling
     # --- BR-RULE-008: Budget Positivity ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-inv-008-1 @invariant @BR-RULE-008
   Scenario: INV-1 holds -- total budget greater than zero
@@ -678,7 +679,7 @@ Feature: BR-UC-002 Create Media Buy
     And the request should not be rejected on the product-uniqueness rule
     # BR-RULE-010 INV-3 (v3.1): uniqueness binds the buyer-supplied manual packages array, absent in proposal mode
     # --- BR-RULE-012: Maximum Daily Spend Cap ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-inv-012-5 @invariant @BR-RULE-012 @v31
   Scenario: INV-5 holds -- legacy mode validates total budget against the daily cap
@@ -690,7 +691,7 @@ Feature: BR-UC-002 Create Media Buy
     Then the media buy total budget should be validated against the daily cap as a single daily figure
     # BR-RULE-012 INV-5 (v3.1): legacy (no per-package budgets) validates the total against the cap
     # --- BR-RULE-013: DateTime Validity ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-inv-013-4 @invariant @BR-RULE-013
   Scenario: INV-4 holds -- start_time is literal "asap" (case-sensitive)
@@ -749,7 +750,7 @@ Feature: BR-UC-002 Create Media Buy
     And "pending_approval" should never be used as a MediaBuyStatus value
     # BR-RULE-017 INV-4 (v3.1): approval modeled at the task layer; pending_approval is not a MediaBuyStatus
     # --- BR-RULE-018: Atomic Response Semantics ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-inv-018-1 @invariant @BR-RULE-018
   Scenario: INV-1 holds -- successful creation has success fields only
@@ -804,7 +805,7 @@ Feature: BR-UC-002 Create Media Buy
     And the envelope should not emit the legacy "task_status" or "response_status" fields
     # BR-RULE-018 INV-8 (v3.1): fatal => adcp_error + payload errors[]; warning => payload-only
     # --- BR-RULE-020: Adapter Atomicity ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-inv-020-1 @invariant @BR-RULE-020
   Scenario: INV-1 holds -- adapter success persists all records
@@ -845,7 +846,7 @@ Feature: BR-UC-002 Create Media Buy
     Then the ad server adapter should never be invoked
     And no database records should be created
     # BR-RULE-020 INV-4 (v3.1): validation precedes the adapter call; failure persists nothing
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-inv-020-5 @invariant @BR-RULE-020 @v31
   Scenario: INV-5 holds -- dry-run mode never invokes the adapter and persists nothing
@@ -858,7 +859,7 @@ Feature: BR-UC-002 Create Media Buy
     And no database records should be created
     # BR-RULE-020 INV-5 (v3.1): dry-run validates fully but never calls the adapter or persists
     # --- BR-RULE-026: Creative Assignment Validation ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-inv-026-1 @invariant @BR-RULE-026
   Scenario: INV-1 holds -- all creatives valid and formats compatible
@@ -907,7 +908,7 @@ Feature: BR-UC-002 Create Media Buy
     And the resolution outcome is unspecified by the protocol
     # BR-RULE-080 INV-11 (v3.1): account-status.json defines rejected/closed; no matching error code (open question G-acct-lifecycle)
     # --- BR-RULE-087: Optimization Goal Validation ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-inv-087-5 @invariant @BR-RULE-087 @error
   Scenario: INV-5 violated -- duplicate priority values in optimization goals
@@ -1550,7 +1551,7 @@ Feature: BR-UC-002 Create Media Buy
     When the Buyer Agent sends the create_media_buy request
     Then the result should be <outcome>
     # --- end_time boundaries (BR-RULE-013) ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
       | boundary_point          | value | outcome                               |
@@ -1903,7 +1904,7 @@ Feature: BR-UC-002 Create Media Buy
     And the response should include sandbox equals true
     And no real ad platform orders should have been created
     # BR-RULE-209 INV-8 + BR-RULE-080 INV-10: natural-key (brand+operator+sandbox:true) resolves to sandbox account without prior sync_accounts provisioning
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-idempotency-replay @v31 @idempotency-key @post-s1 @ext-w @happy-path
   Scenario: v3.1 idempotency_key replay returns existing media buy without re-execution
@@ -1918,7 +1919,7 @@ Feature: BR-UC-002 Create Media Buy
     And no new ad platform order should have been created
     # v3.1: idempotency_key uniquely identifies (seller, request) pair
     # POST-S5: Buyer receives an unambiguous success confirmation
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-idempotency-missing @v31 @idempotency-key @validation @post-f2 @ext-w
   Scenario: v3.1 idempotency_key missing fails request validation
@@ -1929,7 +1930,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should reference the missing "idempotency_key" field
     And the error should include "suggestion" field
     # v3.1: idempotency_key is required on create-media-buy-request
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-idempotency-pattern-invalid @v31 @idempotency-key @validation @post-f2 @ext-w
   Scenario Outline: v3.1 idempotency_key violates length/pattern constraints
@@ -1940,7 +1941,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should reference idempotency_key constraint "<violation>"
     And the error should include "suggestion" field
     # v3.1: idempotency_key pattern ^[A-Za-z0-9_.:-]{16,255}$
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples:
       | value                                                | violation                              |
@@ -1960,7 +1961,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     And no new media buy should have been created
     # BR-RULE-211 INV-4: in-flight key MAY reject with IDEMPOTENCY_IN_FLIGHT; buyer MUST NOT mint a fresh key
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-idempotency-expired @v31 @idempotency-key @error-details @post-f2 @post-f3 @ext-w
   Scenario: v3.1 idempotency_key whose cached response has expired rejects with IDEMPOTENCY_EXPIRED
@@ -1972,7 +1973,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     And no new media buy should have been created
     # BR-RULE-211 INV-5: expired cached response -> IDEMPOTENCY_EXPIRED; buyer MUST perform natural-key existence check before minting fresh key
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-idempotency-canonical-comparison @v31 @idempotency-key @post-s1 @ext-w @happy-path
   Scenario: v3.1 idempotency replay with reordered fields and whitespace is treated as identical
@@ -1984,7 +1985,7 @@ Feature: BR-UC-002 Create Media Buy
     And no new ad platform order should have been created
     # BR-RULE-211 INV-6: canonical comparison is semantic; field ordering / insignificant whitespace MUST NOT affect outcome
     # --- v3.1: submitted task envelope discrimination ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-submitted-envelope-shape @v31 @submitted-envelope @post-s7 @post-s9
   Scenario: v3.1 submitted envelope carries task_id but not media_buy_id
@@ -1998,7 +1999,7 @@ Feature: BR-UC-002 Create Media Buy
     And the response should not include a packages array at the envelope level
     # v3.1: media_buy_id and packages land on the task's completion artifact, not the envelope
     # v3.1: not.anyOf excludes media_buy_id, packages, sandbox from submitted shape
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-submitted-envelope-message @v31 @submitted-envelope @prompt-injection
   Scenario: v3.1 submitted envelope optional message field is untrusted seller input
@@ -2014,7 +2015,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: message field is bounded to maxLength 2000, plain text only
     # v3.1: message MUST be treated as untrusted seller input (prompt-injection defense)
     # --- v3.1: synchronous success response fields ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-success-revision-and-actions @v31 @sync-success @post-s1 @post-s3
   Scenario: v3.1 sync success response carries revision, confirmed_at, valid_actions
@@ -2032,7 +2033,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: confirmed_at — order confirmation timestamp
     # v3.1: revision — initial value >= 1 for optimistic concurrency on update_media_buy
     # v3.1: valid_actions — subset of [pause, resume, cancel, update_budget, update_dates, update_packages, add_packages, sync_creatives]
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-success-status-values @v31 @sync-success @media-buy-status
   Scenario Outline: v3.1 sync success status is a MediaBuyStatus enum value, never "submitted"
@@ -2047,7 +2048,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: synchronous-success status field carries MediaBuyStatus, not task-level "submitted"
     # v3.1: "submitted" is a task-level literal, exclusive to the submitted envelope shape
     # --- v3.1: governance plan_id ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples:
       | initial_state                       | media_buy_status   |
@@ -2066,7 +2067,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     # v3.1: plan_id is required when governance_agents is non-empty on the account
     # BR-RULE-212 INV-1: governance configured + plan_id absent -> INVALID_REQUEST (correctable)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-plan-id-resolves @v31 @governance @plan-id @ext-x @happy-path
   Scenario: v3.1 plan_id present and resolvable forwards governance plan and proceeds
@@ -2078,7 +2079,7 @@ Feature: BR-UC-002 Create Media Buy
     Then the request should proceed past the governance gate
     And the plan_id should be forwarded to check_governance
     # BR-RULE-212 INV-2: governance configured + plan_id resolves -> proceeds
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-plan-id-not-found @v31 @governance @plan-id @error-details @post-f2 @post-f3 @ext-x
   Scenario: v3.1 plan_id that does not resolve rejects with PLAN_NOT_FOUND
@@ -2091,7 +2092,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error code should be "PLAN_NOT_FOUND"
     And the error should include "suggestion" field
     # BR-RULE-212 INV-3: plan_id present but unresolvable -> PLAN_NOT_FOUND (uniform response to prevent enumeration)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-plan-id-optional-without-governance @v31 @governance @plan-id @ext-x @happy-path
   Scenario: v3.1 plan_id optional when account has no governance_agents configured
@@ -2103,7 +2104,7 @@ Feature: BR-UC-002 Create Media Buy
     And the governance path should be skipped
     # BR-RULE-212 INV-4: no governance agents -> plan_id optional, governance skipped
     # --- v3.1: invoice_recipient override ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-invoice-recipient-echoed @v31 @invoice-recipient @post-s5
   Scenario: v3.1 invoice_recipient overrides default billing and is echoed in response
@@ -2119,7 +2120,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: per-buy billing override; seller MUST validate invoice_recipient is authorized for the account
     # v3.1: bank details are write-only and omitted from the response
     # --- v3.1: io_acceptance for proposal IO signing ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-io-acceptance-required @v31 @io-acceptance @proposal-based @error-details @post-f2 @post-f3 @ext-x
   Scenario: v3.1 proposal requires IO signature but io_acceptance is missing -- rejected with IO_REQUIRED
@@ -2133,7 +2134,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     # BR-RULE-213 INV-1: requires_signature true + io_acceptance absent -> IO_REQUIRED (correctable)
     # v3.1 supersession: BR-RULE-213 mandates IO_REQUIRED reject-and-resubmit (replaces the earlier task-envelope-for-IO-signing modeling)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-io-acceptance-provided @v31 @io-acceptance @proposal-based @post-s11 @ext-x @happy-path
   Scenario: v3.1 io_acceptance with matching io_id and signatory completes proposal execution synchronously
@@ -2154,7 +2155,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: io_acceptance carries the signing metadata; signature_id is optional
     # BR-RULE-213 INV-3: complete io_acceptance -> gate satisfied, proceeds
     # POST-S11: Buyer knows the proposal was successfully executed with their total budget
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-io-acceptance-incomplete @v31 @io-acceptance @proposal-based @validation @post-f2 @ext-x
   Scenario Outline: v3.1 io_acceptance missing a required member rejects with INVALID_REQUEST
@@ -2167,7 +2168,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should reference the missing "<missing_member>" member
     And the error should include "suggestion" field
     # BR-RULE-213 INV-2: io_acceptance present but missing io_id/accepted_at/signatory -> INVALID_REQUEST naming member(s)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples:
       | missing_member |
@@ -2184,7 +2185,7 @@ Feature: BR-UC-002 Create Media Buy
     Then the request should proceed to further validation
     And the io_acceptance field should not affect processing
     # BR-RULE-213 INV-4: requires_signature false/absent -> io_acceptance optional, no effect
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-io-acceptance-signature-id @v31 @io-acceptance @proposal-based @ext-x @happy-path
   Scenario: v3.1 optional signature_id is recorded without altering the acceptance gate
@@ -2197,7 +2198,7 @@ Feature: BR-UC-002 Create Media Buy
     And the signature_id should be recorded as a signing-service reference
     # BR-RULE-213 INV-5: optional signature_id recorded as reference, does not alter gate outcome
     # --- v3.1: advertiser_industry per buy ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-advertiser-industry-per-buy @v31 @advertiser-industry @post-s1
   Scenario: v3.1 advertiser_industry on the request targets a single industry per buy
@@ -2211,7 +2212,7 @@ Feature: BR-UC-002 Create Media Buy
     And the seller should map advertiser_industry to its platform-native industry code
     # v3.1: a brand may operate across multiple industries; each media buy targets exactly one
     # --- v3.1: package paused flag ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-package-paused-on-creation @v31 @paused @post-s1
   Scenario: v3.1 package created with paused=true does not deliver impressions
@@ -2225,7 +2226,7 @@ Feature: BR-UC-002 Create Media Buy
     And the paused package should not deliver impressions until resumed
     # v3.1: paused flag on package-request (default false); paused packages do not serve
     # --- v3.1: committed_metrics negotiation ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-committed-metrics-standard-accepted @v31 @committed-metrics @post-s3
   Scenario: v3.1 committed_metrics standard scope -- seller accepts and stamps committed_at
@@ -2240,7 +2241,7 @@ Feature: BR-UC-002 Create Media Buy
     And the response package committed_metrics should echo the standard metric_id
     And the response package committed_metrics entry should include a "committed_at" timestamp
     # v3.1: committed_at is stamped by the seller on accept; request-side entries do not carry it
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-committed-metrics-rejected @v31 @committed-metrics @validation @post-f2
   Scenario: v3.1 committed_metrics references metric not in product available_metrics -- TERMS_REJECTED
@@ -2253,7 +2254,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should reference the offending committed_metrics entry
     # v3.1: seller SHOULD reject with TERMS_REJECTED when the proposal exceeds product capability
     # --- v3.1: planned_delivery transparency ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-planned-delivery-with-governance @v31 @planned-delivery @governance @post-s3
   Scenario: v3.1 planned_delivery present in response when account has governance agents
@@ -2267,7 +2268,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: planned_delivery describes what the seller will actually run (geo, channels, flight, freq caps, budget)
     # v3.1: present when account has governance_agents OR seller chooses to provide delivery transparency
     # --- v3.1: artifact_webhook for governance content delivery ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-artifact-webhook-config @v31 @artifact-webhook @governance
   Scenario: v3.1 artifact_webhook configured for content delivery to governance agent
@@ -2283,7 +2284,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: artifact_webhook enables governance content-adjacency validation
     # v3.1: same authentication structure as reporting_webhook (Bearer or HMAC-SHA256, both deprecated; RFC 9421 preferred)
     # --- v3.1: agency_estimate_number ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-agency-estimate-number-buy-level @v31 @agency-estimate-number @broadcast
   Scenario: v3.1 agency_estimate_number at media-buy level travels with the order
@@ -2297,7 +2298,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: primary financial reference for broadcast buys; maxLength 100
     # v3.1: per-package agency_estimate_number MAY override the buy-level value
     # --- v3.1 wave A: BUDGET_TOO_LOW error-details routing ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-error-budget-too-low-details @v31 @error-details @budget-too-low @post-f2 @post-f3
   Scenario: v3.1 BUDGET_TOO_LOW error carries minimum_budget and currency in details
@@ -2312,7 +2313,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: error-details/budget-too-low.json — recommended details for BUDGET_TOO_LOW
     # v3.1: recovery classification correctable — buyer adjusts and retries
     # --- v3.1 wave A: IDEMPOTENCY_CONFLICT error-details routing (idempotency revision mismatch) ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-error-conflict-details @v31 @error-details @conflict @idempotency-key @post-f2 @ext-w
   Scenario: v3.1 IDEMPOTENCY_CONFLICT error carries resource_id and version info on idempotency-key replay with divergent payload
@@ -2328,7 +2329,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: error-details/conflict.json — recommended details for IDEMPOTENCY_CONFLICT
     # v3.1: recovery correctable — resend the exact original payload, or mint a fresh idempotency_key for the changed order
     # --- v3.1 wave A: POLICY_VIOLATION error-details routing ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-error-policy-violation-details @v31 @error-details @policy-violation @post-f2 @post-f3 @ext-y
   Scenario: v3.1 POLICY_VIOLATION error carries policy_id and violated_rules
@@ -2343,7 +2344,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: error-details/policy-violation.json — recommended details for POLICY_VIOLATION
     # v3.1: policy_url MAY be present for full policy text retrieval
     # --- v3.1 wave A: BILLING_NOT_SUPPORTED error-details routing ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-error-billing-not-supported-capability @v31 @error-details @billing-not-supported @scope-capability @post-f2 @post-f3 @ext-z
   Scenario: v3.1 BILLING_NOT_SUPPORTED scope=capability echoes supported_billing
@@ -2358,7 +2359,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     # v3.1: error-details/billing-not-supported.json — capability-gate variant
     # v3.1: advice — buyer chooses from supported_billing and retries
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-error-billing-not-supported-account @v31 @error-details @billing-not-supported @scope-account @post-f2 @ext-z
   Scenario: v3.1 BILLING_NOT_SUPPORTED scope=account is emitted only when agent identity is established
@@ -2373,7 +2374,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     # v3.1: error-details/billing-not-supported.json — per-account-relationship gate
     # v3.1: scope MUST be omitted on the unauthenticated/unestablished-identity path to avoid acting as a per-account oracle
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-error-billing-not-supported-unauth-omits-scope @v31 @error-details @billing-not-supported @uniform-response @post-f2 @ext-z
   Scenario: v3.1 BILLING_NOT_SUPPORTED omits scope when agent identity is not established
@@ -2386,7 +2387,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     # v3.1: uniform-response rule — emitting scope=account on an unauthenticated path leaks per-account state
     # --- v3.1 wave A: BILLING_NOT_PERMITTED_FOR_AGENT error-details routing ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-error-billing-not-permitted-for-agent-suggested @v31 @error-details @billing-not-permitted-for-agent @autonomous-retry @post-f2 @post-f3 @ext-z
   Scenario: v3.1 BILLING_NOT_PERMITTED_FOR_AGENT with suggested_billing enables autonomous retry
@@ -2401,7 +2402,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     # v3.1: error-details/billing-not-permitted-for-agent.json — minimal shape
     # v3.1: suggested_billing carries AT MOST ONE canonical retry value
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-error-billing-not-permitted-for-agent-terminal @v31 @error-details @billing-not-permitted-for-agent @terminal-pending-onboarding @post-f2 @ext-z
   Scenario: v3.1 BILLING_NOT_PERMITTED_FOR_AGENT without suggested_billing is terminal-pending-onboarding
@@ -2415,7 +2416,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should include "suggestion" field
     # v3.1: terminal-pending-onboarding — buyer must complete offline payments-relationship onboarding
     # v3.1: sellers MUST NOT add ad-hoc keys carrying per-agent commercial state
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-billing-eligible-proceeds @v31 @billing @post-s6 @ext-z @happy-path
   Scenario: v3.1 billing party in supported_billing and agent-permitted proceeds past the billing gate
@@ -2426,7 +2427,7 @@ Feature: BR-UC-002 Create Media Buy
     When the Buyer Agent sends the create_media_buy request
     Then the request should proceed past the billing eligibility gate
     # BR-RULE-214 INV-1: eligible billing party -> proceeds to next validation
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-inv-214-8 @invariant @BR-RULE-214 @billing @v31 @open-question
   Scenario: INV-8 -- unauthorized invoice_recipient override fails the billing-eligibility gate
@@ -2439,7 +2440,7 @@ Feature: BR-UC-002 Create Media Buy
     And no dedicated error code is defined in v3.1 for this rejection
     # BR-RULE-214 INV-8 (v3.1): entity-level gate orthogonal to capability/per-account/per-agent gates; error code is an open question
     # --- v3.1 wave A: offering / offering-asset-group lifecycle ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-offering-referenced-via-package-catalog @v31 @offering @offering-asset-group @catalog-driven @post-s3
   Scenario: v3.1 media buy with catalog-driven package references brand offering with typed asset groups
@@ -2455,7 +2456,7 @@ Feature: BR-UC-002 Create Media Buy
     # v3.1: core/offering.json — promotable brand offering with assets[] of core/offering-asset-group.json
     # v3.1: asset_group_id values come from per-format offering_asset_constraints (discoverable via list_creative_formats)
     # --- v3.1 wave A: catchment in targeting.store_catchments ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-catchment-isochrone @v31 @catchment @store-catchments @targeting @post-s1
   Scenario: v3.1 targeting.store_catchments with isochrone method (travel_time + transport_mode)
@@ -2468,7 +2469,7 @@ Feature: BR-UC-002 Create Media Buy
     And the catchment should be accepted as an isochrone definition
     # v3.1: core/catchment.json — oneOf travel_time+transport_mode XOR radius XOR geometry
     # v3.1: travel_time requires transport_mode
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-catchment-radius @v31 @catchment @store-catchments @targeting @post-s1
   Scenario: v3.1 targeting.store_catchments with simple radius method
@@ -2480,7 +2481,7 @@ Feature: BR-UC-002 Create Media Buy
     Then the response should succeed
     And the catchment should be accepted as a radius definition
     # v3.1: core/catchment.json — radius variant (exclusiveMinimum 0)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-catchment-xor-violation @v31 @catchment @store-catchments @validation @post-f2
   Scenario: v3.1 catchment with both radius and geometry violates oneOf and is rejected
@@ -2492,7 +2493,7 @@ Feature: BR-UC-002 Create Media Buy
     And the error should reference the catchment oneOf constraint
     # v3.1: core/catchment.json — oneOf enforces exactly one method per catchment
     # --- v3.1 wave A: price (catalog/proposal pricing surface) ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-price-shape-on-proposal-item @v31 @price @proposal-based @post-s11
   Scenario: v3.1 proposal item carries price with amount, ISO 4217 currency, and period
@@ -2506,7 +2507,7 @@ Feature: BR-UC-002 Create Media Buy
     And the response status should be "completed"
     # v3.1: core/price.json — amount >= 0, currency ^[A-Z]{3}$, optional period (night|month|year|one_time)
     # --- v3.1 wave A: frequency_cap.scope vocabulary ---
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-frequency-cap-scope-package @v31 @frequency-cap-scope @targeting @post-s1
   Scenario: v3.1 frequency_cap.scope accepts the registered "package" value
@@ -2517,7 +2518,7 @@ Feature: BR-UC-002 Create Media Buy
     When the Buyer Agent sends the create_media_buy request
     Then the response should succeed
     # v3.1: enums/frequency-cap-scope.json — sole registered value is "package"
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-002-v31-frequency-cap-scope-unregistered @v31 @frequency-cap-scope @targeting @validation @post-f2
   Scenario: v3.1 frequency_cap.scope rejects unregistered values
@@ -2535,7 +2536,7 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
     Then the result should be <outcome>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
       | boundary_point                                              | outcome                                |
@@ -2552,7 +2553,7 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
     Then the result should be <outcome>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
       | boundary_point                                                                                                     | outcome                                              |
@@ -2569,7 +2570,7 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
     Then the result should be <outcome>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
       | boundary_point                                                  | outcome                               |
@@ -2585,7 +2586,7 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
     Then the result should be <outcome>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
       | boundary_point                                                                 | outcome                               |
@@ -2604,7 +2605,7 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
     Then the result should be <outcome>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
       | boundary_point                                          | outcome                               |
@@ -2624,7 +2625,7 @@ Feature: BR-UC-002 Create Media Buy
       | collection_list_exclude with valid agent_url and list_id  | targeting validation passes  |
       | both collection_list and collection_list_exclude set      | targeting validation passes  |
 
-  @T-UC-002-storyboard-async-submitted-envelope-task-id-roundtrip @storyboard-v3.1 @v3-1 @submitted-envelope @async @task-id-roundtrip
+  @T-UC-002-storyboard-async-submitted-envelope-task-id-roundtrip @schema-v3.1 @v3-1 @submitted-envelope @async @task-id-roundtrip
   Scenario: Async submitted envelope -- task_id matches deterministic value registered via comply_test_controller
     Given a comply_test_controller directive registered force_create_media_buy_arm with arm "submitted" and task_id "task_async_signed_io_q2"
     And the directive is keyed to the caller's authenticated sandbox account
@@ -2641,9 +2642,9 @@ Feature: BR-UC-002 Create Media Buy
     # that fabricate a fresh task_id break the buyer's polling contract -- buyers
     # cannot tell whether the buy is queued or confirmed.
     # create_media_buy_async: deterministic task_id roundtrips through registered controller directive
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/governance_approved.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/scenarios/governance_approved.yaml
 
-  @T-UC-002-storyboard-governance-approved @storyboard-v3.1 @v3-1 @governance @governance-decision
+  @T-UC-002-storyboard-governance-approved @schema-v3.1 @v3-1 @governance @governance-decision
   Scenario: Governance approved -- seller creates the buy and propagates the governance decision payload
     Given the buyer's governance agent has returned decision "APPROVED" for the proposed buy
     And the buyer attaches the governance_decision payload to the create_media_buy request
@@ -2655,9 +2656,9 @@ Feature: BR-UC-002 Create Media Buy
     # returns an APPROVED decision before create_media_buy. The seller persists the
     # buy with the governance_decision payload echoed in the response.
     # governance_approved: APPROVED decision flows through to the persisted buy
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/governance_conditions.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/scenarios/governance_conditions.yaml
 
-  @T-UC-002-storyboard-governance-with-conditions @storyboard-v3.1 @v3-1 @governance @governance-decision @conditions
+  @T-UC-002-storyboard-governance-with-conditions @schema-v3.1 @v3-1 @governance @governance-decision @conditions
   Scenario: Governance approved with conditions -- seller attaches conditions to the buy
     Given the buyer's governance agent has returned decision "APPROVED_WITH_CONDITIONS" with a non-empty conditions array
     And the buyer attaches the governance_decision payload to the create_media_buy request
@@ -2670,9 +2671,9 @@ Feature: BR-UC-002 Create Media Buy
     # conditions on the response so downstream systems (delivery monitoring,
     # billing) can enforce them.
     # governance_conditions: conditions persist on the buy for downstream enforcement
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/governance_denied.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/scenarios/governance_denied.yaml
 
-  @T-UC-002-storyboard-governance-denied @storyboard-v3.1 @v3-1 @governance @governance-decision @rejection
+  @T-UC-002-storyboard-governance-denied @schema-v3.1 @v3-1 @governance @governance-decision @rejection
   Scenario: Governance denied -- seller rejects the buy with GOVERNANCE_DENIED and propagates denial rationale
     Given the buyer's governance agent has returned decision "DENIED" with a denial reason
     And the buyer attaches the governance_decision payload to the create_media_buy request
@@ -2685,9 +2686,9 @@ Feature: BR-UC-002 Create Media Buy
     # the denial reason on the error details so the buyer's orchestrator can
     # log and either escalate to human or retry with reduced scope.
     # governance_denied: seller surfaces governance denial as a structured error
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/governance_denied_recovery.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/scenarios/governance_denied_recovery.yaml
 
-  @T-UC-002-storyboard-governance-denied-recovery @storyboard-v3.1 @v3-1 @governance @recovery
+  @T-UC-002-storyboard-governance-denied-recovery @schema-v3.1 @v3-1 @governance @recovery
   Scenario: Governance denied recovery -- buyer shrinks the buy to within plan limits and retries successfully
     Given a previous create_media_buy attempt failed with error code "GOVERNANCE_DENIED"
     And the buyer reduces the proposed buy to within the governance agent's spending authority
@@ -2701,7 +2702,7 @@ Feature: BR-UC-002 Create Media Buy
     # resubmits. The seller MUST accept the retried buy on its merits without
     # caching the prior denial.
     # governance_denied_recovery: corrected buy with new APPROVED decision succeeds
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/inventory_list_no_match.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/scenarios/inventory_list_no_match.yaml
 
   @T-UC-002-storyboard-inventory-list-no-match @storyboard-v3.1 @v3-1 @inventory-list @no-match
   Scenario: Inventory list references that resolve to zero inventory -- zero-forecast or informative error, never silent success
@@ -2720,7 +2721,7 @@ Feature: BR-UC-002 Create Media Buy
     # identifying which list matched nothing. Silently-successful buys with normal
     # forecast numbers, crashes, or non-AdCP error shapes are compliance failures.
     # inventory_list_no_match: empty intersection MUST be surfaced truthfully
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/inventory_list_targeting.yaml
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/scenarios/inventory_list_no_match.yaml phase=no_match_attempt step=create_buy_no_match
 
   @T-UC-002-storyboard-inventory-list-targeting-parity @storyboard-v3.1 @v3-1 @inventory-list @property-list @collection-list
   Scenario: PropertyListReference and CollectionListReference honored in package targeting on create_media_buy
@@ -2735,7 +2736,7 @@ Feature: BR-UC-002 Create Media Buy
     # storyboard also asserts parity with update_media_buy (covered in UC-003)
     # so the buyer can manage list-bound buys post-creation.
     # inventory_list_targeting: list-based targeting honored on create
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/measurement_terms_rejected.yaml
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/scenarios/inventory_list_targeting.yaml phase=create_with_both_lists step=create_buy_with_lists
 
   @T-UC-002-storyboard-measurement-terms-rejected @storyboard-v3.1 @v3-1 @measurement-terms @rejection
   Scenario: Measurement terms unworkable for the seller -- TERMS_REJECTED with terms identified in error details
@@ -2751,9 +2752,9 @@ Feature: BR-UC-002 Create Media Buy
     # committed_metrics references not in product available_metrics; this storyboard
     # tests the measurement_terms field specifically.
     # measurement_terms_rejected: seller refuses unworkable measurement_terms with structured error
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/pending_creatives_to_start.yaml
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/scenarios/measurement_terms_rejected.yaml phase=reject_terms step=create_media_buy_aggressive_terms
 
-  @T-UC-002-storyboard-pending-creatives-state-transition @storyboard-v3.1 @v3-1 @lifecycle @pending-creatives @pending-start
+  @T-UC-002-storyboard-pending-creatives-state-transition @schema-v3.1 @v3-1 @lifecycle @pending-creatives @pending-start
   Scenario: Media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start
     Given the buyer sends create_media_buy without inline creatives
     When the Buyer Agent sends the create_media_buy request

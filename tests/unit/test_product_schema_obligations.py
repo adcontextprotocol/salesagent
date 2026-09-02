@@ -1019,39 +1019,57 @@ class TestPaginatedDiscoverySchema:
         req = GetProductsRequest()
         assert req.pagination is None  # Not specified = use server default (50)
 
-    async def test_pagination_min_max_results_bounds(self):
-        """max_results minimum bound is 1.
+    def _assert_max_results_bound(self, *, rejected: int, error_type: str, boundary: int) -> None:
+        """Grade one end of the `max_results` range at `Layer: schema`.
+
+        Both bound obligations are the same logical check with different values,
+        so they share this helper rather than carrying a second copy of it (the
+        duplication ratchet enforces that). Asserting the boundary value is
+        ACCEPTED as well as the out-of-range one rejected pins the bound as
+        inclusive -- a one-sided check passes just as well against an off-by-one
+        constraint.
+        """
+        from pydantic import ValidationError
+
+        from src.core.schemas import GetProductsRequest
+
+        with pytest.raises(ValidationError) as exc_info:
+            GetProductsRequest(pagination={"max_results": rejected})
+        assert exc_info.value.errors()[0]["type"] == error_type
+
+        accepted = GetProductsRequest(pagination={"max_results": boundary})
+        assert accepted.pagination.max_results == boundary
+
+    def test_pagination_min_max_results_bounds(self):
+        """max_results below the minimum of 1 is rejected.
 
         Covers: UC-001-ALT-PAGINATED-DISCOVERY-07
+
+        The obligation is `pagination: {max_results: 0}` -> the request is
+        REJECTED, graded at `Layer: schema` ("when the system VALIDATES the
+        request"). This previously submitted max_results=1 -- an in-bounds value,
+        the opposite of the obligation's input -- through `_impl` and asserted
+        `len(products) >= 1`, which any non-empty catalog satisfies. It therefore
+        graded neither the bound nor pagination, and only appeared meaningful
+        until `_impl` started refusing the unimplemented `pagination` control
+        (#1858), which is a behavioral concern this schema-layer
+        obligation does not reach. Bound: adcp 6.6.0 core/pagination-request.json
+        `max_results.minimum: 1`.
         """
-        with ProductEnv() as env:
-            for i in range(5):
-                env.add_product(product_id=f"prod_{i:03d}")
+        self._assert_max_results_bound(rejected=0, error_type="greater_than_equal", boundary=1)
 
-            response = await env.call_impl(
-                brief="test",
-                pagination={"max_results": 1},
-            )
-
-            # Pagination is accepted by the request schema
-            assert len(response.products) >= 1, "Pagination with max_results=1 accepted"
-
-    async def test_pagination_max_max_results_bounds(self):
-        """max_results maximum bound is 100.
+    def test_pagination_max_max_results_bounds(self):
+        """max_results above the maximum of 100 is rejected.
 
         Covers: UC-001-ALT-PAGINATED-DISCOVERY-08
+
+        The obligation is `pagination: {max_results: 200}` -> rejected OR clamped
+        to 100; this seller rejects. Same correction as -07 above: the previous
+        version submitted the in-bounds value 100 through `_impl` and counted
+        products. Bound: adcp 6.6.0 core/pagination-request.json
+        `max_results.maximum: 100`.
         """
-        with ProductEnv() as env:
-            for i in range(5):
-                env.add_product(product_id=f"prod_{i:03d}")
-
-            response = await env.call_impl(
-                brief="test",
-                pagination={"max_results": 100},
-            )
-
-            # All 5 products returned (within 100 limit)
-            assert len(response.products) == 5
+        self._assert_max_results_bound(rejected=200, error_type="less_than_equal", boundary=100)
 
 
 # ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ from typing import Any
 
 from pytest_bdd import given, parsers, then, when
 
-from tests.bdd.steps._outcome_helpers import _require_error
+from tests.bdd.steps._outcome_helpers import _require_error, wire_error_envelope_or_none
 from tests.bdd.steps.generic.given_media_buy import _ensure_request_defaults
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1905,6 +1905,17 @@ def then_outcome(ctx: dict, outcome: str) -> None:
     HARD-FAILS on a non-pinned code (e.g. the scenario-only
     DOMAIN_INVALID_FORMAT that production never emits), so those — and the
     no-wire case — fall through to the reconstructed-exception branch.
+
+    The presence of that wire envelope is read through the single guarded
+    accessor ``wire_error_envelope_or_none`` (``_outcome_helpers.py``) rather
+    than off ``ctx['result'].wire_error_envelope`` by hand — the strict variant
+    that returns the REAL envelope or ``None``, which is exactly the
+    distinction ``assert_wire_error`` needs (it reads ``wire_error_envelope``
+    specifically and would raise its own misleading error on a
+    synthesized-only result, so ``wire_error_dict``'s IMPL fallback is the
+    wrong accessor here). Same shape as ``then_error.then_error_recovery``.
+    A non-``None`` envelope implies ``ctx['result']`` exists, so the wire
+    branch subscripts it directly.
     """
     import re
 
@@ -1924,9 +1935,8 @@ def then_outcome(ctx: dict, outcome: str) -> None:
     expected_code = code_match.group(1) if code_match else None
     require_suggestion = "with suggestion" in outcome
 
-    result = ctx.get("result")
-    if is_pinned_error_code(expected_code) and result is not None and result.wire_error_envelope is not None:
-        result.assert_wire_error(expected_code, require_suggestion=require_suggestion)
+    if is_pinned_error_code(expected_code) and wire_error_envelope_or_none(ctx) is not None:
+        ctx["result"].assert_wire_error(expected_code, require_suggestion=require_suggestion)
         return
 
     # Reconstructed fallback: non-pinned scenario code, or no wire envelope.

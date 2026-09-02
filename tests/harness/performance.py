@@ -29,6 +29,11 @@ class PerformanceEnv(IntegrationEnv):
     No patches — the adapter call runs for real against the mock adapter.
     """
 
+    # Dispatch declaration: the base owns call_mcp/call_a2a.
+    MCP_TOOL = "update_performance_index"
+    A2A_SKILL = "update_performance_index"
+    RESPONSE_MODEL = UpdatePerformanceIndexResponse
+
     EXTERNAL_PATCHES: dict[str, str] = {}
     REST_ENDPOINT = "/api/v1/performance-index"
 
@@ -54,14 +59,6 @@ class PerformanceEnv(IntegrationEnv):
                 context=kwargs.get("context"),
             )
         return _update_performance_index_impl(req=req, identity=identity)
-
-    def call_a2a(self, **kwargs: Any) -> Any:
-        """Dispatch update_performance_index through the REAL A2A pipeline."""
-        return self._run_a2a_handler("update_performance_index", UpdatePerformanceIndexResponse, **kwargs)
-
-    def call_mcp(self, **kwargs: Any) -> Any:
-        """Call update_performance_index via Client(mcp) — full pipeline dispatch."""
-        return self._run_mcp_client("update_performance_index", UpdatePerformanceIndexResponse, **kwargs)
 
     def build_rest_body(self, **kwargs: Any) -> dict[str, Any]:
         """Convert flat wire params into the /performance-index POST body.

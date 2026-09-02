@@ -1267,7 +1267,7 @@ Feature: BR-UC-011 Manage Accounts
     And the error "details" object should include "setup_steps" as a non-empty array of strings
     # @bva status + setup (approval workflow): ACCOUNT_SETUP_REQUIRED details with setup_url + setup_steps
     # v3.1: setup_url + setup_steps enable operator-side completion without re-querying
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/account/list-accounts-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/account/list-accounts-request.json
 
   @T-UC-011-v31-error-conflict-version @v3-1 @error-details @concurrency @post-f1 @post-f2 @post-f3
   Scenario: CONFLICT on sync_accounts carries v3.1 details shape (resource_id + expected/current version)
@@ -1281,7 +1281,7 @@ Feature: BR-UC-011 Manage Accounts
     And the error "details" object should include "expected_version" with value 9
     And the error "details" object should include "current_version" with value 12
     # v3.1: CONFLICT details enable optimistic-concurrency retry on batch account sync
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/account/list-accounts-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/account/list-accounts-request.json
 
   @T-UC-011-v31-error-idempotency-conflict @v3-1 @error-details @idempotency @ext-h @post-f1 @post-f2 @post-f3
   Scenario: IDEMPOTENCY_CONFLICT on sync_accounts carries v3.1 details shape with ETag versions

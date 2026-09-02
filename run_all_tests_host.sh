@@ -45,10 +45,27 @@ from src.core.tools.media_buy_create import _create_media_buy_impl
     echo -e "${GREEN}Imports OK${NC}"; echo ""
 }
 
+# Suite reports this script may publish. Named once so the pre-run purge and the
+# copy below cannot drift apart — a report present in one list and absent from
+# the other is how a stale file survives.
+_REPORT_SUITES="unit integration e2e admin bdd ui"
+
+purge_stale_reports() {
+    # `.tox/` persists between invocations, so a suite that dies before writing
+    # leaves the PREVIOUS run's report there and collect_reports cannot tell it
+    # apart from one this run produced. Deleting first makes a stale report
+    # unrepresentable rather than detectable: afterwards a report exists only if
+    # THIS run wrote it. Same fix as run_all_tests.sh; this script had the
+    # identical defect and no pre-run purge.
+    for name in $_REPORT_SUITES; do
+        rm -f ".tox/${name}.json"
+    done
+}
+
 collect_reports() {
     # Copy JSON reports from .tox/ to results dir
     mkdir -p "$RESULTS_DIR"
-    for name in unit integration e2e admin bdd ui; do
+    for name in $_REPORT_SUITES; do
         [ -f ".tox/${name}.json" ] && cp ".tox/${name}.json" "$RESULTS_DIR/"
     done
     # Explicit return 0 — without this, the function inherits the exit code
@@ -69,6 +86,7 @@ if [ "$MODE" = "quick" ]; then
     set +eo pipefail
     # Redirect to file + stdout via process substitution to avoid tox-uv fd leak
     # that causes pipes (| tee) to hang after tox exits.
+    purge_stale_reports
     tox -e unit,integration -p > >(tee "$RESULTS_DIR/tox.log") 2>&1
     TOX_RC=${PIPESTATUS[0]}
     set -eo pipefail
@@ -109,6 +127,7 @@ elif [ "$MODE" = "ci" ]; then
     else
         echo -e "${BLUE}Running all 6 suites in parallel via tox...${NC}"
         set +eo pipefail
+        purge_stale_reports
         tox -p -o > >(tee "$RESULTS_DIR/tox.log") 2>&1
         TOX_RC=${PIPESTATUS[0]}
         set -eo pipefail

@@ -45,7 +45,25 @@ _DOCKER_STUB = """#!/usr/bin/env bash
 # Records every invocation of this fake `docker` (argv, space-joined) to
 # $DOCKER_STUB_LOG, then reports success unconditionally so run_all_tests.sh's
 # control flow proceeds exactly as it would against a real, healthy stack.
+#
+# "As it would against a healthy stack" includes WRITING THE REPORTS. tox runs
+# inside the container, so its `.tox/<suite>.json` never reaches the host when
+# `docker` is stubbed -- and the runner's missing-report arm correctly fails a
+# run that produced none ("a suite that produced none was not measured"). A stub
+# that swallows the tox call without leaving reports behind is simulating a
+# stack where every suite died, not a healthy one. Emit a minimal report per
+# suite on the tox invocation so the simulation is faithful; the shape is what
+# scripts/check_truncated_reports.py reads (collected/total/deselected).
 printf '%s\\n' "$*" >> "$DOCKER_STUB_LOG"
+case "$*" in
+  *tox*)
+    mkdir -p .tox
+    for _s in unit integration bdd bdd_inprocess bdd_e2e admin e2e ui storyboard; do
+      printf '%s' '{"summary": {"collected": 1, "total": 1, "passed": 1, "deselected": 0}, "exitcode": 0}' \\
+        > ".tox/${_s}.json"
+    done
+    ;;
+esac
 exit 0
 """
 
@@ -62,9 +80,21 @@ exit 0
 #:                             `eval "export $(...)"` to consume. A double that
 #:                             printed nothing would leave that variable unbound
 #:                             under `set -u`.
+#:   check_truncated_reports.py  pure-stdlib JSON arithmetic over $RESULTS_DIR
+#:                             (main, PR #2091): the runner shells out to it
+#:                             after collecting reports so a truncated suite is
+#:                             not mistakable for a green one. It reaches
+#:                             nothing outside the workdir, and its absence is
+#:                             not inert -- whichever report-extraction shape
+#:                             run_all_tests.sh settles on, a populated
+#:                             $RESULTS_DIR makes the runner invoke it, and a
+#:                             missing file would surface only as a python3
+#:                             "No such file or directory" the rot guard below
+#:                             has to name.
 _REAL_HOST_SCRIPTS = (
     "scripts/creative-agent-stack.sh",
     "scripts/dev/alloc-e2e-subnet.sh",
+    "scripts/check_truncated_reports.py",
 )
 
 #: Helper scripts run_all_tests.sh executes on the host that must NOT run for

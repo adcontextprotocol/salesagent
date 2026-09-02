@@ -39,6 +39,11 @@ class CreativeListEnv(IntegrationEnv):
     - Real query building, filtering, pagination
     """
 
+    # Dispatch declaration: the base owns call_mcp/call_a2a.
+    MCP_TOOL = "list_creatives"
+    A2A_SKILL = "list_creatives"
+    RESPONSE_MODEL = ListCreativesResponse
+
     EXTERNAL_PATCHES = {
         "audit_logger": "src.core.tools.creatives.listing.get_audit_logger",
     }
@@ -74,14 +79,6 @@ class CreativeListEnv(IntegrationEnv):
             req = _build_list_creatives_request(**kwargs)
 
         return _list_creatives_impl(req=req, identity=identity, **out_of_band)
-
-    def call_a2a(self, **kwargs: Any) -> ListCreativesResponse:
-        """Call list_creatives via real AdCPRequestHandler — full A2A pipeline."""
-        return self._run_a2a_handler("list_creatives", ListCreativesResponse, **kwargs)
-
-    def call_mcp(self, **kwargs: Any) -> ListCreativesResponse:
-        """Call list_creatives via Client(mcp) — full pipeline dispatch."""
-        return self._run_mcp_client("list_creatives", ListCreativesResponse, **kwargs)
 
     def build_rest_body(self, **kwargs: Any) -> dict[str, Any]:
         """Convert kwargs to ListCreativesBody shape for REST POST."""

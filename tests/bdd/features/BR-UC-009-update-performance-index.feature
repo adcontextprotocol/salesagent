@@ -32,7 +32,7 @@ Feature: BR-UC-009 Update Performance Index
     And the response success field should be true
     # POST-S1: Feedback accepted and forwarded to adapter
     # POST-S2: Buyer receives success: true confirmation (v3.1 Success branch)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-main-mcp-adapter @main-flow @mcp @adapter
   Scenario: MCP feedback is forwarded to adapter with mapped packages
@@ -46,7 +46,7 @@ Feature: BR-UC-009 Update Performance Index
     | pkg_social_001 | 0.9               |
     | pkg_video_001  | 1.5               |
     # POST-S3: Adapter receives performance index mapped to packages
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-main-mcp-audit @main-flow @mcp @audit
   Scenario: MCP performance feedback is audit-logged
@@ -74,7 +74,7 @@ Feature: BR-UC-009 Update Performance Index
     And the response success field should be true
     # POST-S1: Feedback accepted and forwarded
     # POST-S2: Buyer receives success: true confirmation (v3.1 Success branch)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-main-rest-adapter @main-flow @rest @adapter
   Scenario: A2A feedback is forwarded to adapter with mapped packages
@@ -103,7 +103,7 @@ Feature: BR-UC-009 Update Performance Index
     And the audit log should show avg_performance 0.833
     # POST-S1, POST-S3: All products forwarded
     # POST-S4: Audit with correct count and average
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-single @main-flow @batch
   Scenario: Single product performance feedback
@@ -115,7 +115,7 @@ Feature: BR-UC-009 Update Performance Index
     Then the operation should succeed
     And 1 product should be forwarded to the adapter
     # POST-S1: Single product forwarded
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-idempotent @main-flow @idempotent @extension @ext-e @BR-RULE-081
   Scenario: Duplicate performance feedback submission succeeds
@@ -134,7 +134,7 @@ Feature: BR-UC-009 Update Performance Index
     And the response should NOT contain an errors array
     # BR-RULE-018 INV-1: Successful operation -> success: true (const), no errors[]
     # v3.1 wire: Success branch carries {success: true, optional sandbox, context, ext} only — no status/detail fields
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-018-2 @invariant @BR-RULE-018 @error
   Scenario: INV-2 holds - error response contains only error fields
@@ -174,7 +174,7 @@ Feature: BR-UC-009 Update Performance Index
     And the response context should contain session_id "sess_abc"
     And the response context should contain trace_id "trace_12345"
     # BR-RULE-043 INV-1: Context provided -> echoed unchanged
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-043-2 @invariant @BR-RULE-043 @context
   Scenario: INV-2 holds - context omitted means no context in response
@@ -407,7 +407,7 @@ Feature: BR-UC-009 Update Performance Index
     # POST-F1: No performance data written
     # POST-F2: Buyer knows the identifier was invalid
     # POST-F3: Context echoed if provided
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-ext-a-rest @extension @ext-a @error @rest
   Scenario: Media buy not found - A2A path
@@ -435,7 +435,7 @@ Feature: BR-UC-009 Update Performance Index
     And the suggestion should contain "correct parameter format"
     # POST-F1: No performance data written
     # POST-F2: Buyer knows which parameters were invalid
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-ext-b-mcp-empty @extension @ext-b @error @mcp @validation
   Scenario: Validation error - MCP - empty performance_data list
@@ -450,7 +450,7 @@ Feature: BR-UC-009 Update Performance Index
     And the suggestion should contain "provide at least one product entry"
     # POST-F1: No data written
     # POST-F2: Buyer knows data was empty
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-ext-b-rest @extension @ext-b @error @rest @validation
   Scenario: Validation error - A2A - missing required parameters
@@ -463,7 +463,7 @@ Feature: BR-UC-009 Update Performance Index
     And the suggestion should contain "required fields"
     # POST-F1: No data written
     # POST-F2: Buyer knows what is required (A2A-specific required_parameters)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-ext-b-rest-pydantic @extension @ext-b @error @rest @validation
   Scenario: Validation error - A2A - Pydantic model validation failure
@@ -476,7 +476,7 @@ Feature: BR-UC-009 Update Performance Index
     And the error should include "suggestion" field
     And the suggestion should contain "correct data format"
     # POST-F2: Buyer knows specific field failures
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-ext-b-type @extension @ext-b @error @validation
   Scenario: Validation error - performance_index wrong type
@@ -502,7 +502,7 @@ Feature: BR-UC-009 Update Performance Index
     # BR-RULE-285 INV-1: no resolvable principal -> AUTH_MISSING
     # POST-F1: No data written
     # POST-F2: Buyer knows authentication is required
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-ext-c-ownership @extension @ext-c @error @auth @ownership @BR-RULE-285
   Scenario: Principal does not own media buy
@@ -517,7 +517,7 @@ Feature: BR-UC-009 Update Performance Index
     # BR-RULE-285 INV-2: principal does not own media buy -> PERMISSION_DENIED
     # POST-F1: No data written
     # POST-F2: Buyer knows ownership check failed
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-ext-c-principal @extension @ext-c @error @auth
   Scenario: Principal object not found
@@ -530,7 +530,7 @@ Feature: BR-UC-009 Update Performance Index
     And the suggestion should contain "verify principal configuration"
     # POST-F1: No data written
     # POST-F2: Buyer knows principal lookup failed
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-ext-c-a2a-auth @extension @ext-c @error @auth @rest @BR-RULE-285
   Scenario: Authentication failure - A2A path - invalid auth token
@@ -562,7 +562,7 @@ Feature: BR-UC-009 Update Performance Index
     # POST-F2: Buyer knows adapter failed via populated errors[] (v3.1 Error branch; no status field)
     # POST-F3: Context echoed in constructed response
     # BR-RULE-018 INV-2: Error branch carries errors[] (minItems 1), success/sandbox absent
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-ext-d-exception @extension @ext-d @error @adapter @rest
   Scenario: Adapter raises exception - A2A path
@@ -593,7 +593,7 @@ Feature: BR-UC-009 Update Performance Index
     # BR-RULE-209 INV-2: real ad platform calls suppressed
     # BR-RULE-209 INV-3: real billing suppressed
     # BR-RULE-209 INV-4: response includes sandbox: true
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-sandbox-production @invariant @br-rule-209 @sandbox
   Scenario: Production account performance feedback response does not include sandbox flag
@@ -606,7 +606,7 @@ Feature: BR-UC-009 Update Performance Index
     And the response should not include a sandbox field
     # BR-RULE-209 INV-5: production account -> sandbox absent
     # v3.1 wire: Success branch carries {success: true, context, optional ext} — no status field
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-sandbox-validation @invariant @br-rule-209 @sandbox
   Scenario: Sandbox account with invalid performance index returns real validation error
@@ -627,7 +627,7 @@ Feature: BR-UC-009 Update Performance Index
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     # BR-RULE-281 INV-2: missing required envelope field -> INVALID_REQUEST
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-281-5 @invariant @BR-RULE-281 @error @measurement-period @partition
   Scenario Outline: INV-5 violated - start >= end is rejected (<partition>)
@@ -637,7 +637,7 @@ Feature: BR-UC-009 Update Performance Index
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     # BR-RULE-281 INV-5: strict start < end; zero-duration or inverted -> rejection
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples:
       | partition        | start                | end                  |
@@ -662,7 +662,7 @@ Feature: BR-UC-009 Update Performance Index
     Then the operation should succeed
     And the consumer-visible schema MUST mark metric_type as DEPRECATED
     # BR-RULE-282 INV-3: one-minor BC deprecation surface
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-282-4 @invariant @BR-RULE-282 @BR-RULE-283 @dispatch
   Scenario: INV-4 holds - when both metric and legacy metric_type are present, dispatch is on metric
@@ -682,7 +682,7 @@ Feature: BR-UC-009 Update Performance Index
     Then the operation should succeed
     And validation MUST NOT reject for missing metric
     # BR-RULE-283 INV-1: missing metric -> holistic, accepted
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-283-2 @invariant @BR-RULE-283 @error
   Scenario: INV-2 violated - metric.scope outside closed set is rejected
@@ -692,7 +692,7 @@ Feature: BR-UC-009 Update Performance Index
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     # BR-RULE-283 INV-2: scope must be {standard, vendor}
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-283-3 @invariant @BR-RULE-283 @error
   Scenario: INV-3 violated - metric.scope=standard with out-of-enum metric_id is rejected
@@ -704,7 +704,7 @@ Feature: BR-UC-009 Update Performance Index
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     # BR-RULE-283 INV-3: scope=standard -> metric_id MUST be available-metric enum member
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-283-4 @invariant @BR-RULE-283 @error @partition
   Scenario Outline: INV-4 violated - metric.scope=vendor missing or malformed (<partition>)
@@ -714,7 +714,7 @@ Feature: BR-UC-009 Update Performance Index
     And the error code should be "<code>"
     And the error should include "suggestion" field
     # BR-RULE-283 INV-4: scope=vendor needs both vendor and metric_id; format violation -> VALIDATION_ERROR
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples:
       | partition         | field_present                                                       | code             |
@@ -730,7 +730,7 @@ Feature: BR-UC-009 Update Performance Index
     And the error code should be "FIELD_NOT_PERMITTED"
     And the error should include "suggestion" field
     # BR-RULE-283 INV-5: qualifier has additionalProperties:false
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-283-6 @invariant @BR-RULE-283 @error
   Scenario: INV-6 violated - metric object with unknown top-level key is rejected
@@ -747,7 +747,7 @@ Feature: BR-UC-009 Update Performance Index
     When the Buyer Agent submits performance feedback for "mb_vendor_omitted_001" with feedback_source "<feedback_source>" and vendor omitted
     Then the operation should succeed
     # BR-RULE-284 INV-1: vendor is OPTIONAL at schema level
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples:
       | feedback_source         |
@@ -764,7 +764,7 @@ Feature: BR-UC-009 Update Performance Index
     And the error code should be "VALIDATION_ERROR"
     And the error should include "suggestion" field
     # BR-RULE-284 INV-2: vendor must satisfy brand-ref schema
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-284-3 @invariant @BR-RULE-284 @advisory @partition
   Scenario Outline: INV-3 holds - third-party/verification source with vendor absent yields advisory (not rejection) (<feedback_source>)
@@ -774,7 +774,7 @@ Feature: BR-UC-009 Update Performance Index
     And the response MAY include an advisory warning "VENDOR_ATTRIBUTION_RECOMMENDED"
     And the request MUST NOT be rejected
     # BR-RULE-284 INV-3: SHOULD-populate guidance -> advisory only
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples:
       | feedback_source         |
@@ -799,7 +799,7 @@ Feature: BR-UC-009 Update Performance Index
     Then the operation should fail
     And the error code should be "PERMISSION_DENIED"
     # BR-RULE-285 INV-3: ownership re-evaluated per call against current tenant/principal state
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
   @T-UC-009-inv-285-4 @invariant @BR-RULE-285 @auth @ordering
   Scenario: INV-4 holds - authentication is checked before ownership
@@ -816,7 +816,7 @@ Feature: BR-UC-009 Update Performance Index
     When the Buyer Agent submits performance feedback exercising the metric boundary
     Then the outcome should be <outcome>
     # All "validation error" outcomes above assert the canonical INVALID_REQUEST/VALIDATION_ERROR/FIELD_NOT_PERMITTED rejection with a recovery suggestion (see BR-RULE-283 invariant scenarios T-UC-009-inv-283-2..6 for assertion details).
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples: Valid metric branches
       | partition                                                              | outcome          |
@@ -842,7 +842,7 @@ Feature: BR-UC-009 Update Performance Index
     When the Buyer Agent submits performance feedback with the context boundary
     Then the outcome should be success
     And the response context echo behavior matches the partition
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples:
       | partition              |
@@ -855,7 +855,7 @@ Feature: BR-UC-009 Update Performance Index
     Given the Buyer owns media buy "mb_bva_sandbox"
     When the Buyer Agent submits valid performance feedback against the account class
     Then the response carries the expected sandbox semantics
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples: Response shape boundaries
       | partition                                          |
@@ -869,7 +869,7 @@ Feature: BR-UC-009 Update Performance Index
     When the Buyer Agent submits performance feedback exercising the measurement_period boundary
     Then the outcome should be <outcome>
     # All "validation error" outcomes above assert INVALID_REQUEST with a recovery suggestion (see invariant scenarios T-UC-009-inv-281-2 / T-UC-009-inv-281-5 / T-UC-009-inv-281-6).
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples: Invalid windows (atomic rejection, INVALID_REQUEST + suggestion)
       | partition                                                | outcome          |
@@ -886,7 +886,7 @@ Feature: BR-UC-009 Update Performance Index
     When the Buyer Agent submits performance feedback exercising the metric_type boundary
     Then the outcome should be success
     # Dispatch-precedence row (metric+metric_type both present) is success: consumers MUST use `metric` for dispatch per BR-RULE-282 INV-4 (covered fully by T-UC-009-inv-282-4); legacy metric_type retained for one-minor BC.
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples: Default / omitted / dispatch precedence
       | partition                                                              |
@@ -900,7 +900,7 @@ Feature: BR-UC-009 Update Performance Index
     When the Buyer Agent submits performance feedback exercising the idempotency_key boundary
     Then the outcome should be <outcome>
     # The "validation error" outcomes assert VALIDATION_ERROR / IDEMPOTENCY_KEY_INVALID_FORMAT with a recovery suggestion (use a fresh UUID v4 of length 16-255 with allowed character set).
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples: Length and pattern boundaries
       | partition                                          | outcome          |
@@ -915,7 +915,7 @@ Feature: BR-UC-009 Update Performance Index
     When the Buyer Agent submits performance feedback exercising the media_buy_identification boundary
     Then the outcome should be <outcome>
     # "media_buy_id absent (missing)" asserts INVALID_REQUEST with a recovery suggestion (provide a seller-issued media_buy_id; buyer_ref XOR was retired in v3.1).
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/provide-performance-feedback-request.json
 
     Examples:
       | partition                          | outcome          |

@@ -18,9 +18,8 @@ observation. Both the production filter fix and the REST harness fix
 (``build_rest_body`` now transmits ``format_ids``) are required for this to hold on
 all three transports.
 
-@source repo=adcp ref=v3.1.0-beta.3
-  path=static/compliance/source/protocols/media-buy/index.yaml
-  (step list_formats, refs_resolve: match_keys [agent_url, id], scope.equals $agent_url, on_out_of_scope: warn)
+@source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/index.yaml step=list_formats
+(refs_resolve: match_keys [agent_url, id], scope.equals $agent_url, on_out_of_scope: warn)
 """
 
 from __future__ import annotations

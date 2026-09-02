@@ -161,6 +161,83 @@ def wire_absent(ctx: dict, path: str) -> None:
     assert value is WIRE_MISSING, f"{path!r} unexpectedly present on the wire: {value!r}"
 
 
+def _real_wire_error_envelope(ctx: dict) -> dict | None:
+    """Read ``TransportResult.wire_error_envelope`` — the ONE attribute-access site.
+
+    Every reader of this field, anywhere in ``tests/bdd/steps/``, must go
+    through this module (:func:`wire_error_envelope_or_none` or
+    :func:`wire_error_dict`) rather than hand-rolling
+    ``getattr(result, "wire_error_envelope", None)`` — enforced by
+    ``test_architecture_bdd_wire_discipline.py``'s access-pattern check.
+    """
+    result = ctx.get("result")
+    return getattr(result, "wire_error_envelope", None) if result is not None else None
+
+
+def wire_error_envelope_or_none(ctx: dict) -> dict | None:
+    """Return the REAL wire error envelope (REST/A2A/MCP) captured for this dispatch, or ``None``.
+
+    No loud guard, no IMPL-synthesized fallback — the strict counterpart to
+    :func:`wire_error_dict`. Use this when a caller must distinguish "a real
+    wire envelope was captured" from "only the IMPL-synthesized one exists"
+    before delegating to ``TransportResult.assert_wire_error``, which reads
+    ``wire_error_envelope`` specifically and raises its own (misleading)
+    error if handed a synthesized-only result (``then_error_recovery``'s
+    reason for using this instead of ``wire_error_dict``). Returns ``None``
+    on IMPL and on any scenario where no wire envelope was captured —
+    callers fall back to the reconstructed ``ctx['error']``.
+    """
+    return _real_wire_error_envelope(ctx)
+
+
+def wire_error_dict(ctx: dict) -> dict:
+    """Return the full error-path wire envelope as the buyer sees it on the wire.
+
+    The error-path analogue of :func:`wire_dict` — the single guarded accessor
+    for ``TransportResult.wire_error_envelope``, which its own docstring names
+    "the canonical field for error verification" (``tests/CLAUDE.md`` § Error
+    Verification Policy) and whose ``assert_wire_error`` calls "the single
+    harness-provided way to verify an error on the wire — step definitions
+    must not hand-roll envelope parsing." Callers that only need to read a
+    field off the envelope (e.g. ``context.correlation_id`` echo checks) call
+    this directly; callers verifying the error SHAPE should prefer
+    ``result.assert_wire_error(...)``, the single shape authority.
+
+    Shares the same loud guard as ``wire_dict``: a real-wire transport
+    (REST/A2A/MCP) that captured no error envelope raises instead of silently
+    asserting nothing — that combination is a test bug (the operation should
+    have failed through the wire), not a legitimate no-wire case. Only an
+    EXPLICIT ``Transport.IMPL`` has no wire — it falls back to
+    ``synthesized_error_envelope`` (what the boundary translator WOULD emit
+    against the caught error), consistent with ``wire_dict``'s IMPL fallback to
+    the serialized typed payload. An UNSET transport (``None`` — any
+    non-parametrized caller, e.g. a @rest/@mcp/@a2a-tagged scenario's empty ctx)
+    raises too, naming the fix: ``None`` means the dispatch never declared a
+    transport, so silently taking the synthesized fallback there would grade the
+    error against what the translator WOULD have emitted instead of what the
+    wire actually carried, exactly as ``_wire_body`` guards (GH #1744).
+    """
+    result = ctx.get("result")
+    envelope = _real_wire_error_envelope(ctx)
+    transport = ctx.get("transport")
+    if envelope is None and transport is None:
+        raise AssertionError(
+            "wire error assertion with transport unset — a non-parametrized caller reached the "
+            "wire helpers without a captured error envelope. Set ctx['transport'] (or pass "
+            "Transport.IMPL explicitly) to declare whether a real wire envelope must exist."
+        )
+    if envelope is None and transport is not Transport.IMPL:
+        raise AssertionError(f"{transport}: wire_error_envelope missing — env does not stash the wire error envelope")
+    if envelope is not None:
+        return envelope
+    synthesized = getattr(result, "synthesized_error_envelope", None) if result is not None else None
+    assert synthesized is not None, (
+        f"No wire_error_envelope or synthesized_error_envelope available (result={result!r}) — "
+        "expected an error dispatch"
+    )
+    return synthesized
+
+
 def _require(ctx: dict, key: str, *, hint: str | None = None) -> object:
     """Return ``ctx[key]``, failing with a diagnostic if it is absent.
 

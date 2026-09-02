@@ -153,7 +153,7 @@ Feature: BR-UC-026 Package Media Buy
     And the package cancellation should contain canceled_by "buyer"
     And the package should stop delivering impressions
     # POST-S7: Buyer knows the package was canceled (canceled_at, canceled_by)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-026-alt-cancel-irreversible @alt-flow @cancel @post-f1 @post-f2 @post-f3
   Scenario: Reactivating a canceled package is impossible -- canceled is const:true
@@ -161,7 +161,7 @@ Feature: BR-UC-026 Package Media Buy
     When the Buyer Agent attempts to send an update_media_buy request setting canceled=false on "pkg-001"
     Then the request should be rejected as schema-invalid because canceled accepts only the constant true
     # canceled is const:true in PackageUpdate -- un-cancellation cannot be expressed on the wire
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/media-buy/create-media-buy-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
   @T-UC-026-ext-j @extension @ext-j @cancel @error @post-f1 @post-f2 @post-f3
   Scenario: Seller rejects cancellation -- NOT_CANCELLABLE

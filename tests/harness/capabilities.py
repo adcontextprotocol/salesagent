@@ -117,16 +117,26 @@ class CapabilitiesEnv(IntegrationEnv):
 
     Transport routing:
     - call_impl(): direct _get_adcp_capabilities_impl (sync)
-    - call_a2a(): real AdCPRequestHandler pipeline
-    - call_mcp(): real FastMCP in-memory Client (wire_response is real wire)
-    - REST: /api/v1/capabilities is a GET route with no body — _run_rest_request
-      is overridden to GET (the base implementation POSTs)
+    - A2A / MCP: no override here — A2A_SKILL/MCP_TOOL/RESPONSE_MODEL below let
+      the base's deliver_a2a()/deliver_mcp() drive the real pipelines through the
+      one transport-generic client, which is what keeps wire_response (and, on
+      the error path, wire_error_envelope) attached to the result
+    - REST: /api/v1/capabilities answers a parameterless GET as well as a POST
+      with a body, so _run_rest_request IS overridden (the base implementation
+      only POSTs)
 
     Capabilities assembly itself degrades gracefully (try/except around the
     optional adapter lookup), so the adapter patch is here to make the reported
     channels/targeting/pricing DETERMINISTIC and fault-injectable, not because
     production needs a stand-in to run.
     """
+
+    # Dispatch declaration: the base owns call_mcp/call_a2a. Declaring the tool,
+    # the skill and the parser is all this env owes the transport-generic client
+    # — no per-transport delegation method lives here.
+    MCP_TOOL = "get_adcp_capabilities"
+    A2A_SKILL = "get_adcp_capabilities"
+    RESPONSE_MODEL = GetAdcpCapabilitiesResponse
 
     EXTERNAL_PATCHES: dict[str, str] = {
         "adapter": "src.core.tools.capabilities.get_adapter_class_for_tenant",
@@ -503,14 +513,6 @@ class CapabilitiesEnv(IntegrationEnv):
         if req is None and kwargs:
             req = self._build_request(**kwargs)
         return _get_adcp_capabilities_impl(req=req, identity=identity)
-
-    def call_a2a(self, **kwargs: Any) -> GetAdcpCapabilitiesResponse:
-        """Call get_adcp_capabilities via real AdCPRequestHandler — full A2A pipeline."""
-        return self._run_a2a_handler("get_adcp_capabilities", GetAdcpCapabilitiesResponse, **kwargs)
-
-    def call_mcp(self, **kwargs: Any) -> GetAdcpCapabilitiesResponse:
-        """Call get_adcp_capabilities via Client(mcp) — full pipeline dispatch."""
-        return self._run_mcp_client("get_adcp_capabilities", GetAdcpCapabilitiesResponse, **kwargs)
 
     def build_rest_body(self, **kwargs: Any) -> dict[str, Any]:
         """Flat kwargs (protocols/context/adcp_version/adcp_major_version) map

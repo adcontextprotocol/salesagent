@@ -219,7 +219,7 @@ Feature: BR-UC-008 Manage Audience Signals
     And the suggestion should contain "provide authentication credentials"
     # POST-F1: System state unchanged
     # POST-F2: Buyer knows error
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/signals/get-signals-response.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/signals/get-signals-response.json
 
   @T-UC-008-ext-b-idempotency-replay @extension @activation @idempotency
   Scenario: Repeat activation with same idempotency_key replays original outcome
@@ -235,7 +235,7 @@ Feature: BR-UC-008 Manage Audience Signals
     And no second charge is recorded
     # BR-RULE-048 INV-3: at-most-once execution (v3.1 idempotency_key)
     # idempotency_key format/required governed by BR-RULE-081; this covers replay semantics only
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/signals/get-signals-response.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/signals/get-signals-response.json
 
   @T-UC-008-ext-b-idempotency-distinct-key @extension @activation @idempotency
   Scenario: Activation with a different idempotency_key performs a new deployment
@@ -984,7 +984,7 @@ Feature: BR-UC-008 Manage Audience Signals
     # PRE-B7 violation: signal_agent_segment_id required
     # POST-F1: System state unchanged
     # POST-F2: Buyer knows error
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/signals/get-signals-response.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/signals/get-signals-response.json
 
   @T-UC-008-gap-empty-activate-destinations @extension @ext-b @activation @error
   Scenario: Activation rejected -- empty destinations array
@@ -999,7 +999,7 @@ Feature: BR-UC-008 Manage Audience Signals
     # PRE-B8 violation: destinations minItems: 1
     # POST-F1: System state unchanged
     # POST-F2: Buyer knows error
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/signals/get-signals-response.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/signals/get-signals-response.json
 
   @T-UC-008-gap-invalid-action @extension @ext-b @activation @error
   Scenario: Activation rejected -- invalid action value
@@ -1015,7 +1015,7 @@ Feature: BR-UC-008 Manage Audience Signals
     # PRE-B8a violation: action must be "activate" or "deactivate"
     # POST-F1: System state unchanged
     # POST-F2: Buyer knows error
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/signals/get-signals-response.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/signals/get-signals-response.json
 
   @T-UC-008-gap-default-action @extension @activation
   Scenario: Activation with omitted action defaults to activate
@@ -1074,7 +1074,7 @@ Feature: BR-UC-008 Manage Audience Signals
     Then the response signal entry should include "restricted_attributes" with value ["age"]
     And the response signal entry should include "policy_categories" with value ["children_directed"]
     # v3.1: governance agents match restricted_attributes structurally, not by name inference
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/signals/get-signals-response.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/signals/get-signals-response.json
 
   @T-UC-008-v31-signal-source-catalog @v3-1 @signal-source
   Scenario: signal_id.source "catalog" carries (data_provider_domain, id) and is externally verifiable
@@ -1084,7 +1084,7 @@ Feature: BR-UC-008 Manage Audience Signals
     And each entry's signal_id should reference "data_provider_domain" "provider.example.com"
     And the Buyer Agent should be able to verify authorization via "provider.example.com/adagents.json"
     # v3.1: catalog source -> keyed by (data_provider_domain, id); adagents.json-verifiable
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/signals/get-signals-response.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/signals/get-signals-response.json
 
   @T-UC-008-v31-signal-source-agent @v3-1 @signal-source
   Scenario: signal_id.source "agent" carries (agent_url, id) and is not externally verifiable
@@ -1094,7 +1094,7 @@ Feature: BR-UC-008 Manage Audience Signals
     And each entry's signal_id should reference "agent_url" "https://signals.example.com"
     And the response payload should NOT advertise external verifiability for those signals
     # v3.1: agent source -> keyed by (agent_url, id); buyer trusts agent claim
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/signals/get-signals-response.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/signals/get-signals-response.json
 
   @T-UC-008-v31-error-audience-too-small @v3-1 @error-details
   Scenario: AUDIENCE_TOO_SMALL error carries v3.1 details shape (minimum_size + current_size)
@@ -1108,7 +1108,7 @@ Feature: BR-UC-008 Manage Audience Signals
     And the error "details" object should include "current_size" with value 800
     # v3.1: AUDIENCE_TOO_SMALL details enable buyer-side broadening without re-query
 
-  @T-UC-008-storyboard-baseline-end-to-end @storyboard-v3.1 @v3-1 @baseline-conformance
+  @T-UC-008-storyboard-baseline-end-to-end @schema-v3.1 @v3-1 @baseline-conformance
   Scenario: Signals baseline conformance -- discovery propagates signal_agent_segment_id into activation
     Given the Buyer Agent calls get_signals with signal_spec "Adults interested in electric vehicles"
     And the response carries at least one signal entry
@@ -1123,9 +1123,9 @@ Feature: BR-UC-008 Manage Audience Signals
     # The runner asserts the captured signal_agent_segment_id from discovery is the
     # same value sent on activation -- a regression here means signal IDs do not roundtrip.
     # signals_baseline: signal IDs roundtrip from discovery to activation without modification
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/signals/index.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/signals/index.yaml
 
-  @T-UC-008-storyboard-activate-agent-destination @storyboard-v3.1 @v3-1 @activation @agent-destination
+  @T-UC-008-storyboard-activate-agent-destination @schema-v3.1 @v3-1 @activation @agent-destination
   Scenario: Signals baseline activation -- agent destination type returns schema-valid deployment
     Given the Buyer Agent holds a signal_agent_segment_id and pricing_option_id from get_signals
     When the Buyer Agent sends activate_signal with destinations of type "agent" and agent_url "https://wonderstruck.salesagents.example"
@@ -1138,9 +1138,9 @@ Feature: BR-UC-008 Manage Audience Signals
     # media-buy calls. Deployment may be live (carries activation_key) or async
     # (is_live: false with estimated_activation_duration_minutes).
     # signals_baseline: agent-destination activation contract
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/signals/index.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/signals/index.yaml
 
-  @T-UC-008-storyboard-activate-platform-destination @storyboard-v3.1 @v3-1 @activation @platform-destination
+  @T-UC-008-storyboard-activate-platform-destination @schema-v3.1 @v3-1 @activation @platform-destination
   Scenario: Signals baseline activation -- platform destination returns activation_key of type segment_id
     Given the Buyer Agent holds a signal_agent_segment_id and pricing_option_id from get_signals
     When the Buyer Agent sends activate_signal with destinations of type "platform", platform "the-trade-desk", and account "agency-123-ttd"

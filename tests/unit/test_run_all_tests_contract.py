@@ -67,8 +67,16 @@ def _runner_all_suites() -> set[str]:
 
 
 def _host_runner_collect_suites() -> set[str]:
-    m = re.search(r"for name in ([a-z][a-z0-9 ]+?); do", _HOST_RUNNER.read_text())
-    assert m, "run_all_tests_host.sh collect_reports loop not found"
+    """The host runner's suite list, read from its ``_REPORT_SUITES`` constant.
+
+    Was a regex over the ``for name in unit integration ...; do`` loop literal.
+    That list is now named once and read by BOTH the pre-run purge and the copy
+    loop, so the constant IS the file's single source and is what this must
+    read. The contract is unchanged — the host runner's suites must match tox's
+    ``env_list`` — only the spelling moved.
+    """
+    m = re.search(r'^_REPORT_SUITES="([^"]+)"', _HOST_RUNNER.read_text(), re.MULTILINE)
+    assert m, "run_all_tests_host.sh has no _REPORT_SUITES"
     return set(m.group(1).split())
 
 

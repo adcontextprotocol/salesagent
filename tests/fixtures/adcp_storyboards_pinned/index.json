@@ -1,0 +1,2608 @@
+{
+  "adcp_spec_version": "3.1.1",
+  "source": "adcontextprotocol/adcp dist/compliance/3.1.1",
+  "storyboard_count": 121,
+  "storyboards": {
+    "protocols/brand/index.yaml": {
+      "phases": [
+        "brand_identity_retrieval",
+        "capability_discovery",
+        "get_brand_identity",
+        "get_brand_identity_unknown",
+        "get_capabilities",
+        "unknown_brand_rejection"
+      ],
+      "protocol": "brand",
+      "required_tools": [
+        "get_brand_identity"
+      ]
+    },
+    "protocols/brand/scenarios/distributed_brand_resolution.yaml": {
+      "phases": [
+        "mutual_assertion_happy_path",
+        "one_sided_assertions",
+        "reject_invalid_trademark_fixture",
+        "resolve_leaf_only_assertion",
+        "resolve_managed_by_only_assertion",
+        "resolve_mutual_assertion",
+        "typed_trademark_rejection"
+      ],
+      "protocol": "brand",
+      "required_tools": [
+        "comply_test_controller"
+      ]
+    },
+    "protocols/brand/scenarios/single_side_trust_extension.yaml": {
+      "phases": [
+        "assert_licensor_reciprocation_observed",
+        "assert_property_cross_check_observed",
+        "assert_property_trust_not_extended",
+        "assert_subsidiary_reciprocation_observed",
+        "assert_subsidiary_trust_not_extended",
+        "assert_trademark_trust_not_extended",
+        "dispatch_property_red_test",
+        "dispatch_subsidiary_red_test",
+        "dispatch_trademark_red_test",
+        "property_variant",
+        "subsidiary_variant",
+        "trademark_licensed_in_variant"
+      ],
+      "protocol": "brand",
+      "required_tools": [
+        "verify_brand_claim"
+      ]
+    },
+    "protocols/creative/index.yaml": {
+      "phases": [
+        "build_and_preview",
+        "capability_discovery",
+        "discover_formats",
+        "get_capabilities",
+        "list_all",
+        "list_and_filter",
+        "list_filtered",
+        "list_formats",
+        "preview_display",
+        "sync_creatives",
+        "sync_multiple"
+      ],
+      "protocol": "creative",
+      "required_tools": [
+        "list_creative_formats"
+      ]
+    },
+    "protocols/creative/scenarios/billing_out_of_band.yaml": {
+      "phases": [
+        "capability_discovery",
+        "get_capabilities",
+        "reject_out_of_band_usage",
+        "report_usage_out_of_band"
+      ],
+      "protocol": "creative",
+      "required_tools": [
+        "get_adcp_capabilities",
+        "report_usage"
+      ]
+    },
+    "protocols/creative/scenarios/canonical_supported_formats.yaml": {
+      "phases": [
+        "build_from_capability",
+        "build_image_capability",
+        "capability_discovery",
+        "get_capabilities",
+        "reject_unknown_capability",
+        "reject_unsupported_capability"
+      ],
+      "protocol": "creative",
+      "required_tools": [
+        "build_creative",
+        "get_adcp_capabilities"
+      ]
+    },
+    "protocols/creative/scenarios/creative_lifecycle_webhooks.yaml": {
+      "phases": [
+        "expect_purged_webhook",
+        "expect_reapproved_webhook",
+        "expect_status_changed_webhook",
+        "expect_suspended_webhook",
+        "force_creative_approved",
+        "force_creative_purged",
+        "force_creative_reapproved",
+        "force_creative_rejected",
+        "force_creative_suspended",
+        "force_creative_suspended_again",
+        "list_creatives_after_purge",
+        "list_creatives_after_status_change",
+        "list_creatives_after_suspended",
+        "purged_event_optional",
+        "register_account_lifecycle_subscriber",
+        "seed_creative",
+        "status_changed_event",
+        "sync_accounts_with_lifecycle_notifications",
+        "sync_creative"
+      ],
+      "protocol": "creative",
+      "required_tools": [
+        "comply_test_controller",
+        "list_creatives",
+        "sync_accounts",
+        "sync_creatives"
+      ]
+    },
+    "protocols/creative/scenarios/evaluator_auth.yaml": {
+      "phases": [
+        "accepted_evaluator_invocation",
+        "accepted_evaluator_unavailable_degrades",
+        "build_with_accepted_evaluator",
+        "build_with_unavailable_evaluator",
+        "capability_discovery",
+        "confirm_experimental_feature",
+        "evaluator_api_key_payload",
+        "evaluator_capability_contract",
+        "force_evaluator_unavailable",
+        "get_capabilities",
+        "payload_credentials_advisory",
+        "reject_off_list_evaluator",
+        "reject_off_list_feature_agent",
+        "reject_unaccepted_agent_url",
+        "reject_unaccepted_feature_agent"
+      ],
+      "protocol": "creative",
+      "required_tools": [
+        "build_creative",
+        "get_adcp_capabilities"
+      ]
+    },
+    "protocols/creative/scenarios/native_in_feed.yaml": {
+      "phases": [
+        "capability_discovery",
+        "discover_native_formats",
+        "get_capabilities",
+        "list_native_formats",
+        "preview_native",
+        "preview_native_creative",
+        "reject_cta_not_in_enum",
+        "reject_image_wrong_size",
+        "reject_pixel_tracker_custom_missing_name",
+        "reject_title_too_long",
+        "sync_full_bundle",
+        "sync_native_creative",
+        "validation_failures"
+      ],
+      "protocol": "creative",
+      "required_tools": [
+        "sync_creatives"
+      ]
+    },
+    "protocols/governance/index.yaml": {
+      "phases": [
+        "account_setup",
+        "audit_trail",
+        "capability_discovery",
+        "check_governance_approved",
+        "check_governance_denied",
+        "create_buy_with_governance",
+        "create_media_buy",
+        "discover_products",
+        "get_capabilities",
+        "get_plan_audit_logs",
+        "get_products_brief",
+        "governance_check_denied",
+        "human_escalation",
+        "register_plan",
+        "report_outcome",
+        "report_plan_outcome",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ],
+      "protocol": "governance",
+      "required_tools": [
+        "check_governance",
+        "sync_plans"
+      ]
+    },
+    "protocols/media-buy/index.yaml": {
+      "phases": [
+        "account_setup",
+        "capability_discovery",
+        "check_buy_status",
+        "create_buy",
+        "create_media_buy",
+        "creative_sync",
+        "delivery_monitoring",
+        "get_capabilities",
+        "get_delivery",
+        "get_products_brief",
+        "governance_setup",
+        "list_formats",
+        "list_formats_integrity",
+        "product_discovery",
+        "sync_accounts",
+        "sync_creatives",
+        "sync_governance"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "create_media_buy",
+        "get_products"
+      ]
+    },
+    "protocols/media-buy/scenarios/audience_buy_flow.yaml": {
+      "phases": [
+        "audience_binding",
+        "create_buy_with_audience",
+        "create_media_buy_with_audience",
+        "create_media_buy_with_phantom_audience",
+        "delivery_check",
+        "get_audience_delivery",
+        "get_products_for_audience",
+        "rejection_unbound_audience",
+        "setup",
+        "simulate_audience_delivery",
+        "sync_accounts",
+        "sync_audience"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-non-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products",
+        "sync_audiences"
+      ],
+      "requires_capability": {
+        "path": "media_buy.audience_targeting",
+        "present": "true"
+      }
+    },
+    "protocols/media-buy/scenarios/available_actions.yaml": {
+      "phases": [
+        "create_buy_from_product",
+        "create_media_buy_with_available_actions",
+        "direct_cancel_requires_approval",
+        "direct_decrease_wrong_status",
+        "direct_extend_requires_approval",
+        "direct_pause_not_supported_on_product",
+        "discover_product_action_template",
+        "enforce_available_actions",
+        "get_created_buy_available_actions",
+        "get_product_allowed_actions",
+        "increase_budget",
+        "read_persisted_buy_actions",
+        "sync_available_actions_creative"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_media_buys",
+        "get_products",
+        "sync_creatives",
+        "update_media_buy"
+      ],
+      "requires_capability": {
+        "equals": "auto_approve",
+        "path": "media_buy.creative_approval_mode"
+      }
+    },
+    "protocols/media-buy/scenarios/billing_finality_delivery.yaml": {
+      "phases": [
+        "create_media_buy",
+        "final_delivery",
+        "final_usage_reporting",
+        "get_final_delivery",
+        "get_provisional_delivery",
+        "provisional_delivery",
+        "report_final_usage",
+        "setup",
+        "simulate_final_delivery",
+        "simulate_provisional_delivery",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "report_usage",
+        "sync_accounts"
+      ]
+    },
+    "protocols/media-buy/scenarios/canonical_formats.yaml": {
+      "phases": [
+        "canonical_create_satisfaction",
+        "canonical_product_discovery",
+        "create_media_buy_with_legacy_mrec_format",
+        "get_canonical_product_for_create_satisfaction",
+        "get_seeded_canonical_product",
+        "get_seeded_custom_v2_only_product",
+        "get_seeded_divergent_product",
+        "get_seeded_experimental_product",
+        "get_seeded_v1_only_product",
+        "get_seeded_v2_only_product",
+        "reject_bare_image_selector_for_fixed_mrec"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_products"
+      ]
+    },
+    "protocols/media-buy/scenarios/clicks_buy_flow.yaml": {
+      "phases": [
+        "clicks_delivery",
+        "create_clicks_buy",
+        "create_media_buy_clicks",
+        "get_clicks_delivery",
+        "get_products_for_clicks",
+        "setup",
+        "simulate_clicks_delivery",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-non-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products"
+      ],
+      "requires_capability": {
+        "contains": "clicks",
+        "path": "media_buy.supported_optimization_metrics"
+      }
+    },
+    "protocols/media-buy/scenarios/completed_views_buy_flow.yaml": {
+      "phases": [
+        "cpcv_delivery",
+        "create_cpcv_buy",
+        "create_media_buy_cpcv",
+        "create_media_buy_with_phantom_view_duration",
+        "get_cpcv_delivery",
+        "get_products_for_cpcv",
+        "rejection_unsupported_view_duration",
+        "setup",
+        "simulate_cpcv_delivery",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-non-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products"
+      ],
+      "requires_capability": {
+        "contains": "completed_views",
+        "path": "media_buy.supported_optimization_metrics"
+      }
+    },
+    "protocols/media-buy/scenarios/create_media_buy_async.yaml": {
+      "phases": [
+        "create_media_buy_submitted",
+        "force_arm_submitted",
+        "force_submitted_arm",
+        "submitted_arm_response"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy"
+      ]
+    },
+    "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml": {
+      "phases": [
+        "cancel_buy",
+        "create_buy",
+        "create_second_buy",
+        "get_products_brief",
+        "list_creatives_after_cancel",
+        "list_creatives_before_cancel",
+        "reassign_creative",
+        "reuse_creative_on_new_buy",
+        "setup",
+        "sync_creative_with_assignment",
+        "update_media_buy_canceled",
+        "verify_creative_in_library_pre_cancel",
+        "verify_creative_persists_post_cancel"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "list_creatives",
+        "sync_creatives",
+        "update_media_buy"
+      ]
+    },
+    "protocols/media-buy/scenarios/creative_reception.yaml": {
+      "phases": [
+        "capability_discovery",
+        "discover_accepted_formats",
+        "get_capabilities",
+        "list_formats",
+        "preview",
+        "preview_synced",
+        "push_creatives",
+        "sync_creatives"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "sync_creatives"
+      ]
+    },
+    "protocols/media-buy/scenarios/delivery_reporting.yaml": {
+      "phases": [
+        "create_media_buy",
+        "create_media_buy_viewability",
+        "get_delivery",
+        "get_products_brief",
+        "get_viewability_delivery",
+        "setup",
+        "simulate_and_verify",
+        "simulate_delivery",
+        "simulate_viewability_delivery",
+        "sync_accounts",
+        "viewability_delivery"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml",
+        "specialisms/sales-broadcast-tv/index.yaml",
+        "specialisms/sales-catalog-driven/index.yaml",
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-non-guaranteed/index.yaml",
+        "specialisms/sales-proposal-mode/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products"
+      ]
+    },
+    "protocols/media-buy/scenarios/dependency_impairment.yaml": {
+      "phases": [
+        "assign_creative_to_package",
+        "baseline_healthy",
+        "create_buy",
+        "force_creative_approved",
+        "force_creative_rejected",
+        "force_replacement_approved",
+        "get_buy_baseline",
+        "get_buy_impaired",
+        "get_buy_recovered",
+        "get_products_brief",
+        "reread_creative_rejected",
+        "setup",
+        "swap_assignment",
+        "swap_recovery",
+        "sync_creative",
+        "sync_replacement_creative",
+        "transition_offline",
+        "verify_impaired"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buys",
+        "get_products",
+        "list_creatives",
+        "sync_creatives",
+        "update_media_buy"
+      ],
+      "requires_capability": {
+        "contains": "snapshot",
+        "path": "media_buy.propagation_surfaces"
+      }
+    },
+    "protocols/media-buy/scenarios/dependency_impairment_cardinality.yaml": {
+      "phases": [
+        "assign_creatives_to_packages",
+        "baseline_healthy",
+        "create_buy_two_packages",
+        "force_a_rejected",
+        "force_b_approved",
+        "force_b_rejected",
+        "force_both_approved",
+        "force_c_approved",
+        "force_d_approved",
+        "get_products_brief",
+        "recover_first_via_swap",
+        "recover_second_via_swap",
+        "reject_first_cardinality_one",
+        "reject_second_cardinality_two",
+        "reread_a_rejected",
+        "reread_b_rejected",
+        "setup",
+        "swap_package_a",
+        "swap_package_b",
+        "sync_replacement_c",
+        "sync_replacement_d",
+        "sync_two_creatives",
+        "verify_cardinality_back_to_one",
+        "verify_cardinality_one",
+        "verify_cardinality_two",
+        "verify_cardinality_zero"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buys",
+        "get_products",
+        "list_creatives",
+        "sync_creatives",
+        "update_media_buy"
+      ],
+      "requires_capability": {
+        "contains": "snapshot",
+        "path": "media_buy.propagation_surfaces"
+      }
+    },
+    "protocols/media-buy/scenarios/event_dedup_flow.yaml": {
+      "phases": [
+        "assert_single_attribution",
+        "create_buy_with_dedup_goal",
+        "create_media_buy_dedup",
+        "get_dedup_delivery",
+        "get_products_for_dedup",
+        "log_event_from_capi",
+        "log_event_from_pixel",
+        "log_same_event_id_from_both_sources",
+        "register_two_event_sources",
+        "setup",
+        "simulate_deduplicated_delivery",
+        "sync_accounts",
+        "sync_event_sources"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-non-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "log_event",
+        "sync_event_sources"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "media_buy.conversion_tracking.multi_source_event_dedup"
+      }
+    },
+    "protocols/media-buy/scenarios/frequency_cap_enforcement.yaml": {
+      "phases": [
+        "assert_frequency_observed_within_cap",
+        "create_buy_with_frequency_cap",
+        "create_media_buy_with_frequency_cap",
+        "get_capped_delivery",
+        "get_products_for_frequency_cap",
+        "setup",
+        "simulate_capped_delivery",
+        "simulate_delivery_with_observed_frequency",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-non-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products"
+      ],
+      "requires_capability": {
+        "path": "media_buy.frequency_capping",
+        "present": "true"
+      }
+    },
+    "protocols/media-buy/scenarios/get_products_async.yaml": {
+      "phases": [
+        "complete_products_task",
+        "completed_discovery_result",
+        "expect_products_terminal_webhook",
+        "force_get_products_submitted",
+        "force_submitted_discovery",
+        "get_products_submitted",
+        "get_products_task_status_completed",
+        "get_products_task_status_wrong_account",
+        "list_products_task",
+        "list_products_task_wrong_account",
+        "submitted_discovery_response"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "comply_test_controller",
+        "get_products",
+        "get_task_status",
+        "list_tasks"
+      ]
+    },
+    "protocols/media-buy/scenarios/governance_approved.yaml": {
+      "phases": [
+        "buy_approved",
+        "create_media_buy",
+        "get_products_brief",
+        "governance_plan_setup",
+        "seller_setup",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/governance-aware-seller/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "sync_governance"
+      ]
+    },
+    "protocols/media-buy/scenarios/governance_conditions.yaml": {
+      "phases": [
+        "buy_with_conditions",
+        "create_media_buy_conditions",
+        "get_products_brief",
+        "governance_plan_setup",
+        "seller_setup",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/governance-aware-seller/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "sync_governance"
+      ]
+    },
+    "protocols/media-buy/scenarios/governance_denied.yaml": {
+      "phases": [
+        "buy_denied",
+        "create_media_buy_denied",
+        "get_products_brief",
+        "governance_plan_setup",
+        "seller_setup",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/brand-rights/index.yaml",
+        "specialisms/governance-aware-seller/index.yaml",
+        "specialisms/signal-marketplace/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "sync_governance"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "media_buy.governance_aware"
+      }
+    },
+    "protocols/media-buy/scenarios/governance_denied_recovery.yaml": {
+      "phases": [
+        "buy_denied",
+        "buy_retried",
+        "create_media_buy_denied",
+        "create_media_buy_retry",
+        "get_products_brief",
+        "governance_plan_setup",
+        "seller_setup",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/governance-aware-seller/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "sync_governance"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "media_buy.governance_aware"
+      }
+    },
+    "protocols/media-buy/scenarios/inline_creatives_without_sync.yaml": {
+      "phases": [
+        "canonical_format_inline_path",
+        "capability_discovery",
+        "create_buy_with_canonical_inline_creative",
+        "create_buy_with_legacy_inline_creative",
+        "get_canonical_media_buy_after_inline_replacement",
+        "get_capabilities",
+        "get_legacy_media_buy_after_inline_replacement",
+        "get_products_canonical_format",
+        "get_products_legacy_format",
+        "legacy_format_inline_path",
+        "update_buy_with_replacement_canonical_inline_creative",
+        "update_buy_with_replacement_legacy_inline_creative",
+        "verify_replacement"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_media_buys",
+        "get_products",
+        "update_media_buy"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "media_buy.features.inline_creative_management"
+      }
+    },
+    "protocols/media-buy/scenarios/invalid_transitions.yaml": {
+      "phases": [
+        "create_buy",
+        "double_cancel",
+        "first_cancel",
+        "get_products_brief",
+        "second_cancel",
+        "setup",
+        "unknown_media_buy",
+        "unknown_package",
+        "update_unknown_media_buy",
+        "update_unknown_package"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml",
+        "specialisms/sales-broadcast-tv/index.yaml",
+        "specialisms/sales-catalog-driven/index.yaml",
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-non-guaranteed/index.yaml",
+        "specialisms/sales-proposal-mode/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "update_media_buy"
+      ]
+    },
+    "protocols/media-buy/scenarios/inventory_list_no_match.yaml": {
+      "phases": [
+        "create_buy_no_match",
+        "discover",
+        "get_products_brief",
+        "no_match_attempt"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml",
+        "specialisms/sales-broadcast-tv/index.yaml",
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-non-guaranteed/index.yaml",
+        "specialisms/sales-proposal-mode/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products"
+      ]
+    },
+    "protocols/media-buy/scenarios/inventory_list_targeting.yaml": {
+      "phases": [
+        "create_buy_with_lists",
+        "create_with_both_lists",
+        "discover_product",
+        "get_after_create",
+        "get_after_update",
+        "get_products_brief",
+        "update_buy_swap_lists",
+        "update_swap_lists",
+        "verify_create_persisted"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml",
+        "specialisms/sales-broadcast-tv/index.yaml",
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-non-guaranteed/index.yaml",
+        "specialisms/sales-proposal-mode/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "update_media_buy"
+      ]
+    },
+    "protocols/media-buy/scenarios/measurement_accountability.yaml": {
+      "phases": [
+        "create_media_buy",
+        "discover_with_required_metrics",
+        "get_delivery_clean",
+        "get_products_required_metrics",
+        "simulate_and_validate_accountability",
+        "simulate_delivery",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products"
+      ]
+    },
+    "protocols/media-buy/scenarios/measurement_terms_rejected.yaml": {
+      "phases": [
+        "accept_terms",
+        "create_media_buy_aggressive_terms",
+        "create_media_buy_relaxed_terms",
+        "discover_products",
+        "get_products_brief",
+        "reject_terms"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml",
+        "specialisms/sales-broadcast-tv/index.yaml",
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-proposal-mode/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products"
+      ]
+    },
+    "protocols/media-buy/scenarios/package_correlation_legacy_fallback.yaml": {
+      "phases": [
+        "get_seeded_legacy_buy",
+        "read_legacy_package"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "get_media_buys"
+      ]
+    },
+    "protocols/media-buy/scenarios/pending_creatives_to_start.yaml": {
+      "phases": [
+        "assign_creative_to_package",
+        "create_buy_no_creatives",
+        "create_without_creatives",
+        "get_media_buy_after_sync",
+        "get_products_brief",
+        "setup",
+        "supply_creatives",
+        "sync_creative",
+        "verify_transition"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml",
+        "specialisms/sales-broadcast-tv/index.yaml",
+        "specialisms/sales-catalog-driven/index.yaml",
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-non-guaranteed/index.yaml",
+        "specialisms/sales-proposal-mode/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_media_buys",
+        "get_products",
+        "sync_creatives"
+      ],
+      "requires_capability": {
+        "equals": "auto_approve",
+        "path": "media_buy.creative_approval_mode"
+      }
+    },
+    "protocols/media-buy/scenarios/per_creative_conversion_attribution.yaml": {
+      "phases": [
+        "assert_per_creative_breakdown_in_delivery",
+        "create_media_buy_two_creatives",
+        "event_source_binding",
+        "get_per_creative_delivery",
+        "get_products_for_per_creative",
+        "log_conversions_against_both_creatives",
+        "log_purchase_event_1",
+        "log_purchase_event_2",
+        "register_two_creatives_and_create_buy",
+        "setup",
+        "simulate_per_creative_delivery",
+        "sync_accounts",
+        "sync_event_sources",
+        "sync_two_creatives"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-non-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products",
+        "log_event",
+        "sync_creatives",
+        "sync_event_sources"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "media_buy.conversion_tracking.per_creative_attribution"
+      }
+    },
+    "protocols/media-buy/scenarios/performance_buy_flow.yaml": {
+      "phases": [
+        "attributed_delivery_reporting",
+        "conversion_event_logging",
+        "create_media_buy_cpa",
+        "create_media_buy_with_phantom_source",
+        "create_performance_buy_cpa",
+        "event_source_binding",
+        "get_attributed_delivery",
+        "get_products_for_performance",
+        "log_purchase_event",
+        "rejection_unbound_event_source",
+        "setup",
+        "simulate_performance_delivery",
+        "sync_accounts",
+        "sync_event_sources"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-non-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products",
+        "log_event",
+        "sync_event_sources"
+      ],
+      "requires_capability": {
+        "path": "media_buy.conversion_tracking",
+        "present": "true"
+      }
+    },
+    "protocols/media-buy/scenarios/performance_buy_flow_roas.yaml": {
+      "phases": [
+        "attributed_roas_delivery",
+        "create_media_buy_per_ad_spend_no_value_field",
+        "create_media_buy_roas",
+        "create_performance_buy_roas",
+        "event_source_binding",
+        "get_attributed_roas_delivery",
+        "get_products_for_roas",
+        "log_purchase_event",
+        "rejection_per_ad_spend_no_value_field",
+        "setup",
+        "simulate_roas_delivery",
+        "sync_accounts",
+        "sync_event_sources"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-non-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products",
+        "log_event",
+        "sync_event_sources"
+      ],
+      "requires_capability": {
+        "contains": "per_ad_spend",
+        "path": "media_buy.conversion_tracking.supported_targets"
+      }
+    },
+    "protocols/media-buy/scenarios/pricing_currency_filter.yaml": {
+      "phases": [
+        "discover_usd_products",
+        "get_products_usd_pricing"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "comply_test_controller",
+        "get_products"
+      ]
+    },
+    "protocols/media-buy/scenarios/product_signal_targeting.yaml": {
+      "phases": [
+        "create_media_buy_with_signal_groups",
+        "create_media_buy_with_unknown_signal",
+        "create_with_signal_groups",
+        "discover_wholesale_product",
+        "discover_wholesale_signals",
+        "get_after_create",
+        "get_products_wholesale",
+        "get_signals_wholesale",
+        "reject_unknown_signal",
+        "verify_signal_groups_echo"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buys",
+        "get_products",
+        "get_signals"
+      ],
+      "requires_capability": {
+        "path": "signals.discovery_modes",
+        "present": "true"
+      }
+    },
+    "protocols/media-buy/scenarios/proposal_finalize.yaml": {
+      "phases": [
+        "accept_proposal",
+        "brief_with_proposals",
+        "create_media_buy",
+        "create_media_buy_unknown_proposal",
+        "finalize_proposal",
+        "get_products_brief",
+        "get_products_finalize",
+        "get_products_finalize_unknown_proposal",
+        "get_products_refine",
+        "get_products_refine_unknown_proposal",
+        "refine_proposal",
+        "setup",
+        "sync_accounts",
+        "unknown_proposal_finalize",
+        "unknown_proposal_references"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-proposal-mode/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "media_buy.supports_proposals"
+      }
+    },
+    "protocols/media-buy/scenarios/proposal_finalize_asap_timing.yaml": {
+      "phases": [
+        "accept_proposal",
+        "brief_with_proposals",
+        "create_media_buy",
+        "finalize_proposal",
+        "get_products_brief",
+        "get_products_finalize",
+        "get_products_refine",
+        "refine_proposal",
+        "setup",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-proposal-mode/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "media_buy.supports_proposals"
+      }
+    },
+    "protocols/media-buy/scenarios/proposal_not_found_errors.yaml": {
+      "phases": [
+        "create_media_buy_expired_proposal",
+        "create_media_buy_unknown_proposal",
+        "expired_proposal_create",
+        "get_products_refine_unknown_proposal",
+        "setup",
+        "sync_accounts",
+        "unknown_proposal_create",
+        "unknown_proposal_refine"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-proposal-mode/index.yaml"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "media_buy.supports_proposals"
+      }
+    },
+    "protocols/media-buy/scenarios/provenance_audit_observation.yaml": {
+      "phases": [
+        "accept_carveout_claim",
+        "discover_verifier",
+        "get_products_with_accepted_verifiers",
+        "query_directed_audit_observation",
+        "query_edited_audit_observation",
+        "sync_creatives_carveout_claim"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "comply_test_controller",
+        "get_products",
+        "sync_creatives"
+      ]
+    },
+    "protocols/media-buy/scenarios/provenance_enforcement.yaml": {
+      "phases": [
+        "accept_with_disclosure",
+        "discover_requirement",
+        "get_products_with_disclosure_policy",
+        "reject_missing_digital_source_type",
+        "reject_missing_disclosure",
+        "reject_no_provenance",
+        "reject_off_list_verifier",
+        "sync_creatives_missing_disclosure",
+        "sync_creatives_no_digital_source_type",
+        "sync_creatives_no_provenance",
+        "sync_creatives_off_list_verifier",
+        "sync_creatives_with_disclosure"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "get_products",
+        "sync_creatives"
+      ]
+    },
+    "protocols/media-buy/scenarios/provenance_truth_of_claim.yaml": {
+      "phases": [
+        "accept_consistent_claim",
+        "discover_verifier",
+        "get_products_with_accepted_verifiers",
+        "reject_contradicted_claim",
+        "sync_creatives_consistent",
+        "sync_creatives_contradicted"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "get_products",
+        "sync_creatives"
+      ]
+    },
+    "protocols/media-buy/scenarios/reach_buy_flow.yaml": {
+      "phases": [
+        "create_media_buy_cumulative_reach",
+        "create_media_buy_period_reach",
+        "create_media_buy_reach",
+        "create_media_buy_reach_no_window",
+        "create_media_buy_rolling_reach",
+        "create_media_buy_with_unsupported_reach_unit",
+        "create_reach_buy",
+        "get_cumulative_reach_delivery",
+        "get_delivery_reach_no_window",
+        "get_period_reach_delivery",
+        "get_products_for_reach",
+        "get_reach_delivery",
+        "get_rolling_reach_delivery",
+        "reach_delivery",
+        "reach_window_absent_advisory",
+        "reach_window_cumulative",
+        "reach_window_period",
+        "reach_window_rolling",
+        "rejection_unsupported_reach_unit",
+        "setup",
+        "simulate_cumulative_reach",
+        "simulate_period_reach",
+        "simulate_reach_delivery",
+        "simulate_reach_no_window",
+        "simulate_rolling_reach",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "specialisms/sales-non-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products"
+      ],
+      "requires_capability": {
+        "contains": "reach",
+        "path": "media_buy.supported_optimization_metrics"
+      }
+    },
+    "protocols/media-buy/scenarios/refine_finalize_exclusivity.yaml": {
+      "phases": [
+        "assert_multi_finalize",
+        "get_products_brief",
+        "get_products_brief_second",
+        "get_products_mixed_finalize",
+        "get_products_multi_finalize_atomic",
+        "get_products_multi_finalize_unsupported",
+        "get_products_product_finalize",
+        "mixed_finalize_rejected",
+        "multi_finalize_atomic_path",
+        "multi_finalize_gate",
+        "multi_finalize_unsupported_path",
+        "non_proposal_finalize_rejected",
+        "setup",
+        "setup_second_proposal",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "get_products"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "media_buy.supports_proposals"
+      }
+    },
+    "protocols/media-buy/scenarios/refine_products.yaml": {
+      "phases": [
+        "brief",
+        "get_products_brief",
+        "get_products_refine",
+        "refine",
+        "setup",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_by": [
+        "protocols/media-buy/index.yaml",
+        "specialisms/sales-broadcast-tv/index.yaml",
+        "specialisms/sales-catalog-driven/index.yaml",
+        "specialisms/sales-guaranteed/index.yaml"
+      ],
+      "required_tools": [
+        "get_products"
+      ]
+    },
+    "protocols/media-buy/scenarios/vendor_metric_accountability.yaml": {
+      "phases": [
+        "create_media_buy",
+        "discover_with_required_vendor_metrics",
+        "get_delivery_with_vendor_metrics",
+        "get_products_required_vendor_metrics",
+        "simulate_and_validate_vendor_metrics",
+        "simulate_delivery_with_vendor_metrics",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products"
+      ]
+    },
+    "protocols/media-buy/scenarios/vendor_metric_catalog_precondition.yaml": {
+      "phases": [
+        "account_setup",
+        "assert_vendor_metric_catalog_miss_handled",
+        "catalog_miss_accept_path",
+        "catalog_miss_assertion",
+        "catalog_miss_reject_path",
+        "create_media_buy_catalog_miss_accept",
+        "create_media_buy_catalog_miss_reject",
+        "seed_attention_vendor_catalog",
+        "seed_measurement_catalog",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "sync_accounts"
+      ],
+      "requires_capability": {
+        "path": "media_buy.vendor_metric_optimization",
+        "present": "true"
+      }
+    },
+    "protocols/media-buy/scenarios/vendor_metric_optimization_flow.yaml": {
+      "phases": [
+        "create_media_buy_missing_committed",
+        "create_media_buy_positive",
+        "create_media_buy_targetless_positive",
+        "create_media_buy_unreportable_metric",
+        "create_media_buy_unsupported_metric",
+        "create_media_buy_unsupported_target",
+        "create_positive_path",
+        "create_targetless_positive_path",
+        "discover_vendor_metric_optimization",
+        "get_products_vendor_metric_opt",
+        "reject_missing_committed_metric",
+        "reject_unreportable_vendor_metric",
+        "reject_unsupported_capability",
+        "reject_unsupported_target_kind",
+        "sync_accounts"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "comply_test_controller",
+        "create_media_buy",
+        "get_products"
+      ],
+      "requires_capability": {
+        "path": "media_buy.vendor_metric_optimization",
+        "present": "true"
+      }
+    },
+    "protocols/media-buy/state-machine.yaml": {
+      "phases": [
+        "cancel_buy",
+        "capability_discovery",
+        "create_buy",
+        "discover_products",
+        "get_capabilities",
+        "pause_buy",
+        "pause_canceled_buy",
+        "recancel_buy",
+        "resume_buy",
+        "resume_canceled_buy",
+        "setup",
+        "state_transitions",
+        "sync_creative",
+        "terminal_enforcement"
+      ],
+      "protocol": "media-buy",
+      "required_tools": [
+        "create_media_buy",
+        "sync_creatives",
+        "update_media_buy"
+      ],
+      "requires_capability": {
+        "equals": "auto_approve",
+        "path": "media_buy.creative_approval_mode"
+      }
+    },
+    "protocols/signals/index.yaml": {
+      "phases": [
+        "capability_discovery",
+        "discovery",
+        "get_capabilities",
+        "search_signals"
+      ],
+      "protocol": "signals",
+      "required_tools": [
+        "get_signals"
+      ]
+    },
+    "protocols/signals/scenarios/get_signals_async.yaml": {
+      "phases": [
+        "complete_signals_task",
+        "completed_discovery_result",
+        "expect_signals_terminal_webhook",
+        "force_get_signals_submitted",
+        "force_submitted_discovery",
+        "get_signals_submitted",
+        "get_signals_task_status_completed",
+        "get_signals_task_status_wrong_account",
+        "list_signals_task",
+        "list_signals_task_wrong_account",
+        "submitted_discovery_response"
+      ],
+      "protocol": "signals",
+      "required_tools": [
+        "comply_test_controller",
+        "get_signals",
+        "get_task_status",
+        "list_tasks"
+      ]
+    },
+    "protocols/sponsored-intelligence/index.yaml": {
+      "phases": [
+        "capability_discovery",
+        "get_capabilities",
+        "offering_discovery",
+        "session_lifecycle",
+        "si_get_offering",
+        "si_initiate_session",
+        "si_send_message",
+        "si_terminate_session"
+      ],
+      "protocol": "sponsored-intelligence",
+      "required_tools": [
+        "si_initiate_session"
+      ]
+    },
+    "protocols/sponsored-intelligence/sponsored-context-accountability.yaml": {
+      "phases": [
+        "presentation_only_happy_path",
+        "rejected_receipt",
+        "required_disclosure_commitment",
+        "si_initiate_session_presentation",
+        "si_send_message_presentation_accepted",
+        "si_send_message_with_disclosure_commitment",
+        "si_send_message_with_mismatched_receipt",
+        "si_send_message_with_rejected_receipt",
+        "silent_downgrade_rejected"
+      ],
+      "protocol": "sponsored-intelligence",
+      "required_tools": [
+        "si_initiate_session",
+        "si_send_message"
+      ]
+    },
+    "specialisms/audience-sync/index.yaml": {
+      "phases": [
+        "account_setup",
+        "audience_sync",
+        "capability_discovery",
+        "create_audience",
+        "delete_audience",
+        "discover_account",
+        "discover_audiences",
+        "get_capabilities"
+      ],
+      "required_tools": [
+        "list_accounts",
+        "sync_audiences"
+      ],
+      "specialism": "audience-sync"
+    },
+    "specialisms/brand-rights/index.yaml": {
+      "phases": [
+        "acquire_expired_rights",
+        "acquire_rights",
+        "capability_discovery",
+        "get_brand_identity",
+        "get_brand_identity_invalid",
+        "get_capabilities",
+        "get_rights",
+        "identity_discovery",
+        "rights_acquisition",
+        "rights_enforcement",
+        "rights_search"
+      ],
+      "required_tools": [
+        "get_brand_identity"
+      ],
+      "specialism": "brand-rights"
+    },
+    "specialisms/brand-rights/scenarios/governance_denied.yaml": {
+      "phases": [
+        "acquire_rights_denied",
+        "brand_agent_setup",
+        "get_rights_catalog",
+        "governance_plan_setup",
+        "rights_denied",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ],
+      "required_by": [
+        "specialisms/brand-rights/index.yaml",
+        "specialisms/governance-aware-seller/index.yaml",
+        "specialisms/signal-marketplace/index.yaml"
+      ],
+      "required_tools": [
+        "acquire_rights",
+        "get_rights",
+        "sync_governance"
+      ],
+      "specialism": "brand-rights"
+    },
+    "specialisms/collection-lists/index.yaml": {
+      "phases": [
+        "capability_discovery",
+        "create_inclusion_list",
+        "create_list",
+        "delete_collection_list",
+        "delete_list",
+        "get_capabilities",
+        "get_collection_list",
+        "list_and_get",
+        "list_collection_lists",
+        "update_collection_list",
+        "update_list"
+      ],
+      "required_tools": [
+        "create_collection_list"
+      ],
+      "specialism": "collection-lists"
+    },
+    "specialisms/content-standards/index.yaml": {
+      "phases": [
+        "calibrate_after_policy_change",
+        "calibrate_content",
+        "calibrate_must_violation",
+        "calibration",
+        "capability_discovery",
+        "create_content_standards",
+        "create_standards",
+        "delivery_validation",
+        "get_capabilities",
+        "get_content_standards",
+        "list_and_get",
+        "list_content_standards",
+        "must_rule_violation",
+        "standards_version_change",
+        "update_content_standards",
+        "update_standards",
+        "update_stricter_standards",
+        "validate_content_delivery"
+      ],
+      "required_tools": [
+        "list_content_standards"
+      ],
+      "specialism": "content-standards"
+    },
+    "specialisms/creative-ad-server/index.yaml": {
+      "phases": [
+        "browse_library",
+        "build_tag",
+        "capability_discovery",
+        "generate_tags",
+        "get_capabilities",
+        "get_delivery",
+        "list_creatives",
+        "list_output_formats",
+        "report_billing",
+        "report_usage",
+        "track_delivery"
+      ],
+      "required_tools": [
+        "build_creative"
+      ],
+      "specialism": "creative-ad-server"
+    },
+    "specialisms/creative-generative/generative-seller.yaml": {
+      "phases": [
+        "account_setup",
+        "capability_discovery",
+        "check_creative_status",
+        "create_buy",
+        "create_media_buy",
+        "creative_brief_sync",
+        "creative_generation_lifecycle",
+        "delivery_monitoring",
+        "format_discovery",
+        "get_capabilities",
+        "get_delivery",
+        "get_products_brief",
+        "list_formats",
+        "product_discovery",
+        "sync_accounts",
+        "sync_creatives_brief",
+        "sync_creatives_invalid_brand",
+        "sync_creatives_standard",
+        "sync_governance"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_media_buy_delivery",
+        "get_products",
+        "list_creative_formats",
+        "sync_creatives",
+        "sync_governance"
+      ],
+      "specialism": "creative-generative"
+    },
+    "specialisms/creative-generative/index.yaml": {
+      "phases": [
+        "build_catalog_aware_creative",
+        "build_draft",
+        "build_multi_format",
+        "build_production",
+        "build_substitution_probe_creative",
+        "capability_discovery",
+        "catalog_augmented_generation",
+        "catalog_substitution_safety",
+        "discover_formats",
+        "expect_substitution_safe",
+        "format_discovery",
+        "generate_from_brief",
+        "get_capabilities",
+        "multi_format",
+        "production_build",
+        "refine",
+        "refine_creative",
+        "sync_generation_catalog",
+        "sync_substitution_probe_catalog"
+      ],
+      "required_tools": [
+        "build_creative"
+      ],
+      "specialism": "creative-generative"
+    },
+    "specialisms/creative-template/index.yaml": {
+      "phases": [
+        "audio_build",
+        "build",
+        "build_audio_creative",
+        "build_creative",
+        "build_multi_format",
+        "capability_discovery",
+        "discover_formats",
+        "filter_by_type",
+        "format_exposure",
+        "get_capabilities",
+        "preview",
+        "preview_creative"
+      ],
+      "required_tools": [
+        "build_creative"
+      ],
+      "specialism": "creative-template"
+    },
+    "specialisms/creative-transformers/index.yaml": {
+      "phases": [
+        "build_transformer",
+        "build_variants",
+        "build_with_transformer",
+        "capability_discovery",
+        "config_strict_rejection",
+        "discover_transformer_options",
+        "discover_transformers",
+        "get_capabilities",
+        "list_transformers",
+        "list_transformers_expand",
+        "refine_variant",
+        "refinement_lineage",
+        "reject_out_of_range_config",
+        "variant_fanout"
+      ],
+      "required_tools": [
+        "build_creative",
+        "list_transformers"
+      ],
+      "specialism": "creative-transformers"
+    },
+    "specialisms/governance-aware-seller/index.yaml": {
+      "phases": [
+        "capability_discovery",
+        "get_capabilities"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "sync_governance"
+      ],
+      "specialism": "governance-aware-seller"
+    },
+    "specialisms/governance-aware-seller/scenarios/governance_multi_agent_rejected.yaml": {
+      "phases": [
+        "account_setup",
+        "multi_agent_rejected",
+        "sync_accounts",
+        "sync_governance_two_agents"
+      ],
+      "required_by": [
+        "specialisms/governance-aware-seller/index.yaml",
+        "specialisms/sales-broadcast-tv/index.yaml",
+        "specialisms/sales-catalog-driven/index.yaml",
+        "specialisms/sales-guaranteed/index.yaml",
+        "specialisms/sales-non-guaranteed/index.yaml",
+        "specialisms/sales-social/index.yaml"
+      ],
+      "required_tools": [
+        "sync_governance"
+      ],
+      "specialism": "governance-aware-seller"
+    },
+    "specialisms/governance-delivery-monitor/index.yaml": {
+      "phases": [
+        "capability_discovery",
+        "check_governance_approved",
+        "check_governance_drift",
+        "create_buy",
+        "create_media_buy",
+        "delivery_monitoring",
+        "drift_recheck",
+        "get_capabilities",
+        "get_delivery",
+        "initial_approval",
+        "plan_registration",
+        "sync_plans"
+      ],
+      "required_tools": [
+        "check_governance"
+      ],
+      "specialism": "governance-delivery-monitor"
+    },
+    "specialisms/governance-spend-authority/denied.yaml": {
+      "phases": [
+        "capability_discovery",
+        "check_governance_denied",
+        "get_capabilities",
+        "governance_check",
+        "plan_registration",
+        "sync_plans"
+      ],
+      "required_tools": [
+        "check_governance",
+        "sync_plans"
+      ],
+      "specialism": "governance-spend-authority"
+    },
+    "specialisms/governance-spend-authority/index.yaml": {
+      "phases": [
+        "capability_discovery",
+        "check_governance_conditions",
+        "create_buy_with_conditions",
+        "create_media_buy",
+        "get_capabilities",
+        "governance_check_conditions",
+        "plan_registration",
+        "sync_plans"
+      ],
+      "required_tools": [
+        "check_governance",
+        "sync_plans"
+      ],
+      "specialism": "governance-spend-authority"
+    },
+    "specialisms/property-lists/index.yaml": {
+      "phases": [
+        "capability_discovery",
+        "create_inclusion_list",
+        "create_list",
+        "delete_list",
+        "delete_property_list",
+        "delivery_validation",
+        "enforcement",
+        "get_capabilities",
+        "get_property_list",
+        "list_and_get",
+        "list_property_lists",
+        "update_list",
+        "update_property_list",
+        "validate_all_compliant_delivery",
+        "validate_property_delivery",
+        "validate_unauthorized_publisher"
+      ],
+      "required_tools": [
+        "create_property_list"
+      ],
+      "specialism": "property-lists"
+    },
+    "specialisms/sales-broadcast-tv/index.yaml": {
+      "phases": [
+        "capability_discovery",
+        "check_buy_status",
+        "create_buy",
+        "create_media_buy",
+        "creative_sync",
+        "delivery_monitoring",
+        "expect_window_update_webhook",
+        "get_capabilities",
+        "get_delivery",
+        "get_final_delivery",
+        "get_products_brief",
+        "list_formats",
+        "product_discovery",
+        "reconciliation",
+        "sync_creatives",
+        "sync_governance"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "sync_governance"
+      ],
+      "specialism": "sales-broadcast-tv"
+    },
+    "specialisms/sales-catalog-driven/index.yaml": {
+      "phases": [
+        "account_setup",
+        "build_catalog_aware_creative",
+        "capability_discovery",
+        "catalog_sync",
+        "check_delivery",
+        "conversion_tracking",
+        "create_buy",
+        "create_media_buy",
+        "discover_catalog_formats",
+        "event_setup",
+        "expect_substitution_safe",
+        "get_capabilities",
+        "get_products",
+        "log_events",
+        "optimization_loop",
+        "provide_feedback",
+        "substitution_safety",
+        "sync_accounts",
+        "sync_attacker_shaped_catalog",
+        "sync_catalogs",
+        "sync_event_sources",
+        "sync_governance"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "sync_governance"
+      ],
+      "specialism": "sales-catalog-driven"
+    },
+    "specialisms/sales-guaranteed/index.yaml": {
+      "phases": [
+        "account_setup",
+        "capability_discovery",
+        "confirm_active",
+        "create_buy_submitted",
+        "create_media_buy",
+        "creative_sync",
+        "delivery_monitoring",
+        "get_capabilities",
+        "get_delivery",
+        "get_media_buys_active",
+        "get_products_brief",
+        "product_discovery",
+        "sync_accounts",
+        "sync_creatives",
+        "sync_governance"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "sync_governance"
+      ],
+      "specialism": "sales-guaranteed"
+    },
+    "specialisms/sales-non-guaranteed/index.yaml": {
+      "phases": [
+        "adjust_bids",
+        "capability_discovery",
+        "create_buy",
+        "create_media_buy",
+        "delivery",
+        "get_capabilities",
+        "get_delivery",
+        "get_media_buys_pacing",
+        "get_products_brief",
+        "monitor_pacing",
+        "product_discovery",
+        "sync_governance",
+        "update_media_buy"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products",
+        "sync_governance"
+      ],
+      "specialism": "sales-non-guaranteed"
+    },
+    "specialisms/sales-proposal-mode/index.yaml": {
+      "phases": [
+        "accept_proposal",
+        "account_setup",
+        "brief_with_proposals",
+        "capability_discovery",
+        "create_media_buy",
+        "creative_sync",
+        "delivery",
+        "finalize_proposal",
+        "get_capabilities",
+        "get_delivery",
+        "get_products_brief",
+        "get_products_finalize",
+        "get_products_refine",
+        "list_formats",
+        "review_refine",
+        "sync_accounts",
+        "sync_creatives"
+      ],
+      "required_tools": [
+        "create_media_buy",
+        "get_products"
+      ],
+      "specialism": "sales-proposal-mode"
+    },
+    "specialisms/sales-social/index.yaml": {
+      "phases": [
+        "account_setup",
+        "audience_sync",
+        "capability_discovery",
+        "catalog_driven_dynamic_ads",
+        "catalog_substitution_safety",
+        "creative_push",
+        "event_logging",
+        "event_setup",
+        "expect_substitution_safe",
+        "financials",
+        "get_account_financials",
+        "get_capabilities",
+        "list_accounts",
+        "log_event",
+        "preview_substitution_probe_creative",
+        "sync_accounts",
+        "sync_audiences",
+        "sync_creatives",
+        "sync_dpa_creative",
+        "sync_event_sources",
+        "sync_governance",
+        "sync_product_catalog",
+        "sync_substitution_probe_catalog",
+        "sync_substitution_probe_creative"
+      ],
+      "required_tools": [
+        "preview_creative",
+        "sync_audiences",
+        "sync_catalogs",
+        "sync_creatives",
+        "sync_event_sources",
+        "sync_governance"
+      ],
+      "specialism": "sales-social"
+    },
+    "specialisms/signal-marketplace/index.yaml": {
+      "phases": [
+        "activate_on_agent",
+        "activate_on_platform",
+        "agent_activation",
+        "capability_discovery",
+        "discovery",
+        "get_capabilities",
+        "platform_activation",
+        "search_by_ids",
+        "search_by_spec",
+        "verification",
+        "verify_provenance_metadata"
+      ],
+      "required_tools": [
+        "activate_signal",
+        "get_signals"
+      ],
+      "specialism": "signal-marketplace"
+    },
+    "specialisms/signal-marketplace/scenarios/governance_denied.yaml": {
+      "phases": [
+        "activate_signal_denied",
+        "activation_denied",
+        "get_signals_list",
+        "governance_plan_setup",
+        "signal_agent_setup",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ],
+      "required_by": [
+        "specialisms/brand-rights/index.yaml",
+        "specialisms/governance-aware-seller/index.yaml",
+        "specialisms/signal-marketplace/index.yaml"
+      ],
+      "required_tools": [
+        "activate_signal",
+        "get_signals",
+        "sync_governance"
+      ],
+      "specialism": "signal-marketplace"
+    },
+    "specialisms/signal-owned/index.yaml": {
+      "phases": [
+        "capability_discovery",
+        "discovery",
+        "filter_by_criteria",
+        "get_capabilities",
+        "search_owned_signals"
+      ],
+      "required_tools": [
+        "get_signals"
+      ],
+      "specialism": "signal-owned"
+    },
+    "specialisms/sponsored-intelligence/index.yaml": {
+      "phases": [],
+      "specialism": "sponsored-intelligence"
+    },
+    "universal/billing-gate-dispatch.yaml": {
+      "phases": [
+        "capability_discovery",
+        "capability_gate",
+        "get_capabilities",
+        "per_agent_gate_recover",
+        "per_agent_gate_reject",
+        "sync_accounts_passthrough_rejects_agent",
+        "sync_accounts_recover_with_suggested",
+        "sync_accounts_unsupported_billing"
+      ],
+      "required_tools": [
+        "get_adcp_capabilities",
+        "sync_accounts"
+      ],
+      "universal": true
+    },
+    "universal/canonical-format-validate-input.yaml": {
+      "phases": [
+        "canonical_negative_paths",
+        "canonical_positive_paths",
+        "product_nondeterministic_paths",
+        "validate_agent_placement",
+        "validate_audio_daast",
+        "validate_audio_hosted",
+        "validate_display_tag",
+        "validate_html5",
+        "validate_image",
+        "validate_image_carousel",
+        "validate_image_missing_required_slot",
+        "validate_native_in_feed",
+        "validate_responsive_creative",
+        "validate_responsive_creative_missing_logo",
+        "validate_seeded_nondeterministic_product",
+        "validate_seeded_nondeterministic_product_missing_brief",
+        "validate_sponsored_placement",
+        "validate_video_hosted",
+        "validate_video_vast"
+      ],
+      "required_tools": [
+        "comply_test_controller",
+        "validate_input"
+      ],
+      "universal": true
+    },
+    "universal/capability-discovery.yaml": {
+      "phases": [
+        "get_capabilities",
+        "get_capabilities_filtered",
+        "protocol_discovery"
+      ],
+      "universal": true
+    },
+    "universal/collection-lists-pagination-integrity.yaml": {
+      "phases": [
+        "capability_discovery",
+        "create_list_1",
+        "create_list_2",
+        "create_list_3",
+        "first_page",
+        "get_capabilities",
+        "pagination_walk",
+        "setup",
+        "terminal_page"
+      ],
+      "required_tools": [
+        "list_collection_lists"
+      ],
+      "universal": true
+    },
+    "universal/comply-controller-mode-gate.yaml": {
+      "phases": [
+        "deny_live_caller",
+        "live_account_denial"
+      ],
+      "required_tools": [
+        "comply_test_controller"
+      ],
+      "universal": true
+    },
+    "universal/content-standards-pagination-integrity.yaml": {
+      "phases": [
+        "capability_discovery",
+        "create_standards_1",
+        "create_standards_2",
+        "create_standards_3",
+        "first_page",
+        "get_capabilities",
+        "pagination_walk",
+        "setup",
+        "terminal_page"
+      ],
+      "required_tools": [
+        "list_content_standards"
+      ],
+      "universal": true
+    },
+    "universal/deterministic-testing.yaml": {
+      "phases": [
+        "capability_discovery",
+        "controller_validation",
+        "create_media_buy",
+        "create_media_buy_for_budget",
+        "create_media_buy_for_delivery",
+        "deterministic_account",
+        "deterministic_budget",
+        "deterministic_creative",
+        "deterministic_delivery",
+        "deterministic_media_buy",
+        "deterministic_session",
+        "force_account_active",
+        "force_account_payment_required",
+        "force_account_suspended",
+        "force_creative_approved",
+        "force_creative_archived",
+        "force_creative_rejected",
+        "force_media_buy_active",
+        "force_media_buy_completed",
+        "force_session_terminated",
+        "get_capabilities",
+        "initiate_session",
+        "invalid_creative_transition",
+        "invalid_transition_from_terminal",
+        "list_accounts_for_state",
+        "list_scenarios",
+        "missing_params",
+        "not_found_entity",
+        "restore_account_active",
+        "simulate_budget_100",
+        "simulate_budget_95",
+        "simulate_delivery",
+        "sync_accounts_for_state",
+        "sync_creative_for_state",
+        "sync_fresh_creative_for_rejection",
+        "unknown_scenario",
+        "verify_delivery",
+        "verify_media_buy_active",
+        "verify_terminated_session"
+      ],
+      "required_tools": [
+        "comply_test_controller"
+      ],
+      "universal": true
+    },
+    "universal/error-compliance-signals.yaml": {
+      "phases": [
+        "capability_discovery",
+        "error_responses",
+        "error_structure",
+        "error_transport",
+        "get_capabilities",
+        "missing_required_field",
+        "nonexistent_signal",
+        "supported_major_version",
+        "unsupported_major_version",
+        "validate_error_shape",
+        "validate_transport_binding",
+        "version_negotiation"
+      ],
+      "required_tools": [
+        "activate_signal",
+        "get_signals"
+      ],
+      "universal": true
+    },
+    "universal/error-compliance.yaml": {
+      "phases": [
+        "capability_discovery",
+        "error_responses",
+        "error_structure",
+        "error_transport",
+        "get_capabilities",
+        "missing_fields",
+        "negative_budget",
+        "nonexistent_product",
+        "reversed_dates_error",
+        "supported_major_version",
+        "unsupported_major_version",
+        "unsupported_release_version",
+        "validate_error_shape",
+        "validate_transport_binding",
+        "version_negotiation"
+      ],
+      "required_tools": [
+        "get_products"
+      ],
+      "universal": true
+    },
+    "universal/get-media-buys-pagination-integrity.yaml": {
+      "phases": [
+        "capability_discovery",
+        "get_capabilities",
+        "list_call",
+        "pagination_shape"
+      ],
+      "required_tools": [
+        "get_media_buys"
+      ],
+      "universal": true
+    },
+    "universal/get-products-pagination-integrity.yaml": {
+      "phases": [
+        "capability_discovery",
+        "get_capabilities",
+        "wholesale_first_page",
+        "wholesale_pagination_walk",
+        "wholesale_terminal_page"
+      ],
+      "required_tools": [
+        "get_products"
+      ],
+      "requires_capability": {
+        "contains": "wholesale",
+        "path": "media_buy.buying_modes"
+      },
+      "universal": true
+    },
+    "universal/get-signals-pagination-integrity.yaml": {
+      "phases": [
+        "capability_discovery",
+        "first_page",
+        "get_capabilities",
+        "next_page",
+        "pagination_walk"
+      ],
+      "required_tools": [
+        "get_signals"
+      ],
+      "universal": true
+    },
+    "universal/idempotency.yaml": {
+      "phases": [
+        "capability_discovery",
+        "concurrent_retry",
+        "create_media_buy_concurrent",
+        "create_media_buy_conflict",
+        "create_media_buy_fresh_key",
+        "create_media_buy_initial",
+        "create_media_buy_missing_key",
+        "create_media_buy_replay",
+        "expect_rate_limit_not_replayed",
+        "fresh_key_new_resource",
+        "get_capabilities",
+        "get_media_buys_dedup_check",
+        "missing_key",
+        "rate_limit_replay_invariant",
+        "replay_same_payload",
+        "verify_media_buy_count"
+      ],
+      "universal": true
+    },
+    "universal/notification-config-event-scope.yaml": {
+      "phases": [
+        "reject_media_buy_anchored_event_type",
+        "sync_accounts_rejects_scheduled_account_notification"
+      ],
+      "required_tools": [
+        "sync_accounts"
+      ],
+      "universal": true
+    },
+    "universal/notification-config-lifecycle.yaml": {
+      "phases": [
+        "list_accounts_echoes_cleared_subscribers",
+        "list_accounts_echoes_notification_config",
+        "list_accounts_echoes_paused_replacement",
+        "register_and_echo_paused_subscriber",
+        "replace_pause_and_clear",
+        "sync_accounts_clear_subscribers",
+        "sync_accounts_create_paused_notification_config",
+        "sync_accounts_replace_and_pause_subscriber"
+      ],
+      "required_tools": [
+        "list_accounts",
+        "sync_accounts"
+      ],
+      "universal": true
+    },
+    "universal/notification-config-rejections.yaml": {
+      "phases": [
+        "reject_duplicate_subscriber_id",
+        "sync_accounts_rejects_duplicate_subscriber_id"
+      ],
+      "required_tools": [
+        "sync_accounts"
+      ],
+      "universal": true
+    },
+    "universal/pagination-integrity-creative-formats.yaml": {
+      "phases": [
+        "capability_discovery",
+        "first_page",
+        "get_capabilities",
+        "pagination_walk",
+        "seed_format_1",
+        "seed_format_2",
+        "seed_formats",
+        "terminal_page"
+      ],
+      "required_tools": [
+        "list_creative_formats"
+      ],
+      "universal": true
+    },
+    "universal/pagination-integrity-list-accounts.yaml": {
+      "phases": [
+        "capability_discovery",
+        "first_page",
+        "get_capabilities",
+        "next_page",
+        "pagination_walk",
+        "seed_account_1",
+        "seed_account_2",
+        "seed_account_3",
+        "seed_accounts"
+      ],
+      "required_tools": [
+        "list_accounts"
+      ],
+      "universal": true
+    },
+    "universal/pagination-integrity.yaml": {
+      "phases": [
+        "capability_discovery",
+        "first_page",
+        "get_capabilities",
+        "pagination_walk",
+        "terminal_page"
+      ],
+      "required_tools": [
+        "list_creatives"
+      ],
+      "universal": true
+    },
+    "universal/property-lists-pagination-integrity.yaml": {
+      "phases": [
+        "capability_discovery",
+        "create_list_1",
+        "create_list_2",
+        "create_list_3",
+        "first_page",
+        "get_capabilities",
+        "pagination_walk",
+        "setup",
+        "terminal_page"
+      ],
+      "required_tools": [
+        "list_property_lists"
+      ],
+      "universal": true
+    },
+    "universal/read-tool-idempotency.yaml": {
+      "phases": [
+        "assert_omitted_key_grace_handled",
+        "get_capabilities_with_idempotency_key",
+        "get_capabilities_without_idempotency_key_3_1_accept",
+        "get_capabilities_without_idempotency_key_3_1_reject",
+        "get_products_with_idempotency_key",
+        "list_accounts_with_idempotency_key",
+        "list_creative_formats_with_idempotency_key",
+        "list_creatives_with_idempotency_key",
+        "omitted_key_grace_accept_path",
+        "omitted_key_grace_assertion",
+        "omitted_key_grace_reject_path",
+        "read_requests_accept_idempotency_key"
+      ],
+      "universal": true
+    },
+    "universal/schema-validation-signals.yaml": {
+      "phases": [
+        "capability_discovery",
+        "get_capabilities",
+        "get_signals_schema",
+        "pricing_options_present",
+        "schema_compliance"
+      ],
+      "required_tools": [
+        "get_signals"
+      ],
+      "universal": true
+    },
+    "universal/schema-validation.yaml": {
+      "phases": [
+        "capability_discovery",
+        "create_buy_past_start_reject",
+        "format_id_reconciliation",
+        "get_capabilities",
+        "get_products_for_formats",
+        "get_products_schema",
+        "list_formats_match",
+        "past_start_rejection",
+        "pricing_options_present",
+        "reversed_dates",
+        "schema_compliance",
+        "temporal_validation"
+      ],
+      "required_tools": [
+        "get_products"
+      ],
+      "universal": true
+    },
+    "universal/security.yaml": {
+      "phases": [
+        "api_key_path",
+        "assert_mechanism",
+        "basic_path",
+        "mechanism_required",
+        "oauth_discovery",
+        "probe_api_key",
+        "probe_auth_server_metadata",
+        "probe_basic",
+        "probe_invalid_api_key",
+        "probe_invalid_basic",
+        "probe_invalid_oauth_token",
+        "probe_protected_resource",
+        "probe_unauth",
+        "unauth_rejection"
+      ],
+      "universal": true
+    },
+    "universal/signed-requests.yaml": {
+      "phases": [
+        "capability_discovery",
+        "get_capabilities",
+        "negative_vectors",
+        "positive_vectors"
+      ],
+      "required_tools": [
+        "get_adcp_capabilities"
+      ],
+      "universal": true
+    },
+    "universal/stale-response-advisory.yaml": {
+      "phases": [
+        "capability_discovery",
+        "force_upstream_unavailable",
+        "get_capabilities",
+        "no_stale_on_healthy_upstream",
+        "non_emission_guard",
+        "stale_response_forcing",
+        "stale_response_wire_placement"
+      ],
+      "required_tools": [
+        "get_products"
+      ],
+      "universal": true
+    },
+    "universal/v3-envelope-integrity.yaml": {
+      "phases": [
+        "envelope_integrity_check",
+        "no_legacy_status_fields"
+      ],
+      "universal": true
+    },
+    "universal/version-negotiation.yaml": {
+      "phases": [
+        "capabilities_advertise_and_echo",
+        "get_capabilities_with_version"
+      ],
+      "universal": true
+    },
+    "universal/webhook-emission.yaml": {
+      "phases": [
+        "assert_synchronous_completion_handled",
+        "assert_webhook_signing_key_present",
+        "capability_discovery",
+        "expect_key_stable_across_retries",
+        "expect_no_duplicate_webhook_on_replay",
+        "expect_operation_id_echo",
+        "expect_signature_valid",
+        "expect_webhook_presence",
+        "fetch_brand_json",
+        "get_capabilities",
+        "idempotency_key_presence",
+        "idempotency_key_stability",
+        "idempotency_replay_side_effects",
+        "operation_id_echo",
+        "signature_validity",
+        "signing_keys_published",
+        "sync_get_products_with_webhook_config_reject",
+        "sync_get_products_with_webhook_config_success",
+        "synchronous_completion_assertion",
+        "synchronous_completion_rejection_path",
+        "synchronous_completion_success_path",
+        "trigger_idempotent_webhook_initial",
+        "trigger_idempotent_webhook_replay",
+        "trigger_operation_id_echo",
+        "trigger_retry_scenario",
+        "trigger_signed_webhook",
+        "trigger_webhook_operation"
+      ],
+      "universal": true
+    },
+    "universal/webhook-receiver-envelope.yaml": {
+      "phases": [
+        "negative_envelope_rejections",
+        "positive_envelope_replay",
+        "post_delivery_report_envelope",
+        "post_same_event_retry",
+        "reject_bare_delivery_result",
+        "reject_missing_idempotency_key",
+        "reject_unsupported_status"
+      ],
+      "universal": true
+    },
+    "universal/wholesale-feed-bulk-webhooks.yaml": {
+      "phases": [
+        "register",
+        "register_bulk_change_webhook"
+      ],
+      "required_tools": [
+        "sync_accounts"
+      ],
+      "requires_capability": {
+        "contains": "wholesale_feed.bulk_change",
+        "path": "wholesale_feed_webhooks.event_types"
+      },
+      "universal": true
+    },
+    "universal/wholesale-feed-product-webhooks.yaml": {
+      "phases": [
+        "register",
+        "register_product_pricing_webhook"
+      ],
+      "required_tools": [
+        "sync_accounts"
+      ],
+      "requires_capability": {
+        "contains": "product.priced",
+        "path": "wholesale_feed_webhooks.event_types"
+      },
+      "universal": true
+    },
+    "universal/wholesale-feed-products.yaml": {
+      "phases": [
+        "bootstrap_products",
+        "conditional_fetch",
+        "standalone_pricing_token_rejected",
+        "unchanged_probe"
+      ],
+      "required_tools": [
+        "get_products"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "wholesale_feed_versioning.supported"
+      },
+      "universal": true
+    },
+    "universal/wholesale-feed-signal-webhooks.yaml": {
+      "phases": [
+        "register",
+        "register_signal_pricing_webhook"
+      ],
+      "required_tools": [
+        "sync_accounts"
+      ],
+      "requires_capability": {
+        "contains": "signal.priced",
+        "path": "wholesale_feed_webhooks.event_types"
+      },
+      "universal": true
+    },
+    "universal/wholesale-feed-signals.yaml": {
+      "phases": [
+        "bootstrap_signals",
+        "conditional_fetch",
+        "standalone_pricing_token_rejected",
+        "unchanged_probe"
+      ],
+      "required_tools": [
+        "get_signals"
+      ],
+      "requires_capability": {
+        "equals": "true",
+        "path": "wholesale_feed_versioning.supported"
+      },
+      "universal": true
+    }
+  }
+}

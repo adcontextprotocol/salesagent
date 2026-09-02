@@ -44,13 +44,45 @@ services:
 
   adcp-server:
     build: .
+    # NO `user:` directive, deliberately -- and this one is worth spelling out,
+    # because it used to carry the OPPOSITE fix.
+    #
+    # The problem it was solving is real: adcp-server and `tests` bind-mount the
+    # same /app, and whichever creates a path first owns it. The launcher created
+    # logs/audit.log as its own uid; adcp-server (image uid 1001) then could not
+    # open it; and because src/core/audit_logger.py:33 builds that FileHandler at
+    # MODULE IMPORT time, the server died before serving one request, surfacing
+    # as thousands of "Server not ready" errors instead of one permission error
+    # (reproduced twice on this worktree).
+    #
+    # The fix attempted here was to pin BOTH services to the same
+    # "${TEST_UID:-0}:${TEST_GID:-0}". That works on a ROOTFUL daemon, which is
+    # what its reasoning assumed ("no userns-remap on these hosts, so container
+    # root IS host root"). The run boxes are ROOTLESS, where it is wrong in both
+    # directions: with TEST_UID exported the container runs as that uid INSIDE
+    # the container and rootless maps it to a host SUBUID (~100000+uid), so /app
+    # collects files the run cannot write; without it -- a bare `docker compose
+    # up`, or cassini's supervisor invoking the stack -- the `:-0` default hits.
+    #
+    # Under rootless, container root ALREADY maps to the invoking user. Both
+    # services unset therefore land on ONE identity, which is what "make both
+    # sides one uid" was reaching for, without any uid plumbing to get wrong.
+    # cassini deleted the identical workaround on its own side for the same
+    # reason (cassini/identity.py: "a workaround for a root daemon, and there is
+    # no longer a root daemon").
+    #
+    # HOME: /tmp below is kept: harmless once the baked uid 1001 (which does have
+    # a passwd entry) is back, and removing it is a separate change.
     environment:
+      # A raw numeric uid has no /etc/passwd entry, so HOME would default to "/"
+      # (unwritable). Same reason the `tests` service sets this.
+      HOME: /tmp
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp?sslmode=disable
       # Pin strict schema validation (extra="forbid") for the e2e_rest boundary so
       # the live server rejects spec-invalid input the same way the dev/test
       # transports do. is_production() defaults to "development" already, but make
       # it explicit so a future Dockerfile/env change can't silently flip the
-      # boundary to production's lenient extra="ignore". (salesagent-hm9q)
+      # boundary to production's lenient extra="ignore".
       ENVIRONMENT: development
       SKIP_NGINX: "true"
       SKIP_CRON: "true"
@@ -90,7 +122,7 @@ services:
       # create flows resolve format specs server-side, and references carry the
       # PUBLIC canonical agent_url — without this, the registry's connection
       # alias has nothing to route to and the server calls the LIVE public host,
-      # which rate-limits under CI load (salesagent-9qe2). The runner service
+      # which rate-limits under CI load. The runner service
       # already sets the same value for the direct integration tests.
       CREATIVE_AGENT_URL: http://creative-agent:8080/api/creative-agent
       CREATE_DEMO_TENANT: "true"
@@ -135,8 +167,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
       # BLACKHOLE the live public creative agent: tests must NEVER depend on it
-      # (its catalog drifts and it rate-limits under CI load — salesagent-9qe2,
-      # salesagent-kczg). The registry aliases this host to the pinned in-network
+      # (its catalog drifts and it rate-limits under CI load,
+      #). The registry aliases this host to the pinned in-network
       # agent; if any code path regresses and connects to it verbatim, this makes
       # it fail INSTANTLY (connection refused) instead of flaking on a 429.
       - "creative.adcontextprotocol.org:127.0.0.1"
@@ -308,16 +340,25 @@ services:
       # Recorded, not deleted, because the reasoning returns verbatim the day a
       # `user:` pin does; do not re-add one without re-adding these three.
       #
-      # #1941 reworded this same block to say HOME/UV_CACHE_DIR are "RETAINED",
-      # and that wording is NOT carried over -- deliberately, and it is not a
-      # decision reversed here. #1941 did not ADD those two keys; they predate
-      # it, and all it changed was the prose above them, explaining why it left
-      # them alone while removing the `user:` pin. Nothing in it reads either
-      # variable (checked: the only other UV_CACHE_DIR in the repo is the baked
-      # Dockerfile.test/Dockerfile default, and no script reads HOME=/tmp). With
-      # the pin gone, /cache/uv is writable by the image default, so the
-      # redirect cannot fix anything and only throws away the cache warmed at
-      # build time -- so the removal stands and this note records the divergence.
+      # #1941 and #1858 both reworded this same block to say HOME/UV_CACHE_DIR
+      # are "RETAINED", and that wording is NOT carried over -- deliberately,
+      # and it is not a decision reversed here. Neither PR ADDED those two keys;
+      # they predate both, and all either changed was the prose above them,
+      # explaining why it left them alone while removing the `user:` pin.
+      # Nothing in either reads the variables (checked: the only other
+      # UV_CACHE_DIR in the repo is the baked Dockerfile.test/Dockerfile
+      # default, and no script reads HOME=/tmp). With the pin gone, /cache/uv is
+      # writable by the image default, so the redirect cannot fix anything and
+      # only throws away the cache warmed at build time -- so the removal stands
+      # and this note records the divergence.
+      #
+      # #1858 also moved PYTHONUNBUFFERED to sit BELOW those two keys and
+      # rewrote its comment in supervisor-generic terms. The key is unchanged in
+      # value and the mapping is unordered, so only the prose differed; the
+      # fuller cassini-specific account above is kept because it names the
+      # reproduction. #1858's one added observation -- that the
+      # ${VAR:-default} form matches BDD_E2E_ENABLED below -- is why the
+      # parameterised form is retained rather than a literal "1".
       # Fixed in-network DB address — never a host port, never collides. This is
       # the SUITE database used by unit(skip)/integration/bdd/admin.
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp_test?sslmode=disable
@@ -485,7 +526,7 @@ services:
   # (run_all_tests.sh for the in-network path; tests/e2e/conftest.py for the
   # host-side standalone path). NOT profile-gated: the SERVER resolves format
   # specs against this agent (CREATIVE_AGENT_URL) and the live public host is
-  # blackholed, so every e2e `up` needs it (salesagent-9qe2).
+  # blackholed, so every e2e `up` needs it.
   creative-pg:
     image: postgres:17-alpine
     environment:

@@ -123,7 +123,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And the response should not include a creatives array
     And the Buyer can poll tasks/get with the task_id to retrieve per-item results
     # POST-S1/S2: per-item results land on the task completion artifact, not this envelope
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-main-delete-missing-conflict @main-flow @error
   Scenario: Sync creatives — delete_missing rejected when creative_ids filter provided
@@ -173,7 +173,8 @@ Feature: BR-UC-006 Sync Creative Assets
     # MCP/REST/A2A tool transports. Schema is silent on SSRF. A2A-native
     # push-config endpoints map the same gate to InvalidParamsError with the
     # AdCP VALIDATION_ERROR envelope in data= — unit-pinned, not this scenario.
-    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json (recovery via enumMetadata)
+    # recovery=correctable comes from error-code.json's enumMetadata.
+    # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json
     # POST-F1, POST-F2, POST-F3
     # --- ext-b: TENANT_NOT_FOUND ---
 
@@ -997,6 +998,42 @@ Feature: BR-UC-006 Sync Creative Assets
       | too_short      | "abc1234"  | the error should be IDEMPOTENCY_KEY_TOO_SHORT with suggestion |
       | too_long       | "a]x256"   | the error should be IDEMPOTENCY_KEY_TOO_LONG with suggestion  |
 
+    # --- idempotency_key BEHAVIOR (the partitions above grade the key's SHAPE only) ---
+    # AdCP 3.1.1 dist/compliance/3.1.1/universal/idempotency.yaml, narrative:
+    #   "Every mutating request in AdCP carries an idempotency_key so buyers can safely
+    #    retry after network errors without double-booking."
+    #   2. "Replay with the same key and an equivalent payload returns the cached response
+    #       without re-executing resource mutations."
+    #   3. "Replay with the same key but a materially different payload is rejected with
+    #       IDEMPOTENCY_CONFLICT."
+    #   "Sellers that do not support create_media_buy SHOULD still pass idempotency
+    #    compliance on whichever mutating task they do implement."
+    # sync_creatives' pinned request schema marks idempotency_key REQUIRED, but the
+    # universal storyboard has NO `task: sync_creatives` step at 3.1.1 — the obligation
+    # is mandated and UNGRADED, so these two scenarios are its only grading for this tool.
+    # @source repo=adcp ref=v3.1.1 path=dist/compliance/3.1.1/universal/idempotency.yaml
+
+  @T-UC-006-idempotency-replay @uc006-idempotency @idempotency-key @happy-path
+  Scenario: Retrying a sync with the same idempotency_key does not re-execute the write
+    Given the Buyer is authenticated with a valid principal_id
+    And a creative with a known format_id
+    And that creative was already synced with idempotency_key "sync-retry-0001-abcd"
+    When the Buyer Agent syncs the creative
+    Then every creative result has action "created"
+    And the per-creative result should carry no changes list
+    And no additional creative approval workflow step should have been created
+
+  @T-UC-006-idempotency-conflict @uc006-idempotency @idempotency-key @error-details
+  Scenario: Reusing an idempotency_key with a materially different payload conflicts
+    Given the Buyer is authenticated with a valid principal_id
+    And a creative with a known format_id
+    And that creative was already synced with idempotency_key "sync-conflict-01-abcd"
+    And the creative name is changed to "Materially Different Creative"
+    When the Buyer Agent syncs the creative
+    Then the operation should fail
+    And the error code should be "IDEMPOTENCY_CONFLICT"
+    And the error recovery should be "correctable"
+
   @T-UC-006-boundary-approval @boundary @approval-mode
   Scenario Outline: Approval mode boundary — <boundary_point>
     Given the Buyer is authenticated with a valid principal_id
@@ -1229,7 +1266,7 @@ Feature: BR-UC-006 Sync Creative Assets
     # status surface here is the advisory CreativeStatus on each per-creative RESULT
     # of the SyncCreativesSuccess shape. These boundaries fix the enum membership of
     # that response value.
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
     Examples: Valid scope combinations
       | boundary_point                          | scope_setup                                              | expected                                                       |
@@ -1248,7 +1285,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And a creative whose sync resolves to a non-terminal per-creative action "<action>" carrying advisory status <status_value>
     When the Buyer Agent syncs the creative
     Then <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
     Examples: Valid CreativeStatus members
       | boundary_point                          | action    | status_value     | expected                                                           |
@@ -1323,7 +1360,7 @@ Feature: BR-UC-006 Sync Creative Assets
     # BR-RULE-209 INV-11: sandbox permitted only on the synchronous success shape;
     # forbidden on the async submitted envelope (no sandbox property) — a queued
     # sandbox sync has produced no simulated result yet to flag
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-sandbox-errors-no-flag @invariant @br-rule-209 @sandbox @error @v3-1
   Scenario: Sandbox account terminal-failure sync_creatives response omits the sandbox flag
@@ -1337,7 +1374,7 @@ Feature: BR-UC-006 Sync Creative Assets
     # BR-RULE-209 INV-11: sandbox forbidden on the terminal-failure errors shape
     # (not.anyOf required:[sandbox]) — the failure carries the real error only
     # POST-F3: suggestion field present even on the sandbox error shape
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-boundary-sandbox @boundary @sandbox @v3-1
   Scenario Outline: Sandbox flag response-shape boundary — <boundary_point>
@@ -1346,7 +1383,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And <account_kind>
     When the Buyer Agent sends a <response_shape>
     Then <expected>
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
     Examples: Synchronous success shape (sandbox permitted)
       | boundary_point                                            | account_kind                                       | response_shape                                    | expected                                                |
@@ -1387,7 +1424,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And every CreativeItem should be persisted under the parent creative
     # POST-S1: multi-asset composite sync succeeds
     # POST-S2: action = created
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-creative-item-text-array @v3-1 @creative-item
   Scenario: CreativeItem text content accepts array for A/B variants
@@ -1398,7 +1435,7 @@ Feature: BR-UC-006 Sync Creative Assets
     Then the response should include the creative with action "created"
     And all text variants should be retained on the CreativeItem
     # POST-S2: array-shaped text content preserved (A/B variant support)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-creative-item-missing-content @v3-1 @creative-item @ext-c
   Scenario: CreativeItem missing discriminator-required field is rejected
@@ -1422,7 +1459,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And every declared CreativeVariable should be persisted on the creative
     # POST-S1: DCO-aware creative sync succeeds
     # POST-S2: variables retained for serve-time substitution
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-creative-variable-required-flag @v3-1 @creative-variable @dco
   Scenario: CreativeVariable required flag is preserved on persisted creative
@@ -1432,7 +1469,7 @@ Feature: BR-UC-006 Sync Creative Assets
     Then the response should include the creative with action "created"
     And the persisted CreativeVariable should retain its required flag and default_value
     # POST-S2: serve-time semantics (required, default_value) preserved
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-creative-variable-invalid-type @v3-1 @creative-variable @dco @ext-c
   Scenario: CreativeVariable with unsupported variable_type is rejected
@@ -1457,7 +1494,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And every VAST tracker asset should be persisted with its vast_event and url
     # POST-S1: decomposed VAST trackers accepted
     # POST-S2: trackers retained for serve-time TrackingEvents assembly
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-vast-tracker-progress-requires-offset @v3-1 @vast-tracker @ext-c
   Scenario: VAST tracker with vast_event "progress" without offset is rejected
@@ -1471,7 +1508,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And the error should include a "suggestion" field
     # POST-F2: conditional-required violation surfaced
     # POST-F3: field path points at offset
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-vast-tracker-forbidden-event @v3-1 @vast-tracker @ext-c
   Scenario: VAST tracker with forbidden vast_event "impression" is rejected
@@ -1485,7 +1522,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And the error should include a "suggestion" field
     # POST-F2: VAST modeling rule enforced (impression -> url asset, not vast_tracker)
     # POST-F3: suggestion points buyer at the correct asset type
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-daast-tracker-asset @v3-1 @daast-tracker
   Scenario: Sync audio creative with decomposed DAAST trackers succeeds
@@ -1497,7 +1534,7 @@ Feature: BR-UC-006 Sync Creative Assets
     Then the response should include the creative with action "created"
     And every DAAST tracker asset should be persisted with its daast_event and url
     # POST-S1: decomposed DAAST trackers accepted
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-daast-tracker-no-non-linear-target @v3-1 @daast-tracker @ext-c
   Scenario: DAAST tracker with target "non_linear" is rejected
@@ -1523,7 +1560,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And the error should include a suggestion to re-read the resource and retry
     # POST-F2: machine-readable version info returned
     # POST-F3: recovery path is explicit (re-read + retry)
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-error-details-policy-violation @v3-1 @error-details @policy-violation
   Scenario: POLICY_VIOLATION error returns policy reference and violated rules
@@ -1536,7 +1573,7 @@ Feature: BR-UC-006 Sync Creative Assets
     And the error details should include a policy_url where the full policy can be reviewed
     # POST-F2: policy reference is structured, not free text
     # POST-F3: buyer can fetch policy text and revise
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/creative/sync-creatives-request.json
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/creative/sync-creatives-request.json
 
   @T-UC-006-error-details-creative-rejected @v3-1 @error-details @creative-rejected
   Scenario: CREATIVE_REJECTED error returns policy reference and rejection reasons
@@ -1550,7 +1587,7 @@ Feature: BR-UC-006 Sync Creative Assets
     # POST-F2: rejection rationale is structured
     # POST-F3: buyer knows what to revise
 
-  @T-UC-006-storyboard-provenance-required-rejection @storyboard-v3.1 @v3-1 @provenance @rejection
+  @T-UC-006-storyboard-provenance-required-rejection @uc006-storyboard-routing @storyboard-v3.1 @v3-1 @provenance @rejection
   Scenario: PROVENANCE_REQUIRED -- provenance object absent on creative under a policy that requires it
     Given the tenant has a product with creative_policy.provenance_required = true
     And the Buyer Agent submits a creative whose manifest carries no provenance object at all
@@ -1561,9 +1598,9 @@ Feature: BR-UC-006 Sync Creative Assets
     # provenance_enforcement Phase 2: cheapest buyer mistake -- no provenance attached.
     # Seller accepts envelope but per-creative action=failed with PROVENANCE_REQUIRED.
     # provenance_enforcement: provenance entirely absent under provenance_required policy
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/provenance_enforcement.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/scenarios/provenance_enforcement.yaml phase=reject_no_provenance step=sync_creatives_no_provenance
 
-  @T-UC-006-storyboard-provenance-digital-source-type-missing @storyboard-v3.1 @v3-1 @provenance @rejection
+  @T-UC-006-storyboard-provenance-digital-source-type-missing @uc006-storyboard-routing @storyboard-v3.1 @v3-1 @provenance @rejection
   Scenario: PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING -- provenance present but digital_source_type omitted
     Given the tenant has a product with creative_policy.provenance_requirements.require_digital_source_type = true
     And the Buyer Agent submits a creative whose provenance object omits digital_source_type
@@ -1574,9 +1611,9 @@ Feature: BR-UC-006 Sync Creative Assets
     # under a policy with require_digital_source_type=true. Distinct from
     # PROVENANCE_REQUIRED because provenance IS present.
     # provenance_enforcement: digital_source_type missing under require_digital_source_type policy
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/provenance_enforcement.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/scenarios/provenance_enforcement.yaml phase=reject_missing_digital_source_type step=sync_creatives_no_digital_source_type
 
-  @T-UC-006-storyboard-provenance-disclosure-missing @storyboard-v3.1 @v3-1 @provenance @rejection
+  @T-UC-006-storyboard-provenance-disclosure-missing @uc006-storyboard-routing @storyboard-v3.1 @v3-1 @provenance @rejection
   Scenario: PROVENANCE_DISCLOSURE_MISSING -- provenance present but disclosure block omitted under require_disclosure_metadata
     Given the tenant has a product with creative_policy.provenance_requirements.require_disclosure_metadata = true
     And the Buyer Agent submits a creative whose provenance object lacks a disclosure block
@@ -1587,9 +1624,9 @@ Feature: BR-UC-006 Sync Creative Assets
     # submitted manifest against creative_policy.provenance_requirements.require_disclosure_metadata
     # without calling any verifier. error.field points at the missing disclosure path.
     # provenance_enforcement: disclosure block missing under require_disclosure_metadata policy
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/provenance_enforcement.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/scenarios/provenance_enforcement.yaml phase=reject_missing_disclosure step=sync_creatives_missing_disclosure
 
-  @T-UC-006-storyboard-provenance-corrected-acceptance @storyboard-v3.1 @v3-1 @provenance @acceptance
+  @T-UC-006-storyboard-provenance-corrected-acceptance @uc006-storyboard-routing @storyboard-v3.1 @v3-1 @provenance @acceptance
   Scenario: Corrected resubmission with disclosure block and on-list verifier is accepted
     Given a creative submission that previously failed with provenance rejection codes
     And the Buyer Agent resubmits with a complete disclosure block and an on-list verify_agent from the seller's accepted_verifiers
@@ -1602,9 +1639,9 @@ Feature: BR-UC-006 Sync Creative Assets
     # drawn from creative_policy.accepted_verifiers. Per-creative action transitions
     # to created/updated (not failed); the creative enters the seller's review lifecycle.
     # provenance_enforcement: corrected resubmission terminates the rejection cascade
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/provenance_truth_of_claim.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/media-buy/scenarios/provenance_enforcement.yaml phase=accept_with_disclosure step=sync_creatives_with_disclosure
 
-  @T-UC-006-storyboard-provenance-claim-contradicted @storyboard-v3.1 @v3-1 @provenance @rejection @truth-of-claim
+  @T-UC-006-storyboard-provenance-claim-contradicted @uc006-storyboard-routing @schema-v3.1 @v3-1 @provenance @rejection @truth-of-claim
   Scenario: PROVENANCE_CLAIM_CONTRADICTED -- on-list verifier refutes buyer's digital_source_type claim
     Given the Buyer Agent submits a creative claiming digital_source_type "digital_capture"
     And the on-list verifier responds with ai_generated true at confidence at least 0.9
@@ -1621,25 +1658,37 @@ Feature: BR-UC-006 Sync Creative Assets
     # claimed_value, observed_value, confidence) -- no detail_url, no verifier extension
     # fields. This is the cross-tenant trust boundary.
     # provenance_truth_of_claim: verifier contradicts buyer claim; details bounded to audit-safe allowlist
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/creative/index.yaml
+    # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/compliance/source/protocols/creative/index.yaml
 
-  @T-UC-006-storyboard-multi-format-sync @storyboard-v3.1 @v3-1 @bulk-sync @multi-format
-  Scenario: Bulk sync of three creatives in three different formats returns per-creative action and status
+  @T-UC-006-storyboard-multi-format-sync @uc006-storyboard-routing @storyboard-v3.1 @v3-1 @bulk-sync @multi-format
+  Scenario: Bulk sync of three creatives in three different formats returns per-creative action
     Given the Buyer Agent submits three creatives in three different formats in a single sync_creatives call
     When the Buyer Agent sends sync_creatives
     Then the response envelope should be schema-valid against sync-creatives-response.json
     And the creatives array should carry one result per submitted creative
-    And every per-creative result should expose action and status fields
+    And every per-creative result should expose an action field
     And every action value should be "created", "updated", or "failed"
-    And every status value should be drawn from the creative-status enum
     # creative/index.yaml sync_multiple: a single sync_creatives call carries three
     # creatives (display 300x250, video 30s, native_content). The seller validates each
     # against its format spec independently and returns per-creative action plus status.
+    # This half grades the ACTION obligations; the per-creative STATUS obligations are
+    # graded by the sibling scenario below, split out because their known production gap
+    # aborted this scenario and left these assertions dead (#1858).
+    # sync_multiple: bulk multi-format validation returns per-creative action+status
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/index.yaml phase=creative_sync step=sync_creatives
+
+  @T-UC-006-storyboard-multi-format-sync-status @uc006-storyboard-routing @storyboard-v3.1 @v3-1 @bulk-sync @multi-format
+  Scenario: Bulk sync of three creatives in three different formats returns per-creative status
+    Given the Buyer Agent submits three creatives in three different formats in a single sync_creatives call
+    When the Buyer Agent sends sync_creatives
+    Then every per-creative result should expose a status field
+    And every status value should be drawn from the creative-status enum
+    # The STATUS half of the same storyboard step as the sibling scenario above.
     # Per-creative status is from creative-status (approved, pending_review, rejected).
     # sync_multiple: bulk multi-format validation returns per-creative action+status
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/creative/index.yaml
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/index.yaml phase=creative_sync step=sync_creatives
 
-  @T-UC-006-storyboard-format-id-roundtrip-on-sync @storyboard-v3.1 @v3-1 @format-id-roundtrip
+  @T-UC-006-storyboard-format-id-roundtrip-on-sync @uc006-storyboard-routing @storyboard-v3.1 @v3-1 @format-id-roundtrip
   Scenario: Sync creative with the same format_id object returned by get_products -- seller MUST accept its own format_id
     Given the Buyer Agent captured a format_id {agent_url, id} from a prior get_products response
     When the Buyer Agent sends sync_creatives carrying a creative whose format_id matches the captured object
@@ -1651,9 +1700,9 @@ Feature: BR-UC-006 Sync Creative Assets
     # that it returned in products, its catalog does not roundtrip and a buy
     # would silently fail at sync_creatives after commit.
     # format_id roundtrip: seller MUST accept its own format_ids on sync_creatives
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/creative_reception.yaml
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/index.yaml phase=creative_sync step=sync_creatives
 
-  @T-UC-006-storyboard-creative-reception-stateful-render @storyboard-v3.1 @v3-1 @stateful-push @creative-reception
+  @T-UC-006-storyboard-creative-reception-stateful-render @uc006-storyboard-routing @schema-v3.1 @v3-1 @stateful-push @creative-reception
   Scenario: Stateful sales agent accepts pushed creatives and exposes them via per-creative status transitions
     Given the Buyer Agent pushes creative assets to a stateful sales agent
     When the Buyer Agent sends sync_creatives

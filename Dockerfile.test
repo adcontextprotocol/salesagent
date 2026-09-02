@@ -24,6 +24,22 @@ RUN echo 'path-exclude /usr/share/doc/*' > /etc/dpkg/dpkg.cfg.d/01_nodoc \
 
 RUN pip install --no-cache-dir uv
 
+# Node 20 for the `storyboard` tox env: the AdCP conformance runner is the real
+# @adcp/sdk CLI (a Node binary), driven as a subprocess by tests/storyboard/.
+# It has to live in THIS image because the runner and pytest must share a
+# container — the runner talks to the agent at proxy:8000, in-network, the same
+# way every other suite reaches its services by name.
+#
+# Copied from the official image rather than apt-installed: bookworm ships Node
+# 18, and the runner's package-lock.json is resolved against 20 (matching the
+# CI job's actions/setup-node). The node_modules themselves are NOT baked in —
+# they come from `npm ci` in the env's commands_pre, over the /app bind mount,
+# so the pinned lockfile stays the single source of truth.
+COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:20-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && node --version && npm --version
+
 # Put the venv OUTSIDE /app so the runtime `.:/app` bind mount never shadows it
 # (the /app/.venv anonymous-volume hack is fragile — anon volumes aren't
 # refreshed when the image is rebuilt).

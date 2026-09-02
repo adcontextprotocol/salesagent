@@ -27,18 +27,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tests.helpers.ledger import load_ledger_nodeids
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _LEDGER = _REPO_ROOT / "tests" / "bdd" / "e2e_rest_known_failures.txt"
 
 
-def _ledger_entries() -> list[str]:
-    return [
-        line.strip() for line in _LEDGER.read_text().splitlines() if line.strip() and not line.lstrip().startswith("#")
-    ]
-
-
 def test_every_ledger_entry_resolves_to_a_collected_item():
-    entries = set(_ledger_entries())
+    entries = load_ledger_nodeids(_LEDGER)
 
     # Collect the bdd suite with the e2e_rest transport enabled. -n0 satisfies the
     # BDD_E2E_ENABLED xdist guard; addopts is cleared so -q prints bare nodeids.

@@ -114,7 +114,25 @@ class _SignedDispatchEnv(BareIntegrationEnv):
     claim. The REST leg keeps the raw dict parser the spike used — its subject is
     the signature, not the payload shape, and the typed parse is already graded
     by ``CapabilitiesEnv``'s own suites.
+
+    DISPATCH DECLARATION, NOT DELEGATION METHODS. The a2a and mcp legs are
+    declared (``A2A_SKILL``/``MCP_TOOL``/``RESPONSE_MODEL``) and driven by
+    ``BaseTestEnv.deliver_a2a``/``deliver_mcp``, which own the ONE dispatch path
+    (``tests/unit/test_architecture_harness_single_dispatch.py``). Both names
+    are :data:`SIGNED_OPERATION` rather than literals, because the whole file's
+    comparability rests on all three legs resolving to the SAME graded
+    operation: a literal here could drift from the operation the posture puts in
+    ``required_for``, which would silently move the leg into the ``none`` bucket
+    and pass a signed request through unverified. The env keeps its signing
+    behaviour unchanged — ``signed`` never travels in ``**kwargs``; it is
+    consumed by the dispatcher and read back off ``_signed_dispatch`` inside
+    ``_run_a2a_handler``/``_run_mcp_client``, which is what those base methods
+    already did when this env called them by hand.
     """
+
+    MCP_TOOL = SIGNED_OPERATION
+    A2A_SKILL = SIGNED_OPERATION
+    RESPONSE_MODEL = GetAdcpCapabilitiesResponse
 
     REST_ENDPOINT = BODYLESS_ADCP_PATH
 
@@ -126,12 +144,6 @@ class _SignedDispatchEnv(BareIntegrationEnv):
 
     def parse_rest_error(self, status_code: int, data: Any) -> Exception:  # type: ignore[override]
         return AssertionError(f"HTTP {status_code}: {data}")
-
-    def call_a2a(self, **kwargs: Any) -> GetAdcpCapabilitiesResponse:
-        return self._run_a2a_handler(SIGNED_OPERATION, GetAdcpCapabilitiesResponse, **kwargs)
-
-    def call_mcp(self, **kwargs: Any) -> GetAdcpCapabilitiesResponse:
-        return self._run_mcp_client(SIGNED_OPERATION, GetAdcpCapabilitiesResponse, **kwargs)
 
 
 def _assert_verified_under_counterparty_key(

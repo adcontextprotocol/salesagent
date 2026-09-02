@@ -296,21 +296,26 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     sleep 3
 done
 [ "$pg" = true ] || { echo "Postgres never became ready"; dc logs postgres; exit 1; }
-# The same guard for the SERVER, which was missing: $srv was computed and printed
-# and then never checked, so a stack whose app never came up proceeded silently
-# into the suites. Measured cost of that omission on 2026-08-24: the wait spun its
-# full 360s, said only "Postgres ready", and then bdd + e2e + ui produced 2537
-# errors -- "live E2E stack is unreachable", "Server not ready after 60s",
-# "TargetClosedError" -- none of which names the actual cause. One precondition
-# failure, reported once, replaces all of it.
+# $srv gets the SAME fail-fast treatment as $pg. It used to be computed, printed
+# on success, and then never checked -- so a stack whose server never became
+# healthy within the 360s deadline proceeded silently into every server-dependent
+# suite. That is not a smaller failure than a dead Postgres, it is a louder one:
+# bdd_e2e/e2e/ui then emit thousands of "live E2E stack is unreachable" /
+# "Server not ready after 60s" / TargetClosedError errors, none of which names
+# the actual cause. Measured on 2026-08-24: the wait spun its full 360s, said
+# only "Postgres ready", and the suites then produced 2537 errors -- one root
+# cause, zero of them a real defect. Infrastructure death must present as ONE
+# infrastructure failure, reported once.
 #
 # Unconditional because THIS path just started the stack a few lines above: if we
 # brought the server up and it never became healthy, that is a failure for every
 # caller, not a caller-specific one. Symmetric with the Postgres guard by design;
 # an asymmetry here is what hid the problem.
 [ "$srv" = true ] || {
-    echo "Server never became healthy (waited 360s for http://localhost:8080/health inside adcp-server)"
-    dc logs --tail=120 adcp-server
+    echo "ERROR: adcp-server never became healthy within the 360s deadline — aborting" >&2
+    echo "       (waited on http://localhost:8080/health inside adcp-server; every" >&2
+    echo "        server-dependent suite would otherwise error en masse)" >&2
+    dc logs --tail=120 adcp-server >&2
     exit 1
 }
 
@@ -391,21 +396,46 @@ if [ "${E2E_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
             -e TLS_UPSTREAM="${COMPOSE_PROJECT_NAME}-server-gw$i:8080" tls-proxy >/dev/null
     done
     echo "  waiting for $N per-worker servers to become healthy..."
+    # Same fail-fast reasoning as the template-migration check above: a worker
+    # whose server never came up cannot run a single e2e_rest scenario, so
+    # "(continuing)" only converts one infrastructure fault into a flood of
+    # scenario errors attributed to the wrong layer. Collect all of them first
+    # (one pass, so the operator sees every unhealthy worker rather than just
+    # the first) and then abort with the count.
+    _unhealthy=""
     for i in $(seq 0 $((N - 1))); do
         wd=$(( $(date +%s) + 120 )); ok=false
         while [ "$(date +%s)" -lt "$wd" ]; do
             docker exec "${COMPOSE_PROJECT_NAME}-server-gw$i" curl -sf http://localhost:8080/health >/dev/null 2>&1 && ok=true && break
             sleep 2
         done
-        [ "$ok" = true ] && echo "    server-gw$i ready" || echo "    server-gw$i NOT ready (continuing)"
+        if [ "$ok" = true ]; then
+            echo "    server-gw$i ready"
+        else
+            echo "    server-gw$i NOT ready"
+            _unhealthy="$_unhealthy gw$i"
+        fi
     done
+    if [ -n "$_unhealthy" ]; then
+        echo "ERROR: per-worker e2e server(s) never became healthy:$_unhealthy" >&2
+        echo "       aborting — these workers' scenarios would error en masse and" >&2
+        echo "       be misread as test failures rather than a stack failure." >&2
+        for i in $_unhealthy; do
+            echo "--- logs: ${COMPOSE_PROJECT_NAME}-server-$i ---" >&2
+            docker logs --tail 40 "${COMPOSE_PROJECT_NAME}-server-$i" >&2 2>&1 || true
+        done
+        exit 1
+    fi
     # TLS readiness — a REAL handshake at the dotted name, verified against the
-    # generated CA, and a HARD FAILURE on timeout. Deliberately NOT the shape of
-    # the plaintext probe above, which prints "NOT ready (continuing)" and carries
-    # on: a TLS listener that half-starts and is skipped past is precisely the
-    # vacuity salesagent-tgzb exists to remove — every https scenario would then
-    # silently grade the http branch. (Making the plaintext probe fail too is a
-    # separate, deliberate change, not a side effect of this one.)
+    # generated CA, and a HARD FAILURE on timeout. This probe and the plaintext
+    # one above now share that shape deliberately: the plaintext loop used to
+    # print "NOT ready (continuing)" and carry on, which is the same vacuity in
+    # the other transport — a listener that half-starts and is skipped past means
+    # every https scenario silently grades the http branch (salesagent-tgzb), and
+    # every plaintext scenario grades nothing at all. Ordered AFTER the plaintext
+    # abort on purpose: a sidecar proxies its own `-server-gwN` upstream, so a
+    # dead upstream would surface here as a TLS handshake failure and send the
+    # operator to the wrong layer.
     echo "  waiting for $N per-worker TLS sidecars to complete a verified handshake..."
     for i in $(seq 0 $((N - 1))); do
         name="${COMPOSE_PROJECT_NAME}-tls-gw$i.adcp.test"
@@ -456,15 +486,24 @@ RC=0
 chmod -R g+w . 2>/dev/null || true
 chmod -R go-w .git 2>/dev/null || true
 
-# Delete last run's reports BEFORE this run writes its own. The copy below is a
-# blanket `cp .tox/*.json`, so without this it publishes reports from envs THIS
-# run never executed, stamped into a fresh results dir as if they were current.
-# That is not hypothetical: `bdd` is swapped out for `bdd_inprocess,bdd_e2e`
-# whenever E2E_WORKERS>0 (see above), so a stale bdd.json from whenever
-# `tox -e bdd` last ran kept being republished -- one was a full DAY older than
-# its directory-mates and reported 6 failures against code that no longer
-# existed, which read as a live regression. It cuts the other way too: a suite
-# that silently stops running keeps publishing its last PASS forever.
+# Delete every previous report BEFORE this run writes its own, and do it in
+# exactly ONE place. The suites' reports land in the tox_data VOLUME, not here
+# (see the extraction note below), and that volume is created and destroyed per
+# run -- so this purge is not what protects THIS path. It is defence in depth for
+# the host's ./.tox, which persists: a developer's earlier `tox -e ...` on the
+# host leaves JSON exactly where a future "simplification" of the extraction back
+# to `cp .tox/*.json` would find it and publish an older run's green numbers
+# under this run's id. Purging first makes that unrepresentable rather than
+# merely detectable.
+#
+# Blanket (`.tox/*.json`), not a $SUITES-scoped loop: a scoped loop leaves exactly
+# the not-run envs' reports sitting in `.tox/`, which is the class of staleness
+# documented at the copy below (`storyboard.json` republished for three runs). It
+# also bit `bdd`, which is swapped out for `bdd_inprocess,bdd_e2e` whenever
+# E2E_WORKERS>0 (see above): a stale bdd.json from whenever `tox -e bdd` last ran
+# kept being republished -- one was a full DAY older than its directory-mates and
+# reported 6 failures against code that no longer existed, read as a live
+# regression. Purging wholesale plus copying per-suite closes both directions.
 rm -f .tox/*.json
 
 dc run --rm --use-aliases $E2E_ENV_ARGS tests tox -p -e "$SUITES" || RC=$?
@@ -493,14 +532,80 @@ echo "Extracting JSON reports from the tox_data volume..."
 # insurance against $RESULTS_DIR having been removed or never created for
 # any reason) and let a real failure actually say something instead of
 # vanishing 23 minutes of work without a trace.
+#
+# Copy ONLY the suites THIS invocation ran, and name them EXPLICITLY -- never a
+# wholesale `*.json` glob. On the volume shape a wholesale glob cannot pick up a
+# PREVIOUS run's report (the volume is created and `down -v`-destroyed per run,
+# and COMPOSE_PROJECT_NAME is unique per run), so this is not about cross-run
+# staleness here. It is about the case the glob structurally cannot report: a
+# suite that RAN and died before writing its JSON. A glob copies what exists and
+# says nothing about what does not, so a dead suite leaves an omission that reads
+# as "that suite simply wasn't in this run".
+#
+# That failure mode is not hypothetical in the sibling host shape, where `.tox`
+# IS a persistent directory: `storyboard` is an opt-in env (not in tox's
+# env_list), so a bare `./run_all_tests.sh` never runs it -- yet three
+# consecutive runs published a storyboard.json from hours earlier, and the
+# numbers were read as this run's until an SDK version inside the report
+# contradicted the SDK that was actually installed. Naming the suites closes
+# both directions at once and keeps the two runners' contracts the same.
+#
+# A missing report for a suite that DID run is an error, not an omission: it
+# means the suite died before writing one, which is exactly when its absence
+# most needs to be loud.
 mkdir -p "$RESULTS_DIR"
-if ! docker run --rm \
+# Record WHICH suites this invocation ran, next to their reports. Consumers
+# cannot infer it: report timestamps do not separate "stale" from "ran early in
+# a long serial run" (measured: a genuine unit report was 16 min behind the
+# newest, a stale storyboard one 28 min — overlapping bands, so any threshold
+# misfires both ways). An explicit manifest is exact.
+printf '%s\n' "$SUITES" > "$RESULTS_DIR/.suites"
+# The per-suite selection runs INSIDE the extraction container, against the
+# volume. Deliberately not a host-side `[ -f ".tox/$s.json" ]` test: the host's
+# ./.tox is empty under the volume shape, so a host-side existence check would
+# declare EVERY suite missing -- and if a developer's earlier host `tox` run left
+# JSON there, it would instead copy those and publish an older run's green
+# numbers under this run's id. The copy and the check must see the same
+# filesystem, and the only filesystem that holds this run's reports is /t.
+# stdout carries the missing-suite list; the container's stderr passes straight
+# through so a real `cp` error still says something.
+_extract_rc=0
+_missing_reports=$(docker run --rm \
     -v "${COMPOSE_PROJECT_NAME}_tox_data:/t:ro" \
     -v "$(pwd)/${RESULTS_DIR}:/out" \
-    alpine sh -c 'cp /t/*.json /out/'; then
-    echo "WARNING: failed to extract JSON reports into $RESULTS_DIR/ -- see error above." >&2
-    echo "         They are in the ${COMPOSE_PROJECT_NAME}_tox_data volume until this run's" >&2
-    echo "         cleanup trap runs \`down -v\`; copy them out now if you need them." >&2
+    alpine sh -c '
+        missing=""
+        for s in $(printf "%s" "$1" | tr "," " "); do
+            if [ -f "/t/$s.json" ]; then
+                cp "/t/$s.json" /out/ || missing="$missing $s(copy-failed)"
+            else
+                missing="$missing $s"
+            fi
+        done
+        printf "%s" "$missing"
+    ' _ "$SUITES") || _extract_rc=$?
+if [ "$_extract_rc" -ne 0 ]; then
+    echo "ERROR: failed to extract JSON reports into $RESULTS_DIR/ -- see error above." >&2
+    echo "       They are in the ${COMPOSE_PROJECT_NAME}_tox_data volume until this run's" >&2
+    echo "       cleanup trap runs \`down -v\`; copy them out now if you need them." >&2
+    # Fails the run for the same reason the missing-report arm below does. A dead
+    # extraction container copies NOTHING, so $_missing_reports comes back empty
+    # and that arm never fires -- leaving a run that measured nothing exiting 0.
+    if [ "$RC" -eq 0 ]; then RC=1; fi
+fi
+if [ -n "$_missing_reports" ]; then
+    echo "ERROR: no JSON report for suite(s):$_missing_reports" >&2
+    echo "       The suite ran but produced no report -- it died before writing one." >&2
+    echo "       Reports are how this run is graded; a suite that produced none was not measured." >&2
+    # The comment above already calls this "an error, not an omission". The code
+    # said RC=${RC:-0}, which leaves the exit code untouched — so a dead suite
+    # produced a GREEN run, and the file that publishes the numbers disagreed
+    # with its own docstring. Written as a full `if` rather than
+    # `[ "$RC" -eq 0 ] && RC=1`: as the last statement of a branch under
+    # `set -e`, the &&-list's non-zero status when RC is ALREADY non-zero aborts
+    # the script here, skipping the truncation check, the RC reconciliation and
+    # the security audit -- exactly on the suites-failed path that needs them.
+    if [ "$RC" -eq 0 ]; then RC=1; fi
 fi
 echo "Reports: $RESULTS_DIR/"
 ls -1 "$RESULTS_DIR"/*.json 2>/dev/null || echo "  (no JSON reports extracted)"

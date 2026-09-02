@@ -1,0 +1,853 @@
+# End-to-end wireability of the pinned conformance surface — AdCP 3.1.1
+#
+# CURATED INPUT, like storyboard-issue-map.yaml. Joined per (storyboard, step)
+# into the check index; not derivable from the tree, because it is a
+# judgement about whether a step can be DRIVEN and OBSERVED from outside a
+# running agent.
+#
+# The question each verdict answers: can a BDD scenario for this step be wired
+# in the e2e environment — every Given seeded by sending requests or by ordinary
+# stack fixtures, the When constructed and sent by a client, every Then asserted
+# on the wire?
+#
+#   wireable     — all three, no extra provisioning.
+#   conditional  — all three reachable, but something must be provisioned first;
+#                  `requires` names it (webhook_receiver, prior_state,
+#                  seeded_account, signing_keypair, second_agent, ...).
+#   not_wireable — a trigger that is not a client request at all, or an
+#                  assertion invisible from outside (upstream traffic, logs).
+#
+# The harness IS a client: building an RFC 9421 signed request, sending a
+# malformed or unauthenticated one, replaying an idempotency key or firing N
+# requests to trip a rate limit are all client work and do NOT make a step
+# unwireable. An earlier verdict set that treated them as unwireable was wrong
+# and was corrected before this file was written.
+#
+# Steps requiring comply_test_controller are NOT listed here: they are
+# ungradable by policy, so the index marks them not_wireable deterministically.
+#
+# Produced by a 42-agent assess+verify pass over the pinned steps; the
+# adversarial pass corrected 11 verdicts, every one of them an over-conservative
+# not_wireable that the evidence did not support. `evidence` quotes the step.
+#
+# `untriaged` is the escape hatch test_architecture_storyboard_wireability.py
+# enforces: an on-path, non-controller-gated (storyboard, step) that AdCP grades
+# us on must either carry a verdict in `steps` below or be named here, plainly
+# admitting nobody has judged it yet. A step silently missing from both fails
+# that guard, naming it — this file is not allowed to just fall behind the pin.
+
+untriaged: []
+
+steps:
+  "universal/webhook-emission.yaml::trigger_webhook_operation":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [webhook_receiver]
+    blocker: "The assertion is that a webhook ARRIVES: the step is `task: expect_webhook`-family with `triggered_by` scoping it to the per-step receiver URL (`{{runner.webhook_url:<step>}}`) and a `webhook_payload_schema_ref` the payload must validate against. Grading it end-to-end needs the harness to own and address a receiver the separately-running agent can deliver to; nothing about it is response-only."
+    evidence: "Graded by the runner through an assertion TASK rather than a `check:` line, so it carried no index row until graded_steps_by_task() landed; the conformance ledger records failures against this step id. Owner is the step named in the assertion step's `triggered_by` where it has one, matching the runner's own attribution."
+  "universal/webhook-emission.yaml::trigger_operation_id_echo":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [webhook_receiver]
+    blocker: "The assertion is that a webhook ARRIVES: the step is `task: expect_webhook`-family with `triggered_by` scoping it to the per-step receiver URL (`{{runner.webhook_url:<step>}}`) and a `webhook_payload_schema_ref` the payload must validate against. Grading it end-to-end needs the harness to own and address a receiver the separately-running agent can deliver to; nothing about it is response-only."
+    evidence: "Graded by the runner through an assertion TASK rather than a `check:` line, so it carried no index row until graded_steps_by_task() landed; the conformance ledger records failures against this step id. Owner is the step named in the assertion step's `triggered_by` where it has one, matching the runner's own attribution."
+  "universal/webhook-emission.yaml::trigger_idempotent_webhook_initial":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [webhook_receiver]
+    blocker: "The assertion is that a webhook ARRIVES: the step is `task: expect_webhook`-family with `triggered_by` scoping it to the per-step receiver URL (`{{runner.webhook_url:<step>}}`) and a `webhook_payload_schema_ref` the payload must validate against. Grading it end-to-end needs the harness to own and address a receiver the separately-running agent can deliver to; nothing about it is response-only."
+    evidence: "Graded by the runner through an assertion TASK rather than a `check:` line, so it carried no index row until graded_steps_by_task() landed; the conformance ledger records failures against this step id. Owner is the step named in the assertion step's `triggered_by` where it has one, matching the runner's own attribution."
+  "universal/webhook-emission.yaml::trigger_retry_scenario":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [webhook_receiver]
+    blocker: "The assertion is that a webhook ARRIVES: the step is `task: expect_webhook`-family with `triggered_by` scoping it to the per-step receiver URL (`{{runner.webhook_url:<step>}}`) and a `webhook_payload_schema_ref` the payload must validate against. Grading it end-to-end needs the harness to own and address a receiver the separately-running agent can deliver to; nothing about it is response-only."
+    evidence: "Graded by the runner through an assertion TASK rather than a `check:` line, so it carried no index row until graded_steps_by_task() landed; the conformance ledger records failures against this step id. Owner is the step named in the assertion step's `triggered_by` where it has one, matching the runner's own attribution."
+  "universal/webhook-emission.yaml::trigger_signed_webhook":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [webhook_receiver]
+    blocker: "The assertion is that a webhook ARRIVES: the step is `task: expect_webhook`-family with `triggered_by` scoping it to the per-step receiver URL (`{{runner.webhook_url:<step>}}`) and a `webhook_payload_schema_ref` the payload must validate against. Grading it end-to-end needs the harness to own and address a receiver the separately-running agent can deliver to; nothing about it is response-only."
+    evidence: "Graded by the runner through an assertion TASK rather than a `check:` line, so it carried no index row until graded_steps_by_task() landed; the conformance ledger records failures against this step id. Owner is the step named in the assertion step's `triggered_by` where it has one, matching the runner's own attribution."
+  "universal/webhook-emission.yaml::fetch_brand_json":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [signing_keypair]
+    blocker: "Graded against the agent's PUBLISHED signing material, not a response we elicit: the step fetches brand.json, follows `agents[].jwks_uri`, and asserts a key with a webhook-valid purpose. Wiring it needs the agent under test to serve a brand.json and JWKS with a real keypair, which the harness does not provision today."
+    evidence: "Graded by the runner through an assertion TASK rather than a `check:` line, so it carried no index row until graded_steps_by_task() landed; the conformance ledger records failures against this step id. Owner is the step named in the assertion step's `triggered_by` where it has one, matching the runner's own attribution."
+  "universal/webhook-emission.yaml::assert_webhook_signing_key_present":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [signing_keypair]
+    blocker: "Graded against the agent's PUBLISHED signing material, not a response we elicit: the step fetches brand.json, follows `agents[].jwks_uri`, and asserts a key with a webhook-valid purpose. Wiring it needs the agent under test to serve a brand.json and JWKS with a real keypair, which the harness does not provision today."
+    evidence: "Graded by the runner through an assertion TASK rather than a `check:` line, so it carried no index row until graded_steps_by_task() landed; the conformance ledger records failures against this step id. Owner is the step named in the assertion step's `triggered_by` where it has one, matching the runner's own attribution."
+  "protocols/media-buy/index.yaml::check_buy_status":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "`task: get_media_buys`, `stateful: true`, driven by `sample_request: media_buy_ids: - \"$context.media_buy_id\"` \u2014 supplied by the earlier `create_media_buy` step's `context_outputs: - name: media_buy_id / path: 'media_buy_id'`, i.e. prior state produced by a request we send, not injected. Every one of the six checks reads the response: `field_present path: \"media_buys[0].status\"`, `check: field_equals_context / path: \"media_buys[0].media_buy_id\" / context_key: \"media_buy_id\"`, and `check: field_value / path: \"media_buys[0].context.correlation_id\" / value: \"media_buy_seller--create_media_buy\"` ("
+  "protocols/media-buy/index.yaml::create_media_buy":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [webhook_receiver]
+    blocker: "The sample_request's push_notification_config points at a buyer webhook (https://buyer.example/webhooks/adcp with HMAC credentials) that the harness must host and address for the call to be sent faithfully against a separately running agent."
+    evidence: "`task: create_media_buy`, `stateful: true`. The request is fully client-constructible against seeded fixtures \u2014 `packages: - product_id: \"sports_preroll_q2\" / budget: 25000 / pricing_option_id: \"cpm_non_guaranteed\"` \u2014 with no `$context.*` inputs. But the sample_request also declares a buyer-side receiver: `push_notification_config: url: \"https://buyer.example/webhooks/adcp\" / authentication: schemes: - \"HMAC-SHA256\" / credentials: \"media-buy-seller-webhook-secret-token\"`, so sending this step as written requires an endpoint the harness actually owns. Grading itself is response-only \u2014 the sole "
+  "protocols/media-buy/index.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "`task: get_adcp_capabilities` with `stateful: false` and a sample_request that carries nothing but `context: correlation_id: \"media_buy_seller--get_capabilities\"` \u2014 no prior state at all. All four checks read the response: `check: response_schema`, `check: field_present / path: \"supported_protocols\"`, `check: field_present / path: \"context\"`, `check: field_value / path: \"context.correlation_id\" / value: \"media_buy_seller--get_capabilities\"`."
+  "protocols/media-buy/index.yaml::get_delivery":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "`task: get_media_buy_delivery`, `stateful: true`, invoked with `sample_request: media_buy_ids: - \"$context.media_buy_id\" / include_package_daily_breakdown: true` \u2014 the id comes from the earlier create_media_buy step, a request we send. Grading never requires forcing actual delivery volume: the four checks are `response_schema`, `check: field_present / path: \"media_buy_deliveries\"`, `field_present path: \"context\"`, and `field_value path: \"context.correlation_id\" / value: \"media_buy_seller--get_delivery\"` \u2014 presence of the delivery array, not impressions observed on an ad server."
+  "protocols/media-buy/index.yaml::get_products_brief":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    verdict_before_audit: wireable
+    evidence: "`task: get_products` with `stateful: false`; the whole trigger is a payload a client builds \u2014 `buying_mode: \"brief\" / brief: \"Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget...\" / pagination: max_results: 5`. Its precondition is ordinary catalog seeding named in the storyboard's own `fixtures:` block \u2014 `product_id: \"sports_preroll_q2\" / delivery_type: \"non_guaranteed\" / format_ids: - id: \"video_30s\"` with `pricing_options: - pricing_option_id: \"cpm_non_guaranteed\" / floor_price: 22.0` \u2014 a product with a pricing option, i.e. a normal e2e fixture, not i"
+  "protocols/media-buy/index.yaml::list_formats":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "`task: list_creative_formats`, `stateful: false`, with `sample_request: format_ids: - \"$context.product_format_id\" / pagination: max_results: 1` \u2014 the one input comes from the earlier `get_products_brief` response capture. The refs_resolve check compares two things both already on the wire: `source: from: context / path: \"product_format_id\"` against `target: from: current_step / path: \"formats[*].format_id\"` with `match_keys: [agent_url, id]`, and third-party formats degrade to observations via `on_out_of_scope: warn` \u2014 no upstream_traffic, log, or DB inspection anywhere in the seven checks."
+  "protocols/media-buy/index.yaml::list_formats_integrity":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "`task: list_creative_formats`, `stateful: false`. Its only precondition is `sample_request: format_ids: - \"$context.product_format_id\"`, which the preceding `get_products_brief` step produces via `context_outputs: - name: product_format_id / path: 'products[0].format_ids[0]'` \u2014 that earlier step is itself a client request, so the state is reachable by sending requests in order. The `context_inputs: - key: product_format_id / inject_at: \"format_ids[0]\"` block plus its comment ('the runner's post-builder merge only forwards envelope fields... so `format_ids` above never reaches the wire') is cli"
+  "protocols/media-buy/index.yaml::sync_accounts":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "`task: sync_accounts` \u2014 the step itself CREATES the precondition it needs: `sample_request: accounts: - brand: domain: \"acmeoutdoor.example\" / operator: \"pinnacle-agency.example\" / billing: \"operator\" / payment_terms: \"net_30\"` plus a client-generated `idempotency_key: \"$generate:uuid_v4#media_buy_seller_account_setup_sync_accounts\"`. No `$context.*` reference, so nothing from an earlier step is needed. All five checks read the response: `field_present path: \"accounts[0].account_id\"`, `field_present path: \"accounts[0].status\"`, plus response_schema and the context echo. The storyboard's own co"
+  "protocols/media-buy/index.yaml::sync_creatives":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: sync_creatives; the only precondition values are produced by earlier client calls in the same storyboard \u2014 get_products_brief declares `context_outputs: - name: product_format_id / path: 'products[0].format_ids[0]'` and the request uses `format_id: \"$context.product_format_id\"`, while the phase narrative says 'With the media buy confirmed, the buyer syncs creative assets' (create_buy is itself a create_media_buy request). The second creative uses a literal fixture format (`agent_url: \"https://your-platform.example.com\", id: \"display_300x250\"`) matching the storyboard `fixtures.products[]"
+  "protocols/media-buy/index.yaml::sync_governance":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: sync_governance, `stateful: true`. The account precondition is created by the earlier sync_accounts step in phase account_setup (itself a client request whose sample_request registers brand acmeoutdoor.example / operator pinnacle-agency.example) \u2014 the same account object is echoed here in `accounts[0].account`. The governance agent endpoint is a static storyboard constant, not live state: top-level `context: governance_agent_url: \"https://test-agent.adcontextprotocol.org\"`, injected as `url: \"$context.governance_agent_url\"`; it is a value we put on the wire, and no validation requires th"
+  "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml::create_buy":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: create_media_buy. Every templated input comes from the immediately preceding step in the same phase: `packages: - product_id: \"$context.product_id\" ... pricing_option_id: \"$context.pricing_option_id\"`, both declared as `context_outputs` of get_products_brief (`path: \"products[0].product_id\"`, `path: \"products[0].pricing_options[0].pricing_option_id\"`) \u2014 an ordinary get_products request against a seeded fixed-price product fixture. Validations are response-only: `check: response_schema`, `check: field_present / path: \"media_buy_id\"`, `check: field_present / path: \"packages[0].package_id\"`"
+  "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml::create_second_buy":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: create_media_buy in phase reuse_creative_on_new_buy. Its inputs are the same setup-phase context keys (`product_id: \"$context.product_id\"`, `pricing_option_id: \"$context.pricing_option_id\"`) captured from get_products_brief; the narrative's 'With the old buy canceled and the assignment released' state is produced by the earlier update_media_buy step (`canceled: true` on `media_buy_id: \"$context.media_buy_id\"`) \u2014 a client request, not injected state. Validations are all on the response: `check: response_schema`, `check: field_present / path: \"media_buy_id\"` ('Second media_buy_id returned'"
+  "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml::get_products_brief":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    verdict_before_audit: wireable
+    evidence: "task: get_products, `stateful: false` \u2014 the first step of the scenario, so there is no prior state at all beyond catalog fixtures. `sample_request: buying_mode: \"brief\" ... filters: is_fixed_price: true` plus the validation `check: field_present / path: \"products[0].pricing_options[0].fixed_price\"` ('The captured pricing option is fixed-price') only demands an ordinary seeded product with a fixed-price pricing option, which the e2e stack fixtures provide. Remaining validations read the response: `check: response_schema`, `check: field_present / path: \"products[0].format_ids[0].id\"`."
+  "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml::list_creatives_after_cancel":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: list_creatives, `stateful: true`. Every precondition is an earlier request in this scenario: sync_creative_with_assignment put the creative in the library (`creatives: - creative_id: \"acme_reuse_banner_001\" ... assignments: - creative_id ... package_id: \"$context.package_id\"`) and update_media_buy_canceled sent `canceled: true`. The filter is a plain request field: `filters: creative_ids: - \"$context.creative_id\"`. All 4 validations are wire-observable on the response: `check: response_schema`, `check: field_present / path: \"creatives[0].creative_id\"`, `check: field_value / path: \"creati"
+  "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml::list_creatives_before_cancel":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: list_creatives, `stateful: true`. Precondition is the setup phase's sync_creative_with_assignment call (`context_outputs: - path: \"creatives[0].creative_id\" / key: \"creative_id\"`), referenced here as `filters: creative_ids: - \"$context.creative_id\"` \u2014 produced by a request we send, not injected. Validations read the response only: `check: response_schema`, `check: field_present / path: \"creatives[0].creative_id\"` ('Creative is present in the library'), `check: field_value / path: \"creatives[0].status\" / allowed_values: [\"processing\", \"pending_review\", \"approved\"]`."
+  "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml::reassign_creative":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: sync_creatives. The creative is referenced by a buyer-authoritative literal id, deliberately avoiding any context round-trip \u2014 the inline comment says 'Buyer-authoritative id set in sync_creative_with_assignment \u2014 use it literally instead of round-tripping through `$context.creative_id`' \u2014 and the only templated value is `package_id: \"$context.second_package_id\"` from the preceding create_second_buy step. The library-persistence precondition comes from prior client calls (sync + cancel). Sole validation is response-side: `check: response_schema / description: \"Response matches sync-creat"
+  "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml::sync_creative_with_assignment":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: the step is `stateful: true` and its request interpolates only values produced by EARLIER steps of the same storyboard, each of which is itself a wire request \u2014 `format_id: {agent_url: \"$context.format_agent_url\", id: \"$context.format_id\"}` (from step `get_products_brief`, `context_outputs: path: products[0].format_ids[0].agent_url`) and `assignments: - creative_id: \"acme_reuse_banner_001\", package_id: \"$context.package_id\"` (from step `create_buy`, `context_outputs: path: packages[0].package_id`). Nothing else is presupposed beyond the ordinary catalog fixture. WHEN: `task: sync_creati"
+  "protocols/media-buy/scenarios/creative_fate_after_cancellation.yaml::update_media_buy_canceled":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: the only precondition is a live media buy, referenced as `media_buy_id: \"$context.media_buy_id\"` \u2014 captured by the earlier `create_buy` step (`context_outputs: - path: \"media_buy_id\" key: \"media_buy_id\"`), which is itself a create_media_buy request we send. WHEN: `task: update_media_buy` with `canceled: true` plus `cancellation_reason: \"Creative-fate scenario: releasing assignment to verify library persistence.\"` \u2014 an ordinary tool call. THEN: the step has exactly one validation, `- check: response_schema / description: \"Response matches update-media-buy-response.json schema\"`, which is"
+  "protocols/media-buy/scenarios/creative_reception.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: nothing to seed \u2014 `stateful: false` and the whole request is `sample_request: context: correlation_id: \"media_buy_seller_creative_reception--get_capabilities\"`; it is the first step of the first phase (`capability_discovery`) and takes no `$context.*` input. WHEN: `task: get_adcp_capabilities` \u2014 an unauthenticated-or-authenticated discovery call a client sends directly. THEN: all four checks are wire-observable response assertions \u2014 `- check: response_schema` against get-adcp-capabilities-response.json, `- check: field_present / path: \"supported_protocols\"`, `- check: field_present / pa"
+  "protocols/media-buy/scenarios/creative_reception.yaml::preview_synced":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [other]
+    blocker: "The step carries an explicit capability gate, `requires_tool: preview_creative`, and the graded output is a rendered artifact URL (`path: \"previews[0].renders[0].preview_url\"`). In this codebase preview_creative is an OUTBOUND call the seller makes to a creative agent (src/core/creative_agent_registry.py:885 `async def preview_creative`, commented \"preview_creative not in AdCP spec\"), not a buyer-facing tool \u2014 so a creative-agent/rendering backend must be provisioned and the format registered before the request can be answered rather than errored."
+    evidence: "GIVEN: nothing has to be injected \u2014 the request carries its own `creative_manifest: creative_id: \"acme_summer_native_001\"` with full inline assets, and the only narrative precondition (\"After pushing assets, the buyer wants to see how their creatives will render\") is satisfied by the earlier `sync_creatives` step, itself a wire request. WHEN: `task: preview_creative` with `request_type: \"single\"`, `output_format: \"url\"`, `quality: \"draft\"` \u2014 a request a client can construct and send; the gate is `requires_tool: preview_creative`, not the difficulty of building it. THEN: all four checks are on "
+  "protocols/media-buy/scenarios/creative_reception.yaml::sync_creatives":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: no `$context.*` input at all \u2014 the format is hardcoded, `format_id: {agent_url: \"https://your-platform.example.com\", id: \"native_post\"}`, so the one precondition is that this format exists in the seller's catalog, which is ordinary e2e-stack fixture seeding (the storyboard's own `discover_accepted_formats` phase would otherwise supply it, but this step does not consume its output). WHEN: `task: sync_creatives` with a self-contained `sample_request` (`assets: headline/image/click_url`, `idempotency_key: \"$generate:uuid_v4#...\"`) \u2014 a plain tool call. THEN: every check reads the response \u2014"
+  "protocols/media-buy/scenarios/invalid_transitions.yaml::create_buy":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: the phase narrative says \"Discover a product and create a plain buy \u2014 no targeting tricks, no governance \u2014 so we have known-good IDs for the error cases\"; the request consumes only `packages: - product_id: \"$context.product_id\" ... pricing_option_id: \"$context.pricing_option_id\"`, both captured by the preceding `get_products_brief` step, which is itself a wire request. WHEN: `task: create_media_buy` with `start_time: \"asap\"`, `end_time: \"2099-08-31T23:59:59Z\"`, `idempotency_key: \"$generate:uuid_v4#invalid_transitions_create_buy\"` \u2014 an ordinary tool call. THEN: `- check: response_schema "
+  "protocols/media-buy/scenarios/invalid_transitions.yaml::first_cancel":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: the phase narrative is \"Cancel the buy (success), then try to cancel the same buy again\"; the precondition is exactly the buy created by the earlier `create_buy` step, referenced as `media_buy_id: \"$context.media_buy_id\"` \u2014 no injected state. WHEN: `task: update_media_buy` with `canceled: true` and `cancellation_reason: \"Testing NOT_CANCELLABLE on re-cancel\"` \u2014 a client request. THEN: the step has a single validation, `- check: response_schema / description: \"Response matches update-media-buy-response.json schema\"`, asserted on the response. The terminal-state consequence is graded on t"
+  "protocols/media-buy/scenarios/invalid_transitions.yaml::get_products_brief":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    verdict_before_audit: wireable
+    evidence: "GIVEN: `stateful: false` and no `$context.*` inputs; the only precondition is a catalog containing a fixed-price product, which the check itself names \u2014 `- check: field_present / path: \"products[0].pricing_options[0].fixed_price\" / description: \"The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price\"` \u2014 i.e. an ordinary tenant/product/pricing-option fixture. WHEN: `task: get_products` with `buying_mode: \"brief\"`, `brief: \"Display inventory on outdoor lifestyle content. Q3 flight.\"`, `filters: is_fixed_price: true` \u2014 a plain discovery call. THEN: both validati"
+  "protocols/media-buy/scenarios/invalid_transitions.yaml::second_cancel":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: 'stateful: true' with 'media_buy_id: \"$context.media_buy_id\"' \u2014 the prior state is produced entirely by earlier steps of this same storyboard, each of which is itself a client request: get_products_brief, create_buy ('task: create_media_buy'), then first_cancel ('canceled: true', 'cancellation_reason: \"Testing NOT_CANCELLABLE on re-cancel\"'). No fixture beyond a tenant/principal and one fixed-price product is needed. WHEN: 'title: \"Re-cancel the canceled buy\"' / 'task: update_media_buy' with 'canceled: true' \u2014 an ordinary AdCP tool call a client constructs and sends. THEN: all three gra"
+  "protocols/media-buy/scenarios/invalid_transitions.yaml::update_unknown_media_buy":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: 'stateful: false' and the phase narrative says 'Before any state is set up, call update_media_buy with a fabricated media_buy_id.' The sample_request carries no '$context.*' reference \u2014 'media_buy_id: \"does-not-exist-invalid-transitions-v1\"' is a literal \u2014 so the only precondition is an authenticated principal, an ordinary e2e stack fixture. WHEN: 'task: update_media_buy' with 'paused: true' and a bogus id; a deliberately-invalid but well-formed request ('negative_path: payload_well_formed') is exactly the kind of request a test client builds and sends. THEN: '- check: error_code / valu"
+  "protocols/media-buy/scenarios/invalid_transitions.yaml::update_unknown_package":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: 'stateful: true' with 'media_buy_id: \"$context.media_buy_id\"'; the phase narrative states 'The media_buy_id is real, but the package_id is fabricated.' The real id comes from the storyboard's own setup phase step create_buy, whose 'context_outputs' capture '- path: \"media_buy_id\"' \u2014 i.e. produced by sending create_media_buy, not by injecting a DB row. WHEN: 'task: update_media_buy' with 'packages: [{package_id: \"does-not-exist-package-invalid-transitions-v1\", budget: 5001}]' \u2014 a client-constructed request. THEN: '- check: error_code / value: \"PACKAGE_NOT_FOUND\" / description: \"Error cod"
+  "protocols/media-buy/scenarios/inventory_list_no_match.yaml::create_buy_no_match":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [other]
+    blocker: "The buyer-side inventory lists referenced in targeting_overlay must exist as resolvable lists for the seller: 'This scenario exercises the no-match path using the test kit's pre-populated no_match_properties and no_match_collections lists.' and prerequisites 'The seller must resolve PropertyListReference / CollectionListReference against its own inventory and report a truthful outcome when nothing matches.' The e2e stack has no governance agent at 'agent_url: \"https://governance.pinnacle-agency.example\"', so the list ids (acme_outdoor_no_match_v1 / acme_outdoor_no_match_collections_v1) must be provisioned from the test kit before the run."
+    evidence: "GIVEN: 'packages: [{product_id: \"$context.product_id\", ... pricing_option_id: \"$context.pricing_option_id\"}]' \u2014 both come from the storyboard's own get_products_brief step, so they are request-produced; the extra is the test-kit list provisioning quoted in the blocker. WHEN: 'task: create_media_buy' carrying 'targeting_overlay: {property_list: {agent_url: \"https://governance.pinnacle-agency.example\", list_id: \"acme_outdoor_no_match_v1\"}, collection_list: {... list_id: \"acme_outdoor_no_match_collections_v1\"}}' \u2014 one client request. THEN: the two graded checks are wire-only and deliberately outc"
+  "protocols/media-buy/scenarios/inventory_list_no_match.yaml::get_products_brief":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    verdict_before_audit: wireable
+    evidence: "GIVEN: 'stateful: false' and no '$context.*' inputs; the only precondition is a tenant carrying at least one fixed-price product, which is an ordinary e2e stack fixture \u2014 'expected: | Return products the seller carries.' WHEN: 'task: get_products' with 'buying_mode: \"brief\"', 'brief: \"Video inventory on outdoor lifestyle programming. Q3 flight.\"' and 'filters: {is_fixed_price: true}' \u2014 a plain AdCP tool call over MCP/A2A/REST. THEN: '- check: response_schema / description: \"Response matches get-products-response.json schema\"' and '- check: field_present / path: \"products[0].pricing_options[0]."
+  "protocols/media-buy/scenarios/inventory_list_targeting.yaml::create_buy_with_lists":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [other]
+    blocker: "The two matching test-kit lists must be resolvable by the seller before the call: prerequisites say 'The seller must accept PropertyListReference and CollectionListReference in package targeting on both create_media_buy and update_media_buy. List contents come from test-kits/acme-outdoor.yaml -> inventory_targets.' and the narrative says the buyer 'references pre-populated inventory lists from the test kit ... so the seller's test engine can resolve them without needing a live governance/inventory agent.' Nothing in the storyboard creates acme_outdoor_allowlist_v1 / acme_outdoor_collections_v1 by request, and the agent advertises capabilities 'supports_property_list_targeting' / 'supports_collection_list_targeting' that must be configured on the tenant."
+    evidence: "GIVEN: 'product_id: \"$context.product_id\"' and 'pricing_option_id: \"$context.pricing_option_id\"' are produced by this storyboard's own get_products_brief step (context_outputs '- path: \"products[0].product_id\"'), so that half is request-seeded; the list provisioning quoted in the blocker is the extra. WHEN: 'task: create_media_buy' with 'targeting_overlay: {property_list: {... list_id: \"acme_outdoor_allowlist_v1\"}, collection_list: {... list_id: \"acme_outdoor_collections_v1\"}}' and 'account: {... sandbox: true}' \u2014 a single client request. THEN: all three checks are response-side \u2014 '- check: re"
+  "protocols/media-buy/scenarios/inventory_list_targeting.yaml::get_after_create":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [other]
+    blocker: "Same test-kit list provisioning as the create step ('List contents come from test-kits/acme-outdoor.yaml -> inventory_targets'), since the assertion requires the seller to have accepted and persisted list_id 'acme_outdoor_allowlist_v1'. Also note this step's task is get_media_buys, which is NOT in the storyboard's declared 'required_tools: [get_products, create_media_buy, update_media_buy]' \u2014 the read-back tool must be available on the transport under test."
+    evidence: "GIVEN: 'stateful: true' with 'media_buy_ids: [\"$context.media_buy_id\"]' \u2014 supplied by the earlier create_buy_with_lists step, which is itself a request we send, so no direct DB write is needed. WHEN: 'task: get_media_buys' / 'title: \"get_media_buys after create\"' \u2014 an ordinary read tool call. THEN: read-back is asserted purely on the response, not on internal state \u2014 '- check: field_value / path: \"media_buys[0].packages[0].targeting_overlay.property_list.list_id\" / value: \"acme_outdoor_allowlist_v1\" / description: \"property_list.list_id persisted after create\"' and the matching collection_list"
+  "protocols/media-buy/scenarios/inventory_list_targeting.yaml::get_after_update":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [other]
+    blocker: "Same test-kit list provisioning ('List contents come from test-kits/acme-outdoor.yaml -> inventory_targets'); the swapped ids acme_outdoor_no_match_v1 / acme_outdoor_no_match_collections_v1 come from the kit's no_match sets and are never created by any request in the storyboard. As with get_after_create, the step's task get_media_buys is outside the declared 'required_tools'."
+    evidence: "GIVEN: 'stateful: true', 'media_buy_ids: [\"$context.media_buy_id\"]', and the state under test is created by the immediately preceding update_buy_swap_lists step ('task: update_media_buy' whose sample_request sets 'property_list: {... list_id: \"acme_outdoor_no_match_v1\"}') \u2014 a request, not an injected state change. WHEN: 'task: get_media_buys' / 'title: \"Confirm swap persisted\"'. THEN: response-only assertions \u2014 '- check: field_value / path: \"media_buys[0].packages[0].targeting_overlay.property_list.list_id\" / value: \"acme_outdoor_no_match_v1\" / description: \"property_list.list_id updated after"
+  "protocols/media-buy/scenarios/inventory_list_targeting.yaml::get_products_brief":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    verdict_before_audit: wireable
+    evidence: "task: get_products; stateful: false; prerequisites: \"List contents come from test-kits/acme-outdoor.yaml \u2192 inventory_targets\" (ordinary product/pricing fixture, no controller_seeding on this storyboard). Validations are all response-observable: \"check: response_schema / Response matches get-products-response.json schema\", \"check: field_present, path: products[0].product_id\", \"check: field_present, path: products[0].pricing_options[0].fixed_price \u2014 The captured pricing option is fixed-price\". Nothing here reads internal state: send get_products over the transport and assert on the returned docu"
+  "protocols/media-buy/scenarios/inventory_list_targeting.yaml::update_buy_swap_lists":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN is chained from earlier steps of the same storyboard, all of which are themselves client requests: \"media_buy_id: \\\"$context.media_buy_id\\\"\" and \"package_id: \\\"$context.package_id\\\"\" are context_outputs of create_buy_with_lists (\"context_outputs: - path: media_buy_id ... - path: packages[0].package_id\"), which in turn consumes $context.product_id/$context.pricing_option_id from get_products_brief. WHEN is \"task: update_media_buy\" with a plain request body. THEN is entirely on the response: \"check: field_present, path: affected_packages \u2014 Package-mutating update returns affected_packages\""
+  "protocols/media-buy/scenarios/measurement_terms_rejected.yaml::create_media_buy_aggressive_terms":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: \"stateful: false\", inputs are $context.product_id / $context.pricing_option_id from the preceding get_products_brief step, plus the prerequisite \"Seller supports measurement_terms on create_media_buy packages\" (a product/tenant capability, ordinary fixture). WHEN is a deliberately aggressive but well-formed client request \u2014 \"expect_error: true, negative_path: payload_well_formed\", body carries \"max_variance_percent: 0\" \u2014 exactly the kind of negative vector a harness constructs and sends. THEN reads the wire error envelope: \"check: error_code, value: TERMS_REJECTED\", \"check: field_presen"
+  "protocols/media-buy/scenarios/measurement_terms_rejected.yaml::create_media_buy_relaxed_terms":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN is the prior rejected attempt plus discovery context \u2014 both earlier steps of this same storyboard are client requests; the retry is described as \"The buyer mints a fresh idempotency_key and retries create_media_buy with the adjusted payload\" and the request carries \"idempotency_key: $generate:uuid_v4#...accept_terms_create_media_buy_relaxed_terms\". WHEN is \"task: create_media_buy\" with relaxed terms (\"measurement_window: c7\", \"max_variance_percent: 10\"). THEN is response-only: \"check: response_schema\", \"check: field_present, path: media_buy_id \u2014 Seller returns a media_buy_id after accept"
+  "protocols/media-buy/scenarios/measurement_terms_rejected.yaml::get_products_brief":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    verdict_before_audit: wireable
+    evidence: "\"stateful: false\"; the only precondition is a discoverable fixed-price product: expected: \"Return products with pricing_options. At least one product should advertise measurement support in the response.\" WHEN is \"task: get_products\" with buying_mode brief. THEN: \"check: response_schema\", \"check: field_present, path: products[0].product_id \u2014 At least one product returned\", \"check: field_present, path: products[0].pricing_options[0].fixed_price\" \u2014 all read off the get_products response."
+  "protocols/media-buy/scenarios/package_correlation_legacy_fallback.yaml::get_seeded_legacy_buy":
+    verdict: conditional
+    axes: {given: no, when: yes, then: yes}
+    verdict_before_audit: not_wireable
+    blocker: "GIVEN: the legacy package shape (a package with no product_id) cannot be produced by any AdCP client request \u2014 the storyboard requires controller seeding via seed_media_buy"
+    evidence: "prerequisites: \"The runner seeds a legacy-shaped media buy via seed_media_buy. Sellers or SDK test harnesses that do not implement seed_media_buy grade this scenario not_applicable rather than failing current seller conformance.\" plus \"controller_seeding: true\" and a literal `fixtures.media_buys` block (media_buy_id: legacy_package_correlation_buy, packages[0] deliberately without product_id). The narrative confirms the state is unreachable through the normal path: \"Current sellers MUST echo package product_id for explicit create_media_buy package requests\" and \"This storyboard is a compatibil"
+  "protocols/media-buy/scenarios/provenance_enforcement.yaml::get_products_with_disclosure_policy":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state]
+    blocker: "Requires a pre-seeded product whose creative_policy carries provenance_required / provenance_requirements / accepted_verifiers \u2014 reachable as an ordinary product fixture, but not producible by any buyer-side AdCP call"
+    evidence: "\"controller_seeding: true\" with a `fixtures.products` block for \"test-product-disclosure-required\" carrying creative_policy.{provenance_required: true, provenance_requirements.require_disclosure_metadata: true, accepted_verifiers[0].agent_url: https://governance.encypher.seller.example}. prerequisites: \"Seller publishes at least one product whose creative_policy carries provenance_required: true and provenance_requirements.require_disclosure_metadata: true.\" That is seller-side configuration (a product fixture on the running stack), not internal state injection \u2014 unlike the legacy-fallback sto"
+  "protocols/media-buy/scenarios/provenance_enforcement.yaml::sync_creatives_missing_disclosure":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state]
+    blocker: "Same seeded provenance policy as the discovery step: the enforcement only fires if the seller has a product/tenant creative_policy with provenance_requirements.require_disclosure_metadata: true in effect for the syncing principal"
+    evidence: "GIVEN inherits \"controller_seeding: true\" + the fixture product's \"provenance_requirements: require_digital_source_type: true, require_disclosure_metadata: true\"; the step's own narrative says \"the seller does not need to call any verifier, only inspect the submitted manifest against the published provenance_requirements\" \u2014 so no upstream/verifier call has to be induced. WHEN is \"task: sync_creatives\" with a hand-built negative manifest (provenance present with digital_source_type: trained_algorithmic_media but the disclosure block omitted) \u2014 pure client-side request construction. THEN is enti"
+  "protocols/media-buy/scenarios/provenance_enforcement.yaml::sync_creatives_no_digital_source_type":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN is a seeded product fixture only \u2014 `creative_policy: provenance_required: true / provenance_requirements: require_digital_source_type: true` on `product_id: \"test-product-disclosure-required\"` with a `pricing_options` entry; that is an ordinary e2e product fixture (a DB row with a policy column), no internal poke. WHEN is a plain client call: `task: sync_creatives` with a hand-built manifest whose provenance block is deliberately incomplete (`provenance: # Provenance present, but digital_source_type intentionally absent ... declared_by: role: \"agency\"`) \u2014 a negative-vector request the ha"
+  "protocols/media-buy/scenarios/provenance_enforcement.yaml::sync_creatives_no_provenance":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: same seeded product carrying `provenance_required: true`; the step's own narrative says the seller rejects \"Because the seller's creative_policy.provenance_required is true\" \u2014 a fixture-level precondition, externally seedable. WHEN: `task: sync_creatives` with a creative that simply has no `provenance` key at all (`creative_id: \"acme_no_provenance_probe_001\"`, assets only) \u2014 the cheapest client-constructible negative vector. THEN: `- check: field_value / path: \"creatives[0].errors[0].code\" / value: \"PROVENANCE_REQUIRED\"` and `creatives[0].action: \"failed\"`, both read off the sync_creati"
+  "protocols/media-buy/scenarios/provenance_enforcement.yaml::sync_creatives_off_list_verifier":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: the fixture publishes the allowlist \u2014 `accepted_verifiers: - agent_url: \"https://governance.encypher.seller.example\"` \u2014 seedable as product policy. WHEN: a client-built request pointing `verify_agent: agent_url: \"https://attacker-controlled.example\"`, i.e. exactly the buyer-controlled-URL vector; nothing internal is forced. THEN: all four graded checks are on the response \u2014 `field_value path: \"creatives[0].errors[0].code\" value: \"PROVENANCE_VERIFIER_NOT_ACCEPTED\"`, action failed, correlation_id, response_schema. Caveat worth recording: the prose obligation `expected: ... The seller MUST"
+  "protocols/media-buy/scenarios/provenance_enforcement.yaml::sync_creatives_with_disclosure":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN is produced by an earlier step of the same storyboard: the step re-submits `creative_id: \"acme_disclosure_probe_001\"`, the same id first sent by phase `reject_missing_disclosure`'s `sync_creatives_missing_disclosure` \u2014 that prior step is itself a request we send, so the prior state is wire-reachable (and the assertion tolerates either path: `allowed_values: [\"created\", \"updated\"]`). No verifier call is implied here \u2014 the narrative scopes it to \"The seller's structural and verifier-allowlist checks both pass\", and the top-level narrative defers the calling half: \"The truth-of-claim contra"
+  "protocols/media-buy/scenarios/provenance_truth_of_claim.yaml::get_products_with_accepted_verifiers":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: only a seeded product \u2014 `product_id: \"test-product-truth-of-claim\"` with `creative_policy: ... accepted_verifiers: - agent_url: \"https://governance.encypher.seller.example\" / feature_id: \"ai_generated\"`. This is a discovery step; nothing calls the verifier here, so the sentinel URL never has to resolve to a live agent (`prerequisites`: \"the accepted_verifiers entry's agent_url is a sentinel value that the seller maps to its internal verifier\"). WHEN: `task: get_products`, `buying_mode: \"brief\"` with a plain brief string \u2014 a client request. THEN: `- check: field_present / path: \"products"
+  "protocols/media-buy/scenarios/provenance_truth_of_claim.yaml::sync_creatives_consistent":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [second_agent, prior_state]
+    blocker: "The accept path is only meaningful if an on-list governance verifier implementing get_creative_features is actually reachable and returns ai_generated:false for the fixture asset URL; otherwise the acceptance is vacuous (indistinguishable from no verifier call at all)."
+    evidence: "`expected: | The seller invokes the verifier, observes ai_generated:false, confirms the claim, and accepts.` The trigger is a normal client request (`task: sync_creatives` with `provenance: digital_source_type: \"digital_capture\"` and an asset `url: \".../ai-generated-false.jpg\"`), and every check is on the wire (`field_value path: \"creatives[0].action\" allowed_values: [\"created\",\"updated\"]`, correlation_id, response_schema). What must be provisioned is the verifier side: `prerequisites` says \"The training agent acts as both seller and verifier in-process\", and the narrative fixes its behavior \u2014"
+  "protocols/media-buy/scenarios/provenance_truth_of_claim.yaml::sync_creatives_contradicted":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [second_agent, prior_state]
+    blocker: "Requires a reachable on-list verifier that deterministically returns ai_generated:true with confidence >= 0.9 for the fixture asset URL; the contradiction cannot be produced by the client request alone."
+    evidence: "`expected: | The seller invokes the on-list verifier against the manifest's asset URLs, observes ai_generated:true with confidence >= 0.9, and refutes the buyer's digital_capture claim.` The WHEN is still a plain client call (buyer claims `digital_source_type: \"digital_capture\"` while attaching `url: \".../ai-generated-true.jpg\"`), and the THEN surface is unusually rich but entirely wire-observable \u2014 `field_value \"creatives[0].errors[0].code\" == \"PROVENANCE_CLAIM_CONTRADICTED\"`, `field_present \"creatives[0].errors[0].details.agent_url\"`, `...details.feature_id`, `field_value ...details.claimed_"
+  "protocols/media-buy/scenarios/refine_products.yaml::get_products_brief":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    verdict_before_audit: wireable
+    evidence: "GIVEN: `prerequisites: | The caller needs a brand identity and operator credentials.` \u2014 ordinary e2e stack fixtures \u2014 and the only prior state is the same storyboard's earlier `setup` step `sync_accounts` (`task: sync_accounts`, `stateful: true`), which is itself a request we send. Note this step is `stateful: false`, so it does not even depend on that. WHEN: `task: get_products` with `buying_mode: \"brief\"` and a literal brief string plus `account: brand/operator` \u2014 a client request. THEN: `- check: field_present / path: \"products\"` and `- check: field_present / path: \"products[0].product_id\"`"
+  "protocols/media-buy/scenarios/refine_products.yaml::get_products_refine":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state]
+    blocker: "The refine array pins a literal catalog id \u2014 `product_id: \"sports_preroll_q2\"` \u2014 that no earlier step produces and no `fixtures:` block in this storyboard declares (prerequisites only names `test_kit: \"test-kits/acme-outdoor.yaml\"`, with no `controller_seeding`). The product-level refinement is only meaningful against a catalog that actually contains that product, so the catalog must be seeded before the run. Session continuity is fine: `stateful: true` and the preceding `get_products_brief` step is itself a request the harness sends."
+    evidence: "task: get_products / buying_mode: \"refine\" / refine: - scope: \"request\" ask: \"Only guaranteed packages...\" - scope: \"product\" product_id: \"sports_preroll_q2\" ask: \"Increase budget allocation to $30K\"; stateful: true; validations: - check: response_schema \"Response matches get-products-response.json schema\" - check: field_present path: \"products\" \"Response contains updated products\""
+  "protocols/media-buy/scenarios/refine_products.yaml::sync_accounts":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: sync_accounts; prerequisites: \"The caller needs a brand identity and operator credentials.\"; sample_request: accounts: - brand: domain: \"acmeoutdoor.example\" operator: \"pinnacle-agency.example\" billing: \"operator\" payment_terms: \"net_30\", idempotency_key: \"$generate:uuid_v4#...\"; validations: - check: response_schema - check: field_present path: \"accounts[0].account_id\" \"Account has a platform-assigned ID\". Given is the first step of the storyboard and needs only ordinary tenant/principal credentials; the account it asserts on is created BY this request, not seeded before it. Both valida"
+  "specialisms/sales-non-guaranteed/index.yaml::create_media_buy":
+    verdict: not_wireable
+    axes: {given: yes, when: yes, then: no}
+    blocker: "THEN. One of the five checks is `upstream_traffic`, which asserts on what the agent sent to its ad server / DSP \u2014 traffic that never appears on the client's wire. The storyboard's own comment says so: an adapter \"returning a shape-valid response with a fabricated media_buy_id but no upstream campaign created fails this check.\" Observing that from outside the process requires instrumenting the seller's egress, which is not a response or wire error envelope. The other four checks (response_schema, context echo, correlation_id, packages[0].package_id) are wire-assertable; the request itself is an ordinary create_media_buy call whose `$context.*` inputs all come from the earlier get_products_brief step."
+    evidence: "- check: upstream_traffic / description: \"create_media_buy caused upstream traffic creating the campaign\" / min_count: 1 / endpoint_pattern: \"POST *\" (preceded by \"# Anti-fa\u00e7ade: a real non-guaranteed buy creates line items / orders / campaigns in the seller's adserver or DSP.\")"
+  "specialisms/sales-non-guaranteed/index.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_adcp_capabilities; stateful: false; sample_request: context: correlation_id: \"sales_non_guaranteed--get_capabilities\"; validations: - check: response_schema - check: field_present path: \"supported_protocols\" - check: field_contains path: \"supported_protocols[*]\" value: \"media_buy\" - check: field_contains path: \"specialisms[*]\" value: \"sales-non-guaranteed\" - check: field_value path: \"context.correlation_id\". No precondition at all (stateful: false, no $context inputs), a plain capabilities call, and every check reads the response document. Whether the agent actually declares the spec"
+  "specialisms/sales-non-guaranteed/index.yaml::get_delivery":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state]
+    blocker: "The request keys off `media_buy_ids: - \"$context.media_buy_id\"`, a seller-assigned id produced by the earlier create_media_buy step \u2014 that step is itself a request we send, so it is reachable, but it in turn consumes the seeded auction catalog and the test-kit creative ids. The storyboard declares `controller_seeding: true`, so the run needs the fixture products/pricing options and the buy created ahead of this step. Nothing here needs off-wire observation: no upstream_traffic check in this step."
+    evidence: "task: get_media_buy_delivery; stateful: true; sample_request: media_buy_ids: - \"$context.media_buy_id\", include_package_daily_breakdown: true; validations: - check: response_schema - check: field_present path: \"media_buy_deliveries\" \"Response contains media buy delivery data\" - check: field_value path: \"context.correlation_id\" value: \"sales_non_guaranteed--get_delivery\""
+  "specialisms/sales-non-guaranteed/index.yaml::get_media_buys_pacing":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state]
+    blocker: "Needs the media buy from the earlier create_media_buy step to exist and its seller-assigned id carried in context (`media_buy_ids: - \"$context.media_buy_id\"`), which in turn rests on the storyboard's seeded auction fixtures (`controller_seeding: true`). That prior state is produced by requests we send, so it is provisioning, not an in-process hook. The storyboard-level `invariants: - status.monotonic` is also satisfiable from outside \u2014 it compares statuses observed in successive responses."
+    evidence: "task: get_media_buys; stateful: true; sample_request: media_buy_ids: - \"$context.media_buy_id\"; validations: - check: response_schema - check: field_present path: \"media_buys[0].status\" \"Media buy has a status\" - check: field_present path: \"context\" - check: field_value path: \"context.correlation_id\" value: \"sales_non_guaranteed--get_media_buys_pacing\""
+  "specialisms/sales-non-guaranteed/index.yaml::get_products_brief":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [other]
+    blocker: "The step is stateless on the wire (`stateful: false`, no $context inputs), but nine of its fourteen checks are assertions about a specific seeded auction catalog: two non-guaranteed products, each pricing option carrying `price_guidance.p50` and `.p75`, and format ids carrying `agent_url`. The storyboard supplies these as a `fixtures:` block plus `controller_seeding: true`, so the catalog must be provisioned before the run \u2014 richer than the ordinary \"a product with a pricing option\" fixture. Every check reads the response body; no off-wire observation."
+    evidence: "stateful: false; fixtures: products: - product_id: \"sports_display_auction\" delivery_type: \"non_guaranteed\" ... pricing_options: - floor_price: 5.0 price_guidance: p50: 6.0 p75: 7.0; validations: - check: field_present path: \"products[0].pricing_options[0].price_guidance.p50\" \"First auction pricing option declares median bid guidance used as the initial bid\" - check: field_present path: \"products[0].format_ids[0].agent_url\" \"Format IDs include agent_url \u2014 must match this agent's URL\""
+  "specialisms/sales-non-guaranteed/index.yaml::sync_governance":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [second_agent, seeded_account]
+    blocker: "Registration targets an external governance agent \u2014 `url: \"$context.governance_agent_url\"` resolving to the storyboard's `context: governance_agent_url: \"https://test-agent.adcontextprotocol.org\"` \u2014 with Bearer credentials, so a second agent (or a stand-in the seller will accept) must be provisioned and reachable. It also registers governance ON an existing account for acmeoutdoor.example/pinnacle-agency.example, which this storyboard seeds via `controller_seeding: true` rather than creating in a preceding step. The call itself is an ordinary sync_governance request and all four checks read the response."
+    evidence: "task: sync_governance; stateful: true; sample_request: accounts: - account: brand: domain: \"acmeoutdoor.example\" operator: \"pinnacle-agency.example\" governance_agents: - url: \"$context.governance_agent_url\" authentication: schemes: [\"Bearer\"] credentials: \"gov-token-...\"; validations: - check: response_schema - check: field_value path: \"accounts[0].status\" value: \"synced\" \"Governance agent is registered on the account\" - check: field_value path: \"context.correlation_id\""
+  "specialisms/sales-non-guaranteed/index.yaml::update_media_buy":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: no}
+    verdict_before_audit: not_wireable
+    blocker: "THEN. The final validation is `check: upstream_traffic` \u2014 it grades what the agent sent to the auction platform, which is not observable from a client holding only the update_media_buy response."
+    evidence: "task: update_media_buy; sample_request uses `media_buy_id: \"$context.media_buy_id\"`, `bid_price: \"$context.first_updated_bid_price\"` (all produced by the earlier get_products / create_media_buy steps' `context_outputs`, themselves wireable calls) \u2014 GIVEN and WHEN are fine. But: `- check: upstream_traffic / description: \"update_media_buy caused upstream traffic applying the bid/budget changes\" / min_count: 1 / endpoint_pattern: \"POST *\"`, prefixed by the comment \"Anti-fa\u00e7ade: a real update propagates bid/budget changes to the upstream auction platform. An adapter returning shape-valid responses"
+  "universal/billing-gate-dispatch.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "prerequisites: \"The agent under test exposes `sync_accounts` and advertises an `account` capability block in `get_adcp_capabilities` populated with `supported_billing`\" \u2014 a property of the running agent, nothing to inject. `stateful: false` and the only request body is `sample_request: context: correlation_id: \"billing_gate_dispatch--get_capabilities\"`. WHEN is `task: get_adcp_capabilities`, a plain AdCP read call. All 4 validations read the response: `response_schema`, `field_present path: \"account.supported_billing\"`, `field_present path: \"context\"`, `field_value path: \"context.correlation_i"
+  "universal/billing-gate-dispatch.yaml::sync_accounts_passthrough_rejects_agent":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [seeded_account, prior_state]
+    blocker: "GIVEN needs a buyer agent pre-onboarded as passthrough-only; no AdCP call establishes it, so it must come from stack fixture/seed data before the run."
+    evidence: "phase gate: `skip_if: \"test_kit.commercial_relationship != 'passthrough_only'\"`, and prerequisites state \"Establishing the commercial relationship is offline \u2014 the seller-under-test records the test caller's commercial state in its onboarding system before the storyboard runs. A future extension (`comply_test_controller` `seed_buyer_agent`) MAY let runners establish the precondition programmatically; until then the test kit declares it.\" That is a seeded principal/onboarding record, not an in-process hook, so it is provisionable as an e2e fixture \u2014 hence conditional, not not_wireable. WHEN is "
+  "universal/billing-gate-dispatch.yaml::sync_accounts_recover_with_suggested":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [seeded_account, prior_state]
+    blocker: "GIVEN needs the same passthrough-only onboarding seed plus the preceding reject step's captured `suggested_billing`; the latter is fine (an earlier wireable request), the former is out-of-band provisioning."
+    evidence: "`skip_if: \"test_kit.commercial_relationship != 'passthrough_only'\"` and `stateful: true`; the request is `billing: \"$context.suggested_billing\"`, a value captured by the previous step's `context_outputs: - path: \"accounts[0].errors[0].details.suggested_billing\"` \u2014 i.e. produced by a request we ourselves sent, which the narrative confirms: \"The runner submits a new request with the `billing` value the seller suggested ... under a fresh idempotency_key ... The recover phase is NOT a replay\". WHEN is a second sync_accounts call with `idempotency_key: \"$generate:uuid_v4#billing_gate_dispatch_passt"
+  "universal/billing-gate-dispatch.yaml::sync_accounts_unsupported_billing":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [seeded_account]
+    blocker: "GIVEN requires an agent whose advertised `supported_billing` excludes the probe value; the phase self-skips otherwise, so the tenant/agent capability config has to be provisioned to leave a value out."
+    evidence: "`optional: true` / `skip_if: \"!test_kit.account.unsupported_billing_probe\"`, described as \"account.unsupported_billing_probe \u2014 (optional) value the runner submits on the capability-gate phase. MUST be absent from the seller's `supported_billing`. When unset, capability_gate grades `not_applicable`.\" WHEN is a normal client call carrying a deliberately bad value: `billing: \"$test_kit.account.unsupported_billing_probe\"` with `idempotency_key: \"$generate:uuid_v4#billing_gate_dispatch_capability_probe\"` \u2014 building a negative-vector request is test work, not a blocker. All 8 validations read the re"
+  "universal/capability-discovery.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "prerequisites: \"No prerequisites. This is the very first call a buyer makes to any agent. The test kit provides brand context but it is not required for this storyboard.\" `stateful: false`; WHEN is `task: get_adcp_capabilities` with only `sample_request: context: correlation_id: \"capability_discovery--get_capabilities\"`. All 5 validations are response reads: `response_schema`, `field_present path: \"adcp.major_versions\"`, `field_present path: \"supported_protocols\"`, `field_present path: \"context\"`, `field_value path: \"context.correlation_id\"`."
+  "universal/capability-discovery.yaml::get_capabilities_filtered":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "Same no-prerequisite storyboard, `stateful: false`; the only setup is the request itself: `sample_request: protocols: - \"media_buy\"` plus `context: correlation_id: \"capability_discovery--get_capabilities_filtered\"` \u2014 a filtered client call to `task: get_adcp_capabilities`. Its 3 validations are `response_schema`, `field_present path: \"context\"`, `field_value path: \"context.correlation_id\" value: \"capability_discovery--get_capabilities_filtered\"`, all on the response."
+  "universal/error-compliance-signals.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "prerequisites: \"No special prerequisites. The storyboard sends intentionally invalid requests to test error handling.\" `stateful: false`; WHEN is `task: get_adcp_capabilities` with `sample_request: context: correlation_id: \"error_compliance_signals--get_capabilities\"`. The 4 validations are response-side only \u2014 `response_schema`, `field_present path: \"supported_protocols\"`, `field_present path: \"context\"`, `field_value path: \"context.correlation_id\"`. Note the narrower `expected:` prose (\"Return capabilities declaring signals in supported_protocols\") is not graded by any validation, so an agen"
+  "universal/error-compliance-signals.yaml::missing_required_field":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'stateful: false' with storyboard prerequisites 'No special prerequisites. The storyboard sends intentionally invalid requests to test error handling.' \u2014 nothing to seed. WHEN is a single client call: 'task: activate_signal' with 'negative_path: schema_invalid' and 'sample_request_skip_schema: true' (the sample_request deliberately omits signal_agent_segment_id) \u2014 a deliberately malformed request the harness constructs and puts on the wire; fiddliness of building it is test work, not a blocker. THEN is entirely on the wire: '- check: error_code / allowed_values: [\"INVALID_REQUEST\", \"VALIDATION"
+  "universal/error-compliance-signals.yaml::nonexistent_signal":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN needs nothing seeded \u2014 the whole point is an id that does NOT exist: 'signal_agent_segment_id: \"nonexistent-signal-id-xyz\"', with 'stateful: false'. WHEN is 'task: activate_signal' / 'negative_path: payload_well_formed' \u2014 a well-formed AdCP tool call. THEN reads only the error envelope and context echo: '- check: error_code / allowed_values: [\"REFERENCE_NOT_FOUND\", \"INVALID_REQUEST\"]' and '- check: field_value / path: \"context.correlation_id\" / value: \"error_compliance_signals--nonexistent_signal\"'. No upstream_traffic, log or DB assertion."
+  "universal/error-compliance-signals.yaml::supported_major_version":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'stateful: false' and no $context.* references \u2014 nothing produced by an earlier step. WHEN is a plain read call the harness sends: 'task: get_signals' with 'sample_request: adcp_major_version: 3, signal_spec: \"Adults interested in electric vehicles\"'. THEN: '- check: response_schema / description: \"Response matches get-signals-response.json schema\"' plus context echo \u2014 an empty-but-valid signals payload satisfies it, so no catalog seeding is needed."
+  "universal/error-compliance-signals.yaml::unsupported_major_version":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "No precondition: 'stateful: false', and the trigger is purely a field the client chooses \u2014 'sample_request: adcp_major_version: 99'. WHEN is 'task: get_signals' / 'expect_error: true' \u2014 an ordinary request with a declared version the agent cannot speak. THEN is wire-only: '- check: error_code / allowed_values: [\"VERSION_UNSUPPORTED\"]' and '- check: field_value / path: \"context.correlation_id\" / value: \"error_compliance_signals--unsupported_major_version\"'. The 'expected:' also asks for 'recovery: fatal', which rides in the same error envelope."
+  "universal/error-compliance-signals.yaml::validate_error_shape":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: 'stateful: false' and the request deliberately targets a non-existent id \u2014 'signal_agent_segment_id: \"nonexistent-signal-error-structure\"'. WHEN: 'task: activate_signal' / 'negative_path: payload_well_formed'. THEN inspects only the response envelope: '- check: error_code / description: \"Response surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)\"' plus '- check: field_present / path: \"context\" / description: \"Response echoes back the context object even on errors\"'."
+  "universal/error-compliance-signals.yaml::validate_transport_binding":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN nothing: 'stateful: false', 'signal_agent_segment_id: \"nonexistent-signal-transport-test\"'. WHEN: 'task: activate_signal' / 'expect_error: true'. THEN is explicitly a transport-envelope assertion \u2014 'expected: MCP response with: - isError: true - content containing adcp_error (L2: JSON text, L3: structuredContent)' and '- check: error_code / description: \"Transport binding surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)\"'. isError and structuredContent are literally the bytes the client receives, so this is more externally observable than average, not le"
+  "universal/error-compliance.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: 'stateful: false' with the storyboard's 'prerequisites: No special prerequisites.' \u2014 the sample_request carries only 'context: correlation_id: \"error_compliance--get_capabilities\"'. WHEN: 'task: get_adcp_capabilities' \u2014 an unauthenticated-or-authenticated discovery call any client can send. THEN, all 4 checks are response-side: '- check: response_schema', '- check: field_present / path: \"supported_protocols\"', '- check: field_present / path: \"context\"', '- check: field_value / path: \"context.correlation_id\" / value: \"error_compliance--get_capabilities\"'."
+  "universal/error-compliance.yaml::missing_fields":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: 'stateful: false'; sample_request is just an account block, and 'sample_request_skip_schema: true' with the comment 'The test value of this step is that buying_mode is missing'. WHEN: 'task: get_products' \u2014 a deliberately empty client request. THEN is satisfied from the response alone: '- check: response_schema / description: \"Response is either valid products or a structured error\"' plus '- check: field_value / path: \"context.correlation_id\" / value: \"error_compliance--missing_fields\"'. Either branch of 'expected: Either return products (treating empty request as browse) or return a st"
+  "universal/error-compliance.yaml::negative_budget":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "Step is `stateful: false` and the storyboard's prerequisites read \"No special prerequisites. The storyboard sends intentionally invalid requests to test error handling.\" GIVEN needs only ordinary stack fixtures (tenant/principal for the `account: {brand: {domain: acmeoutdoor.example}, operator: pinnacle-agency.example}`). WHEN is `task: create_media_buy` with `packages: - product_id: \"test-product\", budget: -500` \u2014 a deliberately malformed client request (`negative_path: schema_invalid`), constructible by any client. THEN is fully on the wire: `- check: error_code / allowed_values: [\"VALIDATIO"
+  "universal/error-compliance.yaml::nonexistent_product":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN is the absence of state, not the presence of it: `product_id: \"nonexistent-product-id-xyz\"` with narrative \"The buyer references a product ID that does not exist on this platform\" \u2014 no seeding required, and `stateful: false`. WHEN is `task: create_media_buy` with `negative_path: payload_well_formed`, i.e. a schema-valid client request we simply send. THEN is response-only: `- check: error_code / allowed_values: [\"PRODUCT_NOT_FOUND\", \"PRODUCT_UNAVAILABLE\", \"INVALID_REQUEST\"]` plus `field_present path: \"context\"` and `field_value path: \"context.correlation_id\" value: \"error_compliance--non"
+  "universal/error-compliance.yaml::reversed_dates_error":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `stateful: false`; the only state the graded path leans on is the test-kit product referenced by `product_id: \"test-product\" / pricing_option_id: \"test-pricing\"` \u2014 an ordinary e2e fixture (a product with a pricing option), seeded from `test_kit: \"test-kits/acme-outdoor.yaml\"`, not internal injection. It matters only because `negative_path: payload_well_formed` means the request must survive product lookup and fail on the date relationship. WHEN: `task: create_media_buy` with `start_time: \"2099-12-31T00:00:00Z\" / end_time: \"2099-01-01T00:00:00Z\"` \u2014 narrative: \"both fields are valid ISO t"
+  "universal/error-compliance.yaml::supported_major_version":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "Only success step in the slice. GIVEN: `stateful: false`, needs just a tenant with sellable products for `brief: \"Display advertising for outdoor lifestyle campaign\"` \u2014 an ordinary stack fixture. WHEN: `task: get_products` with `adcp_major_version: 3` and `buying_mode: \"brief\"`; narrative \"Send a get_products request with the current major version (3)\" \u2014 a plain client call with one extra declared field. THEN: `- check: response_schema / description: \"Response matches get-products-response.json schema\"`, `field_present path: \"context\"`, `field_value path: \"context.correlation_id\" value: \"error"
+  "universal/error-compliance.yaml::unsupported_major_version":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `stateful: false`, no precondition beyond the seller declaring its supported versions; phase narrative says \"version validation only fires when the buyer explicitly declares an unsupported number\", so the trigger is entirely in the request. WHEN: `task: get_products` with `sample_request: adcp_major_version: 99` \u2014 an unknown/unsupported field value a client sets directly (`negative_path: payload_well_formed`). THEN: `- check: error_code / value: \"VERSION_UNSUPPORTED\"` plus `field_present path: \"context\"` and `field_value path: \"context.correlation_id\" value: \"error_compliance--unsupport"
+  "universal/error-compliance.yaml::unsupported_release_version":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "Release-precision sibling of the step above; `stateful: false`, `severity: advisory`. GIVEN needs nothing seeded. WHEN: `task: get_products` with `sample_request: adcp_version: \"99.0\"` \u2014 narrative: \"Send a get_products request asserting an unsupported release-precision version\"; a client-set field. THEN: the graded checks are `- check: error_code / value: \"VERSION_UNSUPPORTED\"`, `field_present path: \"context\"`, `field_value path: \"context.correlation_id\" value: \"error_compliance--unsupported_release_version\"`. The prose also wants `error.data.supported_versions[] present and non-empty` \u2014 still"
+  "universal/error-compliance.yaml::validate_error_shape":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `stateful: false`, no precondition \u2014 the step manufactures its own failure with `budget: -1` and `start_time: \"2099-12-31T00:00:00Z\" / end_time: \"2099-01-01T00:00:00Z\"` (`negative_path: schema_invalid`). WHEN: `task: create_media_buy`; narrative \"Trigger an error and inspect the response structure\" \u2014 the trigger is the client request itself. THEN: `- check: error_code / description: \"Response surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)\"` \u2014 explicitly an envelope-or-payload wire assertion \u2014 plus `field_present path: \"context\"` (\"Response echoes back"
+  "universal/error-compliance.yaml::validate_transport_binding":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `stateful: false`; the failure is self-contained in the payload \u2014 `product_id: \"nonexistent\", budget: -1, pricing_option_id: \"bad-pricing\"` (`negative_path: schema_invalid`), so nothing needs seeding. WHEN: `task: create_media_buy`, narrative \"Trigger an error and verify the MCP transport binding\" \u2014 a client call. THEN: `- check: error_code / description: \"Transport binding surfaces a typed error code via either adcp_error (envelope) or errors[] (payload)\"` plus `field_present path: \"context\"` and `field_value path: \"context.correlation_id\" value: \"error_compliance--validate_transport_b"
+  "universal/get-media-buys-pagination-integrity.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_adcp_capabilities / stateful: false / sample_request carries only `context: correlation_id: \"get_media_buys_pagination_integrity--get_capabilities\"`. GIVEN needs nothing beyond a running agent \u2014 the storyboard's `controller_seeding: true` media-buy fixtures are irrelevant to this step, which is declared `stateful: false`. WHEN is a plain AdCP tool call. THEN is four wire checks: `check: response_schema`, `check: field_present / path: \"supported_protocols\"`, `check: field_present / path: \"context\"`, and `check: field_value / path: \"context.correlation_id\" / value: \"get_media_buys_pagi"
+  "universal/get-media-buys-pagination-integrity.yaml::list_call":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, seeded_account]
+    blocker: "Three media buys must exist before the call, and the storyboard provisions them out-of-band: prerequisites say \"The runner seeds three media buys via `controller_seeding: true`\" with fixed fixture ids (`media_buy_id: \"pagination_integrity_mb_1\"` \u2026 `_3`, `status: \"active\"`). No graded step of this storyboard creates them. They are reachable from outside by sending create_media_buy requests first (seller-assigned ids, then fed to get_media_buys), plus the test-kit account `brand.domain: \"acmeoutdoor.example\"` / `operator: \"pinnacle-agency.example\"` from the sample_request must resolve."
+    evidence: "`stateful: true`; narrative: \"The runner seeds three media buys via `controller_seeding: true`. The storyboard's get_media_buys call lands on an ID-lookup path because the current `@adcp/client` request-builder injects `media_buy_ids` from context\". WHEN is `task: get_media_buys` \u2014 an ordinary client call. THEN is entirely wire-side: `check: field_present / path: \"pagination\" / description: \"get_media_buys MUST emit a pagination envelope on every response\"`, `check: field_present / path: \"pagination.has_more\"`, `response_schema`, and the `context.correlation_id` echo \u2014 no upstream_traffic, no "
+  "universal/get-products-pagination-integrity.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_adcp_capabilities / stateful: false / sample_request is only `context: correlation_id: \"get_products_pagination_integrity--get_capabilities\"`. The storyboard's seeded product fixtures and `requires_capability: media_buy.buying_modes contains wholesale` bear on the wholesale phase, not on this step \u2014 it declares `stateful: false` and sends no account or filters. THEN: `check: response_schema`, `check: field_present / path: \"supported_protocols\" / description: \"Agent declares supported protocols\"`, plus the context echo \u2014 all response fields."
+  "universal/get-products-pagination-integrity.yaml::wholesale_first_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, seeded_account]
+    blocker: "The graded assertions depend on exactly two catalog products existing under one unique format id, and no AdCP client call creates products \u2014 prerequisites: \"The runner seeds two products under a unique format identifier so wholesale pagination can be exercised against a deterministic filtered feed\" with `controller_seeding: true`. This is allowed as an ordinary e2e stack fixture (products + pricing_options), but it must be provisioned before the run: fixtures `get_products_pagination_product_1/2` each carrying `format_ids: [{agent_url: \"https://compliance.adcontextprotocol.org\", id: \"get_products_pagination_integrity_display\"}]` and matching `pricing_options`, under the acmeoutdoor.example account, on an agent that advertises the wholesale buying mode."
+    evidence: "`stateful: true`, `context_outputs: - name: products_next_cursor / path: \"pagination.cursor\"`. WHEN is a normal client request the harness can build: `task: get_products` with `buying_mode: \"wholesale\"`, `filters.format_ids`, `pagination: max_results: 1`. THEN is all wire-observable: `check: field_value / path: \"pagination.has_more\" / value: true / description: \"Two fixtures seeded with max_results=1 means the first page is non-terminal\"`, `check: field_present / path: \"pagination.cursor\"`, `check: field_absent / path: \"products[1].product_id\" / description: \"max_results=1 caps the first page "
+  "universal/get-products-pagination-integrity.yaml::wholesale_terminal_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, seeded_account]
+    blocker: "Same out-of-band product seeding as the first page (two fixtures under `get_products_pagination_integrity_display` via `controller_seeding: true`), plus a live cursor carried from the preceding step: `pagination: cursor: \"$context.products_next_cursor\"`. The cursor half is not a blocker \u2014 it is produced by `wholesale_first_page`, itself a request the harness sends \u2014 but the two-product filtered feed must be provisioned before the run, and the seeded set must be exactly 2 for `has_more: false` and `total_count: 2` to hold."
+    evidence: "`stateful: true`; sample_request `pagination: cursor: \"$context.products_next_cursor\" / max_results: 1` \u2014 the value comes from the earlier step's `context_outputs`. WHEN is a second `task: get_products` call, constructible by any client. THEN is entirely on the response: `check: field_value / path: \"pagination.has_more\" / value: false / description: \"The seeded filtered set is exhausted after following the cursor\"`, `check: field_value_or_absent / path: \"pagination.cursor\" / allowed_values: [null] / description: \"Terminal page must omit cursor\"`, `check: field_absent / path: \"products[1].produ"
+  "universal/get-signals-pagination-integrity.yaml::first_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, seeded_account]
+    blocker: "No fixture seeding is defined, but the graded assertion only holds if the agent's signal set already contains more than one match for \"audience\" \u2014 prerequisites: \"No fixtures required. The agent's signal set is treated as given \u2026 Any agent claiming signal-marketplace behavior SHOULD have a non-trivial signal set matching \\\"audience\\\"\". Signals are not creatable by any AdCP client call, so a \u22652-signal set must be provisioned as stack fixture/config, along with the test-kit account (`brand.domain: \"acmeoutdoor.example\"`, `operator: \"pinnacle-agency.example\"`)."
+    evidence: "`stateful: true`, `context_outputs: - name: signals_next_cursor / path: \"pagination.cursor\"`. WHEN is a plain client request: `task: get_signals` with `signal_spec: \"audience\"` and `pagination: max_results: 1`. THEN is wire-only: `check: field_value / path: \"pagination.has_more\" / value: true / description: \"A broad query against any non-trivial signal set must yield more than one match \u2014 first page is non-terminal\"`, `check: field_present / path: \"pagination.cursor\" / description: \"has_more=true requires a cursor \u2014 without one the caller cannot continue\"`, `response_schema`, and the `context."
+  "universal/get-signals-pagination-integrity.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "`task: get_adcp_capabilities`, `stateful: false`, and the whole sample_request is `context: correlation_id: \"get_signals_pagination_integrity--get_capabilities\"` \u2014 this storyboard declares no `requires: controller` and prerequisites say \"No fixtures required\". THEN is four response-side checks: `check: response_schema`, `check: field_present / path: \"supported_protocols\"`, `check: field_present / path: \"context\"`, `check: field_value / path: \"context.correlation_id\" / value: \"get_signals_pagination_integrity--get_capabilities\"`."
+  "universal/get-signals-pagination-integrity.yaml::next_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, seeded_account]
+    blocker: "Needs the cursor minted by the preceding step \u2014 `pagination: cursor: \"$context.signals_next_cursor\"` \u2014 which is fine because `first_page` is itself a request the harness sends, but that step only yields a cursor if the agent's signal set has more than one \"audience\" match. So the same out-of-band multi-signal set must be provisioned; with a one-signal agent there is no cursor to follow and this step cannot run at all."
+    evidence: "`stateful: true`; sample_request `signal_spec: \"audience\"`, `pagination: cursor: \"$context.signals_next_cursor\" / max_results: 1`. WHEN is a second `task: get_signals` call. THEN is deliberately narrow and entirely on the wire \u2014 narrative: \"we do not pin `has_more` here\"; the only checks are `check: response_schema / description: \"Response matches get-signals-response.json schema\"`, `check: field_present / path: \"context\"`, and `check: field_value / path: \"context.correlation_id\" / value: \"get_signals_pagination_integrity--next_page\"`."
+  "universal/idempotency.yaml::create_media_buy_concurrent":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: the step self-generates its key \u2014 `idempotency_key: \"$generate:uuid_v4#concurrent_key\"` \u2014 and depends on no `$context.*` from earlier steps; the only precondition is the runner-seeded fixture (`product_id: \"test-product\"`, `pricing_option_id: \"test-pricing\"`), which prerequisites describe as \"The runner seeds the product and pricing option referenced by the create_media_buy payloads below.\" WHEN: `task: create_media_buy` fired twice concurrently \u2014 `parallel_dispatch: count: 2, same_idempotency_key: true, barrier_timeout_ms: 5000`. Two simultaneous client requests with the same body is p"
+  "universal/idempotency.yaml::create_media_buy_conflict":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `stateful: true` and `idempotency_key: \"$context.replay_key\"` \u2014 the key comes from `get_capabilities`'s `context_outputs: - name: replay_key, generate: uuid_v4`, and the cached entry it probes is created by `create_media_buy_initial`. Both are earlier steps of this same storyboard that we send as ordinary requests; the step narrative says so: \"This step shares $context.replay_key with the initial and replay steps above, so the runner injects the same UUID on the wire.\" WHEN: `task: create_media_buy` with `expect_error: true`, `negative_path: payload_well_formed` \u2014 a well-formed request "
+  "universal/idempotency.yaml::create_media_buy_fresh_key":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `idempotency_key: \"$context.fresh_key\"`, produced by the earlier `get_capabilities` step's `context_outputs: - name: fresh_key, generate: uuid_v4`; the payload otherwise reuses the seeded `test-product` / `test-pricing` fixture. Nothing needs injecting internally. WHEN: `task: create_media_buy` \u2014 a plain tool call with a different key and a byte-identical payload (\"Send the same payload as the initial create_media_buy but with a different idempotency_key\"). THEN: `check: response_schema`, `check: field_present path: \"media_buy_id\"`, `check: field_value_or_absent path: \"replayed\" allowed"
+  "universal/idempotency.yaml::create_media_buy_initial":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `stateful: true` but the only inbound dependency is `idempotency_key: \"$context.replay_key\"` from `get_capabilities`'s `context_outputs` (`generate: uuid_v4`), plus the seeded product/pricing fixture. This step is the one that establishes the cached entry, so it needs no prior mutation: \"Create a media buy with a fresh UUID v4 idempotency_key.\" WHEN: `task: create_media_buy` over the normal transport. THEN: `check: response_schema` against `media-buy/create-media-buy-response.json`, `check: field_present path: \"media_buy_id\"`, `check: field_value_or_absent path: \"replayed\" allowed_value"
+  "universal/idempotency.yaml::create_media_buy_missing_key":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `stateful: false` \u2014 no prior state at all; only the seeded `test-product` / `test-pricing` fixture the prerequisites already provide. WHEN: `task: create_media_buy` with `expect_error: true`, `negative_path: schema_invalid`, `omit_idempotency_key: true`. This is exactly the 'deliberately malformed request' class: the flag exists so the client stops auto-filling the field \u2014 \"The step below sets `omit_idempotency_key: true` so the runner skips both its own invariant application and the SDK's auto-inject. Do not remove the flag.\" Suppressing our own client-side injection is test work, not "
+  "universal/idempotency.yaml::create_media_buy_replay":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `stateful: true`, depending on `idempotency_key: \"$context.replay_key\"` and on `$context.initial_media_buy_id` \u2014 both produced by earlier steps of this storyboard (`get_capabilities` context_outputs and `create_media_buy_initial` context_outputs), each itself a request we send. WHEN: `task: create_media_buy` re-sent verbatim \u2014 \"Re-send the exact same create_media_buy request \u2014 same idempotency_key, same payload, same everything\" \u2014 i.e. a replayed idempotency key, explicitly a client-constructible request. THEN: `check: field_value, path: \"media_buy_id\", value: \"$context.initial_media_bu"
+  "universal/idempotency.yaml::expect_rate_limit_not_replayed":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [rate_limit]
+    blocker: "The invariant is only graded if the agent's per-agent idempotency-cache insert limiter actually trips inside the burst budget; otherwise the step self-grades not_applicable. The environment must be provisioned with a limiter whose ceiling sits under `max_attempts: 200` and whose `error.details.retry_after` is <= `replay_max_wait_seconds: 30`."
+    evidence: "GIVEN: only the seeded fixture \u2014 `trip_target_sample_request` repeats `product_id: \"test-product\"` / `pricing_option_id: \"test-pricing\"` and the runner uses \"fresh UUID v4 idempotency_keys\", so no prior state is injected. WHEN: `rate_limit_trip: trip_target_task: create_media_buy, max_attempts: 200` \u2014 \"The runner fires up to `max_attempts` sequential `create_media_buy` requests\" then \"re-submits the captured key with the same payload\". A burst of N requests plus a replayed key is client work, explicitly invokable. THEN: `check: replay_not_cached_rate_limit` compares \"`trip_response.error.code`"
+  "universal/idempotency.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "GIVEN: `stateful: false` and `sample_request` carries nothing but `context: correlation_id: \"idempotency--get_capabilities\"` \u2014 no fixtures, no prior state. WHEN: `task: get_adcp_capabilities`, an unauthenticated-or-authenticated plain tool call over the transport. THEN: every validation reads the response \u2014 `check: response_schema` against `protocol/get-adcp-capabilities-response.json`, `field_present path: \"supported_protocols\"`, `field_value path: \"adcp.idempotency.supported\" value: true` (severity: advisory), `field_present path: \"adcp.idempotency.replay_ttl_seconds\"` (advisory), `field_pre"
+  "universal/idempotency.yaml::get_media_buys_dedup_check":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_media_buys; sample_request: media_buy_ids: ['$context.initial_media_buy_id', '$context.fresh_key_media_buy_id']. Both context values are context_outputs of earlier wireable steps in the same storyboard \u2014 create_media_buy_initial ('context_outputs: - name: initial_media_buy_id, path: media_buy_id') and create_media_buy_fresh_key ('context_outputs: - name: fresh_key_media_buy_id') \u2014 i.e. two create_media_buy calls the harness itself sends. The storyboard's only other precondition is the ordinary fixture set ('fixtures: products: - product_id: test-product' / 'pricing_options: - pricing"
+  "universal/notification-config-event-scope.yaml::sync_accounts_rejects_scheduled_account_notification":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'stateful: false' and the sample_request is self-contained provisioning mode ('brand: domain: acmeoutdoor.example', 'operator: pinnacle-agency.example', 'sandbox: true') \u2014 no $context refs, no prior step needed; prerequisites only require 'The agent under test exposes sync_accounts'. WHEN is a deliberately invalid but schema-valid client request ('notification_configs: - subscriber_id: delivery-reports ... event_types: - \"scheduled\"'), exactly the negative-vector case that is test work, not an unwireable trigger. THEN is entirely on the wire success envelope: 'check: field_value, path: account"
+  "universal/notification-config-lifecycle.yaml::list_accounts_echoes_cleared_subscribers":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "sample_request: 'account: account_id: \"$context.notification_config_account_id\"' \u2014 that id is the context_output of sync_accounts_create_paused_notification_config in the same storyboard, and the cleared state it reads back is produced by the earlier sync_accounts_clear_subscribers request ('notification_configs: []'); both are requests the harness sends, so no internal seeding. WHEN is a list_accounts call. THEN reads only the response: 'check: field_value, path: accounts[0].account_id, value: $context.notification_config_account_id', 'check: field_present, path: accounts[0].notification_conf"
+  "universal/notification-config-lifecycle.yaml::list_accounts_echoes_notification_config":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "expected: 'Return the sandbox account with the persisted notification config.' The only precondition is the account created by the immediately preceding step ('account: account_id: \"$context.notification_config_account_id\"'), whose value comes from that step's 'context_outputs: - name: notification_config_account_id, path: accounts[0].account_id' \u2014 a sync_accounts request the harness sends. WHEN is list_accounts with 'status: active, sandbox: true'. THEN is response-only: 'check: field_value, path: accounts[0].notification_configs[0].subscriber_id, value: buyer-primary' and 'path: accounts[0]."
+  "universal/notification-config-lifecycle.yaml::list_accounts_echoes_paused_replacement":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "expected: 'Return the account with exactly one paused buyer-primary subscriber.' Preconditions are the create step plus sync_accounts_replace_and_pause_subscriber, both wireable sync_accounts calls; the request targets 'account: account_id: \"$context.notification_config_account_id\"'. WHEN is list_accounts. THEN: 'check: field_value, path: accounts[0].notification_configs[0].subscriber_id, value: buyer-primary' ('Paused subscriber remains persisted') and 'path: accounts[0].notification_configs[0].active, value: false' ('Paused state is visible on list_accounts'), plus response_schema and 'conte"
+  "universal/notification-config-lifecycle.yaml::sync_accounts_clear_subscribers":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "sample_request targets an existing account by id ('account: account_id: \"$context.notification_config_account_id\"') created by the earlier sync_accounts step, and sends 'notification_configs: []' with 'idempotency_key: $generate:uuid_v4#notification_config_lifecycle_clear' \u2014 an ordinary client request the harness constructs. expected: 'Sending notification_configs: [] clears the account-level subscriber set and echoes an empty array.' THEN is on the response envelope: 'check: field_present, path: accounts[0].notification_configs' ('The clear operation echoes the now-empty subscriber array'), '"
+  "universal/notification-config-lifecycle.yaml::sync_accounts_create_paused_notification_config":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "This is the storyboard's entry step: the sample_request is pure sandbox provisioning ('brand: domain: acmeoutdoor.example', 'operator: pinnacle-agency.example', 'billing: operator', 'payment_terms: net_60', 'sandbox: true') with no $context inputs; prerequisites say 'The sample requests use sandbox provisioning mode first ... without requiring out-of-band explicit account setup' and 'controller_seeding: false'. WHEN is a sync_accounts call carrying 'notification_configs: - subscriber_id: buyer-primary ... active: false'. All nine validations read the response: 'check: field_present, path: acco"
+  "universal/notification-config-lifecycle.yaml::sync_accounts_replace_and_pause_subscriber":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "Precondition is the account and its buyer-primary subscriber created by sync_accounts_create_paused_notification_config; the request addresses it in settings-update mode ('accounts: - account: account_id: \"$context.notification_config_account_id\"', 'payment_terms: net_45'), so the prior state is produced by a request we send. WHEN is a sync_accounts call re-sending the same 'subscriber_id: buyer-primary' with a new url and event filter. THEN is fully wire-observable: 'check: field_value, path: accounts[0].action, value: updated' ('Settings-update mode updates the existing account'), '... url ="
+  "universal/notification-config-rejections.yaml::sync_accounts_rejects_duplicate_subscriber_id":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: sync_accounts; stateful: false; prerequisites 'controller_seeding: false'. GIVEN needs nothing beyond an agent that 'exposes sync_accounts' \u2014 the account itself is created by the same request (accounts[0].brand.domain acmeoutdoor.example, sandbox: true). WHEN is a plain negative-vector sync_accounts call the harness constructs verbatim from sample_request (two notification_configs both with subscriber_id: 'buyer-primary'). THEN is entirely on the response body: 'check: field_value, path: accounts[0].action, value: failed', 'path: accounts[0].errors[0].code, allowed_values: [INVALID_REQUE"
+  "universal/pagination-integrity-creative-formats.yaml::first_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state]
+    blocker: "Requires exactly two creative formats matching name_search 'Pagination Integrity Format' to exist for the calling principal. The storyboard provisions them with comply_test_controller ('requires: [controller]', 'controller_seeding: true'), but there is no AdCP write tool for creative formats \u2014 in this repo _list_creative_formats_impl serves formats from the CreativeAgentRegistry, so the fixtures must come from a stack-level fixture creative agent advertising the two seeded formats."
+    evidence: "prerequisites: 'The runner seeds two creative formats ahead of time so a max_results=1 request reliably triggers a continuation page on the first call.' WHEN is an ordinary list_creative_formats call (name_search: 'Pagination Integrity Format', pagination.max_results: 1). THEN is all response-side: 'check: field_value, path: pagination.has_more, value: true', 'check: field_present, path: pagination.cursor', 'check: field_value_or_absent, path: pagination.total_count, allowed_values: [2]', response_schema and context.correlation_id echo. context_outputs captures 'pagination.cursor' off the wire"
+  "universal/pagination-integrity-creative-formats.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_adcp_capabilities; stateful: false. Despite the worklist listing required_tools: [list_creative_formats], this step's own task is the capability probe and it sits in phase capability_discovery, before the seed_formats phase \u2014 narrative: 'Confirm the agent supports list_creative_formats before exercising pagination.' No precondition: sample_request carries only 'context.correlation_id'. THEN asserts only on the response: 'check: field_present, path: supported_protocols', 'check: field_present, path: context', 'check: field_value, path: context.correlation_id, value: pagination_integri"
+  "universal/pagination-integrity-creative-formats.yaml::seed_format_1":
+    verdict: conditional
+    axes: {given: yes, when: no, then: yes}
+    verdict_before_audit: not_wireable
+    blocker: "WHEN: the step's trigger is the compliance control-plane tool, not a production AdCP request \u2014 'task: comply_test_controller', 'comply_scenario: seed_creative_format', with storyboard-level 'requires: [controller]'. comply_test_controller is the in-process seeding hook this rubric excludes and it is deliberately never exposed on this project's production wire, so there is no external surface to send this request to."
+    evidence: "task: comply_test_controller / schema_ref: 'compliance/comply-test-controller-request.json' / comply_scenario: seed_creative_format / stateful: true; params: {format_id: 'pagination_integrity_format_1', fixture: {name: 'Pagination Integrity Format A', type: 'display'}}. GIVEN is trivially satisfied (account.sandbox: true, account_id acct_pagination_integrity_formats, no prior state). THEN would be assertable on the response if the call existed \u2014 'check: field_value, path: success, value: true' \u2014 but the trigger itself is a controller-mode seeding hook, not a client-observable AdCP task."
+  "universal/pagination-integrity-creative-formats.yaml::seed_format_2":
+    verdict: conditional
+    axes: {given: yes, when: no, then: yes}
+    verdict_before_audit: not_wireable
+    blocker: "WHEN: same as seed_format_1 \u2014 'task: comply_test_controller' with 'comply_scenario: seed_creative_format' under storyboard-level 'requires: [controller]'. The seeding hook is not a production wire surface, so the step cannot be driven from outside the process."
+    evidence: "task: comply_test_controller; sample_request params: {format_id: 'pagination_integrity_format_2', fixture: {name: 'Pagination Integrity Format B', type: 'display'}}; phase narrative: 'Pre-populate exactly two creative formats via comply_test_controller so the result set has a knowable size for the pagination walk.' GIVEN needs nothing prior; THEN is a response field ('check: field_value, path: success, value: true'), but the invocation itself is controller-only."
+  "universal/pagination-integrity-creative-formats.yaml::terminal_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state]
+    blocker: "Two provisioned preconditions: (a) the same two seeded formats matching name_search 'Pagination Integrity Format' (no AdCP write tool for formats \u2014 needs a stack fixture creative agent), and (b) the cursor produced by the preceding first_page step, referenced as 'cursor: \"$context.next_cursor\"'. (b) is fine \u2014 first_page is itself a wireable list_creative_formats call whose response carries the cursor \u2014 but (a) is external provisioning."
+    evidence: "sample_request pagination: {cursor: '$context.next_cursor', max_results: 1} \u2014 the cursor comes from first_page's 'context_outputs: [{name: next_cursor, path: pagination.cursor}]', i.e. off an earlier wire response. THEN is all response-side: 'check: field_value, path: pagination.has_more, value: false', 'check: field_value_or_absent, path: pagination.cursor, allowed_values: [null] \u2014 Terminal page MUST omit cursor', 'check: field_value_or_absent, path: pagination.total_count, allowed_values: [2]', response_schema, context.correlation_id echo."
+  "universal/pagination-integrity-list-accounts.yaml::first_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, seeded_account]
+    blocker: "Requires at least three sandbox accounts visible to the calling principal before the call. The storyboard provisions them via 'comply_test_controller.seed_account' ('requires: [controller]', 'controller_seeding: true'), but accounts are creatable over the wire with sync_accounts, so this precondition is externally reachable by sending three sync_accounts requests instead \u2014 it just has to be provisioned explicitly, and it must be exact enough that has_more=true is guaranteed."
+    evidence: "prerequisites: 'The runner seeds three accounts through comply_test_controller.seed_account so the pagination walk uses compliance-session state rather than assuming pre-existing tenant fixtures.' WHEN is a plain list_accounts call (sandbox: true, pagination.max_results: 2). THEN is wire-only: 'check: field_value, path: pagination.has_more, value: true \u2014 At least three sandbox accounts exist with max_results=2 \u2192 first page is non-terminal', 'check: field_present, path: pagination.cursor \u2014 has_more=true requires a cursor', plus response_schema and 'field_value, path: context.correlation_id'. Th"
+  "universal/pagination-integrity-list-accounts.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_adcp_capabilities; stateful: false; phase capability_discovery runs before the seed_accounts phase \u2014 narrative: 'Confirm the agent responds to get_adcp_capabilities before exercising list_accounts.' sample_request carries only 'context.correlation_id: pagination_integrity_list_accounts--get_capabilities', so no seeded state is needed even though the storyboard as a whole declares 'requires: [controller]'. THEN asserts only response fields: 'check: field_present, path: supported_protocols', 'check: field_present, path: context', 'check: field_value, path: context.correlation_id', plus"
+  "universal/pagination-integrity-list-accounts.yaml::next_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, seeded_account]
+    blocker: "Needs the cursor produced by the preceding first_page step plus at least three sandbox accounts visible to the calling principal; the storyboard sources those from comply_test_controller, but sync_accounts (src/core/tools/accounts.py:450 _sync_accounts_impl) creates sandbox accounts over the wire, so an e2e harness can seed them with ordinary AdCP requests."
+    evidence: "task: list_accounts / sample_request: sandbox: true, pagination: {cursor: \"$context.next_cursor\", max_results: 2}; validations: '- check: response_schema' and '- check: field_present, path: \"pagination.has_more\", description: \"Pagination response declares whether more sandbox accounts remain\"' \u2014 every assertion is on the response body, and the cursor comes from an earlier list_accounts call we send ourselves."
+  "universal/pagination-integrity-list-accounts.yaml::seed_account_1":
+    verdict: not_wireable
+    axes: {given: yes, when: no, then: yes}
+    blocker: "WHEN is a comply_test_controller backdoor call, not an AdCP client request the production agent answers. There is no comply_test_controller implementation anywhere in src/ (only tests/unit/test_architecture_storyboard_controller_divergence.py, which classifies such storyboards as 'ungradable (comply_test_controller)'). The equivalent precondition is reachable via sync_accounts, so the dependent pagination steps stay wireable while this seeding step itself is not."
+    evidence: "task: comply_test_controller / comply_scenario: seed_account / stateful: true, sample_request: {scenario: \"seed_account\", params: {account_id: \"acct_pagination_integrity_accounts_1\", fixture: {...sandbox: true...}}}; storyboard header 'requires:\\n  - controller' and 'prerequisites: controller_seeding: true'. Validation is only '- check: field_value, path: \"success\", value: true'."
+  "universal/pagination-integrity-list-accounts.yaml::seed_account_2":
+    verdict: not_wireable
+    axes: {given: yes, when: no, then: yes}
+    blocker: "Same as seed_account_1: the only action is a comply_test_controller.seed_account call. No AdCP client request against a running agent can produce 'success: true' from a controller scenario the agent does not expose; the repo has zero comply_test_controller code in src/."
+    evidence: "task: comply_test_controller / comply_scenario: seed_account, sample_request: {scenario: \"seed_account\", params: {account_id: \"acct_pagination_integrity_accounts_2\", fixture: {brand: {domain: \"pagination-acme-2.example\"}, sandbox: true, status: \"active\"}}}; validations: '- check: field_value, path: \"success\", value: true, description: \"Seed acknowledged\"'."
+  "universal/pagination-integrity-list-accounts.yaml::seed_account_3":
+    verdict: not_wireable
+    axes: {given: yes, when: no, then: yes}
+    blocker: "Same as the other two seeds: the trigger is the runner-only comply_test_controller surface, gated by the storyboard's top-level 'requires: [controller]'. Nothing about it is a client-constructible AdCP tool call against the production agent."
+    evidence: "task: comply_test_controller / comply_scenario: seed_account, sample_request: {scenario: \"seed_account\", params: {account_id: \"acct_pagination_integrity_accounts_3\", ...}}; narrative: \"The runner seeds three sandbox accounts via comply_test_controller\"; validations: '- check: field_value, path: \"success\", value: true'."
+  "universal/pagination-integrity.yaml::first_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, seeded_account]
+    blocker: "Needs exactly three creatives with the fixture ids in the library (plus the account acct_pagination_integrity). The storyboard says the runner seeds them via the controller ('controller_seeding: true'), but creatives are seedable over the wire with sync_creatives and the account with sync_accounts, so the precondition is externally reachable. The strict counts (total_matching=3, returned=2) mean the seeded set must be exact."
+    evidence: "task: list_creatives, sample_request: {account: {account_id: \"acct_pagination_integrity\"}, filters: {creative_ids: [pagination_integrity_creative_1..3]}, pagination: {max_results: 2}}; validations include '- check: field_value, path: \"pagination.has_more\", value: true', '- check: field_present, path: \"pagination.cursor\"', '- check: field_value, path: \"query_summary.total_matching\", value: 3' \u2014 all response-body assertions."
+  "universal/pagination-integrity.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_adcp_capabilities / stateful: false, sample_request: {context: {correlation_id: \"pagination_integrity--get_capabilities\"}}; validations: '- check: response_schema', '- check: field_present, path: \"supported_protocols\"', '- check: field_value, path: \"context.correlation_id\", value: \"pagination_integrity--get_capabilities\"'. No prior state ('stateful: false'), a plain tool call, and every check reads the response envelope."
+  "universal/pagination-integrity.yaml::terminal_page":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, seeded_account]
+    blocker: "Needs the same exact three-creative library seed plus $context.next_cursor captured from first_page (itself a list_creatives request we send). Seeding is doable via sync_creatives/sync_accounts rather than the controller, but the terminal assertions (has_more=false, returned=1) only hold if the seeded matching set is exactly three."
+    evidence: "sample_request: pagination: {cursor: \"$context.next_cursor\", max_results: 2}; validations: '- check: field_value, path: \"pagination.has_more\", value: false', '- check: field_value_or_absent, path: \"pagination.cursor\", allowed_values: [null], description: \"Terminal page MUST omit cursor\"', '- check: field_value, path: \"query_summary.returned\", value: 1' \u2014 all observable on the response."
+  "universal/read-tool-idempotency.yaml::assert_omitted_key_grace_handled":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "validations: '- check: any_of, allowed_values: [\"omitted_key_grace_handled\"], description: \"Agent must either accept the omitted-key read during the 3.1 grace window or reject it with INVALID_REQUEST.\"' The step has no sample_request (task: assert_contribution, stateful: false) \u2014 it aggregates two branch steps that are both ordinary client requests: get_capabilities_without_idempotency_key_3_1_accept/reject, each 'task: get_adcp_capabilities' with 'omit_idempotency_key: true' and 'contributes: true'. Omitting a field is test-side request construction, and both outcomes are graded on the wire ("
+  "universal/read-tool-idempotency.yaml::get_capabilities_with_idempotency_key":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "prerequisites: 'No special seed state is required.'; step is 'stateful: false' with 'task: get_adcp_capabilities' and a sample_request carrying 'idempotency_key: \"$generate:uuid_v4#read_tools_3_1_capabilities\"', 'context.correlation_id', and 'ext.adcp'. All four validations read the response: 'check: response_schema', 'check: field_present / path: supported_protocols', 'check: field_present / path: context', 'check: field_value / path: context.correlation_id / value: read_tool_idempotency--get_capabilities_with_key'. GIVEN needs nothing beyond an authenticated client; WHEN is a plain protocol "
+  "universal/read-tool-idempotency.yaml::get_capabilities_without_idempotency_key_3_1_accept":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'omit_idempotency_key: true' with narrative 'The request intentionally omits idempotency_key ... so future runners that auto-inject keys for all tasks preserve the missing-key vector' \u2014 suppressing a field the client itself builds is harness construction, not internal state. 'stateful: false', no seed. Validations are all wire-side: 'check: response_schema', 'check: field_present / path: context', 'check: field_value / path: context.correlation_id / value: read_tool_idempotency--capabilities_omitted_key_grace'. Note the phase is 'optional: true' under 'branch_set: id: omitted_key_grace_handled"
+  "universal/read-tool-idempotency.yaml::get_capabilities_without_idempotency_key_3_1_reject":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'omit_idempotency_key: true', 'expect_error: true', 'negative_path: payload_well_formed', 'stateful: false'. The trigger is a deliberately incomplete but well-formed client request \u2014 exactly the negative-vector case that counts as invokable. Assertions are on the wire error envelope: 'check: error_code / value: \"INVALID_REQUEST\" / description: Missing idempotency_key rejected with INVALID_REQUEST', plus 'field_present path: context' and 'field_value path: context.correlation_id'. Nothing off-wire is inspected."
+  "universal/read-tool-idempotency.yaml::get_products_with_idempotency_key":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'task: get_products', 'requires_tool: get_products', 'stateful: false', under prerequisites 'No special seed state is required.' The sample_request names 'account.brand.domain: acmeoutdoor.example' / 'operator: pinnacle-agency.example' from 'test_kit: test-kits/acme-outdoor.yaml' \u2014 an ordinary e2e tenant/principal/product fixture, and the checks do not require a non-empty catalog ('check: field_present / path: products'). Remaining validations are response-side: 'check: response_schema', 'field_present path: context', 'field_value path: context.correlation_id / value: read_tool_idempotency--ge"
+  "universal/read-tool-idempotency.yaml::list_accounts_with_idempotency_key":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'task: list_accounts', 'requires_tool: list_accounts', 'stateful: false'; sample_request is 'sandbox: true' with 'pagination.max_results: 10' \u2014 no prior state referenced, and prerequisites say 'No special seed state is required.' Validation 'check: field_present / path: accounts' is satisfied by an empty array, so no seeded account is needed. Rest are wire-side: 'check: response_schema', 'field_present path: context', 'field_value path: context.correlation_id / value: read_tool_idempotency--list_accounts_with_key'. The 'requires_tool' gate is a self-skip on tool advertisement, not a provisioni"
+  "universal/read-tool-idempotency.yaml::list_creative_formats_with_idempotency_key":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'task: list_creative_formats', 'requires_tool: list_creative_formats', 'stateful: false'. sample_request is a pure filter \u2014 'type: \"display\"', 'pagination.max_results: 10' \u2014 plus the 3.1 envelope 'idempotency_key: $generate:uuid_v4#read_tools_3_1_list_formats', 'context', 'ext'. All checks are on the response: 'check: response_schema', 'check: field_present / path: formats', 'field_present path: context', 'field_value path: context.correlation_id / value: read_tool_idempotency--list_formats_with_key'. Format catalogs are agent-static, so nothing to seed."
+  "universal/read-tool-idempotency.yaml::list_creatives_with_idempotency_key":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'task: list_creatives', 'requires_tool: list_creatives', 'stateful: false'. Narrative is explicit that no library content is needed: 'Agents that expose it must accept 3.1 envelope fields on the request even when the task-specific filters are otherwise empty.' sample_request uses 'include_snapshot: false' and 'pagination.max_results: 10' with the acme-outdoor account block. 'check: field_present / path: creatives' passes on an empty array; remaining checks are 'response_schema', 'field_present path: context', 'field_value path: context.correlation_id / value: read_tool_idempotency--list_creati"
+  "universal/schema-validation-signals.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'task: get_adcp_capabilities', 'stateful: false', 'comply_scenario: capability_discovery'; prerequisites only ask for 'a brand identity for signal discovery requests', which this step does not use \u2014 sample_request is just 'context.correlation_id: schema_validation_signals--get_capabilities'. Validations are entirely response-side: 'check: response_schema', 'check: field_present / path: supported_protocols', 'check: field_present / path: context', 'check: field_value / path: context.correlation_id'. Scoping note, not a blocker: the storyboard header carries 'required_tools: - get_signals' and '"
+  "universal/schema-validation-signals.yaml::get_signals_schema":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_signals, 'stateful: false'; prerequisites say only 'The caller needs a brand identity for signal discovery requests.' sample_request is a plain payload ('signal_spec: \"Show all available signals\"' + account.brand.domain). Validations are all response-side: 'check: response_schema / Response matches get-signals-response.json schema', 'check: field_present / path: signals[0].signal_agent_segment_id', 'check: field_value / path: context.correlation_id / value: schema_validation_signals--get_signals_schema'. No fixture seeding is needed on this agent either \u2014 src/core/tools/signals.py:89"
+  "universal/schema-validation-signals.yaml::pricing_options_present":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_signals, 'stateful: false', sample_request 'signal_spec: \"Premium audience signals with pricing details\"' \u2014 a second independent client call, no prior state. Both substantive checks read the response: 'check: field_present / path: signals[0].pricing_options[0].pricing_option_id' and '... signals[0].pricing_options[0].model', plus the context echo 'field_value / context.correlation_id = schema_validation_signals--pricing_options_present'. pricing_options is optional in the schema ('Optional fields such as data_provider, pricing_options ... must still match the schema when present'), b"
+  "universal/schema-validation.yaml::create_buy_past_start_reject":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state]
+    blocker: "Seeded product 'test-product' with pricing option 'test-pricing' must exist before the call, otherwise a catalog-availability error masks the temporal rejection."
+    evidence: "The step's sample_request pins storyboard-declared fixture ids \u2014 'packages: - product_id: \"test-product\" ... pricing_option_id: \"test-pricing\"' \u2014 matching the storyboard's 'fixtures: products: - product_id: \"test-product\"' / 'pricing_options: - pricing_option_id: \"test-pricing\"' under 'controller_seeding: true'. That prior state is a product with a pricing option, so it is seedable with ordinary e2e factories rather than comply_test_controller, but it must be provisioned under those exact ids. WHEN is a plain client request ('task: create_media_buy', 'start_time: \"2020-01-01T00:00:00Z\"', 'idem"
+  "universal/schema-validation.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'task: get_adcp_capabilities', 'stateful: false', and the sample_request carries nothing but 'context: correlation_id: \"schema_validation--get_capabilities\"' \u2014 no preconditions at all. All four checks are response-side: 'check: response_schema / Response matches get-adcp-capabilities-response.json schema', 'check: field_present / path: supported_protocols', 'field_present / context', 'field_value / context.correlation_id = schema_validation--get_capabilities'."
+  "universal/schema-validation.yaml::get_products_for_formats":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'task: get_products', 'stateful: false'; sample_request is a brief-mode discovery call ('buying_mode: \"brief\"', 'pagination: max_results: 1', account.brand.domain acmeoutdoor.example) needing only an ordinary tenant/principal with a product in the catalog \u2014 the checks index products[0] generically and never reference the storyboard's 'test-product' fixture. Every validation reads the response: 'field_present / products[0].format_ids[0].agent_url', 'products[0].format_ids[0].id', 'products[0].pricing_options[0].pricing_option_id', plus 'response_schema' and the correlation_id echo. 'context_out"
+  "universal/schema-validation.yaml::get_products_schema":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'task: get_products', 'stateful: false', sample_request 'brief: \"Return a small representative sample of available advertising products\"' with 'pagination: max_results: 5' \u2014 a single client request against an ordinary seeded catalog. Assertions are entirely on the response: 'check: response_schema / Response matches get-products-response.json schema', 'field_present / products', 'field_present / products[0].product_id', 'field_present / products[0].delivery_type', and 'field_value / context.correlation_id = schema_validation--get_products_schema'."
+  "universal/schema-validation.yaml::list_formats_match":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "The only precondition is the value produced by the preceding step in the same phase: 'sample_request: format_ids: - \"$context.product_format_id\"', where product_format_id is 'context_outputs' of get_products_for_formats ('path: products[0].format_ids[0]') \u2014 that earlier step is itself a request the harness sends, so the chaining is client-side, not internal state. WHEN is 'task: list_creative_formats' over the wire. THEN is response-only: 'response_schema', 'field_present / formats[0].format_id.agent_url', 'formats[0].format_id.id', and 'field_value / path: formats[0].format_id / value: $conte"
+  "universal/schema-validation.yaml::pricing_options_present":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'task: get_products', 'stateful: false', sample_request 'brief: \"Premium display inventory with pricing details\"' \u2014 an independent discovery call requiring only an ordinary product-with-pricing-option fixture. All checks are wire-observable: 'check: field_present / path: products[0].pricing_options[0].pricing_option_id', 'field_present / products[0].pricing_options[0].pricing_model', 'field_present / context', 'field_value / context.correlation_id = schema_validation--pricing_options_present'."
+  "universal/schema-validation.yaml::reversed_dates":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: create_media_buy / stateful: false / sample_request: start_time: \"2099-12-31T00:00:00Z\", end_time: \"2099-01-01T00:00:00Z\", packages: [{product_id: \"test-product\", budget: 10000, pricing_option_id: \"test-pricing\"}]; validations: \"- check: field_present, path: adcp_error\", \"- check: field_value, path: context.correlation_id, value: schema_validation--reversed_dates\". GIVEN: only a tenant/principal/product with a pricing option \u2014 ordinary e2e stack fixtures; the step is stateful: false and references no $context from an earlier step. WHEN: a single create_media_buy call whose end_time prece"
+  "universal/security.yaml::assert_mechanism":
+    verdict: not_wireable
+    axes: {given: yes, when: no, then: no}
+    blocker: "There is no request to send and no response to read: the step's task is `assert_contribution`, a runner-internal aggregation over branch_set flags accumulated from earlier phases."
+    evidence: "Phase narrative: \"Logical check \u2014 not a network call. The storyboard runner fails this phase if none of `api_key_path`, `basic_path`, or `oauth_discovery` contributed `auth_mechanism_verified`.\" Step: \"task: assert_contribution\" with narrative \"Synthetic assertion over accumulated flags from prior phases.\" Validation: \"- check: any_of, allowed_values: [\\\"auth_mechanism_verified\\\"]\". GIVEN is yes \u2014 the contributing phases are themselves externally driven probes. WHEN is no: no client request exists or can produce this trigger. THEN is no: `any_of` asserts over the runner's accumulated `auth_mec"
+  "universal/security.yaml::probe_api_key":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "\"task: $test_kit.auth.probe_task / task_default: list_creatives / stateful: false\", narrative: \"Authenticate the protocol session with the API key supplied by the test kit (as a Bearer token in the Authorization header), perform the normal transport initialization handshake, and call the declared protected task.\" GIVEN: the phase's `skip_if: \"!test_kit.auth.api_key\"` needs only an API token for a principal, which is an ordinary e2e stack fixture (a tenant + principal carries its token); no internal state injection. WHEN: an authenticated MCP/A2A/REST session doing initialize then list_creative"
+  "universal/security.yaml::probe_auth_server_metadata":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, other]
+    blocker: "The issuer to probe comes from the prior step's PRM document, and a real HTTPS OAuth authorization server must exist and serve an RFC 8414 metadata document at <issuer>/.well-known/oauth-authorization-server. Neither the issuer nor that document can be produced by any AdCP call \u2014 they must be provisioned alongside the agent."
+    evidence: "\"task: oauth_auth_server_metadata\", title: \"Verify authorization_servers[0] resolves (RFC 8414)\", narrative: \"Fetch the OAuth authorization-server metadata for the first issuer listed, per RFC 8414 \u00a73... The runner applies SSRF guardrails on this outbound fetch: HTTPS only, no RFC 1918 / loopback / link-local hosts... run the compliance runner with `--allow-http` to relax these guards for dev.\" GIVEN: depends on `probe_protected_resource` having returned `authorization_servers` \u2014 that earlier step is itself a wireable GET to the agent's well-known path, so the dependency is fine, but the issue"
+  "universal/security.yaml::probe_basic":
+    verdict: conditional
+    axes: {given: no, when: yes, then: yes}
+    requires: [seeded_account]
+    blocker: "The phase only runs when the test kit carries HTTP Basic credentials (`skip_if: \"!test_kit.auth.basic\"`), and the agent must be configured to accept Basic on protected operations. That credential is not an ordinary fixture in this stack \u2014 it has to be provisioned as agent configuration before any request can exercise the path."
+    evidence: "Phase `basic_path`: \"optional: true / skip_if: \\\"!test_kit.auth.basic\\\"\"; step narrative: \"Authenticate the protocol session with the Basic credential supplied by the test kit (as an `Authorization: Basic ...` header), perform the normal transport initialization handshake, and call the declared protected task.\" WHEN: sending `Authorization: Basic <b64>` on `task: $test_kit.auth.probe_task` is ordinary client work. THEN: \"- check: field_present, path: context\" and \"- check: field_value, path: context.correlation_id, value: security_baseline--probe_basic\" are response-body checks. Only the GIVEN"
+  "universal/security.yaml::probe_invalid_api_key":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "\"auth: {type: api_key, value_strategy: random_invalid}\", \"expect_error: true\", narrative: \"Send the same protected task with a Bearer token the runner generates per-run from 32 random bytes (prefix `invalid-`...)\". GIVEN: nothing to seed beyond the same principal/token fixture the phase already assumes; `contributes_if: \"prior_step.probe_api_key.passed\"` points at an earlier step that is itself an ordinary request we send. WHEN: a bad-credential request \u2014 explicitly client-constructible. THEN: \"- check: http_status_in, allowed_values: [400, 401, 403]\" and \"- check: on_401_require_header, value"
+  "universal/security.yaml::probe_invalid_basic":
+    verdict: conditional
+    axes: {given: no, when: yes, then: yes}
+    requires: [seeded_account]
+    blocker: "Same phase gate as probe_basic: `skip_if: \"!test_kit.auth.basic\"` plus `contributes_if: \"prior_step.probe_basic.passed\"` mean the step only runs, and only counts, when a valid HTTP Basic credential has been provisioned on the agent. Sending the bogus credential itself needs nothing."
+    evidence: "Step: \"auth: {type: basic, value_strategy: random_invalid}\", \"contributes_if: \\\"prior_step.probe_basic.passed\\\"\", \"expect_error: true\"; narrative: \"only the pair of (200 with valid Basic, 401/403 with random-invalid Basic) proves the credential is actually checked.\" WHEN: a random Basic header on the protected probe task \u2014 pure client construction. THEN: \"- check: http_status_in, allowed_values: [400, 401, 403]\" and \"- check: on_401_require_header, value: \\\"www-authenticate\\\"\" \u2014 status and header, both on the wire."
+  "universal/security.yaml::probe_invalid_oauth_token":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "\"auth: {type: oauth_bearer, value_strategy: random_invalid_jwt}\", \"expect_error: true\"; narrative: \"The runner sends a JWT-shaped token generated per run: the header and payload are well-formed base64url-encoded JSON objects (`{\\\"alg\\\":\\\"RS256\\\",\\\"typ\\\":\\\"JWT\\\"}` / `{\\\"sub\\\":\\\"invalid\\\",\\\"aud\\\":\\\"<agent-url>\\\"}`)... and the signature segment is random base64url bytes so signature verification fails.\" GIVEN: nothing to seed \u2014 the `oauth_discovery` phase carries no `skip_if` (unlike `basic_path`), the bogus JWT is built entirely client-side from random bytes, and no signing keypair or issuer is "
+  "universal/security.yaml::probe_protected_resource":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [other]
+    blocker: "The agent deployment under test must actually be OAuth-configured and serve RFC 9728 protected-resource metadata. The phase is `optional: true` and the storyboard explicitly tells static-credential agents NOT to serve it: 'Skip for static-credential-only agents. If your agent has no OAuth issuer, declare auth.api_key or auth.basic in the test-kit and do not serve PRM.' Nothing about driving or observing the step is blocked \u2014 only the issuer/PRM provisioning."
+    evidence: "task: protected_resource_metadata / 'GET /.well-known/oauth-protected-resource/<path>' with stateful: false; validations are `check: http_status value: 200`, `check: field_present path: \"resource\"`, `check: field_present path: \"authorization_servers\"`, and `check: resource_equals_agent_url` \u2014 'The `resource` field in your metadata MUST equal the full URL clients call (including path)'. All four are read off a plain HTTPS GET response the harness itself issues; the agent URL is already known to the harness."
+  "universal/security.yaml::probe_unauth":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'stateful: false' and 'auth: none' \u2014 'Send the test kit's declared protected task (`auth.probe_task`, default `list_creatives`) with no Authorization header and no API key. The runner forces credentials to be stripped'. Given needs only an ordinary running agent (the probe is expected to be rejected before any tenant data is touched). Then is raw-HTTP observable: `check: http_status_in allowed_values: [401, 403]` and `check: on_401_require_header value: \"www-authenticate\"` \u2014 both read the real response status line and headers, which is exactly what an out-of-process transport gives you."
+  "universal/signed-requests.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_adcp_capabilities, 'stateful: false', sample_request carries only `context.correlation_id: \"signed_requests--get_capabilities\"`. Validations are `check: field_present path: \"request_signing\"` and `check: field_value path: \"request_signing.supported\" value: true` \u2014 both are fields of the capabilities response on the wire. No preconditions at all ('The runner calls `get_adcp_capabilities` and confirms that the agent declares support'); whether the agent answers true is a production question, not a wiring one. Note the signing keypair provisioning in prerequisites applies to the later v"
+  "universal/stale-response-advisory.yaml::force_upstream_unavailable":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [upstream_fault, other]
+    blocker: "The agent must implement and advertise comply_test_controller with the force_upstream_unavailable scenario. The step declares `requires_tool: comply_test_controller` and the storyboard states 'The stale-cache forcing phases require comply_test_controller with the force_upstream_unavailable scenario. Steps requiring the controller grade not_applicable for agents that do not advertise it.' This project's stance is that comply_test_controller never ships in production, so grading this e2e means provisioning a controller-enabled build of the agent."
+    evidence: "task: comply_test_controller, `requires_tool: comply_test_controller`, `stateful: true`, sample_request `scenario: force_upstream_unavailable / params: {tool: get_products, upstream_name: inventory-service}`. The trigger IS an AdCP tool call the harness sends, and the validations are all response-side: `check: response_schema`, `check: field_present path: \"context\"`, `check: field_value path: \"context.correlation_id\" value: \"stale_response_advisory--force_upstream_unavailable\"` (all `severity: advisory`)."
+  "universal/stale-response-advisory.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "task: get_adcp_capabilities, `stateful: false`, sample_request only `context.correlation_id: \"stale_response_advisory--get_capabilities\"`. Validations: `check: response_schema`, `check: field_present path: \"supported_protocols\"`, `check: field_present path: \"context\"`, `check: field_value path: \"context.correlation_id\"` \u2014 every one is asserted on the response body. No controller and no prior state ('Phase 3 (non-emission guard) runs for all agents' / this discovery phase precedes any forcing)."
+  "universal/stale-response-advisory.yaml::no_stale_on_healthy_upstream":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "'This phase sends a normal get_products request and verifies no STALE_RESPONSE appears. Runs for all agents \u2014 no controller required.' The step is `stateful: false` with an ordinary sample_request (`buying_mode: brief`, `account.brand.domain: acmeoutdoor.example`), so Given is satisfied by the normal e2e tenant/principal/product fixtures. Validations are `check: response_schema`, `check: field_present path: \"context\"`, `check: field_value path: \"context.correlation_id\" value: \"stale_response_advisory--no_stale_on_healthy\"` \u2014 all wire-observable. The step's own note concedes the absence asserti"
+  "universal/stale-response-advisory.yaml::stale_response_wire_placement":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, upstream_fault, other]
+    blocker: "Given depends on the preceding force_upstream_unavailable step, which itself needs comply_test_controller: `requires_tool: comply_test_controller`, `stateful: true`, and 'With the upstream forced unavailable and a stale cache entry present...'. The prior state is reachable only through the controller call, plus the agent must actually hold a stale cache entry for get_products. Everything else \u2014 sending get_products and reading errors[] off the response \u2014 is ordinary client work."
+    evidence: "task: get_products with `requires_tool: comply_test_controller` and `stateful: true`. The Then side is entirely on the wire: `check: field_value path: \"errors[0].code\" value: \"STALE_RESPONSE\"`, `check: field_value path: \"errors[0].details.served_from_cache\" value: true`, `check: field_present path: \"errors[0].details.cache_age_seconds\"`, `check: field_present path: \"products[0]\"`, plus response_schema and the context echo \u2014 and 'Transport MUST stay success (isError: false, no adcp_error envelope)' is observable on the real transport envelope."
+  "universal/v3-envelope-integrity.yaml::no_legacy_status_fields":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "prerequisites: 'No test-kit credentials required. get_adcp_capabilities is a public operation that every AdCP agent must expose without authentication.' Step is `stateful: false` with sample_request `context.correlation_id: \"v3_envelope_integrity--no_legacy_status\"`. All six checks read the response envelope: `check: envelope_field_present path: \"status\"`, `check: envelope_field_absent path: \"task_status\"`, `check: envelope_field_absent path: \"response_status\"`, `check: response_schema`, `check: field_present path: \"context\"`, `check: field_value path: \"context.correlation_id\"`. The MCP note ("
+  "universal/version-negotiation.yaml::get_capabilities_with_version":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "prerequisites: \"No test-kit credentials required. get_adcp_capabilities is a public operation that every AdCP agent must expose without authentication.\" / \"task: get_adcp_capabilities\", \"stateful: false\". Every validation reads off the wire: \"- check: envelope_field_present / path: adcp_version\", \"- check: envelope_field_pattern / path: adcp_version / pattern: ^\\\\d+\\\\.\\\\d+(-[a-zA-Z0-9.-]+)?$\", \"- check: field_present / path: adcp.supported_versions\", \"- check: field_value / path: context.correlation_id / value: version_negotiation--get_capabilities_with_version\". The request-side pin (\"The run"
+  "universal/webhook-emission.yaml::assert_synchronous_completion_handled":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [webhook_receiver, prior_state]
+    blocker: "The step sends nothing of its own \u2014 \"task: assert_contribution\" is a synthetic aggregation over the two optional branch phases, so it can only be driven by first issuing the wholesale get_products request that one of those branches grades, and that request carries an unresolved receiver placeholder."
+    evidence: "\"task: assert_contribution\" with \"- check: any_of / allowed_values: [\\\"synchronous_completion_handled\\\"] / description: Wholesale get_products with push_notification_config must either complete synchronously without task_id or reject as a well-formed runtime error; it must not enter Submitted async lifecycle.\" The branch steps it aggregates both send \"url: {{runner.webhook_url:sync_get_products_with_webhook_config_success|_reject}}\", and the narrative states \"The runner MUST resolve every {{runner.webhook_url:<step_id>}} placeholder before sending a request... the runner MUST NOT send a litera"
+  "universal/webhook-emission.yaml::get_capabilities":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "\"task: get_adcp_capabilities\", \"stateful: false\", sample_request carries only \"context: correlation_id: webhook_emission--get_capabilities\". Sole validation is \"- check: field_present / path: supported_protocols / description: Agent declares its supported AdCP protocols\" \u2014 a response-body read. No {{runner.webhook_url}} placeholder in this step, so the receiver requirement of the parent universal does not bite here."
+  "universal/webhook-emission.yaml::sync_get_products_with_webhook_config_reject":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [webhook_receiver, seeded_account]
+    blocker: "The request embeds a runner-hosted receiver URL that must be resolved to a real endpoint before sending, and it names a concrete brand/operator account that must exist for the wholesale read."
+    evidence: "\"task: get_products\", \"expect_error: true\", \"negative_path: payload_well_formed\", sample_request \"buying_mode: wholesale\", \"account: brand: domain: acmeoutdoor.example, operator: pinnacle-agency.example\", \"push_notification_config: url: {{runner.webhook_url:sync_get_products_with_webhook_config_reject}}\". Then is a pure wire-envelope read: \"- check: error_code / allowed_values: [\\\"INVALID_REQUEST\\\", \\\"VALIDATION_ERROR\\\"]\". Building a deliberately-unsupported-but-schema-valid request is test work, not a wireability blocker."
+  "universal/webhook-emission.yaml::sync_get_products_with_webhook_config_success":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [webhook_receiver, seeded_account]
+    blocker: "Same as the rejection branch: the sample_request carries \"{{runner.webhook_url:sync_get_products_with_webhook_config_success}}\", which the narrative forbids sending unresolved, and the wholesale read is scoped to a named brand/operator account."
+    evidence: "\"task: get_products\", \"requires_tool: get_products\", \"stateful: false\", sample_request \"buying_mode: wholesale\" + \"push_notification_config: url: {{runner.webhook_url:...}}, operation_id: op_sync_get_products_no_webhook\". All four validations are response reads: \"- check: response_schema\", \"- check: field_present / path: products\", \"- check: field_absent / path: task_id / description: Accepted wholesale get_products response does not mint an async task_id\", \"- check: field_value / path: context.correlation_id\". Note no webhook must actually ARRIVE for this step \u2014 the receiver is needed only to"
+  "universal/webhook-emission.yaml::trigger_idempotent_webhook_replay":
+    verdict: conditional
+    axes: {given: yes, when: yes, then: yes}
+    requires: [prior_state, webhook_receiver]
+    blocker: "The replay only means anything after trigger_idempotent_webhook_initial has run and cached a response, and both requests point at \"{{runner.webhook_url:trigger_idempotent_webhook_initial}}\", which must be a resolved receiver URL."
+    evidence: "narrative: \"Runner re-sends the same logical request: same idempotency_key, same payload, same webhook receiver URL, and same explicit operation_id.\" sample_request \"idempotency_key: $generate:uuid_v4#webhook_emission_replay_key\" (the same named generator as the initial step) and \"url: {{runner.webhook_url:trigger_idempotent_webhook_initial}}\". The single validation is on the wire: \"- check: field_value / path: replayed / value: true / description: Replay resolves from the idempotency cache\". The prior state is produced by an earlier step of the same storyboard \u2014 itself a plain client request "
+  "universal/wholesale-feed-bulk-webhooks.yaml::register_bulk_change_webhook":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "\"task: sync_accounts\" with a self-contained sample_request \u2014 \"notification_configs: - subscriber_id: bulk-feed-sync, url: https://example.com/webhooks/adcp/bulk-feed, event_types: [wholesale_feed.bulk_change], active: false\". The URL is a literal, not a {{runner.webhook_url}} placeholder, and \"- check: field_value / path: accounts[0].notification_configs[0].active / value: false / description: Paused subscriber can be persisted without activation proof\" means no receiver and no delivery observation is needed. Remaining validations (\"response_schema\", subscriber_id echo, event_types[0] echo, co"
+  "universal/wholesale-feed-product-webhooks.yaml::register_product_pricing_webhook":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "\"task: sync_accounts\", sample_request \"notification_configs: - subscriber_id: product-feed-sync, url: https://example.com/webhooks/adcp/product-feed, event_types: [product.priced], active: false\". narrative: \"Delivery semantics are covered by webhook-emission; this storyboard checks the durable registration surface\" \u2014 so nothing off-wire is observed. All five checks read the response: \"- check: response_schema\", \"- check: field_value / path: accounts[0].notification_configs[0].event_types[0] / value: product.priced / description: Product pricing event is persisted\", plus subscriber_id, active="
+  "universal/wholesale-feed-products.yaml::bootstrap_products":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "Step is a plain first call \u2014 `task: get_products` with `sample_request: buying_mode: \"wholesale\"` / `account.brand.domain: \"acmeoutdoor.example\"`, no `$context.*` refs; storyboard prerequisites say `test_kit: \"test-kits/acme-outdoor.yaml\"` and `controller_seeding: false`, so preconditions are ordinary stack fixtures (tenant/products), not injected state. All 6 validations read the response: `check: response_schema`, `check: field_present path: \"products[0].product_id\"`, `check: field_present path: \"wholesale_feed_version\"`, `check: field_value path: \"cache_scope\" value: \"public\"`, `check: fiel"
+  "universal/wholesale-feed-products.yaml::standalone_pricing_token_rejected":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "No precondition at all \u2014 `sample_request` carries only `buying_mode: \"wholesale\"`, `account`, `if_pricing_version: \"stale-pricing-token\"`, `context.correlation_id`, with no `$context.*` reference. The trigger is a deliberately invalid client request the harness constructs itself: `expect_error: true`, `negative_path: payload_well_formed`, `sample_request_skip_schema: true`, `expected: | Reject if_pricing_version when if_wholesale_feed_version is absent.` The sole assertion is on the wire error envelope: `check: error_code value: \"INVALID_REQUEST\"`."
+  "universal/wholesale-feed-products.yaml::unchanged_probe":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "Precondition is `if_wholesale_feed_version: \"$context.product_wholesale_feed_version\"`, whose value is produced by the earlier step in the same storyboard (`bootstrap_products` declares `context_outputs: - name: product_wholesale_feed_version path: \"wholesale_feed_version\"`) \u2014 that earlier step is itself a get_products call we send, so the state is reachable purely by sequencing two requests; `stateful: true` only marks that ordering. When is a second `task: get_products` call. All 6 validations read the response \u2014 `check: field_value path: \"unchanged\" value: true`, `check: field_equals_contex"
+  "universal/wholesale-feed-signal-webhooks.yaml::register_signal_pricing_webhook":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "The account itself is created/updated by the very call under test \u2014 `task: sync_accounts` with `accounts: - brand.domain: \"acmeoutdoor.example\", operator: \"pinnacle-agency.example\", ... notification_configs: - subscriber_id: \"signal-feed-sync\", url: \"https://example.com/webhooks/adcp/signal-feed\", event_types: [\"signal.priced\"], active: false` and `idempotency_key: \"$generate:uuid_v4#...\"` \u2014 no `$context.*` refs and no prior step. Crucially no webhook receiver is needed: `active: false` with `description: \"Paused subscriber can be persisted without activation proof\"`, and the narrative states "
+  "universal/wholesale-feed-signals.yaml::bootstrap_signals":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "First call of the phase, no `$context.*` refs \u2014 `task: get_signals`, `sample_request: discovery_mode: \"wholesale\"` with `account.brand.domain: \"acmeoutdoor.example\"`; storyboard prerequisites are `test_kit: \"test-kits/acme-outdoor.yaml\"` with `controller_seeding: false`, so the seeded signal rows come from ordinary stack fixtures. All 5 validations read the response: `check: response_schema`, `check: field_present path: \"signals[0].signal_agent_segment_id\"`, `check: field_present path: \"wholesale_feed_version\"`, `check: field_value path: \"cache_scope\" value: \"public\"`, `check: field_value path"
+  "universal/wholesale-feed-signals.yaml::standalone_pricing_token_rejected":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "No precondition \u2014 `sample_request` is just `discovery_mode: \"wholesale\"`, `account`, `if_pricing_version: \"stale-pricing-token\"`, `context.correlation_id`, with no `$context.*` reference. The trigger is a harness-constructed negative-vector request: `expect_error: true`, `negative_path: payload_well_formed`, `sample_request_skip_schema: true`, `expected: | Reject if_pricing_version when if_wholesale_feed_version is absent.` Single assertion is on the wire error envelope: `check: error_code value: \"INVALID_REQUEST\" description: \"Standalone if_pricing_version is rejected\"`."
+  "universal/wholesale-feed-signals.yaml::unchanged_probe":
+    verdict: wireable
+    axes: {given: yes, when: yes, then: yes}
+    evidence: "Precondition `if_wholesale_feed_version: \"$context.signal_wholesale_feed_version\"` is supplied by the earlier same-storyboard step `bootstrap_signals` (`context_outputs: - name: signal_wholesale_feed_version path: \"wholesale_feed_version\"`), which is itself a get_signals request the harness sends \u2014 so the state is reached by sequencing two wire calls, not by seeding. When is a second `task: get_signals` call. All 6 validations are response-side: `check: field_value path: \"unchanged\" value: true`, `check: field_equals_context path: \"wholesale_feed_version\" context_key: \"signal_wholesale_feed_ve"

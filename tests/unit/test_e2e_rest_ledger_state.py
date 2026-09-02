@@ -29,6 +29,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.helpers.ledger import load_ledger_nodeids
+
 # The 17 e2e_rest nodeids remaining: 7 genuine gaps + 10 parallel-e2e_rest
 # mock-injection artifacts (owner-approved, added on the adcp-6.6 /
 # perf/parallelize-test-suite work — see the block comment inside the set).
@@ -101,11 +103,7 @@ _LEDGER_PATH = Path(__file__).parent.parent / "bdd" / "e2e_rest_known_failures.t
 
 def _load_ledger_nodeids() -> frozenset[str]:
     """Parse the ledger the way the conftest loader does (drop comments/blanks)."""
-    return frozenset(
-        line.strip()
-        for line in _LEDGER_PATH.read_text().splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    )
+    return load_ledger_nodeids(_LEDGER_PATH)
 
 
 def test_ledger_matches_expected_genuine_gaps() -> None:

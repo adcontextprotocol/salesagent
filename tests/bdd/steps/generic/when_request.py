@@ -15,6 +15,7 @@ from typing import Any
 from pytest_bdd import given, parsers, when
 
 from src.core.schemas import FormatId, ListCreativeFormatsRequest
+from tests.bdd.steps.generic._dispatch import _populate_ctx_from_result
 from tests.harness.transport import Transport
 
 DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
@@ -64,17 +65,15 @@ def _call_via(
             kwargs["req"] = req
     kwargs.update(extra)
 
-    try:
-        result = env.call_via(t, **kwargs)
-        if result.is_error:
-            ctx["error"] = result.error
-        else:
-            ctx["response"] = result.payload
-            # Real serialized wire (REST/A2A/MCP); None on IMPL — surfaced for
-            # success-path wire-shape steps (e.g. format_id federation contract).
-            ctx["wire_response"] = result.wire_response
-    except Exception as exc:
-        ctx["error"] = exc
+    # Route through the SHARED populator. The hand-rolled
+    # version here set only error/response/wire_response, omitting ctx["result"]
+    # (the key with exactly one producer) plus the two error-envelope keys — which
+    # silently downgraded the wire-first Then steps to the lossy reconstructed
+    # ctx["error"] fallback. The `except Exception: ctx["error"] = exc` that used
+    # to wrap this went with it: hand-stashing an exception is the antipattern the
+    # project's BDD rules forbid, and call_via already returns transport failures
+    # as a TransportResult carrying the real wire envelope.
+    _populate_ctx_from_result(ctx, env.call_via(t, **kwargs))
 
 
 def _build_req(**kwargs: Any) -> ListCreativeFormatsRequest | None:

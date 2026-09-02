@@ -95,9 +95,12 @@ with a specific one (`@rest`, `@mcp`, `@a2a`).
 
 ### Obligation Tests
 
-Tests tagged with `Covers: <obligation-id>` verify behavioral contracts from
-`docs/test-obligations/`. Two structural guards enforce that every behavioral
-obligation has a corresponding test and that the test actually calls production code.
+Tests tagged with `Covers: <obligation-id>` verify behavioral contracts. The
+obligation DOCUMENTS those ids referred to are no longer committed — they were
+generated reports, and a generated report kept in the tree drifts from its
+generator — so the two structural guards that graded tags against them were
+deleted with the documents. Existing tags are kept as provenance; do not add new
+ones. See `tests/CLAUDE.md` for the rules that still bind a tagged test.
 
 ## Structural Guards
 
@@ -106,8 +109,6 @@ AST-scanning tests in `tests/unit/` enforce architecture invariants on every
 for the full list. Key testing guards:
 
 - **Repository pattern** — no `get_db_session()` or `session.add()` outside repositories
-- **Obligation coverage** — behavioral obligations have matching tests
-- **Obligation test quality** — obligation tests call production code
 - **BDD no-op steps** — Then steps must assert, not delegate to no-ops
 - **BDD trivial assertions** — Then steps must compare values, not just check truthiness
 - **BDD no dict registry** — Given steps must use factories, not raw dicts

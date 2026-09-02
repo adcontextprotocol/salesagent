@@ -39,6 +39,36 @@ def _error_messages(errors: list | None) -> list[str]:
 # All four transports: IMPL, A2A, REST, MCP
 ALL_TRANSPORTS = [Transport.IMPL, Transport.A2A, Transport.REST, Transport.MCP]
 
+# Same four transports, but the A2A leg is LEDGERED against a named production
+# defect rather than silently green. Before the wire-grading fix, CreativeSyncEnv's "a2a"
+# parametrization called sync_creatives_raw directly — it never touched
+# on_message_send — so these cases were passing without exercising A2A at all.
+# Routing them through the real pipeline reveals that
+# _handle_sync_creatives_skill constructs CreativeAsset(**c) at the boundary,
+# which (a) drops the inputs the generative build path reads, so a generative
+# creative is silently created as STATIC, and (b) raises a request-level
+# VALIDATION_ERROR for a legitimately-partial creative that _impl would have
+# reported as a per-creative action='failed'.
+#
+# strict=True: the moment GH #2011 is fixed these XPASS and this list
+# must shrink. Applied ONLY to the cases that actually reproduce it — the other
+# ~19 transport-parametrized tests in this module keep plain ALL_TRANSPORTS and
+# now genuinely grade A2A.
+A2A_LEDGERED_TRANSPORTS = [
+    Transport.IMPL,
+    Transport.REST,
+    Transport.MCP,
+    pytest.param(
+        Transport.A2A,
+        marks=pytest.mark.xfail(
+            reason=(
+                "A2A boundary CreativeAsset(**c) loses generative-build inputs and rejects partial creatives (GH #2011)"
+            ),
+            strict=True,
+        ),
+    ),
+]
+
 
 @pytest.mark.requires_db
 class TestSyncCreativeCreateTransport:
@@ -345,7 +375,7 @@ class TestSyncRegistryCachingTransport:
 class TestGenerativeBuildClassification:
     """Format with output_format_ids classified as generative."""
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_generative_format_calls_build_creative(self, integration_db, transport):
         """Covers: UC-006-GENERATIVE-CREATIVE-BUILD-01
 
@@ -390,7 +420,7 @@ class TestGenerativeBuildClassification:
 class TestGenerativeBuildPromptMessage:
     """Prompt extracted from message asset role."""
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_message_role_used_as_prompt(self, integration_db, transport):
         """Covers: UC-006-GENERATIVE-CREATIVE-BUILD-02
 
@@ -424,7 +454,7 @@ class TestGenerativeBuildPromptMessage:
 class TestGenerativeBuildPromptBrief:
     """Prompt extracted from brief asset role (fallback)."""
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_brief_role_used_when_no_message(self, integration_db, transport):
         """Covers: UC-006-GENERATIVE-CREATIVE-BUILD-03
 
@@ -458,7 +488,7 @@ class TestGenerativeBuildPromptBrief:
 class TestGenerativeBuildPromptRole:
     """Prompt extracted from prompt asset role (fallback)."""
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_prompt_role_used_when_no_message_or_brief(self, integration_db, transport):
         """Covers: UC-006-GENERATIVE-CREATIVE-BUILD-04
 
@@ -492,7 +522,7 @@ class TestGenerativeBuildPromptRole:
 class TestGenerativeBuildPromptInputs:
     """Prompt from inputs[0].context_description."""
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_inputs_context_description_as_prompt(self, integration_db, transport):
         """Covers: UC-006-GENERATIVE-CREATIVE-BUILD-05
 
@@ -525,7 +555,7 @@ class TestGenerativeBuildPromptInputs:
 class TestGenerativeBuildNameFallback:
     """Creative name as fallback prompt on CREATE."""
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_name_used_as_fallback_prompt(self, integration_db, transport):
         """Covers: UC-006-GENERATIVE-CREATIVE-BUILD-06
 
@@ -557,7 +587,7 @@ class TestGenerativeBuildNameFallback:
 class TestGenerativeBuildUpdatePreserve:
     """Update without prompt preserves existing data."""
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_update_without_prompt_skips_build(self, integration_db, transport):
         """Covers: UC-006-GENERATIVE-CREATIVE-BUILD-07
 
@@ -619,7 +649,7 @@ class TestGenerativeBuildUpdatePreserve:
 class TestGenerativeBuildUserAssetPriority:
     """User assets take priority over generative output."""
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_user_assets_not_overwritten(self, integration_db, transport):
         """Covers: UC-006-GENERATIVE-CREATIVE-BUILD-08
 
@@ -723,7 +753,7 @@ class TestFormatValidationAdapter:
 class TestFormatValidationUnreachable:
     """Unreachable creative agent → request-level TRANSIENT failure.
 
-    Production-grounded : the registry types every network
+    Production-grounded: the registry types every network
     failure (connect/timeout -> AdCPServiceUnavailableError), and typed
     transient errors PROPAGATE out of sync_creatives with their recovery
     semantics on every transport — a down agent is not a creative problem.
@@ -1013,7 +1043,7 @@ class TestMissingFormatFails:
     Covers: UC-006-EXT-E-01
     """
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_no_format_action_failed(self, integration_db, transport):
         """Creative without format_id is rejected.
 
@@ -1056,7 +1086,7 @@ class TestStaticPreviewFailed:
     Covers: UC-006-EXT-H-01
     """
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_no_preview_no_url_fails(self, integration_db, transport):
         """Static format with empty preview_creative result and no url → failed."""
         from adcp.types import FormatId as LibraryFormatId
@@ -1117,7 +1147,7 @@ class TestGeminiKeyMissing:
     Covers: UC-006-EXT-I-01
     """
 
-    @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
+    @pytest.mark.parametrize("transport", A2A_LEDGERED_TRANSPORTS, ids=lambda t: t.value)
     def test_generative_no_gemini_key_fails(self, integration_db, transport):
         """Generative format + no gemini_api_key → action=failed."""
         with CreativeSyncEnv() as env:
@@ -1319,7 +1349,7 @@ class TestAsyncLifecycleSubmitted:
     """
 
     @pytest.mark.xfail(
-        reason="Async lifecycle not implemented ",
+        reason="Async lifecycle not implemented",
         strict=True,
     )
     def test_queued_sync_returns_submitted(self, integration_db):
@@ -1356,7 +1386,7 @@ class TestAsyncLifecycleWorking:
     """
 
     @pytest.mark.xfail(
-        reason="Async lifecycle not implemented ",
+        reason="Async lifecycle not implemented",
         strict=True,
     )
     def test_in_progress_returns_working_with_progress(self, integration_db):
@@ -1406,7 +1436,7 @@ class TestAsyncLifecycleInputRequired:
     """
 
     @pytest.mark.xfail(
-        reason="Async lifecycle not implemented ",
+        reason="Async lifecycle not implemented",
         strict=True,
     )
     def test_approval_needed_returns_input_required(self, integration_db):

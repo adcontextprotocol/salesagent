@@ -22,9 +22,15 @@ from src.core.schemas._base import (
     CreateMediaBuySuccess,
 )
 from tests.harness._base import IntegrationEnv
+from tests.harness.transport import DeliverResult
 
 # Sentinel for missing-key tests: pass idempotency_key=OMIT_IDEMPOTENCY_KEY to send a
 # request with NO key (the schema rejects it as "Field required" — AdCP 3.0.1).
+# Deliberately NOT tests.harness.transport.NO_IDENTITY_OVERRIDE — a different
+# sentinel for a different field (idempotency_key, not identity); the "one
+# sentinel" consolidation is scoped to the
+# identity-argument omission disease, not every object()-as-sentinel use in
+# tests/harness/.
 OMIT_IDEMPOTENCY_KEY: Any = object()
 
 
@@ -370,7 +376,7 @@ class MediaBuyCreateEnv(IntegrationEnv):
         flat.update(kwargs)
         return flat
 
-    def call_a2a(self, **kwargs: Any) -> CreateMediaBuyResult:
+    def deliver_a2a(self, **kwargs: Any) -> DeliverResult:
         """Dispatch create_media_buy through the real A2A ``on_message_send`` pipeline.
 
         Delegates to the base ``_run_a2a_handler`` (drives ``on_message_send`` →
@@ -384,7 +390,7 @@ class MediaBuyCreateEnv(IntegrationEnv):
             "create_media_buy", lambda **data: self.parse_rest_response(data), **self._flatten_request(kwargs)
         )
 
-    def call_mcp(self, **kwargs: Any) -> CreateMediaBuyResult:
+    def deliver_mcp(self, **kwargs: Any) -> DeliverResult:
         """Dispatch create_media_buy through the real FastMCP ``Client`` pipeline.
 
         Delegates to the base ``_run_mcp_client`` (in-memory FastMCP transport →

@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, patch
 from src.core.schemas import UpdateMediaBuyRequest
 from tests.harness._mixins import make_adapter_update_side_effect
 from tests.harness.media_buy_create import MediaBuyCreateEnv
+from tests.harness.transport import DeliverResult
 
 if TYPE_CHECKING:
     from tests.helpers.signing import SignatureRealization
@@ -108,15 +109,24 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
             return self._call_update_impl(**kwargs)
         return super().call_impl(**kwargs)
 
-    def call_a2a(self, **kwargs: Any) -> Any:
+    def deliver_a2a(self, **kwargs: Any) -> DeliverResult:
+        # JUSTIFIED OVERRIDE: this env selects BOTH the tool and the parser from
+        # request CONTENT, so it can declare no single A2A_SKILL.
         if _is_update_request(kwargs):
+            # Returned AS IS: _call_update_a2a drives _run_a2a_handler, which
+            # already yields a DeliverResult carrying the REAL artifact wire.
+            # Re-wrapping it would both double-nest the payload and throw that
+            # wire away.
             return self._call_update_a2a(**kwargs)
-        return super().call_a2a(**kwargs)
+        return super().deliver_a2a(**kwargs)
 
-    def call_mcp(self, **kwargs: Any) -> Any:
+    def deliver_mcp(self, **kwargs: Any) -> DeliverResult:
+        # JUSTIFIED OVERRIDE: see deliver_a2a above.
         if _is_update_request(kwargs):
+            # As in deliver_a2a: _call_update_mcp already returns a DeliverResult
+            # carrying the real structured_content wire.
             return self._call_update_mcp(**kwargs)
-        return super().call_mcp(**kwargs)
+        return super().deliver_mcp(**kwargs)
 
     def _run_rest_request(self, endpoint: str, *, signed: SignatureRealization = False, **kwargs: Any) -> Any:
         # ``signed`` is DECLARED, never swallowed into ``**kwargs`` — the same
@@ -213,7 +223,7 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
         flat.update(kwargs)
         return flat
 
-    def _call_update_a2a(self, **kwargs: Any) -> Any:
+    def _call_update_a2a(self, **kwargs: Any) -> DeliverResult:
         # Drive the REAL on_message_send → _serialize_for_a2a → Task/Artifact
         # pipeline (mirrors MediaBuyCreateEnv.call_a2a), so _run_a2a_handler stashes
         # the true artifact DataPart as the wire_response. A prior version synthesized
@@ -232,7 +242,7 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
             **self._flatten_update_request(kwargs),
         )
 
-    def _call_update_mcp(self, **kwargs: Any) -> Any:
+    def _call_update_mcp(self, **kwargs: Any) -> DeliverResult:
         # Drive the REAL FastMCP Client pipeline (mirrors MediaBuyCreateEnv.call_mcp) so the
         # structured_content — the real MCP wire body — is stashed as wire_response and the
         # full middleware/auth chain runs. This subsumes the earlier mock-Context invocation

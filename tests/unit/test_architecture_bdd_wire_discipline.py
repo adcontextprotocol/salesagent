@@ -1,6 +1,6 @@
 """Guard: BDD wire-discipline — error handling goes through the wire, not test-side.
 
-Four complementary checks, locking in the universal-wire-dispatch invariant after the
+Five complementary checks, locking in the universal-wire-dispatch invariant after the
 holdouts were migrated:
 
 A. **No test-side error construction** (dispatch-side). A step must NOT
@@ -19,16 +19,16 @@ B. **No reconstructed-only error assertion** (assertion-side). An error
    (yields ``RuntimeError`` for an unmapped code); the wire envelope is the buyer-facing
    contract.
 
-C. **No hand-rolled envelope/error parsing** (assertion-side, PR #1721 review round 2
-   #1721 review round 2, F6). An error ``@then`` step must go through
-   ``ctx['result'].assert_wire_error(...)`` (or the ``_wire_code``/``_wire_suggestion``
-   helpers) rather than either (a) a bare ``getattr(<error>, "error_code", ...)`` on a
-   reconstructed exception object, or (b) hand-rolled dict access on
-   ``ctx.get("wire_error_envelope")`` / ``ctx.get("synthesized_error_envelope")``. Both
-   forms bypass the single sanctioned envelope-parsing mechanism
-   (``tests/harness/transport.py``'s own docstring: "step definitions must not hand-roll
-   envelope parsing") and neither is caught by Check B, which only looks for the two named
-   ``_get_error_code``/``_get_error_dict`` helpers, not these inline forms.
+C. **No hand-rolled envelope/error parsing** (assertion-side, PR #1721 review round 2, F6).
+   An error ``@then`` step must go through ``ctx['result'].assert_wire_error(...)`` (or the
+   ``_wire_code``/``_wire_suggestion`` helpers) rather than either (a) a bare
+   ``getattr(<error>, "error_code", ...)`` on a reconstructed exception object, or (b)
+   hand-rolled dict access on ``ctx.get("wire_error_envelope")`` /
+   ``ctx.get("synthesized_error_envelope")``. Both forms bypass the single sanctioned
+   envelope-parsing mechanism (``tests/harness/transport.py``'s own docstring: "step
+   definitions must not hand-roll envelope parsing") and neither is caught by Check B, which
+   only looks for the two named ``_get_error_code``/``_get_error_dict`` helpers, not these
+   inline forms.
 
 D. **No hand-rolled parsing of the ATTRIBUTE form** (assertion-side,
    salesagent-n78j0.1.5). Check C's matcher is ``isinstance(node, ast.Call)``-gated, so
@@ -37,9 +37,33 @@ D. **No hand-rolled parsing of the ATTRIBUTE form** (assertion-side,
    parsing moved the violation past the guard rather than fixing it. Check D matches the
    attribute read with its own predicate, wired into the FINDER only — widening Check C's
    ``_is_ctx_wire_envelope_get`` instead would also widen the exemption calculator that
-   consumes it, and the new shape would be matched and immediately excused.
+   consumes it, and the new shape would be matched and immediately excused. Check D also
+   covers ``synthesized_error_envelope``, which Check E does not.
 
-Every allowlist can only SHRINK. Each entry documents the production gap that keeps it.
+E. **No hand-rolled wire-envelope access** (access-pattern, not symbol-name; PR #1858
+   Finding 7). Check B only fires when a step ALSO calls the reconstruction helpers — a step
+   that hand-rolls ``getattr(result, "wire_error_envelope", None)`` (or
+   ``result.wire_error_envelope``) instead of routing through the single guarded accessor
+   (``tests/bdd/steps/_outcome_helpers.py``'s ``wire_error_dict`` /
+   ``wire_error_envelope_or_none``) sails through Check B untouched, because it never touches
+   the reconstruction symbols Check B looks for. Six sites duplicated the guard logic
+   (loud-raise-on-missing / IMPL-synthesized-fallback) that the accessor centralizes.
+   ``_outcome_helpers.py`` (defines the accessors) and ``generic/_dispatch.py`` (the harness's
+   sole producer that mirrors the field into ``ctx``'s convenience keys) are the only
+   sanctioned direct readers; everywhere else must call the accessor.
+
+   Check E is the STRICTER of the two overlapping attribute-form detectors and is
+   authoritative for ``wire_error_envelope``: it scans EVERY function (not just ``@then``
+   steps, because Finding 7's duplication lived in plain helpers), matches the ``getattr``
+   spelling too, and grants NO shape-based exemption — in particular a bare presence guard
+   (``if result.wire_error_envelope is not None``) is a violation here even though Check D
+   exempts it. Check D is retained rather than deleted because it is not subsumed
+   (``synthesized_error_envelope`` attribute reads and the ``ctx.get`` form are invisible to
+   Check E); a looser check running alongside a stricter one cannot relax the stricter one —
+   both must pass.
+
+All five allowlists can only SHRINK. Each entry documents the production gap or tracked
+follow-up that keeps it.
 """
 
 from __future__ import annotations
@@ -89,6 +113,49 @@ _HAND_ROLLED_PARSING_ALLOWLIST: set[str] = set()
 # code) was FIXED to read through _wire_error_object rather than allowlisted —
 # a non-pinned code rules out the assertion helper, not the reader.
 _ATTRIBUTE_ENVELOPE_PARSING_ALLOWLIST: set[str] = set()
+
+# -- Check E: hand-rolled wire-envelope access (access pattern) ----------------
+# Keyed by "<relative path> <enclosing func>". Tracked at
+# https://github.com/prebid/salesagent/issues/1995; remove each entry as it migrates
+# onto wire_error_dict / wire_error_envelope_or_none (_outcome_helpers.py).
+#
+# MERGE ARITHMETIC (#1858 into the rfc9421-signing line): this allowlist is the
+# INTERSECTION of what each side still allowed — never the union.
+#   #1858 allowed 5 entries; this side allowed 0 under its own Check D.
+#   - The three uc002_nfr entries (then_rate_limiting_enforced, then_payload_size_limits,
+#     then_budget_validated_against_min_order) were FIXED on this side, so they are no
+#     longer found in the merged tree. Re-admitting them would be pure allowlist growth.
+#     REMOVED.
+#   - The two below are still found in the merged tree and were allowed by BOTH sides
+#     (#1858 allowlisted them; this side's Check D leaves them unflagged — one is not a
+#     @then step, the other is the presence-guard shape Check D exempts). KEPT.
+#   - Three further sites that Check E finds in the merged tree were NOT allowed by #1858
+#     (that side had already migrated them onto the guarded accessor, so they never
+#     entered its allowlist). Under the intersection rule they are NOT allowlisted here,
+#     and this guard fails on them until they are migrated:
+#       bdd/steps/generic/then_error.py then_validation_error       (then_error.py:835)
+#       bdd/steps/generic/then_error.py then_real_validation_error  (then_error.py:863)
+#       bdd/steps/domain/uc026_package_media_buy.py then_outcome    (uc026:1928)
+_WIRE_ENVELOPE_ACCESS_ALLOWLIST: set[str] = {
+    # FIXME(#1995): result.wire_error_envelope read directly instead of via the
+    # guarded accessor.
+    "bdd/steps/domain/uc002_create_media_buy.py _assert_error_outcome",
+    # FIXME(#1995): result.wire_error_envelope read directly instead of via the
+    # guarded accessor.
+    "bdd/steps/domain/uc019_query_media_buys.py then_real_validation_error",
+}
+
+# The only two legitimate direct readers of TransportResult.wire_error_envelope:
+# _outcome_helpers.py defines the guarded accessors; _dispatch.py's
+# _populate_ctx_from_result is the harness's sole producer that mirrors the field
+# (and synthesized_error_envelope) into ctx's convenience keys — a passthrough copy,
+# not a re-implementation of the accessor's guard/fallback logic.
+_ACCESS_PATTERN_EXEMPT_MODULES = frozenset(
+    {
+        "bdd/steps/_outcome_helpers.py",
+        "bdd/steps/generic/_dispatch.py",
+    }
+)
 
 
 def _iter_step_modules() -> list[tuple[str, ast.Module]]:
@@ -198,6 +265,20 @@ def test_no_test_side_error_construction() -> None:
             "Dispatch the malformed/invalid request through the wire (raw flat-kwargs for schema-shape "
             "rejections) so production emits it; assert via ctx['result'].assert_wire_error(...). "
             "See zh85 / 33r0 for the pattern."
+        ),
+    )
+
+
+def test_no_reconstructed_only_error_assertion() -> None:
+    """ztl6.8: error @then steps must read the wire envelope, not only the lossy ctx['error']."""
+    assert_violations_match_allowlist(
+        _find_reconstructed_only_assertions(),
+        _RECONSTRUCTED_ASSERTION_ALLOWLIST,
+        fix_hint=(
+            "An error Then-step asserts on the reconstructed ctx['error'] (_get_error_code/_get_error_dict) "
+            "without reading the wire envelope. Make it wire-first: read _wire_code(ctx)/_wire_suggestion(ctx) "
+            "or ctx['result'].assert_wire_error(...) and fall back to the reconstructed exception only for "
+            "IMPL/no-wire. See then_error.py then_error_code / then_suggestion_contains."
         ),
     )
 
@@ -377,6 +458,12 @@ def _exempted_envelope_attribute_ids(func: ast.FunctionDef | ast.AsyncFunctionDe
     The hop-through-a-variable form is deliberately NOT exempt here: reading the
     envelope into a local and then walking it is exactly the disease, and every
     sanctioned site in the tree uses the direct compare.
+
+    NOTE (#1858 merge): exemption (a) is NOT inherited by Check E, which is stricter
+    and treats even the presence guard on ``wire_error_envelope`` as a site that must
+    route through ``wire_error_envelope_or_none``. Check D keeps it because Check D's
+    residual coverage is the ``synthesized_error_envelope`` attribute form, where the
+    guarded-accessor migration has no equivalent.
     """
     exempt: set[int] = set()
     for node in _own_nodes(func):
@@ -419,21 +506,58 @@ def test_no_attribute_form_envelope_parsing() -> None:
             "and parses it by hand. Use ctx['result'].assert_wire_error(code, recovery=..., "
             "message_substr=...) (tests/harness/transport.py). A bare presence check "
             "(`result.wire_error_envelope is not None`) in front of assert_wire_error is "
-            "exempt; walking the dict is not."
+            "exempt from Check D, but NOT from Check E -- route it through "
+            "wire_error_envelope_or_none(ctx) (_outcome_helpers.py)."
         ),
     )
 
 
-def test_no_reconstructed_only_error_assertion() -> None:
-    """ztl6.8: error @then steps must read the wire envelope, not only the lossy ctx['error']."""
+def _is_wire_envelope_attr(node: ast.AST) -> bool:
+    """Match ``<anything>.wire_error_envelope`` attribute access."""
+    return isinstance(node, ast.Attribute) and node.attr == "wire_error_envelope"
+
+
+def _is_wire_envelope_getattr(node: ast.AST) -> bool:
+    """Match ``getattr(<anything>, "wire_error_envelope", ...)``."""
+    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr"):
+        return False
+    return any(isinstance(arg, ast.Constant) and arg.value == "wire_error_envelope" for arg in node.args)
+
+
+def _find_hand_rolled_wire_envelope_access() -> set[str]:
+    """Find direct ``TransportResult.wire_error_envelope`` reads outside the guarded accessor.
+
+    Unlike Check B (symbol-name matching on the reconstruction helpers), this matches the
+    ACCESS PATTERN itself — attribute access or ``getattr`` on ``wire_error_envelope`` — so a
+    step that hand-rolls the read without ever touching the reconstruction symbols still
+    trips it. ``_ACCESS_PATTERN_EXEMPT_MODULES`` names the two sanctioned readers; every other
+    module is scanned in full, not gated behind ``@then``, because Finding 7's duplication
+    lived in plain helper functions (``_wire_code`` et al.), not directly inside
+    ``@then``-decorated steps.
+    """
+    found: set[str] = set()
+    for rel, tree in _iter_step_modules():
+        if rel in _ACCESS_PATTERN_EXEMPT_MODULES:
+            continue
+        for func in _enclosing_functions(tree):
+            for node in _own_nodes(func):
+                if _is_wire_envelope_attr(node) or _is_wire_envelope_getattr(node):
+                    found.add(f"{rel} {func.name}")
+    return found
+
+
+def test_no_hand_rolled_wire_envelope_access() -> None:
+    """TransportResult.wire_error_envelope has one reader — the guarded accessor."""
     assert_violations_match_allowlist(
-        _find_reconstructed_only_assertions(),
-        _RECONSTRUCTED_ASSERTION_ALLOWLIST,
+        _find_hand_rolled_wire_envelope_access(),
+        _WIRE_ENVELOPE_ACCESS_ALLOWLIST,
         fix_hint=(
-            "An error Then-step asserts on the reconstructed ctx['error'] (_get_error_code/_get_error_dict) "
-            "without reading the wire envelope. Make it wire-first: read _wire_code(ctx)/_wire_suggestion(ctx) "
-            "or ctx['result'].assert_wire_error(...) and fall back to the reconstructed exception only for "
-            "IMPL/no-wire. See then_error.py then_error_code / then_suggestion_contains."
+            "A step reads TransportResult.wire_error_envelope directly (getattr(result, "
+            "'wire_error_envelope', ...) or result.wire_error_envelope) instead of routing through the "
+            "single guarded accessor in tests/bdd/steps/_outcome_helpers.py: wire_error_dict(ctx) (loud "
+            "guard + IMPL-synthesized fallback) or wire_error_envelope_or_none(ctx) (no guard, real "
+            "envelope or None — use before delegating to result.assert_wire_error). "
+            "See then_error.py's _wire_code / _wire_suggestion / _wire_error_object / then_error_recovery."
         ),
     )
 
@@ -550,9 +674,9 @@ def then_something(ctx):
 
 
 def test_negative_attribute_presence_guard_then_assert_wire_error_is_not_flagged() -> None:
-    """Meta-test: the sanctioned wire-first form (presence compare, then
-    assert_wire_error) is exempt -- the real shape at then_error.then_validation_error,
-    uc019.then_real_validation_error and uc026.then_outcome.
+    """Meta-test: the presence-compare-then-assert_wire_error form is exempt from Check D
+    (Check E, stricter, still flags it -- see
+    test_check_e_flags_the_presence_guard_check_d_exempts).
     """
     src = """
 @then("something")
@@ -608,3 +732,71 @@ def then_something(ctx):
     assert _hand_rolled_calls_in_func(funcs["_helper"]) is True
     assert _is_then(funcs["_helper"]) is False
     assert _hand_rolled_calls_in_func(funcs["then_something"]) is False
+
+
+# -- Check E meta-tests ---------------------------------------------------------
+
+
+def test_check_e_flags_the_presence_guard_check_d_exempts() -> None:
+    """Meta-test: Check E is the STRICTER detector of the overlapping pair.
+
+    The presence-guard shape that Check D exempts is still a Check E violation, because
+    Check E's contract is "one reader for TransportResult.wire_error_envelope: the guarded
+    accessor" -- shape-independent. This is why the merge kept Check E's semantics rather
+    than relaxing them to Check D's.
+    """
+    src = """
+@then("something")
+def then_something(ctx):
+    result = ctx.get("result")
+    if result is not None and result.wire_error_envelope is not None:
+        result.assert_wire_error("VALIDATION_ERROR")
+"""
+    func = _enclosing_functions(ast.parse(src))[0]
+    assert _hand_rolled_attribute_reads_in_func(func) is False
+    assert any(_is_wire_envelope_attr(n) for n in _own_nodes(func)) is True
+
+
+def test_check_e_flags_the_getattr_form_check_d_cannot_see() -> None:
+    """Meta-test: Check D's predicate is ast.Attribute-only, so the ``getattr`` spelling is
+    invisible to it; Check E matches it. Neither detector subsumes the other.
+    """
+    src = """
+def _wire_code(ctx):
+    envelope = getattr(ctx.get("result"), "wire_error_envelope", None)
+    return (envelope or {}).get("errors", [{}])[0].get("code")
+"""
+    func = _enclosing_functions(ast.parse(src))[0]
+    assert _hand_rolled_attribute_reads_in_func(func) is False
+    assert any(_is_wire_envelope_getattr(n) for n in _own_nodes(func)) is True
+
+
+def test_check_e_scans_non_then_helpers() -> None:
+    """Meta-test: Check E is NOT gated behind @then -- Finding 7's duplication lived in
+    plain helpers, so a bare helper reading the attribute is a Check E violation while
+    Check D (which only scans @then steps) never sees it.
+    """
+    src = """
+def _assert_error_outcome(ctx, code):
+    envelope = ctx["result"].wire_error_envelope
+    assert envelope["errors"][0]["code"] == code
+"""
+    func = _enclosing_functions(ast.parse(src))[0]
+    assert _is_then(func) is False
+    assert any(_is_wire_envelope_attr(n) for n in _own_nodes(func)) is True
+
+
+def test_check_e_ignores_synthesized_envelope_which_check_d_covers() -> None:
+    """Meta-test: Check E only knows ``wire_error_envelope``; the
+    ``synthesized_error_envelope`` attribute form is Check D's residual coverage.
+    Documents why Check D was retained rather than deleted as subsumed.
+    """
+    src = """
+@then("something")
+def then_something(ctx):
+    envelope = ctx["result"].synthesized_error_envelope
+    assert envelope.get("errors")
+"""
+    func = _enclosing_functions(ast.parse(src))[0]
+    assert any(_is_wire_envelope_attr(n) for n in _own_nodes(func)) is False
+    assert _hand_rolled_attribute_reads_in_func(func) is True

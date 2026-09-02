@@ -96,8 +96,21 @@ normalizes to release-precision on the wire.
    `SPEC_REV`, so step 4 already moved them. `tests/unit/test_adcp_conformance_vectors_pin.py`
    ties the vendored snapshot to the pin, so skipping the re-vendor fails CI rather
    than silently grading the verifier against the previous version's conformance data.
-7. Update this document.
-8. Run `make quality` and address Pydantic field/type changes.
+7. Refresh the two storyboard artifacts that are pin-coupled but do not move
+   themselves:
+   - `tests/fixtures/adcp_storyboards_pinned/index.json` — run its
+     `_refresh.py` against a fresh `~/projects/adcp` clone at the new pin.
+     `tests/unit/test_architecture_storyboard_binding.py`'s
+     `test_fixture_index_version_matches_the_pin` fails until this is done.
+   - `tests/storyboard/runner/package.json`'s `@adcp/sdk` dependency — bump to
+     a release whose own `adcp_version` targets the new spec version (`npm
+     view @adcp/sdk@<v> adcp_version`), then `npm ci` in
+     `tests/storyboard/runner/`. `tests/storyboard/test_runner_sdk_pin.py`'s
+     `test_runner_sdk_targets_the_pinned_adcp_version` fails until this is
+     done.
+8. Update this document.
+9. Run `make quality` and address Pydantic field/type changes.
+10. Re-verify integration and BDD coverage.
 
 Nothing needs updating for the served `$schema` values: `_SCHEMA_BASE`
 (`src/core/signing/trust_root.py`) derives them from `adcp.get_adcp_spec_version()`, so
@@ -105,7 +118,6 @@ they move with the pin. They were literals until #1757, and the `$schema` assert
 `tests/integration/test_trust_root_documents.py` graded only that the KEY was present —
 so a bump would have left every trust-root document pointing at the previous version with
 nothing to catch it.
-9. Re-verify integration and BDD coverage.
 
 ## Pinned schema sources
 
@@ -166,4 +178,6 @@ spec bump must consider it separately from the schema-shape pin above.
 - `tests/unit/test_pinned_schema_single_source.py` — pins that `pinned_schema.py` tracks the SDK's own version, not an independently vendored one
 - `tests/helpers/adcp_schema_validator.py` — e2e request/response validation, delegates to `pinned_schema.py`
 - `tests/fixtures/adcp_schemas_pinned/` — vendored error-code `enumMetadata` `suggestion` text, sole remaining consumer `test_architecture_error_suggestion_enum_conformance.py` (independent pin, error-code reconciliation epic only — NOT a general schema-shape source)
+- `tests/fixtures/adcp_storyboards_pinned/index.json` — vendored, offline snapshot of the pinned compliance tree's storyboard structure (paths, phases, gates); pin-coupled, refreshed via its `_refresh.py`. Guarded by `tests/unit/test_architecture_storyboard_binding.py`'s `test_fixture_index_version_matches_the_pin`
+- `tests/storyboard/runner/package.json` — the TS conformance runner's `@adcp/sdk` pin; pin-coupled, independently of the Python SDK pin above. Guarded by `tests/storyboard/test_runner_sdk_pin.py`
 - `docs/adcp-spec-version.md` — this document

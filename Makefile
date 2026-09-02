@@ -30,9 +30,16 @@ quality-ci:
 	uv run python .pre-commit-hooks/check_docs_links.py
 	uv run python .pre-commit-hooks/check_hardcoded_urls.py $$(find templates static -type f \( -name '*.html' -o -name '*.js' \) 2>/dev/null)
 
+# tests/harness/ is NOT optional here: tox's `unit` env runs
+# `pytest tests/unit/ tests/harness/`, so anything under tests/harness/ was
+# graded ONLY by a full-suite run and was invisible to the per-change gate.
+# That gap is not theoretical -- tests/harness/test_forward_compat_acceptance.py
+# went red on 2026-08-13 and stayed red across 47 commits and 4+ days, because
+# every per-bead `make quality` ran a path that did not contain it. Keep this
+# target's scope identical to tox's unit env.
 quality:
 	$(MAKE) quality-ci
-	uv run pytest tests/unit/ -x
+	uv run pytest tests/unit/ tests/harness/ -x
 
 quality-full:
 	$(MAKE) quality

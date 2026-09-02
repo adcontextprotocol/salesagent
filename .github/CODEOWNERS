@@ -51,5 +51,3 @@
 /.coverage-baseline                      @chrishuie
 /.guard-baselines/                       @chrishuie
 /tests/unit/.allowlist-*.json            @chrishuie
-/tests/unit/obligation_coverage_allowlist.json         @chrishuie
-/tests/unit/obligation_test_quality_allowlist.json     @chrishuie

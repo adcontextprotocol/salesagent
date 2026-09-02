@@ -87,9 +87,14 @@ class TestA2AWireIntegerSerialization:
         with CapabilitiesEnv() as env:
             env.setup_default_data()
 
-            env.call_a2a()
-
-            wire = env._last_wire_response
+            # deliver_a2a(), not call_a2a(): the wire travels on the RETURN VALUE
+            # (DeliverResult.wire_response), which for A2A is dict(artifact_data)
+            # captured BEFORE strip_a2a_protocol_fields -- the same unstripped
+            # artifact DataPart the deleted env._last_wire_response stash held
+            # (tests/harness/_base.py::_a2a_task_outcome). call_a2a() returns only
+            # the parsed payload, whose Pydantic ints would erase the float/str
+            # widening this test exists to catch.
+            wire = env.deliver_a2a().wire_response
             assert wire is not None, "A2A dispatch did not capture a wire response"
             replay_ttl_seconds = wire["adcp"]["idempotency"]["replay_ttl_seconds"]
             assert isinstance(replay_ttl_seconds, int), (
