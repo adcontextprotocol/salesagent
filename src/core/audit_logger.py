@@ -11,6 +11,7 @@ Implements security-compliant logging with:
 
 import json
 import logging
+import os
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -21,20 +22,94 @@ from sqlalchemy import select
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuditLog
 
-# Create logs directory if it doesn't exist (for backup)
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
+# Directory holding the FILE BACKUP of the audit trail. The database is the
+# audit authority (see the module docstring); these files are a secondary sink.
+#
+# Importing this module must not touch the filesystem. The path is CWD-relative,
+# so creating it at import time makes the module's importability depend on who
+# owns a directory the importer never chose: under Docker, two containers share
+# /app as a bind mount, whichever one reached logs/audit.log first owned it at
+# umask-derived mode 644, and every other uid then died at pytest COLLECTION
+# with `PermissionError: [Errno 13] Permission denied: '/app/logs/audit.log'`.
+# Creation is therefore deferred to the first WRITE — the first moment a log
+# path is genuinely needed.
+#
+# ADCP_LOG_DIR exists so a process that SHARES its working directory with another
+# process running as a different uid can be pointed somewhere private, instead of
+# the two contending over the same files. Default is unchanged.
+LOG_DIR = Path(os.environ.get("ADCP_LOG_DIR") or "logs")
+
+
+def _ensure_log_dir(directory: Path) -> Path:
+    """Create a log directory on demand and return it.
+
+    The single creation point for every sink in this module — both file handlers
+    and both .jsonl writers — so no sink can ever assume a directory that
+    another sink happened to create.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _log_path(filename: str) -> Path:
+    """Return the path to a backup log file, creating its directory first."""
+    return _ensure_log_dir(LOG_DIR) / filename
+
+
+class _LazyDirFileHandler(logging.FileHandler):
+    """A ``FileHandler`` that creates its directory when it opens the file.
+
+    ``logging.FileHandler`` opens its file in ``__init__`` unless ``delay=True``.
+    Pairing ``delay=True`` with this ``_open()`` moves the directory creation and
+    the file open together to the first emitted record, so constructing the
+    handler — which happens at import — performs no I/O at all.
+    """
+
+    def _open(self):
+        _ensure_log_dir(Path(self.baseFilename).parent)
+        return super()._open()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Emit a record, refusing to let a failed BACKUP write reach the caller.
+
+        ``FileHandler.emit`` calls ``_open()`` outside the ``try`` that guards
+        the write, so an unopenable path propagates ``OSError`` straight into
+        whichever business logic called ``audit_logger.info(...)``. Deferring the
+        open with ``delay=True`` alone would therefore only move that failure
+        from import time to first-emit time, not remove it.
+
+        Losing this sink must not take the operation down with it, so the error
+        is routed to ``handleError``, which writes to stderr (``logging``'s
+        ``raiseExceptions`` is never set in ``src/``). The trade is a
+        fail-CLOSED import-time failure becoming a fail-OPEN per-record stderr
+        note.
+
+        What that costs, stated precisely rather than as "it's only a backup":
+        for ``log_operation`` and ``log_security_violation`` the database row is
+        the authority and this file duplicates it, so nothing is lost. For
+        ``log_success``/``log_warning``/``log_info`` -- 19 production call sites,
+        including workflow-step creation and ``sync_accounts`` completion -- this
+        file is the ONLY durable sink, and a record dropped here is gone. Giving
+        those three a database counterpart is the real fix; it is not this
+        change, which only stops an unwritable log directory from failing an
+        import.
+        """
+        try:
+            super().emit(record)
+        except OSError:
+            self.handleError(record)
+
 
 # Configure logging format
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # Set up file handler for backup
-audit_handler = logging.FileHandler(LOG_DIR / "audit.log")
+audit_handler = _LazyDirFileHandler(LOG_DIR / "audit.log", delay=True)
 audit_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
 
 # Set up error handler
-error_handler = logging.FileHandler(LOG_DIR / "error.log")
+error_handler = _LazyDirFileHandler(LOG_DIR / "error.log", delay=True)
 error_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
 error_handler.setLevel(logging.ERROR)
 
@@ -46,8 +121,6 @@ audit_logger.addHandler(error_handler)
 
 # In development, also log to console for debugging
 # In production, the root logger already handles console output with JSON formatting
-import os
-
 if not os.environ.get("FLY_APP_NAME") and not os.environ.get("PRODUCTION"):
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
@@ -393,7 +466,7 @@ class AuditLogger:
         log_entry = {"timestamp": datetime.now(UTC).isoformat(), "adapter": self.adapter_name, **kwargs}
 
         try:
-            with open(LOG_DIR / "structured.jsonl", "a") as f:
+            with open(_log_path("structured.jsonl"), "a") as f:
                 f.write(json.dumps(log_entry, default=_audit_json_default) + "\n")
         except Exception as e:
             audit_logger.error(f"Failed to write structured log: {e}")
@@ -408,7 +481,7 @@ class AuditLogger:
         }
 
         try:
-            with open(LOG_DIR / "security.jsonl", "a") as f:
+            with open(_log_path("security.jsonl"), "a") as f:
                 f.write(json.dumps(log_entry, default=_audit_json_default) + "\n")
         except Exception as e:
             audit_logger.error(f"Failed to write security log: {e}")

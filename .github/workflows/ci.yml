@@ -173,6 +173,16 @@ jobs:
         with:
           paths: tests/unit/ tests/harness/
           with_coverage: "true"
+          # Run the unit suite the way the runner does. Without these three
+          # flags this job cannot observe the failure it is meant to gate:
+          # `--json-report` is the discriminator (pytest-json-report attaches
+          # log-record dicts that execnet's exact-type dispatch refuses), `-n`
+          # is what puts a wire between the test and the report at all, and
+          # `--dist loadgroup` is what makes the `xdist_group` marker on the
+          # nested-pytest modules mean anything. Serially, all three are inert
+          # and a green run here says nothing about the parallel one.
+          # The JSON file is not consumed; producing it is the point.
+          extra_args: -n auto --dist loadgroup --json-report --json-report-file=unit-ci.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: unit-coverage

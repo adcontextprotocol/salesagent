@@ -7,6 +7,7 @@ modes share the same lifecycle contract.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 
@@ -149,8 +150,28 @@ class TestBaseClassContract:
         env = _TestEnv()
         env.__enter__()
 
-        # Sabotage patcher "b" (last started, first stopped) to raise on stop
-        env._patchers[-1].stop = MagicMock(side_effect=RuntimeError("stop failed"))
+        # Sabotage patcher "b" (last started, first stopped) so its stop() raises
+        # -- but only AFTER it has really stopped. A MagicMock(side_effect=...)
+        # here instead of a wrapper would mean the real stop() never runs, and
+        # `os.getpid` would stay a MagicMock for the REST OF THE PROCESS. That is
+        # not hypothetical: it is the leak that made `tests/unit/` unrunnable
+        # under xdist. `logging.LogRecord.__init__` does
+        # `self.process = os.getpid()`, so every later log record in this worker
+        # carried a mock; pytest-json-report copies `dict(record.__dict__)` onto
+        # the report, pytest's _report_to_json copies report.__dict__ raw onto the
+        # execnet wire, and execnet cannot serialize a mock -- killing the worker
+        # and truncating the session behind a summary that read "0 failed".
+        # See tests/_xdist_report_safety.py for the measurement.
+        #
+        # The test's actual subject is unchanged: __exit__ still meets a patcher
+        # whose stop() raises, and must still stop the others and clear its state.
+        real_stop = env._patchers[-1].stop
+
+        def _stop_then_raise() -> None:
+            real_stop()
+            raise RuntimeError("stop failed")
+
+        env._patchers[-1].stop = _stop_then_raise
 
         # __exit__ should still clean up patcher "a" and clear state
         # even though patcher "b" raises
@@ -162,6 +183,13 @@ class TestBaseClassContract:
         # Key assertion: mock dict and patchers list must be cleared
         assert env._patchers == []
         assert env.mock == {}
+        # And the patch must be genuinely unwound, not merely forgotten. Clearing
+        # the bookkeeping while leaving `os.getpid` replaced is what broke the
+        # unit suite under xdist -- see the comment above.
+        assert isinstance(os.getpid(), int), (
+            f"os.getpid is still patched ({type(os.getpid).__name__}) -- this leaks a mock into "
+            f"every subsequent logging.LogRecord in this process"
+        )
 
     def test_exception_in_test_body_still_cleans_up(self):
         """If test body raises, __exit__ still cleans up patches and mock dict."""

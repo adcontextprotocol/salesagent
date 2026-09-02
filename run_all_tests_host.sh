@@ -139,6 +139,18 @@ else
     exit 1
 fi
 
+# --- Truncation check ---
+# Same predicate run_all_tests.sh applies, on the same JSON, for the same
+# reason: every mode above decides success from an exit code or from each
+# report's own `exitcode`, and a truncated run is green by both. `quick` runs
+# the unit env too, which is now parallel, so this path is exposed to the same
+# hole. See scripts/check_truncated_reports.py.
+if ls "$RESULTS_DIR"/*.json >/dev/null 2>&1; then
+    if ! python3 scripts/check_truncated_reports.py "$RESULTS_DIR"; then
+        FAILURES="${FAILURES:+$FAILURES }truncated"
+    fi
+fi
+
 # --- Security audit ---
 # Ignored-vulnerabilities list + uv-secure invocation are single-sourced in
 # scripts/security-audit.sh (same script is called by .github/workflows/ci.yml,

@@ -69,13 +69,28 @@ def test_start_approval_creates_sync_job(mock_db_session):
     """Test that starting approval creates a SyncJob record."""
     from src.core.database.models import SyncJob
 
-    approval_id = start_order_approval_background(
-        order_id="12345",
-        media_buy_id="mb_123",
-        tenant_id="tenant_1",
-        principal_id="principal_1",
-        webhook_url="https://example.com/webhook",
-    )
+    # _run_approval_thread is patched for the same reason
+    # test_approval_thread_tracks_in_registry patches it: without it,
+    # start_order_approval_background spawns a REAL daemon thread that outlives
+    # this test by tens of seconds. It runs the true retry path --
+    # order_approval_service.py:406 `time.sleep(2**attempt)` behind httpx POSTs
+    # at timeout=10.0 -- so it calls sleep(1), sleep(2), sleep(4) from inside
+    # whatever test happens to be running by then. Measured: it was still alive
+    # and calling sleep during test_performance_index_behavioral and
+    # test_policy_typed_models, ~1500 tests later, and it intermittently broke
+    # TestWebhookDelivery::test_exponential_backoff_timing, whose class-level
+    # patch of `src.core.webhook_delivery.time.sleep` is PROCESS-GLOBAL (that
+    # module does `import time`, so the patch lands on the time module itself and
+    # is visible to every module and every thread). The stray sleeps inflated
+    # mock_sleep.call_count past 2. This test asserts nothing about the thread.
+    with patch("src.services.order_approval_service._run_approval_thread"):
+        approval_id = start_order_approval_background(
+            order_id="12345",
+            media_buy_id="mb_123",
+            tenant_id="tenant_1",
+            principal_id="principal_1",
+            webhook_url="https://example.com/webhook",
+        )
 
     # Verify sync job was created
     assert approval_id.startswith("approval_12345_")
@@ -110,7 +125,12 @@ def test_start_approval_rejects_duplicate(mock_db_session):
     )
     mock_db_session.scalars.return_value.all.return_value = [existing_approval]
 
-    with pytest.raises(ValueError, match="Approval already running for order 12345"):
+    # Patched for the same reason as the test above -- an unpatched call leaks a
+    # live daemon thread into the rest of the session.
+    with (
+        patch("src.services.order_approval_service._run_approval_thread"),
+        pytest.raises(ValueError, match="Approval already running for order 12345"),
+    ):
         start_order_approval_background(
             order_id="12345",
             media_buy_id="mb_123",

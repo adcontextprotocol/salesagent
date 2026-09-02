@@ -4,15 +4,53 @@ Global pytest configuration and fixtures for all tests.
 This file provides fixtures available to all test modules.
 """
 
+import functools
 import json
+import multiprocessing
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
+import unittest.mock as mock_module
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from tests._xdist_report_safety import sanitize_serialized_report
+
+# ---------------------------------------------------------------------------
+# xdist wire safety — an unserializable report must not void the session
+# ---------------------------------------------------------------------------
+# pytest's _report_to_json copies report.__dict__ wholesale onto the execnet
+# wire and sanitizes only longrepr/os.PathLike/result. execnet dispatches on
+# EXACT type, so anything else a plugin attached raises DumpError, which kills
+# the worker and ends the session -- reporting only the tests already collected
+# back, with a summary line that says zero failures.
+#
+# Live instance: pytest-json-report (which tox.ini passes on every suite)
+# attaches report._json_report_extra carrying dict(record.__dict__) per captured
+# log record, and logging merges any `extra={...}` payload straight into that
+# dict. Production logs that way in ~75 places, so a mocked collaborator in a
+# PASSING unit test silently truncated 416-575 of 5846 items at 4-14 workers.
+# See tests/_xdist_report_safety.py for the full measurement.
+#
+# Registered here, at the rootdir conftest, so every suite is covered -- bdd
+# and bdd_e2e already run at 16 and 8 workers and are exposed to the same hole.
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_report_to_serializable(config, report):
+    """Replace anything execnet cannot dump, loudly, instead of dying."""
+    outcome = yield
+    data = outcome.get_result()
+    safe = sanitize_serialized_report(data, nodeid=getattr(report, "nodeid", "<unknown>"))
+    if safe is not data:
+        outcome.force_result(safe)
+
 
 # ---------------------------------------------------------------------------
 # Entity marker taxonomy — auto-applied to tests by filename / path patterns
@@ -766,32 +804,185 @@ def benchmark(request):
 # ============================================================================
 
 
+# ---------------------------------------------------------------------------
+# Leaked-patch guard — a test must not leave a patch running
+# ---------------------------------------------------------------------------
+# The #2006 root cause was a leaked patch("os.getpid"): a sabotaged patcher's
+# stop() never ran, so every later LogRecord in the worker carried a MagicMock
+# in .process, pytest-json-report copied it onto the report, and execnet could
+# not serialize it -- killing the worker and truncating the session behind a
+# summary reading "0 failed". The expensive part was the indirection: the
+# symptom surfaced in tests/harness/test_harness_product.py, which is clean,
+# while the defect was in tests/harness/test_harness_base.py.
+#
+# No AST guard can see a leaked patch, so this grades the OUTCOME. It reads
+# unittest.mock's own registry rather than enumerating suspect names:
+# `patch(...).start()` appends to `_patch._active_patches` and `.stop()` removes
+# it, while `with patch(...)` never registers at all -- correct, since a context
+# manager cannot leak. So the registry is exactly "patches someone started and
+# did not stop", with no list to keep in sync. Verified against the original
+# sabotage: it reports [('os', 'getpid')], target and attribute, by name.
+#
+# Report, never remediate. `mock.patch.stopall()` here tears down patches
+# belonging to still-live enclosing scopes -- measured at 183 errors.
+#
+# A hookwrapper on pytest_runtest_teardown, not an autouse fixture: fixture
+# finalization runs INSIDE the default teardown impl, so checking after the
+# yield is guaranteed to be after every finalizer (the BDD ctx patchers at
+# tests/bdd/conftest.py, the harness's env.__exit__, and so on). An autouse
+# root-conftest fixture happens to work too, by being requested first and torn
+# down last, but that depends on request ordering and this does not.
+
+
+# Plugins legitimately hold session-long patches: pytest-mock installs 14 of
+# them over NonCallableMock.assert_* / AsyncMock.assert_* at registration time
+# (pytest.ini loads it via `-p pytest_mock`) so that assertion failures read
+# better. Those are not leaks, and allowlisting them by name would rot. Snapshot
+# whatever is already active before the first test instead, and report only what
+# a test ADDS.
+_known_active_patches: set[int] = set()
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Baseline the patches plugins hold, before any test can add one."""
+    _known_active_patches.update(id(a) for a in mock_module._patch._active_patches)
+
+
+def _describe_active_patch(active: Any) -> str:
+    target = getattr(active, "target", None)
+    name = getattr(target, "__name__", None) or repr(target)
+    return f"{name}.{getattr(active, 'attribute', '?')}"
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None):
+    """Fail the test that leaked a patch, at the moment it leaked it."""
+    yield  # let every finalizer run first
+
+    leaked = []
+    for active in list(mock_module._patch._active_patches):
+        if id(active) in _known_active_patches:
+            continue
+        leaked.append(_describe_active_patch(active))
+        _known_active_patches.add(id(active))  # blame the culprit, not its victims
+
+    # Secondary check for the routes `_active_patches` cannot see: a raw setattr
+    # or `sys.modules[x] = MagicMock()` (live in test_incremental_sync_stale_marking,
+    # test_setup_dev and test_inspect_bdd_steps). These are callables
+    # logging.LogRecord reads at construction, so replacing one poisons every
+    # later record and therefore every later report.
+    #
+    # NOT the complete set: LogRecord also reads `asyncio.current_task`,
+    # `logging.getLevelName` and `os.path.basename` (patching those puts a
+    # MagicMock into `taskName`, `levelname` and `filename` respectively). There
+    # are 0 patch sites for those today, and `sanitize_serialized_report` catches
+    # the value at the wire regardless — this list only decides whether the
+    # RIGHT TEST gets blamed, so a miss costs attribution, not the session.
+    for name, original in _PRISTINE_CALLABLES.items():
+        if _resolve_dotted(name) is not original:
+            leaked.append(f"{name} (replaced without patch())")
+            _PRISTINE_CALLABLES[name] = _resolve_dotted(name)  # blame the culprit, not its victims
+
+    if leaked:
+        raise AssertionError(
+            f"{item.nodeid} finished with {len(leaked)} patch(es) still active: "
+            f"{', '.join(sorted(leaked))}. Every later test in this worker now sees them. "
+            f"Stop the patch -- use `with patch(...)`, a fixture that stops in teardown, "
+            f"or try/finally. Do not rely on a `.stop()` as the last statement of the test: "
+            f"any exception before that line skips it."
+        )
+
+
+_PRISTINE_CALLABLES: dict[str, Any] = {
+    "os.getpid": os.getpid,
+    "time.time": time.time,
+    "threading.get_ident": threading.get_ident,
+    "threading.current_thread": threading.current_thread,
+    "multiprocessing.current_process": multiprocessing.current_process,
+}
+
+
+def _resolve_dotted(dotted: str) -> Any:
+    module_name, _, attr = dotted.rpartition(".")
+    return getattr(sys.modules[module_name], attr)
+
+
+# ---------------------------------------------------------------------------
+# Nested-pytest modules — one at a time under xdist
+# ---------------------------------------------------------------------------
+# MEMBERSHIP RULE: a module belongs here if and only if it spawns a `pytest`
+# SUBPROCESS. Nothing pins that, so check before adding — an earlier revision of
+# this set carried four modules that spawn nothing (0.47s + 0.73s + 0.19s +
+# 0.13s of work pinned to one worker for no reason), and one of them stopped
+# spawning in the same change that listed it. Verify with:
+#
+#     grep -cE 'subprocess\.(run|Popen|check_output|check_call)' <module>
+#
+# Why the group: a nested subprocess re-collects the whole unit suite, and its
+# timeout was calibrated against a SERIAL run. With N xdist workers you get up
+# to N concurrent full-suite collections competing with the N workers that
+# spawned them. Measured on a 14-core Mac at -n 12 and -n 14, the nested
+# collection dies with
+#
+#     subprocess.TimeoutExpired: [... 'pytest','tests/unit/','--collect-only' ...]
+#     timed out after 60 seconds
+#
+# while passing at -n 8 and serially. Raising the timeout would hide the
+# contention rather than remove it; a shared cached collection across the three
+# would remove the duplicated work outright and is the right follow-up. Until
+# then, one xdist_group means at most ONE nested collection runs at a time,
+# whatever the worker count -- which is the property that was actually missing.
+#
+# Requires `--dist loadgroup` (tox.ini's unit env); under any other dist mode
+# the marker is inert and these simply spread out again.
+_NESTED_PYTEST_MODULES: frozenset[str] = frozenset(
+    {
+        "test_architecture_ci_bdd_shard_manifest",
+        "test_e2e_rest_ledger_fitness",
+        "test_xdist_report_serialization",
+    }
+)
+
+
+@functools.lru_cache(maxsize=4096)
+def entity_markers_for_path(fspath: str) -> frozenset[str]:
+    """Entity markers this path earns from its filename and directory.
+
+    The single definition of the auto-marking rule. `pytest_collection_modifyitems`
+    applies it at collection; `test_architecture_test_marker_coverage` asserts it
+    directly, in-process. Two copies of this logic would drift, and anything
+    grading the rule would then grade something production does not follow.
+
+    Keyed on the FULL path, not the stem: ten stems are duplicated across
+    `tests/`, and `test_authorized_properties.py` earns `admin` under
+    `tests/admin/` but not under `tests/unit/`. A stem key let whichever file
+    collection reached first decide for both.
+    """
+    filename = Path(fspath).stem  # e.g. "test_delivery_webhook_behavioral"
+    markers: set[str] = set()
+
+    # 1. Match filename against entity patterns (substring match)
+    for entity, patterns in _ENTITY_PATTERNS.items():
+        for pattern in patterns:
+            if pattern in filename:
+                markers.add(entity)
+                break  # one match per entity is enough
+
+    # 2. Match path against directory-based entity map
+    for path_fragment, entity in _PATH_ENTITY_MAP.items():
+        if path_fragment in fspath:
+            markers.add(entity)
+
+    return frozenset(markers)
+
+
 def pytest_collection_modifyitems(config, items):
     """Auto-apply entity markers from filename/path patterns."""
-    # For each test item, check filename and path against entity patterns.
-    # Build a lookup cache: filename → set of entity markers
-    _filename_cache: dict[str, set[str]] = {}
-
     for item in items:
         fspath = str(item.fspath)
-        filename = Path(fspath).stem  # e.g. "test_delivery_webhook_behavioral"
 
-        if filename not in _filename_cache:
-            markers: set[str] = set()
-
-            # 1. Match filename against entity patterns (substring match)
-            for entity, patterns in _ENTITY_PATTERNS.items():
-                for pattern in patterns:
-                    if pattern in filename:
-                        markers.add(entity)
-                        break  # one match per entity is enough
-
-            # 2. Match path against directory-based entity map
-            for path_fragment, entity in _PATH_ENTITY_MAP.items():
-                if path_fragment in fspath:
-                    markers.add(entity)
-
-            _filename_cache[filename] = markers
-
-        for marker_name in _filename_cache[filename]:
+        for marker_name in entity_markers_for_path(fspath):
             item.add_marker(getattr(pytest.mark, marker_name))
+
+        if Path(fspath).stem in _NESTED_PYTEST_MODULES:
+            item.add_marker(pytest.mark.xdist_group("nested_pytest"))

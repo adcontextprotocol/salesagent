@@ -58,6 +58,24 @@ services:
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
       ADCP_TESTING: ${ADCP_TESTING:-true}
       ADCP_AUTH_TEST_MODE: ${ADCP_AUTH_TEST_MODE:-true}
+      # Keep this server's log files OFF the bind mount it shares with `tests`.
+      # The image bakes USER app (uid 1001) while `tests` runs as the image
+      # default (root; the `user:` pin is gone -- see that service below), so
+      # with the default CWD-relative path both create
+      # /app/logs/*.log on the same mounted tree. Whoever got there first owned
+      # the files at umask-derived mode 644 and the other uid could no longer
+      # open them for append — surfacing as `PermissionError: [Errno 13]
+      # Permission denied: '/app/logs/audit.log'` and killing entire suites at
+      # pytest COLLECTION, apparently at random because it depended purely on
+      # which container won the race.
+      #
+      # A container-local path (not a volume at /app/logs — Docker would create
+      # THAT mount point on the host as root:755 and lock `tests` out of its own
+      # log directory instead; measured) means the two never share a path at
+      # all. /tmp is writable by any uid, so this holds however the image's user
+      # is configured. The database remains the audit authority; these files are
+      # a backup.
+      ADCP_LOG_DIR: /tmp/adcp-logs
       # Must match the `tests` service's ADCP_WEBHOOK_HOST below: this is the
       # SERVER's own trusted-test-host allowlist entry for outbound webhook SSRF
       # validation (WebhookURLValidator._is_trusted_test_host), not just the
@@ -133,6 +151,13 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      # 60s, not creative-agent's 30s (below) -- adcp-server does more work
+      # at startup (DB migrations, etc.) and is the service that actually
+      # showed this bug live: marked genuinely UNHEALTHY (not just
+      # `starting`) under heavy concurrent test-suite load, because there
+      # was no grace period for Docker to report `starting` during
+
+      start_period: 60s
 
   proxy:
     image: nginx:stable
@@ -214,42 +239,71 @@ services:
   # (see run_all_tests.sh).
   tests:
     profiles: ["runner"]
-    # NO `user:` pin, deliberately -- back to main's shape (Aug 2026).
+    # NO `user:` directive, deliberately -- back to main's shape (Aug 2026).
+    # Both branches removed the pin independently; this records both arguments,
+    # because they are different and each still holds.
     #
-    # The pin was added to stop the container writing test-results/.tox/schemas/
-    # logs into the bind-mounted /app as literal root, on the premise that there
-    # is "no userns-remap on these hosts, so container root IS host root". That
-    # premise no longer holds where it matters: the CI box runs ROOTLESS docker,
-    # where container root already maps to the invoking user, so the pin bought
-    # nothing there. Worse, it derived its value from `id -u` inside a
-    # supervisor that runs as root -- resolving to 0:0, i.e. exactly the image
-    # default it was written to override.
+    # It used to pin user: "${TEST_UID:-0}:${TEST_GID:-0}", derived from
+    # `id -u`/`id -g` by run_all_tests.sh, to stop the container writing
+    # test-results/.tox/schemas/logs into the bind-mounted /app as literal root.
+    # That rested on "no userns-remap on these hosts, so container root IS host
+    # root" -- false on the ROOTLESS daemon the run boxes use, and wrong in BOTH
+    # directions there:
+    #   - with TEST_UID exported, the container runs as that uid INSIDE the
+    #     container, which rootless maps to a host SUBUID (~100000+uid), so the
+    #     bind-mounted /app collects files the run itself cannot write;
+    #   - without it -- any path that does not source run_all_tests.sh, e.g.
+    #     cassini's supervisor calling `docker compose run tests`, or a plain
+    #     `docker compose up` for adcp-server -- the `:-0` default applies, i.e.
+    #     exactly the image default the pin was written to override.
+    # Under rootless, container root ALREADY maps to the invoking user, which is
+    # exactly the outcome the pin was hand-building. Unset gets it for free.
+    # Symptom this caused live: /app/logs/* created root-owned, adcp-server
+    # (uid 1001) dying at import on a module-level FileHandler, cascading into
+    # ~2100 test failures. (ADCP_LOG_DIR on adcp-server above closes the log-file
+    # half of that independently, whatever uid either container runs as.)
     #
-    # What it did cost was real. Being non-root forced three separate
-    # workarounds for image paths owned by root (HOME/UV_CACHE_DIR,
-    # PLAYWRIGHT_BROWSERS_PATH -- the last re-downloading 113 MiB of chromium
-    # every run because the baked copy was unreachable), and it is why the
-    # tox_data volume had to be dropped: a fresh named volume's mountpoint is
-    # created root:root by the daemon before the container starts, which EACCES-
-    # blocks a non-root user from `mkdir .tox/<env>`. Running as root makes that
-    # mountpoint writable again, so the volume comes back below and .tox leaves
-    # the bind mount -- which was the pin's own stated reason for existing.
+    # What the pin cost was real, and is why several things below revert with it.
+    # Being non-root forced three workarounds for image paths owned by root
+    # (HOME/UV_CACHE_DIR, PLAYWRIGHT_BROWSERS_PATH -- the last re-downloading
+    # 113 MiB of chromium every run because the baked copy was unreachable), and
+    # it is why the tox_data volume had to be dropped: a fresh named volume's
+    # mountpoint is created root:root by the daemon before the container starts,
+    # which EACCES-blocks a non-root user from `mkdir .tox/<env>`. As the image
+    # default that mountpoint is writable again, so the volume comes back below
+    # and .tox leaves the bind mount -- which was the pin's own stated reason for
+    # existing.
     build:
       context: .
       dockerfile: Dockerfile.test
     environment:
+      # Unbuffered stdout/stderr for the tox process that actually runs the
+      # suite. cassini sets PYTHONUNBUFFERED on its supervisor's own subprocess
+      # env, but the work runs HERE -- a separate container started by
+      # `docker compose run tests` -- and this environment: block is a curated
+      # allowlist with no host passthrough, so it never arrived. Verified live
+      # by `docker exec ... env | grep PYTHONUNBUFFERED` returning nothing.
+      # Consequence: output sat in the buffer, so cassini's RunState.quiet_for
+      # climbed monotonically (0m34s -> 12m+) on a genuinely busy run at 1082%
+      # CPU that finished exit=0, crossing the 5-minute false-red threshold
+      # (reproduced end-to-end on a full in-network run). Same reason a detached
+      # run's supervisor log is its only live view: buffered, a working run
+      # looks wedged and a wedged one looks busy. Parameterised rather than a
+      # literal "1" so a host can still turn it off for a one-off run; the
+      # default is what matters and it is on.
+      PYTHONUNBUFFERED: "${PYTHONUNBUFFERED:-1}"
       # HOME, UV_CACHE_DIR and PLAYWRIGHT_BROWSERS_PATH overrides removed with
       # the `user:` pin above (Aug 2026). All three existed solely to route
       # around image paths owned by root (/cache/uv, /ms-playwright) that a raw
-      # numeric non-root UID could not write. As root those are writable again,
-      # and dropping PLAYWRIGHT_BROWSERS_PATH restores the chromium baked in at
-      # build time instead of re-downloading it into /tmp on every run.
-      #
-      # Unbuffered so pytest's progress reaches the run log as it happens rather
-      # than in block-sized bursts: the supervisor log IS the only live view of
-      # a detached run, and a buffered stream makes a working run look wedged
-      # and a wedged one look busy.
-      PYTHONUNBUFFERED: "1"
+      # numeric non-root UID could not write: such a UID has no /etc/passwd
+      # entry, so HOME defaulted to "/" and uv failed to even create its cache
+      # dir, surfacing as a confusing "could not find python interpreter" from
+      # tox. As the image default (root) those paths are writable again, so the
+      # overrides buy nothing and cost the warm caches baked at build time --
+      # dropping PLAYWRIGHT_BROWSERS_PATH in particular restores the pre-
+      # installed chromium instead of re-downloading it into /tmp every run.
+      # Recorded, not deleted, because the reasoning returns verbatim the day a
+      # `user:` pin does; do not re-add one without re-adding these three.
       # Fixed in-network DB address — never a host port, never collides. This is
       # the SUITE database used by unit(skip)/integration/bdd/admin.
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp_test?sslmode=disable
@@ -296,12 +350,15 @@ services:
       # Pinned reference creative agent, reachable in-network by service name
       # (no host :9999). Clears the 18 test_creative_agent_live integration tests.
       CREATIVE_AGENT_URL: http://creative-agent:8080/api/creative-agent
-      # PLAYWRIGHT_BROWSERS_PATH moved UP in this same environment block (Aug 2026)
-      # when the runner stopped running as root. The duplicate key that briefly
-      # existed here was not merely redundant: YAML last-wins meant this stale
-      # entry silently overrode the new one, so the fix looked applied and was not
-      # — and newer `docker compose` rejects the file outright with
-      # "mapping key PLAYWRIGHT_BROWSERS_PATH already defined".
+      # PLAYWRIGHT_BROWSERS_PATH used to sit here, overriding Dockerfile.test's
+      # baked /ms-playwright; it was DELETED (not moved) when the `user:` pin
+      # went away -- see the HOME/UV_CACHE_DIR note at the top of this block.
+      # There must be exactly ZERO of that key in this mapping now, and never
+      # two: a duplicate once existed here and was not merely redundant -- YAML
+      # last-wins meant the stale entry silently overrode the intended one, so
+      # the fix looked applied and was not, and newer `docker compose` rejects
+      # the file outright with "mapping key PLAYWRIGHT_BROWSERS_PATH already
+      # defined".
       # bdd runs truly serial in-network: -n0 (no xdist subprocess). Two reasons:
       # (1) all bdd workers share ONE live Postgres in e2e mode -> xdist races; and
       # (2) under xdist BDD_E2E_ENABLED doesn't reach the worker's collection, so
@@ -315,10 +372,24 @@ services:
       # Integration/unit xdist worker counts (0/unset = serial). Plumbed so the
       # box fast-profile (INTEGRATION_XDIST_N=auto) actually reaches pytest inside
       # the runner container. integration_db creates a uuid-named DB per test, so
-      # parallel workers never share rows -> race-free. UNIT_XDIST_N stays 0 by
-      # default (unit -n auto has flaked); exposed for parity.
+      # parallel workers never share rows -> race-free.
+      #
+      # UNIT_XDIST_N defaults to `auto`, NOT 0. It was 0 because unit "flaked"
+      # under xdist; the flake had a single cause, now fixed -- a leaked
+      # patch("os.getpid") put a MagicMock in every LogRecord.process, which
+      # pytest-json-report copied onto the report and execnet could not
+      # serialize, killing the worker and truncating the session behind a
+      # summary that read "0 failed" (see tests/_xdist_report_safety.py).
+      #
+      # The value matters, not just the default: compose ALWAYS sets a listed
+      # key, so `${UNIT_XDIST_N:-0}` here made tox.ini's own
+      # `-n {env:UNIT_XDIST_N:auto}` unreachable -- the tox default is consulted
+      # only when the variable is UNSET, and this line guarantees it is set.
+      # Leaving it at 0 would have made the tox flip a silent no-op in the only
+      # environment that runs the full suite. `:-auto` keeps the override working
+      # while making the in-network default match tox's.
       INTEGRATION_XDIST_N: "${INTEGRATION_XDIST_N:-0}"
-      UNIT_XDIST_N: "${UNIT_XDIST_N:-0}"
+      UNIT_XDIST_N: "${UNIT_XDIST_N:-auto}"
       # Opt-in fast per-test DB path: clone from a schema template (default off).
       # TEST_DB_SKIP_DROP additionally skips the per-test DROP — safe ONLY on a
       # throwaway (tmpfs) Postgres, where clones are wiped on container restart;
@@ -367,12 +438,23 @@ services:
     volumes:
       - .:/app
       # Restored with the removal of the `user:` pin above (Aug 2026), matching
-      # main. It was dropped because a fresh named volume's mountpoint is
+      # main. It had been dropped because a fresh named volume's mountpoint is
       # created root:root by the daemon before the container process starts,
       # which EACCES-blocked a NON-ROOT tests user from `mkdir .tox/<env>`.
-      # That failure was a consequence of the pin, not of the volume: as root
-      # the mountpoint is writable, and .tox stays off the bind-mounted host
-      # tree where its ownership was never anyone's to fight over.
+      # That failure was a consequence of the pin, not of the volume: at the
+      # image default the mountpoint is writable, and .tox stays off the
+      # bind-mounted host tree where its ownership was never anyone's to fight
+      # over -- which is the same principle ADCP_LOG_DIR applies to the server's
+      # logs above.
+      #
+      # LOAD-BEARING, and not only for ownership: run_all_tests.sh reads the
+      # per-suite JSON reports OUT of this volume
+      # (`docker run -v "${COMPOSE_PROJECT_NAME}_tox_data:/t:ro" ... cp /t/*.json`).
+      # Remove the mount and that extraction silently copies whatever stale
+      # ./.tox JSON the host happens to hold, emitting a fresh timestamped
+      # results directory full of a PREVIOUS run's green numbers -- observed
+      # live on two runs that executed zero suites. The mount and that
+      # extraction have to move together.
       - tox_data:/app/.tox  # keep tox envs off the bind-mounted host tree
     working_dir: /app
     # venv lives at /opt/venv (UV_PROJECT_ENVIRONMENT in Dockerfile.test), outside

@@ -124,6 +124,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      # See docker-compose.e2e.yml's adcp-server healthcheck for why 60s
+
+      start_period: 60s
 
 volumes:
   adcp_postgres_data:

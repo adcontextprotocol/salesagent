@@ -180,21 +180,29 @@ mock_response = {
     },
 }
 
-print("=" * 80)
-print("GAM LINE ITEM VIEWER - API RESPONSE")
-print("=" * 80)
-print("\nEndpoint: /api/tenant/{tenant_id}/gam/line-item/7047822666")
-print("Returns: Complete line item data with order, creatives, and media product JSON")
-print("\n" + "=" * 80)
-print("FULL RESPONSE:")
-print("=" * 80)
-print(json.dumps(mock_response, indent=2))
 
-print("\n" + "=" * 80)
-print("KEY FEATURES OF THE LINE ITEM VIEWER:")
-print("=" * 80)
-print(
+def main() -> None:
+    """Print the mock response, and write it only when ``--save`` is passed.
+
+    Everything here runs on EXECUTION, never on import: the module body must
+    stay side-effect free so importing it cannot print, and cannot fail on a
+    path (the CWD) that the importer never chose.
     """
+    print("=" * 80)
+    print("GAM LINE ITEM VIEWER - API RESPONSE")
+    print("=" * 80)
+    print("\nEndpoint: /api/tenant/{tenant_id}/gam/line-item/7047822666")
+    print("Returns: Complete line item data with order, creatives, and media product JSON")
+    print("\n" + "=" * 80)
+    print("FULL RESPONSE:")
+    print("=" * 80)
+    print(json.dumps(mock_response, indent=2))
+
+    print("\n" + "=" * 80)
+    print("KEY FEATURES OF THE LINE ITEM VIEWER:")
+    print("=" * 80)
+    print(
+        """
 1. BASIC INFORMATION:
    - Line Item ID: 7047822666
    - Name: Q1_2025_Sports_Premium_Video
@@ -225,13 +233,13 @@ print(
    - Ready for round-trip validation
    - Shows exact mapping from GAM to internal structure
 """
-)
+    )
 
-print("\n" + "=" * 80)
-print("UI FEATURES:")
-print("=" * 80)
-print(
-    """
+    print("\n" + "=" * 80)
+    print("UI FEATURES:")
+    print("=" * 80)
+    print(
+        """
 The Line Item Viewer UI provides:
 
 1. **Overview Tab**: Basic info, order details, pricing, schedule
@@ -246,15 +254,19 @@ Access via:
 - Tenant Detail Page: Click "View Line Item" and enter ID
 - Direct URL: /tenant/{tenant_id}/gam/line-item/{line_item_id}
 """
-)
+    )
 
-# Writing is OPT-IN. As an unconditional module-level side effect this wrote into
-# whatever the CWD happened to be, on every pytest collection, and failed outright
-# for a non-root runner (salesagent-og9k.11).
-if "--save" in sys.argv:
-    out = "line_item_7047822666_response.json"
-    with open(out, "w") as f:
-        json.dump(mock_response, f, indent=2)
-    print(f"\n✓ Full response saved to: {out}")
-else:
-    print("\n(pass --save to write line_item_7047822666_response.json)")
+    # Writing is OPT-IN. As an unconditional module-level side effect this wrote into
+    # whatever the CWD happened to be, on every pytest collection, and failed outright
+    # for a non-root runner (salesagent-og9k.11).
+    if "--save" in sys.argv:
+        out = "line_item_7047822666_response.json"
+        with open(out, "w") as f:
+            json.dump(mock_response, f, indent=2)
+        print(f"\n✓ Full response saved to: {out}")
+    else:
+        print("\n(pass --save to write line_item_7047822666_response.json)")
+
+
+if __name__ == "__main__":
+    main()
