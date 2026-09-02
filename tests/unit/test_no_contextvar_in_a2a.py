@@ -7,7 +7,6 @@ ambient ContextVar state.
 These tests verify the ContextVar fallback is removed from the A2A handler.
 They FAIL before the refactoring (TDD red step) and PASS after.
 
-beads: salesagent-zmb1
 """
 
 from unittest.mock import patch

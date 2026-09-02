@@ -1,6 +1,6 @@
 """Test creative cross-principal isolation (BR-RULE-034 P0).
 
-Bug salesagent-6isd: creative_id is the sole PK in the creatives table,
+Bug : creative_id is the sole PK in the creatives table,
 making cross-principal isolation impossible. Two principals with the same
 creative_id hit a UniqueViolation.
 

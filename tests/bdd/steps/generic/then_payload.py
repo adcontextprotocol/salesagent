@@ -667,7 +667,7 @@ def then_partition_filtering_result(ctx: dict, field: str, expected: str) -> Non
         _assert_filter_content(ctx, field, label="Filter")
 
 
-# Domain boundary handlers for then_boundary_handling_result (see salesagent-chit).
+# Domain boundary handlers for then_boundary_handling_result (see ).
 # Each handler takes (ctx, field, expected) and returns True if it handled the
 # field, else False. This lets a domain step module (e.g. uc004_delivery) own its
 # boundary-handling logic without the generic module importing domain code, while

@@ -90,7 +90,7 @@ class TestFailWorkflowStepForExceptionWebhookPayload:
         falls back to ``SERVICE_UNAVAILABLE`` so async subscribers only see
         codes from ``STANDARD_ERROR_CODES`` even when the source was untyped.
         Recovery is transient — the pinned enumMetadata classification of the
-        SERVICE_UNAVAILABLE wire code (salesagent-nr2q).
+        SERVICE_UNAVAILABLE wire code .
         """
         cm, mock_update = _new_ctx_manager_with_mocked_update()
 

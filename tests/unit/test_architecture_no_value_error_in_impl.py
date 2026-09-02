@@ -23,7 +23,7 @@ import pytest
 #
 #   1. **Migration targets** — boundary-facing raises that should become typed
 #      ``AdCPError`` subclasses. Each site carries a
-#      ``# FIXME(salesagent-pattern-a): migrate to typed AdCPError raise`` comment so reviewers
+#      ``migrate to typed AdCPError raise`` comment so reviewers
 #      can grep to the cleanup work. PR 2 sub-batches drain these.
 #
 #   2. **Internal contracts** — ``ValueError`` raised inside helper functions

@@ -5,7 +5,7 @@ Unit tests for A2A auth-optional discovery endpoints.
 Tests that discovery endpoints (list_creative_formats, list_authorized_properties, get_products)
 properly handle both authenticated and unauthenticated requests according to AdCP spec.
 
-After the identity-at-transport-boundary refactor (salesagent-anjp), handlers receive
+After the identity-at-transport-boundary refactor , handlers receive
 a pre-resolved identity parameter rather than resolving auth internally.
 """
 

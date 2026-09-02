@@ -258,6 +258,9 @@ services:
     #     exactly the image default the pin was written to override.
     # Under rootless, container root ALREADY maps to the invoking user, which is
     # exactly the outcome the pin was hand-building. Unset gets it for free.
+    # cassini removed the identical workaround on its own side for the same
+    # reason (cassini/identity.py: "a workaround for a root daemon, and there is
+    # no longer a root daemon").
     # Symptom this caused live: /app/logs/* created root-owned, adcp-server
     # (uid 1001) dying at import on a module-level FileHandler, cascading into
     # ~2100 test failures. (ADCP_LOG_DIR on adcp-server above closes the log-file
@@ -304,6 +307,17 @@ services:
       # installed chromium instead of re-downloading it into /tmp every run.
       # Recorded, not deleted, because the reasoning returns verbatim the day a
       # `user:` pin does; do not re-add one without re-adding these three.
+      #
+      # #1941 reworded this same block to say HOME/UV_CACHE_DIR are "RETAINED",
+      # and that wording is NOT carried over -- deliberately, and it is not a
+      # decision reversed here. #1941 did not ADD those two keys; they predate
+      # it, and all it changed was the prose above them, explaining why it left
+      # them alone while removing the `user:` pin. Nothing in it reads either
+      # variable (checked: the only other UV_CACHE_DIR in the repo is the baked
+      # Dockerfile.test/Dockerfile default, and no script reads HOME=/tmp). With
+      # the pin gone, /cache/uv is writable by the image default, so the
+      # redirect cannot fix anything and only throws away the cache warmed at
+      # build time -- so the removal stands and this note records the divergence.
       # Fixed in-network DB address — never a host port, never collides. This is
       # the SUITE database used by unit(skip)/integration/bdd/admin.
       DATABASE_URL: postgresql://adcp_user:secure_password_change_me@postgres:5432/adcp_test?sslmode=disable

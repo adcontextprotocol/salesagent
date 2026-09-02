@@ -2981,7 +2981,7 @@ def then_response_includes_context(ctx: dict, ctx_json: str) -> None:
     # path — only impl carries context=req.context on the AdCPError. Tracked by
     # #1417 (D2: envelope status/context on the wire error path).
     pytest.xfail(
-        "SPEC-PRODUCTION GAP (salesagent-egnl / D2): context not echoed on the wire "
+        "SPEC-PRODUCTION GAP (D2): context not echoed on the wire "
         "error envelope — AdCPError carries no context field on a2a/mcp/rest, "
         "expected context echo on error responses"
     )

@@ -3,7 +3,6 @@
 Verifies that account resolution errors return spec-compliant error codes
 (ACCOUNT_NOT_FOUND, ACCOUNT_AMBIGUOUS) rather than generic codes (NOT_FOUND).
 
-beads: salesagent-2rq, salesagent-l9wn
 """
 
 import pytest

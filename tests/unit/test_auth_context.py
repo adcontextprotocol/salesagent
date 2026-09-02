@@ -7,7 +7,6 @@ Validates that:
 - Token extraction from Authorization and x-adcp-auth headers
 - Unauthenticated requests get AuthContext with auth_token=None
 
-beads: salesagent-b61l.12
 """
 
 import pytest

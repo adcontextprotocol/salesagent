@@ -12,7 +12,7 @@ from typing import Any
 from src.admin.services.business_activity_service import get_business_activities
 from src.admin.services.media_buy_readiness_service import MediaBuyReadinessService
 from src.core.database.database_session import get_db_session
-from src.core.database.models import Creative, Principal, Product, Tenant
+from src.core.database.models import Creative, PersistedMediaBuyStatus, Principal, Product, Tenant
 from src.core.database.repositories import MediaBuyRepository
 from src.core.schemas import CreativeStatusEnum
 
@@ -71,7 +71,9 @@ class DashboardService:
                 )
 
                 # Calculate total spend from live and completed media buys
-                total_spend_buys = repo.list_by_statuses(["active", "completed"])
+                total_spend_buys = repo.list_by_statuses(
+                    [PersistedMediaBuyStatus.ACTIVE, PersistedMediaBuyStatus.COMPLETED]
+                )
                 total_spend_amount = float(sum(buy.budget or 0 for buy in total_spend_buys))
 
                 # Revenue trend data (last 30 days)
@@ -189,7 +191,9 @@ class DashboardService:
         for i in range(days):
             date = today - timedelta(days=days - 1 - i)
 
-            daily_buys = repo.list_in_flight_on_date(date, statuses=["active", "completed"])
+            daily_buys = repo.list_in_flight_on_date(
+                date, statuses=[PersistedMediaBuyStatus.ACTIVE, PersistedMediaBuyStatus.COMPLETED]
+            )
 
             daily_revenue = 0
             for buy in daily_buys:

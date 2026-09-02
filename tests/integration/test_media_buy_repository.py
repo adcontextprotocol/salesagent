@@ -6,7 +6,6 @@ Tests the repository pattern with real PostgreSQL to verify:
 - UoW commit/rollback semantics
 - MediaBuy.packages relationship loading
 
-beads: salesagent-t735
 """
 
 from datetime import UTC
@@ -15,7 +14,7 @@ import pytest
 from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
-from src.core.database.models import MediaBuy, Principal, Tenant
+from src.core.database.models import MediaBuy, PersistedMediaBuyStatus, Principal, Tenant
 from tests.integration.conftest import cleanup_tenant, make_media_buy, make_package
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -193,7 +192,7 @@ class TestGetByPrincipal:
 
         with get_db_session() as session:
             repo = MediaBuyRepository(session, seed_data["tenant_a"])
-            results = repo.get_by_principal(seed_data["principal_a"], statuses=["active"])
+            results = repo.get_by_principal(seed_data["principal_a"], statuses=[PersistedMediaBuyStatus.ACTIVE])
             assert len(results) == 1
             assert results[0].media_buy_id == "mb_a2"
 

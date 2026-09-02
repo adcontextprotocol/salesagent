@@ -3,7 +3,6 @@
 Verifies that Account.brand, credit_limit, setup, and governance_agents
 return typed Pydantic models from the adcp library, not raw dicts.
 
-beads: salesagent-6wo
 """
 
 import pytest

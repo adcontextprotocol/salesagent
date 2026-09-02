@@ -3,7 +3,6 @@
 Given steps set up error conditions (missing auth, wrong principal, bad budget,
 invalid creatives, etc.). Then steps assert error fields (recovery, suggestion).
 
-beads: salesagent-05b
 """
 
 from __future__ import annotations
@@ -70,11 +69,11 @@ def given_buyer_authenticated_as(ctx: dict, principal_id: str) -> None:
     identity post-condition to the shared ``authenticate_env_as`` helper; adds only
     the use-case-specific ``has_auth`` flag.
 
-    NOTE: this module is currently dormant (see ``steps/generic/_auth.py``) — it is
-    not registered in ``tests/bdd/conftest.py`` ``pytest_plugins`` and UC-003 is not
-    wired into the BDD harness, so these steps do not execute (UC-003 update
-    scenarios auto-xfail). Kept on the shared helper so it is correct when UC-003 is
-    activated.
+    NOTE: this module IS registered in ``tests/bdd/conftest.py`` ``pytest_plugins``
+    (conftest.py:63), so this registration is global — it is the definition every
+    feature gets for this sentence, not a dormant one. (A previous version of this
+    note claimed the opposite; UC-003's own update scenarios auto-xfail, which is a
+    separate fact and was mistaken for the step being unreachable.)
     """
     authenticate_env_as(ctx, principal_id)
     ctx["has_auth"] = True
@@ -896,7 +895,7 @@ def given_seller_minimum_budget(ctx: dict, amount: int, currency: str) -> None:
     This step stores the expected values in ctx so downstream Then steps
     can assert on error details shape when the gap is closed.
 
-    FIXME(salesagent-9vgz.1): Wire seller minimum budget to production
+    FIXME: Wire seller minimum budget to production
     validation and error details.
     """
     import pytest
@@ -906,7 +905,7 @@ def given_seller_minimum_budget(ctx: dict, amount: int, currency: str) -> None:
     pytest.xfail(
         f"SPEC-PRODUCTION GAP: Seller minimum budget ({amount} {currency}) "
         "not carried in production. v3.1 BUDGET_TOO_LOW error details "
-        "(minimum_budget, currency) not populated. FIXME(salesagent-9vgz.1)"
+        "(minimum_budget, currency) not populated. FIXME"
     )
 
 

@@ -2,7 +2,7 @@
 
 PR #1264 fix #6 pinned the fire-and-forget webhook task scheduled inside
 ``ContextManager._send_push_notifications`` against asyncio's weak-ref GC.
-salesagent-x2h.2 extracted that pin to the shared ``src.core.async_utils``
+ extracted that pin to the shared ``src.core.async_utils``
 helper, so the strong-ref set is now ``async_utils._pinned_tasks`` (per the
 x2h.5 Dependencies note: pin_task landed first → target the shared module).
 

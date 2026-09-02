@@ -159,7 +159,7 @@ class TestSuccessEnvelopeErrorsField:
 
     def test_create_success_round_trips_errors(self):
         """``errors`` is set, model_dump preserves it."""
-        resp = CreateMediaBuySuccess(
+        resp = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_1",
             status="completed",
             packages=[],
@@ -172,12 +172,12 @@ class TestSuccessEnvelopeErrorsField:
     def test_create_success_errors_absent_when_none(self):
         """No advisory → no ``errors`` key under ``exclude_none=True``
         (keeps spec-default response shape clean)."""
-        resp = CreateMediaBuySuccess(media_buy_id="mb_1", status="completed", packages=[])
+        resp = CreateMediaBuySuccess.carrier(media_buy_id="mb_1", status="completed", packages=[])
         dumped = resp.model_dump(exclude_none=True)
         assert "errors" not in dumped
 
     def test_update_success_round_trips_errors(self):
-        resp = UpdateMediaBuySuccess(
+        resp = UpdateMediaBuySuccess.carrier(
             media_buy_id="mb_1",
             status="completed",
             affected_packages=[],
@@ -188,7 +188,7 @@ class TestSuccessEnvelopeErrorsField:
         assert dumped["errors"][0]["code"] == "UNSUPPORTED_FEATURE"
 
     def test_update_success_errors_absent_when_none(self):
-        resp = UpdateMediaBuySuccess(media_buy_id="mb_1", status="completed", affected_packages=[])
+        resp = UpdateMediaBuySuccess.carrier(media_buy_id="mb_1", status="completed", affected_packages=[])
         dumped = resp.model_dump(exclude_none=True)
         assert "errors" not in dumped
 

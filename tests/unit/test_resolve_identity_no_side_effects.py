@@ -4,7 +4,6 @@ Core invariant: resolve_identity() and its internal helpers (_detect_tenant,
 get_principal_from_token) must not call set_current_tenant(). The ContextVar
 is only set at transport boundaries, never deep inside resolver internals.
 
-beads: salesagent-4csg
 """
 
 import ast

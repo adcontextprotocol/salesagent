@@ -22,7 +22,6 @@ Usage::
 Available mocks via env.mock:
     "audit_logger" -- get_audit_logger (module-level import)
 
-beads: salesagent-7do
 """
 
 from __future__ import annotations

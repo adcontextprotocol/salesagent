@@ -202,7 +202,7 @@ def _capture_req_via_create_media_buy(brand):
 
     req_dict = create_test_media_buy_request_dict(brand={"domain": "placeholder.com"})
     stub = CreateMediaBuyResult(
-        response=CreateMediaBuySuccess(media_buy_id="mb_test", buyer_ref="buyer-1", packages=[]),
+        response=CreateMediaBuySuccess.carrier(media_buy_id="mb_test", buyer_ref="buyer-1", packages=[]),
         status="completed",
     )
     return capture_req_via_wrapper(

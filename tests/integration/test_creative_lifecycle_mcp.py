@@ -1060,7 +1060,7 @@ class TestCreativeLifecycleMCP:
             mock_adapter_instance = mock_adapter.return_value
             mock_adapter_instance.get_supported_pricing_models.return_value = {"cpm", "vcpm", "cpc", "flat_rate"}
             mock_adapter_instance.validate_media_buy_request.return_value = []
-            mock_adapter_instance.create_media_buy.return_value = CreateMediaBuySuccess(
+            mock_adapter_instance.create_media_buy.return_value = CreateMediaBuySuccess.carrier(
                 media_buy_id="test_buy_123",
                 packages=[
                     Package(

@@ -8,7 +8,6 @@ Scanning approach: Hybrid — introspection to build column type inventory from
 SQLAlchemy models, AST to find .in_() and filter_by() query sites and verify
 type compatibility.
 
-beads: salesagent-v0kb (structural-guard epic), salesagent-mq3n (PricingOption bug)
 """
 
 import ast

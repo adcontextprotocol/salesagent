@@ -16,7 +16,6 @@ Tests verify intended behavioral contracts, not just line coverage:
 - Graceful degradation paths return products despite failures
 - Edge cases around format_id shapes (str, dict, FormatId) all work correctly
 
-beads: salesagent-vagl
 """
 
 import contextlib

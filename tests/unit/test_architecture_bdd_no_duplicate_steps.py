@@ -8,7 +8,6 @@ Scanning approach: AST — collect all @given/@when/@then decorated functions in
 ``tests/bdd/steps/``, normalize their bodies, and flag groups of 3+ identical
 implementations. (2 is tolerable for partition/boundary pairs.)
 
-beads: beads-m6r
 """
 
 from __future__ import annotations

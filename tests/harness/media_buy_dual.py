@@ -14,13 +14,15 @@ Introduced by PR #1567.
 
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 from unittest.mock import MagicMock, patch
 
 from src.core.schemas import UpdateMediaBuyRequest
 from tests.harness._mixins import make_adapter_update_side_effect
 from tests.harness.media_buy_create import MediaBuyCreateEnv
-from tests.harness.media_buy_update import _WRAPPER_UNSUPPORTED_FIELDS
+
+if TYPE_CHECKING:
+    from tests.helpers.signing import SignatureRealization
 
 _UPDATE_MODULE = "src.core.tools.media_buy_update"
 
@@ -32,8 +34,24 @@ _UPDATE_PATCHES = {
 
 
 def _is_update_request(kwargs: dict[str, Any]) -> bool:
+    """Route to the update wrappers for a typed request OR a RAW flat update body.
+
+    ``req=UpdateMediaBuyRequest(...)`` is the typed dispatch every UC-003/UC-026
+    scenario uses. The RAW form (flat kwargs, no ``req``) exists for scenarios
+    whose payload the LOCAL ``UpdateMediaBuyRequest`` must reject: constructing
+    the model in the test process would raise inside the step, so the rejection
+    would never reach a wire and could not be graded as an envelope. Dispatching
+    the flat body sends it through the real route + production Pydantic instead,
+    mirroring the create side's ``dispatch_mode="create_raw"``.
+
+    ``media_buy_id`` is the discriminator: it identifies the buy being updated and
+    is absent from every create request (the seller assigns it), so a flat body
+    carrying it is unambiguously an update.
+    """
     req = kwargs.get("req")
-    return isinstance(req, UpdateMediaBuyRequest)
+    if isinstance(req, UpdateMediaBuyRequest):
+        return True
+    return req is None and "media_buy_id" in kwargs
 
 
 class MediaBuyDualEnv(MediaBuyCreateEnv):
@@ -100,7 +118,19 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
             return self._call_update_mcp(**kwargs)
         return super().call_mcp(**kwargs)
 
-    def _run_rest_request(self, endpoint: str, **kwargs: Any) -> Any:
+    def _run_rest_request(self, endpoint: str, *, signed: SignatureRealization = False, **kwargs: Any) -> Any:
+        # ``signed`` is DECLARED, never swallowed into ``**kwargs`` — the same
+        # discipline CapabilitiesEnv._run_rest_request states, and for the same
+        # reason. ``RestDispatcher`` passes ``signed=`` to EVERY
+        # ``_run_rest_request``; it is a dispatch-level fact (how the request is
+        # sent), not an AdCP request field. The create arm below was only ever
+        # safe because the BASE declares it, but the update arm never reaches the
+        # base — so an undeclared ``signed`` rode the kwargs into
+        # ``_build_update_rest_body`` and became a ``signed`` FIELD in the PUT
+        # body, which ``UpdateMediaBuyBody`` (extra="forbid", src/routes/api_v1.py)
+        # refuses as ``INVALID_REQUEST: Extra inputs are not permitted
+        # (field=signed)`` — masking whatever refusal the scenario was grading.
+        #
         # Set the update-vs-create routing flag and leave it set THROUGH the base
         # dispatch's subsequent parse_rest_response call: _base.py runs
         # _run_rest_request then parse_rest_response sequentially, so a finally-reset
@@ -110,8 +140,8 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
         # (unconditional assignment, so a create request clears a stale flag).
         self._active_update = _is_update_request(kwargs)
         if self._active_update:
-            return self._run_update_rest_request(**kwargs)
-        return super()._run_rest_request(endpoint, **kwargs)
+            return self._run_update_rest_request(signed=signed, **kwargs)
+        return super()._run_rest_request(endpoint, signed=signed, **kwargs)
 
     def build_rest_body(self, **kwargs: Any) -> dict[str, Any]:
         # The E2E dispatcher (RestE2EDispatcher) reads REST_ENDPOINT/REST_METHOD as
@@ -180,8 +210,6 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
         if req is None:
             return dict(kwargs)
         flat = req.model_dump(mode="json", exclude_none=True)
-        for key in _WRAPPER_UNSUPPORTED_FIELDS:
-            flat.pop(key, None)
         flat.update(kwargs)
         return flat
 
@@ -228,7 +256,7 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
         kwargs.pop("media_buy_id", None)
         return kwargs
 
-    def _run_update_rest_request(self, **kwargs: Any) -> Any:
+    def _run_update_rest_request(self, *, signed: SignatureRealization = False, **kwargs: Any) -> Any:
         # Shared preamble (identity resolution + commit + client + auth-dep
         # override): with no identity the REST auth dep rejects, so the no-auth
         # update scenario fires instead of test-mode auth letting it through.
@@ -248,7 +276,23 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
         if req is not None and hasattr(req, "media_buy_id") and req.media_buy_id:
             media_buy_id = req.media_buy_id
         endpoint = f"/api/v1/media-buys/{media_buy_id}"
-        return client.put(endpoint, json=body, headers=headers)
+        # Same signed/unsigned fork as the base POST dispatch, with the update's
+        # PUT verb: an env that cannot sign must REFUSE a signed dispatch (a
+        # silent unsigned send would let a signing scenario pass with no
+        # signature), and once it can sign, ``wire_request`` owns the request —
+        # it serializes once so the bytes signed are the bytes sent, and carries
+        # the single ``Authorization`` identity plus the tenant hint, which is
+        # why the hand-built ``x-adcp-auth`` above is deliberately not merged in
+        # (a second credential header would swap the acting principal, so signed
+        # and unsigned would differ by more than the signature).
+        if not self.can_sign:
+            if signed:
+                self.signing  # raises, naming enable_request_signing()  # noqa: B018
+            return client.put(endpoint, json=body, headers=headers)
+        raw, wire_headers = self.wire_request(
+            path=endpoint, body=body, signed=signed, credentialed=identity is not None, method="PUT"
+        )
+        return client.put(endpoint, content=raw, headers=wire_headers)
 
     def _parse_update_rest_response(self, data: dict[str, Any]) -> Any:
         from src.core.schemas._base import (
@@ -275,6 +319,9 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
         if status == "submitted":
             response = UpdateMediaBuySubmitted(status=status, **data)
         elif "media_buy_id" in data:
+            # Bare construction on purpose, not carrier(): this reconstructs a response
+            # FROM THE WIRE, so a missing spec-required `revision` must raise here rather
+            # than be filled in with a placeholder that hides the gap.
             response = UpdateMediaBuySuccess(**data)
         else:
             response = UpdateMediaBuyError(**data)

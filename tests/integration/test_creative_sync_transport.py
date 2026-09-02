@@ -723,7 +723,7 @@ class TestFormatValidationAdapter:
 class TestFormatValidationUnreachable:
     """Unreachable creative agent → request-level TRANSIENT failure.
 
-    Production-grounded (salesagent-mpo1): the registry types every network
+    Production-grounded : the registry types every network
     failure (connect/timeout -> AdCPServiceUnavailableError), and typed
     transient errors PROPAGATE out of sync_creatives with their recovery
     semantics on every transport — a down agent is not a creative problem.
@@ -1302,7 +1302,7 @@ class TestAIPoweredApprovalDeferredNotification:
 
 # ---------------------------------------------------------------------------
 # Async lifecycle obligation tests — spec-defined, NOT YET IMPLEMENTED
-# See: salesagent-gkxa (feature request for async sync_creatives lifecycle)
+# See: (feature request for async sync_creatives lifecycle)
 # ---------------------------------------------------------------------------
 
 
@@ -1319,7 +1319,7 @@ class TestAsyncLifecycleSubmitted:
     """
 
     @pytest.mark.xfail(
-        reason="Async lifecycle not implemented (salesagent-gkxa)",
+        reason="Async lifecycle not implemented ",
         strict=True,
     )
     def test_queued_sync_returns_submitted(self, integration_db):
@@ -1356,7 +1356,7 @@ class TestAsyncLifecycleWorking:
     """
 
     @pytest.mark.xfail(
-        reason="Async lifecycle not implemented (salesagent-gkxa)",
+        reason="Async lifecycle not implemented ",
         strict=True,
     )
     def test_in_progress_returns_working_with_progress(self, integration_db):
@@ -1406,7 +1406,7 @@ class TestAsyncLifecycleInputRequired:
     """
 
     @pytest.mark.xfail(
-        reason="Async lifecycle not implemented (salesagent-gkxa)",
+        reason="Async lifecycle not implemented ",
         strict=True,
     )
     def test_approval_needed_returns_input_required(self, integration_db):

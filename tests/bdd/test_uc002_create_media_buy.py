@@ -3,7 +3,7 @@
 Uses pytest-bdd's ``scenarios()`` to auto-generate test functions
 from the compiled feature file. Step definitions are imported via conftest.py.
 
-Account resolution scenarios are the initial focus (salesagent-2rq).
+Account resolution scenarios are the initial focus .
 Remaining scenarios are @pending until step definitions are implemented.
 """
 

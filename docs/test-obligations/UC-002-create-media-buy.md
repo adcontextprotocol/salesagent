@@ -566,7 +566,14 @@ Source: UC-002-alt-manual.md
 **Given** a pending media buy awaiting Seller approval
 **When** the Seller approves the media buy
 **Then** the system executes the ad server adapter
-**And** updates the media buy status to `pending_activation` or `active`
+**And** the buyer observes the media buy as `pending_start` or `active`
+<!-- Restated in WIRE vocabulary (AdCP 3.1.1 media-buy-status enum). The clause
+     previously enumerated `pending_activation` or `active` — persisted-column
+     values, one of which (`pending_activation`) is not a wire status at all, so
+     the buyer could never observe it. Measured pre-window, `scheduled`,
+     `pending_activation` and `active` ALL resolve to `pending_start` through
+     resolve_canonical_status, so the old clause was satisfied by whichever value
+     the column happened to hold and said nothing about what the buyer saw. -->
 **And** notifies the Buyer via webhook
 **Priority:** P1
 

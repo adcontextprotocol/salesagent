@@ -1,4 +1,4 @@
-"""Regression tests for salesagent-pqb5 (review finding HIGH-02).
+"""Regression tests for (review finding HIGH-02).
 
 UC-004 delivery Then steps must access the response via ``ctx.get("response")``
 guarded by an assertion, so that a missing response produces a diagnostic

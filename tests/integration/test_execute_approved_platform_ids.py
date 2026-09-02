@@ -1,6 +1,6 @@
 """Integration test: execute_approved_media_buy must persist _platform_line_item_ids.
 
-Bug: salesagent-biv (GitHub #1037)
+Bug: (GitHub #1037)
 Root cause: execute_approved_media_buy calls adapter, gets _platform_line_item_ids
 back on the response object, but never persists them to MediaPackage.package_config.
 The auto-approval path in _create_media_buy_impl DOES persist them (lines 3047-3079).
@@ -14,6 +14,7 @@ import pytest
 from src.core.database.database_session import get_db_session, get_engine
 from src.core.database.models import MediaPackage as DBMediaPackage
 from src.core.schemas import CreateMediaBuySuccess
+from tests.helpers.media_buy_approval import run_approval
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -220,9 +221,7 @@ def _run_execute_approved(media_buy_id, tenant_id, adapter_response):
             return_value=type("MockAdapter", (), {"orders_manager": None})(),
         ),
     ):
-        from src.core.tools.media_buy_create import execute_approved_media_buy
-
-        return execute_approved_media_buy(media_buy_id, tenant_id)
+        return run_approval(media_buy_id, tenant_id)
 
 
 class TestExecuteApprovedPlatformIds:
@@ -232,14 +231,14 @@ class TestExecuteApprovedPlatformIds:
         """After adapter execution via manual approval, platform_line_item_id
         must be written to MediaPackage.package_config for each package.
 
-        This is the regression test for salesagent-biv (GitHub #1037).
+        This is the regression test for (GitHub #1037).
         """
         media_buy_id = pending_media_buy_with_package["media_buy_id"]
         tenant_id = pending_media_buy_with_package["tenant_id"]
         package_id = pending_media_buy_with_package["package_id"]
 
         # Build adapter response with _platform_line_item_ids attached
-        adapter_response = CreateMediaBuySuccess(
+        adapter_response = CreateMediaBuySuccess.carrier(
             media_buy_id=media_buy_id,
             packages=[],
         )
@@ -261,11 +260,9 @@ class TestExecuteApprovedPlatformIds:
                 return_value=type("MockAdapter", (), {"orders_manager": None})(),
             ),
         ):
-            from src.core.tools.media_buy_create import execute_approved_media_buy
+            result = run_approval(media_buy_id, tenant_id)
 
-            success, error = execute_approved_media_buy(media_buy_id, tenant_id)
-
-        assert success is True, f"execute_approved_media_buy failed: {error}"
+        assert result.ok, f"execute_approved_media_buy failed: {result.error_msg}"
 
         # THE KEY ASSERTION: platform_line_item_id must be in package_config
         from sqlalchemy import select
@@ -296,7 +293,7 @@ class TestExecuteApprovedPlatformIdsEdgeCases:
         media_buy_id = data["media_buy_id"]
         tenant_id = data["tenant_id"]
 
-        adapter_response = CreateMediaBuySuccess(
+        adapter_response = CreateMediaBuySuccess.carrier(
             media_buy_id=media_buy_id,
             packages=[],
         )
@@ -306,8 +303,8 @@ class TestExecuteApprovedPlatformIdsEdgeCases:
             {"pkg_A": "LINE_ITEM_A", "pkg_B": "LINE_ITEM_B"},
         )
 
-        success, error = _run_execute_approved(media_buy_id, tenant_id, adapter_response)
-        assert success is True, f"execute_approved_media_buy failed: {error}"
+        result = _run_execute_approved(media_buy_id, tenant_id, adapter_response)
+        assert result.ok, f"execute_approved_media_buy failed: {result.error_msg}"
 
         from sqlalchemy import select
 
@@ -327,7 +324,7 @@ class TestExecuteApprovedPlatformIdsEdgeCases:
         media_buy_id = data["media_buy_id"]
         tenant_id = data["tenant_id"]
 
-        adapter_response = CreateMediaBuySuccess(
+        adapter_response = CreateMediaBuySuccess.carrier(
             media_buy_id=media_buy_id,
             packages=[],
         )
@@ -337,8 +334,8 @@ class TestExecuteApprovedPlatformIdsEdgeCases:
             {"nonexistent_pkg": "LINE_ITEM_999"},
         )
 
-        success, error = _run_execute_approved(media_buy_id, tenant_id, adapter_response)
-        assert success is True, f"Should succeed even if package not found: {error}"
+        result = _run_execute_approved(media_buy_id, tenant_id, adapter_response)
+        assert result.ok, f"Should succeed even if package not found: {result.error_msg}"
 
     def test_empty_platform_line_item_ids_dict(self, pending_media_buy_with_package):
         """Empty _platform_line_item_ids dict — no writes, no crash."""
@@ -346,14 +343,14 @@ class TestExecuteApprovedPlatformIdsEdgeCases:
         media_buy_id = data["media_buy_id"]
         tenant_id = data["tenant_id"]
 
-        adapter_response = CreateMediaBuySuccess(
+        adapter_response = CreateMediaBuySuccess.carrier(
             media_buy_id=media_buy_id,
             packages=[],
         )
         object.__setattr__(adapter_response, "_platform_line_item_ids", {})
 
-        success, error = _run_execute_approved(media_buy_id, tenant_id, adapter_response)
-        assert success is True, f"Should succeed with empty dict: {error}"
+        result = _run_execute_approved(media_buy_id, tenant_id, adapter_response)
+        assert result.ok, f"Should succeed with empty dict: {result.error_msg}"
 
         # Package config should be unchanged (no platform_line_item_id added)
         from sqlalchemy import select
@@ -371,14 +368,14 @@ class TestExecuteApprovedPlatformIdsEdgeCases:
         media_buy_id = data["media_buy_id"]
         tenant_id = data["tenant_id"]
 
-        adapter_response = CreateMediaBuySuccess(
+        adapter_response = CreateMediaBuySuccess.carrier(
             media_buy_id=media_buy_id,
             packages=[],
         )
         # Don't set _platform_line_item_ids at all
 
-        success, error = _run_execute_approved(media_buy_id, tenant_id, adapter_response)
-        assert success is True, f"Should succeed without attr: {error}"
+        result = _run_execute_approved(media_buy_id, tenant_id, adapter_response)
+        assert result.ok, f"Should succeed without attr: {result.error_msg}"
 
         from sqlalchemy import select
 
@@ -513,7 +510,7 @@ class TestExecuteApprovedEnrichesSellerConcept:
         # (2) ...fed through the REAL execute_approved_media_buy writeback. The adapter
         # response carries the GAM order id; the adapter itself is a stand-in whose
         # creatives_manager returns the real producer's output.
-        adapter_response = CreateMediaBuySuccess(media_buy_id=gam_order_id, packages=[])
+        adapter_response = CreateMediaBuySuccess.carrier(media_buy_id=gam_order_id, packages=[])
         mock_adapter = MagicMock()
         mock_adapter.creatives_manager.add_creative_assets.return_value = produced
         mock_adapter.orders_manager.approve_order.return_value = True
@@ -539,11 +536,9 @@ class TestExecuteApprovedEnrichesSellerConcept:
             ),
             patch("src.core.helpers.adapter_helpers.get_adapter", return_value=mock_adapter),
         ):
-            from src.core.tools.media_buy_create import execute_approved_media_buy
+            result = run_approval(media_buy_id, tenant_id)
 
-            success, error = execute_approved_media_buy(media_buy_id, tenant_id)
-
-        assert success is True, f"execute_approved_media_buy failed: {error}"
+        assert result.ok, f"execute_approved_media_buy failed: {result.error_msg}"
         mock_adapter.creatives_manager.add_creative_assets.assert_called_once_with(gam_order_id, ANY, ANY)
 
         # (3) The concept is PERSISTED to the creative's data blob (the Finding 1 fix —

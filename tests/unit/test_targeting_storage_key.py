@@ -1,6 +1,6 @@
 """Unit tests for targeting_overlay storage key consistency.
 
-Regression tests for salesagent-dzr: media_buy_update stored targeting under
+Regression tests for : media_buy_update stored targeting under
 "targeting" key but media_buy_create reads "targeting_overlay" key, causing
 silent data loss on round-trip.
 """

@@ -4,7 +4,6 @@ Core invariant: Comments and docs must accurately describe the current architect
 ContextVar references, old multi-process diagrams, deprecated SQLAlchemy patterns,
 and SQLite references are all stale after the unified FastAPI + ASGI middleware refactoring.
 
-beads: salesagent-i7k9
 """
 
 import pathlib

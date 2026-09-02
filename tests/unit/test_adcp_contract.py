@@ -10,6 +10,7 @@ These tests verify that:
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
+from typing import Literal
 
 import pytest
 from adcp.types import CreativePolicy
@@ -267,6 +268,243 @@ class TestSchemaMatchesLibrary:
             f"CreateMediaBuySuccess.{field_name} drifts from the adcp parent: "
             f"local={local_annotation!r} vs parent={parent_annotation!r} — "
             f"delete the stale local redeclaration and inherit the parent's typed field"
+        )
+
+
+# The four classes that adopt CompletedTaskStatusMixin, split by the obsolescence
+# condition their adoption carries. One spec fact — "status is completed on a
+# synchronous success arm" (dist/schemas/3.1.1/core/protocol-envelope.json) — but
+# two different reasons to hold the declaration, so two different pins:
+#
+#   sync arm     the adcp parent OMITS status, so the mixin SUPPLIES the field.
+#                That adoption dies the day adcp ships it. Graded biconditionally.
+#   media-buy arm the adcp parent already declares status Literal["completed"] and
+#                REQUIRED; the mixin only supplies the DEFAULT so the 25 construction
+#                sites need not thread an invariant literal. Permanent — no SDK bump
+#                obsoletes it, so no biconditional.
+_SYNC_ARM_ADOPTERS = ("SyncAccountsResponse", "SyncCreativesResponse")
+_MEDIA_BUY_ARM_ADOPTERS = ("CreateMediaBuySuccess", "UpdateMediaBuySuccess")
+
+
+def _status_mixin_adopter(local_name: str) -> tuple[type, type]:
+    """Return ``(local class, the adcp parent it extends)`` for one mixin adopter.
+
+    Imported inside the call rather than at module scope on purpose: these classes
+    and the mixin they compose are exactly what the tests below pin, so a missing
+    name must redden the test that asserts it rather than break collection of this
+    whole file.
+    """
+    from adcp.types.aliases import CreateMediaBuySuccessResponse as LibraryCreateMediaBuySuccess
+    from adcp.types.aliases import SyncAccountsSuccessResponse as LibrarySyncAccountsSuccess
+    from adcp.types.aliases import UpdateMediaBuySuccessResponse as LibraryUpdateMediaBuySuccess
+    from adcp.types.generated_poc.creative.sync_creatives_response import (
+        SyncCreativesResponse1 as LibrarySyncCreativesSuccess,
+    )
+
+    from src.core import schemas as local_schemas
+
+    parents = {
+        "SyncAccountsResponse": LibrarySyncAccountsSuccess,
+        "SyncCreativesResponse": LibrarySyncCreativesSuccess,
+        "CreateMediaBuySuccess": LibraryCreateMediaBuySuccess,
+        "UpdateMediaBuySuccess": LibraryUpdateMediaBuySuccess,
+    }
+    return getattr(local_schemas, local_name), parents[local_name]
+
+
+class TestCompletedTaskStatusMixinPin:
+    """The `status: Literal["completed"]` workaround must delete itself, not fossilize.
+
+    Four classes declare the same envelope invariant. Collapsing them onto one
+    `CompletedTaskStatusMixin` is only an improvement if something forces the
+    declaration OUT when it stops being needed — otherwise a single shared copy
+    just outlives four separate ones. These pins are that force.
+    """
+
+    @pytest.mark.parametrize("local_name", _SYNC_ARM_ADOPTERS)
+    def test_sync_arm_mixin_presence_tracks_the_parents_missing_status(self, local_name):
+        """Biconditional: parent-lacks-status <-> mixin-present.
+
+        `("status" not in Parent.model_fields) == (CompletedTaskStatusMixin in
+        Local.__mro__)`, spelled as two directed branches so each failure names the
+        edit that fixes it.
+
+        Asserting only the parent's state (the shape this pin was first designed in)
+        would make EDITING THE ASSERTION the shortest path to green on an adcp bump —
+        i.e. the fossilization this lane exists to prevent. Tying it to the local
+        `__mro__` leaves removing the mixin as the only route.
+
+        The reverse direction is graded for the first time here: mixin dropped while
+        the SDK still omits the field means a required envelope field silently absent
+        from the wire, which is GH #1900 verbatim.
+        """
+        from src.core.schemas._base import CompletedTaskStatusMixin
+
+        local, parent = _status_mixin_adopter(local_name)
+        parent_lacks_status = "status" not in parent.model_fields
+        mixin_present = CompletedTaskStatusMixin in local.__mro__
+
+        if parent_lacks_status:
+            assert mixin_present, (
+                f"{local_name} no longer composes CompletedTaskStatusMixin, but its parent "
+                f"{parent.__name__} still omits `status` — the required envelope field would be "
+                f"silently absent from the wire (GH #1900 verbatim). Restore the mixin."
+            )
+        else:
+            assert not mixin_present, f"adcp now ships status on {parent.__name__} — delete the mixin from this class."
+
+    @pytest.mark.parametrize("local_name", _MEDIA_BUY_ARM_ADOPTERS)
+    def test_media_buy_arm_keeps_the_mixin_and_the_parent_keeps_the_literal(self, local_name):
+        """The mixin stays permanently here; the parent's own declaration must not drift.
+
+        No biconditional: the parent already declares `status`, so the mixin supplies
+        only the default that every construction site relies on. Deleting it is never
+        the right answer, whatever adcp does.
+
+        The parent half is the `:246`-precedent drift catch. A parent that widens
+        `status` to the pinned 8-member TaskStatus would mean our `Literal` silently
+        NARROWS it; a parent that drops `required` or the field entirely changes what
+        the default is compensating for. The Literal narrowing is the SDK's own choice,
+        not the spec's, so it is a live risk rather than a tautology.
+        """
+        from src.core.schemas._base import CompletedTaskStatusMixin
+
+        local, parent = _status_mixin_adopter(local_name)
+        assert CompletedTaskStatusMixin in local.__mro__, (
+            f"{local_name} must compose CompletedTaskStatusMixin permanently — its 25-odd "
+            f"construction sites pass no status= and rely on the default the mixin supplies."
+        )
+
+        parent_field = parent.model_fields.get("status")
+        assert parent_field is not None, (
+            f"adcp dropped `status` from {parent.__name__} — the local Literal is no longer a "
+            f"default over a parent field but an invented one. Re-ground it against the pinned "
+            f"protocol-envelope before keeping it."
+        )
+        assert parent_field.annotation == Literal["completed"], (
+            f"{parent.__name__}.status drifted to {parent_field.annotation!r}; "
+            f"CompletedTaskStatusMixin's Literal['completed'] now silently NARROWS the parent. "
+            f"Re-ground the mixin against the pinned protocol-envelope."
+        )
+        assert parent_field.is_required(), (
+            f"{parent.__name__}.status is no longer required — the mixin's default was there to "
+            f"satisfy a required parent field. Re-check whether the mixin is still warranted here."
+        )
+
+    @pytest.mark.parametrize("local_name", _SYNC_ARM_ADOPTERS + _MEDIA_BUY_ARM_ADOPTERS)
+    def test_composed_status_field_is_optional_and_defaults_to_completed(self, local_name):
+        """Grade the COMPOSED class, which is what production actually depends on.
+
+        The pins above grade the parent and the `__mro__`; neither observes the field
+        the composition ACTUALLY yields. Every construction site of these four classes
+        omits `status=` and relies on this exact composed shape.
+
+        The expected annotation is the parent's where the parent declares one; for the
+        sync arm the parent declares nothing, so the mixin's own declaration is the only
+        authority there is.
+        """
+        from src.core.schemas._base import CompletedTaskStatusMixin
+
+        local, parent = _status_mixin_adopter(local_name)
+        parent_field = parent.model_fields.get("status")
+        expected_annotation = (
+            parent_field.annotation if parent_field is not None else CompletedTaskStatusMixin.__annotations__["status"]
+        )
+
+        assert "status" in local.model_fields, (
+            f"{local_name} composes no `status` field at all — CompletedTaskStatusMixin is not "
+            f"in its bases, or something removed the declaration. The envelope field the pinned "
+            f"protocol-envelope.json marks REQUIRED would be absent from the wire (GH #1900)."
+        )
+        composed = local.model_fields["status"]
+        assert composed.annotation == expected_annotation, (
+            f"{local_name}.status composes to {composed.annotation!r}, not {expected_annotation!r} — "
+            f"something in the bases shadows CompletedTaskStatusMixin's declaration."
+        )
+        assert composed.is_required() is False, (
+            f"{local_name}.status composed as REQUIRED — every construction site omits status= and "
+            f"would now raise. The mixin exists to supply this default."
+        )
+        assert composed.get_default() == "completed", (
+            f"{local_name}.status defaults to {composed.get_default()!r}, not 'completed' — a "
+            f"synchronous success arm reports a status it did not complete."
+        )
+
+
+def _as_type_list(json_type: object) -> list:
+    """JSON Schema `type` as a list — it is either a string or a list of strings."""
+    if json_type is None:
+        return []
+    return list(json_type) if isinstance(json_type, list) else [json_type]
+
+
+class TestGetMediaBuysAlwaysIncludeNullFields:
+    """Every required+nullable field of the pinned item must survive `exclude_none`."""
+
+    def test_required_nullable_item_fields_are_declared_always_include(self):
+        """`required` n `nullable` on the pinned get-media-buys item == {confirmed_at}.
+
+        The library base dumps with `exclude_none=True`, which is right for OPTIONAL
+        fields (AdCP omits rather than nulls them) and wrong for a field the schema
+        lists in `required` while typing it nullable. Dropping such a field produces an
+        item that fails validation for every not-yet-confirmed buy.
+
+        This pin is DECLARATION-only by design — the behavioural net is the wire-reading
+        UC-019 step `then_media_buy_confirmed_at_is_null`, graded by
+        `@T-UC-019-confirmed-at-null-survives-exclude-none` on a2a+mcp. That step, not
+        `then_media_buy_includes_confirmed_at`, is the net for THIS pin: the presence-only
+        step is reached exclusively by scenarios seeding a NON-null confirmed_at, where the
+        key survives because it has a value — so it cannot fail when retention breaks.
+        What this pin adds is the reverse direction: a pin bump that makes a SECOND field
+        required+nullable reddens here, and the only sane way to green it is to grow the
+        declared set.
+        """
+        from src.core.schemas._base import GetMediaBuysMediaBuy
+        from tests.helpers import pinned_schema
+
+        item = pinned_schema.load_canonicalized("media-buy/get-media-buys-response.json")["properties"]["media_buys"][
+            "items"
+        ]
+        required = set(item["required"])
+        properties = item["properties"]
+
+        # Nullability is read off the `type` list, the only spelling the pinned item
+        # uses. A required property that acquired a combinator could hide a null branch
+        # from that rule, so refuse rather than under-report.
+        combinator_required = sorted(name for name in required if {"anyOf", "oneOf"} & set(properties.get(name, {})))
+        assert not combinator_required, (
+            f"Pinned get-media-buys item now spells required properties {combinator_required} with "
+            f"anyOf/oneOf; this test's nullability rule reads only `type`. Extend the rule before "
+            f"trusting the result."
+        )
+
+        nullable = {name for name, spec in properties.items() if "null" in _as_type_list(spec.get("type"))}
+        required_nullable = required & nullable
+        assert required_nullable, (
+            "The pinned get-media-buys item declares no required+nullable property, so this test "
+            "would pass without exercising anything. The pin moved — check what replaced it."
+        )
+
+        # Assert the WIRE, not the declaration. The set is derived from this same pin
+        # (_PINNED_SCHEMA_REF), so comparing it against the pin would be a tautology;
+        # what is worth grading is that a null value for such a field actually survives
+        # `exclude_none` and reaches the buyer as an explicit null.
+        blank = dict.fromkeys(required_nullable)
+        buy = GetMediaBuysMediaBuy(
+            media_buy_id="mb-1",
+            status="active",
+            currency="USD",
+            total_budget=1000.0,
+            packages=[],
+            revision=1,
+            **blank,
+        )
+        dumped = buy.model_dump(mode="json")
+        missing = sorted(name for name in required_nullable if name not in dumped)
+        assert not missing, (
+            f"{missing} are required+nullable in the pinned get-media-buys item but were dropped "
+            f"by exclude_none, so a buy whose value is null would fail item-level validation at "
+            f"the buyer. Emitted keys: {sorted(dumped)}"
         )
 
 
@@ -1410,8 +1648,8 @@ class TestAdCPContract:
             tags=["sports", "premium"],
             # Internal fields (added by sales agent during processing)
             principal_id="principal_456",
-            created_date=datetime.now(),
-            updated_date=datetime.now(),
+            created_date=datetime.now(tz=UTC),
+            updated_date=datetime.now(tz=UTC),
         )
 
         # Test with spec-compliant fields only (adcp 3.9)
@@ -1637,8 +1875,8 @@ class TestAdCPContract:
             # Internal fields
             principal_id="principal_1",
             status="approved",
-            created_date=datetime.now(),
-            updated_date=datetime.now(),
+            created_date=datetime.now(tz=UTC),
+            updated_date=datetime.now(tz=UTC),
         )
 
         creative2 = Creative(
@@ -1653,8 +1891,8 @@ class TestAdCPContract:
             # Internal fields
             principal_id="principal_1",
             status="pending_review",
-            created_date=datetime.now(),
-            updated_date=datetime.now(),
+            created_date=datetime.now(tz=UTC),
+            updated_date=datetime.now(tz=UTC),
         )
 
         # Response Pagination in adcp 3.6.0: has_more (required), cursor/total_count (optional)
@@ -1730,7 +1968,7 @@ class TestAdCPContract:
         # Note: packages in response require package_id and paused field (adcp 2.12.0+)
         from src.core.schemas import CreateMediaBuyError, CreateMediaBuySuccess
 
-        successful_response = CreateMediaBuySuccess(
+        successful_response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_12345",
             packages=[{"package_id": "pkg_1", "paused": False}],
             creative_deadline=datetime.now(UTC) + timedelta(days=7),
@@ -1774,7 +2012,7 @@ class TestAdCPContract:
 
         # Test that Union type works for type hints
 
-        success_via_union: CreateMediaBuyResponse = CreateMediaBuySuccess(
+        success_via_union: CreateMediaBuyResponse = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_union",
             packages=[],
         )
@@ -1939,7 +2177,7 @@ class TestAdCPContract:
         # Note: affected_packages now uses full Package type with paused field (adcp 2.12.0+)
         from src.core.schemas import UpdateMediaBuyError, UpdateMediaBuySuccess
 
-        response = UpdateMediaBuySuccess(
+        response = UpdateMediaBuySuccess.carrier(
             media_buy_id="buy_123",
             implementation_date=datetime.now(UTC) + timedelta(hours=1),
             affected_packages=[{"package_id": "pkg_1", "paused": False}],

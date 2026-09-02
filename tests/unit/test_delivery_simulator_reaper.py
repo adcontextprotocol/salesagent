@@ -1,7 +1,7 @@
 """Regression tests for dead-thread reaping in DeliverySimulator.
 
 DeliverySimulator carries a ThreadRegistry (``_active_simulations``) plus a
-parallel ``_stop_signals`` Event dict. salesagent-x2h.3 wired the registry's
+parallel ``_stop_signals`` Event dict. wired the registry's
 reap callback (``_on_simulation_reaped``) so a dead simulation thread, when
 reaped on any registry read, also drops its matching ``_stop_signals`` entry
 — dual-dict atomic cleanup. Before #1264's deferred fixes, abnormal thread

@@ -6,7 +6,6 @@ and violate the repository pattern.
 
 Integration tests are excluded — they need direct DB access for assertions.
 
-beads: salesagent-rva2 (structural guard — no raw MediaPackage select)
 """
 
 from pathlib import Path
@@ -25,9 +24,9 @@ MEDIA_PACKAGE_MODELS = {"MediaPackage", "DBMediaPackage", "MediaPackageModel"}
 
 # Pre-existing violations: (file_path, function_name)
 # These existed before the guard was created. Allowlist shrinks as they're fixed.
-# FIXME(salesagent-rva2): these should be migrated to repository calls
+# FIXME(#1119): these should be migrated to repository calls
 ALLOWLIST = {
-    # media_buy_create.py — raw select missed by UoW migration (salesagent-0w1w)
+    # media_buy_create.py — raw select missed by UoW migration
     ("src/core/tools/media_buy_create.py", "execute_approved_media_buy"),
 }
 

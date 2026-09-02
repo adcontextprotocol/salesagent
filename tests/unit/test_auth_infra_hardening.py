@@ -3,7 +3,6 @@
 Core invariant: Auth infrastructure must be defensively robust — immutable
 state, shared constants, portable test paths, and consistent middleware style.
 
-beads: salesagent-5p7g
 """
 
 import pathlib

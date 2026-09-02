@@ -15,7 +15,6 @@ carrying the ``account`` field.
 Allowlisted: the canonical account-resolution helper, which is only reached for
 account-resolution-only scenarios (MediaBuyAccountEnv).
 
-beads: salesagent-rkb9
 """
 
 from pathlib import Path
@@ -46,7 +45,7 @@ def test_no_partial_account_call_impl_in_bdd_steps():
     violations = [(f, ln) for f, ln in _scan_hits() if f not in _ALLOWLIST]
     assert violations == [], (
         f"BDD step(s) call env.call_impl(account_ref=...) at {violations}. On a full-create env this "
-        f"builds a partial CreateMediaBuyRequest and crashes with a ValidationError (salesagent-rkb9). "
+        f"builds a partial CreateMediaBuyRequest and crashes with a ValidationError . "
         f"Route account scenarios through the full create flow with a complete request carrying 'account'."
     )
 

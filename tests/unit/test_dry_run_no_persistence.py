@@ -52,7 +52,7 @@ class TestCreateMediaBuyDryRunResponseStructure:
             simulated_packages.append(simulated_pkg)
 
         # Build response (matching impl's structure)
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id=simulated_media_buy_id,
             packages=cast(list[Any], simulated_packages),
             context=None,
@@ -119,7 +119,12 @@ class TestUpdateMediaBuyDryRunNoPersistence:
             # State-machine precondition guard needs a non-terminal status
             _stub_mb = MagicMock()
             _stub_mb.status = "active"
+            _stub_mb.revision = 1
             mock_uow.media_buys.get_by_id.return_value = _stub_mb
+            # The tool reads the row through get_by_id_or_raise (the repository's typed
+            # not-found accessor). Stubbing only get_by_id left this returning a bare
+            # MagicMock whose .status is not a real status.
+            mock_uow.media_buys.get_by_id_or_raise.return_value = _stub_mb
             mock_uow.__enter__ = Mock(return_value=mock_uow)
             mock_uow.__exit__ = Mock(return_value=False)
             mock_uow_cls.return_value = mock_uow

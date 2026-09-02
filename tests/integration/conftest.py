@@ -1278,3 +1278,38 @@ def _reset_signing_warning_state():
     reset_warning_state()
     yield
     reset_warning_state()
+
+
+@pytest.fixture
+def bound_factory_session(integration_db):
+    """A session bound to every factory for the duration of a test, then restored.
+
+    Depends on ``integration_db`` for correctness, not convenience: that fixture
+    creates a per-test database and REBINDS the global engine, and pytest
+    instantiates same-scope fixtures in argument order. Without this dependency a
+    test written as ``(bound_factory_session, integration_db)`` would bind factories
+    to the pre-swap engine and write to the wrong database with nothing failing.
+    The hand-rolled context manager this replaces could not have that bug — it was
+    entered inside a fixture body that had already taken ``integration_db`` — so the
+    ordering has to be declared here to keep the guarantee.
+
+    The shared alternative to hand-rolling ``factory._meta.sqlalchemy_session = s``
+    and nulling it afterwards. Nulling is only correct when the fixture is
+    guaranteed outermost; ``bind_factories_to_session`` saves and restores the
+    previous binding instead, which is correct either way.
+
+    Owns the session as well as the binding: it creates it, binds it, and closes it,
+    because a caller that only borrowed the binding would still have to manage the
+    SASession itself and that is where the hand-rolled versions diverge.
+    """
+    from sqlalchemy.orm import Session as SASession
+
+    from src.core.database.database_session import get_engine
+    from tests.utils.database_helpers import bind_factories_to_session
+
+    session = SASession(bind=get_engine())
+    try:
+        with bind_factories_to_session(session):
+            yield session
+    finally:
+        session.close()

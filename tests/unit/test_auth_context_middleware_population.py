@@ -10,7 +10,6 @@ But:
 4. get_auth_context FastAPI Depends is now used by resolve_auth/require_auth deps
 
 Regression prevention: https://github.com/prebid/salesagent/pull/1066
-Beads: salesagent-6931
 """
 
 from src.core.auth_context import AuthContext

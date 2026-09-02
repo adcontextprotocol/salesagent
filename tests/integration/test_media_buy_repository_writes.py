@@ -5,7 +5,6 @@ Tests write operations against real PostgreSQL to verify:
 - Tenant isolation: writes scoped to repository's tenant
 - Edge cases: duplicate creates, updates to nonexistent records, tenant mismatches
 
-beads: salesagent-dyb6
 """
 
 from datetime import UTC, datetime

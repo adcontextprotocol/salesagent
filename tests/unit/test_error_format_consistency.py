@@ -44,7 +44,7 @@ class TestMCPErrorShapes:
 
         req = CreateMediaBuyRequest(
             brand={"domain": "test.com"},
-            packages=[],
+            packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
             start_time="2026-01-01T00:00:00Z",
             end_time="2026-02-01T00:00:00Z",
             idempotency_key="unit-test-key-errfmt-001",
@@ -92,7 +92,7 @@ class TestMCPErrorShapes:
         # Build a minimal valid request
         req = CreateMediaBuyRequest(
             brand={"domain": "testbrand.com"},
-            packages=[],
+            packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
             start_time="2026-01-01T00:00:00Z",
             end_time="2026-02-01T00:00:00Z",
             idempotency_key="unit-test-key-errfmt-002",
@@ -115,7 +115,7 @@ class TestMCPErrorShapes:
 
         req = CreateMediaBuyRequest(
             brand={"domain": "testbrand.com"},
-            packages=[],
+            packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
             start_time="2026-01-01T00:00:00Z",
             end_time="2026-02-01T00:00:00Z",
             idempotency_key="unit-test-key-errfmt-003",
@@ -359,7 +359,7 @@ class TestCrossTransportErrorConsistency:
 
         req = CreateMediaBuyRequest(
             brand={"domain": "testbrand.com"},
-            packages=[],
+            packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
             start_time="2026-01-01T00:00:00Z",
             end_time="2026-02-01T00:00:00Z",
             idempotency_key="unit-test-key-errfmt-004",
@@ -410,7 +410,7 @@ class TestCrossTransportErrorConsistency:
         try:
             CreateMediaBuyRequest(
                 brand={"invalid_key": "no_domain"},  # Missing required 'domain' field triggers ValidationError
-                packages=[],
+                packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
                 start_time="2026-01-01T00:00:00Z",
                 end_time="2026-02-01T00:00:00Z",
             )
@@ -461,7 +461,7 @@ class TestCrossTransportErrorConsistency:
 
         req = CreateMediaBuyRequest(
             brand={"domain": "testbrand.com"},
-            packages=[],
+            packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
             start_time="2026-01-01T00:00:00Z",
             end_time="2026-02-01T00:00:00Z",
             idempotency_key="unit-test-key-errfmt-005",
@@ -556,7 +556,7 @@ class TestMCPRecoveryInErrorResponses:
             # INTERNAL_ERROR and NOT_FOUND are INTERNAL_CODES; the boundary
             # translator maps them to STANDARD_ERROR_CODES at wire emission.
             # Recovery matches the pinned enumMetadata of the WIRE code
-            # (salesagent-nr2q): SERVICE_UNAVAILABLE=transient,
+            # : SERVICE_UNAVAILABLE=transient,
             # INVALID_REQUEST=correctable.
             ("AdCPError", "internal error", "SERVICE_UNAVAILABLE", "transient"),
             ("AdCPValidationError", "bad field", "VALIDATION_ERROR", "correctable"),
@@ -625,7 +625,7 @@ class TestA2ARecoveryInErrorResponses:
         "exc_class,msg,expected_recovery",
         [
             # Recovery matches the pinned enumMetadata of the WIRE code
-            # (salesagent-nr2q): AdCPError→SERVICE_UNAVAILABLE=transient,
+            # : AdCPError→SERVICE_UNAVAILABLE=transient,
             # AdCPNotFoundError→INVALID_REQUEST=correctable.
             ("AdCPError", "internal", "transient"),
             ("AdCPValidationError", "bad", "correctable"),
@@ -756,8 +756,8 @@ class TestErrorCodeVocabularyConsistency:
         "BUDGET_EXHAUSTED",  # SDK standard: budget limit reached
         "RATE_LIMITED",  # SDK standard: rate limiting
         "SERVICE_UNAVAILABLE",  # SDK standard: adapter/service failures
-        "CONFIGURATION_ERROR",  # Spec supplement: passthrough wire code, pinned terminal (salesagent-nr2q)
-        "VERSION_UNSUPPORTED",  # Spec supplement: AdCPVersionUnsupportedError, correctable (salesagent-rldj, #1592 C4)
+        "CONFIGURATION_ERROR",  # Spec supplement: passthrough wire code, pinned terminal
+        "VERSION_UNSUPPORTED",  # Spec supplement: AdCPVersionUnsupportedError, correctable (#1592 C4)
         # SDK standard codes added by the error-emission-architecture substrate.
         "MEDIA_BUY_NOT_FOUND",  # SDK standard: AdCPMediaBuyNotFoundError
         "PACKAGE_NOT_FOUND",  # SDK standard: AdCPPackageNotFoundError
@@ -817,7 +817,7 @@ class TestErrorCodeVocabularyConsistency:
 
         for exc_class in exception_classes:
             # _default_error_code is the class-level identity slot per
-            # salesagent-fnk9 option A. error_code is an instance attribute.
+            # option A. error_code is an instance attribute.
             code = exc_class._default_error_code
             assert code in self.CANONICAL_ERROR_CODES, (
                 f"{exc_class.__name__}._default_error_code = {code!r} is not in the canonical vocabulary. "
@@ -833,7 +833,7 @@ class TestErrorCodeVocabularyConsistency:
         from src.core.exceptions import AdCPRateLimitError
 
         # Class-level identity lives on _default_error_code (option A,
-        # salesagent-fnk9). The public error_code is an instance attribute set
+        # ). The public error_code is an instance attribute set
         # in __init__ from this default unless overridden via synthesize().
         assert AdCPRateLimitError._default_error_code == "RATE_LIMITED", (
             f"AdCPRateLimitError._default_error_code = {AdCPRateLimitError._default_error_code!r}, "
@@ -848,7 +848,7 @@ class TestErrorCodeVocabularyConsistency:
         from src.core.exceptions import AdCPError
 
         # Discover all concrete subclasses (recursively). Reads
-        # _default_error_code per option-A refactor (salesagent-fnk9).
+        # _default_error_code per option-A refactor .
         subclass_codes = set()
 
         def _collect(cls: type) -> None:

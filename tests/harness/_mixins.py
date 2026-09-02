@@ -509,7 +509,7 @@ def make_adapter_update_side_effect() -> Any:
     def _update_response(*args: Any, **kwargs: Any) -> UpdateMediaBuySuccess:
         media_buy_id = kwargs.get("media_buy_id") or (args[0] if args else "")
         today = kwargs.get("today") or datetime.now(UTC)
-        return UpdateMediaBuySuccess(
+        return UpdateMediaBuySuccess.carrier(
             media_buy_id=media_buy_id,
             affected_packages=[],
             implementation_date=today,

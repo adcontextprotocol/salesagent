@@ -1,6 +1,6 @@
 """Guard: format-spec fetches route through format_resolver.fetch_format_spec.
 
-Disease pattern (salesagent-mpo1): the registry format fetch was copy-pasted
+Disease pattern : the registry format fetch was copy-pasted
 three times with DIVERGENT error handling — one copy propagated typed
 AdCPErrors, one rewrapped them into AdCPAdapterError (a creative-agent 429
 became a terminal-looking creative failure), one had no handling at all. The
@@ -70,7 +70,7 @@ def test_no_direct_registry_get_format_outside_resolver():
         fix_hint=(
             "Fetch format specs via format_resolver.fetch_format_spec (or get_format) — "
             "direct <registry>.get_format calls re-create the divergent error handling "
-            "salesagent-mpo1 removed (typed transient errors must propagate uniformly)."
+            " removed (typed transient errors must propagate uniformly)."
         ),
     )
 

@@ -3,7 +3,6 @@
 Bridges AccountReference from request payloads to validated account_id strings.
 Used by _create_media_buy_impl and _sync_creatives_impl.
 
-beads: salesagent-8n4
 """
 
 from __future__ import annotations

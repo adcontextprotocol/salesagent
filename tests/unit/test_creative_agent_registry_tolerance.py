@@ -1,4 +1,4 @@
-"""Regression test for per-format resilient ingestion (salesagent-az8d, gates o94v).
+"""Regression test for per-format resilient ingestion.
 
 The owner-flagged invariant: a single non-conforming format in a creative
 agent's list_creative_formats response must NOT invalidate the whole batch.
@@ -8,7 +8,7 @@ any other ``ValidationError`` hits line ~138 ``raise`` and nukes the batch.
 No existing test demonstrates this gap — this file fills it.
 
 Pattern: the test is the failing-test gate for the production fix
-(`salesagent-az8d`). It is wrapped in ``xfail(strict=True)`` so:
+(``). It is wrapped in ``xfail(strict=True)`` so:
 - ``--runxfail`` shows the test fail today (proving the gap)
 - normal run xfails clean (no suite redness)
 - when ``az8d`` lands and the helper salvages the conforming formats, the
@@ -30,7 +30,7 @@ def _good(format_id: str, name: str) -> dict:
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "salesagent-az8d: per-format resilience for non-asset-type ValidationError "
+        ": per-format resilience for non-asset-type ValidationError "
         "is not implemented — _validate_formats_tolerant raises (L138) and nukes the "
         "whole batch when any format fails for a non-additive-asset_type reason. "
         "Lands green when az8d implements drop+log per-format for ANY ValidationError."

@@ -1,7 +1,7 @@
 """Regression tests for dead-thread reaping in GAMReportingManager.
 
 GAMReportingManager carries a ThreadRegistry (``_active_reports``) plus a
-parallel ``_stop_signals`` Event dict. salesagent-x2h.3 wired the registry's
+parallel ``_stop_signals`` Event dict. wired the registry's
 reap callback (``_on_report_reaped``) so a dead reporting thread, when reaped
 on any registry read, also drops its matching ``_stop_signals`` entry —
 dual-dict atomic cleanup. Lower volume than the simulator (one entry per

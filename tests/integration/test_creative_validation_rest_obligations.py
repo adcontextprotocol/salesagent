@@ -4,7 +4,7 @@ Behavioral tests using CreativeSyncEnv, CreativeListEnv, and CreativeFormatsEnv
 with real PostgreSQL + factory_boy. Replaces allowlisted unit tests that only
 exercised schema construction or route introspection.
 
-Covers: salesagent-e2u, salesagent-axm, salesagent-dd6, salesagent-46w, salesagent-bpq
+Covers:
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 # ---------------------------------------------------------------------------
-# salesagent-e2u: Missing format_id rejected through sync impl
+# : Missing format_id rejected through sync impl
 # Obligation: UC-006-EXT-E-01
 # ---------------------------------------------------------------------------
 
@@ -71,7 +71,7 @@ class TestMissingFormatIdRejectedThroughImpl:
 
 
 # ---------------------------------------------------------------------------
-# salesagent-axm: creative_ids scope — empty list filters all
+# : creative_ids scope — empty list filters all
 # Obligation: UC-006-CREATIVE-IDS-SCOPE-01
 # ---------------------------------------------------------------------------
 
@@ -115,7 +115,7 @@ class TestCreativeIdsScopeFiltering:
 
 
 # ---------------------------------------------------------------------------
-# salesagent-dd6: creative_formats REST route works
+# : creative_formats REST route works
 # Obligation: UC-006-MAIN-REST-01
 # ---------------------------------------------------------------------------
 
@@ -143,7 +143,7 @@ class TestCreativeFormatsRESTRoute:
 
 
 # ---------------------------------------------------------------------------
-# salesagent-46w: list_creatives REST route works
+# : list_creatives REST route works
 # Obligation: UC-006-MAIN-REST-01
 # ---------------------------------------------------------------------------
 
@@ -171,7 +171,7 @@ class TestListCreativesRESTRoute:
 
 
 # ---------------------------------------------------------------------------
-# salesagent-bpq: sync_creatives REST route works
+# : sync_creatives REST route works
 # Obligation: UC-006-MAIN-REST-01
 # ---------------------------------------------------------------------------
 

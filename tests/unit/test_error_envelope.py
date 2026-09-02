@@ -319,7 +319,7 @@ class TestTypedSubclasses:
             cls = getattr(exc_mod, class_name, None)
             assert cls is not None, f"{class_name} missing from src.core.exceptions"
             # _default_error_code is the class-level identity slot
-            # (option-A refactor, salesagent-fnk9). error_code is an instance
+            # (option-A refactor, ). error_code is an instance
             # attribute set in __init__ from this default.
             msg = f"{class_name}._default_error_code={cls._default_error_code!r}, expected {expected_code!r}"
             assert cls._default_error_code == expected_code, msg

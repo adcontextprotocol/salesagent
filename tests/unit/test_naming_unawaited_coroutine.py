@@ -1,6 +1,5 @@
 """Tests for naming.py async context handling.
 
-Bug fix: salesagent-5shl
 generate_auto_name() previously used asyncio.run() which fails inside a running
 event loop. Now uses run_async_in_sync_context() which handles both sync and async
 calling contexts correctly.

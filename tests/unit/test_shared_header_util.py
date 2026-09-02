@@ -1,6 +1,6 @@
 """Test that header case-insensitive lookup is in a single shared utility.
 
-Task salesagent-jsk0: _get_header_case_insensitive is duplicated in 3 files.
+Task : _get_header_case_insensitive is duplicated in 3 files.
 Extract to src/core/http_utils.py and import everywhere.
 """
 

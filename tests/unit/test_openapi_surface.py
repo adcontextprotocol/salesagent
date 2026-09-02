@@ -6,7 +6,6 @@ Validates that:
 - All API v1 endpoints have descriptions
 - Error responses are documented
 
-beads: salesagent-b61l.16
 """
 
 from starlette.testclient import TestClient

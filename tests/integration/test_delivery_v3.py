@@ -520,7 +520,7 @@ class TestDeliveryPricingOptionIntegration:
 
         Covers: UC-004-PRICINGOPTION-TYPE-CONSISTENCY-01
         Spec: UNSPECIFIED. CRITICAL: validates the int() cast at the boundary
-        (salesagent-mq3n). Creates a PricingOption with auto-increment int PK,
+        . Creates a PricingOption with auto-increment int PK,
         stores the string ID in raw_request, and verifies delivery resolves it.
         """
         with get_db_session() as session:

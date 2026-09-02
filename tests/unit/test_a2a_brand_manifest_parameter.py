@@ -92,7 +92,7 @@ async def test_handle_get_products_skill_extracts_all_parameters():
 async def test_handle_get_products_skill_forwards_property_list():
     """Test that _handle_get_products_skill forwards property_list to core tool.
 
-    Regression test for salesagent-bosc: A2A handler was silently dropping
+    Regression test for : A2A handler was silently dropping
     property_list while MCP and get_products_raw both forwarded it correctly.
     """
     handler = AdCPRequestHandler()

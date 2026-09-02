@@ -6,7 +6,7 @@ The canonical strategy order (in resolved_identity.py:_detect_tenant) is:
   3. Apx-Incoming-Host → virtual host lookup
   4. localhost fallback → "default" tenant
 
-Bug salesagent-cvju: A2A's _create_tool_context_from_a2a() tries subdomain FIRST
+Bug : A2A's _create_tool_context_from_a2a() tries subdomain FIRST
 then virtual host, the opposite of _detect_tenant(). For a Host header like
 "acme.example.com" where "acme" is also a virtual host, the two transports
 resolve to different tenants.
@@ -96,5 +96,5 @@ class TestA2ATenantDetectionMatchesCanonical:
             len(call_kwargs.args) == 0 and call_kwargs[1].get("protocol") == "a2a"
         ), (
             "A2A _resolve_a2a_identity must call resolve_identity(protocol='a2a'). "
-            "If it uses inline tenant detection, the strategy order diverges (bug salesagent-cvju)."
+            "If it uses inline tenant detection, the strategy order diverges (bug )."
         )

@@ -1,4 +1,4 @@
-"""Tests for A2A CallContextBuilder integration (salesagent-6n5v).
+"""Tests for A2A CallContextBuilder integration .
 
 Validates that:
 - AdCPCallContextBuilder exists and builds context from request.state.auth_context
@@ -7,7 +7,6 @@ Validates that:
 - Handler's _resolve_a2a_identity reads headers from ServerCallContext when context is provided
 - ContextVar fallback still works when context is None (test path)
 
-beads: salesagent-6n5v
 """
 
 from a2a.server.context import ServerCallContext

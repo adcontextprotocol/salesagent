@@ -6,7 +6,6 @@ gracefully on expected service failures but propagate programming errors
 
     Covers: BR-RULE-079-01
 
-beads: salesagent-o3x6
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch

@@ -42,7 +42,11 @@ from adcp.types.generated_poc.creative.list_creatives_response import (
 from adcp.types.generated_poc.creative.sync_creatives_response import (
     SyncCreativesResponse1 as LibrarySyncCreativesSuccess,
 )
+from adcp.types.generated_poc.media_buy.get_media_buys_response import (
+    CreativeApproval as LibraryGetMediaBuysCreativeApproval,
+)
 from pydantic import (
+    AwareDatetime,
     ConfigDict,
     Field,
     field_validator,
@@ -52,7 +56,7 @@ from pydantic import (
 from src.core.config import get_pydantic_extra_mode
 from src.core.enum_helpers import enum_value
 from src.core.schemas._base import (
-    ApprovalStatus,
+    CompletedTaskStatusMixin,
     FormatId,
     NestedModelSerializerMixin,
     SalesAgentBaseModel,
@@ -151,8 +155,9 @@ class Creative(LibraryCreative):
         default=CreativeStatus.pending_review,
         description="Workflow approval status",
     )
-    created_date: datetime = Field(default_factory=lambda: datetime.now(tz=UTC), description="Creation timestamp")
-    updated_date: datetime = Field(default_factory=lambda: datetime.now(tz=UTC), description="Update timestamp")
+    # AwareDatetime, matching the pin: a naive value is schema-invalid here.
+    created_date: AwareDatetime = Field(default_factory=lambda: datetime.now(tz=UTC), description="Creation timestamp")
+    updated_date: AwareDatetime = Field(default_factory=lambda: datetime.now(tz=UTC), description="Update timestamp")
     # Override assets to untyped dict (our DB stores arbitrary asset dicts, not typed models)
     assets: dict[str, Any] | None = Field(default=None, description="Creative assets")
 
@@ -333,9 +338,6 @@ class SyncCreativesRequest(LibrarySyncCreativesRequest):
     Local overrides:
     - creatives: list[Creative] instead of list[CreativeAsset] (our Creative extends
       LibraryCreative, which has a richer schema than CreativeAsset)
-    - push_notification_config: kept as dict[str, Any] | None because the library's
-      PushNotificationConfig requires 'authentication' and 'url' fields that aren't
-      enforced in our current implementation
     """
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
@@ -349,10 +351,6 @@ class SyncCreativesRequest(LibrarySyncCreativesRequest):
     creatives: list[Creative] = Field(
         ..., min_length=1, max_length=100, description="Array of creative assets to sync (create or update)"
     )  # type: ignore[assignment]
-    push_notification_config: dict[str, Any] | None = Field(  # type: ignore[assignment]
-        None,
-        description="Application-level webhook config (NOTE: Protocol-level push notifications via A2A/MCP transport take precedence)",
-    )
 
 
 class SyncSummary(SalesAgentBaseModel):
@@ -474,7 +472,7 @@ class AssignmentResult(SalesAgentBaseModel):
     )
 
 
-class SyncCreativesResponse(LibrarySyncCreativesSuccess):
+class SyncCreativesResponse(CompletedTaskStatusMixin, LibrarySyncCreativesSuccess):
     """Extends library SyncCreativesResponse success variant.
 
     adcp 3.9: SyncCreativesResponse is now a union TypeAlias (not RootModel).
@@ -487,18 +485,17 @@ class SyncCreativesResponse(LibrarySyncCreativesSuccess):
     raw dicts to context/ext, which Pydantic coerces on validation). Only
     ``creatives`` remains overridden — see below.
 
-    Design decision (salesagent-g3c): error variant never constructed.
+    Design decision : error variant never constructed.
     """
 
-    # Protocol-envelope status (core/protocol-envelope.json): REQUIRED on every task
-    # response envelope, a sibling field at the MCP/REST wire root (not nested under
-    # a "payload" key). This class only ever represents a synchronously-completed
-    # sync (the error/submitted branches are never constructed here — see class
-    # docstring), so "completed" is invariant. Declared directly on the response
-    # (the pattern already used by CreateMediaBuySuccess/UpdateMediaBuySuccess/
-    # ListCreativeFormatsResponse) rather than left to a wrapper that never actually
-    # ran (GH #1710): the library parent has no status field at all.
-    status: Literal["completed"] = "completed"
+    # Protocol-envelope `status` comes from CompletedTaskStatusMixin (composed above):
+    # REQUIRED on every task response envelope, a sibling field at the MCP/REST wire
+    # root (not nested under a "payload" key). This class only ever represents a
+    # synchronously-completed sync (the error/submitted branches are never constructed
+    # here — see class docstring), so "completed" is invariant. It is carried on the
+    # response rather than by a wrapper that never actually ran (GH #1710), and this
+    # is a TEMPORARY adoption: the library parent has no status field at all, so the
+    # mixin deletes as a no-op once adcp ships it.
 
     # Override creatives to use our SyncCreativeResult (Pattern #4: nested serialization).
     # Library parent uses its Creative type which lacks assigned_to, assignment_errors, etc.
@@ -758,9 +755,12 @@ class ApproveCreativeResponse(SalesAgentBaseModel):
     detail: str
 
 
-class CreativeApproval(SalesAgentBaseModel):
-    """Creative approval record for a package."""
+class CreativeApproval(LibraryGetMediaBuysCreativeApproval):
+    """Creative approval record for a package.
 
-    creative_id: str = Field(..., description="Creative identifier")
-    approval_status: ApprovalStatus = Field(..., description="Current approval status")
-    rejection_reason: str | None = Field(default=None, description="Reason for rejection (when rejected)")
+    All three fields — creative_id, approval_status, rejection_reason — match the
+    library type's exactly, so they are inherited rather than copied (Pattern #1).
+    The local ApprovalStatus enum this class used to reference has the same three
+    members as the library's CreativeApprovalStatus and both are StrEnums, so
+    existing call sites keep working: their members validate by value.
+    """

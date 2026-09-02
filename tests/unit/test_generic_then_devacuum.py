@@ -1,6 +1,6 @@
 """Regression tests for de-vacuumized generic partition/boundary/status Then steps.
 
-salesagent-6oq: the generic Then steps `then_partition_filtering_result`,
+: the generic Then steps `then_partition_filtering_result`,
 `then_boundary_handling_result` (then_payload.py) and `then_response_status`
 (then_success.py) historically passed *vacuously* — they ignored the captured
 ``field`` and accepted any non-None response (or any recorded exception) as a

@@ -1,7 +1,7 @@
 """Parametrized regression suite for the wired-in ThreadRegistry reapers.
 
 PR #1264 added the dead-thread reaper pattern to several module-level
-services, then salesagent-x2h.3 consolidated the dict + lock + reaper +
+services, then consolidated the dict + lock + reaper +
 accessors into :class:`src.core.thread_registry.ThreadRegistry`. The reaper
 drops registry entries whose threads are no longer ``is_alive()`` — defensive
 cleanup that catches threads which exited WITHOUT hitting their worker
@@ -35,8 +35,7 @@ no helper or scenario body is duplicated anywhere (CLAUDE.md DRY invariant,
 enforced by ``check_code_duplication.py``). ``test_background_sync_reaper.py``
 is superseded by this file (sync is one of the parametrized services).
 
-Beads: salesagent-x2h.8 (sibling reaper coverage),
-salesagent-x2h.9 (shared helpers + parametrization).
+ (shared helpers + parametrization).
 """
 
 from __future__ import annotations

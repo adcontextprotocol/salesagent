@@ -9,7 +9,7 @@ adcp spec (media-buy/task-reference/list_creatives). No BDD obligations exist
 for list_creatives in docs/test-obligations/; auth tests reference sync_creatives
 obligations (UC-006-EXT-*) which share the same auth contract.
 
-Covers: salesagent-wdkc, salesagent-39ic
+Covers:
 """
 
 from __future__ import annotations
@@ -250,7 +250,7 @@ class TestListPrincipalIsolation:
 
 
 # ---------------------------------------------------------------------------
-# Advanced Filtering Tests — Covers: salesagent-39ic
+# Advanced Filtering Tests — Covers:
 # adcp spec: list_creatives filters (tags, created_after, created_before,
 #            name_contains, media_buy_ids)
 # ---------------------------------------------------------------------------
@@ -440,7 +440,7 @@ class TestListStructuredFilters:
 
 
 # ---------------------------------------------------------------------------
-# Sorting Tests — Covers: salesagent-39ic
+# Sorting Tests — Covers:
 # adcp spec: list_creatives sort (name, status, created_date, etc.)
 # ---------------------------------------------------------------------------
 
@@ -502,7 +502,7 @@ class TestListSorting:
 
 
 # ---------------------------------------------------------------------------
-# Query Summary Tests — Covers: salesagent-39ic
+# Query Summary Tests — Covers:
 # adcp spec: list_creatives query_summary (filters_applied, total_matching, etc.)
 # ---------------------------------------------------------------------------
 
@@ -563,7 +563,7 @@ class TestListQuerySummary:
 
 
 # ---------------------------------------------------------------------------
-# Response Shape Tests — Covers: salesagent-39ic
+# Response Shape Tests — Covers:
 # adcp spec: list_creatives response (format_id, pagination, creative fields)
 # ---------------------------------------------------------------------------
 
@@ -685,7 +685,7 @@ class TestListDatetimeFallback:
 
 
 # ---------------------------------------------------------------------------
-# Transport Parity Tests — Covers: salesagent-39ic
+# Transport Parity Tests — Covers:
 # Verify same behavior across IMPL, A2A, and MCP transports
 # ---------------------------------------------------------------------------
 

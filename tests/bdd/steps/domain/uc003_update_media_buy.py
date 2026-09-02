@@ -4,7 +4,6 @@ Given steps build ctx["update_kwargs"], assembled into UpdateMediaBuyRequest
 in the When step. Background steps set up the existing media buy via
 conftest's _harness_env.
 
-beads: salesagent-82p
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ from tests.bdd.steps.generic.given_media_buy import _resolve_date_token
 # but MediaPackageFactory uses a Sequence (pkg_0000, pkg_0001, ...). Step
 # definitions must resolve the label to the real database package_id
 # before comparing or operating on packages. See UC-019 principal_id
-# pattern (salesagent-vmqv) for the same approach.
+# pattern for the same approach.
 
 
 def _register_package(ctx: dict, label: str, package: Any) -> None:
@@ -761,7 +760,7 @@ def given_package_update_negative_keywords_add(ctx: dict) -> None:
     hardcoded defaults. Feature files using this step do not provide a DataTable;
     the ':' is part of the step text pattern matching the Gherkin scenario phrasing.
 
-    FIXME(salesagent-9vgz.1): Accept datatable parameter when feature files provide one.
+    FIXME: Accept datatable parameter when feature files provide one.
     """
     _set_keyword_field_on_package(ctx, "negative_keywords_add", [{"keyword": "cheap", "match_type": "exact"}])
 
@@ -774,7 +773,7 @@ def given_package_update_negative_keywords_remove(ctx: dict) -> None:
     hardcoded defaults. Feature files using this step do not provide a DataTable;
     the ':' is part of the step text pattern matching the Gherkin scenario phrasing.
 
-    FIXME(salesagent-9vgz.1): Accept datatable parameter when feature files provide one.
+    FIXME: Accept datatable parameter when feature files provide one.
     """
     _set_keyword_field_on_package(ctx, "negative_keywords_remove", [{"keyword": "cheap", "match_type": "exact"}])
 
@@ -917,7 +916,7 @@ def then_implementation_date_not_null(ctx: dict) -> None:
     impl_date = resp.implementation_date
     # Step text claims "not null" unconditionally — hard assert.
     # If production doesn't populate this, the SCENARIO should be xfailed in conftest.py,
-    # not the step body. See salesagent-ghgx.
+    # not the step body.
     assert impl_date is not None, (
         "implementation_date is None in response — step text claims 'not null' unconditionally"
     )
@@ -1025,7 +1024,7 @@ def then_affected_package_budget(ctx: dict, budget: int) -> None:
         actual_budget = pkg.get("budget")
     # Step text claims "updated budget of {budget}" unconditionally — hard assert.
     # If production doesn't echo budget, the SCENARIO should be xfailed in conftest.py.
-    # See salesagent-2c9b.
+    #
     assert actual_budget is not None, (
         f"affected package '{expected_pkg_id}' budget is None — step text claims "
         f"'updated budget of {budget}' unconditionally"
@@ -1065,7 +1064,7 @@ def then_response_has_sandbox(ctx: dict) -> None:
         sandbox = dumped.get("sandbox")
     # Step text claims "should include a sandbox flag" unconditionally — hard assert.
     # If production doesn't include sandbox, the SCENARIO should be xfailed in conftest.py.
-    # See salesagent-n3bf.
+    #
     assert sandbox is not None, (
         f"sandbox flag not present on response (type: {type(resp).__name__}) — "
         "step text claims envelope 'should include' it unconditionally"
@@ -2320,3 +2319,100 @@ def _ensure_update_defaults(ctx: dict) -> dict[str, Any]:
             "media_buy_id": mb.media_buy_id,
         }
     return ctx["update_kwargs"]
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# BR-RULE-215: revision as the buyer's optimistic-concurrency token
+# ═══════════════════════════════════════════════════════════════════════
+# These four steps wake the two revision scenarios, which had no step definitions
+# at all — the reason they sat dormant behind the UC-003 harness xfail. The
+# obligation they carry is the one the whole revision surface rests on: a mutating
+# update advances the token and REPORTS the advanced value, so a buyer can take it
+# from the response and hand it straight back on the next call.
+
+
+@given(parsers.parse('the media buy "{label}" is at revision {revision:d}'))
+def given_media_buy_at_revision(ctx: dict, label: str, revision: int) -> None:
+    """Put the persisted row at *revision*, then prove it took.
+
+    Written through the repository''s own column rather than a factory rebuild, so the
+    scenario starts from a row the update path will really read. The read-back is not
+    ceremony: seeding a distinctive value is what separates "reports the post-write
+    value" from "reports a plausible constant", and a seed that silently did not land
+    would turn the whole scenario green for the wrong reason.
+    """
+    from sqlalchemy import update as sa_update
+
+    from src.core.database.models import MediaBuy
+
+    env = ctx["env"]
+    real_id = _resolve_media_buy_id(ctx, label)
+    session = env._session  # noqa: SLF001 — the harness's session seam, as used above
+    session.execute(sa_update(MediaBuy).where(MediaBuy.media_buy_id == real_id).values(revision=revision))
+    session.commit()
+
+    seeded = session.get(MediaBuy, real_id)
+    session.refresh(seeded)
+    assert seeded.revision == revision, (
+        f"seeding media buy {label!r} to revision {revision} did not take (column reads "
+        f"{seeded.revision!r}); every assertion below would grade the wrong starting point"
+    )
+    ctx.setdefault("seeded_revisions", {})[label] = revision
+
+
+@given("the request revision is set to <not provided>")
+def given_request_revision_absent(ctx: dict) -> None:
+    """Send NO revision — the last-write-wins path the spec makes optional.
+
+    Exact text rather than the `{revision:d}` parser above, because the Examples row
+    carries the literal `<not provided>` and an int parser cannot match it. Without
+    this the row failed on StepDefinitionNotFoundError and the suite's non-strict
+    auto-xfail absorbed it, so a row grading LWW read as dormant-for-some-reason.
+    Leaving `revision` out of the kwargs IS the assertion: the request must go without
+    a token, not with a null one.
+    """
+    _ensure_update_defaults(ctx)
+
+
+@given(parsers.parse("the request revision is set to {revision:d}"))
+def given_request_revision(ctx: dict, revision: int) -> None:
+    """Send *revision* as the buyer''s expected-current token on the update request."""
+    kwargs = _ensure_update_defaults(ctx)
+    kwargs["revision"] = revision
+
+
+@then(parsers.parse("the response should contain a revision with value {expected:d}"))
+def then_response_revision_value(ctx: dict, expected: int) -> None:
+    """Assert the WIRE revision is the post-write value.
+
+    Read off the wire rather than the typed payload, because the regression this
+    guards is a producer reporting a value it never read — a schema default reaching
+    the buyer looks identical in a typed object and is only visible in what was sent.
+    """
+    from tests.bdd.steps._outcome_helpers import wire_dict
+
+    actual = wire_dict(ctx).get("revision")
+    assert actual == expected, (
+        f"expected the update response to carry revision {expected} (the value AFTER this "
+        f"write — spec 3.1.1 update-media-buy-response.json: 'Revision number after this "
+        f"update'), got {actual!r}"
+    )
+
+
+@then("the response should contain a valid_actions array")
+def then_response_valid_actions_array(ctx: dict) -> None:
+    """Assert valid_actions is present AND non-empty on the wire.
+
+    Presence alone would pass on an empty list, which is what a non-AdCP status string
+    produces — the exact defect valid_actions derivation exists to prevent. INT-002:
+    the buyer plans its next call from this array without a get_media_buys round-trip,
+    and an empty array tells it there is nothing it may do.
+    """
+    from tests.bdd.steps._outcome_helpers import wire_dict
+
+    actions = wire_dict(ctx).get("valid_actions")
+    assert isinstance(actions, list), f"valid_actions must be an array on the wire, got {actions!r}"
+    assert actions, (
+        "valid_actions is empty; a buyer reads it to plan its next call, and an empty "
+        "array is what an unnormalized status string yields"
+    )

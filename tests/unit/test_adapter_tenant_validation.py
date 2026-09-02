@@ -1,11 +1,11 @@
 """Regression tests for tenant_id validation at system boundaries.
 
-beads-yz1: Adapters using `tenant_id or ""` silently coerce None to empty
+: Adapters using `tenant_id or ""` silently coerce None to empty
 string, causing all tenant-scoped queries to return empty results instead of
 raising an error.  The fix is to validate tenant_id at the adapter boundary
 and raise ValueError for None or empty string.
 
-beads-7zn: Same pattern in admin blueprint _call_webhook_for_creative_status —
+: Same pattern in admin blueprint _call_webhook_for_creative_status —
 `tenant_id or ""` coerces None to empty string, causing AdminCreativeUoW to
 silently return empty results.
 """

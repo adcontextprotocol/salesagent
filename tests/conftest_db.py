@@ -25,7 +25,7 @@ def _connect_with_retry(conn_params, *, attempts: int = 12, base_delay: float = 
     ``psycopg2.OperationalError`` during fixture *setup* and flip the suite red
     non-deterministically. Retry with bounded exponential backoff; on persistent
     failure raise a clear, actionable error instead of a raw psycopg2 traceback on a
-    random test. See salesagent-qpst.
+    random test.
     """
     import psycopg2  # local import matches the existing pattern in this module
 
@@ -39,8 +39,7 @@ def _connect_with_retry(conn_params, *, attempts: int = 12, base_delay: float = 
                 break
             delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
             _LOG.warning(
-                "DB connect attempt %d/%d to %s:%s failed (%s); retrying in %.2fs "
-                "(salesagent-qpst port-collision tolerance)",
+                "DB connect attempt %d/%d to %s:%s failed (%s); retrying in %.2fs ( port-collision tolerance)",
                 attempt,
                 attempts,
                 conn_params.get("host"),
@@ -53,7 +52,7 @@ def _connect_with_retry(conn_params, *, attempts: int = 12, base_delay: float = 
         f"Could not establish a PostgreSQL connection to "
         f"{conn_params.get('host')}:{conn_params.get('port')} after {attempts} attempts. "
         f"Under parallel tox this usually means the test-stack port was transiently "
-        f"answered by another service (see salesagent-qpst). Last error: {last_exc}"
+        f"answered by another service (see ). Last error: {last_exc}"
     ) from last_exc
 
 

@@ -378,7 +378,7 @@ def _sync_creatives_impl(
                 # (agent rate-limited/unavailable during the format fetch) are
                 # request-level infra failures — propagate so the buyer sees
                 # RATE_LIMITED/SERVICE_UNAVAILABLE on the wire and retries the
-                # request, matching create_media_buy (salesagent-mpo1).
+                # request, matching create_media_buy .
                 # Correctable/terminal typed errors (e.g. unknown-format
                 # AdCPValidationError) remain PER-ITEM failures: the request is
                 # fine, that creative is not.

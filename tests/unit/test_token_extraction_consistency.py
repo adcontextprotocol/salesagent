@@ -9,7 +9,6 @@ These tests verify:
 2. Bearer prefix matching is case-insensitive (RFC 7235 Section 2.1)
 3. Middleware and resolve_identity agree on extraction behavior
 
-beads: salesagent-jirz
 """
 
 import pytest

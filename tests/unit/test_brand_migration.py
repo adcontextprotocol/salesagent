@@ -27,7 +27,7 @@ class TestCreateMediaBuyRequestBrandMigration:
         with pytest.raises(ValidationError) as exc_info:
             CreateMediaBuyRequest(
                 brand_manifest={"name": "Test Brand"},
-                packages=[],
+                packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
                 start_time="asap",
                 end_time="2026-12-31T23:59:59Z",
                 idempotency_key="unit-test-key-brand-manifest-rej",
@@ -57,7 +57,7 @@ class TestCreateMediaBuyRequestBrandMigration:
         # like packages, but brand itself should be accepted)
         request = CreateMediaBuyRequest(
             brand={"domain": "testbrand.com"},
-            packages=[],
+            packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
             start_time="asap",
             end_time="2026-12-31T23:59:59Z",
             idempotency_key="unit-test-key-brand-ref-accepted",
@@ -71,7 +71,7 @@ class TestCreateMediaBuyRequestBrandMigration:
 
         with pytest.raises(ValidationError) as exc_info:
             CreateMediaBuyRequest(
-                packages=[],
+                packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
                 start_time="asap",
                 end_time="2026-12-31T23:59:59Z",
                 idempotency_key="unit-test-key-brand-required",

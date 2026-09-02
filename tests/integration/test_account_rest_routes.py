@@ -3,7 +3,6 @@
 Verifies REST transport parity with IMPL/A2A/MCP transports.
 These routes don't exist yet — tests should FAIL until implemented.
 
-beads: salesagent-4ud
 """
 
 from __future__ import annotations

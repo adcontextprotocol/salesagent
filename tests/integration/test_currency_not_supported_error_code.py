@@ -8,7 +8,6 @@ and the update-path sibling (media_buy_update.py), which already emits
 UNSUPPORTED_FEATURE.
 
 Covers the create-path currency check (src/core/tools/media_buy_create.py).
-beads: salesagent-gh8p.3
 """
 
 import uuid

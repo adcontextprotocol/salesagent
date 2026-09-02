@@ -28,7 +28,7 @@ def make_active_cached_success(media_buy_id: str = "mb_seeded") -> CreateMediaBu
 
     from src.core.schemas._base import CreateMediaBuySuccess
 
-    return CreateMediaBuySuccess(
+    return CreateMediaBuySuccess.carrier(
         media_buy_id=media_buy_id,
         packages=[],
         status=MediaBuyStatus.active,

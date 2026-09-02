@@ -21,7 +21,6 @@ AST guard → positive + negative meta-tests suffice (no regex-slip case).
 
 Allowlist shrinks as #1417 migrates the remaining sites.
 
-beads: salesagent-ihwl
 """
 
 import ast
@@ -35,7 +34,7 @@ _HARNESS_DIR = Path(__file__).resolve().parents[1] / "harness"
 _MCP_TOOLS = {"create_media_buy", "update_media_buy"}
 
 # Known-deferred violations (#1417). (relative_path, enclosing_function).
-# Each entry has a FIXME(salesagent-ensj) at the source site. Allowlist only shrinks.
+# Each entry has a FIXME at the source site. Allowlist only shrinks.
 # media_buy_create.py:call_mcp was fixed when the harness MCP path moved to
 # _run_mcp_client (no direct create_media_buy(ctx=...) call) — entry removed.
 _KNOWN_VIOLATIONS: set[tuple[str, str]] = set()
@@ -95,7 +94,7 @@ def test_no_unguarded_direct_mcp_tool_calls():
     assert new == set(), (
         f"New unguarded direct MCP tool call(s) in tests/harness: {sorted(new)}. "
         f"Wrap the tool with with_error_logging(...) before invoking so the MCP error "
-        f"path surfaces the wire envelope (salesagent-ihwl). Do NOT add to the allowlist."
+        f"path surfaces the wire envelope . Do NOT add to the allowlist."
     )
 
 
@@ -106,7 +105,7 @@ def test_known_violations_not_stale():
         _KNOWN_VIOLATIONS,
         fix_hint=(
             "Wrap the tool with with_error_logging(...) before invoking so the MCP error "
-            "path surfaces the wire envelope (salesagent-ihwl)."
+            "path surfaces the wire envelope ."
         ),
     )
 

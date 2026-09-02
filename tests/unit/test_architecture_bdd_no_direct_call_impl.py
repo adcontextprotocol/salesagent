@@ -11,7 +11,6 @@ Scanning approach: AST — find functions decorated with @when(...) or @given(..
 in tests/bdd/steps/ and check for .call_impl( or _impl( calls without
 TRANSPORT-BYPASS comment.
 
-beads: salesagent-ec0
 """
 
 from __future__ import annotations
@@ -29,7 +28,7 @@ _BDD_STEPS_DIR = Path(__file__).resolve().parents[1] / "bdd" / "steps"
 # Each entry: (filename_stem, function_name).
 # This allowlist can only shrink — never add new entries.
 _ALLOWLIST: set[tuple[str, str]] = {
-    # FIXME(salesagent-ec0): cross-cutting list under sync env —
+    # FIXME(#1880): cross-cutting list under sync env —
     # AccountSyncEnv can't dispatch list_accounts requests
     ("uc011_accounts", "when_list_accounts_unfiltered"),
     ("uc011_accounts", "when_list_sandbox_filter"),

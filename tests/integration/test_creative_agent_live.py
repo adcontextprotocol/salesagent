@@ -3,7 +3,7 @@
 These tests require a deterministic, pinned creative agent — they must NEVER
 silently fall back to the live public agent (https://creative.adcontextprotocol.org),
 whose catalog drifts (it dropped display_image/html/js/video_standard), which
-made this suite red non-deterministically (salesagent-kczg).
+made this suite red non-deterministically .
 
 CREATIVE_AGENT_URL must point at the pinned reference agent. The authoritative
 runner brings it up automatically (run_all_tests.sh → scripts/creative-agent-stack.sh,
@@ -36,7 +36,7 @@ _PUBLIC_CREATIVE_AGENT_HOST = "creative.adcontextprotocol.org"
 
 @pytest.fixture(autouse=True, scope="module")
 def _require_controlled_creative_agent():
-    """Refuse to run against the live public agent — fail loud, never silently (salesagent-kczg).
+    """Refuse to run against the live public agent — fail loud, never silently .
 
     The gating suite must be hermetic: CREATIVE_AGENT_URL must point at the
     pinned reference agent. If it is unset or points at the public host, we
@@ -49,7 +49,7 @@ def _require_controlled_creative_agent():
     url = os.environ.get("CREATIVE_AGENT_URL", "")
     if not url or _PUBLIC_CREATIVE_AGENT_HOST in url:
         pytest.fail(
-            "Controlled creative agent required (salesagent-kczg). CREATIVE_AGENT_URL is "
+            "Controlled creative agent required . CREATIVE_AGENT_URL is "
             f"{url!r} — unset or the live public host. These tests must NOT hit "
             "https://creative.adcontextprotocol.org (its catalog drifts). Bring up the pinned "
             "reference agent: `scripts/creative-agent-stack.sh up` then "
@@ -224,7 +224,7 @@ class TestURLNormalization:
 
 
 class TestPreviewCreativeIdentityForm:
-    """Pinned-agent tolerance regression for the format_id federation identity (salesagent-ehdq).
+    """Pinned-agent tolerance regression for the format_id federation identity .
 
     preview_creative sends format_id as the identity OBJECT {agent_url, id}.
     Production is switching that dict to the canonical FormatId serialization

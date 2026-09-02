@@ -5,7 +5,6 @@ AdCPError subclasses, never fastmcp-specific ToolError.
 
 This test scans source files to ensure no ToolError leaks into _impl functions.
 
-beads: salesagent-9vcv, salesagent-a3vf
 """
 
 import ast
@@ -30,7 +29,7 @@ SIMPLE_MODULE_FILES = [
     "src/core/tools/signals.py",
 ]
 
-# Complex modules with many ToolError sites (salesagent-a3vf)
+# Complex modules with many ToolError sites
 COMPLEX_MODULE_FILES = [
     "src/core/tools/products.py",
     "src/core/tools/media_buy_create.py",

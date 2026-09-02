@@ -1,6 +1,6 @@
 """Regression test: transport wrappers must forward all AdCP request fields to _impl.
 
-Bug salesagent-7gnv: MCP and A2A wrappers for create_media_buy and update_media_buy
+Bug : MCP and A2A wrappers for create_media_buy and update_media_buy
 silently dropped buyer_campaign_ref and ext before constructing the request object.
 These fields are part of the AdCP spec and must reach _impl via the request object.
 

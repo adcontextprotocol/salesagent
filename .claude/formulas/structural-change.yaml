@@ -203,6 +203,10 @@ iterate:
         the lane, and a gate grepping the lane for it either fails always or —
         worse — passes because some atom's prose happened to contain the string.
 
+        Write the heading only after you record all four fields. The heading IS
+        the gate, so putting it over an incomplete prediction lets the implement
+        atom run against nothing.
+
         | Field | Content |
         |-------|---------|
         | `measure_cmd` | A single command that prints one number or one list. It must be deterministic and runnable from a clean tree. |
@@ -332,6 +336,11 @@ iterate:
         `## Measured (verify-prediction atom)`. The commit gate greps the LANE
         bead for that heading; `atom:verify-prediction` is a label on the ATOM
         bead and never appears on the lane. Do not close {TASK_ID}.
+
+        Write the heading only when all three checks pass. The heading IS the
+        gate, so putting it over a failed check lets the commit atom run on an
+        unverified step. When a check fails, record the failure without the
+        heading and route back.
       acceptance: "measure_cmd output equals predicted; every item in deletes confirmed absent; full-suite pass counts and xpassed identity match the baseline."
       depends_on: ["diff-review-{TASK_ID}"]
       labels: ["atom:verify-prediction", "atom:gate"]

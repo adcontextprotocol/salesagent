@@ -46,7 +46,7 @@ GAPS identified in this surface (skip-stubbed below):
   - BR-RULE-037 INV-1: Default approval_mode is require-human
   - delete_missing parameter handling
   - dry_run parameter handling
-  - list_creatives_raw boundary-completeness (FIXME salesagent-v0kb)
+  - list_creatives_raw boundary-completeness (FIXME )
   - Creative webhook delivery on approval
 """
 
@@ -157,7 +157,7 @@ class TestCreativeSchemaCompliance:
 
         Spec: CONFIRMED -- list-creatives-response.json defines the listing schema;
         library type at adcp-client-python media_buy/list_creatives_response.py.
-        Existing: test_architecture_schema_inheritance.py (structural guard)
+        Existing: test_pydantic_schema_alignment.py (graded against the pinned schema)
         """
         from adcp.types.generated_poc.creative.list_creatives_response import (  # TODO: no stable alias in adcp.types
             Creative as ListingCreative,
@@ -952,7 +952,7 @@ class TestCreativeValidation:
     def test_unreachable_agent_raises_with_retry(self):
         """Unreachable creative agent propagates the typed transient error.
 
-        Production-grounded (salesagent-mpo1): the registry types every
+        Production-grounded : the registry types every
         network failure (connect/timeout -> AdCPServiceUnavailableError), and
         the shared fetch path propagates typed errors with their recovery
         semantics instead of rewrapping them — a down agent is a transient
@@ -1504,7 +1504,7 @@ class TestListCreativesRawBoundaryCompleteness:
     """list_creatives_raw boundary completeness.
 
     Spec: UNSPECIFIED (implementation-defined transport boundary).
-    Ref: FIXME(salesagent-v0kb) at listing.py:581.
+    Ref: FIXME at listing.py:581.
     """
 
     def test_raw_forwards_filters_to_impl(self):
@@ -2393,7 +2393,7 @@ class TestWorkflowStepCreation:
     def test_workflow_context_failure_recovery_is_transient(self):
         """Failed workflow context creation should be transient — adapter failures are retryable.
 
-        Covers: salesagent-eber (PR #1083 review)
+        Covers: (PR #1083 review)
         """
         from src.core.tools.creatives._workflow import _create_sync_workflow_steps
 
@@ -2906,12 +2906,12 @@ class TestRESTCreativeRoutes:
 
 
 # ============================================================================
-# 17. CREATIVE SCHEMA: salesagent-goy2 (Wrong Base Class) -- P0 stubs
+# 17. CREATIVE SCHEMA: (Wrong Base Class) -- P0 stubs
 # ============================================================================
 
 
 class TestCreativeWrongBaseClass:
-    """P0 stubs for salesagent-goy2: Creative extends delivery base instead of
+    """P0 stubs for : Creative extends delivery base instead of
     listing base.  These fail today because the fix is not yet landed.
 
     Spec: CONFIRMED -- list-creatives-response.json Creative requires:
@@ -3588,7 +3588,12 @@ class TestMediaBuyStatusTransition:
     """
 
     def _run_assignment_with_media_buy(self, mock_db, *, media_buy_status, approved_at, existing_assignment=None):
-        """Run _process_assignments and return the mock media buy for status inspection."""
+        """Run _process_assignments and return ``(mock_media_buy, mock_uow)``.
+
+        The uow is returned so a transition can be graded at the SEAM it must go
+        through — the repository call that carries the revision bump and the
+        write-once confirmed_at stamp — rather than as an ORM attribute poke.
+        """
         mock_uow = MagicMock()
         mock_assignment_repo = MagicMock()
         mock_uow.assignments = mock_assignment_repo
@@ -3632,7 +3637,7 @@ class TestMediaBuyStatusTransition:
             validation_mode="strict",
             principal_id="principal_1",
         )
-        return mock_media_buy
+        return mock_media_buy, mock_uow
 
     def test_draft_with_approved_at_transitions(self):
         """Draft media buy with approved_at transitions to pending_creatives.
@@ -3643,12 +3648,12 @@ class TestMediaBuyStatusTransition:
         Covers: UC-006-MEDIA-BUY-STATUS-01
         """
         with patch("src.core.tools.creatives._assignments.CreativeUoW") as mock_db:
-            mock_mb = self._run_assignment_with_media_buy(
+            mock_mb, mock_uow = self._run_assignment_with_media_buy(
                 mock_db,
                 media_buy_status="draft",
                 approved_at=datetime(2026, 1, 1, tzinfo=UTC),
             )
-            assert mock_mb.status == "pending_creatives"
+            mock_uow.media_buys.update_status.assert_called_once_with("mb_1", "pending_creatives")
 
     def test_draft_without_approved_at_stays_draft(self):
         """Draft media buy without approved_at does NOT transition.
@@ -3659,12 +3664,12 @@ class TestMediaBuyStatusTransition:
         Covers: UC-006-MEDIA-BUY-STATUS-02
         """
         with patch("src.core.tools.creatives._assignments.CreativeUoW") as mock_db:
-            mock_mb = self._run_assignment_with_media_buy(
+            mock_mb, mock_uow = self._run_assignment_with_media_buy(
                 mock_db,
                 media_buy_status="draft",
                 approved_at=None,
             )
-            assert mock_mb.status == "draft"
+            mock_uow.media_buys.update_status.assert_not_called()
 
     def test_non_draft_status_unchanged(self):
         """Active media buy status is not affected by creative assignment.
@@ -3674,12 +3679,12 @@ class TestMediaBuyStatusTransition:
         Covers: UC-006-MEDIA-BUY-STATUS-03
         """
         with patch("src.core.tools.creatives._assignments.CreativeUoW") as mock_db:
-            mock_mb = self._run_assignment_with_media_buy(
+            mock_mb, mock_uow = self._run_assignment_with_media_buy(
                 mock_db,
                 media_buy_status="active",
                 approved_at=datetime(2026, 1, 1, tzinfo=UTC),
             )
-            assert mock_mb.status == "active"
+            mock_uow.media_buys.update_status.assert_not_called()
 
     def test_transition_fires_on_upsert(self):
         """Updated (upserted) assignment still triggers status check.
@@ -3698,14 +3703,14 @@ class TestMediaBuyStatusTransition:
         existing_assignment.weight = 50  # Different from 100 to trigger update
 
         with patch("src.core.tools.creatives._assignments.CreativeUoW") as mock_db:
-            mock_mb = self._run_assignment_with_media_buy(
+            mock_mb, mock_uow = self._run_assignment_with_media_buy(
                 mock_db,
                 media_buy_status="draft",
                 approved_at=datetime(2026, 1, 1, tzinfo=UTC),
                 existing_assignment=existing_assignment,
             )
             # Transition should still fire even on upsert
-            assert mock_mb.status == "pending_creatives"
+            mock_uow.media_buys.update_status.assert_called_once_with("mb_1", "pending_creatives")
             # Weight should be reset to 100
             assert existing_assignment.weight == 100
 
@@ -5163,7 +5168,7 @@ class TestProvenanceValidation:
 
 
 # ============================================================================
-# 33. TYPED CREATIVE ASSIGNMENTS (salesagent-e5ao)
+# 33. TYPED CREATIVE ASSIGNMENTS
 # ============================================================================
 
 
@@ -5174,7 +5179,7 @@ class TestTypedCreativeAssignments:
     creative_assignments as array of creative-assignment objects (creative_id,
     placement_ids, weight), never as dict[str, list[str]].
 
-    salesagent-e5ao removed the legacy untyped LegacyUpdateMediaBuyRequest
+     removed the legacy untyped LegacyUpdateMediaBuyRequest
     and consolidated the in-memory dict to use typed CreativeAssignment.
     """
 

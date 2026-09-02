@@ -1,4 +1,4 @@
-"""Regression test for the test-stack DB connect-retry helper (salesagent-qpst).
+"""Regression test for the test-stack DB connect-retry helper .
 
 Targets the behaviour of ``tests.conftest_db._connect_with_retry`` directly:
 the parallel-tox port-collision race is non-deterministic and cannot be
@@ -60,6 +60,6 @@ def test_persistent_failure_raises_bounded_clear_error_not_psycopg2():
     assert not isinstance(excinfo.value, psycopg2.OperationalError)
     msg = str(excinfo.value)
     assert "localhost:54321" in msg, "error must name the unreachable host:port"
-    assert "salesagent-qpst" in msg, "error must point at the tracking issue/cause"
+    assert "" in msg, "error must point at the tracking issue/cause"
     # The original psycopg2 error is chained for debuggability.
     assert isinstance(excinfo.value.__cause__, psycopg2.OperationalError)

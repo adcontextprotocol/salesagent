@@ -14,7 +14,6 @@ Legitimate patterns that are NOT violations:
 - ``except Exception as e: logger.error(...)`` — logged exception handling
 - ``except Exception as e: return {"error": str(e)}, 500`` — Flask error returns
 
-beads: salesagent-q28c (H2), salesagent-gyn1 (H1)
 GH #1078
 """
 

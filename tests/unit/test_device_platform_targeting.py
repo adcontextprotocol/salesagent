@@ -1,6 +1,6 @@
 """Tests for device_platform → device_type_any_of targeting conversion.
 
-Regression tests for salesagent-z0ud: ensures device_platform (OS-level)
+Regression tests for : ensures device_platform (OS-level)
 values from AdCP TargetingOverlay are correctly converted to internal
 device_type_any_of (form factor) values that adapters consume.
 

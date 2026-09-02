@@ -1,6 +1,6 @@
 """Tests for validate_overlay_targeting with v3 field names.
 
-Regression tests for salesagent-9nd: ensures overlay validation works with
+Regression tests for : ensures overlay validation works with
 v3 structured field names (geo_countries, geo_regions, etc.) without
 _any_of/_none_of suffix-stripping.
 """

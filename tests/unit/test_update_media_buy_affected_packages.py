@@ -21,7 +21,7 @@ def test_affected_packages_includes_creative_assignment_details():
         )
     ]
 
-    response = UpdateMediaBuySuccess(
+    response = UpdateMediaBuySuccess.carrier(
         media_buy_id="test_buy_123",
         affected_packages=affected_packages,
     )
@@ -49,7 +49,7 @@ def test_affected_packages_includes_creative_assignment_details():
 
 def test_affected_packages_can_be_empty():
     """Test that affected_packages can be empty for non-creative updates."""
-    response = UpdateMediaBuySuccess(
+    response = UpdateMediaBuySuccess.carrier(
         media_buy_id="test_buy_456",
         affected_packages=[],
     )
@@ -75,7 +75,7 @@ def test_affected_packages_shows_replaced_creatives():
         )
     ]
 
-    response = UpdateMediaBuySuccess(
+    response = UpdateMediaBuySuccess.carrier(
         media_buy_id="test_buy_789",
         affected_packages=affected_packages,
     )
@@ -88,7 +88,7 @@ def test_affected_packages_shows_replaced_creatives():
 
 def test_response_serialization_includes_affected_packages():
     """Test that UpdateMediaBuySuccess serializes affected_packages correctly."""
-    response = UpdateMediaBuySuccess(
+    response = UpdateMediaBuySuccess.carrier(
         media_buy_id="test_buy_serialization",
         affected_packages=[
             AffectedPackage(

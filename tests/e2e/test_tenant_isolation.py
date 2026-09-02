@@ -16,7 +16,7 @@ DNS-based subdomain routing is not available in the CI Docker stack.
 Integration tests in test_tenant_isolation_breach_fix.py cover Host-based
 subdomain routing separately.
 
-Assertion rigor (salesagent-18h.14): these tests must FAIL loudly on a real
+Assertion rigor : these tests must FAIL loudly on a real
 cross-tenant data leak. The product-listing tests assert exact product-id set
 equality (not a naming-prefix heuristic), and the cross-tenant-token test fails
 explicitly if the call returns data instead of being rejected.

@@ -4,7 +4,6 @@ Core invariant: A2A handler methods must use collision-free identifiers,
 follow the SDK error protocol for unimplemented skills, and not leak
 debug instrumentation into production logs.
 
-beads: salesagent-yu73
 """
 
 import pytest

@@ -304,10 +304,7 @@ def test_sync_creatives_mcp_wire_changes_and_warnings_are_arrays(integration_db)
     """
     with _sync_creatives_env() as (env, call_kwargs):
         result = env.call_via(Transport.MCP, **call_kwargs)
-        assert result.is_success, f"Expected success but got error: {result.error}"
-        assert result.wire_response is not None, "MCP dispatch must stash the real structured_content wire"
-
-        creatives = result.wire_response.get("creatives")
+        creatives = result.require_wire().get("creatives")
         assert isinstance(creatives, list) and creatives, f"MCP wire must carry the creatives array, got {creatives!r}"
         for i, item in enumerate(creatives):
             for name in ("changes", "warnings", "errors"):

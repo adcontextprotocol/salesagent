@@ -5,7 +5,6 @@ Covers:
 - build_agent_config() in src/core/helpers/adapter_helpers.py
 - _build_package_responses() and _build_create_success() in src/adapters/base.py
 
-Task: salesagent-qe0
 """
 
 from __future__ import annotations

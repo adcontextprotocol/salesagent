@@ -8,7 +8,6 @@ Tests the full pipeline in src/services/dynamic_products.py:
 The signals agent registry is mocked at the registry.get_signals() level,
 letting all dynamic_products.py code run while isolating HTTP concerns.
 
-beads: salesagent-bsrb
 """
 
 from __future__ import annotations

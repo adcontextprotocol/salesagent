@@ -134,7 +134,7 @@ class TestSyncCreativesFormatValidation:
     def test_format_validation_agent_unreachable(self, identity, mock_tenant, valid_creative_dict):
         """An unreachable agent fails the REQUEST transiently, not the creative.
 
-        Production-grounded (salesagent-mpo1): the registry types every network
+        Production-grounded : the registry types every network
         failure (connect/timeout -> AdCPServiceUnavailableError,
         creative_agent_registry.py:500-531), and typed transient errors
         PROPAGATE out of sync_creatives with their recovery semantics — the old
@@ -374,7 +374,7 @@ class TestSyncCreativesFormatValidation:
             mock_uow_cls.return_value.__enter__.return_value = mock_uow
 
             # Setup mock registry — typed error for the down agent, as the
-            # registry actually raises (salesagent-mpo1)
+            # registry actually raises
             from src.core.exceptions import AdCPServiceUnavailableError
 
             async def mock_list_all_formats(tenant_id=None):

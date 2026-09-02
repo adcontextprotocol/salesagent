@@ -3,7 +3,6 @@
 Verifies URL extraction priority: top-level url > named asset keys
 (main, image, video, creative, content) > first available asset URL.
 
-Beads: salesagent-dmn
 """
 
 from src.core.tools.creatives import _extract_url_from_assets

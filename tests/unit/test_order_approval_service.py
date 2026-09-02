@@ -65,46 +65,24 @@ def mock_gam_client():
         }
 
 
-def test_start_approval_creates_sync_job(mock_db_session):
-    """Test that starting approval creates a SyncJob record."""
-    from src.core.database.models import SyncJob
-
-    # _run_approval_thread is patched for the same reason
-    # test_approval_thread_tracks_in_registry patches it: without it,
-    # start_order_approval_background spawns a REAL daemon thread that outlives
-    # this test by tens of seconds. It runs the true retry path --
-    # order_approval_service.py:406 `time.sleep(2**attempt)` behind httpx POSTs
-    # at timeout=10.0 -- so it calls sleep(1), sleep(2), sleep(4) from inside
-    # whatever test happens to be running by then. Measured: it was still alive
-    # and calling sleep during test_performance_index_behavioral and
-    # test_policy_typed_models, ~1500 tests later, and it intermittently broke
-    # TestWebhookDelivery::test_exponential_backoff_timing, whose class-level
-    # patch of `src.core.webhook_delivery.time.sleep` is PROCESS-GLOBAL (that
-    # module does `import time`, so the patch lands on the time module itself and
-    # is visible to every module and every thread). The stray sleeps inflated
-    # mock_sleep.call_count past 2. This test asserts nothing about the thread.
-    with patch("src.services.order_approval_service._run_approval_thread"):
-        approval_id = start_order_approval_background(
-            order_id="12345",
-            media_buy_id="mb_123",
-            tenant_id="tenant_1",
-            principal_id="principal_1",
-            webhook_url="https://example.com/webhook",
-        )
-
-    # Verify sync job was created
-    assert approval_id.startswith("approval_12345_")
-    mock_db_session.add.assert_called_once()
-
-    # Check the sync job was created with correct fields
-    sync_job_call = mock_db_session.add.call_args[0][0]
-    assert isinstance(sync_job_call, SyncJob)
-    assert sync_job_call.sync_type == "order_approval"
-    assert sync_job_call.status == "running"
-    assert sync_job_call.tenant_id == "tenant_1"
-    assert sync_job_call.progress["order_id"] == "12345"
-    assert sync_job_call.progress["media_buy_id"] == "mb_123"
-    assert sync_job_call.progress["webhook_url"] == "https://example.com/webhook"
+# test_start_approval_creates_sync_job lived here. It asserted the SyncJob's fields off
+# a MagicMock session's call_args (never a persisted row) and left the worker thread
+# running past the end of the test, where it reached the real DB and fired a webhook
+# into whatever test ran next (found and fixed in GH #1941). Replaced by the real-DB path in
+# tests/integration/test_order_approval_background.py, which joins the thread.
+#
+# Retained from the parallel fix on main (#2091), because the diagnosis is recorded
+# nowhere else and explains why a leaked worker is not merely untidy: the stray thread
+# ran the true retry path -- order_approval_service.py:406 `time.sleep(2**attempt)`
+# behind httpx POSTs at timeout=10.0 -- so it called sleep(1), sleep(2), sleep(4) from
+# inside whatever test was running by then. Measured: still alive ~1500 tests later,
+# during test_performance_index_behavioral and test_policy_typed_models, and it
+# intermittently broke TestWebhookDelivery::test_exponential_backoff_timing, whose
+# class-level patch of `src.core.webhook_delivery.time.sleep` is PROCESS-GLOBAL (that
+# module does `import time`, so the patch lands on the time module itself and is visible
+# to every module and every thread). The stray sleeps inflated mock_sleep.call_count
+# past 2. main's fix patched `_run_approval_thread` so the thread never spawns; this
+# branch deleted the test instead, because its assertions read a mock rather than a row.
 
 
 def test_start_approval_rejects_duplicate(mock_db_session):

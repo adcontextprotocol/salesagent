@@ -60,7 +60,7 @@ class TestRunAsyncInSyncContext:
     async def test_coroutine_raised_runtimeerror_propagates_in_async_context(self):
         """A RuntimeError raised BY the coroutine must propagate unmangled.
 
-        salesagent-mpo1: the helper wraps BOTH the get_running_loop() probe AND
+        : the helper wraps BOTH the get_running_loop() probe AND
         the thread-pool execution in one try. When a running loop exists, a
         coroutine-raised RuntimeError (e.g. httpx/anyio 'Event loop is closed')
         re-raises out of future.result() INSIDE that try, is misread as

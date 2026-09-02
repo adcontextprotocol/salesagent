@@ -6,7 +6,6 @@ Validates that:
 - Exception → ToolError format mapping exists
 - Dead A2A error map is not present (real translation in adcp_a2a_server.py)
 
-beads: salesagent-b61l.11
 """
 
 import pytest
@@ -215,7 +214,7 @@ class TestRecoveryClassification:
     def test_base_error_defaults_to_transient(self):
         """AdCPError base class defaults to recovery='transient'.
 
-        Recovery follows the WIRE code (salesagent-nr2q): the base
+        Recovery follows the WIRE code : the base
         INTERNAL_ERROR maps to SERVICE_UNAVAILABLE, pinned transient in the
         enumMetadata. This is the normalize_to_adcp_error crash-wrap path —
         buyers may retry a generic server failure.
@@ -235,7 +234,7 @@ class TestRecoveryClassification:
     def test_not_found_error_defaults_to_correctable(self):
         """AdCPNotFoundError (the *base*) defaults to recovery='correctable'.
 
-        Recovery follows the WIRE code (salesagent-nr2q): NOT_FOUND maps to
+        Recovery follows the WIRE code : NOT_FOUND maps to
         INVALID_REQUEST, pinned correctable in the enumMetadata — the buyer
         holds the lever (re-issue with a valid id), same as the typed
         subclasses. Account-family subclasses whose own wire codes are pinned
@@ -335,7 +334,7 @@ class TestRecoveryClassification:
         BUDGET_EXHAUSTED is terminal per the pinned error-code.json enumMetadata
         (#1417): an exhausted budget cannot be recovered autonomously —
         an operator must add budget — so the buyer agent must not retry.
-        Covers: salesagent-u60m (PR #1083 review)
+        Covers: (PR #1083 review)
         """
         from src.core.exceptions import AdCPBudgetExhaustedError
 
@@ -689,7 +688,7 @@ class TestErrorCodeWireTranslation:
         # pass through (NOT_FOUND, INTERNAL_ERROR) are explicitly mapped to
         # STANDARD targets — see test_internal_codes_translated_to_wire_safe_codes
         # below. CONFIGURATION_ERROR is a _SPEC_SUPPLEMENT_CODES pass-through
-        # (salesagent-nr2q), like CREATIVE_NOT_FOUND.
+        # , like CREATIVE_NOT_FOUND.
         assert translate_error_code("SOME_UNKNOWN_CODE_THAT_IS_NOT_MAPPED") == "SOME_UNKNOWN_CODE_THAT_IS_NOT_MAPPED"
 
     def test_internal_codes_translated_to_wire_safe_codes(self):
@@ -717,7 +716,7 @@ class TestErrorCodeWireTranslation:
 
         # CONFIGURATION_ERROR is no longer internal/demoted: the pinned enum
         # defines it (recovery=terminal, "MUST NOT auto-retry"), so it passes
-        # through untranslated via _SPEC_SUPPLEMENT_CODES (salesagent-nr2q).
+        # through untranslated via _SPEC_SUPPLEMENT_CODES .
         assert "CONFIGURATION_ERROR" not in INTERNAL_CODES
         assert translate_error_code("CONFIGURATION_ERROR") == "CONFIGURATION_ERROR"
         assert "CONFIGURATION_ERROR" in WIRE_STANDARD_CODES

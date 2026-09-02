@@ -6,7 +6,6 @@ not raw dicts that require a bespoke deserializer (_dict_to_format).
 Scanning approach: AST — find Given step functions that append dicts
 (``{...}``) to ``ctx["registry_formats"]`` instead of Format objects.
 
-beads: beads-7ka
 """
 
 from __future__ import annotations

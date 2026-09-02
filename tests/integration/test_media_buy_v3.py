@@ -34,6 +34,7 @@ from src.core.schemas import (
     UpdateMediaBuyRequest,
 )
 from src.core.testing_hooks import AdCPTestContext
+from tests.helpers.media_buy_approval import run_approval
 from tests.integration.media_buy_helpers import (
     _get_tenant_dict,
     _make_create_request,
@@ -325,12 +326,30 @@ class TestCreateMediaBuyManualApproval:
 
         Covers: UC-002-ALT-MANUAL-APPROVAL-REQUIRED-08
         Integration equivalent of unit xfail test_execute_approved_calls_adapter.
-        Verifies that execute_approved_media_buy updates status to 'active' (UC-002:437).
+
+        THE PERSISTED VALUE CHANGED, and it no longer matches the obligation's literal
+        wording. This test asserted ``status == "active"`` — the unconditional ACTIVE
+        that ``execute_approved_media_buy`` used to write, which was the defect 26.
+        The post-adapter write is now ``resolve_flight_window_status(...)``, and a buy
+        created through ``create_media_buy`` CANNOT have an open window at approval
+        time: ``media_buy_create.py:2377`` rejects a start_time in the past, so a buy
+        approved straight after creation is always pre-window and always persists
+        ``scheduled``.
+
+        The obligation (``docs/test-obligations/UC-002-create-media-buy.md:569``) is
+        stated in WIRE vocabulary: "the buyer observes the media buy as ``pending_start``
+        or ``active``". It used to enumerate the PERSISTED values ``pending_activation``
+        or ``active``, which said nothing about what the buyer saw — pre-window,
+        ``scheduled``, ``pending_activation`` and ``active`` all resolve to
+        ``pending_start``, so that clause was satisfied by whichever value the column
+        happened to hold, including the unconditional ``active`` this child deletes.
+
+        Hence the two assertions, in that order. The second carries the obligation, at
+        the layer the obligation is about. The first pins the column, so a later change
+        cannot quietly move the persisted value while the canonical one stays put.
         """
-        from src.core.tools.media_buy_create import (
-            _create_media_buy_impl,
-            execute_approved_media_buy,
-        )
+        from src.core.tools._media_buy_status import resolve_canonical_status
+        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         identity = _make_identity(
             principal_id=mb_principal["principal_id"],
@@ -354,16 +373,20 @@ class TestCreateMediaBuyManualApproval:
         # mapping — the submitted response has no media_buy_id (spec 3.1.1).
         media_buy_id = resolve_media_buy_id_from_task(result.response.task_id)
 
-        success, error = execute_approved_media_buy(
-            media_buy_id=media_buy_id,
-            tenant_id=mb_tenant_with_approval["tenant_id"],
-        )
-        assert success, f"execute_approved_media_buy should succeed, got error: {error}"
+        result = run_approval(media_buy_id, mb_tenant_with_approval["tenant_id"])
+        assert result.ok, f"execute_approved_media_buy should succeed, got error: {result.error_msg}"
 
         with get_db_session() as session:
             mb = session.scalars(select(MediaBuy).where(MediaBuy.media_buy_id == media_buy_id)).first()
             assert mb is not None
-            assert mb.status == "active", f"Status should be 'active' after approval, got {mb.status}"
+            assert mb.status == "scheduled", (
+                f"a buy approved before its flight window opens persists 'scheduled', got {mb.status!r}"
+            )
+            # The obligation is about what the BUYER is told. This is the assertion that
+            # carries it: the canonical status is the same one 'pending_activation'
+            # projects to, so the wording gap above is a vocabulary difference and not a
+            # behavior change.
+            assert resolve_canonical_status(mb, datetime.now(UTC).date()) == "pending_start"
 
 
 class TestCreateMediaBuyAdapterAtomicity:
@@ -718,11 +741,11 @@ class TestGetMediaBuysResponseFields:
     async def test_persisted_status_authoritative_over_flight_window(
         self, mb_tenant, mb_principal, mb_products, mb_identity, persisted_status, expected
     ):
-        """Regression (salesagent-36d): list_media_buys must report the persisted
+        """Regression : list_media_buys must report the persisted
         MediaBuy.status for terminal/explicit lifecycle states even when the
         media buy's flight window covers today.
 
-        Identical defect to salesagent-18h.1 (fixed in _get_target_media_buys):
+        Identical defect to (fixed in _get_target_media_buys):
         terminal states are lifecycle decisions and cannot be re-derived from
         flight dates. Before the fix, _compute_status recomputed status purely
         from dates, so a completed/paused/rejected/canceled buy whose flight

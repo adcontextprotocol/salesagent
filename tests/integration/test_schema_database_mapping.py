@@ -54,7 +54,7 @@ class TestSchemaFieldMapping:
             "ext",  # Protocol extension field for future protocol additions
             # Device type targeting - populated from targeting_template.device_targets during conversion
             "device_types",  # Internal field for device type filtering
-            # property_targeting_allowed: now persisted (salesagent-kntn migration)
+            # property_targeting_allowed: now persisted ( migration)
             # AdCP 3.9+ fields - inherited from library Product, not yet stored in database
             "max_optimization_goals",  # Max optimization goals from adcp 3.9 spec
             "metric_optimization",  # Metric optimization config from adcp 3.9 spec

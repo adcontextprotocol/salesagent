@@ -28,7 +28,7 @@ def test_create_media_buy_response_message_access():
     to access response.message, but CreateMediaBuySuccess doesn't have that field.
     """
     # Create a response like the one from create_media_buy
-    response = CreateMediaBuySuccess(
+    response = CreateMediaBuySuccess.carrier(
         media_buy_id="mb-12345",
         packages=[],
     )

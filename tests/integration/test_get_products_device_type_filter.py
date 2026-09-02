@@ -1,6 +1,6 @@
 """Integration tests for device_type filtering in get_products.
 
-Covers: salesagent-1rc7 (v3.6 device_type/device_platform targeting on Product)
+Covers: (v3.6 device_type/device_platform targeting on Product)
 
 Products declare supported device types via targeting_template.device_targets.
 When a buyer requests products filtered by device_types, only products whose
@@ -79,7 +79,7 @@ class TestDeviceTypeFilter:
     async def test_filter_mobile_returns_mobile_and_unrestricted(self, env):
         """Filtering by device_types=['mobile'] returns mobile products and unrestricted ones.
 
-        Covers: salesagent-1rc7
+        Covers:
         """
         response = await env.call_impl(
             brief="mobile ads",
@@ -96,7 +96,7 @@ class TestDeviceTypeFilter:
     async def test_filter_desktop_returns_desktop_and_unrestricted(self, env):
         """Filtering by device_types=['desktop'] returns desktop products and unrestricted.
 
-        Covers: salesagent-1rc7
+        Covers:
         """
         response = await env.call_impl(
             brief="desktop ads",
@@ -113,7 +113,7 @@ class TestDeviceTypeFilter:
     async def test_filter_multiple_types_returns_any_overlap(self, env):
         """Filtering by device_types=['mobile', 'tablet'] returns products with ANY overlap.
 
-        Covers: salesagent-1rc7
+        Covers:
         """
         response = await env.call_impl(
             brief="mobile and tablet ads",
@@ -130,7 +130,7 @@ class TestDeviceTypeFilter:
     async def test_no_filter_returns_all_products(self, env):
         """No device_types filter returns all products.
 
-        Covers: salesagent-1rc7
+        Covers:
         """
         response = await env.call_impl(brief="all ads")
 
@@ -145,7 +145,7 @@ class TestDeviceTypeFilter:
     async def test_filter_ctv_returns_ctv_and_unrestricted(self, env):
         """Filtering by device_types=['ctv'] returns CTV products and unrestricted.
 
-        Covers: salesagent-1rc7
+        Covers:
         """
         response = await env.call_impl(
             brief="ctv ads",

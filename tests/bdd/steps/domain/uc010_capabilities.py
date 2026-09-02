@@ -1338,6 +1338,25 @@ def then_wire_context_empty(ctx: dict) -> None:
 
 @then("the error details should include supported_versions as a non-empty array")
 def then_details_supported_versions(ctx: dict) -> None:
+    """Sole owner of this sentence: details.supported_versions is a REQUIRED, minItems-1 array.
+
+    Graded off the WIRE error envelope (``_error_details`` reads
+    ``ctx['wire_error_envelope']``/``errors[0].details``), never a reconstructed
+    exception — Error Verification Policy, tests/CLAUDE.md.
+
+    ``isinstance(list) and versions`` is the whole obligation and both halves are
+    load-bearing: an OMITTED key yields ``None`` (fails the isinstance half) and an
+    EMPTY array fails the truthiness half.
+
+    The generic ``the error details should include {key} {value}`` parser used to
+    match this sentence as well, binding ``value='as a non-empty array'`` and
+    grading nothing; it is now typed ``{key:w} {value:S}`` so this exact-text step
+    is the sentence's single meaning
+    (``tests/unit/test_architecture_bdd_no_shadowed_steps.py``, GH #1941).
+
+    @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/error-details/version-unsupported.json
+        pointer=/required  (supported_versions REQUIRED, minItems 1)
+    """
     versions = _error_details(ctx).get("supported_versions")
     assert isinstance(versions, list) and versions, f"details.supported_versions not a non-empty array: {versions!r}"
 

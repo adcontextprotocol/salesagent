@@ -1,6 +1,6 @@
 """Regression tests: task_type wire-fallback must not leak into the internal label.
 
-salesagent-yi3s (latent bug). ``ContextManager._send_push_notifications`` builds
+ (latent bug). ``ContextManager._send_push_notifications`` builds
 the SDK webhook payload via ``create_mcp_webhook_payload``, which validates
 ``task_type`` against the closed ``adcp.types.TaskType`` enum and coerces
 non-members to a fallback (``update_media_buy``). The pre-fix code rewrote the

@@ -36,7 +36,7 @@ class TestProtocolEnvelope:
     def test_wrap_pydantic_model_with_all_fields(self):
         """Test wrapping with all optional envelope fields."""
         # Create domain response (no protocol fields - those go in envelope)
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_456",
             packages=[{"package_id": "pkg_1", "paused": False}],
         )
@@ -125,7 +125,7 @@ class TestProtocolEnvelope:
 
     def test_payload_excludes_internal_fields(self):
         """Test that payload excludes internal fields via model_dump."""
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_456",
             workflow_step_id="ws_789",  # Internal field
             packages=[],
@@ -139,7 +139,7 @@ class TestProtocolEnvelope:
 
     def test_message_generation_from_payload_str(self):
         """Test that message is auto-generated from payload.__str__ if not provided."""
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_456",
             packages=[{"package_id": "pkg_1", "paused": False}],
         )
@@ -169,7 +169,7 @@ class TestProtocolEnvelope:
 
     def test_async_operation_with_task_id(self):
         """Test envelope for async operation (submitted status with task_id)."""
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_456",
             packages=[{"package_id": "pkg_1", "paused": False}],
         )
@@ -266,7 +266,7 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_successful_sync_operation_uses_completed_status(self):
         """Test that successful synchronous operations use status='completed'."""
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="buy_123",
             packages=[],
         )
@@ -279,7 +279,7 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_successful_async_operation_uses_submitted_status(self):
         """Test that successful async operations use status='submitted' with task_id."""
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="pending",  # Placeholder for async operations
             packages=[],
         )
@@ -294,7 +294,7 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_in_progress_async_operation_uses_working_status(self):
         """Test that in-progress async operations use status='working'."""
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="buy_partial_789",  # May have ID but not complete
             packages=[],
         )
@@ -308,7 +308,7 @@ class TestProtocolEnvelopeStatusLogic:
 
     def test_canceled_operation_uses_canceled_status(self):
         """Test that canceled operations use status='canceled'."""
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="canceled_123",
             packages=[],
         )
@@ -321,7 +321,7 @@ class TestProtocolEnvelopeStatusLogic:
         """Test that invalid status values are rejected."""
         import pytest
 
-        response = CreateMediaBuySuccess(media_buy_id="mb_123", packages=[])
+        response = CreateMediaBuySuccess.carrier(media_buy_id="mb_123", packages=[])
 
         # Invalid status should raise ValidationError
         with pytest.raises(ValueError):

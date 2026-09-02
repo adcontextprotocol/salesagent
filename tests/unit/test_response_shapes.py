@@ -173,7 +173,7 @@ class TestCreateMediaBuyResponseShape:
         """Minimal success response has required fields."""
         from src.core.schemas import CreateMediaBuySuccess
 
-        resp = CreateMediaBuySuccess(
+        resp = CreateMediaBuySuccess.carrier(
             media_buy_id="buy_001",
             packages=[],
         )
@@ -192,7 +192,7 @@ class TestCreateMediaBuyResponseShape:
             package_id="pkg_001",
             product_id="prod_1",
         )
-        resp = CreateMediaBuySuccess(
+        resp = CreateMediaBuySuccess.carrier(
             media_buy_id="buy_002",
             packages=[package],
         )
@@ -208,7 +208,7 @@ class TestCreateMediaBuyResponseShape:
         """Internal fields (workflow_step_id) are excluded from serialization."""
         from src.core.schemas import CreateMediaBuySuccess
 
-        resp = CreateMediaBuySuccess(
+        resp = CreateMediaBuySuccess.carrier(
             media_buy_id="buy_003",
             packages=[],
             workflow_step_id="wf_123",
@@ -607,7 +607,7 @@ class TestUpdateMediaBuyResponseShape:
         """Minimal success response has required fields."""
         from src.core.schemas import UpdateMediaBuySuccess
 
-        resp = UpdateMediaBuySuccess(
+        resp = UpdateMediaBuySuccess.carrier(
             media_buy_id="buy_100",
         )
         data = resp.model_dump(mode="json")
@@ -624,7 +624,7 @@ class TestUpdateMediaBuyResponseShape:
             package_id="pkg_001",
             paused=False,
         )
-        resp = UpdateMediaBuySuccess(
+        resp = UpdateMediaBuySuccess.carrier(
             media_buy_id="buy_101",
             affected_packages=[package],
         )
@@ -648,7 +648,7 @@ class TestUpdateMediaBuyResponseShape:
             changes_applied={"creative_ids_added": ["c1", "c2"]},
             buyer_package_ref="buyer_pkg_ref_002",
         )
-        resp = UpdateMediaBuySuccess(
+        resp = UpdateMediaBuySuccess.carrier(
             media_buy_id="buy_102",
             affected_packages=[package],
             workflow_step_id="wf_456",
@@ -808,7 +808,11 @@ class TestSerializationConsistency:
             ),
             pytest.param(
                 lambda: __import__("src.core.schemas", fromlist=["CreateMediaBuySuccess"]).CreateMediaBuySuccess(
-                    media_buy_id="mb_test", packages=[]
+                    media_buy_id="mb_test",
+                    packages=[],
+                    # No model defaults: both are columns the repository owns.
+                    confirmed_at="2026-03-15T12:00:00Z",
+                    revision=1,
                 ),
                 id="create_media_buy",
             ),
@@ -825,9 +829,9 @@ class TestSerializationConsistency:
                 id="list_authorized_properties",
             ),
             pytest.param(
-                lambda: __import__("src.core.schemas", fromlist=["UpdateMediaBuySuccess"]).UpdateMediaBuySuccess(
-                    media_buy_id="mb_test", affected_packages=[]
-                ),
+                lambda: __import__(
+                    "src.core.schemas", fromlist=["UpdateMediaBuySuccess"]
+                ).UpdateMediaBuySuccess.carrier(media_buy_id="mb_test", affected_packages=[]),
                 id="update_media_buy",
             ),
             pytest.param(

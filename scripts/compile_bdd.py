@@ -1086,6 +1086,23 @@ def _render_scenario_lines(scenario: Scenario) -> list[str]:
     return lines
 
 
+def _without_trailing_blanks(lines: list[str]) -> list[str]:
+    """Right-strip every line and drop the trailing blank ones.
+
+    ``parse_feature_file`` ends a Background block at the next scenario, so the
+    blank lines separating the two land inside ``background_lines``. The merge
+    renderer then emits that block and appends its own separator, so each
+    ``--merge`` run over the same file grew the gap by one line and no run
+    reproduced its own input. A byte-for-byte round trip is what tells you a
+    generated feature still matches its adcp-req source, so a renderer that
+    cannot reproduce its own output destroys the only available check.
+    """
+    trimmed = [line.rstrip() for line in lines]
+    while trimmed and not trimmed[-1]:
+        trimmed.pop()
+    return trimmed
+
+
 # ---------------------------------------------------------------------------
 # Binding ground truth (which scenarios actually have step-defs in salesagent)
 # ---------------------------------------------------------------------------
@@ -1409,25 +1426,23 @@ def merge_feature(
     out_lines.append(target_feature.feature_line)
     for dl in target_feature.description_lines:
         out_lines.append(dl.rstrip())
+    background_lines: list[str] | None = None
     if use_target_background and target_feature.background_lines:
         # Unwired UC + Background diff → TARGET wins (no bindings to keep).
-        for bl in target_feature.background_lines:
-            out_lines.append(bl.rstrip())
-        out_lines.append("")
+        background_lines = target_feature.background_lines
     elif legacy_feature is not None and legacy_feature.background_lines:
-        for bl in legacy_feature.background_lines:
-            out_lines.append(bl.rstrip())
-        out_lines.append("")
+        background_lines = legacy_feature.background_lines
     elif target_feature.background_lines:
-        for bl in target_feature.background_lines:
-            out_lines.append(bl.rstrip())
+        background_lines = target_feature.background_lines
+    if background_lines is not None:
+        out_lines.extend(_without_trailing_blanks(background_lines))
         out_lines.append("")
 
     for scen in merged_scenarios:
         out_lines.extend(_render_scenario_lines(scen))
         out_lines.append("")
 
-    output_text = "\n".join(out_lines) + "\n"
+    output_text = "\n".join(_without_trailing_blanks(out_lines)) + "\n"
 
     # Also pass through new mappings so the caller can update traceability
     # (mirrors compile_feature's contract for the prune step).
@@ -1570,13 +1585,32 @@ def verify_features(adcp_req_path: Path) -> bool:
     """Check if compiled feature files are up-to-date.
 
     Returns True if all files are current, False otherwise.
+
+    LIMITATION -- this cannot grade merge-mode output, and two things make that so:
+
+    1. The sha check below returns before a single file is compared. Any unrelated
+       adcp-req commit (a docs change, a beads tweak) reports STALE while telling
+       you nothing about content.
+    2. Past that check, ``_render_feature`` re-renders WITHOUT the merge, so every
+       file produced by ``--merge`` compares unequal. All 31 report stale.
+
+    To check a merged file, re-run ``--merge`` for that UC and diff: a no-op merge
+    leaves only the generation stamp. Do NOT "fix" a stale report with ``--all`` --
+    that discards every locally-preserved (``@hand-edited``) scenario.
     """
     commit_sha = _get_commit_sha(adcp_req_path)
     traceability = _load_traceability(TRACEABILITY_PATH)
 
     recorded_commit = traceability.get("source", {}).get("commit")
     if recorded_commit != commit_sha:
-        print(f"STALE: traceability records commit {recorded_commit or 'null'}, but adcp-req HEAD is {commit_sha[:10]}")
+        # Bookkeeping only: this compares SHAs, not content, and returns before
+        # a single file is examined. An adcp-req commit touching no feature file
+        # lands here too, so this says nothing about whether the features are current.
+        print(
+            f"STALE: traceability records commit {recorded_commit or 'null'}, "
+            f"but adcp-req HEAD is {commit_sha[:10]} "
+            f"(sha bookkeeping only — no feature file was compared)"
+        )
         return False
 
     feature_files = _find_feature_files(adcp_req_path)
@@ -1597,7 +1631,7 @@ def verify_features(adcp_req_path: Path) -> bool:
         text = source_path.read_text()
         feature = parse_feature_file(text)
         uc_key = _extract_uc_key(source_path.name)
-        expected, _new = _render_feature(feature, traceability, uc_key, source_path.name, commit_sha)
+        expected, _manifest, _ids = _render_feature(feature, traceability, uc_key, source_path.name, commit_sha)
         actual = output_path.read_text()
         # Compare ignoring timestamp differences in the generation stamp
         # (first two lines contain the timestamp)
@@ -1612,7 +1646,17 @@ def verify_features(adcp_req_path: Path) -> bool:
         print(f"STALE compiled files: {', '.join(stale)}")
 
     if missing or stale:
-        print("\nRe-run: python scripts/compile_bdd.py --all")
+        # NOT "--all". That path never reaches the LEGACY-PRESERVE branch, so it
+        # discards every @hand-edited scenario. A merge-mode file ALWAYS reports
+        # stale here (see the limitation in this function's docstring), so a stale
+        # line is not by itself evidence that anything needs regenerating.
+        print(
+            "\nTo check a merge-mode file, re-run the merge for that UC and diff:"
+            "\n    python scripts/compile_bdd.py --uc <NNN> --merge"
+            "\na no-op leaves only the generation stamp and whitespace."
+            "\nDo NOT run --all to clear this: it discards locally-preserved"
+            " (@hand-edited) scenarios."
+        )
         return False
 
     print(f"All {len(feature_files)} compiled feature files are up-to-date.")

@@ -54,7 +54,7 @@ def _make_mock_media_buy(media_buy_id="mb_test", currency="USD", status="active"
     """Create a mock MediaBuy database object.
 
     Default status is "active" so the state-machine precondition guard
-    (added in salesagent-ljz0) lets all buyer actions through.
+    (added in ) lets all buyer actions through.
     """
     mb = MagicMock()
     mb.media_buy_id = media_buy_id
@@ -128,7 +128,7 @@ def test_combined_campaign_and_package_update():
     both are applied; response has affected_packages for all packages."""
     with MediaBuyUpdateEnv(principal_id="principal_test", tenant_id="tenant_test") as env:
         # Adapter returns success for package budget update
-        env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess(
+        env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess.carrier(
             media_buy_id="mb_combined",
             affected_packages=[],
         )
@@ -197,7 +197,7 @@ def test_multi_package_update_processes_all_packages():
     all 3 are processed and appear in affected_packages."""
     with MediaBuyUpdateEnv(principal_id="principal_test", tenant_id="tenant_test") as env:
         # Adapter returns success for each update_package_budget call
-        env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess(
+        env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess.carrier(
             media_buy_id="mb_multi",
             affected_packages=[],
         )
@@ -255,7 +255,7 @@ def test_main_flow_package_budget_update():
     with media_buy_id and affected_packages."""
     with MediaBuyUpdateEnv(principal_id="principal_test", tenant_id="tenant_test") as env:
         # Adapter returns success
-        env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess(
+        env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess.carrier(
             media_buy_id="mb_main",
             affected_packages=[],
         )
@@ -549,7 +549,7 @@ def test_pause_completes_workflow_step():
     """
     with MediaBuyUpdateEnv(principal_id="principal_test", tenant_id="tenant_test") as env:
         # Configure adapter to return success for pause
-        mock_result = UpdateMediaBuySuccess(
+        mock_result = UpdateMediaBuySuccess.carrier(
             media_buy_id="mb_pause",
             affected_packages=[],
         )
@@ -840,7 +840,7 @@ class TestUC003MainObligations:
             mock_scalars.first.return_value = mock_cl
             mock_session.scalars.return_value = mock_scalars
 
-            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess(
+            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess.carrier(
                 media_buy_id="mb_no_max", affected_packages=[]
             )
 
@@ -866,7 +866,7 @@ class TestUC003MainObligations:
             mock_scalars.first.return_value = mock_cl
             mock_session.scalars.return_value = mock_scalars
 
-            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess(
+            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess.carrier(
                 media_buy_id="mb_adapter", affected_packages=[]
             )
 
@@ -895,7 +895,7 @@ class TestUC003MainObligations:
             mock_scalars.first.return_value = mock_cl
             mock_session.scalars.return_value = mock_scalars
 
-            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess(
+            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess.carrier(
                 media_buy_id="mb_persist", affected_packages=[]
             )
 
@@ -2739,7 +2739,7 @@ class TestUC003ExtO:
 
 
 # ---------------------------------------------------------------------------
-# State-machine precondition (salesagent-ljz0)
+# State-machine precondition
 # ---------------------------------------------------------------------------
 
 
@@ -2801,7 +2801,7 @@ class TestUC003StateMachine:
             active_mb = _make_mock_media_buy("mb_active", status="active")
             env.mock["uow"].return_value.media_buys.get_by_id.return_value = active_mb
 
-            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess(
+            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess.carrier(
                 media_buy_id="mb_active",
                 affected_packages=[],
             )
@@ -2837,7 +2837,7 @@ class TestUC003StateMachine:
             paused_mb = _make_mock_media_buy("mb_paused_resume", status="paused")
             env.mock["uow"].return_value.media_buys.get_by_id.return_value = paused_mb
 
-            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess(
+            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess.carrier(
                 media_buy_id="mb_paused_resume",
                 affected_packages=[],
             )
@@ -2870,7 +2870,7 @@ class TestUC003StateMachine:
                 post_action_mb,  # post-action status lookup (the line-421 fix)
             ]
 
-            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess(
+            env.mock["adapter"].return_value.update_media_buy.return_value = UpdateMediaBuySuccess.carrier(
                 media_buy_id="mb_post_action",
                 affected_packages=[],
             )

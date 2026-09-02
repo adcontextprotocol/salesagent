@@ -27,7 +27,7 @@ class TestApprovalErrorHandling:
 
     def test_create_media_buy_success_has_media_buy_id(self):
         """Verify CreateMediaBuySuccess has media_buy_id field."""
-        success_response = CreateMediaBuySuccess(
+        success_response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_123",
             packages=[],
         )
@@ -39,7 +39,7 @@ class TestApprovalErrorHandling:
     def test_error_response_isinstance_check(self):
         """Test isinstance check correctly identifies error responses."""
         error_response = CreateMediaBuyError(errors=[Error(code="TEST", message="Test error")])
-        success_response = CreateMediaBuySuccess(
+        success_response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_123",
             packages=[],
         )

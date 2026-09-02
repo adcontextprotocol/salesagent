@@ -8,7 +8,6 @@ callers still passing brand_manifest instead of brand fail in multiple ways:
 3. CreateMediaBuyRequest(brand_manifest=...) → ValidationError (brand required + extra forbidden)
 4. A2A handler with {"brand_manifest": ...} → "Either 'brief' or 'brand' parameter is required"
 
-Bug: salesagent-k6cn
 """
 
 import pytest

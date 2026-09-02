@@ -59,7 +59,7 @@ class TestPreCommitNoAdditionalDeps:
                 "This violates ADR-001 (uv.lock as single source of truth).\n\n"
                 f"Offending lines:\n{offending}\n\n"
                 "Fix: replace the hook with a local repo hook using language: system\n"
-                "     and entry: uv run <tool>. See .pre-commit-config.yaml for examples."
+                "     and entry: uv run <tool>.pre-commit-config.yaml for examples."
             )
 
     @pytest.mark.arch_guard

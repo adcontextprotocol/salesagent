@@ -2,7 +2,6 @@
 
 Verifies sync_accounts upsert semantics with real PostgreSQL.
 
-beads: salesagent-619
 Business rules: BR-RULE-055 (auth required), BR-RULE-056 (upsert by natural key),
 BR-RULE-057 (atomic XOR response), BR-RULE-060 (approval workflow),
 BR-RULE-061 (delete_missing), BR-RULE-062 (dry_run)
@@ -429,7 +428,7 @@ class TestSyncAccountsDryRun:
         real create returns status=pending_approval with setup — so the dry-run
         preview must show the same, not 'active'.
 
-        Regression for salesagent-jcvn: _sync_accounts_impl hardcoded
+        Regression for : _sync_accounts_impl hardcoded
         status='active' in the dry_run branch, bypassing the approval-mode check
         and silently lying to buyers about what would happen.
         """
@@ -719,7 +718,7 @@ class TestSyncAccountsApproval:
 
     @pytest.mark.asyncio
     async def test_set_approval_mode_writes_to_account_approval_mode_column(self, integration_db):
-        """Regression for salesagent-69xd: AccountSyncEnv.set_approval_mode() must write to
+        """Regression for : AccountSyncEnv.set_approval_mode() must write to
         the account_approval_mode DB column (BR-RULE-060), NOT the creative approval_mode
         column (BR-RULE-037). The MCP real-auth chain reads account_approval_mode from the
         DB tenant row — if the harness writes to the wrong column, MCP tests silently fall
@@ -753,7 +752,7 @@ class TestSyncAccountsApproval:
 class TestSyncAccountsBillingPolicyTransport:
     """BR-RULE-059: billing policy behavior must be identical across all transports.
 
-    Part of salesagent-wp9u — transport-matrix coverage for #1184 billing policy.
+    Part of — transport-matrix coverage for #1184 billing policy.
     """
 
     @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
@@ -831,7 +830,7 @@ class TestSyncAccountsBillingPolicyTransport:
 class TestSyncAccountsApprovalTransport:
     """BR-RULE-060: account approval mode behavior must be identical across all transports.
 
-    Part of salesagent-wp9u — transport-matrix coverage for #1184 approval workflow.
+    Part of — transport-matrix coverage for #1184 approval workflow.
     """
 
     @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)

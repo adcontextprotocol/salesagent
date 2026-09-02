@@ -3,8 +3,8 @@
 Verifies tenant-scoped access to adapter configuration for both OAuth
 and service account GAM authentication methods.
 
-Part of the AdapterConfigRepository introduction (salesagent-zj9 epic).
-Redesigned in salesagent-9buv: fail-loud get_by_tenant, pure logic methods.
+Part of the AdapterConfigRepository introduction ( epic).
+Redesigned in : fail-loud get_by_tenant, pure logic methods.
 """
 
 import json

@@ -3,7 +3,6 @@
 Verifies that the repository correctly queries Account and AgentAccountAccess
 models with tenant scoping against real PostgreSQL.
 
-beads: salesagent-m44
 """
 
 import pytest

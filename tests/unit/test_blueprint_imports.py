@@ -30,7 +30,7 @@ class TestBlueprintSQLAlchemyImports:
         """Validate creatives.py can be imported (all queries routed through repos)."""
         from src.admin.blueprints import creatives
 
-        # creatives.py no longer uses raw select() — all queries routed through repos (salesagent-p6i)
+        # creatives.py no longer uses raw select() — all queries routed through repos
         assert hasattr(creatives, "creatives_bp"), "Missing creatives_bp blueprint"
 
     def test_inventory_blueprint_imports(self):

@@ -1,9 +1,9 @@
 """SUPERSEDED — see ``test_thread_registry_reaper.py``.
 
 PR #1264 added six dedicated scenarios here for the dead-thread reaper in
-``background_sync_service``. salesagent-x2h.3 then consolidated the reaper
+``background_sync_service``. then consolidated the reaper
 into :class:`src.core.thread_registry.ThreadRegistry`, and
-salesagent-x2h.8 / salesagent-x2h.9 replaced these six near-identical
+ / replaced these six near-identical
 scenarios with a single DRY parametrized suite that runs the same six
 scenarios across *every* single-dict ThreadRegistry-backed service reaper
 (``background_sync_service`` is one of them).

@@ -3,7 +3,6 @@
 Tests account list, create, edit, and status management via Flask test client.
 Requires PostgreSQL (integration_db fixture).
 
-beads: salesagent-7kn
 """
 
 import pytest

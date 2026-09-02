@@ -1,6 +1,5 @@
 """Regression test: adcp 3.9 uses 'account' (AccountReference) instead of 'account_id' (string).
 
-Bug: salesagent-jbk6
 
 History: adcp 3.6.0 used 'account_id' (plain string). adcp 3.9 renamed it to 'account'
 with type AccountReference — a union of:

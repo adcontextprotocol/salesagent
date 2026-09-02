@@ -184,7 +184,7 @@ class TestCanonicalRequestHash:
 
         kwargs: dict = {
             "brand": {"domain": "canonical-test.example.com"},
-            "packages": [],
+            "packages": [{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
             "start_time": datetime(2026, 6, 1, tzinfo=UTC),
             "end_time": datetime(2026, 6, 30, tzinfo=UTC),
             "po_number": "CANON-1",
@@ -203,7 +203,7 @@ class TestCanonicalRequestHash:
             po_number="CANON-1",
             end_time=datetime(2026, 6, 30, tzinfo=UTC),
             start_time=datetime(2026, 6, 1, tzinfo=UTC),
-            packages=[],
+            packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
             brand={"domain": "canonical-test.example.com"},
         )
         assert canonical_request_hash(a) == canonical_request_hash(b)

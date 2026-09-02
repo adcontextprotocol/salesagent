@@ -1,15 +1,33 @@
-"""Unit test: execute_approved_media_buy must update status to 'active' after adapter success.
+"""Unit test: execute_approved_media_buy must write the buy's status after adapter success.
 
-Bug: salesagent-mckm
-Root cause: execute_approved_media_buy returns (True, None) after successful adapter
-execution but never sets media_buy.status = 'active' in the database.
+Original defect: the function returned ``(True, None)`` after a successful adapter
+execution but never wrote ``media_buy.status`` at all. That intent — a status write
+MUST happen, and exactly once — is what this test still guards, and "no write happens"
+remains a regression this code could plausibly reintroduce.
+
+THE EXPECTED VALUE CHANGED, deliberately. This test used to assert
+``update_status(media_buy_id, "active")``: an unconditional ``ACTIVE``, which was
+the defect — a buy approved before its flight window opened was published as
+serving. The status is now ``resolve_flight_window_status(...)`` on a re-fetched row,
+written together with ``approved_at``/``approved_by`` in the SAME call so one approval
+is one write and one revision bump. The fixture below therefore seeds a buy whose
+window has not opened and expects ``SCHEDULED``: the point is that the write is the
+shared rule's answer, not a constant.
 """
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+from src.core.database.models import PersistedMediaBuyStatus
+from src.core.database.repositories.creative import CreativeAssignmentRepository
 from src.core.schemas import CreateMediaBuySuccess, Principal
+from src.core.tools.media_buy_create import ApprovalOutcome
+
+# Who approved, and when. Passed in by the caller and written by the same
+# ``update_status`` call as the status, so the assertion can name all three.
+_APPROVED_BY = "approver@example.com"
+_APPROVED_AT = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
 
 def _make_mock_media_buy():
@@ -21,10 +39,13 @@ def _make_mock_media_buy():
     mb.status = "pending_approval"
     mb.order_name = "Test Order"
     mb.advertiser_name = "Test Advertiser"
-    mb.start_date = datetime.now(UTC).date()
-    mb.end_date = (datetime.now(UTC) + timedelta(days=7)).date()
-    mb.start_time = datetime.now(UTC)
-    mb.end_time = datetime.now(UTC) + timedelta(days=7)
+    # A window that has NOT opened yet — the flight-window rule resolves this to
+    # SCHEDULED, which is what distinguishes "the rule was consulted" from the
+    # unconditional ACTIVE this test used to assert. Matches the raw_request below.
+    mb.start_date = (datetime.now(UTC) + timedelta(days=1)).date()
+    mb.end_date = (datetime.now(UTC) + timedelta(days=8)).date()
+    mb.start_time = datetime.now(UTC) + timedelta(days=1)
+    mb.end_time = datetime.now(UTC) + timedelta(days=8)
     mb.budget = Decimal("5000.00")
     mb.currency = "USD"
     mb.raw_request = {
@@ -77,13 +98,13 @@ def _make_mock_product():
 
 
 class TestExecuteApprovedStatusUpdate:
-    """execute_approved_media_buy must set status='active' after adapter success."""
+    """execute_approved_media_buy must write the resolved status after adapter success."""
 
-    def test_status_updated_to_active_after_adapter_success(self):
-        """After successful adapter execution, media_buy.status must be 'active'.
+    def test_status_write_after_adapter_success_is_the_resolved_status(self):
+        """One ``update_status`` call, carrying the flight-window status and the stamps.
 
-        This is the regression test for salesagent-mckm: the function returns
-        (True, None) but never updates the status field.
+        See the module docstring for why the expected value is ``SCHEDULED`` and no
+        longer ``"active"``.
         """
         # -- Arrange --
         tenant = _make_mock_tenant()
@@ -97,7 +118,7 @@ class TestExecuteApprovedStatusUpdate:
             platform_mappings={},
         )
 
-        adapter_response = CreateMediaBuySuccess(
+        adapter_response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_test_001",
             packages=[],
         )
@@ -110,7 +131,7 @@ class TestExecuteApprovedStatusUpdate:
         # 1. Load tenant, media_buy, packages, products
         # 2. Persist platform_order_id after adapter success
         # 3. Handle creative uploads
-        # 4. Update media buy status to 'active' (the fix)
+        # 4. Re-fetch the row and write the resolved status
         mock_session_1 = MagicMock()
         mock_session_2 = MagicMock()
         mock_session_3 = MagicMock()
@@ -147,8 +168,11 @@ class TestExecuteApprovedStatusUpdate:
         mock_uow_2.session = mock_session_2
         mock_uow_2.media_buys = MagicMock()
 
-        # UoW 4 uses update_status on the repository — track it was called
+        # UoW 4 re-fetches the row and writes the resolved status. get_by_id must
+        # return the buy itself: the resolver reads its flight window off that row,
+        # and a bare MagicMock has no orderable datetimes.
         mock_repo_3 = MagicMock()
+        mock_repo_3.get_by_id.return_value = media_buy
         mock_uow_3 = MagicMock()
         mock_uow_3.__enter__ = MagicMock(return_value=mock_uow_3)
         mock_uow_3.__exit__ = MagicMock(return_value=None)
@@ -171,14 +195,35 @@ class TestExecuteApprovedStatusUpdate:
             ),
             patch("src.core.tools.media_buy_create._validate_creatives_before_adapter_call"),
             patch("src.core.helpers.adapter_helpers.get_adapter", return_value=mock_adapter),
+            # The creative gate is a separate concern with its own tests; this buy has
+            # nothing outstanding, so the run reaches the adapter and the status write.
+            patch.object(CreativeAssignmentRepository, "unapproved_creative_ids", return_value=[]),
         ):
             from src.core.tools.media_buy_create import execute_approved_media_buy
 
-            success, error = execute_approved_media_buy("mb_test_001", "tenant_1")
+            result = execute_approved_media_buy(
+                "mb_test_001",
+                "tenant_1",
+                approved_by=_APPROVED_BY,
+                approved_at=_APPROVED_AT,
+            )
 
         # -- Assert --
-        assert success is True, f"Expected success but got error: {error}"
-        assert error is None
+        assert result.outcome is ApprovalOutcome.EXECUTED, f"expected EXECUTED, got {result}"
+        assert result.status is PersistedMediaBuyStatus.SCHEDULED
 
-        # THE KEY ASSERTION: update_status must be called with 'active'
-        mock_repo_3.update_status.assert_called_once_with("mb_test_001", "active")
+        # THE KEY ASSERTION: exactly one status write, carrying the resolved status
+        # and both approval stamps. ``assert_called_once_with`` is what makes it a
+        # single-writer assertion — a second write from anywhere fails it.
+        mock_repo_3.update_status.assert_called_once_with(
+            "mb_test_001",
+            PersistedMediaBuyStatus.SCHEDULED,
+            # Asserted, not tolerated. This call is reached only AFTER the adapter
+            # created the order, which is the moment the seller commits — so it is
+            # also the write that must claim the commitment. The creative-review hold
+            # returns before the adapter and leaves the default, so pinning the flag
+            # here is what keeps the two paths distinguishable at the single writer.
+            seller_committed=True,
+            approved_at=_APPROVED_AT,
+            approved_by=_APPROVED_BY,
+        )

@@ -1085,7 +1085,7 @@ class TestFilteredDiscovery:
         Spec: product-filters.json — "true = products offering fixed pricing
         (at least one option with fixed_price)"
 
-        Bug: salesagent-srim — getattr(po, "is_fixed", None) returns None on
+        Bug: — getattr(po, "is_fixed", None) returns None on
         PricingOption RootModel wrappers because fixed_price lives on po.root,
         not po directly.
         """
@@ -1098,7 +1098,7 @@ class TestFilteredDiscovery:
         # With is_fixed_price=true, we should get at least the fixed ones.
         fixed_ids = {p.product_id for p in result.products}
         assert len(fixed_ids) > 0, (
-            "is_fixed_price=True filter returned 0 products — PricingOption RootModel getattr bug (salesagent-srim)"
+            "is_fixed_price=True filter returned 0 products — PricingOption RootModel getattr bug "
         )
         assert "guaranteed_display" in fixed_ids
 
@@ -1117,7 +1117,7 @@ class TestFilteredDiscovery:
         )
         auction_ids = {p.product_id for p in result.products}
         assert len(auction_ids) > 0, (
-            "is_fixed_price=False filter returned 0 products — PricingOption RootModel getattr bug (salesagent-srim)"
+            "is_fixed_price=False filter returned 0 products — PricingOption RootModel getattr bug "
         )
         assert "auction_video" in auction_ids
 

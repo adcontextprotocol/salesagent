@@ -3,7 +3,7 @@
 Spec verification: 2026-02-26
 adcp spec commit: 8f26baf3
 adcp-client-python commit: a08805d
-Verified: 30/59 CONFIRMED, 24/59 UNSPECIFIED, 5 CONTRADICTS (salesagent-mexj), 0 SPEC_AMBIGUOUS
+Verified: 30/59 CONFIRMED, 24/59 UNSPECIFIED, 5 CONTRADICTS , 0 SPEC_AMBIGUOUS
 
 This module maps every test obligation from docs/test-obligations/UC-004-deliver-media-buy-metrics.md
 to either a real test or a skip stub. It covers:
@@ -479,10 +479,10 @@ class TestDeliveryIdentificationModes:
         errors with media_buy_not_found for each missing ID.
         https://github.com/adcontextprotocol/adcp-client-python/blob/a08805d6345c96d43ba9369bb0afe0597182871f/schemas/cache/media-buy/get-media-buy-delivery-response.json
         Fix: _get_target_media_buys must track which requested IDs were not found and
-        return errors for them. See salesagent-mexj.
+        return errors for them.
         Priority: P1
         Type: unit
-        Source: UC-004, salesagent-mexj
+        Source: UC-004,
         Covers: UC-004-MAIN-17
         """
         # Request 3 IDs, only 1 found
@@ -524,10 +524,10 @@ class TestDeliveryIdentificationModes:
         Spec: CONTRADICTS -- response.errors must contain media_buy_not_found for each
         missing ID. Current impl returns empty with errors=None.
         https://github.com/adcontextprotocol/adcp-client-python/blob/a08805d6345c96d43ba9369bb0afe0597182871f/schemas/cache/media-buy/get-media-buy-delivery-response.json
-        Fix: populate errors array. See salesagent-mexj.
+        Fix: populate errors array.
         Priority: P1
         Type: unit
-        Source: UC-004, salesagent-mexj
+        Source: UC-004,
         Covers: UC-004-MAIN-18
         """
         # Request 2 IDs, none found
@@ -989,7 +989,7 @@ class TestDeliveryDateRange:
 class TestDeliveryPricingOptionLookup:
     """UC-004-UPG: pricing_option_id type safety for 3.6 upgrade.
 
-    CRITICAL: salesagent-mq3n identified that _get_pricing_options compares
+    CRITICAL: identified that _get_pricing_options compares
     string pricing_option_id from JSON to integer PK column, which always
     silently fails. These tests validate the fix.
     """
@@ -1001,7 +1001,7 @@ class TestDeliveryPricingOptionLookup:
 
         Our implementation constructs synthetic IDs like "cpm_usd_fixed" from
         PricingOption fields and matches against requested IDs.
-        See salesagent-mq3n.
+
         Covers: UC-004-PRICINGOPTION-TYPE-CONSISTENCY-01
         """
         from src.core.tools.media_buy_delivery import _get_pricing_options
@@ -1358,10 +1358,10 @@ class TestDeliveryMediaBuyNotFound:
         "Task-specific errors and warnings (e.g., missing delivery data)". Current impl
         returns empty deliveries with errors=None. Correct: errors=[{code: "MEDIA_BUY_NOT_FOUND"}].
         https://github.com/adcontextprotocol/adcp-client-python/blob/a08805d6345c96d43ba9369bb0afe0597182871f/schemas/cache/media-buy/get-media-buy-delivery-response.json
-        Fix: _get_target_media_buys must diff requested IDs vs found IDs. See salesagent-mexj.
+        Fix: _get_target_media_buys must diff requested IDs vs found IDs.
         Priority: P1
         Type: unit
-        Source: UC-004, salesagent-mexj
+        Source: UC-004,
         Covers: UC-004-EXT-C-01
         """
         req = GetMediaBuyDeliveryRequest(
@@ -1386,10 +1386,10 @@ class TestDeliveryMediaBuyNotFound:
         Correct: return found buys in media_buy_deliveries AND populate errors with
         media_buy_not_found for each missing ID. Both arrays populated simultaneously.
         https://github.com/adcontextprotocol/adcp-client-python/blob/a08805d6345c96d43ba9369bb0afe0597182871f/schemas/cache/media-buy/get-media-buy-delivery-response.json
-        Fix: _get_target_media_buys must diff requested vs found. See salesagent-mexj.
+        Fix: _get_target_media_buys must diff requested vs found.
         Priority: P1
         Type: unit
-        Source: UC-004, salesagent-mexj, BR-RULE-030
+        Source: UC-004, , BR-RULE-030
         Covers: UC-004-EXT-C-02
         """
         buy = _make_mock_media_buy(media_buy_id="mb_exists")

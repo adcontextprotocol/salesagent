@@ -10,7 +10,6 @@ PAYMENT_REQUIRED/SUSPENDED/VALIDATION_ERROR) on the wire. The former test-side
 ``AdCPValidationError`` construction and the IMPL-only resolve_account call were
 removed: they bypassed the wire and reconstructed errors the harness never saw.
 
-beads: salesagent-71q (DRY extraction), salesagent-zh85 (wire migration)
 """
 
 from __future__ import annotations

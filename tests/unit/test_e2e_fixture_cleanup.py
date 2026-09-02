@@ -6,7 +6,6 @@ These tests reproduce the ResourceWarning bugs from:
 - tests/e2e/test_adcp_schema_compliance.py (1 warning from unclosed httpx client)
 - tests/e2e/test_discovery_endpoints_e2e.py (1 warning from unclosed httpx client)
 
-Bug: salesagent-7wmn
 """
 
 import socket

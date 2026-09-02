@@ -1,6 +1,6 @@
 """Test that auth_utils.py does not have a duplicate get_principal_from_context.
 
-Task salesagent-ygg3: Two parallel get_principal_from_context functions exist with
+Task : Two parallel get_principal_from_context functions exist with
 different signatures. The auth_utils.py version is dead code (0 callers) and should
 be removed. All transports use resolve_identity() in resolved_identity.py.
 """

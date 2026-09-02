@@ -1,6 +1,6 @@
 """Regression test: REST /api/v1/creative-formats must forward filter params to _impl.
 
-Bug: salesagent-rppx — ListCreativeFormatsBody only had adcp_version, dropping
+Bug: — ListCreativeFormatsBody only had adcp_version, dropping
 all filter parameters. The MCP and A2A transports correctly forward filters;
 only REST was broken.
 """

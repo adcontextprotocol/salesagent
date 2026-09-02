@@ -1,9 +1,9 @@
 """Integration tests: list_creative_formats input validation (Extension B).
 
 Covers:
-- salesagent-3w1w (UC-005-EXT-B-03): non-integer dimension values
-- salesagent-s7yx (UC-005-EXT-B-04): invalid WCAG level
-- salesagent-w83l (UC-005-EXT-B-05): multi-field validation errors
+- (UC-005-EXT-B-03): non-integer dimension values
+- (UC-005-EXT-B-04): invalid WCAG level
+- (UC-005-EXT-B-05): multi-field validation errors
 
 These tests verify that invalid request parameters produce VALIDATION_ERROR
 responses with per-field error messages. Validation happens at the Pydantic
@@ -24,7 +24,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
 # ---------------------------------------------------------------------------
-# UC-005-EXT-B-03: Non-integer dimension values (salesagent-3w1w)
+# UC-005-EXT-B-03: Non-integer dimension values
 # ---------------------------------------------------------------------------
 
 
@@ -100,7 +100,7 @@ class TestNonIntegerDimensionValues:
 
 
 # ---------------------------------------------------------------------------
-# UC-005-EXT-B-04: Invalid WCAG level (salesagent-s7yx)
+# UC-005-EXT-B-04: Invalid WCAG level
 # ---------------------------------------------------------------------------
 
 
@@ -143,7 +143,7 @@ class TestInvalidWcagLevel:
 
 
 # ---------------------------------------------------------------------------
-# UC-005-EXT-B-05: Multi-field validation errors (salesagent-w83l)
+# UC-005-EXT-B-05: Multi-field validation errors
 # ---------------------------------------------------------------------------
 
 

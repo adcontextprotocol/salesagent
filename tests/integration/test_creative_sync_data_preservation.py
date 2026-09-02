@@ -33,7 +33,7 @@ Test Strategy:
 - Test both create and update paths
 - Test both static and generative formats
 
-Covers: salesagent-9t7f
+Covers:
 """
 
 from __future__ import annotations

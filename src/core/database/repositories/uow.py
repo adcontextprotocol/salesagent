@@ -21,7 +21,6 @@ Usage:
         partners = uow.tenant_config.list_publisher_partners()
         # auto-commits when exiting the `with` block
 
-beads: salesagent-t735 (foundation), salesagent-2lp8 (epic), salesagent-rn59 (ProductUoW), salesagent-4d4 (WorkflowUoW), salesagent-9y0 (TenantConfigUoW), salesagent-q8n (CreativeUoW), salesagent-24c (BaseUoW extraction)
 """
 
 from __future__ import annotations
@@ -78,7 +77,7 @@ class BaseUoW:
         It will be removed once all callers use repository methods.
         """
         warnings.warn(
-            "uow.session is deprecated — use repository methods instead of raw session access. See salesagent-9f2.",
+            "uow.session is deprecated — use repository methods instead of raw session access.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -252,7 +251,6 @@ class AccountUoW(BaseUoW):
     Args:
         tenant_id: Tenant scope for all repository queries.
 
-    beads: salesagent-m44
     """
 
     accounts: AccountRepository | None
@@ -298,15 +296,23 @@ class CreativeUoW(BaseUoW):
 
     creatives: CreativeRepository | None
     assignments: CreativeAssignmentRepository | None
+    # Assigning a creative can move its media buy out of draft, and a media-buy
+    # status change carries the revision bump and the confirmed_at stamp — both
+    # owned by MediaBuyRepository. The UoW already reaches the entity
+    # (find_package_with_media_buy returns it), so it needs the repository that
+    # may legally write it rather than a bare attribute assignment.
+    media_buys: MediaBuyRepository | None
 
     def _init_repos(self) -> None:
         assert self._session is not None
         self.creatives = CreativeRepository(self._session, self._tenant_id)
         self.assignments = CreativeAssignmentRepository(self._session, self._tenant_id)
+        self.media_buys = MediaBuyRepository(self._session, self._tenant_id)
 
     def _clear_repos(self) -> None:
         self.creatives = None
         self.assignments = None
+        self.media_buys = None
 
 
 class AdminCreativeUoW(BaseUoW):
@@ -322,7 +328,6 @@ class AdminCreativeUoW(BaseUoW):
     Args:
         tenant_id: Tenant scope for all repository queries.
 
-    beads: salesagent-4tb, salesagent-p6i
     """
 
     creatives: CreativeRepository | None

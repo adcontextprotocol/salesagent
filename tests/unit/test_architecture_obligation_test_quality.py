@@ -20,7 +20,6 @@ the body (showing intent), but don't need to call the function (it may not exist
 Scanning approach: AST — parse each test file, find ``Covers:`` in docstrings,
 then check for ``ast.Call`` nodes targeting production names.
 
-beads: salesagent-9q5g
 """
 
 from __future__ import annotations

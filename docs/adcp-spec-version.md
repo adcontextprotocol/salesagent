@@ -45,6 +45,11 @@ from the spec.
 
 ## `status` vs `media_buy_status` on media-buy responses
 
+The SDK **pin** (`adcp==6.6.0`, spec **3.1.1**) fixes the request/response
+*type shapes* we build against. It does **not** always fix the graded
+*behavior*. One field diverges deliberately: the `media_buy_status` dual-emit
+on create-/update-media-buy responses.
+
 The two are different namespaces and are **not** identical:
 
 - top-level `status` is the PROTOCOL `TaskStatus` (`submitted` / `completed`),
@@ -100,7 +105,7 @@ they move with the pin. They were literals until #1757, and the `$schema` assert
 `tests/integration/test_trust_root_documents.py` graded only that the KEY was present —
 so a bump would have left every trust-root document pointing at the previous version with
 nothing to catch it.
-8. Re-verify integration and BDD coverage.
+9. Re-verify integration and BDD coverage.
 
 ## Pinned schema sources
 

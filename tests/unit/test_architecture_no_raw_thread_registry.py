@@ -8,7 +8,6 @@ A module/class is a violation when it BOTH:
   - annotates a name as ``dict[str, threading.Thread]`` (or ``Dict[str, Thread]``)
   - and constructs a ``threading.Lock()`` in the same scope
 
-beads: salesagent-x2h.3 (structural guard — ThreadRegistry consolidation)
 """
 
 import ast

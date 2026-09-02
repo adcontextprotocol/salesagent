@@ -4,16 +4,18 @@ Given steps seed media buys in DB via factories.
 When steps build GetMediaBuysRequest and dispatch through MediaBuyListEnv.
 Then steps assert on GetMediaBuysResponse fields.
 
-beads: salesagent-lqb
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from pytest_bdd import given, parsers, then, when
 
+from src.core.schemas._base import GetMediaBuysRequest
+from tests.bdd.steps._outcome_helpers import wire_dict, wire_field
+from tests.bdd.steps.generic._create_request import build_create_request_kwargs
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.bdd.steps.generic.then_error import _wire_code, _wire_error_object, _wire_suggestion
 from tests.factories import (
@@ -226,10 +228,16 @@ def given_owns_media_buy_persisted_status(ctx: dict, principal_id: str, mb_id: s
     _seed_media_buy_with_persisted_status(ctx, principal_id, mb_id, persisted)
 
 
-def _seed_simple_media_buy(ctx: dict, principal_id: str, mb_id: str, status: str = "active") -> Any:
+def _seed_simple_media_buy(ctx: dict, principal_id: str, mb_id: str, status: str = "active", **columns: Any) -> Any:
     """Register the principal, seed a media buy (default mid-flight window) under a
     unique id, and register its Gherkin label. Shared by the plain and
     with-status Given steps so the seed+register block lives in one place.
+
+    ``**columns`` forwards further persisted column values (``revision``,
+    ``confirmed_at``) straight to the factory, so the v3.1 lifecycle-handle Givens
+    seed through this ONE factory path instead of a second seeder or a new env
+    API — MediaBuyListEnv has no seeding methods and none of UC-019's other
+    Givens use one.
     """
     _register_principal(ctx, principal_id)
     env = ctx["env"]
@@ -239,6 +247,7 @@ def _seed_simple_media_buy(ctx: dict, principal_id: str, mb_id: str, status: str
         principal=ctx["principal"],
         media_buy_id=real_id,
         status=status,
+        **columns,
     )
     env._commit_factory_data()
     _register_media_buy(ctx, mb_id, mb)
@@ -566,14 +575,14 @@ def given_package_creative_rejected(ctx: dict, pkg_id: str, status: str, reason:
 def given_package_creative_assignment(ctx: dict, pkg_id: str, creative_id: str) -> None:
     """Record creative assignment — cannot seed real DB records.
 
-    FIXME(salesagent-vov): When CreativeAssignmentFactory exists, seed real DB records.
+    FIXME: When CreativeAssignmentFactory exists, seed real DB records.
     """
     import pytest
 
     pytest.xfail(
         f"SPEC-PRODUCTION GAP: No CreativeAssignmentFactory — cannot seed creative assignment "
         f"for '{creative_id}' on package '{pkg_id}'. "
-        f"FIXME(salesagent-vov): Create factory to seed real DB records."
+        f"FIXME: Create factory to seed real DB records."
     )
 
 
@@ -581,14 +590,14 @@ def given_package_creative_assignment(ctx: dict, pkg_id: str, creative_id: str) 
 def given_creative_status_with_reason(ctx: dict, creative_id: str, status: str, reason: str) -> None:
     """Update creative status/reason — cannot update real DB records.
 
-    FIXME(salesagent-vov): When CreativeAssignmentFactory exists, update real DB records.
+    FIXME: When CreativeAssignmentFactory exists, update real DB records.
     """
     import pytest
 
     pytest.xfail(
         f"SPEC-PRODUCTION GAP: No CreativeAssignmentFactory — cannot update creative "
         f"'{creative_id}' with status='{status}', rejection_reason='{reason}' in DB. "
-        f"FIXME(salesagent-vov): Create factory to seed/update real DB records."
+        f"FIXME: Create factory to seed/update real DB records."
     )
 
 
@@ -596,14 +605,14 @@ def given_creative_status_with_reason(ctx: dict, creative_id: str, status: str, 
 def given_creative_status_extra(ctx: dict, creative_id: str, status: str, extra_condition: str) -> None:
     """Update creative status with extra conditions — cannot update real DB records.
 
-    FIXME(salesagent-vov): When CreativeAssignmentFactory exists, update real DB records.
+    FIXME: When CreativeAssignmentFactory exists, update real DB records.
     """
     import pytest
 
     pytest.xfail(
         f"SPEC-PRODUCTION GAP: No CreativeAssignmentFactory — cannot update creative "
         f"'{creative_id}' status to '{status}' with '{extra_condition}' in DB. "
-        f"FIXME(salesagent-vov): Create factory to seed/update real DB records."
+        f"FIXME: Create factory to seed/update real DB records."
     )
 
 
@@ -611,14 +620,14 @@ def given_creative_status_extra(ctx: dict, creative_id: str, status: str, extra_
 def given_creative_status_simple(ctx: dict, creative_id: str, status: str) -> None:
     """Set creative internal status — cannot update real DB records.
 
-    FIXME(salesagent-vov): When CreativeAssignmentFactory exists, update real DB records.
+    FIXME: When CreativeAssignmentFactory exists, update real DB records.
     """
     import pytest
 
     pytest.xfail(
         f"SPEC-PRODUCTION GAP: No CreativeAssignmentFactory — cannot update creative "
         f"'{creative_id}' status to '{status}' in DB. "
-        f"FIXME(salesagent-vov): Create factory to seed/update real DB records."
+        f"FIXME: Create factory to seed/update real DB records."
     )
 
 
@@ -626,7 +635,7 @@ def given_creative_status_simple(ctx: dict, creative_id: str, status: str) -> No
 def given_no_creative_exists(ctx: dict, creative_id: str) -> None:
     """Mark creative as nonexistent — cannot verify or enforce DB absence.
 
-    FIXME(salesagent-vov): When CreativeAssignmentFactory exists, verify actual
+    FIXME: When CreativeAssignmentFactory exists, verify actual
     DB absence rather than relying on ctx-only sentinels.
     """
     import pytest
@@ -634,7 +643,7 @@ def given_no_creative_exists(ctx: dict, creative_id: str) -> None:
     pytest.xfail(
         f"SPEC-PRODUCTION GAP: Cannot enforce DB absence for creative '{creative_id}' — "
         f"no CreativeAssignmentFactory to verify or control DB state. "
-        f"FIXME(salesagent-vov): Verify actual DB absence."
+        f"FIXME: Verify actual DB absence."
     )
 
 
@@ -642,14 +651,14 @@ def given_no_creative_exists(ctx: dict, creative_id: str) -> None:
 def given_package_creative_ref_nonexistent(ctx: dict, pkg_id: str, creative_id: str) -> None:
     """Record creative assignment referencing a potentially nonexistent creative.
 
-    FIXME(salesagent-vov): No CreativeAssignmentFactory — cannot seed real DB records.
+    FIXME: No CreativeAssignmentFactory — cannot seed real DB records.
     """
     import pytest
 
     pytest.xfail(
         f"SPEC-PRODUCTION GAP: No CreativeAssignmentFactory — cannot seed creative assignment "
         f"for '{creative_id}' on package '{pkg_id}'. "
-        f"FIXME(salesagent-vov): Create factory to seed real DB records."
+        f"FIXME: Create factory to seed real DB records."
     )
 
 
@@ -668,7 +677,7 @@ def given_no_snapshot_for_package(ctx: dict, pkg_id: str) -> None:
 def given_adapter_supports_reporting(ctx: dict) -> None:
     """Configure the adapter mock to support realtime reporting for snapshots.
 
-    FIXME(salesagent-9vgz.1): When the harness supports full adapter capability
+    FIXME: When the harness supports full adapter capability
     configuration, this step should also set up mock reporting endpoints that
     return test data (impressions, spend, etc.).
     """
@@ -852,11 +861,16 @@ def given_adapter_no_realtime(ctx: dict) -> None:
 
 
 @given(parsers.parse('an authenticated principal "{principal_id}" who owns {count:d} media buys'))
+@given(parsers.parse('the principal "{principal_id}" owns {count:d} media buys'))
 def given_principal_with_n_buys(ctx: dict, principal_id: str, count: int) -> None:
     """Create N media buys for a principal.
 
     Uses MediaBuyFactory(...) which invokes factory_boy's create() strategy.
     env._commit_factory_data() flushes all pending factory objects to the DB session.
+
+    The second spelling is BR-RULE-291 INV-1's ("owns 3 media buys") — the same
+    logical setup in the Background's own phrasing, so it aliases onto this step
+    rather than seeding a second time in a second place.
     """
     _register_principal(ctx, principal_id)
     env = ctx["env"]
@@ -917,7 +931,26 @@ def given_principal_owns_single_mb(ctx: dict, principal_id: str, mb_id: str) -> 
 
 @given(parsers.parse('the principal "{principal_id}" owns media buy "{mb_id}"'))
 def given_principal_owns_mb_simple(ctx: dict, principal_id: str, mb_id: str) -> None:
-    """Create a media buy (simple, no date attributes)."""
+    """Create a media buy (simple, no date attributes).
+
+    GREEDY-CAPTURE HAZARD (the failure mode documented on
+    given_owns_media_buy_with_status): this parser's ``{mb_id}`` also matches any
+    scenario line that ENDS in a quoted clause — ``... owns media buy "mb-001" with
+    confirmed_at "2026-05-01T12:00:00Z"`` binds here with the whole clause
+    swallowed into the label, registering a buy no later by-ID step can resolve.
+
+    The escape is that pytest-bdd resolves a step to the alphabetically LAST
+    matching definition text (it registers one fixture per step text and pytest
+    takes the last fixturedef), and any text extending this one sorts after it — so
+    writing the more specific Given is always sufficient, and every confirmed_at
+    Given in the lifecycle-handles section below exists for exactly that reason.
+
+    Deliberately NOT asserted here: ~38 params across other UC-019 scenarios still
+    reach this step with a garbled label and are dormant for their own missing
+    Thens, so rejecting the label would convert their dormancy into hard failures
+    rather than grading anything. That conversion is the auto-xfail mechanism's
+    job (GH #1929), not this step's.
+    """
     _seed_simple_media_buy(ctx, principal_id, mb_id)
 
 
@@ -1378,7 +1411,7 @@ def then_package_details(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: paused field not present on {len(paused_gaps)} of "
             f"{total_packages_checked} package(s): {', '.join(paused_gaps)}. "
             f"All other fields (budget, bid_price, product_id, flight dates) verified. "
-            f"FIXME(salesagent-9vgz.1)"
+            f"FIXME"
         )
 
 
@@ -1580,6 +1613,57 @@ def then_fail_with_code(ctx: dict, code: str) -> None:
         raise AssertionError(f"Expected AdCPError with code '{code}', got {type(error).__name__}: {error}")
 
 
+def _pinned_recovery(code: str) -> str | None:
+    """Return the recovery classification the PINNED spec assigns to an error code.
+
+    Read from ``enums/error-code.json`` ``enumMetadata`` in the installed adcp
+    package, so the assertion is graded against the protocol rather than against
+    our own exception classes -- grading production's recovery with production's
+    own ``_default_recovery`` would be circular and could never fail. Returns
+    ``None`` for a code the pinned enum does not carry (sellers MAY emit
+    platform-specific codes), leaving recovery ungraded rather than inventing an
+    expectation the spec does not state.
+    """
+    from tests.helpers.pinned_schema import load
+
+    # Read through the pin helper rather than rebuilding the path by hand. The
+    # literal "3.1" here was a hand copy of the pinned version, inside the one step
+    # whose entire purpose is reading a fact FROM the pin — it would have kept
+    # answering from 3.1 after a bump, silently grading against the wrong spec.
+    metadata = load("enums/error-code.json").get("enumMetadata", {})
+    return (metadata.get(code) or {}).get("recovery")
+
+
+@then(parsers.parse('the request should be refused for "{media_buy_id}" with error code "{code}"'))
+def then_request_refused_for_media_buy(ctx: dict, media_buy_id: str, code: str) -> None:
+    """Assert the whole request was refused, naming the row that caused it.
+
+    "Refused" is stronger than "the response omitted the row": get_media_buys
+    must fail the entire request rather than silently dropping or reinterpreting
+    a defective row, so this step asserts an ERROR, not a short result set. It
+    grades three things:
+
+      * the wire error code, on both envelope layers (delegated to
+        ``then_fail_with_code``);
+      * the recovery classification the pinned spec assigns to that code, so a
+        terminal defect can never be reported as retryable;
+      * that the failure names the offending media buy -- without this the step
+        would pass on a refusal caused by some entirely different row.
+    """
+    then_fail_with_code(ctx, code)
+
+    expected_recovery = _pinned_recovery(code)
+    if expected_recovery is not None:
+        _assert_error_recovery(ctx, expected_recovery)
+
+    wire = _wire_error_object(ctx) or {}
+    haystack = " ".join(str(part) for part in (wire.get("message"), wire.get("details"), ctx.get("error")) if part)
+    assert media_buy_id in haystack, (
+        f"Expected the refusal to name media buy {media_buy_id!r} so the buyer can "
+        f"identify the defective row; got: {haystack!r}"
+    )
+
+
 @then("the error message should indicate that identity is required")
 def then_error_identity_required(ctx: dict) -> None:
     """Assert error mentions identity/authentication."""
@@ -1741,6 +1825,28 @@ def then_response_errors_include(ctx: dict, code: str) -> None:
     errors = getattr(resp, "errors", None) or []
     codes = [e.get("code") if isinstance(e, dict) else getattr(e, "code", None) for e in errors]
     assert code in codes, f"Expected error code '{code}' in response errors, got {codes}"
+
+
+@then(parsers.parse('the response errors should name the omitted media buy "{mb_id}"'))
+def then_errors_name_omitted_media_buy(ctx: dict, mb_id: str) -> None:
+    """Assert an advisory on the BUYER'S WIRE names the row that was left out.
+
+    Reads ``wire_dict`` rather than the typed payload: the advisory only does its job
+    if it reaches the buyer, and a re-serialized payload would report success on a
+    transport that never framed the ``errors`` channel at all.
+
+    The id matters more than the code here. An advisory saying a row was dropped
+    without saying WHICH row cannot be reconciled against — the buyer has no way to
+    tell whether the buy they wanted is broken or simply does not exist.
+    """
+    real_id = _resolve_media_buy_id(ctx, mb_id)
+    document = wire_dict(ctx)
+    errors = document.get("errors") or []
+    messages = [e.get("message", "") if isinstance(e, dict) else getattr(e, "message", "") for e in errors]
+    assert any(real_id in message for message in messages), (
+        f"expected an advisory naming the omitted media buy {real_id!r}; "
+        f"the response carried {len(errors)} advisory/advisories: {messages}"
+    )
 
 
 @then(parsers.parse('the error message should indicate "{text}" is not a valid MediaBuyStatus'))
@@ -2506,4 +2612,844 @@ def then_unavailable_reason_shorthand(ctx: dict, reason: str) -> None:
                 return
     raise AssertionError(
         f"snapshot_unavailable_reason='{reason}' not found on any package across {len(buys)} media buy(s)"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# v3.1 lifecycle handles: revision (BR-RULE-291) + confirmed_at (POST-S6 / INT-006)
+# ═══════════════════════════════════════════════════════════════════════
+# The pinned item schema (media-buy/get-media-buys-response.json, AdCP 3.1.1)
+# makes BOTH fields REQUIRED on every media_buys[] entry:
+#   revision      integer, minimum 1 — the buyer's optimistic-concurrency token
+#   confirmed_at  type [string, null] under an allOf/if guard that forbids null
+#                 when status is "active"
+#
+# Every Then in this section reads the BUYER'S WIRE (wire_dict / wire_field), not
+# the re-serialized typed payload. These two fields are exactly what this change
+# publishes, and a model round-trip cannot observe whether they reached the wire
+# at all — which is how they went unnoticed while three separate mutations of the
+# since-deleted read-time confirmed_at resolver left the suite green. That resolver
+# is gone: the column is authoritative, so these Thens now grade what the writer
+# stamped and the reader emitted.
+#
+# Givens seed persisted COLUMN values through _seed_simple_media_buy (the module's
+# own factory path) so production reads a real row, and the writes that move
+# `revision` go through MediaBuyRepository — the single writer of both columns.
+
+
+def _parse_iso8601(value: str) -> datetime:
+    """Parse an ISO 8601 timestamp literal into an aware datetime.
+
+    Both sides of every confirmed_at comparison go through this. "…T12:00:00Z" and
+    "…T12:00:00+00:00" are the SAME instant spelled two ways, so a string compare
+    would grade the serializer's choice of timezone designator instead of the
+    timestamp the buyer was promised.
+    """
+    return datetime.fromisoformat(value)
+
+
+def _wire_media_buy_entry(ctx: dict, mb_id: str, document: dict | None = None) -> dict:
+    """Locate one seeded buy's entry in the buyer-visible wire document.
+
+    Resolving through the Gherkin label (not the raw id) is what keeps a scenario
+    that seeded several buys from silently grading whichever entry came first.
+    """
+    real_id = _resolve_media_buy_id(ctx, mb_id)
+    doc = wire_dict(ctx) if document is None else document
+    buys = doc.get("media_buys", [])
+    for buy in buys:
+        if buy.get("media_buy_id") == real_id:
+            return buy
+    raise AssertionError(
+        f"Media buy '{mb_id}' (real_id={real_id}) is not in the response; "
+        f"media_buys carried {[b.get('media_buy_id') for b in buys]!r}"
+    )
+
+
+def _sole_seeded_label(ctx: dict) -> str:
+    """The Gherkin label of the single buy the scenario seeded.
+
+    Several steps in this section name no buy — the t1/t2 write ("one successful
+    update_media_buy lands between t1 and t2"), the t1/t2 comparisons, and
+    "the confirmed_at value should be …". Each of their scenarios seeds exactly
+    one buy, so resolving "the" buy is unambiguous; asserting the count keeps it
+    that way instead of silently grading whichever one came first.
+    """
+    seeded = ctx.get("seeded_media_buys", {})
+    assert len(seeded) == 1, f"Expected exactly one seeded media buy for this scenario, got {sorted(seeded)}"
+    return next(iter(seeded))
+
+
+def _only_seeded_media_buy(ctx: dict) -> str:
+    """The real database id of the single buy the scenario seeded."""
+    return _resolve_media_buy_id(ctx, _sole_seeded_label(ctx))
+
+
+def _persisted_revision(ctx: dict, real_id: str) -> int:
+    """Read the persisted revision column back through the repository."""
+    from src.core.database.repositories.media_buy import MediaBuyRepository
+
+    env = ctx["env"]
+    repo = MediaBuyRepository(env.get_session(), ctx["tenant"].tenant_id)
+    row = repo.get_by_id(real_id)
+    assert row is not None, f"Media buy '{real_id}' not persisted for tenant {ctx['tenant'].tenant_id!r}"
+    return row.revision
+
+
+def _land_state_changing_write(ctx: dict, real_id: str, *, marker: str) -> None:
+    """Land ONE real state-changing write on a seeded buy, through the repository.
+
+    MediaBuyRepository is the single writer of ``revision``: ``update_fields``
+    rejects it (and ``confirmed_at``) as immutable and ends every successful call
+    in ``_bump_revision`` + flush. So a mutation counter of N can only be produced
+    by N real writes — there is no supported path that seeds the value directly,
+    which is precisely why the scenarios that say "after four writes" have to
+    perform them.
+
+    ``order_name`` is the field moved because it is buyer-visible metadata with no
+    lifecycle meaning: the graded effect is the revision bump, not the field.
+    """
+    from src.core.database.repositories.media_buy import MediaBuyRepository
+
+    env = ctx["env"]
+    repo = MediaBuyRepository(env.get_session(), ctx["tenant"].tenant_id)
+    updated = repo.update_fields(real_id, order_name=marker)
+    assert updated is not None, f"Media buy '{real_id}' not found — the write that must land between reads did not"
+    env.get_session().commit()
+
+
+# ── GIVEN: persisted revision ─────────────────────────────────────────
+
+
+@given(parsers.parse('the principal "{principal_id}" owns media buy "{mb_id}" with persisted revision {revision:d}'))
+@given(
+    parsers.parse(
+        'the principal "{principal_id}" owns media buy "{mb_id}" with persisted revision {revision:d} '
+        "and no subsequent writes"
+    )
+)
+@given(
+    parsers.parse(
+        'the principal "{principal_id}" owns media buy "{mb_id}" with persisted revision {revision:d} '
+        "and no intervening writes between two reads"
+    )
+)
+@given(
+    parsers.parse(
+        'the principal "{principal_id}" owns media buy "{mb_id}" with persisted revision {revision:d} '
+        "(defective seller)"
+    )
+)
+def given_owns_media_buy_with_persisted_revision(ctx: dict, principal_id: str, mb_id: str, revision: int) -> None:
+    """Seed a buy whose persisted revision column carries an exact value.
+
+    The four spellings are one setup: the partition/boundary/invariant scenarios
+    differ only in what they go on to assert. The "(defective seller)" rows seed 0
+    and -1 — a state the store genuinely admits, because ``media_buys.revision``
+    carries no CHECK constraint below the schema minimum. Whether that defective
+    value can then reach the BUYER is exactly what those rows go on to grade; the
+    Then re-reads the column to prove the defect was really persisted, so a seeding
+    path that silently coerced it back to a legal value fails there instead of
+    passing vacuously.
+    """
+    _seed_simple_media_buy(ctx, principal_id, mb_id, revision=revision)
+    ctx.setdefault("seeded_revisions", {})[mb_id] = revision
+
+
+@given(
+    parsers.parse(
+        'the principal "{principal_id}" owns media buy "{mb_id}" with persisted revision {revision:d} '
+        "after four state-changing writes"
+    )
+)
+def given_owns_media_buy_revision_after_four_writes(ctx: dict, principal_id: str, mb_id: str, revision: int) -> None:
+    """Seed a fresh buy and land FOUR real state-changing writes on it.
+
+    The scenario says "revision 5 AFTER four state-changing writes", so the four
+    writes are the setup — seeding the literal 5 would grade a value no writer
+    produced (and is not even expressible: update_fields raises ValueError on
+    ``revision``). The buy starts at the column default 1, each repository write
+    bumps it once, and the resulting counter is asserted to be the value the
+    scenario names, so a bump that stops incrementing fails here rather than
+    silently agreeing with a hand-seeded expectation.
+    """
+    _seed_simple_media_buy(ctx, principal_id, mb_id)
+    real_id = _resolve_media_buy_id(ctx, mb_id)
+    for write in range(4):
+        _land_state_changing_write(ctx, real_id, marker=f"revision-write-{write + 1}")
+    persisted = _persisted_revision(ctx, real_id)
+    assert persisted == revision, (
+        f"Four repository writes should leave revision at {revision} (1 + 4 bumps), got {persisted}"
+    )
+    ctx.setdefault("seeded_revisions", {})[mb_id] = persisted
+
+
+@given("no state-changing writes occur between two reads")
+def given_no_writes_between_reads(ctx: dict) -> None:
+    """Pin the INV-4 precondition: the buy is untouched going into the two reads.
+
+    Asserting rather than declaring — if anything had already moved the counter,
+    the two reads could agree for the wrong reason and INV-4 would pass vacuously.
+    """
+    real_id = _only_seeded_media_buy(ctx)
+    seeded = ctx["seeded_revisions"]
+    expected = next(iter(seeded.values()))
+    persisted = _persisted_revision(ctx, real_id)
+    assert persisted == expected, (
+        f"Precondition broken: revision is {persisted}, not the seeded {expected} — "
+        "something already wrote to the buy before the two reads"
+    )
+
+
+# ── GIVEN: persisted confirmed_at ─────────────────────────────────────
+
+
+@given(parsers.parse('the principal "{principal_id}" owns media buy "{mb_id}" with confirmed_at "{timestamp}"'))
+@given(
+    parsers.parse(
+        'the principal "{principal_id}" owns media buy "{mb_id}" '
+        'with a successful create stamping confirmed_at "{timestamp}"'
+    )
+)
+@given(
+    parsers.parse(
+        'the principal "{principal_id}" owns media buy "{mb_id}" that was successfully created at "{timestamp}"'
+    )
+)
+def given_owns_media_buy_with_confirmed_at(ctx: dict, principal_id: str, mb_id: str, timestamp: str) -> None:
+    """Seed a buy whose persisted confirmed_at column carries an exact instant.
+
+    All three spellings describe the same persisted state — the seller committed
+    at that instant — so they share one setup. Each ENDS in a quoted literal, which
+    is why they exist at all: the generic ``owns media buy "{mb_id}"`` Given also
+    matches such a line and would swallow the clause into the label (guarded there).
+    Status stays the factory-seeded serving state so the buy is a confirmed one,
+    which is what makes a non-null confirmed_at the correct reading.
+    """
+    _seed_simple_media_buy(ctx, principal_id, mb_id, confirmed_at=_parse_iso8601(timestamp))
+
+
+# ── WHEN: two reads, with or without a write between them ─────────────
+
+
+@when("the Buyer Agent sends a get_media_buys request at time t1")
+def when_query_at_t1(ctx: dict) -> None:
+    """Read once and snapshot the wire document as t1.
+
+    Snapshotting is what makes the pair comparable: the next dispatch overwrites
+    ctx["wire_response"], so a Then reading it afterwards would compare t2 with
+    itself.
+    """
+    _dispatch_query(ctx)
+    ctx["wire_at_t1"] = wire_dict(ctx)
+
+
+@when("the Buyer Agent sends a get_media_buys request at time t2 (t1 < t2)")
+@when("the Buyer Agent sends a get_media_buys request at time t2")
+def when_query_at_t2(ctx: dict) -> None:
+    """Read a second time and snapshot the wire document as t2."""
+    assert "wire_at_t1" in ctx, "the t2 read ran without a t1 read — the pair cannot be compared"
+    _dispatch_query(ctx)
+    ctx["wire_at_t2"] = wire_dict(ctx)
+
+
+@when("one successful update_media_buy lands between t1 and t2")
+def when_update_lands_between_reads(ctx: dict) -> None:
+    """Land one real state-changing write between the two reads.
+
+    A repository write rather than an update_media_buy dispatch on purpose: the
+    obligation graded here is the READ path — BR-RULE-291 INV-5 ("get_media_buys
+    reports the bumped token") and the confirmed_at stability invariant — while
+    UC-002/UC-003 own the update tool's own transport contract. The write still
+    goes through the production seam that owns both columns, so it moves revision
+    exactly as a real update would.
+    """
+    _land_state_changing_write(ctx, _only_seeded_media_buy(ctx), marker="update-between-t1-and-t2")
+
+
+# ── THEN: revision on the wire ────────────────────────────────────────
+
+
+@then(parsers.parse('the media buy "{mb_id}" revision should be {expected:d}'))
+def then_media_buy_revision_equals(ctx: dict, mb_id: str, expected: int) -> None:
+    """Assert the buy's wire revision is exactly the expected integer."""
+    buy = _wire_media_buy_entry(ctx, mb_id)
+    assert buy.get("revision") == expected, (
+        f"Expected media buy '{mb_id}' revision {expected} on the wire, got {buy.get('revision')!r}"
+    )
+
+
+@then(parsers.parse('the media buy "{mb_id}" revision should be {expected:d} on both reads'))
+def then_media_buy_revision_equals_on_both_reads(ctx: dict, mb_id: str, expected: int) -> None:
+    """Assert the revision is the expected integer on TWO successive reads.
+
+    The outline's single shared When performs read #1; the row's own expectation
+    ("N on both reads") is about read #2 as well, and its Given established that
+    nothing writes in between — so the second read is issued here. Both documents
+    are asserted, so a counter that drifts on a pure read fails.
+    """
+    first = _wire_media_buy_entry(ctx, mb_id)
+    assert first.get("revision") == expected, (
+        f"First read: expected media buy '{mb_id}' revision {expected}, got {first.get('revision')!r}"
+    )
+    _dispatch_query(ctx)
+    second = _wire_media_buy_entry(ctx, mb_id)
+    assert second.get("revision") == expected, (
+        f"Second read with no intervening write: expected revision {expected}, got {second.get('revision')!r}"
+    )
+
+
+def _is_wire_integer(value: Any) -> bool:
+    """Whether a wire value is an integer in the sense the pinned schema means.
+
+    The obligation is JSON Schema's ``"type": "integer"``, which is a statement
+    about the NUMBER (Draft 6+: a number with zero fractional part), not about the
+    Python type the transport happened to decode it into. That distinction is
+    load-bearing here: A2A frames its DataPart as a protobuf ``Struct``, whose only
+    numeric kind is ``number_value`` (a double), so an integer field arrives as
+    ``1.0`` on A2A and ``1`` on MCP. Asserting ``isinstance(int)`` would fail the
+    a2a arm of every revision scenario over a framing detail while letting a real
+    fractional revision through on MCP; this rejects ``1.5`` and ``"1"`` on both.
+    """
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and float(value).is_integer()
+
+
+@then("every returned media buy should include an integer revision field")
+def then_every_buy_has_integer_revision(ctx: dict) -> None:
+    """Sweep EVERY returned buy for an integer revision — not just the first."""
+    buys = wire_dict(ctx).get("media_buys", [])
+    assert buys, "No media buys were returned, so 'every returned media buy' asserts nothing"
+    for buy in buys:
+        assert "revision" in buy, (
+            f"media buy {buy.get('media_buy_id')!r} carries no revision key; "
+            f"the pinned item schema requires it (keys: {sorted(buy)})"
+        )
+        revision = buy["revision"]
+        assert _is_wire_integer(revision), (
+            f"media buy {buy.get('media_buy_id')!r} revision {revision!r} ({type(revision).__name__}) is not an "
+            'integer; the pinned item schema types it "integer"'
+        )
+
+
+@then("every revision should be >= 1")
+def then_every_revision_at_least_one(ctx: dict) -> None:
+    """Sweep EVERY returned buy against the schema minimum of 1."""
+    buys = wire_dict(ctx).get("media_buys", [])
+    assert buys, "No media buys were returned, so 'every revision' asserts nothing"
+    for buy in buys:
+        revision = buy.get("revision")
+        assert revision >= 1, (
+            f"media buy {buy.get('media_buy_id')!r} revision {revision!r} is below the pinned schema minimum of 1"
+        )
+
+
+def _revision_at(ctx: dict, moment: str) -> int:
+    """The wire revision of the single seeded buy in the snapshot for t1 or t2."""
+    document = ctx.get(f"wire_at_{moment}")
+    assert document is not None, f"No wire document was snapshotted at {moment}"
+    buy = _wire_media_buy_entry(ctx, _sole_seeded_label(ctx), document)
+    return buy["revision"]
+
+
+@then("the revision at t1 should equal the revision at t2")
+def then_revision_stable_across_reads(ctx: dict) -> None:
+    """INV-4: with no intervening write, two reads report the SAME token."""
+    at_t1, at_t2 = _revision_at(ctx, "t1"), _revision_at(ctx, "t2")
+    assert at_t1 == at_t2, f"Revision drifted across two reads with no write between them: t1={at_t1}, t2={at_t2}"
+
+
+@then("the revision at t2 should be strictly greater than the revision at t1")
+def then_revision_increases_after_write(ctx: dict) -> None:
+    """INV-5: an intervening successful write moves the token strictly upward."""
+    at_t1, at_t2 = _revision_at(ctx, "t1"), _revision_at(ctx, "t2")
+    assert at_t2 > at_t1, (
+        f"A successful state-changing write must strictly increase revision, but t1={at_t1} and t2={at_t2}"
+    )
+
+
+# ── THEN: confirmed_at on the wire ────────────────────────────────────
+
+
+@then(parsers.parse('the media buy "{mb_id}" should include a confirmed_at field'))
+def then_media_buy_includes_confirmed_at(ctx: dict, mb_id: str) -> None:
+    """Assert the confirmed_at KEY is present on the wire entry.
+
+    Key PRESENCE, not truthiness: confirmed_at is required-and-nullable, so the
+    regression this grades is the key being dropped from the serialized document
+    (which an ``exclude_none`` anywhere on the path would do silently) — a null
+    value would still be a present key, and a different assertion.
+    """
+    buy = _wire_media_buy_entry(ctx, mb_id)
+    assert "confirmed_at" in buy, (
+        f"media buy '{mb_id}' carries no confirmed_at key; the pinned item schema requires it (keys: {sorted(buy)})"
+    )
+
+
+@then(parsers.parse('the media buy "{mb_id}" confirmed_at should be null on the wire'))
+def then_media_buy_confirmed_at_is_null(ctx: dict, mb_id: str) -> None:
+    """Assert confirmed_at is present AND carries an explicit null.
+
+    The presence-only step above cannot fail for a buy that HAS a confirmed_at, so
+    it never exercises the retention path: the key survives there because it has a
+    value, not because anything kept it. This step grades the case the retention
+    exists for — a buy whose confirmed_at column is NULL — where the library base's
+    ``exclude_none=True`` drops the key unless ``AlwaysIncludeFieldsMixin`` puts it
+    back. Both halves are asserted, because a dropped key and a key holding some
+    substituted non-null value are different regressions with the same cause.
+    """
+    buy = _wire_media_buy_entry(ctx, mb_id)
+    assert "confirmed_at" in buy, (
+        f"media buy '{mb_id}' carries no confirmed_at key; the pinned item schema requires it "
+        f"even when the seller has not committed (keys: {sorted(buy)})"
+    )
+    assert buy["confirmed_at"] is None, (
+        f"media buy '{mb_id}' confirmed_at should be null for a never-confirmed buy, got {buy['confirmed_at']!r}"
+    )
+
+
+@then(parsers.parse('the confirmed_at value should be the ISO 8601 timestamp "{timestamp}"'))
+@then(parsers.parse('the media buy "{mb_id}" confirmed_at should equal "{timestamp}"'))
+def then_confirmed_at_equals(ctx: dict, timestamp: str, mb_id: str | None = None) -> None:
+    """Assert the wire confirmed_at is the expected INSTANT, parsed on both sides.
+
+    The first spelling names no buy (it follows a Then that already named one), so
+    it falls back to the scenario's sole seeded buy rather than a hardcoded label.
+    """
+    mb_id = mb_id or _sole_seeded_label(ctx)
+    buy = _wire_media_buy_entry(ctx, mb_id)
+    actual = buy.get("confirmed_at")
+    assert actual is not None, f"media buy '{mb_id}' confirmed_at is null; expected {timestamp}"
+    assert _parse_iso8601(actual) == _parse_iso8601(timestamp), (
+        f"Expected media buy '{mb_id}' confirmed_at {timestamp}, got {actual!r}"
+    )
+
+
+@then(parsers.parse('the media buy "{mb_id}" confirmed_at should be an ISO 8601 string with a timezone designator'))
+def then_confirmed_at_carries_timezone(ctx: dict, mb_id: str) -> None:
+    """Assert the wire confirmed_at is an ISO 8601 STRING carrying an offset.
+
+    The schema types the field ``string`` with ``format: date-time``, and a
+    date-time without an offset is a different instant for every reader — so both
+    halves are checked: that it serialized as a string at all, and that parsing it
+    yields an aware datetime.
+    """
+    buy = _wire_media_buy_entry(ctx, mb_id)
+    actual = buy.get("confirmed_at")
+    assert isinstance(actual, str), (
+        f"media buy '{mb_id}' confirmed_at is {type(actual).__name__}, not an ISO 8601 string"
+    )
+    assert _parse_iso8601(actual).tzinfo is not None, (
+        f"media buy '{mb_id}' confirmed_at {actual!r} carries no timezone designator"
+    )
+
+
+@then(parsers.parse('the confirmed_at at {moment} should equal "{timestamp}"'))
+def then_confirmed_at_at_moment_equals(ctx: dict, moment: str, timestamp: str) -> None:
+    """Assert the snapshotted t1/t2 document reports the expected commitment instant.
+
+    Both reads are graded against the ORIGINAL timestamp, which is what makes the
+    stability claim real: a write that rewrote confirmed_at would move t2 only, and
+    comparing t2 against t1 alone would not notice a drift that moved both.
+    """
+    document = ctx.get(f"wire_at_{moment}")
+    assert document is not None, f"No wire document was snapshotted at {moment}"
+    buy = _wire_media_buy_entry(ctx, _sole_seeded_label(ctx), document)
+    actual = buy.get("confirmed_at")
+    assert actual is not None, f"confirmed_at at {moment} is null; expected {timestamp}"
+    assert _parse_iso8601(actual) == _parse_iso8601(timestamp), (
+        f"Expected confirmed_at {timestamp} at {moment}, got {actual!r}"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Storyboard: post-create status poll (@T-UC-019-storyboard-post-create-status-poll)
+# ═══════════════════════════════════════════════════════════════════════
+# Grades the AdCP 3.1.1 storyboard step the scenario itself cites:
+# dist/compliance/3.1.1/domains/media-buy/index.yaml -> "check_buy_status".
+# The buyer polls get_media_buys with the media_buy_id create_media_buy returned.
+# The THREE validations the Thens below grade — one each, in order — are:
+#   response_schema        full document against media-buy/get-media-buys-response.json
+#   field_equals_context   media_buys[0].media_buy_id == the captured id
+#   field_present          media_buys[0].status
+# That is a subset, not the step's whole validation list. The pinned step carries
+# six; the three NOT graded here are all context echo:
+#   field_present  context
+#   field_value    context.correlation_id == "media_buy_seller--check_buy_status"
+#   field_value    media_buys[0].context.correlation_id == "media_buy_seller--create_media_buy"
+# They are ungraded because this scenario does not send a correlation_id, so there
+# is nothing to echo. Wiring them needs the request side first — do not read this
+# block as "the storyboard step is fully covered".
+#
+# The scenario ran dormant (auto-xfailed on missing step definitions,
+# tests/bdd/conftest.py) until its two real blockers closed: the envelope
+# status (GH #1900) and the item-level confirmed_at/revision gap (GH #1928).
+# conftest routes @post-create-poll to MediaBuyCreateListEnv so the create is a
+# REAL dispatch through the scenario's transport — a factory-seeded buy would
+# make the poll assert nothing.
+
+
+@given("the buyer captured a media_buy_id from a successful create_media_buy response")
+def given_captured_media_buy_id_from_create(ctx: dict) -> None:
+    """Perform a REAL create_media_buy through the scenario's transport and capture its id.
+
+    The id comes from ``wire_field`` — the buyer captures what the RESPONSE
+    carried, so reading the reconstructed typed payload would grade the
+    reconstruction instead. wire_field also raises on a wire transport that
+    stashed no wire, which is what keeps this from degrading into a silent
+    model_dump tautology if the env wiring ever changes.
+
+    The success assertion is load-bearing: without it a failed create would leave
+    the create response in ctx, the When's query would early-return, and the Then
+    steps would grade the WRONG document.
+    """
+    kwargs = build_create_request_kwargs(ctx, po_number="PO-UC019-POST-CREATE-POLL")
+    dispatch_request(ctx, **kwargs)
+
+    assert ctx.get("error") is None, f"create_media_buy failed, so nothing was captured: {ctx.get('error')!r}"
+    ctx["created_media_buy_id"] = wire_field(ctx, "media_buy_id")
+
+
+@when("the Buyer Agent calls get_media_buys with that media_buy_id under the same account")
+def when_query_captured_media_buy_id(ctx: dict) -> None:
+    """Poll get_media_buys for the captured id on the same env, transport and identity.
+
+    "Under the same account" holds by construction: both dispatches go through
+    one MediaBuyCreateListEnv, so the resolved identity (tenant + principal) is
+    the same object. The storyboard additionally echoes an explicit ``account`` on
+    both calls; the pinned item schema does define ``account``, but production
+    populates none and no Then here grades one — the literal account echo belongs
+    with account management, not with this poll.
+    """
+    media_buy_id = ctx.get("created_media_buy_id")
+    assert media_buy_id, "no media_buy_id was captured from create_media_buy"
+    _dispatch_query(ctx, req=GetMediaBuysRequest(media_buy_ids=[media_buy_id]))
+
+
+@then("the media_buys array should include the freshly-created buy")
+def then_media_buys_include_created_buy(ctx: dict) -> None:
+    """Assert the polled document carries exactly the buy that was just created.
+
+    Reads the buyer-visible wire via ``wire_dict``, which raises rather than
+    falling back to a re-serialized payload on a wire transport — the same
+    document the schema-valid Then grades, with a guard against the fallback
+    turning this into a tautology.
+    """
+    media_buy_id = ctx["created_media_buy_id"]
+    document = wire_dict(ctx)
+    returned_ids = [buy.get("media_buy_id") for buy in document.get("media_buys", [])]
+    assert media_buy_id in returned_ids, (
+        f"get_media_buys did not return the freshly-created buy {media_buy_id!r}; media_buys carried {returned_ids!r}"
+    )
+
+
+@then(parsers.parse('the included entry should expose the same media_buy_id and status "{expected_status}"'))
+def then_included_entry_exposes_id_and_status(ctx: dict, expected_status: str) -> None:
+    """Assert the polled entry IS the created buy and reports the expected initial status.
+
+    The storyboard step this scenario cites (media-buy/index.yaml
+    ``check_buy_status``) grades ``field_equals_context media_buys[0].media_buy_id``
+    against the id captured from create_media_buy, and ``field_present
+    media_buys[0].status`` — the buyer polls to OBSERVE the initial status.
+
+    The expected status is pinned in the Gherkin and compared for equality.
+    Membership in the pinned ten-member enums/media-buy-status.json enum was the
+    previous assertion and could not do this job: ``completed`` and ``failed`` are
+    both members, so a freshly-created buy reported as terminal passed. The literal
+    is the state this flow actually starts in — the request assigns no creatives,
+    and media_buy_create._resolve_status returns ``pending_creatives`` for a buy
+    with no assigned/approved creatives (priority 2, ahead of the future start_time
+    that would otherwise make it pending_start).
+    """
+    media_buy_id = ctx["created_media_buy_id"]
+    document = wire_dict(ctx)
+    matching = [buy for buy in document.get("media_buys", []) if buy.get("media_buy_id") == media_buy_id]
+    assert len(matching) == 1, (
+        f"expected exactly one entry for the freshly-created buy {media_buy_id!r}, "
+        f"got {len(matching)} in {[b.get('media_buy_id') for b in document.get('media_buys', [])]!r}"
+    )
+
+    status = matching[0].get("status")
+    assert status == expected_status, (
+        f"post-create poll: expected media_buys[0].status {expected_status!r} for a freshly-created buy, got {status!r}"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# THE BLOB RULE — package_config is untyped, so every value read out of it
+# is a legacy value the pinned types may reject, so every one is resolved before the
+# constructor rather than passed straight through
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _resolve_media_buy_row(ctx: dict, mb_id: str) -> Any:
+    """Return the persisted MediaBuy ORM row for a Gherkin media-buy label.
+
+    The label is not the stored id — the seeding Given generates a unique one per
+    scenario — so it resolves through the same map the wire assertions use.
+    """
+    from sqlalchemy import select
+
+    from src.core.database.models import MediaBuy
+
+    real_id = _resolve_media_buy_id(ctx, mb_id)
+    env = ctx["env"]
+    row = env._session.scalars(select(MediaBuy).filter_by(media_buy_id=real_id)).first()
+    assert row is not None, (
+        f"Media buy {mb_id!r} (real_id={real_id!r}) is not seeded — the raw_request "
+        f"Given must follow a Given that creates the buy."
+    )
+    return row
+
+
+def _package_row(ctx: dict, pkg_id: str) -> Any:
+    """Return the persisted MediaPackage ORM row for a Gherkin package label.
+
+    Reads through the harness-bound session (``env._session``) like
+    ``given_media_buy_has_dates`` — the seeding Given already committed the row,
+    and this step only overwrites one key of its untyped JSON column.
+    """
+    from sqlalchemy import select
+
+    from src.core.database.models import MediaPackage
+
+    env = ctx["env"]
+    row = env._session.scalars(select(MediaPackage).filter_by(package_id=pkg_id)).first()
+    assert row is not None, (
+        f"Package {pkg_id!r} is not seeded — the package_config Given must follow a "
+        f"Given that creates the buy and its package. Known packages: "
+        f"{sorted(ctx.get('seeded_packages', {}))}"
+    )
+    return row
+
+
+#: A value the pinned model accepts for each blob key the read path resolves. Used to
+#: give every scenario row valid siblings, so "degrades that field ALONE" has something
+#: to be false about.
+_VALID_BLOB_SIBLINGS = {
+    "product_id": "guaranteed_display",
+    "start_time": "2026-03-01T00:00:00Z",
+    "end_time": "2026-03-31T00:00:00Z",
+    "paused": False,
+    "targeting": {"geo_country_any_of": ["US"]},
+}
+
+
+@given(parsers.parse('package "{pkg_id}" package_config key {field} holds the legacy JSON value {legacy_json}'))
+def given_package_config_legacy_value(ctx: dict, pkg_id: str, field: str, legacy_json: str) -> None:
+    """Write ONE legacy-invalid value into the package's untyped package_config column.
+
+    The value is spelled as JSON in the Examples table so the seed carries the real
+    persisted TYPE (``123`` is an int, ``"maybe"`` is a str) rather than the string
+    Gherkin would otherwise hand over — a str ``"123"`` would satisfy the pinned
+    ``product_id`` type and grade nothing.
+    """
+    import json
+
+    row = _package_row(ctx, pkg_id)
+    config = dict(row.package_config or {})
+    # Seed every OTHER blob key with a value the pinned model accepts, so the row has
+    # siblings that must survive. Without them "degrades that field alone" is not
+    # gradeable on rows whose seed carries no other blob value: an implementation that
+    # degrades everything has nothing else to destroy, so it looks correct. Measured --
+    # with these siblings absent, such an implementation passed the two product_id rows.
+    for key, valid in _VALID_BLOB_SIBLINGS.items():
+        config.setdefault(key, valid)
+    config[field] = json.loads(legacy_json)
+    row.package_config = config
+    ctx["env"]._session.commit()
+
+
+@given(parsers.parse('media buy "{mb_id}" raw_request key {field} holds the legacy JSON value {legacy_json}'))
+def given_raw_request_legacy_value(ctx: dict, mb_id: str, field: str, legacy_json: str) -> None:
+    """Write a legacy-invalid value into the media buy's untyped ``raw_request`` column.
+
+    Spelled as JSON in the step so the seed carries the real persisted TYPE: ``123`` is
+    an int, and a str ``"123"`` would satisfy the pinned ``str | None`` and grade nothing.
+    """
+    import json
+
+    row = _resolve_media_buy_row(ctx, mb_id)
+    raw = dict(row.raw_request or {})
+    raw[field] = json.loads(legacy_json)
+    row.raw_request = raw
+    ctx["env"]._session.commit()
+
+
+@then(parsers.parse('the media buy "{mb_id}" wire field {field} should be null or absent'))
+def then_media_buy_wire_field_degraded(ctx: dict, mb_id: str, field: str) -> None:
+    """The degraded media-buy-level field renders empty rather than failing the listing."""
+    buy = _wire_media_buy(ctx, mb_id)
+
+    assert buy.get(field) is None, (
+        f"expected the legacy-invalid {field!r} to render empty on media buy {mb_id!r}; got {buy.get(field)!r}"
+    )
+
+
+@then(
+    parsers.parse(
+        'response.errors[] should carry exactly one advisory for media buy "{mb_id}" '
+        'field {field} with code "{code}" and recovery "{recovery}"'
+    )
+)
+def then_raw_request_advisory_code_and_recovery(ctx: dict, mb_id: str, field: str, code: str, recovery: str) -> None:
+    """Both halves, off the wire, and exactly one advisory in the whole document.
+
+    The document-wide count is what grades "alone" here, for the same reason it does on
+    the package rows: without it an implementation that degrades every blob value passes.
+    """
+    advisories = _wire_advisories(ctx)
+
+    assert len(advisories) == 1, (
+        f"expected exactly ONE advisory in the whole response — a legacy-invalid "
+        f"{field!r} must degrade that field ALONE — got {len(advisories)}: {advisories!r}"
+    )
+    advisory = advisories[0]
+    assert field in str(advisory.get("field", "")), (
+        f"expected the advisory to name field {field!r}; got {advisory.get('field')!r}"
+    )
+    assert advisory.get("code") == code, (
+        f"expected advisory code {code!r} for a defect in the seller's own store, got {advisory.get('code')!r}"
+    )
+    assert advisory.get("recovery") == recovery, (
+        f"expected advisory recovery {recovery!r} — the code alone leaves the buyer "
+        f"inferring retry semantics; got {advisory.get('recovery')!r}"
+    )
+
+
+def _wire_media_buy(ctx: dict, mb_id: str) -> dict:
+    """Return the media buy the buyer received on the wire, by Gherkin label."""
+    real_id = _resolve_media_buy_id(ctx, mb_id)
+    document = wire_dict(ctx)
+    matching = [buy for buy in document.get("media_buys", []) if buy.get("media_buy_id") == real_id]
+    assert len(matching) == 1, (
+        f"expected exactly one media_buys[] entry for {mb_id!r} (real_id={real_id!r}); got "
+        f"{len(matching)} in {[b.get('media_buy_id') for b in document.get('media_buys', [])]!r}"
+    )
+    return matching[0]
+
+
+def _wire_package(ctx: dict, pkg_id: str, *, mb_id: str | None = None) -> dict:
+    """Return the package the buyer received on the wire, by Gherkin label.
+
+    ``mb_id`` scopes the search to one media buy when the step text names it;
+    without it the whole document is searched, and the "exactly one" assertion
+    still refuses an ambiguous match.
+    """
+    buys = [_wire_media_buy(ctx, mb_id)] if mb_id is not None else wire_dict(ctx).get("media_buys", [])
+    matching = [pkg for buy in buys for pkg in buy.get("packages", []) if pkg.get("package_id") == pkg_id]
+    assert len(matching) == 1, (
+        f"expected exactly one packages[] entry for {pkg_id!r} across {len(buys)} media buy(s) on the "
+        f"wire; got {len(matching)}: {[p.get('package_id') for buy in buys for p in buy.get('packages', [])]!r}"
+    )
+    return matching[0]
+
+
+def _wire_advisories(ctx: dict) -> list[dict]:
+    """Return the non-fatal ``errors[]`` advisories carried by the 200-OK document.
+
+    Read off the success-path wire, never off a reconstructed exception: these
+    advisories live INSIDE a successful response, so ``wire_error_envelope`` is
+    empty for them and the typed payload would show already-coerced values.
+    ``errors`` is dropped by ``exclude_none`` when the listing is clean, so an
+    absent key means "no advisories".
+    """
+    return list(wire_dict(ctx).get("errors") or [])
+
+
+@then(parsers.parse('the response should include media buy "{mb_id}" with package "{pkg_id}"'))
+def then_response_includes_buy_with_package(ctx: dict, mb_id: str, pkg_id: str) -> None:
+    """Assert the listing SURVIVED and still renders the defective row's package.
+
+    This is the half of the blob rule that a code-only assertion cannot see: one
+    legacy cell in one package must degrade that field, not fail the whole listing.
+    """
+    package = _wire_package(ctx, pkg_id, mb_id=mb_id)
+    assert package.get("package_id") == pkg_id, (
+        f"expected packages[].package_id {pkg_id!r} on the wire, got {package.get('package_id')!r}"
+    )
+
+
+@then(parsers.parse('the package "{pkg_id}" wire field {field} should be null or absent'))
+def then_package_wire_field_degraded(ctx: dict, pkg_id: str, field: str) -> None:
+    """Assert the ONE defective field renders empty on the wire.
+
+    Null or absent, because the pinned item schema types these fields non-nullable
+    but lists only ``package_id`` in ``packages.items.required`` — so the legal
+    degraded rendering is the key being dropped by ``exclude_none``, and a JSON
+    ``null`` is the same fact for a buyer reading the field.
+    """
+    package = _wire_package(ctx, pkg_id)
+    assert package.get(field) is None, (
+        f"expected the legacy-invalid {field!r} to render empty on package {pkg_id!r}; "
+        f"got {package.get(field)!r} — a value derived from a cell the pinned type rejects"
+    )
+
+
+def _advisories_naming(advisories: list[dict], pkg_id: str, field: str) -> list[dict]:
+    """The advisories that identify BOTH the package and the field they degrade.
+
+    Matched across ``field`` and ``message`` together, so a selector-shaped
+    advisory and a prose-shaped one both count — what the obligation requires is
+    that the buyer can reconcile WHICH field of WHICH package went missing, not a
+    particular selector spelling.
+    """
+    out = []
+    for advisory in advisories:
+        haystack = " ".join(str(advisory.get(key) or "") for key in ("field", "message"))
+        if pkg_id in haystack and field in haystack:
+            out.append(advisory)
+    return out
+
+
+@then(
+    parsers.parse(
+        'response.errors[] should carry exactly one advisory for package "{pkg_id}" field {field} '
+        'with code "{code}" and recovery "{recovery}"'
+    )
+)
+def then_blob_advisory_code_and_recovery(ctx: dict, pkg_id: str, field: str, code: str, recovery: str) -> None:
+    """Assert the degraded field's advisory carries the pinned code AND recovery.
+
+    Both, off the wire. ``recovery`` is the half a code-counting assertion cannot
+    see: pinned ``core/error.json`` makes the wire ``recovery`` authoritative and
+    ``enumMetadata`` only its documentary mirror, so an advisory that names
+    CONFIGURATION_ERROR while omitting ``recovery`` still leaves the buyer inferring
+    retry semantics. ``correctable`` here would tell the buyer to "fix field values"
+    for a cell in the SELLER's store.
+    """
+    advisories = _wire_advisories(ctx)
+    # The WHOLE document carries exactly one advisory, before we filter to the one
+    # naming this field. This assertion is what grades the word "alone" in the
+    # scenario's own title, and without it the row is satisfiable by an implementation
+    # that degrades EVERY blob value on every row: the sibling advisories such an
+    # implementation emits are filtered out by _advisories_naming below, so the
+    # per-field count still reads 1 and the row passes while the buyer loses every
+    # package_config value in the listing. Measured: that implementation passes all
+    # five rows without this line and fails eight of ten with it.
+    assert len(advisories) == 1, (
+        f"expected exactly ONE advisory in the whole response — a legacy-invalid "
+        f"{field!r} must degrade that field ALONE — got {len(advisories)}: {advisories!r}"
+    )
+    matching = _advisories_naming(advisories, pkg_id, field)
+    assert len(matching) == 1, (
+        f"expected exactly one errors[] advisory naming package {pkg_id!r} and field {field!r}; "
+        f"got {len(matching)} of {len(advisories)} advisories: {advisories!r}"
+    )
+    advisory = matching[0]
+    assert advisory.get("code") == code, (
+        f"expected advisory code {code!r} for a defect in the seller's own store, got {advisory.get('code')!r}"
+    )
+    assert advisory.get("recovery") == recovery, (
+        f"expected advisory recovery {recovery!r} on the wire (pinned core/error.json makes the wire "
+        f"field authoritative), got {advisory.get('recovery')!r} on code {advisory.get('code')!r}"
+    )
+
+
+@then(parsers.parse('response.errors[] should carry no advisory with code "{code}"'))
+def then_no_advisory_with_code(ctx: dict, code: str) -> None:
+    """Assert the advisory code multiset gained no entry with the superseded code."""
+    offending = [advisory for advisory in _wire_advisories(ctx) if advisory.get("code") == code]
+    assert offending == [], (
+        f"expected no errors[] advisory with code {code!r} — its pinned recovery advises a retry "
+        f"that can never repair a seller-side defect; got {offending!r}"
     )

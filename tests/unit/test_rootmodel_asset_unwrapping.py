@@ -10,7 +10,6 @@ _extract_text_from_asset_value handle:
   2. Plain dicts (backward compat)
   3. None/empty gracefully
 
-beads: salesagent-6xt9
 """
 
 from adcp.types import CreativeAsset

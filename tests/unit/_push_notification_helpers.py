@@ -2,7 +2,7 @@
 
 Both ``test_context_manager_task_pinning`` (webhook task GC pinning) and
 ``test_context_manager_task_type_label`` (task_type wire/label split,
-salesagent-yi3s) drive the REAL ``_send_push_notifications`` path, which issues
+) drive the REAL ``_send_push_notifications`` path, which issues
 exactly three ``session.scalars()`` queries in order:
 ObjectWorkflowMapping (.all()), Context (.first()), PushNotificationConfig
 (.all()). These helpers build the step and the ordered session mock so the two

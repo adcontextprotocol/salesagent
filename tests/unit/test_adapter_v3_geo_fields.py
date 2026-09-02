@@ -1,6 +1,6 @@
 """Tests for non-GAM adapter v3 geo field consumption.
 
-Regression tests for salesagent-fwm: ensures all non-GAM adapters read
+Regression tests for : ensures all non-GAM adapters read
 v3 structured geo fields (geo_countries, geo_regions, geo_metros) instead
 of the legacy flat fields (geo_country_any_of, geo_region_any_of, etc.).
 """
@@ -60,7 +60,7 @@ class TestKevelV3GeoFields:
         assert "cities" not in result.get("geo", {})
 
     def test_freq_cap_duration_is_int(self):
-        """suppress_minutes is float after salesagent-rlb; FreqCapDuration must be int."""
+        """suppress_minutes is float after ; FreqCapDuration must be int."""
         freq_cap = FrequencyCap(suppress_minutes=120.0, scope="package")
         result = int(max(1, freq_cap.suppress_minutes // 60))
         assert isinstance(result, int)

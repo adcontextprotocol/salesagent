@@ -4,9 +4,9 @@ Tests asset_types, name_search, and wcag_level filters using
 CreativeFormatsEnv harness with real PostgreSQL.
 
 Covers:
-- salesagent-hr96: UC-005-MAIN-MCP-07 (asset_types filter)
-- salesagent-vam8: UC-005-MAIN-MCP-11 (name_search case-insensitive)
-- salesagent-h7wx: UC-005-MAIN-MCP-12 (wcag_level filter)
+- : UC-005-MAIN-MCP-07 (asset_types filter)
+- : UC-005-MAIN-MCP-11 (name_search case-insensitive)
+- : UC-005-MAIN-MCP-12 (wcag_level filter)
 """
 
 from __future__ import annotations

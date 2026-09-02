@@ -10,7 +10,6 @@ is set at construction time and injected into all queries automatically.
 Write methods add objects to the session but never commit — the caller (or UoW)
 handles commit/rollback at the boundary.
 
-beads: salesagent-7x3i
 """
 
 from __future__ import annotations

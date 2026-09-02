@@ -4,7 +4,7 @@ Behavioral tests using CreativeSyncEnv + real PostgreSQL + factory_boy.
 Replaces mock-heavy unit tests from test_creative.py with provable assertions
 against actual database state.
 
-Covers: salesagent-xwkj, salesagent-11th, salesagent-0m59, salesagent-mi8l
+Covers:
 """
 
 from __future__ import annotations
@@ -495,7 +495,7 @@ class TestValidationModeSemantics:
 
 
 # ---------------------------------------------------------------------------
-# CRUD Workflow Tests — Covers: salesagent-11th
+# CRUD Workflow Tests — Covers:
 # ---------------------------------------------------------------------------
 
 
@@ -1462,7 +1462,7 @@ class TestAssignmentProcessing:
         errors[] "only present when action='failed'", assignment_errors keyed
         by package id, and status "MUST be omitted when action is failed".
         BR-RULE-033 INV-4 pins the principle: assignment errors are always
-        recorded in the response. salesagent-9qpj: the result merge only
+        recorded in the response. : the result merge only
         decorated entries of creatives synced in the SAME request, so this
         shape returned bare success.
         """
@@ -1516,7 +1516,7 @@ class TestAssignmentProcessing:
         """creatives=[] + assignments referencing an EXISTING library creative:
         the successful assignment must surface as a synthesized 'unchanged'
         entry with assigned_to — not vanish from the response (same merge hole
-        as the orphan-error shape, success-info variant). salesagent-9qpj.
+        as the orphan-error shape, success-info variant). .
         """
         from tests.factories import CreativeFactory
         from tests.harness.transport import Transport
@@ -1716,7 +1716,7 @@ class TestSchemaCompleteness:
 
 
 # ---------------------------------------------------------------------------
-# Extension Gaps — Covers: salesagent-0m59 (TestExtensionGaps conversion)
+# Extension Gaps — Covers: (TestExtensionGaps conversion)
 # ---------------------------------------------------------------------------
 
 
@@ -1816,7 +1816,7 @@ class TestSyncExtensions:
         AdCPServiceUnavailableError), so "unreachable" reaches sync_creatives
         as a typed transient error and MUST surface as a transient
         SERVICE_UNAVAILABLE wire envelope — not a terminal-looking per-item
-        creative failure (salesagent-mpo1). A raw ConnectionError never
+        creative failure . A raw ConnectionError never
         escapes the registry in production.
         """
         from src.core.exceptions import AdCPServiceUnavailableError
@@ -1958,7 +1958,7 @@ class TestSyncExtensions:
 
 
 # ---------------------------------------------------------------------------
-# Provenance Validation — Covers: salesagent-0m59 (TestProvenanceValidation conversion)
+# Provenance Validation — Covers: (TestProvenanceValidation conversion)
 # ---------------------------------------------------------------------------
 
 
@@ -2048,7 +2048,7 @@ class TestProvenanceEnforcement:
 
 
 # ---------------------------------------------------------------------------
-# Media Buy Status Transition — Covers: salesagent-0m59 (TestMediaBuyStatusTransition conversion)
+# Media Buy Status Transition — Covers: (TestMediaBuyStatusTransition conversion)
 # ---------------------------------------------------------------------------
 
 
@@ -2194,7 +2194,7 @@ class TestMediaBuyStatusOnSync:
 
 
 # ---------------------------------------------------------------------------
-# Format Compatibility Extended — Covers: salesagent-mi8l
+# Format Compatibility Extended — Covers:
 # ---------------------------------------------------------------------------
 
 
@@ -2332,7 +2332,7 @@ class TestFormatCompatibilityExtended:
 
 
 # ---------------------------------------------------------------------------
-# Sync Flow Verification — Covers: salesagent-mi8l
+# Sync Flow Verification — Covers:
 # ---------------------------------------------------------------------------
 
 

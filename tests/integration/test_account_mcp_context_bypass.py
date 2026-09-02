@@ -1,4 +1,4 @@
-"""Integration tests for MCP wrapper context parameter bypass (salesagent-rhp).
+"""Integration tests for MCP wrapper context parameter bypass .
 
 The MCP wrappers in accounts.py accept ``context`` as a separate kwarg
 (for FastMCP tool dispatch). In production, FastMCP passes tool parameters
@@ -13,7 +13,6 @@ exercised through the normal harness path.
 Additionally, the BDD step ``when_request_with_context`` for list_accounts
 calls ``_list_accounts_impl`` directly, bypassing transport dispatch entirely.
 
-beads: salesagent-rhp
 """
 
 import asyncio

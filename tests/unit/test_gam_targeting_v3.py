@@ -1,6 +1,6 @@
 """Tests for GAM targeting manager v3 structured field support.
 
-Regression tests for salesagent-oee: ensures GAM targeting manager correctly
+Regression tests for : ensures GAM targeting manager correctly
 processes v3 structured geo fields (geo_countries, geo_regions, geo_metros,
 geo_postal_areas) and their exclusion variants, handles had_city_targeting
 flag, and applies int() cast to FrequencyCap float arithmetic.

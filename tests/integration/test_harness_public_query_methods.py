@@ -1,4 +1,4 @@
-"""Integration tests for salesagent-ul6n (review finding MED-02).
+"""Integration tests for (review finding MED-02).
 
 The harness must expose PUBLIC query methods so step functions stop reaching into
 ``env._session`` (a private attribute). These exercise the new public API on a real

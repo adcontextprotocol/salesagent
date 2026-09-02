@@ -78,7 +78,7 @@ file.
 
 ### 9. Verify
 
-- Run the scenario's module on the box, serial (`saci test bdd <module>` —
+- Run the scenario's module on the box, serial (`cassini test bdd <module>` —
   xdist deadlocks on a single agent-db): the graduated scenarios must show as
   plain PASS on all in-process transports, zero new failures.
 - If the e2e_rest ledger was touched, a bdd-in-network run is required — it is

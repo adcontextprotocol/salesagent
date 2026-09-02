@@ -1,6 +1,6 @@
 """Test that A2A NL dispatch does not re-run auth for logging.
 
-Bug salesagent-anjp: Each NL dispatch branch calls _create_tool_context_from_a2a()
+Bug : Each NL dispatch branch calls _create_tool_context_from_a2a()
 twice — once inside the handler (for actual identity resolution) and once outside
 (just for tenant_id/principal_id logging). The second call triggers redundant DB
 queries via resolve_identity(). Fix: reuse the identity from the handler call.

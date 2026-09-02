@@ -8,7 +8,6 @@ Three invariants:
 Scanning approach: AST — parse source files for function calls matching prohibited
 patterns. All pre-existing violations are allowlisted; new code fails immediately.
 
-beads: salesagent-qo8a (repository pattern enforcement)
 """
 
 import ast
@@ -58,9 +57,10 @@ def _discover_impl_files() -> list[str]:
 # Production files that contain _impl functions to scan
 IMPL_FILES = _discover_impl_files()
 
-# Pre-existing violations: (file_path, function_name)
-# These existed before the guard was created. Allowlist shrinks as repositories are introduced.
-# FIXME(salesagent-qo8a): all _impl functions should use repositories instead of get_db_session()
+# Was: pre-existing violations, (file_path, function_name).
+# EMPTY AND MUST STAY EMPTY: the _impl-side migration completed in #1094 (closed
+# 2026-03-12). This is not pending work with a shrinking allowlist -- it is a
+# finished invariant. A new row here is a regression, not an accepted exception.
 IMPL_SESSION_ALLOWLIST: set[tuple[str, str]] = set()
 
 # ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ def _discover_integration_test_files() -> list[str]:
 INTEGRATION_TEST_FILES = _discover_integration_test_files()
 
 # Pre-existing violations: (file_path, function_or_fixture_name)
-# FIXME(salesagent-qo8a): integration tests should use polyfactory fixtures
+# FIXME(#2133): integration tests should use polyfactory fixtures
 INTEGRATION_SESSION_ADD_ALLOWLIST = {
     # tests/integration/conftest.py
     ("tests/integration/conftest.py", "authenticated_admin_session"),
@@ -105,11 +105,11 @@ INTEGRATION_SESSION_ADD_ALLOWLIST = {
     # tests/integration/test_adapter_factory.py
     ("tests/integration/test_adapter_factory.py", "setup_adapters"),
     # tests/integration/test_gam_adapter_auth.py — no AdapterConfigFactory exists yet
-    # FIXME(salesagent-zj9): migrate to factory when AdapterConfigFactory is created
+    # FIXME(#2133): migrate to factory when AdapterConfigFactory is created
     ("tests/integration/test_gam_adapter_auth.py", "oauth_tenant"),
     ("tests/integration/test_gam_adapter_auth.py", "sa_tenant"),
     # tests/integration/test_adapter_config_repository.py — same: no AdapterConfigFactory
-    # FIXME(salesagent-zj9): migrate to factory when AdapterConfigFactory is created
+    # FIXME(#2133): migrate to factory when AdapterConfigFactory is created
     ("tests/integration/test_adapter_config_repository.py", "_tenants"),
     # tests/integration/test_admin_ui_pages.py
     ("tests/integration/test_admin_ui_pages.py", "test_cannot_access_other_tenant_data"),
@@ -483,7 +483,6 @@ INTEGRATION_SESSION_ADD_ALLOWLIST = {
     ("tests/integration/test_dynamic_products.py", "test_tenant_filter_scoping"),
     ("tests/integration/test_dynamic_products.py", "test_no_tenant_archives_all"),
     # ── tests/admin/ — pre-existing violations from admin blueprint tests ──
-    # FIXME(salesagent-e2e-admin-factories): migrate admin blueprint tests to factories.
     # Needs AuthorizedPropertyFactory, WorkflowStepFactory, ContextFactory; existing
     # TenantFactory/PrincipalFactory/CreativeFactory/InventoryProfileFactory/PropertyTagFactory
     # can be reused. Endpoint assertions don't change — only the setup.
@@ -511,7 +510,6 @@ INTEGRATION_SESSION_ADD_ALLOWLIST = {
     ("tests/admin/test_workflows_blueprint.py", "test_tenant"),
     ("tests/admin/test_workflows_blueprint.py", "_create_context_and_step"),
     # ── tests/e2e/ — pre-existing violations from e2e lifecycle test ──
-    # FIXME(salesagent-e2e-admin-factories): migrate e2e seed helpers to factories.
     ("tests/e2e/test_gam_lifecycle.py", "_seed_lifecycle_test_data"),
     ("tests/e2e/test_gam_lifecycle.py", "_persist_media_buy"),
 }
@@ -1173,7 +1171,6 @@ GET_DB_SESSION_IN_TESTS_ALLOWLIST: set[tuple[str, str]] = {
     ("tests/integration/test_media_buy_status_scheduler.py", "_create_media_buy"),
     ("tests/integration/test_media_buy_status_scheduler.py", "_create_test_principal"),
     ("tests/integration/test_media_buy_status_scheduler.py", "_create_test_tenant"),
-    ("tests/integration/test_media_buy_status_scheduler.py", "_get_media_buy_status"),
     ("tests/integration/test_media_buy_v3.py", "mb_creatives"),
     ("tests/integration/test_media_buy_v3.py", "mb_tenant_with_approval"),
     ("tests/integration/test_media_buy_v3.py", "test_adapter_failure_no_db_changes"),

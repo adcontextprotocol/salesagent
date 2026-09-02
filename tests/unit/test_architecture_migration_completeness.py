@@ -10,7 +10,6 @@ This guard also checks that downgrade() reverses the structural changes made by
 upgrade() — specifically, that if upgrade() creates/drops tables, constraints,
 or columns, the downgrade() references the same tables.
 
-beads: salesagent-t735
 """
 
 import ast
@@ -43,7 +42,7 @@ SCHEMA_OPS = {
 }
 
 # Pre-existing violations — allowlists shrink as violations are fixed.
-# FIXME(salesagent-t735): These legacy migrations have incomplete downgrades.
+# FIXME(#2107): These legacy migrations have incomplete downgrades.
 KNOWN_EMPTY_DOWNGRADE = {
     # Legacy: data migration (adds default values), no structural revert needed
     "017_handle_partial_schemas.py",

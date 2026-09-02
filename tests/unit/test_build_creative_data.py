@@ -4,7 +4,6 @@ Verifies data dict construction from CreativeAsset model: standard fields
 (url, click_url, width, height, duration), optional fields (assets,
 snippet, snippet_type, template_variables), and context.
 
-Beads: salesagent-55b
 """
 
 from src.core.tools.creatives import _build_creative_data

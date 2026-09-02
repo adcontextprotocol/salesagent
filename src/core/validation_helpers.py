@@ -83,7 +83,7 @@ def run_async_in_sync_context(coroutine):
     # is closed") re-raised out of future.result() would otherwise be misread
     # as "no running loop" and the already-CONSUMED coroutine re-run on a fresh
     # loop — mangling the real error into "cannot reuse already awaited
-    # coroutine" (salesagent-mpo1).
+    # coroutine" .
     try:
         asyncio.get_running_loop()
         in_async_context = True

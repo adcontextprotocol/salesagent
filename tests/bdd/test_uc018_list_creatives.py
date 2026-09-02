@@ -43,12 +43,23 @@ response).
 
 **Why steps live here (not in steps/domain/ + pytest_plugins):** pytest-bdd 8
 resolves step definitions only from the scenario's own module, conftest, or
-registered plugins — importing them does not register them. The generic
-``schema-valid against <file>`` and ``authenticated as principal`` phrasings are
-shared by other, already-wired feature files (UC-004/005/006); registering them
-globally would alter those suites. Defining the steps inline scopes them to this
-one scenario, keeping the blast radius to UC-018. The reusable, non-step schema
-validator lives in ``tests.helpers.pinned_schema``.
+registered plugins — importing them does not register them. So a step defined
+here is reachable only from this module's scenarios.
+
+Note what that is NOT a licence for. The generic ``schema-valid against <file>``
+and ``authenticated as principal`` phrasings are owned by
+``tests/bdd/steps/generic/``. Re-registering either sentence here would not
+"keep the blast radius small" — it would give one Gherkin sentence two meanings,
+with the local, usually weaker, definition silently winning for this file while
+every other suite kept the generic one. That is the defect
+``test_architecture_bdd_no_shadowed_steps.py`` now fails on, and it is exactly
+how UC-005 ended up grading ``isinstance(formats, list)`` under a sentence that
+promises full pinned-schema validation.
+
+A step belongs inline only when its SENTENCE is specific to this scenario. When
+the behaviour is genuinely UC-018-specific, give it its own wording rather than
+narrowing a shared one. The reusable, non-step schema validator lives in
+``tests.helpers.pinned_schema``.
 
 The "synced" creatives are seeded via ``CreativeFactory`` rather than a live
 ``sync_creatives`` call: ``CreativeListEnv`` mocks only the audit logger (it has
@@ -77,7 +88,6 @@ from pytest_bdd import given, parsers, scenarios, then, when
 
 from tests.bdd.steps._outcome_helpers import _require_response, wire_field
 from tests.bdd.steps.generic._auth import authenticate_env_as
-from tests.helpers.pinned_schema import validate_against_pinned_schema
 
 # Three genuinely-different formats (display / video / audio) for the "three
 # different formats" precondition. All three are in the standard format registry:
@@ -155,20 +165,14 @@ def _get_or_create_tenant_and_principal(env: Any) -> tuple[Any, Any]:
     return tenant, principal
 
 
-@given(parsers.parse('the Buyer is authenticated as principal "{principal_id}"'))
-def given_buyer_authenticated_as_principal(ctx: dict, principal_id: str) -> None:
-    """Authenticate the listing buyer as *principal_id* (Background).
-
-    Uses the shared ``authenticate_env_as`` helper (which clears the identity cache and
-    switches the env's principal) so list_creatives is principal-scoped to this buyer,
-    and records the principal so the seed steps own their creatives under the same id
-    the query authenticates as (list_creatives is principal-scoped — a mismatch returns
-    an empty library).
-
-    The helper owns the switch, the canonical ``ctx["principal_id"]``, and the
-    identity post-condition.
-    """
-    authenticate_env_as(ctx, principal_id)
+# 'the Buyer is authenticated as principal "{principal_id}"' is NOT registered here.
+# This module used to declare it, which meant the sentence had two definitions — this
+# one and the identical parser in steps/domain/uc003_ext_error_scenarios.py (registered
+# globally via conftest pytest_plugins). UC-018 silently got the local one and every
+# other feature got the plugin one; the two bodies differed only by a ctx["has_auth"]
+# flag, so the divergence was invisible until someone diffed them. Deleted so the
+# sentence has one meaning. Both call the same authenticate_env_as helper, and the
+# extra has_auth flag is read only by a UC-003 step, so nothing here changes.
 
 
 @given("the buyer recently synced three creatives in three different formats via sync_creatives")
@@ -222,12 +226,6 @@ def _serialized_response(ctx: dict) -> dict[str, Any]:
     a broken transport surfaces as a missing/errored ``ctx["response"]`` here.
     """
     return _require_response(ctx).model_dump(mode="json", exclude_none=True)
-
-
-@then(parsers.parse("the response should be schema-valid against {schema_file}"))
-def then_response_schema_valid(ctx: dict, schema_file: str) -> None:
-    """Assert the serialized response validates against the pinned AdCP schema."""
-    validate_against_pinned_schema(schema_file, _serialized_response(ctx))
 
 
 @then("the creatives array should include each of the synced creatives")

@@ -22,7 +22,7 @@ Writes (``ctx["response"] = ...`` in When steps) are fine — only reads are the
 antipattern. This guard is scoped to ``@then`` functions, matching where the
 diagnostic matters; When steps that set and immediately read know it is present.
 
-beads: salesagent-o15b (response), salesagent-qlsx (error + generalization)
+beads: (response), (error + generalization)
 """
 
 from __future__ import annotations

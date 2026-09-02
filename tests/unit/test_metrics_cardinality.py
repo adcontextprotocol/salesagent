@@ -4,7 +4,7 @@ These tests guard against the OOM contributor identified 2026-05-18: per-tenant
 Prometheus series accumulating without bound, plus unbounded ``error_type`` (from
 ``type(e).__name__``) and free-form ``policy_triggered`` labels.
 
-See salesagent-x2h.10.1.
+
 """
 
 from prometheus_client import Histogram

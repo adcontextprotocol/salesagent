@@ -3,7 +3,6 @@
 Provides typed methods for querying currency limits so _impl functions
 do not need raw select() calls or direct model imports for CurrencyLimit.
 
-beads: salesagent-qo8a (repository pattern enforcement)
 """
 
 from __future__ import annotations

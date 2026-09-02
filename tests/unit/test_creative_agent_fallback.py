@@ -3,7 +3,6 @@
 Tests the fallback path when the adcp SDK 3.6.0 rejects TextContent
 responses from creative agents that don't return structuredContent.
 
-Fixes: salesagent-c6i
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -150,7 +149,7 @@ class TestFetchFormatsRawMcp:
     async def test_unexpected_format_raises_runtime_error(self, registry, agent):
         """Raw HTTP returns unexpected format (no 'result' key) → raises AdCPAdapterError.
 
-        Fix for salesagent-kwws: silent return [] masked failures as 'no formats'.
+        Fix for : silent return [] masked failures as 'no formats'.
         """
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
@@ -286,7 +285,7 @@ class TestParseMcpToolResult:
     def test_no_text_content_raises(self, registry):
         """Content with no text items → raises AdCPAdapterError.
 
-        Fix for salesagent-kwws: silent return [] masked failures as 'no formats'.
+        Fix for : silent return [] masked failures as 'no formats'.
         """
         import logging
 
@@ -297,7 +296,7 @@ class TestParseMcpToolResult:
     def test_empty_content_raises(self, registry):
         """Empty content list → raises AdCPAdapterError.
 
-        Fix for salesagent-kwws: silent return [] masked failures as 'no formats'.
+        Fix for : silent return [] masked failures as 'no formats'.
         """
         import logging
 
@@ -326,7 +325,7 @@ _KNOWN_FORMAT_B = {
 }
 # AdCP-additive asset_type the canonical reference agent serves but the pinned
 # (and latest) adcp closed Literal union does NOT model. This is the exact
-# production defect class from salesagent-w8yn.
+# production defect class from .
 _ADDITIVE_FORMAT = {
     "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "tracking_pixel"},
     "name": "Tracking Pixel",
@@ -335,7 +334,7 @@ _ADDITIVE_FORMAT = {
 
 
 class TestTolerantPerFormatIngestion:
-    """Hermetic regression for salesagent-w8yn (Postel / asymmetric strictness).
+    """Hermetic regression for (Postel / asymmetric strictness).
 
     One unknown AdCP-additive asset_type must NOT nuke the whole
     list_creative_formats response. Fully-understood formats are returned;
@@ -413,7 +412,7 @@ class TestTolerantPerFormatIngestion:
 
 
 class TestSchemaValidationFailureTriggersFallback:
-    """salesagent-w8yn: a wholesale schema-parse FAILED from the adcp client must
+    """: a wholesale schema-parse FAILED from the adcp client must
     fall back to the raw-MCP path (where per-format tolerance applies), not only
     transport-class errors."""
 

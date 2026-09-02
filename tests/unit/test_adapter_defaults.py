@@ -4,7 +4,6 @@ These functions should live in src/adapters/, not src/core/tools/products.py.
 Per 'tools are leaf nodes' principle, adapter lookup logic belongs in the
 adapters package.
 
-Task: salesagent-swi0
 """
 
 

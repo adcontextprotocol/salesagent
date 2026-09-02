@@ -1,4 +1,4 @@
-"""Regression test for include_package_daily_breakdown shape differential (salesagent-kzk0, gates xzky).
+"""Regression test for include_package_daily_breakdown shape differential.
 
 The owner-flagged invariant: when the buyer requests
 ``include_package_daily_breakdown=True``, the response's per-package
@@ -10,7 +10,7 @@ valid T-UC-004-{partition,boundary}-daily-breakdown rows pass *vacuously*
 demonstrates this gap.
 
 Pattern: this is the failing-test gate for the production fix
-(`salesagent-kzk0`). Wrapped in ``xfail(strict=True)``:
+(``). Wrapped in ``xfail(strict=True)``:
 - ``--runxfail`` shows the test fail today (proving the gap)
 - normal run xfails clean (no suite redness)
 - when ``kzk0`` lands and packages carry real ``daily_breakdown`` arrays,
@@ -24,7 +24,7 @@ import pytest
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "salesagent-kzk0: include_package_daily_breakdown is a no-op — "
+        ": include_package_daily_breakdown is a no-op — "
         "src/core/tools/media_buy_delivery.py:479 hard-codes daily_breakdown=None "
         "regardless of the flag. Lands green when kzk0 populates per-package buckets."
     ),

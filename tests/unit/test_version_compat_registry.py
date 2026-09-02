@@ -7,7 +7,6 @@ Validates that:
 - V3+ clients get clean responses without compat fields
 - Dict pass-through works for legacy callers
 
-beads: salesagent-b61l.14
 """
 
 from adcp import CpmPricingOption

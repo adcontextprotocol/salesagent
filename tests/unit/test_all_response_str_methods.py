@@ -210,18 +210,18 @@ class TestResponseStrMethods:
 
     def test_create_media_buy_response_with_id(self):
         """CreateMediaBuySuccess shows created media buy ID."""
-        resp = CreateMediaBuySuccess(media_buy_id="mb_456", packages=[])
+        resp = CreateMediaBuySuccess.carrier(media_buy_id="mb_456", packages=[])
         assert str(resp) == "Media buy mb_456 created successfully."
 
     def test_create_media_buy_response_without_id(self):
         """CreateMediaBuySuccess shows buyer ref (manual approval case)."""
         # Note: In success branch, media_buy_id is always required
-        resp = CreateMediaBuySuccess(media_buy_id="pending", packages=[])
+        resp = CreateMediaBuySuccess.carrier(media_buy_id="pending", packages=[])
         assert str(resp) == "Media buy pending created successfully."
 
     def test_update_media_buy_response(self):
         """UpdateMediaBuySuccess shows updated media buy ID."""
-        resp = UpdateMediaBuySuccess(media_buy_id="mb_123", affected_packages=[])
+        resp = UpdateMediaBuySuccess.carrier(media_buy_id="mb_123", affected_packages=[])
         assert str(resp) == "Media buy mb_123 updated successfully."
 
     # Note: GetMediaBuyDeliveryResponse, CreateCreativeResponse, GetSignalsResponse
@@ -248,7 +248,7 @@ class TestResponseStrMethods:
                 creatives=[],
                 dry_run=False,
             ),
-            CreateMediaBuySuccess(media_buy_id="mb_123", packages=[]),
+            CreateMediaBuySuccess.carrier(media_buy_id="mb_123", packages=[]),
         ]
 
         for resp in responses:

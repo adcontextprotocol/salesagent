@@ -1,117 +1,95 @@
-"""Unit test: execute_approved_media_buy must skip pending_review creatives.
+"""Unit test: a creative that is not cleared to serve holds the buy.
 
-Creatives in pending_review status at buy-approval time are held back from the
-ad server upload. They are pushed retroactively when the operator approves them
-via approve_creative (prebid#1038).
+``execute_approved_media_buy`` now owns the creative gate (it moved out of the three
+admin routes, which had three disagreeing copies of it). The gate asks
+``CreativeAssignmentRepository.unapproved_creative_ids``, which treats only
+``approved`` and ``active`` as cleared — so a ``pending_review`` creative holds the
+buy at ``PENDING_CREATIVES`` and the ad server is never contacted at all.
+
+THE SUBJECT CHANGED, and the reader should know why. This test used to assert that a
+``pending_review`` creative was merely skipped from the adapter's asset list while the
+buy went ahead (prebid#1038). That skip lives further down the same function, past the
+adapter call — and it is now unreachable from here, because the gate returns first.
+Asserting "the upload did not happen" against the current code would pass no matter
+what: nothing downstream of the gate runs. So the assertion below is the gate's own
+outcome plus the ad-server boundary, which is what actually decides it.
 """
 
 from unittest.mock import MagicMock, patch
+
+from src.core.database.repositories.media_buy import MediaBuyRepository
+from src.core.tools.media_buy_create import ApprovalOutcome
 
 _MODULE = "src.core.tools.media_buy_create"
 
 
 class TestExecuteApprovedPendingReviewFilter:
-    """execute_approved_media_buy skips pending_review creatives."""
+    """A pending_review creative holds the buy before any adapter call."""
 
-    def test_pending_review_creative_not_uploaded(self):
-        """A pending_review creative is excluded from the adapter asset list."""
+    def test_pending_review_creative_holds_the_buy(self):
+        """The gate names the creative, and nothing downstream of it runs."""
         from src.core.tools.media_buy_create import execute_approved_media_buy
 
-        # UoW chain: first UoW loads data, second updates status
+        # The gate returns inside the FIRST unit of work, so only one is opened.
         uow1 = MagicMock()
         uow1.__enter__ = MagicMock(return_value=uow1)
         uow1.__exit__ = MagicMock(return_value=False)
         uow1.session = MagicMock()
-        uow1.media_buys = MagicMock()
 
-        uow2 = MagicMock()
-        uow2.__enter__ = MagicMock(return_value=uow2)
-        uow2.__exit__ = MagicMock(return_value=False)
-        uow2.media_buys = MagicMock()
-
-        uow3 = MagicMock()
-        uow3.__enter__ = MagicMock(return_value=uow3)
-        uow3.__exit__ = MagicMock(return_value=False)
-        uow3.media_buys = MagicMock()
-
-        uow_iter = iter([uow1, uow2, uow3])
-
-        # Tenant
         tenant = MagicMock()
         tenant.tenant_id = "t1"
         tenant.ad_server = "mock"
 
-        # Media buy
-        from datetime import UTC, datetime, timedelta
-        from decimal import Decimal
+        media_buy = MagicMock()
+        media_buy.media_buy_id = "mb_1"
+        media_buy.tenant_id = "t1"
+        media_buy.principal_id = "p1"
+        media_buy.status = "pending_approval"
 
-        mb = MagicMock()
-        mb.media_buy_id = "mb_1"
-        mb.tenant_id = "t1"
-        mb.principal_id = "p1"
-        mb.status = "pending_approval"
-        mb.order_name = "Test"
-        mb.advertiser_name = "Advertiser"
-        mb.start_date = datetime.now(UTC).date()
-        mb.end_date = (datetime.now(UTC) + timedelta(days=7)).date()
-        mb.start_time = None
-        mb.end_time = None
-        mb.budget = Decimal("1000.00")
-        mb.currency = "USD"
-        mb.raw_request = {
-            "brand": {"domain": "test.com"},
-            "start_time": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
-            "end_time": (datetime.now(UTC) + timedelta(days=8)).isoformat(),
-            "packages": [{"product_id": "prod_1", "pricing_option_id": "po_1", "budget": 1000.0}],
-        }
-
-        # Package
-        pkg = MagicMock()
-        pkg.package_id = "pkg_1"
-        pkg.package_config = {"product_id": "prod_1", "name": "Pkg", "budget": 1000.0, "pricing_model": "CPM"}
-
-        # Creative assignment — status is pending_review
         assignment = MagicMock()
         assignment.creative_id = "cre_pending"
         assignment.package_id = "pkg_1"
-        assignment.weight = 100
 
         pending_creative = MagicMock()
         pending_creative.creative_id = "cre_pending"
         pending_creative.status = "pending_review"
 
+        # The REAL gate runs over these results — ``unapproved_creative_ids`` is the
+        # code under test here, so it is deliberately not mocked. Its two queries are
+        # the assignments for the buy, then the creatives those assignments name.
         session = uow1.session
-        session.scalars.return_value.first.side_effect = [tenant, mb]
-        session.scalars.return_value.all.side_effect = [
-            [pkg],  # db_packages
-            [assignment],  # assignments
-            [pending_creative],  # creatives
-        ]
-
-        from src.core.schemas import CreateMediaBuySuccess, Principal
-
-        principal = Principal(principal_id="p1", name="Test", platform_mappings={})
-        adapter_response = CreateMediaBuySuccess(
-            media_buy_id="gam_order_1",
-            packages=[],
-        )
+        session.scalars.return_value.first.side_effect = [tenant, media_buy]
+        session.scalars.return_value.all.side_effect = [[assignment], [pending_creative]]
 
         mock_adapter = MagicMock()
-        mock_adapter.creatives_manager = MagicMock()
-        mock_adapter.orders_manager.approve_order.return_value = True
 
         with (
-            patch("src.core.database.repositories.MediaBuyUoW", side_effect=lambda _: next(uow_iter)),
+            patch("src.core.database.repositories.MediaBuyUoW", return_value=uow1),
             patch("src.core.config_loader.set_current_tenant"),
             patch("src.core.config_loader.get_tenant_by_id", return_value={"tenant_id": "t1"}),
-            patch(f"{_MODULE}.get_principal_object", return_value=principal),
-            patch(f"{_MODULE}._execute_adapter_media_buy_creation", return_value=adapter_response),
-            patch(f"{_MODULE}._validate_creatives_before_adapter_call"),
             patch(f"{_MODULE}.get_adapter", return_value=mock_adapter),
+            patch(f"{_MODULE}._execute_adapter_media_buy_creation") as adapter_boundary,
+            # The held write is a different obligation (the integration tests grade the
+            # persisted row); stubbing it keeps this test on the gate's decision.
+            patch.object(MediaBuyRepository, "update_status"),
         ):
-            success, error = execute_approved_media_buy("mb_1", "t1")
+            result = execute_approved_media_buy(
+                "mb_1",
+                "t1",
+                approved_by="approver@example.com",
+                approved_at=None,
+            )
 
-        # The pending_review creative must NOT have been uploaded
+        assert result.outcome is ApprovalOutcome.HELD_PENDING_CREATIVES, (
+            f"a pending_review creative must hold the buy, got {result}"
+        )
+        assert "cre_pending" in (result.error_msg or ""), (
+            f"the held result must name the creative that is holding it: {result.error_msg!r}"
+        )
+        # The whole point of holding: nothing is created in the ad server. Asserting on
+        # the BOUNDARY rather than on the creative upload is what makes this real — the
+        # upload is downstream of a call that never happens.
+        adapter_boundary.assert_not_called()
         mock_adapter.creatives_manager.add_creative_assets.assert_not_called()
 
 

@@ -5,7 +5,6 @@ Validates that each REST transport endpoint:
 - Returns 200 with valid mock data
 - Auth-optional endpoints work without auth
 
-beads: salesagent-b61l.15
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch

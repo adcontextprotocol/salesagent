@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from uuid import uuid4
 
 from adcp.types import BrandReference, NotificationConfig
@@ -37,7 +38,7 @@ from sqlalchemy.sql import func
 
 from src.core.billing_policy import BILLING_PARTY_VALUES
 from src.core.database.json_type import JSONType
-from src.core.exceptions import AdCPConfigurationError
+from src.core.exceptions import AdCPConfigurationError, AdCPPersistedStateError
 from src.core.json_validators import JSONValidatorMixin
 from src.core.signing_contract import (
     REQUEST_SIGNING,
@@ -992,8 +993,215 @@ class AgentAccountAccess(Base):
     )
 
 
+# Statuses in which the seller has NOT yet committed to running the buy. The
+# AdCP 3.1.1 `confirmed_at` field ("when the seller committed to this media buy")
+# carries no commitment instant for these — on get_media_buys it is serialized as
+# PRESENT-AND-NULL, because the pinned item schema types it {"type": ["string",
+# "null"]} AND lists it in `required`. "Absent" is only true of the create
+# response's not-yet-committed arms, which omit the field entirely.
+#
+# This is the SINGLE source of truth for "seller committed", consulted by both the
+# create path and the repository's write-once confirmation stamp
+# (`_stamp_confirmation_if_needed`), so adding a not-yet-committed status here
+# reaches both. That is a shared definition, not a guarantee of agreement: each
+# consumer still decides independently what to DO with it, and only the tests
+# grade that they agree.
+#
+# Adopted verbatim from PR #1544 (GH #1928 requires reconciling with it rather
+# than deciding these semantics independently), minus its `finalizing` member —
+# that status belongs to #1544's finalize-lease/recovery machinery, which this
+# branch does not carry.
+class PersistedMediaBuyStatus(StrEnum):
+    """The closed vocabulary the ``media_buys.status`` column may hold.
+
+    A superset of the pinned wire enum (``adcp.types.MediaBuyStatus``): every wire
+    member is persistable, plus the states this seller keeps that the protocol has
+    no word for (an approval queue, a draft, an adapter failure). The wire
+    projection lives in ``src.core.tools._media_buy_status`` — presentation, and
+    one of several possible ones.
+
+    ``StrEnum``, so a member IS its value: existing ``== "draft"`` comparisons,
+    set/dict membership, SQLAlchemy binds against the ``String`` column and JSON
+    serialization all behave exactly as the bare string did.
+    """
+
+    # Wire-visible — these are also members of adcp.types.MediaBuyStatus.
+    PENDING_CREATIVES = "pending_creatives"
+    PENDING_START = "pending_start"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+    CANCELED = "canceled"
+    # Persisted-only — no protocol member; the wire projection maps them.
+    DRAFT = "draft"
+    PENDING = "pending"
+    PENDING_APPROVAL = "pending_approval"
+    PENDING_ACTIVATION = "pending_activation"
+    SCHEDULED = "scheduled"
+    APPROVED = "approved"
+    READY = "ready"
+    FAILED = "failed"
+
+    @classmethod
+    def parse(cls, raw: str | None, *, media_buy_id: str | None) -> "PersistedMediaBuyStatus":
+        """The member *raw* spells, or ``AdCPPersistedStateError``.
+
+        The ONE coercion between the ``String`` column and the vocabulary. Casing is
+        spelling, not meaning, so it is normalized here rather than tolerated by each
+        reader; anything with no member is a seller-side store defect and is refused
+        at the door it arrives at, never interpreted, defaulted, or passed through.
+
+        ``media_buy_id`` is required to SPELL, and still nullable to pass: a caller
+        with no row identity writes ``media_buy_id=None`` and says so. A defaulted
+        keyword is a permission to omit, and an omitted id yields a refusal that
+        names no row — a defect nobody sees until they are reading a log.
+
+        Refusing is the whole point. A defaulted unknown state reaches the buyer as a
+        lifecycle claim nobody defined, and the pinned item schema forbids the
+        document it produces (``status: "active"`` with a null ``confirmed_at`` fails
+        the ``allOf``/``if`` guard). Owner ruling A3: unknown values are refused at
+        the write boundary, never defaulted at read.
+        """
+        member = cls.parse_or_none(raw)
+        if member is None:
+            subject = f"media buy {media_buy_id!r} " if media_buy_id else ""
+            raise AdCPPersistedStateError(
+                f"{subject}carries persisted status {raw!r}, which is not a member of "
+                f"the media_buys.status vocabulary; expected one of "
+                f"{sorted(m.value for m in cls)}",
+                field="status",
+            )
+        return member
+
+    @classmethod
+    def parse_or_none(cls, raw: str | None) -> "PersistedMediaBuyStatus | None":
+        """The member *raw* spells, or ``None`` — the non-raising half of :meth:`parse`.
+
+        Exists for the one caller that must NOT raise: the seller-commitment
+        predicate reads an unknown state as "not committed", because raising there
+        would abort a legitimate status write over a value its caller did not choose,
+        while defaulting to committed would mint a commitment instant for a state
+        nobody defined. Both doors that can refuse do; the predicate is not a door.
+        """
+        try:
+            return cls((raw or "").lower())
+        except ValueError:
+            return None
+
+    @property
+    def seller_confirmed(self) -> bool:
+        """Whether reaching this status means the seller committed to running the buy.
+
+        This is domain, not presentation: it is *why* ``confirmed_at`` gets stamped,
+        and its consumer is the writer.
+
+        Fail-closed by construction. The COMMITTED members are listed and everything
+        else is the complement, so a member added to this enum without a decision
+        counts as NOT committed — the safe answer, because reading an unknown state
+        as committed would mint a seller-commitment instant that reaches the buyer's
+        wire. Adopted from PR #1544 (GH #1928 reconciles rather than re-decides),
+        minus its ``finalizing`` member, which belongs to finalize-lease machinery
+        this branch does not carry.
+        """
+        return self in _SELLER_COMMITTED_STATUSES
+
+
+# Listed, not derived: see PersistedMediaBuyStatus.seller_confirmed for why the
+# COMMITTED side is the one written out.
+_SELLER_COMMITTED_STATUSES: frozenset[PersistedMediaBuyStatus] = frozenset(
+    {
+        PersistedMediaBuyStatus.ACTIVE,
+        PersistedMediaBuyStatus.APPROVED,
+        PersistedMediaBuyStatus.READY,
+        PersistedMediaBuyStatus.SCHEDULED,
+        PersistedMediaBuyStatus.PENDING_ACTIVATION,
+        # PENDING_CREATIVES is deliberately ABSENT. It is a hold: the buy is waiting on
+        # creative approval and the ad server has not been contacted, so there is no
+        # seller commitment to record. Membership here made the repository stamp a
+        # write-once, buyer-visible confirmed_at at the moment of the hold, and a buy
+        # that later failed ended `failed` still carrying it.
+        #
+        # Grounded in the pin, not in preference: create-media-buy-response.json @ 3.1.1
+        # types confirmed_at ["string","null"], describes it as "May be null in deferred
+        # or manual-approval flows until seller commitment occurs", and constrains it in
+        # exactly one direction -- if confirmed_at is null then status MUST NOT be
+        # "active". A held buy is a manual-approval flow and is not `active`, so NULL is
+        # the conformant value; ACTIVE remains in this set, so the stamp lands at
+        # activation instead. Removing the member makes the bad stamp unrepresentable
+        # rather than merely unreached.
+        PersistedMediaBuyStatus.PENDING_START,
+        PersistedMediaBuyStatus.PAUSED,
+        PersistedMediaBuyStatus.COMPLETED,
+        PersistedMediaBuyStatus.CANCELED,
+    }
+)
+
+
+def is_media_buy_seller_confirmed(status: str | None) -> bool:
+    """True once the seller has committed to running the buy (confirmed_at is set).
+
+    The coercion boundary between the ``String`` column and the vocabulary. The
+    column is not yet typed and callers still pass raw strings, so a value with no
+    member can arrive here — and it must read as NOT committed rather than raising
+    or defaulting to committed. Both failure modes are real: raising would abort a
+    legitimate status write over a value the writer did not choose, and defaulting
+    to committed would mint a seller-commitment instant for a state nobody defined.
+
+    Case-insensitive, and an empty/missing status reads as not-confirmed — we never
+    claim commitment from an unknown state.
+
+    The string-boundary adapter for :attr:`PersistedMediaBuyStatus.seller_confirmed`,
+    which is the single implementation of the predicate. Parsing first (rather than
+    testing a raw string against the member set) is what keeps the two from drifting:
+    there is one place that decides what a column string MEANS, and one place that
+    decides what a member IMPLIES.
+    """
+    member = PersistedMediaBuyStatus.parse_or_none(status)
+    return member is not None and member.seller_confirmed
+
+
 class MediaBuy(Base):
     __tablename__ = "media_buys"
+
+    #: Columns the repository owns outright. ``revision`` is the buyer's concurrency
+    #: token and ``confirmed_at`` is the seller-commitment instant; both are derived
+    #: from a write the repository performs, never supplied by a caller.
+    _SEAM_MANAGED_FIELDS = frozenset({"confirmed_at", "revision"})
+
+    def __init__(self, **kwargs: object) -> None:
+        """Reject construction that presets a repository-managed column.
+
+        A row built with ``confirmed_at`` already set never passed
+        ``_stamp_confirmation_if_needed``, and one built with a chosen ``revision``
+        never took part in the concurrency protocol the token exists for. Both were
+        previously reachable and only *detected*, by an AST fixture that had to know
+        every spelling of a constructor call; a spelling it did not know was a silent
+        hole, and ``MediaBuy(**kwargs)`` was one, because a double-star call carries a
+        single keyword whose ``arg`` is ``None``.
+
+        Raising here removes the shape instead of recognising it, so no spelling has to
+        be enumerated: ``MediaBuy(confirmed_at=...)``, ``models.MediaBuy(revision=...)``
+        and ``MB(**{"revision": 1})`` all fail identically.
+
+        The repository is not exempted and does not need to be — it constructs the row
+        without these fields and then stamps them by attribute assignment, which is
+        where the value is actually derived.
+        """
+        # ``None`` is not a preset. A caller writing ``confirmed_at=None`` is stating the
+        # column's own default, which no more bypasses the stamp than omitting it does;
+        # refusing it would make the guard about the KEY rather than about the value, and
+        # a test that opts out of factory seeding by passing an explicit ``None`` would
+        # have to work around the model instead of being served by it.
+        preset = {field for field in self._SEAM_MANAGED_FIELDS if kwargs.get(field) is not None}
+        if preset:
+            raise TypeError(
+                f"MediaBuy cannot be constructed with repository-managed field(s) "
+                f"{sorted(preset)}: revision is assigned by the concurrency protocol and "
+                f"confirmed_at by _stamp_confirmation_if_needed. Construct the row without "
+                f"them and let MediaBuyRepository derive them."
+            )
+        super().__init__(**kwargs)
 
     media_buy_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(
@@ -1011,6 +1219,18 @@ class MediaBuy(Base):
     start_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    # Monotonic optimistic-concurrency counter (AdCP 3.1.1 `revision`). Starts at
+    # 1 on create; bumped by MediaBuyRepository on every successful mutation.
+    # Persisted rather than derived: buyers treat it as a concurrency token, so it
+    # MUST strictly increase, and anything derived from timestamps collides when
+    # two updates land inside the clock resolution.
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    # The instant the seller COMMITTED to running the buy (AdCP 3.1.1
+    # `confirmed_at`), written once. Distinct from approved_at only in intent —
+    # on the manual-approval path it IS the approval instant, while on the
+    # synchronous auto-approve path a successful create_media_buy response is
+    # itself the confirmation. NULL until commitment.
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

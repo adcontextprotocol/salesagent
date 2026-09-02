@@ -95,7 +95,7 @@ async def _discover_product_and_pricing(live_server: dict, test_auth_token: str)
     ``packages[]`` format — legacy ``product_ids``/``total_budget`` is rejected
     with VALIDATION_ERROR before the manual-approval path runs, so a legacy
     request can never yield a ``submitted`` TaskStatusUpdateEvent webhook
-    (salesagent-18h.3). Building a valid packages request needs a real
+    . Building a valid packages request needs a real
     pricing_option_id; discover it like test_adcp_full_lifecycle does.
     """
     async with make_mcp_client(live_server, token=test_auth_token) as client:

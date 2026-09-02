@@ -511,7 +511,7 @@ class TestMCPWrapperIdentityResolution:
 
 
 # ===========================================================================
-# BUG: MCP wrapper drops context parameter (salesagent-pdnu)
+# BUG: MCP wrapper drops context parameter
 # ===========================================================================
 
 
@@ -524,7 +524,7 @@ class TestMCPWrapperContextEcho:
     """
 
     async def test_mcp_wrapper_propagates_context_to_impl(self):
-        """Bug salesagent-pdnu: context passed to MCP wrapper must appear in response.
+        """Bug : context passed to MCP wrapper must appear in response.
 
         This is the actual bug path: MCP client sends context={...} as a top-level
         parameter. The wrapper receives it but does not inject it into req before

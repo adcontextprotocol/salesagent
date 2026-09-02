@@ -6,6 +6,7 @@ from src.admin.utils.audit_decorator import log_admin_action
 # Export all helper functions (previously in utils.py)
 from src.admin.utils.helpers import (
     LimitedResult,
+    approve_media_buy_through_writer,
     echo_context,
     execute_limited,
     get_custom_targeting_mappings,
@@ -22,6 +23,7 @@ from src.admin.utils.helpers import (
 )
 
 __all__ = [
+    "approve_media_buy_through_writer",
     # Decorator
     "log_admin_action",
     # Auth/authorization functions

@@ -9,7 +9,6 @@ These tests verify the HTTP boundary shape for all A2A skills:
 They use TestClient (in-process ASGI) with mocked _impl functions.
 No Docker required. This is the regression gate between every Phase 2 step.
 
-beads: salesagent-b61l.17
 """
 
 import json

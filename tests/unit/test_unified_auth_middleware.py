@@ -1,4 +1,4 @@
-"""Tests for the unified auth middleware refactoring (salesagent-97pn).
+"""Tests for the unified auth middleware refactoring .
 
 Validates that:
 - UnifiedAuthMiddleware is a pure ASGI class (not BaseHTTPMiddleware)
@@ -6,7 +6,6 @@ Validates that:
 - request.state.auth_context still works for FastAPI routes
 - A2A handler reads from scope["state"] (not deleted _request_auth_token)
 
-beads: salesagent-97pn
 """
 
 import ast

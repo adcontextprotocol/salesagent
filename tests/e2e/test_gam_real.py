@@ -5,7 +5,7 @@ These tests require valid GAM credentials and connect to a real GAM test network
 They are gated behind @pytest.mark.requires_gam and skip when credentials are absent.
 
 Test network: 23341594478 (XFP sandbox property)
-Service account: salesagent-e2e@salesagenttest.iam.gserviceaccount.com
+Service account: @salesagenttest.iam.gserviceaccount.com
 
 Run with:
     uv run pytest tests/e2e/test_gam_real.py -v
@@ -193,7 +193,7 @@ class TestGAMHealthCheck:
 
     Note: GAMHealthChecker._init_client() only supports service_account_key_file,
     not service_account_json. Using client_manager.test_connection() instead.
-    See salesagent-xxxx for the health checker bug.
+    See for the health checker bug.
     """
 
     def test_health_check_via_client_manager(self, gam_client_manager):

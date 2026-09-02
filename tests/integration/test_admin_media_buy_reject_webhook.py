@@ -19,6 +19,11 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 
 from src.core.context_manager import ContextManager
+from tests.helpers.media_buy_write_seam import (
+    MediaBuyState,
+    assert_status_move_carried_bookkeeping,
+    read_media_buy_state,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -195,6 +200,19 @@ def _post_approval_action(admin_session, ids: dict, data: dict):
     assert resp.status_code == 302, f"expected redirect, got {resp.status_code}"
 
 
+def _parse_instant(value: str):
+    """Parse a wire ISO-8601 timestamp into an aware datetime.
+
+    Both sides of the confirmed_at comparison go through a parse: the wire carries a
+    string (with a trailing "Z" that fromisoformat wants spelled "+00:00"), the column
+    carries a datetime, and comparing the two textually would grade formatting rather
+    than the instant.
+    """
+    from datetime import datetime
+
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 def _webhook_body(captured: dict) -> dict:
     """The outbound webhook body as a plain dict (model_dump when a model)."""
     assert "payload" in captured, "route did not send a webhook payload"
@@ -299,9 +317,9 @@ class TestAdminMediaBuyRejectWebhook:
 
         Pin for PR #1567 round-2 cleanup (approve site routed through the sync_success()
         factory): the buy IS committed at approval time, so the embedded result
-        must keep asserting completion — status="completed", confirmed_at and
-        revision from the subclass defaults, the media_buy_id, and NO leaked
-        internal fields. Guards the factory switch against any wire drift and
+        must keep asserting completion — status="completed", the media_buy_id, NO
+        leaked internal fields, and confirmed_at/revision AGREEING WITH THE PERSISTED
+        ROW (they no longer come from subclass defaults; the repository owns both). Guards the factory switch against any wire drift and
         pins that approve stays a Success (never the Submitted variant the
         pending-approval CREATE path now emits — PR #1567 round-2 item 2).
         """
@@ -317,8 +335,22 @@ class TestAdminMediaBuyRejectWebhook:
         assert embedded.get("status") == "completed", (
             f"approved webhook must embed a completed Success, got status={embedded.get('status')!r}"
         )
+        # Both are read off the PERSISTED row, not asserted as constants. They used to
+        # be pinned at the schema defaults (a truthy confirmed_at and revision == 1),
+        # which is precisely what made the response a second producer: the row here is
+        # several bumps past 1 by the time approval completes, and the old assertion
+        # passed only because the envelope was reporting a fabricated value.
+        persisted = read_media_buy_state(tenant_id, media_buy_id)
         assert embedded.get("confirmed_at"), "approved (committed) buy must carry confirmed_at"
-        assert embedded.get("revision") == 1, "approved buy must carry the initial revision"
+        assert _parse_instant(embedded["confirmed_at"]) == persisted.confirmed_at, (
+            f"embedded confirmed_at {embedded['confirmed_at']!r} disagrees with the persisted "
+            f"column {persisted.confirmed_at!r} — one producer per field"
+        )
+        assert embedded.get("revision") == persisted.revision, (
+            f"embedded revision {embedded.get('revision')!r} disagrees with the persisted column "
+            f"{persisted.revision!r}; get_media_buys publishes the column, so a buyer taking the "
+            f"token from this webhook would hand back a stale one"
+        )
         assert "workflow_step_id" not in embedded, "internal workflow_step_id must not leak onto the wire"
         # Absent-context branch pin (PR #1567 round-3): with no "context" key in
         # the workflow step's request_data, the echo path stays dormant and the
@@ -333,6 +365,83 @@ class TestAdminMediaBuyRejectWebhook:
             "principal_id": "reject_wh_principal",
             "media_buy_id": media_buy_id,
         }
+
+    def test_reject_bumps_revision_without_confirming(
+        self, authenticated_admin_session, pending_reject_media_buy, webhook_capture
+    ):
+        """Rejecting the buy is a mutation of the buy: revision moves, confirmation does not.
+
+        approve_media_buy's reject arm assigns media_buy.status = "rejected" directly, so the
+        buy changes state while ``revision`` — the buyer's optimistic-concurrency token, which
+        must strictly increase on every mutation — stays where it was. Routing the write through
+        MediaBuyRepository.update_status is what moves it. "rejected" is NOT in
+        models._SELLER_COMMITTED_STATUSES, so this transition must NOT stamp confirmed_at:
+        a rejection is the seller declining to commit.
+        """
+        tenant_id = pending_reject_media_buy["tenant_id"]
+        media_buy_id = pending_reject_media_buy["media_buy_id"]
+
+        before = read_media_buy_state(tenant_id, media_buy_id)
+        before_revision = before.revision
+        assert before.status == "pending_approval"
+        assert before.confirmed_at is None, "fixture must start with an unstamped confirmation instant"
+
+        _post_approval_action(
+            authenticated_admin_session, pending_reject_media_buy, {"action": "reject", "reason": "test"}
+        )
+
+        after = read_media_buy_state(tenant_id, media_buy_id)
+        # confirms=False: "rejected" is NOT a committed status, so this move must not
+        # mint a commitment instant the seller never made.
+        assert_status_move_carried_bookkeeping(
+            MediaBuyState(status="pending_approval", revision=before_revision, confirmed_at=None),
+            after,
+            expected_status="rejected",
+            confirms=False,
+            subject="rejecting the media buy",
+        )
+
+    def test_approve_bumps_revision_for_every_status_move(
+        self, authenticated_admin_session, pending_reject_media_buy, webhook_capture
+    ):
+        """An admin approval is ONE status move, so revision must move exactly once.
+
+        THE CONTRACT CHANGED, and this test previously graded the old one: ``bumps=2``
+        and ``expected_status="active"``. That was two committed writes for a single
+        approval — ``approve_media_buy`` resolved the flight-window status and committed
+        it BEFORE calling the adapter, and ``execute_approved_media_buy`` then committed
+        an unconditional ``ACTIVE`` over it. Both defects are real and both are named in
+        the finding list: the buy was published as ``active`` before its flight window
+        opened, and a buyer polling on ``revision`` was handed a token that
+        skipped a value for one logical event.
+
+        ``execute_approved_media_buy`` is now the sole post-adapter writer, and the route
+        touches nothing after calling it. So the delta is 1, and the status is the
+        flight-window rule's answer — ``scheduled`` here, because this fixture's buy is
+        approved before its window opens.
+
+        ``bumps`` is an EXACT delta, which is what makes this the grader for the
+        single-writer property: if any caller reintroduces a second write, this fails
+        rather than looking like a smaller-but-positive increase.
+        """
+        tenant_id = pending_reject_media_buy["tenant_id"]
+        media_buy_id = pending_reject_media_buy["media_buy_id"]
+
+        before = read_media_buy_state(tenant_id, media_buy_id)
+        before_revision = before.revision
+        assert before.confirmed_at is None, "fixture must start with an unstamped confirmation instant"
+
+        _post_approval_action(authenticated_admin_session, pending_reject_media_buy, {"action": "approve"})
+
+        after = read_media_buy_state(tenant_id, media_buy_id)
+        assert after.approved_by == "test@example.com"
+        assert_status_move_carried_bookkeeping(
+            MediaBuyState(status="pending_approval", revision=before_revision, confirmed_at=None),
+            after,
+            expected_status="scheduled",
+            confirms=True,
+            subject="admin approval (pending_approval -> scheduled)",
+        )
 
     def test_a2a_reject_webhook_carries_policy_violation_task(
         self, authenticated_admin_session, make_pending_media_buy, webhook_capture

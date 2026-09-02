@@ -1,4 +1,4 @@
-"""Regression tests for salesagent-9eu: silent return [] masks agent failures in signals.
+"""Regression tests for : silent return [] masks agent failures in signals.
 
 signals_agent_registry.py has paths that silently return [] without raising.
 get_signals() then records no error, producing an empty signals list — which
@@ -11,7 +11,6 @@ can distinguish agent-down from genuinely-empty.
 Same pattern as creative_agent_registry.py (fixed in PR #1167).
 
 Bug: prebid/salesagent#1136
-Beads: salesagent-9eu
 """
 
 from unittest.mock import AsyncMock, MagicMock

@@ -34,12 +34,16 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 class TestAccountWirePassthrough:
     """``account`` reaches enrich_identity_with_account through every wrapper."""
 
-    # Valid create params shared by all three transports. Account resolution
-    # runs at the boundary before _impl validates packages, so packages can be
-    # empty — the ACCOUNT_NOT_FOUND rejection fires first.
+    # Valid create params shared by all three transports. `packages` carries a real
+    # entry rather than an empty list: the request model enforces the pin's MinLen(1),
+    # and REQUEST VALIDATION FIRES BEFORE ACCOUNT RESOLUTION, so an empty array is
+    # rejected as VALIDATION_ERROR and this test never reaches the account check it
+    # grades. An earlier comment here reasoned the other way round — that account
+    # resolution runs first so packages could be empty — which was true only while the
+    # local model had dropped the parent's bound.
     _CREATE_KWARGS = {
         "brand": {"domain": "account-wire.example.com"},
-        "packages": [],
+        "packages": [{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
         "start_time": "2026-06-01T00:00:00Z",
         "end_time": "2026-06-30T00:00:00Z",
         "po_number": "ACCOUNT-WIRE-1",

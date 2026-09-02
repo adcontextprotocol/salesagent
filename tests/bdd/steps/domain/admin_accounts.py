@@ -4,7 +4,6 @@ Steps for testing the admin accounts blueprint via Flask test client.
 The harness (AdminAccountEnv) is provided by the _harness_env fixture
 in tests/bdd/conftest.py.
 
-beads: salesagent-oj0.1.2
 """
 
 from __future__ import annotations

@@ -2,7 +2,7 @@
 
 PR #1264 fix #3 wired the ``ProtocolWebhookService.close()`` (which releases a
 long-lived ``httpx.AsyncClient`` connection pool — real OS file descriptors)
-into ``src.app.app_lifespan``'s shutdown phase. salesagent-x2h.6 inverted the
+into ``src.app.app_lifespan``'s shutdown phase. A later change inverted the
 dependency: the service self-registers ``close`` via
 ``src.core.lifecycle.register_shutdown`` at first construction, and
 ``app_lifespan`` only calls ``run_all_shutdown_callbacks()`` — it never names a

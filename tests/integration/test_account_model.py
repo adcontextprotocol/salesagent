@@ -3,7 +3,6 @@
 Verifies that the Account data model correctly persists, enforces constraints,
 and maintains tenant isolation against real PostgreSQL.
 
-beads: salesagent-t53
 """
 
 import pytest

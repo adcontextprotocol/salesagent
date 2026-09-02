@@ -6,7 +6,6 @@ but A2A has no equivalent extraction path. This means test headers sent to A2A
 endpoints are silently ignored.
 
 Regression prevention: https://github.com/prebid/salesagent/pull/1066
-Beads: salesagent-2yt6
 """
 
 from unittest.mock import patch

@@ -1,4 +1,4 @@
-"""Schema boundary tests for adcp 3.6.0 upgrade (salesagent-83o).
+"""Schema boundary tests for adcp 3.6.0 upgrade .
 
 These tests define the expected behavior AFTER the upgrade to adcp 3.6.0.
 They fail on 3.2.0 and must pass on 3.6.0 once our local schemas are aligned.

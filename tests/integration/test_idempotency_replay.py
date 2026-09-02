@@ -44,7 +44,7 @@ def _make_request(idempotency_key, *, po_number="REPLAY-1"):
 
     return CreateMediaBuyRequest(
         brand={"domain": "replay-test.example.com"},
-        packages=[],
+        packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
         start_time=datetime(2026, 6, 1, tzinfo=UTC),
         end_time=datetime(2026, 6, 30, tzinfo=UTC),
         po_number=po_number,

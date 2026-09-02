@@ -6,7 +6,6 @@ the sync_accounts response. This contract test verifies:
   2. Fields serialize correctly via model_dump
   3. None-valued fields are excluded by default
 
-beads: salesagent-a6zc
 """
 
 from adcp.types import Error as LibraryError

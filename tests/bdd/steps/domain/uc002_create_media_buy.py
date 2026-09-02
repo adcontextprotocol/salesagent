@@ -7,12 +7,12 @@ Steps dispatch a full create_media_buy through the wire transport
 (MediaBuyCreateEnv); production resolves the account at the transport boundary
 and emits the outcome on the wire (#1417).
 
-beads: salesagent-2rq, salesagent-zh85
 """
 
 from __future__ import annotations
 
 import uuid
+from functools import lru_cache
 from typing import Any
 from unittest.mock import ANY
 
@@ -21,6 +21,7 @@ from pytest_bdd import given, parsers, then, when
 from tests.bdd.steps._harness_db import db_session as _db_session
 from tests.bdd.steps._outcome_helpers import _get_response_field
 from tests.bdd.steps.generic._account_resolution import seed_natural_key_matches
+from tests.bdd.steps.generic._create_request import build_create_request_kwargs
 from tests.factories.account import AccountFactory, AgentAccountAccessFactory
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1278,6 +1279,18 @@ def _assert_task_list_outcome(ctx: dict, outcome: str) -> None:
                 )
 
 
+@lru_cache(maxsize=1)
+def _pinned_error_codes() -> frozenset[str]:
+    """Every error code the pinned AdCP enum declares.
+
+    Read from the pin rather than hand-listed so a spec bump cannot leave this
+    check describing a vocabulary the suite no longer grades against.
+    """
+    from tests.helpers.pinned_schema import load
+
+    return frozenset(load("enums/error-code.json").get("enum") or ())
+
+
 def _assert_error_outcome(ctx: dict, outcome: str) -> None:
     """Assert error outcome with exact code, recovery, and message matching.
 
@@ -1329,12 +1342,21 @@ def _assert_error_outcome(ctx: dict, outcome: str) -> None:
         assert error.suggestion, f"Expected top-level suggestion on the error, got: {error.suggestion!r}"
         return
 
-    # Check if first word is a structured error code (UPPER_CASE with _).
+    # Check if first word is a structured error code.
     # Strip surrounding quotes: the partition/boundary outlines write the code
     # quoted (e.g. error "INVALID_REQUEST" with suggestion).
+    #
+    # Membership in the PINNED enum, not "UPPER_CASE containing an underscore".
+    # That shape heuristic silently misread every single-word code as free-text
+    # prose and fell through to the message-contains branch below, so the row
+    # compared the buyer's error MESSAGE against the literal outcome string and
+    # could never pass however correct production was. Exactly one pinned code
+    # has no underscore — CONFLICT — and it is the one the optimistic-concurrency
+    # obligation (#1607) rests on, so the heuristic broke precisely the rows that
+    # needed it. Asking the pin is an observation; counting underscores was a guess.
     parts = remainder.split()
     first_word = parts[0].strip('"') if parts else ""
-    is_structured = bool(first_word) and first_word == first_word.upper() and "_" in first_word
+    is_structured = bool(first_word) and (first_word in _pinned_error_codes() or "_" in first_word)
 
     if is_structured:
         expected_code = first_word
@@ -1493,50 +1515,19 @@ def given_tenant_auto_approval(ctx: dict) -> None:
 # then dispatch a full create_media_buy through the parametrized transport.
 
 
-def _idempotency_pricing_option_id(pricing_option) -> str:
-    """Synthetic pricing_option_id string from a PricingOption ORM row.
-
-    Matches the production/`given_media_buy` convention
-    ``{pricing_model}_{currency_lower}_{fixed|auction}``.
-    """
-    fixed_str = "fixed" if pricing_option.is_fixed else "auction"
-    return f"{pricing_option.pricing_model}_{pricing_option.currency.lower()}_{fixed_str}"
-
-
 def _build_idempotency_request_kwargs(ctx: dict) -> dict:
     """Assemble a valid create_media_buy request dict against the seeded product.
 
     Stored on ctx["request_kwargs"]; the When step and the "already created"
     Given step dispatch THIS exact dict (copied) so the canonical payload hash
     matches between the original create and the replay.
-    """
-    from datetime import UTC, datetime, timedelta
 
-    product = ctx["default_product"]
-    pricing_option = ctx["default_pricing_option"]
-    now = datetime.now(UTC)
-    ctx["request_kwargs"] = {
-        "brand": {"domain": "testbrand.com"},
-        # Explicit, stable po_number so the canonical payload is byte-identical
-        # between the original create and the replay across ALL transports. The
-        # A2A wrapper no longer mints a random po_number when the caller omits
-        # one (it stays None for idempotency-hash + cross-transport parity), so
-        # this value is set explicitly here to keep the canonical payload —
-        # and therefore the idempotency hash — identical between the original
-        # create and the replay. A real buyer replaying an idempotent request
-        # resends their own po_number.
-        "po_number": "PO-IDEMPOTENCY-REPLAY-001",
-        "start_time": (now + timedelta(days=1)).isoformat(),
-        "end_time": (now + timedelta(days=30)).isoformat(),
-        "packages": [
-            {
-                "product_id": product.product_id,
-                "budget": 5000.0,
-                "pricing_option_id": _idempotency_pricing_option_id(pricing_option),
-            }
-        ],
-    }
-    return ctx["request_kwargs"]
+    The explicit, stable po_number is what keeps the canonical payload — and
+    therefore the idempotency hash — byte-identical between the original create
+    and the replay across ALL transports. A real buyer replaying an idempotent
+    request resends their own po_number.
+    """
+    return build_create_request_kwargs(ctx, po_number="PO-IDEMPOTENCY-REPLAY-001")
 
 
 @given(parsers.parse('a valid create_media_buy request with idempotency_key "{key}"'))
@@ -1978,7 +1969,7 @@ def then_webhook_notification(ctx: dict) -> None:
       B. step.request_data carries push_notification_config URL -- required for
          _send_push_notifications to actually POST. The BDD reject path uses
          repository methods that bypass the admin flow which populates this field.
-         FIXME(salesagent-9vgz.1): Wire through the production admin approve/reject
+         FIXME: Wire through the production admin approve/reject
          flow, then remove the xfail.
     """
     import pytest
@@ -2115,7 +2106,7 @@ def then_webhook_notification(ctx: dict) -> None:
         # SPEC-PRODUCTION GAP: the repository-driven reject path does NOT populate
         # step.request_data with push_notification_config because it bypasses the
         # Flask admin flow that writes the original request payload onto the step.
-        # FIXME(salesagent-9vgz.1): wire through the production admin approve/reject
+        # FIXME(#2132): wire through the production admin approve/reject
         # flow which populates request_data, then remove this xfail.
         req_data = step.request_data or {}
         step_push_cfg = req_data.get("push_notification_config") if isinstance(req_data, dict) else None
@@ -2124,7 +2115,7 @@ def then_webhook_notification(ctx: dict) -> None:
                 "SPEC-PRODUCTION GAP: step.request_data does not carry "
                 "push_notification_config with the buyer's URL — "
                 "_send_push_notifications would skip dispatch. "
-                "FIXME(salesagent-9vgz.1): wire through the admin flow."
+                "FIXME: wire through the admin flow."
             )
 
         # Happy path (reached when harness wires the full admin flow):
@@ -2233,4 +2224,86 @@ def then_slack_notification_sent(ctx: dict) -> None:
         ),
         tenant_id=ANY,
         success=True,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# v3.1 sync-success envelope: revision, confirmed_at, valid_actions
+# ═══════════════════════════════════════════════════════════════════════
+# Authored to wake @T-UC-002-v31-success-revision-and-actions, which had no step
+# definitions and so sat behind the UC-002 harness xfail. It grades the three v3.1
+# fields on the arm the buyer meets first — the same three the create response used
+# to fabricate from schema defaults rather than read from the persisted row.
+
+
+@then(parsers.parse('the response should include "{field}" as an ISO 8601 timestamp'))
+def then_response_field_is_iso8601(ctx: dict, field: str) -> None:
+    """Assert the WIRE field parses as an ISO 8601 instant carrying an offset.
+
+    Both halves matter: that it serialized as a string at all (a raw datetime object
+    reaching a JSON document is a real failure mode for a hand-built payload), and
+    that parsing yields an AWARE datetime — a timestamp without an offset denotes a
+    different instant for every reader.
+    """
+    from datetime import datetime
+
+    from tests.bdd.steps._outcome_helpers import wire_dict
+
+    value = wire_dict(ctx).get(field)
+    assert isinstance(value, str), f"{field} must be an ISO 8601 STRING on the wire, got {value!r}"
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    assert parsed.tzinfo is not None, f"{field} carries no timezone designator: {value!r}"
+
+
+@then(parsers.parse('the response should include "{field}" with an integer value of at least {minimum:d}'))
+def then_response_field_integer_at_least(ctx: dict, field: str, minimum: int) -> None:
+    """Assert the WIRE field is an integer at or above *minimum*.
+
+    ``_is_wire_integer`` rather than ``isinstance(int)``: A2A frames its DataPart as a
+    protobuf Struct whose only numeric kind is a double, so a legal revision arrives
+    as ``1.0`` there and ``1`` on MCP. A value that is not integral at all is itself a
+    violation and is reported as one rather than quietly coerced.
+    """
+    from tests.bdd.steps._outcome_helpers import wire_dict
+
+    value = wire_dict(ctx).get(field)
+    assert value is not None, f"{field} is absent from the wire response"
+    assert isinstance(value, int | float) and float(value).is_integer(), (
+        f"{field} must be an integer on the wire, got {value!r}"
+    )
+    assert int(value) >= minimum, f"{field} must be at least {minimum} per the pinned schema, got {value!r}"
+
+
+@then(parsers.parse('the response should include a "{field}" array'))
+def then_response_field_is_array(ctx: dict, field: str) -> None:
+    """Assert the WIRE field is a NON-EMPTY array.
+
+    Emptiness is the failure this guards. An empty ``valid_actions`` is exactly what a
+    status the derivation does not recognise produces, and it tells the buyer there is
+    nothing it may do next — so "present" is not the obligation, "populated" is.
+    """
+    from tests.bdd.steps._outcome_helpers import wire_dict
+
+    value = wire_dict(ctx).get(field)
+    assert isinstance(value, list), f"{field} must be an array on the wire, got {value!r}"
+    assert value, f"{field} is empty; the buyer plans its next call from it"
+
+
+@then("every value in valid_actions should be a member of the media-buy-valid-action enum")
+def then_valid_actions_are_enum_members(ctx: dict) -> None:
+    """Assert every emitted action is a member of the PINNED enum.
+
+    Read from the pinned schema rather than a literal list restated here: a list in
+    the test would let a pin bump widen the enum without anyone noticing, and would
+    let a typo'd action pass by matching the typo.
+    """
+    from tests.bdd.steps._outcome_helpers import wire_dict
+    from tests.helpers import pinned_schema
+
+    enum_members = set(pinned_schema.load_canonicalized("enums/media-buy-valid-action.json")["enum"])
+    actions = wire_dict(ctx).get("valid_actions") or []
+    unknown = [a for a in actions if a not in enum_members]
+    assert not unknown, (
+        f"valid_actions carries {unknown!r}, which the pinned media-buy-valid-action enum does not "
+        f"define (legal: {sorted(enum_members)})"
     )

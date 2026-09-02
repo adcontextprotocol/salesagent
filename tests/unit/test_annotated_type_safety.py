@@ -8,7 +8,6 @@ These tests verify:
 2. context_builder.build() accepts typed Request (not object)
 3. _log_a2a_operation has proper Optional annotations
 
-beads: salesagent-dnpq
 """
 
 import typing

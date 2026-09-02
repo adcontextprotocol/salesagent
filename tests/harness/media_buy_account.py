@@ -6,7 +6,6 @@ directly with proper DB state.
 
 Requires: integration_db fixture.
 
-beads: salesagent-2rq
 """
 
 from __future__ import annotations

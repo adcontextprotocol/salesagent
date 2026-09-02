@@ -54,7 +54,10 @@ _WRAPPER_UNSUPPORTED_FIELDS = (
     "invoice_recipient",
     "new_packages",
     "proposal_id",
-    "revision",
+    # "revision" is NOT stripped: every wrapper declares it now (MCP tool, A2A raw,
+    # REST body), so stripping it would put the a2a/mcp legs back to passing without
+    # ever sending the field — which is how the revision scenarios read as graded on
+    # three transports while only REST actually carried the token.
     "today",
     "total_budget",
 )

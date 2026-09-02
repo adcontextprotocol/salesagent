@@ -1,6 +1,6 @@
 """Regression test for migration 1a88e4967119 — composite PK with orphan rows.
 
-Bug salesagent-0iig: The migration sets orphan creative_reviews/creative_assignments
+Bug : The migration sets orphan creative_reviews/creative_assignments
 rows to principal_id='unknown', then creates a composite FK requiring
 (creative_id, tenant_id, principal_id) to exist in creatives. Orphan rows have
 creative_ids that don't exist in creatives — FK creation fails with referential

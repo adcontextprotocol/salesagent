@@ -3,7 +3,6 @@
 Validates that the admin accounts BDD feature file is well-formed and
 contains the minimum required scenario coverage.
 
-beads: salesagent-oj0.1.1
 """
 
 from __future__ import annotations
@@ -33,9 +32,7 @@ class TestAdminBddFeatureStructure:
     """Verify BR-ADMIN-ACCOUNTS.feature meets structural requirements."""
 
     def test_feature_file_exists(self) -> None:
-        assert FEATURE_FILE.exists(), (
-            f"Feature file not found at {FEATURE_FILE}. Task salesagent-oj0.1.1 requires creating this file."
-        )
+        assert FEATURE_FILE.exists(), f"Feature file not found at {FEATURE_FILE}. Task requires creating this file."
 
     def test_minimum_scenario_count(self) -> None:
         text = FEATURE_FILE.read_text()

@@ -2,7 +2,6 @@
 
 Verifies agent-scoped account listing with real PostgreSQL.
 
-beads: salesagent-hl0
 Business rules: BR-RULE-054 (agent scoping), BR-RULE-055 (auth optional)
 """
 

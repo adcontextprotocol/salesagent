@@ -4,8 +4,7 @@ Implements the AdCP SHOULD requirement from adcp PR #1010:
 > Sellers SHOULD reject requests where the same value appears in both
 > the inclusion and exclusion field at the same level.
 
-Beads: salesagent-suj
-Updated for salesagent-17b: validation now accepts Targeting model directly.
+Updated for : validation now accepts Targeting model directly.
 """
 
 from src.core.schemas import Targeting

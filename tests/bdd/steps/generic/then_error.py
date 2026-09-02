@@ -957,12 +957,30 @@ def then_error_field_with_value(ctx: dict, field: str, value: str) -> None:
 # ── Error details assertions ────────────────────────────────────────
 
 
-@then(parsers.parse("the error details should include {key} {value}"))
+@then(parsers.parse("the error details should include {key:w} {value:S}"))
 def then_error_details_include_unquoted(ctx: dict, key: str, value: str) -> None:
     """Assert error.details contains a key with the given value (numeric/unquoted).
 
     Handles numeric coercion: if the expected value looks like a number,
     compare numerically. Otherwise compare as strings.
+
+    Field TYPES matter here, they are not decoration. Written as the bare
+    ``{key} {value}`` this sentence is ``.+? .+?`` anchored to the prefix, so it
+    swallows every PROSE continuation of "the error details should include ..."
+    too — "... policy_id and a non-empty reasons array", "... a policy_url where
+    the full policy can be reviewed", "... supported_versions as a non-empty
+    array". For those it binds nonsense (``key='policy_id'``,
+    ``value='and a non-empty reasons array'``) and can only ever fail, while
+    ALSO shadowing the domain step that does grade the obligation — the disease
+    ``tests/unit/test_architecture_bdd_no_shadowed_steps.py`` exists to remove
+    (GH #1941: one Gherkin sentence has exactly one meaning).
+
+    ``{key:w}`` (``\\w+``, one identifier) and ``{value:S}`` (one non-whitespace
+    token) pin the step to the shape it was written for — an identifier followed
+    by a single scalar, quoted or not. Every scalar site in ``tests/bdd/features``
+    still binds with identical arguments (``minimum_budget 500``,
+    ``current_version 1``, ``currency "USD"``, ``resource_id "mb-789"``); the
+    prose sentences no longer bind here, leaving each to its own domain step.
     """
     error = ctx.get("error")
     assert error is not None, "No error recorded in ctx"

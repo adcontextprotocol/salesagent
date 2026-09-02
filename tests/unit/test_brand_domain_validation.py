@@ -4,7 +4,6 @@ The brand_manifest_policy field accepts only: require_auth, require_brand, publi
 Invalid values like "flexible" silently fall through policy checks, acting like "public"
 without the developer's intent being explicit.
 
-beads: salesagent-fd3i
 """
 
 import ast

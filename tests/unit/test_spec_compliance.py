@@ -28,7 +28,7 @@ class TestResponseSchemas:
 
     def test_create_media_buy_response_no_protocol_fields(self):
         """Verify CreateMediaBuyResponse has only domain fields (no protocol fields)."""
-        response = CreateMediaBuySuccess(media_buy_id="buy_123", packages=[])
+        response = CreateMediaBuySuccess.carrier(media_buy_id="buy_123", packages=[])
 
         # Verify protocol fields are not in the schema (moved to ProtocolEnvelope)
         assert not hasattr(response, "context_id")
@@ -161,7 +161,7 @@ class TestProtocolCompliance:
     def test_create_media_buy_response_domain_fields(self):
         """Test that create_media_buy response contains only domain fields."""
         # Response with media_buy_id (success case)
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="pending_123",
             packages=[],
         )
@@ -184,7 +184,7 @@ class TestProtocolCompliance:
         assert len(error_response.errors) == 1
 
         # Success case with packages
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="buy_456",
             packages=[{"package_id": "pkg_1", "paused": False}],
         )

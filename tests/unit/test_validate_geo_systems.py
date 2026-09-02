@@ -1,6 +1,6 @@
 """Tests for TargetingCapabilities.validate_geo_systems().
 
-Regression tests for salesagent-xy0: ensures adapter geo system validation
+Regression tests for : ensures adapter geo system validation
 checks both include and exclude fields and returns descriptive error messages.
 """
 

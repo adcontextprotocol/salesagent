@@ -7,7 +7,7 @@ Covers three untested branches in src/core/schemas/product.py:
 
 These are pure Pydantic schema tests — no database or transport required.
 
-Covers: salesagent-xsn4
+Covers:
 """
 
 from __future__ import annotations

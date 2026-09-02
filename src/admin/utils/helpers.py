@@ -6,7 +6,7 @@ import json
 import logging
 import os
 from functools import wraps
-from typing import NamedTuple, TypeVar
+from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
 from adcp.types import ContextObject
 from flask import abort, g, jsonify, redirect, session, url_for
@@ -16,8 +16,12 @@ from sqlalchemy.sql import Select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, TenantManagementConfig, User
+from src.core.logging_config import log_safe
 
 T = TypeVar("T")
+
+if TYPE_CHECKING:
+    from src.core.tools.media_buy_create import ApprovalResult
 
 logger = logging.getLogger(__name__)
 
@@ -591,3 +595,43 @@ def echo_context(request_data: dict) -> ContextObject | None:
     if context_data and isinstance(context_data, dict):
         return ContextObject.model_construct(**context_data)
     return None
+
+
+def approve_media_buy_through_writer(media_buy_id: str, tenant_id: str, *, approved_by: str) -> ApprovalResult:
+    """Run an approval through the single post-adapter writer and report it to the user.
+
+    Every admin approval route reaches the same three outcomes and says the same thing
+    about two of them; only the response shape differs (JSON on one route, a redirect on
+    another). Leaving the call and its flash in each route is how three routes came to
+    disagree about approval in the first place, so the shared part lives here and each
+    caller is left with just its own ``return``.
+
+    Returns the ``ApprovalResult`` so the caller can branch on ``outcome``: it is told
+    what happened rather than re-reading the row to find out, which is what stops a route
+    holding a media buy across the adapter call.
+    """
+    from datetime import UTC, datetime
+
+    from flask import flash
+
+    from src.core.tools.media_buy_create import ApprovalOutcome, execute_approved_media_buy
+
+    logger.info(log_safe(f"[APPROVAL] Executing adapter creation for approved media buy {media_buy_id}"))
+    approval: ApprovalResult = execute_approved_media_buy(
+        media_buy_id,
+        tenant_id,
+        approved_by=approved_by,
+        approved_at=datetime.now(UTC),
+    )
+
+    if approval.outcome is ApprovalOutcome.HELD_PENDING_CREATIVES:
+        flash(
+            f"Media buy approved! Waiting for creative approval before creating in the ad server "
+            f"({approval.error_msg}).",
+            "info",
+        )
+    elif not approval.ok:
+        logger.error(log_safe(f"[APPROVAL] Adapter creation failed for {media_buy_id}: {approval.error_msg}"))
+        flash(f"Media buy approved but adapter creation failed: {approval.error_msg}", "error")
+
+    return approval

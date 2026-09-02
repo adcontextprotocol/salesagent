@@ -1,5 +1,6 @@
 """Integration tests for update_media_buy creative assignment functionality."""
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +12,10 @@ from src.core.exceptions import AdCPCreativeRejectedError
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import UpdateMediaBuyRequest, UpdateMediaBuyResponse, UpdateMediaBuyResult
 from src.core.tools.media_buy_update import _update_media_buy_impl
+from tests.helpers.media_buy_write_seam import (
+    assert_status_move_carried_bookkeeping,
+    read_media_buy_state,
+)
 
 
 @pytest.mark.requires_db
@@ -765,3 +770,113 @@ def test_creative_assignments_replaces_all(integration_db):
         weight_map = {a.creative_id: a.weight for a in assignments}
         assert weight_map["c2"] == 70
         assert weight_map["c3"] == 30
+
+
+# =============================================================================
+# Approved-draft -> pending_creatives transition
+#
+# A media buy approved BEFORE it had creatives sits at status "draft" with
+# approved_at stamped. Attaching creatives is what moves it on, so both package
+# creative paths carry the same transition:
+#   - creative_ids         -> src/core/tools/media_buy_update.py:949
+#   - creative_assignments -> src/core/tools/media_buy_update.py:1185
+# Each writes through MediaBuyRepository.update_status rather than assigning
+# media_buy_obj.status directly, and that routing is the behaviour graded here:
+# update_status bumps revision (the buyer's optimistic-concurrency token) and does
+# NOT stamp confirmed_at: pending_creatives is deliberately absent from
+# models._SELLER_COMMITTED_STATUSES, because a hold awaiting creative approval is
+# not a seller commitment. A direct attribute assignment moves the
+# buy with neither, which is invisible if the test only checks the status string.
+# =============================================================================
+
+
+def _seed_approved_draft_buy(env, *, media_buy_id: str, package_id: str, creative_id: str) -> None:
+    """Seed the narrow precondition both transitions guard on.
+
+    A buy that is BOTH status "draft" AND has ``approved_at`` set — i.e. the
+    seller approved it before any creative was attached — plus one package whose
+    product accepts the seeded creative's format (otherwise the shared
+    ``_validate_creatives_for_assignment`` gate rejects the update before either
+    transition site is reached).
+    """
+    from tests.factories import CreativeFactory, MediaBuyFactory, MediaPackageFactory
+
+    tenant, principal = env.setup_default_data(human_review_required=False)
+    product, _ = env.setup_product_chain(tenant)
+    buy = MediaBuyFactory(
+        tenant=tenant,
+        principal=principal,
+        media_buy_id=media_buy_id,
+        status="draft",
+        approved_at=datetime.now(UTC),
+    )
+    MediaPackageFactory(
+        media_buy=buy,
+        package_id=package_id,
+        package_config={"package_id": package_id, "product_id": product.product_id},
+    )
+    CreativeFactory(tenant=tenant, principal=principal, creative_id=creative_id, approved=True)
+
+
+@pytest.mark.requires_db
+@pytest.mark.parametrize(
+    ("creative_field", "package_update"),
+    [
+        pytest.param(
+            "creative_ids",
+            {"creative_ids": ["cr_draft"]},
+            id="creative_ids",
+        ),
+        pytest.param(
+            "creative_assignments",
+            {"creative_assignments": [{"creative_id": "cr_draft", "weight": 100}]},
+            id="creative_assignments",
+        ),
+    ],
+)
+def test_approved_draft_transitions_to_pending_creatives(integration_db, creative_field, package_update):
+    """Attaching creatives to an approved draft moves it to pending_creatives via the repository.
+
+    One case per transition site (creative_ids -> :949, creative_assignments ->
+    :1185): each drives only its own branch, because each site is guarded on the
+    field its case sends and the other field is absent from the request.
+    """
+    from src.core.schemas import UpdateMediaBuyRequest
+    from tests.harness.media_buy_dual import MediaBuyDualEnv
+
+    media_buy_id = f"mb_draft_{creative_field}"
+    package_id = "pkg_draft"
+
+    with MediaBuyDualEnv() as env:
+        _seed_approved_draft_buy(env, media_buy_id=media_buy_id, package_id=package_id, creative_id="cr_draft")
+
+        before = read_media_buy_state(env.identity.tenant_id, media_buy_id, session=env.get_session())
+        assert before.status == "draft", "fixture must start in the approved-but-creative-less draft state"
+        assert before.confirmed_at is None, "draft is not a seller-confirmed status, so it starts unstamped"
+
+        result = env.call_impl(
+            req=UpdateMediaBuyRequest(
+                media_buy_id=media_buy_id,
+                packages=[{"package_id": package_id, **package_update}],
+            )
+        )
+
+        assert isinstance(result, UpdateMediaBuyResult), f"update failed: {result!r}"
+
+        after = read_media_buy_state(env.identity.tenant_id, media_buy_id, session=env.get_session())
+        # The transition is a mutation of the buy, so it must carry the buy's mutation
+        # bookkeeping — which only MediaBuyRepository.update_status does.
+        assert_status_move_carried_bookkeeping(
+            before,
+            after,
+            expected_status="pending_creatives",
+            # confirms=False: pending_creatives is a HOLD, not a commitment. The buy is
+            # waiting on creative approval and the ad server has not been contacted, so
+            # there is nothing to record. Was confirms=True, which graded the defect Chris
+            # reproduced on a real database: the hold stamped a write-once, buyer-visible
+            # confirmed_at, and a buy that later failed ended `failed` still carrying it.
+            # The pin decides it -- create-media-buy-response.json @ 3.1.1 says null "in
+            # deferred or manual-approval flows until seller commitment occurs".
+            confirms=False,
+            subject=f"attaching {creative_field} to approved draft {media_buy_id}",
+        )

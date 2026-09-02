@@ -1,7 +1,7 @@
 """
 Unit tests for E2E test-stack port allocation hardening.
 
-Root cause of the mass e2e 502 failures (salesagent-18h.12): the port
+Root cause of the mass e2e 502 failures : the port
 allocators in scripts/test-stack.sh, .claude/skills/agent-db/agent-db.sh and
 tests/e2e/conftest.py:find_free_port() all suffer from two defects when many
 worktree agents run in parallel on one host:

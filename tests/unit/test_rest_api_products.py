@@ -7,7 +7,6 @@ Validates the first REST transport for get_products:
 - Version compat applied when adcp_version < 3.0
 - Error responses use AdCPError format
 
-beads: salesagent-b61l.13
 """
 
 from unittest.mock import patch

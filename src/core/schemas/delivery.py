@@ -6,7 +6,7 @@ from ``src.core.schemas`` for backward compatibility.
 
 from datetime import date
 from enum import StrEnum
-from typing import Any
+from typing import Any, ClassVar
 
 from adcp.types import AggregatedTotals as LibraryAggregatedTotals
 from adcp.types import DeliveryMeasurement as LibraryDeliveryMeasurement
@@ -29,7 +29,7 @@ from adcp.types.generated_poc.media_buy.get_media_buy_delivery_response import (
 from pydantic import ConfigDict, Field
 
 from src.core.config import get_pydantic_extra_mode
-from src.core.schemas._base import NestedModelSerializerMixin, SalesAgentBaseModel
+from src.core.schemas._base import AlwaysIncludeFieldsMixin, NestedModelSerializerMixin, SalesAgentBaseModel
 
 # ---------------------------------------------------------------------------
 # Simple enum / leaf types
@@ -91,6 +91,10 @@ class GetMediaBuyDeliveryRequest(LibraryGetMediaBuyDeliveryRequest):
 
 
 # AdCP-compliant delivery models
+# FIXME(#2130): DeliveryTotals and PackageDelivery duplicate fields from
+# adcp library Totals/ByPackageItem instead of inheriting. These should extend the
+# library types (Pattern #1). Field names are now spec-aligned (completed_views);
+# remaining work is switching to inheritance.
 class DeliveryTotals(SalesAgentBaseModel):
     """Aggregate metrics for a media buy or package.
 
@@ -242,6 +246,8 @@ class MediaBuyDeliveryData(SalesAgentBaseModel):
     spec-aligned (completed_views); remaining work is switching DeliveryTotals
     and PackageDelivery to extend their library counterparts.
 
+    TODO: Add buyer_campaign_ref field from adcp spec
+    (present in library MediaBuyDelivery but missing here).
     """
 
     # use_enum_values keeps ``status`` (and ``pricing_model``) as their str
@@ -301,7 +307,9 @@ class AggregatedTotals(LibraryAggregatedTotals):
 # ---------------------------------------------------------------------------
 
 
-class GetMediaBuyDeliveryResponse(NestedModelSerializerMixin, LibraryGetMediaBuyDeliveryResponse):
+class GetMediaBuyDeliveryResponse(
+    AlwaysIncludeFieldsMixin, NestedModelSerializerMixin, LibraryGetMediaBuyDeliveryResponse
+):
     """Extends library GetMediaBuyDeliveryResponse with local overrides.
 
     Library provides: reporting_period, currency, errors, context, ext,
@@ -320,17 +328,13 @@ class GetMediaBuyDeliveryResponse(NestedModelSerializerMixin, LibraryGetMediaBuy
         ..., description="Array of delivery data for each media buy"
     )
 
-    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
-        """Override to ensure webhook metadata fields are present when notification_type is set.
-
-        The base AdCPBaseModel excludes None values, but the AdCP protocol requires
-        next_expected_at to be explicitly present (as null) when notification_type
-        is 'final' so consumers know no further reports are expected.
-        """
-        result = super().model_dump(**kwargs)
-        if self.notification_type is not None and "next_expected_at" not in result:
-            result["next_expected_at"] = None
-        return result
+    # Derived from the pin. The premise the old hand-declaration rested on was
+    # false: get-media-buy-delivery-response.json types next_expected_at
+    # `{"type": "string"}` — not nullable — and does not list it in `required`. Its
+    # own description says it is "only present in webhook deliveries when
+    # notification_type is not 'final'", so a null is never the right wire value and
+    # `notification_type is not None` included 'final', the one case the pin excludes.
+    _PINNED_SCHEMA_REF: ClassVar[str] = "media-buy/get-media-buy-delivery-response.json"
 
     def __str__(self) -> str:
         """Return human-readable summary message for protocol envelope."""

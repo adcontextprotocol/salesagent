@@ -1,6 +1,6 @@
 """Tests that pytest.ini filterwarnings correctly suppresses library ResourceWarnings.
 
-Bug: salesagent-kmop — 29 ResourceWarnings from CPython asyncio internals clutter
+Bug: — 29 ResourceWarnings from CPython asyncio internals clutter
 test output. These should be suppressed in pytest.ini while keeping our own code's
 ResourceWarnings visible.
 """

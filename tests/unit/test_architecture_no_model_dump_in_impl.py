@@ -12,7 +12,6 @@ Current violations are serializing for DB storage (raw_request, workflow step
 response_data). These should be replaced with typed repository methods that
 accept model objects directly, eliminating the manual serialization.
 
-beads: salesagent-hr8n
 """
 
 import ast

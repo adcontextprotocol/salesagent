@@ -1,4 +1,4 @@
-"""Characterization tests for salesagent-chit (MED-01/MED-05/CON-05/LR-01).
+"""Characterization tests for (MED-01/MED-05/CON-05/LR-01).
 
 Guard the behavior of the generic ``then_boundary_handling_result`` step on the
 DELIVERY domain path so that relocating that logic out of the generic

@@ -38,11 +38,42 @@ clock, a further legitimate divergence.
 
 from __future__ import annotations
 
-import logging
 from datetime import date
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from src.core.database.models import PersistedMediaBuyStatus
+
+# Keyed by the vocabulary TYPE rather than by bare strings, so a member with no
+# projection row is a missing key here rather than a value nobody notices. The
+# keys are members and StrEnum members ARE their values, so every existing
+# ``.get(status_string)`` lookup keeps working unchanged.
+PERSISTED_STATUS_TO_CANONICAL: dict[PersistedMediaBuyStatus, str] = {
+    PersistedMediaBuyStatus.ACTIVE: "active",
+    PersistedMediaBuyStatus.APPROVED: "active",
+    PersistedMediaBuyStatus.READY: "active",
+    PersistedMediaBuyStatus.SCHEDULED: "active",
+    PersistedMediaBuyStatus.PENDING_ACTIVATION: "pending_start",
+    PersistedMediaBuyStatus.PAUSED: "paused",
+    PersistedMediaBuyStatus.COMPLETED: "completed",
+    PersistedMediaBuyStatus.REJECTED: "rejected",
+    PersistedMediaBuyStatus.CANCELED: "canceled",
+    PersistedMediaBuyStatus.FAILED: "failed",
+    PersistedMediaBuyStatus.DRAFT: "pending_creatives",
+    PersistedMediaBuyStatus.PENDING: "pending_start",
+    PersistedMediaBuyStatus.PENDING_APPROVAL: "pending_start",
+    PersistedMediaBuyStatus.PENDING_CREATIVES: "pending_creatives",
+    PersistedMediaBuyStatus.PENDING_START: "pending_start",
+}
+
+# The complete set of values ``resolve_canonical_status`` may return, derived
+# from the map so the two can never drift. Used by get_media_buy_delivery as its
+# valid internal-filter vocabulary. Its equivalence to the pinned SDK
+# ``MediaBuyStatus`` enum (plus the delivery-only ``failed``) is pinned by
+# ``tests/unit/test_media_buy_status_consistency.py`` so an SDK bump that widens
+# the lifecycle enum fails loudly instead of silently making a new status
+# unfilterable.
+CANONICAL_STATUSES: frozenset[str] = frozenset(PERSISTED_STATUS_TO_CANONICAL.values())
+
 
 # NOTE: ``buy`` is typed ``Any`` rather than a structural Protocol because the
 # ORM ``MediaBuy`` annotates its date columns ``Mapped[Date]`` (the SQLAlchemy
@@ -71,6 +102,7 @@ TERMINAL_STATUSES: frozenset[str] = frozenset({"paused", "completed", "rejected"
 # truthful promise for it.
 NO_MORE_DATA_STATUSES: frozenset[str] = TERMINAL_STATUSES - {"paused"}
 
+
 # Persisted ``MediaBuy.status`` -> canonical status. Written by
 # media_buy_create.py, the lifecycle transitions, the status scheduler, and the
 # admin blueprints. Includes the legacy aliases still resident in production
@@ -91,34 +123,11 @@ NO_MORE_DATA_STATUSES: frozenset[str] = TERMINAL_STATUSES - {"paused"}
 #     The literal reading of pending_start ("ready") slightly overstates an
 #     awaiting-approval buy; the spec offers no better pre-serving bucket. If a
 #     future spec adds an approval-queue status, revisit this row.
-PERSISTED_STATUS_TO_CANONICAL: dict[str, str] = {
-    "active": "active",
-    "approved": "active",
-    "ready": "active",
-    "scheduled": "active",
-    "pending_activation": "pending_start",
-    "paused": "paused",
-    "completed": "completed",
-    "rejected": "rejected",
-    "canceled": "canceled",
-    "failed": "failed",
-    "draft": "pending_creatives",
-    "pending": "pending_start",
-    "pending_approval": "pending_start",
-    "pending_creatives": "pending_creatives",
-    "pending_start": "pending_start",
-}
-
-# The complete set of values ``resolve_canonical_status`` may return, derived
-# from the map so the two can never drift. Used by get_media_buy_delivery as its
-# valid internal-filter vocabulary. Its equivalence to the pinned SDK
-# ``MediaBuyStatus`` enum (plus the delivery-only ``failed``) is pinned by
-# ``tests/unit/test_media_buy_status_consistency.py`` so an SDK bump that widens
-# the lifecycle enum fails loudly instead of silently making a new status
-# unfilterable.
-CANONICAL_STATUSES: frozenset[str] = frozenset(PERSISTED_STATUS_TO_CANONICAL.values())
-
-
+# The persisted->canonical projection and its value set live with the vocabulary
+# in ``src.core.database.models``: mapping a persisted status to its wire word is a
+# property of the vocabulary itself, not of this module's date refinement. Re-exported
+# here because this module is where callers already look for them, and because
+# ``resolve_canonical_status`` below is their only refinement.
 def resolve_canonical_status(buy: Any, reference_date: date, *, simulate: bool = False) -> str:
     """Resolve a media buy's canonical status from its persisted column.
 
@@ -127,11 +136,21 @@ def resolve_canonical_status(buy: Any, reference_date: date, *, simulate: bool =
     against the flight window; a terminal/explicit state (paused, completed,
     rejected, canceled, failed) is returned verbatim.
 
-    An *unmapped* persisted status is treated as a generic serving state and
-    date-refined — never returned verbatim and never dropped — so a buy that
-    exists is always describable. (Regression: the delivery copy passed unknown
-    values through, which then failed its internal-status filter and made even
-    fetch-by-ID report ``MEDIA_BUY_NOT_FOUND`` for a buy that exists.)
+    An *unmapped* persisted status is REFUSED, not described. It cannot be
+    interpreted: the seller stored a lifecycle state that no rule defines, so any
+    reading this function invented would be a claim about the buy that nobody made.
+    It surfaces as ``AdCPPersistedStateError`` — ``CONFIGURATION_ERROR`` /
+    ``terminal``, because the defect is in the seller's own store and the buyer has
+    no lever on it and must not auto-retry. The write door refuses the same value
+    through the same coercion, so the only way one reaches here is a row that
+    predates the vocabulary or was written around the repository; the status
+    -normalising migration beside ``7f3a1c9e2b04`` exists to empty that set.
+
+    (History, so the refusal is not mistaken for the old bug: the delivery copy once
+    passed unknown values THROUGH, which then failed its internal-status filter and
+    made even fetch-by-ID report ``MEDIA_BUY_NOT_FOUND`` for a buy that exists. The
+    fix for that was never "guess a serving state" — it was to stop the value
+    entering.)
 
     Args:
         buy: A media buy exposing ``status``, ``start_date``/``end_date``,
@@ -148,13 +167,20 @@ def resolve_canonical_status(buy: Any, reference_date: date, *, simulate: bool =
     Returns:
         One of ``CANONICAL_STATUSES``.
     """
-    persisted = (buy.status or "").lower()
-    if persisted and persisted not in PERSISTED_STATUS_TO_CANONICAL:
-        # Not a failure (the buy is still described, date-refined as serving), but
-        # a writer has introduced a persisted value this map doesn't know about —
-        # surface it so the map can be updated rather than silently guessing.
-        logger.warning("Unmapped persisted media-buy status %r; treating as serving state", persisted)
-    canonical = PERSISTED_STATUS_TO_CANONICAL.get(persisted, CANONICAL_SERVING)
+    # Parsed, not defaulted, and parsed through the SAME coercion the write door uses
+    # (PersistedMediaBuyStatus.parse). Guessing a serving state here is what
+    # previously let an undefined status reach the buyer as "active" with no
+    # commitment instant — a document the pinned schema forbids. A refusal is a real
+    # seller-side defect surfacing, not a case to absorb, and it now carries
+    # CONFIGURATION_ERROR/terminal instead of the bare ValueError that reached the
+    # buyer as VALIDATION_ERROR/correctable — advice about data the buyer does not own.
+    canonical = (
+        PERSISTED_STATUS_TO_CANONICAL[
+            PersistedMediaBuyStatus.parse(buy.status, media_buy_id=getattr(buy, "media_buy_id", None))
+        ]
+        if buy.status
+        else CANONICAL_SERVING
+    )
 
     should_refine = canonical == CANONICAL_SERVING or (simulate and canonical not in TERMINAL_STATUSES)
     if not should_refine:

@@ -50,6 +50,9 @@ def _mock_uow(media_buy, currency_limit):
     uow.media_buys = MagicMock()
     uow.currency_limits = MagicMock()
     uow.media_buys.get_by_id.return_value = media_buy
+    # The tool re-reads the row through the repository's typed not-found accessor;
+    # stubbing only get_by_id left that returning a bare MagicMock.
+    uow.media_buys.get_by_id_or_raise.return_value = media_buy
     uow.media_buys.get_packages.return_value = []
     uow.media_buys.update_fields.return_value = media_buy
     uow.currency_limits.get_for_currency.return_value = currency_limit

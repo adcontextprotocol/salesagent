@@ -82,7 +82,7 @@ def test_no_bdd_xfail_reason_attributes_to_1462() -> None:
         "BDD xfail markers must not attribute failures to #1462 (the in-process _impl "
         "request-path gap). BDD does not parametrize IMPL, so a #1462-attributed BDD "
         "marker is mis-attributed — find the transport the wire path actually exercises "
-        "(e.g. step shadowing, salesagent-50hl). Violations:\n" + "\n".join(violations)
+        "(e.g. step shadowing, ). Violations:\n" + "\n".join(violations)
     )
 
 
@@ -121,7 +121,7 @@ def test_meta_positive_catches_multiline_concatenated_reason() -> None:
 
 def test_meta_negative_allows_corrected_reason() -> None:
     """Negative: the corrected #1417 reason is NOT flagged."""
-    src = 'import pytest\npytest.mark.xfail(reason="window dropped by step shadowing (salesagent-50hl)", strict=True)\n'
+    src = 'import pytest\npytest.mark.xfail(reason="window dropped by step shadowing ", strict=True)\n'
     assert not _scan_source(src), "guard must tolerate a non-#1462 reason"
 
 
@@ -130,6 +130,6 @@ def test_meta_negative_ignores_1462_in_comments() -> None:
     src = (
         "import pytest\n"
         "# #1462 is the in-process _impl path; BDD does not run impl\n"
-        'pytest.mark.xfail(reason="step shadowing (salesagent-50hl)", strict=True)\n'
+        'pytest.mark.xfail(reason="step shadowing ", strict=True)\n'
     )
     assert not _scan_source(src), "guard must scan reason strings only, not comments"

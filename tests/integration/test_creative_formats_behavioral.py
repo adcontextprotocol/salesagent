@@ -4,7 +4,7 @@ Behavioral tests using CreativeFormatsEnv + real PostgreSQL + factory_boy.
 Replaces mock-heavy unit tests from test_creative.py and
 test_creative_formats_behavioral.py with provable assertions.
 
-Covers: salesagent-rrt0
+Covers:
 """
 
 from __future__ import annotations
@@ -527,7 +527,7 @@ class TestCreativeFormatsDimensionFilters:
 
 # ---------------------------------------------------------------------------
 # output_format_ids Filter — Covers: UC-005-MAIN-MCP-18, UC-005-MAIN-MCP-19
-# Regression for beads-xlu: filter NOT implemented yet — this test must FAIL
+# Regression for : filter NOT implemented yet — this test must FAIL
 # ---------------------------------------------------------------------------
 
 

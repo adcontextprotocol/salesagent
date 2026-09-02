@@ -195,7 +195,7 @@ class TestCreativeAgentRegistry:
         mock_client.agent = Mock(return_value=mock_agent_client)
 
         # Submitted status is anomalous for list_creative_formats — must raise
-        # Fix for salesagent-kwws: silent return [] masked failures as 'no formats'
+        # Fix for : silent return [] masked failures as 'no formats'
         with pytest.raises(AdCPAdapterError, match="Unexpected submitted status"):
             await registry._fetch_formats_from_agent(mock_client, test_agent)
 

@@ -181,6 +181,29 @@ class TransportResult:
     def is_error(self) -> bool:
         return self.error is not None
 
+    def require_wire(self) -> dict[str, Any]:
+        """The success-path body the buyer actually received, or a loud failure.
+
+        The success-side counterpart of :meth:`assert_wire_error`, and for the same
+        reason: the guarded read belongs on the object that HOLDS the wire, so every
+        caller gets the same guard instead of re-deriving it. Three copies of this
+        check had grown across the suite, and a fourth partial one — each free to
+        drift, and each a place where a missing ``wire_response`` could fall through
+        to a harness-side reconstruction and assert nothing.
+
+        Two failures are distinguished because they mean different things: an error
+        result was never going to have a success body, while a success result with no
+        stashed body means the dispatch bypassed the real pipeline — the silent
+        tautology this guard exists to make loud.
+        """
+        assert self.is_success, f"expected a success wire body, got error {self.error!r}"
+        assert self.wire_response is not None, (
+            "no wire body was stashed for a successful call — the dispatch bypassed the "
+            "real pipeline, so any assertion on it would grade a harness reconstruction "
+            "rather than what the buyer received"
+        )
+        return self.wire_response
+
     def assert_wire_error(
         self,
         code: str,

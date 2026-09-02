@@ -14,7 +14,6 @@ isinstance checks, or call helper functions that contain real assertions.
 A bare ``assert expr`` without a comparison operator is "trivial" — it only
 checks truthiness, not a specific expected value.
 
-beads: beads-y9k
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """Tests for unknown targeting field rejection.
 
-Regression tests for salesagent-duu: ensures unknown buyer-submitted targeting
+Regression tests for : ensures unknown buyer-submitted targeting
 fields (typos, bogus fields) are rejected. With extra='forbid' in dev mode,
 unknown fields are caught at construction time via ValidationError.
 """

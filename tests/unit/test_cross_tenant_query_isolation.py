@@ -1,4 +1,4 @@
-"""Reproduction tests for cross-tenant query leaks (salesagent-0kba, 353c, v7lw, gcjx).
+"""Reproduction tests for cross-tenant query leaks.
 
 After the composite PK migration (bfbf084c), IDs like principal_id, creative_id,
 media_buy_id, and package_id are no longer globally unique. Every query on a
@@ -65,7 +65,7 @@ def _extract_select_calls(
 
 
 class TestAuthUtilsTenantIsolation:
-    """salesagent-0kba: auth.py Principal lookup missing tenant_id."""
+    """: auth.py Principal lookup missing tenant_id."""
 
     def test_get_principal_object_scopes_by_tenant(self):
         """get_principal_object must filter Principal by tenant_id.
@@ -84,14 +84,14 @@ class TestAuthUtilsTenantIsolation:
         for s in principal_selects:
             assert s["has_tenant_filter"], (
                 f"Principal query at auth.py:{s['lineno']} is missing tenant_id filter. "
-                f"This is a cross-tenant data leak (salesagent-0kba)."
+                f"This is a cross-tenant data leak ."
             )
 
 
 class TestMediaBuyUpdateTenantIsolation:
-    """salesagent-353c: media_buy_update.py MediaBuy queries missing tenant_id.
+    """: media_buy_update.py MediaBuy queries missing tenant_id.
 
-    After UoW migration (salesagent-4jq2), _update_media_buy_impl uses
+    After UoW migration , _update_media_buy_impl uses
     MediaBuyUoW which provides a tenant-scoped MediaBuyRepository.
     All MediaBuy queries go through the repository — no raw select(MediaBuy) calls remain.
     """
@@ -117,7 +117,7 @@ class TestMediaBuyUpdateTenantIsolation:
 
 
 class TestApproveMediaBuyTenantIsolation:
-    """salesagent-snvr: approve_media_buy() raw select(MediaBuy) should use repository."""
+    """: approve_media_buy() raw select(MediaBuy) should use repository."""
 
     def test_approve_media_buy_uses_repository(self):
         """approve_media_buy() must use MediaBuyRepository, not raw select(MediaBuy).
@@ -140,7 +140,7 @@ class TestApproveMediaBuyTenantIsolation:
         # Verify MediaBuyRepository is used
         source_text = ast.get_source_segment(source_path.read_text(), func_node)
         assert "MediaBuyRepository" in source_text, (
-            "approve_media_buy() must use MediaBuyRepository for tenant-scoped MediaBuy access (salesagent-snvr)"
+            "approve_media_buy() must use MediaBuyRepository for tenant-scoped MediaBuy access "
         )
 
         # Verify no raw select(MediaBuy) calls bypass the repository
@@ -151,12 +151,12 @@ class TestApproveMediaBuyTenantIsolation:
         mediabuy_selects = [s for s in selects if s["model"] in ("MediaBuy", "MediaBuyModel")]
         assert not mediabuy_selects, (
             f"approve_media_buy() should use MediaBuyRepository, not raw select(MediaBuy). "
-            f"Found {len(mediabuy_selects)} raw query(ies). (salesagent-snvr)"
+            f"Found {len(mediabuy_selects)} raw query(ies). "
         )
 
 
 class TestAdapterTenantIsolation:
-    """salesagent-v7lw: adapter queries missing tenant_id (GAM Creative)."""
+    """: adapter queries missing tenant_id (GAM Creative)."""
 
     # NOTE: Broadstreet MediaPackage queries are NOT tested here because
     # MediaPackage has no tenant_id column. Its tenant isolation comes through
@@ -176,17 +176,17 @@ class TestAdapterTenantIsolation:
         for s in creative_selects:
             assert s["has_tenant_filter"], (
                 f"Creative query at gam/managers/orders.py:{s['lineno']} is missing tenant_id filter. "
-                f"This is a cross-tenant data leak (salesagent-v7lw)."
+                f"This is a cross-tenant data leak ."
             )
 
 
 class TestAdminDeliveryTenantIsolation:
-    """salesagent-gcjx: admin blueprints + delivery queries missing tenant_id."""
+    """: admin blueprints + delivery queries missing tenant_id."""
 
     def test_webhook_creative_query_scopes_by_tenant(self):
         """_call_webhook_for_creative_status Creative access must be tenant-scoped.
 
-        Creative access was migrated to CreativeRepository (salesagent-p6i),
+        Creative access was migrated to CreativeRepository ,
         which enforces tenant_id on every query by construction.
         Verify the repository is used rather than raw select() calls.
         """
@@ -222,7 +222,7 @@ class TestAdminDeliveryTenantIsolation:
     def test_approve_creative_creative_query_scopes_by_tenant(self):
         """approve_creative() Creative access must be tenant-scoped.
 
-        Creative access was migrated to CreativeRepository (salesagent-p6i),
+        Creative access was migrated to CreativeRepository ,
         which enforces tenant_id on every query by construction.
         Verify no raw select(Creative) calls bypass the repository.
         """
@@ -240,7 +240,7 @@ class TestAdminDeliveryTenantIsolation:
     def test_review_creatives_mediabuy_queries_scope_by_tenant(self):
         """review_creatives() MediaBuy queries must be tenant-scoped.
 
-        MediaBuy access was migrated to MediaBuyRepository (salesagent-72dh),
+        MediaBuy access was migrated to MediaBuyRepository ,
         which enforces tenant_id on every query by construction.
         Verify the repository is used rather than raw select() calls.
         """
@@ -276,7 +276,7 @@ class TestAdminDeliveryTenantIsolation:
     def test_review_creatives_product_query_scopes_by_tenant(self):
         """review_creatives() Product access must be tenant-scoped.
 
-        Product access was migrated to ProductRepository (salesagent-p6i),
+        Product access was migrated to ProductRepository ,
         which enforces tenant_id on every query by construction.
         Verify no raw select(Product) calls bypass the repository.
         """
@@ -295,7 +295,7 @@ class TestAdminDeliveryTenantIsolation:
         """approve_creative() CreativeReview access must be tenant-scoped.
 
         CreativeReview access was migrated to CreativeRepository.get_prior_ai_review()
-        (salesagent-p6i), which enforces tenant_id by construction.
+        , which enforces tenant_id by construction.
         Verify no raw select(CreativeReview) calls bypass the repository.
         """
         selects = _extract_select_calls(
@@ -313,7 +313,7 @@ class TestAdminDeliveryTenantIsolation:
         """reject_creative() CreativeReview access must be tenant-scoped.
 
         CreativeReview access was migrated to CreativeRepository.get_prior_ai_review()
-        (salesagent-p6i), which enforces tenant_id by construction.
+        , which enforces tenant_id by construction.
         Verify no raw select(CreativeReview) calls bypass the repository.
         """
         selects = _extract_select_calls(
@@ -342,5 +342,5 @@ class TestAdminDeliveryTenantIsolation:
 
         for s in pricing_selects:
             assert s["has_tenant_filter"], (
-                f"PricingOption query at product.py:{s['lineno']} is missing tenant_id filter. (salesagent-gcjx)"
+                f"PricingOption query at product.py:{s['lineno']} is missing tenant_id filter. "
             )

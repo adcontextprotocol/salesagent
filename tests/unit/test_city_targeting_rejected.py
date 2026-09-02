@@ -1,10 +1,10 @@
 """Tests for city targeting rejection.
 
-Regression tests for salesagent-hfz: ensures geo_city_any_of/geo_city_none_of
+Regression tests for : ensures geo_city_any_of/geo_city_none_of
 sent in targeting_overlay are caught by validate_overlay_targeting instead of
 being silently dropped.
 
-Updated for salesagent-17b: validation now accepts Targeting model directly.
+Updated for : validation now accepts Targeting model directly.
 The normalizer consumes geo_city_any_of/geo_city_none_of and sets
 had_city_targeting=True — both fields produce a single violation (correct
 semantics: city targeting was used, regardless of which field).

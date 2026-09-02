@@ -5,9 +5,9 @@ service's internals.
 History:
 - PR #1264 fix #3 wired ``await _webhook_service.close()`` into ``app_lifespan``
   via a *lazy* private import — an encapsulation violation and a tripwire.
-- GH #1264 follow-up (salesagent-x2h.7) replaced the trick with the public
+- GH #1264 follow-up replaced the trick with the public
   accessor ``get_webhook_service_or_none()`` resolved at call time.
-- salesagent-x2h.6 inverted the dependency entirely: services self-register
+- inverted the dependency entirely: services self-register
   their async ``close`` via ``src.core.lifecycle.register_shutdown`` at first
   construction, and ``app_lifespan`` only calls ``run_all_shutdown_callbacks()``.
   ``src/app.py`` no longer references the webhook service at all.
@@ -26,7 +26,6 @@ The behavioral regression tests in
 ``tests/integration/test_app_lifespan_shutdown.py`` exercise the real ASGI
 lifespan; this AST guard fails *fast* at ``make quality``.
 
-beads: salesagent-x2h.6 (supersedes the x2h.7 accessor contract)
 GH #1264
 """
 
@@ -122,7 +121,7 @@ class TestAppLifespanIsServiceAgnostic:
         )
         assert imports_it, (
             f"src/app.py must import `{_RUN_ALL}` from {_LIFECYCLE_MODULE}. It is "
-            f"the service-agnostic shutdown entry point (salesagent-x2h.6)."
+            f"the service-agnostic shutdown entry point ."
         )
 
     @pytest.mark.arch_guard
@@ -153,5 +152,5 @@ class TestAppLifespanIsServiceAgnostic:
         leaked = named & _FORBIDDEN_SERVICE_NAMES
         assert not leaked, (
             f"{_LIFESPAN_FUNC}() must not reference service accessors {sorted(leaked)} "
-            f"— the lifespan is service-agnostic (salesagent-x2h.6)."
+            f"— the lifespan is service-agnostic ."
         )

@@ -757,11 +757,27 @@ Source: BR-UC-004-ext-g.md
 
 ### Serialization Compliance [salesagent-jz5z]
 
-#### Scenario: next_expected_at explicitly null when notification_type is set
+#### Scenario: next_expected_at is omitted, never null
 **Obligation ID** UC-004-SERIAL-01
 **Layer** behavioral
-**Given** a GetMediaBuyDeliveryResponse with notification_type set and next_expected_at not set
+**Given** a GetMediaBuyDeliveryResponse whose next_expected_at is not set
 **When** `model_dump(mode='json')` is called
-**Then** the output includes `next_expected_at: null` so consumers know no further reports are expected
-**Business Rule** AdCP protocol requires explicit null for next_expected_at when notification_type is present
+**Then** `next_expected_at` is absent from the output — for every notification_type,
+and in particular for `final`, where the pin forbids the field outright
+**Business Rule** AdCP 3.1 types next_expected_at as `{"type": "string"}` and never lists
+it in `required` — in all five places it is declared, including the webhook-specific
+`media-buy/media-buy-delivery-webhook-result.json`. A null therefore fails buyer-side
+validation. `get-media-buy-delivery-response.json` scopes it to "webhook deliveries when
+notification_type is not 'final'"; the webhook result schema says "Omitted on final
+notifications."
 **Priority** P2
+
+> Corrected 2026-08-20. This obligation previously read "AdCP protocol requires explicit
+> null for next_expected_at when notification_type is present" and production carried a
+> `_should_always_include` override to satisfy it, emitting a schema-invalid null on
+> `final` — the one notification_type the spec singles out for omission. Nothing in the
+> pin ever said that. The graded BDD contract
+> (`@T-UC-004-webhook-notification-type`, BR-RULE-029 INV-2) had the correct rule the
+> whole time: scheduled/delayed/adjusted "should" include it, final "should not". The
+> obligation and its unit tests were the outliers, and they outvoted the spec because
+> production was written to the obligation.

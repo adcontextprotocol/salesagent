@@ -1,9 +1,8 @@
 """Tests for model_dump removal from _impl functions.
 
 Validates that serialization happens at repository/transport boundaries,
-not inside business logic. These tests drive the fix for salesagent-lfto.
+not inside business logic. These tests drive the fix for .
 
-beads: salesagent-lfto
 """
 
 from datetime import UTC, datetime, timedelta

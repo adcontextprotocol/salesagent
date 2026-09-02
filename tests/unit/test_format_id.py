@@ -1,6 +1,6 @@
 """Test FormatId and Creative format_id field with AdCP v2.4 requirements."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -36,8 +36,8 @@ def test_creative_upgrades_string_format():
         format_id="display_300x250",  # Legacy string - auto-upgraded
         assets=build_assets(image_spec("banner_image", url="https://example.com/creative.jpg", width=300, height=250)),
         principal_id="p1",
-        created_date=datetime.now(),
-        updated_date=datetime.now(),
+        created_date=datetime.now(tz=UTC),
+        updated_date=datetime.now(tz=UTC),
     )
     # Should be automatically upgraded to FormatId object
     assert isinstance(creative.format, FormatId)
@@ -58,8 +58,8 @@ def test_creative_accepts_format_id_object():
         format_id=format_id,
         assets=build_assets(image_spec("banner_image", url="https://example.com/creative.jpg", width=300, height=250)),
         principal_id="p1",
-        created_date=datetime.now(),
-        updated_date=datetime.now(),
+        created_date=datetime.now(tz=UTC),
+        updated_date=datetime.now(tz=UTC),
     )
     assert isinstance(creative.format, FormatId)
     assert isinstance(creative.format_id, FormatId), "format_id is now a FormatId object (library pattern)"
@@ -80,8 +80,8 @@ def test_creative_from_dict_with_format_id_object():
             image_spec("banner_image", url="https://example.com/creative.jpg", width=300, height=250)
         ),
         "principal_id": "p1",
-        "created_date": datetime.now(),
-        "updated_date": datetime.now(),
+        "created_date": datetime.now(tz=UTC),
+        "updated_date": datetime.now(tz=UTC),
     }
     creative = Creative(**data)
     assert creative.format_id.id == "display_300x250", "Access string ID via format_id.id"
@@ -99,8 +99,8 @@ def test_creative_upgrades_dict_without_agent_url():
         format_id={"id": "display_300x250"},  # Missing agent_url - auto-upgraded
         assets=build_assets(image_spec("banner_image", url="https://example.com/creative.jpg", width=300, height=250)),
         principal_id="p1",
-        created_date=datetime.now(),
-        updated_date=datetime.now(),
+        created_date=datetime.now(tz=UTC),
+        updated_date=datetime.now(tz=UTC),
     )
     # Should be automatically upgraded with default agent_url
     assert isinstance(creative.format, FormatId)

@@ -6,7 +6,6 @@ entities with proper eager loading of pricing_options and related relationships.
 Core invariant: All product DB access in _impl functions goes through
 ProductRepository; no get_db_session() in business logic for product queries.
 
-beads: salesagent-rn59, salesagent-jfgm
 """
 
 import uuid

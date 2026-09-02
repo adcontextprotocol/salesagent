@@ -30,7 +30,7 @@ class TestErrorCodeStatusTableDerivation:
         fallback will mis-classify its HTTP status.
 
         Reads the ``_default_*`` ClassVar slots directly (option-A refactor per
-        salesagent-fnk9) — the public ``error_code``/``status_code`` are instance
+        ) — the public ``error_code``/``status_code`` are instance
         attributes set in ``__init__`` and would not resolve on the class object.
         Structural guards intentionally break encapsulation to assert how the code
         is written, not just its runtime behavior.

@@ -162,3 +162,6 @@ test-results/
 
 # One-off presentation drafts
 docs/TRANSFORMATION_PRESENTATION.md
+
+# Session working notes — scratch, never a deliverable. The PR is their home.
+.claude/notes/

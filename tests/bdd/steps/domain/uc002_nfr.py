@@ -6,7 +6,6 @@ Covers non-functional requirements:
 - nfr-004: Response latency SLA
 - nfr-006: Minimum order size enforcement
 
-beads: salesagent-9vgz.92
 """
 
 from __future__ import annotations
@@ -198,7 +197,7 @@ def then_rate_limiting_enforced(ctx: dict) -> None:
     AdCPRateLimitError. Production should reject when the threshold is
     exceeded, but no rate-limiting middleware exists yet.
 
-    FIXME(salesagent-9vgz.92): Implement rate limiting middleware for create_media_buy.
+    FIXME: Implement rate limiting middleware for create_media_buy.
     """
     from copy import deepcopy
 
@@ -221,12 +220,14 @@ def then_rate_limiting_enforced(ctx: dict) -> None:
     rate_ctx: dict = {k: ctx[k] for k in ("env", "transport", "e2e_config") if k in ctx}
     dispatch_request(rate_ctx, req=req)
 
-    # Gap preserved: production never emits RATE_LIMITED, so the follow-up
-    # succeeds (or fails for an unrelated reason) and no RATE_LIMITED wire
-    # envelope is produced. assert_wire_error then fails — proving the gap —
-    # exactly as the hand-rolled envelope read did. RATE_LIMITED is a canonical
-    # pinned code, so the assertion grades the wire rather than hard-failing on
-    # an unknown code. FIXME(salesagent-9vgz.92): rate limiting middleware.
+    # SPEC-PRODUCTION GAP: rate limiting is not implemented — AdCPRateLimitError
+    # exists as a class but is never raised. Gap preserved: production never
+    # emits RATE_LIMITED, so the follow-up succeeds (or fails for an unrelated
+    # reason) and no RATE_LIMITED wire envelope is produced. assert_wire_error
+    # then fails — proving the gap — exactly as the hand-rolled envelope read
+    # did. RATE_LIMITED is a canonical pinned code, so the assertion grades the
+    # wire rather than hard-failing on an unknown code.
+    # FIXME: rate limiting middleware.
     result = rate_ctx.get("result")
     assert result is not None, "Expected a dispatched follow-up result in rate_ctx"
     result.assert_wire_error("RATE_LIMITED")
@@ -240,7 +241,7 @@ def then_payload_size_limits(ctx: dict) -> None:
     rejected with a payload-too-large error. Production has no ASGI middleware
     that checks content-length or rejects oversized request bodies.
 
-    FIXME(salesagent-9vgz.92): Implement payload size validation middleware.
+    FIXME: Implement payload size validation middleware.
 
     Note: PAYLOAD_TOO_LARGE is not a canonical AdCP error code in the pinned
     enum, so assert_wire_error() cannot be used here. The wire error object is
@@ -290,7 +291,7 @@ def then_payload_size_limits(ctx: dict) -> None:
         "SPEC-PRODUCTION GAP: Payload size validation not implemented. "
         "Sent a request with a 1 MB order_name through the wire — not rejected for payload size. "
         "No ASGI middleware checks content-length for oversized bodies. "
-        "FIXME(salesagent-9vgz.92)"
+        "FIXME"
     )
 
 
@@ -355,7 +356,7 @@ def then_response_within_sla(ctx: dict) -> None:
 
     True p95 enforcement belongs in production monitoring/alerting.
 
-    FIXME(salesagent-9vgz.92): Move adapter I/O to background workers
+    FIXME: Move adapter I/O to background workers
     so latency SLA is enforceable at the application layer.
     """
     import pytest
@@ -395,7 +396,7 @@ def then_response_within_sla(ctx: dict) -> None:
             "request thread. Architecture direction is to move adapter calls "
             "to background workers and return 201 pending. Until then, p95 "
             "SLA is not enforceable at the application layer. "
-            "FIXME(salesagent-9vgz.92)"
+            "FIXME"
         )
 
     assert not adapter_called_sync, (

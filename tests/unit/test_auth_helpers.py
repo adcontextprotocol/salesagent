@@ -3,7 +3,6 @@
 Tests the extracted auth helper that both tenant_management_api.py
 and sync_api.py delegate to.
 
-Fixes: salesagent-p01
 """
 
 from unittest.mock import MagicMock, patch
@@ -15,7 +14,7 @@ from tests.factories import PrincipalFactory
 
 
 class TestRequirePrincipalId:
-    """The require_principal_id entry guard (gh-1307 / salesagent-b1h).
+    """The require_principal_id entry guard (gh-1307).
 
     Single source of truth for the "identity has no principal_id" guard that
     every _impl runs at entry. Returns the validated principal_id or raises
@@ -73,7 +72,7 @@ class TestRequirePrincipalId:
 
 
 class TestRequireTenant:
-    """The require_tenant entry guard (gh-1307 / salesagent-fum).
+    """The require_tenant entry guard (gh-1307).
 
     Single source of truth for the "no tenant context available" guard — the
     most-repeated _impl prologue. Returns identity.tenant or raises

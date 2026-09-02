@@ -4,7 +4,6 @@ These tests verify the repository interface contract: method signatures,
 tenant isolation, and return types. For real query execution against Postgres,
 see integration tests.
 
-beads: salesagent-o9k4
 """
 
 from unittest.mock import MagicMock, patch

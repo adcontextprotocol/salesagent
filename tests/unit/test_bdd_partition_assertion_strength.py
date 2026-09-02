@@ -1,6 +1,6 @@
 """Regression test: partition/boundary 'valid' assertions must check response CONTENT.
 
-Bug salesagent-14g: _assert_partition_or_boundary() for expected="valid" only
+Bug : _assert_partition_or_boundary() for expected="valid" only
 checks `assert "response" in ctx` — it never inspects the response content.
 This means partition tests pass even when the field under test is completely
 ignored by production code.
@@ -56,7 +56,7 @@ class TestPartitionAssertionStrength:
             raised = True
 
         assert raised, (
-            "BUG salesagent-14g: _assert_partition_or_boundary('valid', 'status_filter') "
+            "BUG : _assert_partition_or_boundary('valid', 'status_filter') "
             "accepted a response with wrong statuses — it only checks 'response exists', "
             "not response content"
         )
@@ -82,6 +82,6 @@ class TestPartitionAssertionStrength:
             raised = True
 
         assert raised, (
-            "BUG salesagent-14g: _assert_partition_or_boundary('valid', 'resolution') "
+            "BUG : _assert_partition_or_boundary('valid', 'resolution') "
             "accepted a response with wrong media_buy_ids — it only checks 'response exists'"
         )

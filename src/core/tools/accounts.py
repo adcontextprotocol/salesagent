@@ -10,7 +10,6 @@ Handles account management per AdCP spec (UC-011):
 - delete_missing (BR-RULE-061)
 - dry_run (BR-RULE-062)
 
-beads: salesagent-hl0, salesagent-619
 """
 
 import base64

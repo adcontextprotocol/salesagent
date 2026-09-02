@@ -172,7 +172,7 @@ class TestA2ASpecCompliance:
     def test_create_media_buy_spec_compliance(self):
         """Test create_media_buy returns only spec-defined fields."""
         ctx = {"user_id": "1234567890"}
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb-456",
             packages=[],  # Required field per AdCP spec
             context=ctx,
@@ -193,7 +193,7 @@ class TestA2ASpecCompliance:
     def test_update_media_buy_spec_compliance(self):
         """Test update_media_buy returns only spec-defined fields."""
         ctx = {"user_id": "1234567890"}
-        response = UpdateMediaBuySuccess(
+        response = UpdateMediaBuySuccess.carrier(
             media_buy_id="mb-456",
             context=ctx,
         )
@@ -205,6 +205,41 @@ class TestA2ASpecCompliance:
         # No extra fields
         assert "success" not in response_dict
         assert "message" not in response_dict
+
+    def test_get_media_buys_spec_compliance(self):
+        """get_media_buys returns only spec-defined fields.
+
+        This oracle class is the only thing that can see a spurious wire key on this
+        response: get-media-buys-response.json sets additionalProperties true, so
+        schema validation accepts an invented key and says nothing.
+        """
+        from src.core.schemas import GetMediaBuysResponse
+
+        ctx = {"user_id": "1234567890"}
+        response = GetMediaBuysResponse(media_buys=[], context=ctx)
+
+        # `status` reaches the wire through the composed protocol-envelope arm rather
+        # than the root properties. `replayed` is an SDK 5.7 envelope default the pin
+        # does not declare — accepted here on the same footing as the get_products
+        # case above, and legal only because this root sets additionalProperties true.
+        spec_fields = {"media_buys", "errors", "status", "context", "pagination", "sandbox", "ext", "replayed"}
+        extra = set(response.model_dump().keys()) - spec_fields
+        assert extra == set(), f"Response has non-spec fields: {extra}"
+
+    def test_sync_accounts_spec_compliance(self):
+        """sync_accounts returns only spec-defined fields.
+
+        Same reasoning as get_media_buys: account/sync-accounts-response.json also
+        sets additionalProperties true, so a stray key passes validation unseen.
+        """
+        from src.core.schemas import SyncAccountsResponse
+
+        ctx = {"user_id": "1234567890"}
+        response = SyncAccountsResponse(accounts=[], context=ctx)
+
+        spec_fields = {"accounts", "errors", "status", "context", "dry_run", "sandbox", "ext"}
+        extra = set(response.model_dump().keys()) - spec_fields
+        assert extra == set(), f"Response has non-spec fields: {extra}"
 
     def test_get_media_buy_delivery_spec_compliance(self):
         """Test get_media_buy_delivery returns only spec-defined fields."""
@@ -240,6 +275,52 @@ class TestA2ASpecCompliance:
         # No extra fields
         assert "success" not in response_dict
         assert "message" not in response_dict
+
+
+@pytest.mark.integration
+class TestGetMediaBuysProtocolMessage:
+    """``get_media_buys`` must not stamp a Python repr onto the protocol ``message``.
+
+    ``GetMediaBuysResponse`` carries no curated ``__str__``, so ``str(response)``
+    is a 316-character pydantic repr containing the literal ``message=None`` —
+    and that string is what a buyer receives, on two surfaces:
+
+    * A2A: ``_stamp_a2a_protocol_fields`` sets ``response_data["message"] =
+      str(response)`` (``src/a2a_server/adcp_a2a_server.py``), and the artifact
+      TextPart reads that stamped value back rather than re-deriving it.
+    * MCP: ``media_buy_list.py`` returns ``mcp_result(response)`` with no
+      ``content=``, and ``src/core/tools/_mcp.py`` falls back to
+      ``str(response)`` for ``ToolResult.content``.
+
+    Asserted through the production stamper rather than on ``str(response)``
+    alone: this module's docstring disclaims grading the wire text, so a bare
+    ``str()`` assertion would prove the method exists and nothing about the
+    buyer-visible field.
+
+    Wording mirrors the nearest sibling, ``ListAuthorizedPropertiesResponse.__str__``
+    (``src/core/schemas/_base.py``), which uses the same three-branch count form.
+    """
+
+    @pytest.mark.parametrize(
+        ("count", "expected_message"),
+        [
+            (0, "No media buys found."),
+            (1, "Found 1 media buy."),
+            (3, "Found 3 media buys."),
+        ],
+    )
+    def test_stamped_protocol_message_is_curated_text(self, count, expected_message):
+        from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
+        from src.core.schemas import GetMediaBuysResponse
+        from tests.factories import GetMediaBuysMediaBuyFactory
+
+        response = GetMediaBuysResponse(
+            media_buys=[GetMediaBuysMediaBuyFactory() for _ in range(count)],
+        )
+
+        stamped = AdCPRequestHandler._stamp_a2a_protocol_fields(response)
+
+        assert stamped["message"] == expected_message
 
 
 @pytest.mark.integration

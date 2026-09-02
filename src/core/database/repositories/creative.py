@@ -3,7 +3,6 @@
 Core invariant: every query includes tenant_id in the WHERE clause. The tenant_id
 is set at construction time and injected into all queries automatically.
 
-beads: salesagent-o9k4 (foundation)
 """
 
 from __future__ import annotations
@@ -301,7 +300,7 @@ class CreativeRepository:
 
     # ------------------------------------------------------------------
     # Admin-specific lookups (no principal_id required)
-    # Added for admin blueprint migration (salesagent-4tb)
+    # Added for admin blueprint migration
     # ------------------------------------------------------------------
 
     def admin_get_by_id(self, creative_id: str) -> Creative | None:
@@ -380,6 +379,33 @@ class CreativeAssignmentRepository:
                 )
             ).all()
         )
+
+    def unapproved_creative_ids(self, media_buy_id: str) -> list[str]:
+        """Creative ids assigned to *media_buy_id* that are not cleared to serve.
+
+        The approval gate, owned here because the query is rooted at
+        ``media_buy_id`` — this repository's own key — and because the tenant
+        predicate then comes from ``self._tenant_id`` rather than from whatever
+        the caller remembered to add. Three routes previously open-coded it and
+        the three disagreed; one of them selected ``Creative`` by ``creative_id``
+        alone, and that column is buyer-supplied, so another tenant's row with a
+        colliding id was read for its status and blocked the approval.
+
+        ``approved`` and ``active`` both count as cleared: ``active`` is what a
+        creative already serving reads as, and refusing it would hold a buy whose
+        creatives are demonstrably live.
+
+        An empty assignment list yields an empty result — a buy with no creatives
+        is not waiting on any, which is what UC-002-ALT-MANUAL-APPROVAL-REQUIRED-08
+        grades.
+        """
+        assignments = self.get_by_media_buy(media_buy_id)
+        if not assignments:
+            return []
+        creatives = CreativeRepository(self._session, self._tenant_id).admin_get_by_ids(
+            [a.creative_id for a in assignments]
+        )
+        return [c.creative_id for c in creatives if c.status not in ("approved", "active")]
 
     def get_by_package(self, package_id: str) -> list[CreativeAssignment]:
         """Get all assignments for a package within the tenant."""

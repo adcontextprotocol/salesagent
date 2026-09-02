@@ -1,6 +1,6 @@
 """Test: Creative schema regression — name/dates widened to Optional.
 
-PR #1071 review finding (salesagent-10xd).
+PR #1071 review finding .
 
 Bug: Creative.name was widened from required str to str|None=None, breaking
 the AdCP listing Creative contract. created_date/updated_date lost their

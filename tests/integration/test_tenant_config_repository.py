@@ -3,7 +3,6 @@
 Verifies that the repository correctly queries PublisherPartner and AdapterConfig
 models with tenant scoping against real PostgreSQL.
 
-beads: salesagent-9y0
 """
 
 import pytest

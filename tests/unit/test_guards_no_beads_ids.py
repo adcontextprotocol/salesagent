@@ -2,7 +2,7 @@
 
 Project convention (CLAUDE.md § Structural Guards, feedback_no_beads_in_code):
 code comments, docstrings, and messages reference GitHub issue/PR numbers
-(``#1234``), never local beads ids (``salesagent-xxxx`` / ``beads-xxxx``) — they
+(``#1234``), never local tracker slugs (``<tracker>-<slug>`` forms) — they
 don't resolve for outside contributors.
 
 The ``tests/unit/test_guards_*.py`` family is the highest-risk locus for this:
@@ -15,7 +15,7 @@ clean so a new one cannot reintroduce the pattern.
 Scope note: this guard covers ONLY the guard-family files (which never contain
 xfail-ledger data), so it stays clear of the load-bearing ledger reason strings
 elsewhere in the tree. A legitimate literal (e.g. a future guard that itself
-detects beads ids) can exempt a single line with a trailing ``# noqa: beads-id``.
+detects beads ids) can exempt a single line with a trailing ``# noqa: tracker-id``.
 """
 
 import re
@@ -26,7 +26,7 @@ from tests.unit._architecture_helpers import REPO_ROOT
 # Two fragments joined at runtime so this guard's own pattern definition does
 # not textually contain a scannable id.
 _BEADS = re.compile(r"salesagent-" + r"[a-z0-9]{3,}|beads-" + r"[a-z0-9]+")
-_EXEMPT = re.compile(r"#\s*noqa:\s*beads-id")
+_EXEMPT = re.compile(r"#\s*noqa:\s*tracker-id")
 
 _GUARD_DIR = REPO_ROOT / "tests" / "unit"
 _THIS_FILE = Path(__file__).resolve()
@@ -50,5 +50,5 @@ def test_guard_files_have_no_beads_ids():
     assert not offenders, (
         "Guard-family test files must reference GitHub issue/PR numbers, not local "
         "beads ids. Replace each with a #<gh> reference (or exempt a legitimate "
-        "literal with a trailing '# noqa: beads-id'):\n" + "\n".join(offenders)
+        "literal with a trailing '# noqa: tracker-id'):\n" + "\n".join(offenders)
     )

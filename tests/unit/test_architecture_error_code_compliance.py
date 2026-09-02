@@ -117,7 +117,7 @@ class TestErrorCodeCompliance:
         """Every AdCPError subclass _default_error_code must be standard or internal.
 
         Reads ``_default_error_code`` (the ClassVar slot per option-A refactor
-        salesagent-fnk9). The public ``error_code`` is an instance attribute
+        ). The public ``error_code`` is an instance attribute
         set in ``__init__`` and is not present on the class object.
         """
         from src.core.exceptions import AdCPError

@@ -4,7 +4,6 @@ Validates that standalone scripts in scripts/ and tests/scripts/ can be
 imported without ImportError. Catches cases where refactoring removes
 a function that scripts still depend on.
 
-Fixes: salesagent-0q8
 """
 
 import importlib

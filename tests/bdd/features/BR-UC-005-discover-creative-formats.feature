@@ -1068,7 +1068,7 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Format ID roundtrip -- list_creative_formats returns the same format object that get_products advertised
     Given the Buyer Agent captured a format_id object {agent_url, id} from a prior get_products response
     When the Buyer Agent sends list_creative_formats with format_ids [{captured agent_url, captured id}]
-    Then the response should be schema-valid against list-creative-formats-response.json
+    Then the response should be schema-valid against media-buy/list-creative-formats-response.json
     And the formats array should contain at least one entry
     And formats[0].format_id should roundtrip verbatim with the captured {agent_url, id}
     And an empty formats[] would indicate a stale catalog reference and is a compliance failure

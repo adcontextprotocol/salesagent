@@ -157,7 +157,7 @@ The March 7-9 weekend push added `mcpProtocol.integration.spec.ts` (1,271 lines,
 | Dimension | Python | TypeScript (verified Mar 9) |
 |-----------|--------|-----------|
 | Schema source | `adcp` PyPI library, inheritance pattern (`Library*` alias) | `@adcp/client` v4.5.0 added as dependency (Mar 7-9), but **only 2 runtime imports** — all 18 Zod schema files remain hand-written |
-| Drift protection | `test_architecture_schema_inheritance.py` + `test_adcp_contract.py` | `adcpSdkValidation.spec.ts` constructs hand-crafted payloads against SDK schemas — tests the team's *understanding* of the spec, not actual server output |
+| Drift protection | `test_pydantic_schema_alignment.py` + `test_adcp_contract.py` | `adcpSdkValidation.spec.ts` constructs hand-crafted payloads against SDK schemas — tests the team's *understanding* of the spec, not actual server output |
 | Protocol version | v3.6.0 (current) | `@adcp/client` v4.5.0 installed, but runtime schemas are still hand-written against earlier spec |
 | `delivery_measurement` | **REQUIRED** on Product (commit `f9df3747`) | Still **optional** (`product.ts:116`) — verified Mar 9 |
 | `buyer_campaign_ref` | Supported (commit `d9512a64` fixed forwarding) | Still **entirely absent** from all schemas and code — verified Mar 9 |

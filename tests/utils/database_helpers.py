@@ -20,13 +20,18 @@ from src.core.database.models import (
 
 
 @contextmanager
-def _bind_factories_to_session(session):
+def bind_factories_to_session(session):
     """Temporarily bind factory_boy factories to the given session.
 
-    Lets module-level helpers below use factories outside the IntegrationEnv
-    harness without touching global state permanently. Factories are unbound
-    on exit so subsequent harness contexts (which assert sqlalchemy_session is
-    None) don't see leaked bindings.
+    Lets callers use factories outside the IntegrationEnv harness without touching
+    global state permanently: the previous binding is SAVED and RESTORED, not nulled.
+    That distinction is the reason this is the shared discipline — a bind-then-None
+    fixture is only correct when it is guaranteed outermost, and nothing guarantees
+    that. Restoring is right whether or not something outside had already bound.
+
+    Complementary to the harness's own check rather than in tension with it:
+    IntegrationEnv asserts factories are UNBOUND on entry, which catches a leak;
+    this restores on exit, which prevents one.
     """
     from tests.factories import ALL_FACTORIES
 
@@ -206,7 +211,7 @@ def seed_targeting_test_tenant(
         TenantFactory,
     )
 
-    with _bind_factories_to_session(session):
+    with bind_factories_to_session(session):
         # TenantFactory's RelatedFactory creates a default USD CurrencyLimit, but we
         # need a different max_daily_package_spend, so build the tenant without the
         # auto-related currency and add our own.
@@ -267,7 +272,7 @@ def add_targeting_test_product(
 
     from tests.factories import PricingOptionFactory, ProductFactory
 
-    with _bind_factories_to_session(session):
+    with bind_factories_to_session(session):
         # Look up existing tenant so SubFactory doesn't try to create a new one.
         tenant = session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         product = ProductFactory(
@@ -316,7 +321,7 @@ def seed_media_buy_with_package(
 
     from tests.factories import MediaBuyFactory, MediaPackageFactory
 
-    with _bind_factories_to_session(session):
+    with bind_factories_to_session(session):
         # Look up existing tenant + principal so SubFactory doesn't try to create them.
         tenant = session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
         principal = session.scalars(select(Principal).filter_by(tenant_id=tenant_id, principal_id=principal_id)).first()

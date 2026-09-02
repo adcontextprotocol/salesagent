@@ -1,6 +1,5 @@
 """Tests for ActivityFeed sync context behavior.
 
-Bug fix: salesagent-3laa
 The sync log_* methods now store activity data synchronously via _store_activity(),
 then attempt async WebSocket broadcast as best-effort. This ensures data is never
 lost when called from sync contexts (no event loop running).

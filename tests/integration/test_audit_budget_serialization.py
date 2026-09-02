@@ -97,7 +97,7 @@ class TestDecimalBudgetSerializesAsNumberInDB:
             assert type(budget) is not str, (
                 f"DB audit details budget persisted as a string {budget!r} "
                 f"(type {type(budget).__name__}); the .jsonl sink emits a JSON "
-                f"number, so the two audit sinks diverge (salesagent-2882)."
+                f"number, so the two audit sinks diverge ."
             )
             assert float(budget) == pytest.approx(float(_BUDGET))
 

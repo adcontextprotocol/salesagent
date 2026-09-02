@@ -228,7 +228,7 @@ class TestA2AResponseDictConstruction:
         """
         from src.core.schemas import CreateMediaBuySuccess
 
-        response = CreateMediaBuySuccess(
+        response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb-456",
             packages=[],  # Required field in adcp v1.2.1
         )

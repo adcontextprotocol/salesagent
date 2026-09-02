@@ -3,7 +3,6 @@
 Verifies account resolution from AccountReference (by ID and by natural key)
 with real PostgreSQL.
 
-beads: salesagent-8n4
 """
 
 import pytest

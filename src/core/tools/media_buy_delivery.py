@@ -221,7 +221,7 @@ def _get_media_buy_delivery_impl(
 
         target_media_buys = _get_target_media_buys(req, principal_id, repo, reference_date, testing_ctx)
 
-        # Diff requested IDs vs found IDs to report missing ones (salesagent-mexj)
+        # Diff requested IDs vs found IDs to report missing ones
         not_found_errors: list[Error] = []
         # Per-buy adapter failures degrade (UC-004): record an advisory error and continue
         # with the other buys instead of aborting the whole multi-buy request.
@@ -244,6 +244,7 @@ def _get_media_buy_delivery_impl(
                     pkg_id = pkg.get("pricing_option_id")
                     if pkg_id is not None:
                         pricing_option_ids.append(pkg_id)
+        # FIXME(#2129): delivery UoW should provide a product repo directly
         assert uow.session is not None
         product_repo = ProductRepository(uow.session, tenant["tenant_id"])
         pricing_options = _get_pricing_options(
@@ -355,6 +356,7 @@ def _get_media_buy_delivery_impl(
                                 error_message=str(e),
                                 details={"media_buy_id": media_buy_id},
                             )
+                            # FIXME(#2129): audit logging should use a repository
                             if uow.session is not None:
                                 uow.session.add(audit_log)
                         except Exception as audit_err:
@@ -597,6 +599,7 @@ def _get_media_buy_delivery_impl(
 
         # sequence_number: persistent auto-increment per media buy via WebhookDeliveryLog
         sequence_number = None
+        # FIXME(#2129): delivery UoW should provide DeliveryRepository directly
         if deliveries and uow.session is not None:
             delivery_repo = DeliveryRepository(uow.session, tenant["tenant_id"])
             # Use the first media buy's sequence as the response-level sequence

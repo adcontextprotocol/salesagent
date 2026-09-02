@@ -1,4 +1,4 @@
-"""Reproduction test for salesagent-s9eg: Cross-tenant Creative query leak.
+"""Reproduction test for : Cross-tenant Creative query leak.
 
 Bug: Several queries fetch Creative rows by creative_id alone without
 tenant_id filter. After the composite PK migration (bfbf084c), creative_id
@@ -72,7 +72,7 @@ class TestCreativeQueryTenantIsolation:
         Originally this pinned an inline tenant-filtered select(). The lookup
         now routes through CreativeRepository.get_by_ids (tenant_id pinned in
         the constructor, principal_id required) — the centralized form of the
-        same isolation fix (salesagent-s9eg, DRY'd in salesagent-ol24). An
+        same isolation fix. An
         inline select(Creative) reappearing here is a regression.
         """
         selects = _extract_select_calls_in_function(
@@ -84,7 +84,7 @@ class TestCreativeQueryTenantIsolation:
         assert not creative_selects, (
             f"Inline Creative select() at media_buy_list.py:"
             f"{[s['lineno'] for s in creative_selects]} — Creative loads must go "
-            f"through CreativeRepository.get_by_ids (salesagent-s9eg/salesagent-ol24)."
+            f"through CreativeRepository.get_by_ids (/)."
         )
         assert _function_calls_repo_get_by_ids("src/core/tools/media_buy_list.py", "_fetch_creative_approvals"), (
             "_fetch_creative_approvals must load creatives via CreativeRepository(...).get_by_ids()."
@@ -96,7 +96,7 @@ class TestCreativeQueryTenantIsolation:
         Originally this pinned an inline tenant-filtered select(). The lookup
         now routes through CreativeRepository.get_by_ids (tenant_id pinned in
         the constructor, principal_id required) — the centralized form of the
-        same isolation fix (salesagent-s9eg, DRY'd in salesagent-ol24). An
+        same isolation fix. An
         inline select(Creative) reappearing here is a regression.
         """
         selects = _extract_select_calls_in_function(
@@ -108,7 +108,7 @@ class TestCreativeQueryTenantIsolation:
         assert not creative_selects, (
             f"Inline Creative select() at media_buy_create.py:"
             f"{[s['lineno'] for s in creative_selects]} — Creative loads must go "
-            f"through CreativeRepository.get_by_ids (salesagent-s9eg/salesagent-ol24)."
+            f"through CreativeRepository.get_by_ids (/)."
         )
         assert _function_calls_repo_get_by_ids("src/core/tools/media_buy_create.py", "execute_approved_media_buy"), (
             "execute_approved_media_buy must load creatives via CreativeRepository(...).get_by_ids()."
@@ -130,7 +130,7 @@ class TestCreativeQueryTenantIsolation:
         for s in selects:
             assert s["has_tenant_filter"], (
                 f"Query at queries.py:{s['lineno']} on {s['model']} is missing tenant_id filter. "
-                f"This is a cross-tenant data leak (salesagent-s9eg)."
+                f"This is a cross-tenant data leak ."
             )
 
     def test_get_creative_reviews_scopes_by_tenant(self):
@@ -148,5 +148,5 @@ class TestCreativeQueryTenantIsolation:
         for s in selects:
             assert s["has_tenant_filter"], (
                 f"Query at queries.py:{s['lineno']} on {s['model']} is missing tenant_id filter. "
-                f"This is a cross-tenant data leak (salesagent-s9eg)."
+                f"This is a cross-tenant data leak ."
             )

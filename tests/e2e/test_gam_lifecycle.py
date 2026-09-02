@@ -8,7 +8,7 @@ These tests require:
 They are gated behind @pytest.mark.requires_gam and skip when either is absent.
 
 Test network: 23341594478 (XFP sandbox property)
-Service account: salesagent-e2e@salesagenttest.iam.gserviceaccount.com
+Service account: @salesagenttest.iam.gserviceaccount.com
 
 WARNING: These tests create real GAM orders. Cleanup happens in fixture teardown,
 but if the process is killed, orphaned orders may remain in the test network.
@@ -653,7 +653,7 @@ class TestGAMLifecycle:
         assert isinstance(pause_response, UpdateMediaBuySuccess), f"Pause should succeed, got: {pause_response}"
 
         # Step 2: Archive the order via direct GAM API
-        # (adapter's archive_order has the .get() zeep bug — salesagent-mzpq)
+        # (adapter's archive_order has the .get() zeep bug — )
         order_service = gam_adapter.client_manager.get_service("OrderService")
         archive_action = {"xsi_type": "ArchiveOrders"}
         sb = gam_module.StatementBuilder()

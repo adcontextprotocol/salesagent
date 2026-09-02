@@ -1,6 +1,6 @@
 """Test that LazyTenantContext._resolve() does not mutate ContextVar.
 
-Task salesagent-rjvp: Property access on LazyTenantContext triggers _resolve()
+Task : Property access on LazyTenantContext triggers _resolve()
 which calls set_current_tenant() as a side effect. This mutation should happen
 at explicit transport boundaries, not as side effect of field access.
 """

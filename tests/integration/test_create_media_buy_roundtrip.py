@@ -129,7 +129,7 @@ class TestCreateMediaBuyRoundtrip:
         # NOTE: status and adcp_version are protocol fields (added by ProtocolEnvelope), not domain fields
         # NOTE: media_buy_id starts with "test_" to prevent testing hooks from adding another "test_" prefix
         # NOTE: CreateMediaBuySuccess.packages requires package_id and status (AdCP 2.9.0+)
-        original_response = CreateMediaBuySuccess(
+        original_response = CreateMediaBuySuccess.carrier(
             media_buy_id="test_mb_12345",
             packages=[
                 {
@@ -174,7 +174,7 @@ class TestCreateMediaBuyRoundtrip:
         assert "dry_run" not in response_data, "hooks should not inject fields into response data"
 
         # Step 4: Reconstruct response directly (no filtering needed)
-        reconstructed_response = CreateMediaBuySuccess(**response_data)
+        reconstructed_response = CreateMediaBuySuccess.carrier(**response_data)
 
         # Step 5: Verify reconstruction succeeded
         assert reconstructed_response.media_buy_id == "test_mb_12345"
@@ -189,14 +189,14 @@ class TestCreateMediaBuyRoundtrip:
         """
         # Create response (domain fields only - status/adcp_version are protocol fields)
         # NOTE: packages is required in adcp v1.2.1
-        original_response = CreateMediaBuySuccess(
+        original_response = CreateMediaBuySuccess.carrier(
             media_buy_id="mb_baseline",
             packages=[],  # Required field, can be empty
         )
 
         # Convert to dict and back (no testing hooks)
         response_data = original_response.model_dump_internal()
-        reconstructed = CreateMediaBuySuccess(**response_data)
+        reconstructed = CreateMediaBuySuccess.carrier(**response_data)
 
         # Should work perfectly without testing hooks
         assert reconstructed.media_buy_id == "mb_baseline"
@@ -210,7 +210,7 @@ class TestCreateMediaBuyRoundtrip:
         """
         # NOTE: media_buy_id starts with "test_" to prevent testing hooks from adding another "test_" prefix
         # NOTE: packages is required in adcp v1.2.1
-        original_response = CreateMediaBuySuccess(
+        original_response = CreateMediaBuySuccess.carrier(
             media_buy_id="test_mb_filter",
             packages=[],  # Required field, can be empty
         )
@@ -231,7 +231,7 @@ class TestCreateMediaBuyRoundtrip:
         assert "is_test" not in response_data, "hooks should not inject fields"
 
         # Reconstruct directly (no filtering needed since hooks don't mutate data)
-        reconstructed = CreateMediaBuySuccess(**response_data)
+        reconstructed = CreateMediaBuySuccess.carrier(**response_data)
 
         # Verify no testing metadata leaked into reconstructed response
         response_dict = reconstructed.model_dump()

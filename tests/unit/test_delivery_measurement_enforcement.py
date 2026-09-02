@@ -9,7 +9,6 @@ These tests verify:
 5. Mock defaults to mock provider
 6. Generic fallback uses "publisher" provider
 
-beads: salesagent-pxhs
 """
 
 from __future__ import annotations

@@ -8,7 +8,6 @@ that _impl provides.
 Scanning approach: Hybrid — introspection for signatures, file-level AST
 for call-site verification of which arguments are actually passed.
 
-beads: salesagent-v0kb (structural-guard epic)
 """
 
 import ast

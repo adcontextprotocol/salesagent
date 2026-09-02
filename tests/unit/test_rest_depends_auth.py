@@ -6,7 +6,6 @@ instead of manual _resolve_auth/_require_auth calls inside handler bodies.
 Core invariant: Identity resolution for REST routes is declared in function
 signatures via FastAPI Depends, never called manually inside handler bodies.
 
-beads: salesagent-lkyi
 """
 
 import inspect

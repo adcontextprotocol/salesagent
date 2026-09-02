@@ -7,7 +7,7 @@ Tests organized by BR-RULE invariant, covering:
 - BR-RULE-037 inv6: Slack notification guard
 - BR-RULE-033 inv4 / BR-RULE-038 inv4: AdCPError propagation in strict mode
 
-Reference: salesagent-1xsp design field.
+Reference: design field.
 """
 
 from datetime import UTC, datetime
@@ -87,7 +87,11 @@ class TestMediaBuyStatusTransitions:
     """
 
     def _run_assignments(self, assignments, results, tenant, db_package, db_media_buy, db_creative=None):
-        """Helper to run _process_assignments with mocked repository lookups."""
+        """Run _process_assignments with mocked repository lookups.
+
+        Returns ``(result, mock_uow)`` — the uow is returned so a test can assert on
+        the repository the transition must go through, rather than on an attribute.
+        """
         mock_uow, mock_repo = _make_creative_uow()
 
         # Mock find_package_with_media_buy to return the package+media_buy pair
@@ -118,12 +122,15 @@ class TestMediaBuyStatusTransitions:
         with patch("src.core.tools.creatives._assignments.CreativeUoW") as mock_uow_cls:
             mock_uow_cls.return_value.__enter__.return_value = mock_uow
 
-            return _process_assignments(
-                assignments=assignments,
-                results=results,
-                tenant=tenant,
-                validation_mode="strict",
-                principal_id="principal_1",
+            return (
+                _process_assignments(
+                    assignments=assignments,
+                    results=results,
+                    tenant=tenant,
+                    validation_mode="strict",
+                    principal_id="principal_1",
+                ),
+                mock_uow,
             )
 
     def test_draft_with_approved_at_transitions_to_pending_creatives(self, tenant, _make_db_package):
@@ -134,7 +141,7 @@ class TestMediaBuyStatusTransitions:
         )
         results = [SyncCreativeResult(creative_id="c1", action="created")]
 
-        self._run_assignments(
+        _, mock_uow = self._run_assignments(
             assignments={"c1": ["pkg_1"]},
             results=results,
             tenant=tenant,
@@ -142,7 +149,11 @@ class TestMediaBuyStatusTransitions:
             db_media_buy=db_media_buy,
         )
 
-        assert db_media_buy.status == "pending_creatives"
+        # The transition is graded at the SEAM, not as an attribute poke: routing it
+        # through the repository is what carries the revision bump and the write-once
+        # confirmed_at stamp, so asserting the write happened there is strictly
+        # stronger than asserting the ORM attribute changed.
+        mock_uow.media_buys.update_status.assert_called_once_with("mb_1", "pending_creatives")
 
     def test_draft_without_approved_at_stays_draft(self, tenant, _make_db_package):
         """rule-040-inv2: draft without approved_at stays draft."""
@@ -152,7 +163,7 @@ class TestMediaBuyStatusTransitions:
         )
         results = [SyncCreativeResult(creative_id="c1", action="created")]
 
-        self._run_assignments(
+        _, mock_uow = self._run_assignments(
             assignments={"c1": ["pkg_1"]},
             results=results,
             tenant=tenant,
@@ -160,7 +171,7 @@ class TestMediaBuyStatusTransitions:
             db_media_buy=db_media_buy,
         )
 
-        assert db_media_buy.status == "draft"
+        mock_uow.media_buys.update_status.assert_not_called()
 
     def test_non_draft_status_unchanged(self, tenant, _make_db_package):
         """rule-040-inv3: non-draft status is not changed by assignments."""
@@ -170,7 +181,7 @@ class TestMediaBuyStatusTransitions:
         )
         results = [SyncCreativeResult(creative_id="c1", action="created")]
 
-        self._run_assignments(
+        _, mock_uow = self._run_assignments(
             assignments={"c1": ["pkg_1"]},
             results=results,
             tenant=tenant,
@@ -178,7 +189,7 @@ class TestMediaBuyStatusTransitions:
             db_media_buy=db_media_buy,
         )
 
-        assert db_media_buy.status == "active"
+        mock_uow.media_buys.update_status.assert_not_called()
 
     def test_dedup_transition_multiple_creatives_same_buy(self, tenant, _make_db_package):
         """rule-040-inv4: multiple creatives in same media buy trigger transition once."""
@@ -220,7 +231,11 @@ class TestMediaBuyStatusTransitions:
             )
 
         # Status should be pending_creatives (transitioned once, not twice)
-        assert db_media_buy.status == "pending_creatives"
+        # The transition is graded at the SEAM, not as an attribute poke: routing it
+        # through the repository is what carries the revision bump and the write-once
+        # confirmed_at stamp, so asserting the write happened there is strictly
+        # stronger than asserting the ORM attribute changed.
+        mock_uow.media_buys.update_status.assert_called_once_with("mb_1", "pending_creatives")
 
     def test_both_created_and_updated_trigger_check(self, tenant, _make_db_package):
         """rule-040-inv5: both action=created and action=updated creatives trigger status check."""
@@ -261,7 +276,11 @@ class TestMediaBuyStatusTransitions:
                 principal_id="principal_1",
             )
 
-        assert db_media_buy.status == "pending_creatives"
+        # The transition is graded at the SEAM, not as an attribute poke: routing it
+        # through the repository is what carries the revision bump and the write-once
+        # confirmed_at stamp, so asserting the write happened there is strictly
+        # stronger than asserting the ORM attribute changed.
+        mock_uow.media_buys.update_status.assert_called_once_with("mb_1", "pending_creatives")
 
 
 # ========================================================================

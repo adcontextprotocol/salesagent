@@ -23,7 +23,27 @@ _AGENT_URL = "https://creative.adcontextprotocol.org"
 # format_id_identity (creative_formats.py:279-280), so the returned formats[]
 # contains only the single matching entry regardless of catalog order --
 # formats[0] is always the captured pair.
-_FORMAT_ID = "display_300x250_image"
+#
+# PIN-EXPRESSIBLE ON PURPOSE. The obligation here is format_id RESOLUTION — the
+# seller returns the format it advertised, verbatim — not any particular asset shape.
+# The previous seed, display_300x250_image, carries three `pixel_tracker` assets, and
+# the pinned AdCP 3.1.1 format-declaration union (core/format.json, 16 arms: image,
+# video, audio, text, markdown, html, css, javascript, zip, vast, daast, url, webhook,
+# brief, catalog) has no such arm — verified directly against the pinned schema. So
+# full schema validation of the returned format reports one violation per tracker,
+# and the roundtrip obligation could not be graded through it.
+#
+# That is a CATALOG-vs-PIN gap (the fixture was captured from the reference agent
+# after the pin; 45 of its 57 formats carry pixel_tracker), owned by #1998. It is not
+# a defect in format_id resolution, and it must not cost us the grading of format_id
+# resolution — which is what xfailing this scenario did. Seeding one of the 12
+# pin-expressible formats keeps the storyboard obligation live on all three
+# transports while #1998 carries the catalog.
+#
+# NOTE for whoever fixes #1998: the manifest-side core/assets/asset-union.json DOES
+# carry pixel-tracker-asset.json at 3.1.1. The union reached through core/format.json
+# does not. Chasing the wrong file is the easy mistake here.
+_FORMAT_ID = "video_vast"
 
 
 @given("the Buyer Agent captured a format_id object {agent_url, id} from a prior get_products response")
@@ -107,17 +127,12 @@ def _assert_formats_non_empty(ctx: dict, failure_message: str) -> list[dict]:
     return formats
 
 
-@then("the response should be schema-valid against list-creative-formats-response.json")
-def then_response_schema_valid(ctx: dict) -> None:
-    """Assert the serialized wire response carries a formats list.
-
-    Asserts the actual wire payload (``ctx["wire_response"]`` on a2a/mcp/rest, or
-    the production-serialized payload on IMPL) via ``_serialized_formats`` — not
-    the typed ``ListCreativeFormatsResponse``, whose fields are already coerced
-    to their declared types and so cannot observe a serialization regression.
-    """
-    formats = _serialized_formats(ctx)
-    assert isinstance(formats, list), f"Expected formats to be a list, got {type(formats).__name__!r}"
+# "the response should be schema-valid against {schema_file}" is owned by the generic
+# parser in tests/bdd/steps/generic/then_schema.py, which runs FULL pinned-schema
+# validation. This module used to register an exact-text step for that same sentence
+# whose entire body was `assert isinstance(formats, list)` — one sentence with two
+# meanings, and the weaker meaning won for every UC-005 scenario. Deleted rather than
+# renamed: the generic step is what the sentence has always claimed to do.
 
 
 @then("the formats array should contain at least one entry")

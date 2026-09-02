@@ -7,7 +7,6 @@ Before #1417, _envelope_to_adcp_error extracted code/message/recovery/
 details but NOT suggestion.  The wire body included suggestion (production code
 correct), but result.error.suggestion was always None after REST dispatch.
 
-beads: salesagent-kjfy
 """
 
 import pytest

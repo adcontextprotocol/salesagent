@@ -2,14 +2,14 @@
 
 TDD Red phase: these tests define the lazy-loading contract for
 GET /api/tenant/<id>/inventory/tree. They should ALL FAIL until the
-backend is modified (salesagent-y6n3).
+backend is modified .
 
 Three modes:
 1. Root nodes (no params) — returns only roots + stats
 2. Children (?parent_id=X) — returns direct children of X
 3. Search (?search=term) — returns matching nodes + ancestors (limited)
 
-Closes GitHub #1154 / salesagent-ozm9.
+Closes GitHub #1154 / .
 """
 
 import pytest

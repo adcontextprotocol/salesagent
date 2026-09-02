@@ -3,7 +3,6 @@
 Verifies that local account schemas correctly extend adcp library types
 per pattern #1 (schema inheritance).
 
-beads: salesagent-x79
 """
 
 

@@ -1,4 +1,4 @@
-"""Regression tests for salesagent-quwd (review finding MED-04 / TEST-01).
+"""Regression tests for (review finding MED-04 / TEST-01).
 
 ``_assert_tasks_sorted`` must fail loudly when the outcome string names a sort
 field that maps to no known task attribute. Previously it silently ``return``ed,
@@ -26,7 +26,7 @@ def test_unmapped_sort_field_raises_valueerror():
         _assert_tasks_sorted(tasks, "tasks sorted by nonexistent attribute")
 
 
-# ── salesagent-xoa0: _assert_tasks_filtered / _assert_multi_value_filter ──
+# ── : _assert_tasks_filtered / _assert_multi_value_filter ──
 # Same silent-skip-on-unmapped class as _assert_tasks_sorted: an outcome that
 # matches no filter mapping must raise, not pass with zero verification.
 

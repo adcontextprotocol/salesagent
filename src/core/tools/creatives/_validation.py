@@ -121,7 +121,7 @@ def _validate_creative_input(
         # registry (429 -> RATE_LIMITED, 5xx/timeout -> SERVICE_UNAVAILABLE)
         # PROPAGATES with its own recovery semantics — the old bare-except
         # rewrap into AdCPAdapterError made a rate-limited agent look like a
-        # creative problem (salesagent-mpo1). None = the agent genuinely
+        # creative problem . None = the agent genuinely
         # doesn't expose the format.
         from src.core.format_resolver import fetch_format_spec
 

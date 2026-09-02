@@ -18,7 +18,6 @@ that it's the RIGHT thing. Use element-level assertions or set comparisons.
 by checking test-harness state instead of the production response. The step
 must assert on the actual response, not bail out early on a ctx flag.
 
-beads: salesagent-beq4
 """
 
 from __future__ import annotations
@@ -33,17 +32,17 @@ from tests.unit._bdd_guard_helpers import iter_then_functions
 
 # ── Allowlists (ratcheting — may only shrink) ───────────────────────────
 # Each entry is "relative/path.py:func_lineno func_name".
-# Every allowlisted violation MUST have a # FIXME(salesagent-beq4) comment
+# Every allowlisted violation MUST have a # FIXME comment
 # at the source location.
 
 _HASATTR_ALLOWLIST: set[str] = set()
-# All hasattr violations fixed (salesagent-bkh)
+# All hasattr violations fixed
 
 _GETATTR_EXISTENCE_ALLOWLIST: set[str] = set()
-# All getattr-existence violations fixed (salesagent-bkh)
+# All getattr-existence violations fixed
 
 _COUNT_ONLY_ALLOWLIST: set[str] = set()
-# All count-only violations fixed (salesagent-bkh)
+# All count-only violations fixed
 
 # Pattern 4 has zero current violations — purely regression prevention.
 _CTX_ERROR_FALLBACK_ALLOWLIST: set[str] = set()

@@ -12,7 +12,6 @@ claim.
 This test pins the corrected behavior: when the persisted creative is scoped to
 a DIFFERENT principal than the resolved one, the step MUST fail.
 
-beads: salesagent-txo1
 """
 
 from __future__ import annotations

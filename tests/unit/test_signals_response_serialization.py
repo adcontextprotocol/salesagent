@@ -9,7 +9,6 @@ Signal has 4 internal fields that should NOT appear in responses:
 Signal.model_dump() excludes these, but GetSignalsResponse must explicitly
 call it for nested signals.
 
-Related:
 - Original bug: SyncCreativesResponse (f5bd7b8a)
 - Systematic fix: All response models with nested Pydantic models
 - Pattern: Parent models must explicitly call nested model.model_dump()

@@ -132,7 +132,7 @@ def e2e_db_url(fallback_port: int) -> str:
 def port_scan_start(start_port: int, end_port: int, pid: int | None = None) -> int:
     """Deterministic per-process scan origin inside [start_port, end_port).
 
-    Root cause of the mass e2e 502 failures (salesagent-18h.12): every port
+    Root cause of the mass e2e 502 failures : every port
     allocator on the host scanned the same range from the same low bound and
     returned the first free port. Two sibling worktree agents racing between
     probe-close and ``docker run -p`` deterministically picked the *identical*
@@ -166,7 +166,7 @@ def port_scan_start(start_port: int, end_port: int, pid: int | None = None) -> i
 def find_free_port(start_port: int = 10000, end_port: int = 60000) -> int:
     """Find an available port in [start_port, end_port).
 
-    Hardened for parallel worktree execution (salesagent-18h.12):
+    Hardened for parallel worktree execution :
 
     * Scan starts at a per-process scattered origin (see ``port_scan_start``)
       and wraps around, so concurrent agents do not converge on the same
@@ -338,7 +338,7 @@ def docker_services_e2e(request):
         #
         # The compose stack now ALWAYS includes the pinned creative-agent (the
         # server resolves format specs against it and the live public host is
-        # blackholed — salesagent-9qe2), and its image is built by the
+        # blackholed — ), and its image is built by the
         # single-source pin script, not by compose. Build it first so `up`
         # doesn't fail on a missing `adcp-creative-agent` image.
         print("Step 0/2: Building pinned creative-agent image (single-sourced)...")
@@ -686,7 +686,7 @@ def auto_approval_adapter(live_server):
     per run, so a prior test that enables manual approval (the a2a submitted-
     webhook tests) leaks that state into any later test asserting the
     synchronous success shape — create/update then returns Submitted with no
-    media_buy_id, flakily (salesagent-d1n0). Every test that requires the mock
+    media_buy_id, flakily . Every test that requires the mock
     adapter's auto-approval path must request this fixture instead of trusting
     whatever state the previous test left behind.
     """

@@ -4,7 +4,6 @@ Creative extends the listing Creative (list_creatives_response.Creative):
 - Public fields: creative_id, format_id, name, status, created_date, updated_date, assets, tags
 - Internal fields (exclude=True): principal_id
 
-Related:
 - Original bug: SyncCreativesResponse (f5bd7b8a)
 - Systematic fix: ListCreativesResponse nested serialization
 - Pattern: All response models with nested Pydantic models need explicit serialization

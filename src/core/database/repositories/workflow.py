@@ -11,7 +11,6 @@ The tenant_id is set at construction time and injected into all queries automati
 Write methods add objects to the session but never commit — the caller (or UoW)
 handles commit/rollback at the boundary.
 
-beads: salesagent-4d4
 """
 
 from __future__ import annotations

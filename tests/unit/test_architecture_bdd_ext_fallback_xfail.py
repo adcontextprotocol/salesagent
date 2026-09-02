@@ -20,7 +20,6 @@ This guard walks _harness_env's AST, finds every `if` whose test calls
 `pytest.xfail(...)` call. A non-regex (AST) guard, so positive + negative
 meta-tests suffice (no regex-slip case).
 
-beads: salesagent-j4bo
 """
 
 import ast
@@ -93,7 +92,7 @@ def test_ext_fallback_branches_xfail_in_conftest():
     assert bad == [], (
         f"_harness_env has ext/non-ext UC split branch(es) at line(s) {bad} whose "
         f"else (non-extension fallback) does NOT call pytest.xfail. Unwired scenarios "
-        f"routed into a harness env hard-fail instead of xfailing (see salesagent-j4bo). "
+        f"routed into a harness env hard-fail instead of xfailing (see ). "
         f"Restore: else: pytest.xfail('UC-XXX harness not yet wired for non-extension scenarios')."
     )
 

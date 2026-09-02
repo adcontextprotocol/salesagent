@@ -154,7 +154,7 @@ The codebase used Pydantic models, but treated them as glorified dicts. `model_d
 
 **Guard: `test_architecture_no_model_dump_in_impl.py`** -- AST-scans every `_impl` function for `.model_dump()` calls. New violations fail the build immediately. Current allowlist: 25 pre-existing violations (23 in `media_buy_update.py` workflow step serialization, 1 logging, 1 filter conversion), tracked by beads task `salesagent-hr8n`.
 
-**Guard: `test_architecture_schema_inheritance.py`** -- Verifies every schema with a `Library*` counterpart inherits from it (not duplicated). Detects field redeclaration (drift from library). Current allowlist: 30 known overrides (primarily for nested serialization Pattern #4), tracked by beads task `salesagent-v0kb`.
+**Removed: the schema-inheritance guard** -- deleted in PR #1941. Its subject was the SDK's own classes; it was blind to any import alias it did not enumerate, and the only redeclaration it could uniquely catch is one that changes nothing observable. Drift that reaches the wire is caught by `test_pydantic_schema_alignment.py` against the pinned schema.
 
 ---
 

@@ -1,6 +1,6 @@
 """Integration tests: internal behavior flags must not be controllable by external callers.
 
-Security regression tests for salesagent-1dj and salesagent-su1.
+Security regression tests for and .
 Proves that include_performance, include_sub_assets, and include_snapshot
 cannot be injected by buyers through request objects.
 

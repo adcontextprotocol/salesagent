@@ -18,7 +18,7 @@ The guard looks for select(WorkflowStep), select(ObjectWorkflowMapping), and
 session.get(WorkflowStep) calls that are not accompanied by a DBContext/Context
 join in the same method body.
 
-beads: beads-bou.2 (guard: WorkflowStep/ObjectWorkflowMapping queries without Context join)
+beads: (guard: WorkflowStep/ObjectWorkflowMapping queries without Context join)
 """
 
 import re
@@ -49,7 +49,7 @@ _CONTEXT_JOIN_PATTERN = re.compile(r"DBContext|join\(Context\)")
 # Pre-existing violations: method names in WorkflowRepository that are known
 # to lack tenant isolation. Each entry needs a FIXME tracking its fix.
 # Allowlist shrinks as the workflow tenant isolation epic progresses.
-# All methods now properly scoped via Context join (beads-bou.4).
+# All methods now properly scoped via Context join ().
 WORKFLOW_ISOLATION_ALLOWLIST: set[str] = set()
 
 

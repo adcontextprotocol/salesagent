@@ -48,7 +48,7 @@ Out of scope:
   - Conditional definitions (inside ``if TYPE_CHECKING:`` / ``try: ... except
     ImportError:``) — not direct namespace-body statements, at any scope.
 
-GitHub: #1619 (module/class scopes), salesagent-ihd4 (function-local scopes)
+GitHub: #1619 (module/class scopes), (function-local scopes)
 """
 
 from __future__ import annotations
@@ -215,7 +215,7 @@ class TestNoDuplicateModuleDefs:
 
         FAILS against the un-widened helper: function bodies are not yet a scanned
         namespace, so the shadow is invisible (returns {}). Pins that widening to
-        function-local scopes catches it. salesagent-ihd4 / #1619.
+        function-local scopes catches it. / #1619.
         """
         source = (
             "def outer():\n"
@@ -233,7 +233,7 @@ class TestNoDuplicateModuleDefs:
 
         Reachable only after widening (a class nested in a function body is not a
         module- or class-body statement today), so it FAILS against the un-widened
-        helper. salesagent-ihd4 / #1619.
+        helper. / #1619.
         """
         source = "def f():\n    class C:\n        pass\n    class C:\n        pass\n    return C\n"
         assert _duplicate_defs(source) == {"f.C": [2, 4]}
@@ -245,7 +245,7 @@ class TestNoDuplicateModuleDefs:
         Different namespaces => not a shadow. The only thing that could wrongly
         trip this is a cross-namespace collision, so it guards the per-namespace
         `.body` grouping against regression. Passes both before AND after widening
-        (invariant guard, not a red test). salesagent-ihd4 / #1619.
+        (invariant guard, not a red test). / #1619.
         """
         source = (
             "def helper():\n    return 1\n\ndef other():\n    def helper():\n        return 2\n    return helper()\n"

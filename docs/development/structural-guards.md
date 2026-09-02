@@ -55,67 +55,21 @@ These three guards enforce Critical Pattern #5: shared `_impl` functions are
 transport-agnostic. They don't know whether they're called from MCP, A2A, or
 a REST endpoint.
 
-### Schema Inheritance Guard
+### Schema Inheritance Guard (removed)
 
-**File:** `tests/unit/test_architecture_schema_inheritance.py`
+Deleted in PR #1941. Its subject was the SDK's own classes rather than this repo's
+structure, which made it unfixable in principle: to find which SDK types this repo
+subclasses it had to enumerate how imports are spelled, and two classes imported under
+an `AdCP*` alias instead of `Library*` were invisible to it. Widening the alias key took
+its target set from 54 classes to 149 and demanded nine new allowlist entries about
+someone else's DTOs.
 
-**What it enforces:** Every Pydantic schema in `src/core/schemas.py` that has
-a corresponding adcp library type must inherit from it.
-
-**Why it matters:** The codebase follows Critical Pattern #1 — extend library
-schemas via inheritance, never duplicate fields. If someone copies fields
-instead of inheriting, the local copy drifts when adcp updates the field type,
-default, or validator.
-
-#### How it works
-
-The guard scans `schemas.py` for imports using the `Library*` alias convention:
-
-```python
-from adcp.types import Product as LibraryProduct
-from adcp.types import Signal as LibrarySignal
-```
-
-For each `LibraryX` import, it expects a local class `X` that has `LibraryX`
-in its MRO (method resolution order):
-
-```python
-class Product(LibraryProduct):                # CORRECT: inherits
-    implementation_config: dict | None = None  # internal-only field
-
-class Product(SalesAgentBaseModel):           # WRONG: copied, will drift
-    name: str
-    channels: list[Channel]
-```
-
-#### Tests
-
-| Test | What It Checks |
-|------|---------------|
-| `test_all_library_types_have_local_subclass` | Local class inherits from its `Library*` counterpart (via `inspect.getmro`) |
-| `test_no_field_redefinition_in_subclasses` | Local class doesn't redeclare fields that already exist on the parent |
-
-#### Field redefinition and known overrides
-
-Even with correct inheritance, a subclass can accidentally redeclare a parent
-field. This is usually a copy-paste error — the field is inherited anyway.
-The guard uses AST to find fields declared directly in each class body (not
-inherited), then flags any overlap with the parent's `model_fields`.
-
-Some redeclarations are intentional. Critical Pattern #4 (nested serialization)
-requires parent models to re-declare list fields using local subclass types:
-
-```python
-class Signal(LibrarySignal):
-    # Intentional override: local SignalDeployment has extra fields
-    deployments: list[SignalDeployment] = []  # overrides LibrarySignal.deployments
-
-    # New internal field (not an override)
-    tenant_id: str = Field(exclude=True)
-```
-
-These intentional overrides are listed in `KNOWN_OVERRIDES` inside the test file.
-Currently 27 entries, mostly for nested serialization.
+Measured before removal: a duplicate `media_buy_id: str` on `UpdateMediaBuySuccess` left
+the guard green AND changed nothing observable — same annotation, same wire keys. The
+same field redeclared as `int` also left the guard green, but failed
+`test_pydantic_schema_alignment.py` in two places. So every redeclaration that reaches
+the wire is caught against the PINNED SCHEMA, and the only thing the guard could
+uniquely have caught is inert.
 
 ### Boundary Completeness Guard
 
@@ -531,7 +485,7 @@ make quality
 uv run pytest tests/unit/test_architecture_*.py tests/unit/test_*impl*.py -v
 
 # Single guard
-uv run pytest tests/unit/test_architecture_schema_inheritance.py -v
+uv run pytest tests/unit/test_pydantic_schema_alignment.py -v
 ```
 
 ## Relationship to Other Quality Mechanisms

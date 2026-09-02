@@ -6,7 +6,6 @@ Tests the repository pattern with real PostgreSQL to verify:
 - Filtering and ordering behavior
 - Sequence number tracking
 
-beads: salesagent-7x3i
 """
 
 from datetime import UTC, datetime, timedelta

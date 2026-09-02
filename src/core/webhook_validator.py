@@ -63,7 +63,7 @@ def validate_webhook_task_type(task_type: str, fallback: str = WEBHOOK_TASK_TYPE
     This validates ONLY the value destined for the SDK/webhook payload. Callers
     must keep the original action label for internal metadata (audit log,
     delivery-webhook guards, ``WebhookDeliveryLog.task_type``) — see
-    salesagent-yi3s.
+    .
 
     Args:
         task_type: The candidate action label.

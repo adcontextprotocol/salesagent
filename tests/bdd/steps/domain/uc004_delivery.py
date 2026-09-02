@@ -437,7 +437,7 @@ def _persist_webhook_config_if_needed(ctx: dict, env: Any) -> None:
     Reads ``ctx['webhook_config']`` and ``ctx['webhook_secret']`` /
     ``ctx['webhook_bearer_token']`` so subsequent Given-steps that set the
     secret/token can re-run persistence and pick up the new values.
-    Sister-task ``salesagent-oy9`` ensured the
+    Sister-task ```` ensured the
     ``push_notification_configs`` table exists per-test, so this is safe to
     call from any Given step.
     """
@@ -1094,7 +1094,8 @@ def when_validate_webhook_config(ctx: dict) -> None:
     rejection happens in PRODUCTION, not in test code. A 32-char credential is
     accepted and the create succeeds.
     """
-    from tests.bdd.steps.generic.given_media_buy import _ensure_request_defaults, _pricing_option_id
+    from tests.bdd.steps.generic._create_request import pricing_option_id
+    from tests.bdd.steps.generic.given_media_buy import _ensure_request_defaults
 
     secret = ctx.get("webhook_secret", "")
     kwargs = _ensure_request_defaults(ctx)
@@ -1103,7 +1104,7 @@ def when_validate_webhook_config(ctx: dict) -> None:
     if product is not None:
         kwargs["packages"][0]["product_id"] = product.product_id
     if pricing_option is not None:
-        kwargs["packages"][0]["pricing_option_id"] = _pricing_option_id(pricing_option)
+        kwargs["packages"][0]["pricing_option_id"] = pricing_option_id(pricing_option)
     kwargs["reporting_webhook"] = {
         "url": ctx["env"].webhook_destination(),
         "reporting_frequency": "daily",
@@ -2982,7 +2983,7 @@ def then_no_billing(ctx: dict) -> None:
 
 
 # Single source of truth for delivery boundary-field membership (moved out of
-# generic/then_payload per salesagent-chit). Field names are normalized
+# generic/then_payload per ). Field names are normalized
 # (spaces→underscores, lower-case) before lookup, so only underscore forms are
 # listed here. _assert_valid_content below performs richer per-field content
 # validation for a superset of these (it also covers "resolution"/"filter").
@@ -3147,15 +3148,16 @@ def _assert_wire_rejection(ctx: dict, field: str) -> None:
         code = layer.get("code")
         recovery = layer.get("recovery")
         # SERVICE_UNAVAILABLE must be excluded too: ERROR_CODE_MAPPING remaps
-        # INTERNAL_ERROR to SERVICE_UNAVAILABLE — a server fault would otherwise
-        # pass as a field rejection. (#1420 should-fix) CONFIGURATION_ERROR now
-        # passes through untranslated (salesagent-nr2q) and is likewise a
-        # seller-side fault, never a field rejection. AUTH_MISSING/AUTH_INVALID
-        # (v3.1.1 split, salesagent-mkso) replace the deprecated AUTH_REQUIRED
-        # alias for auth failures — excluding only the literal "AUTH_REQUIRED"
-        # string let an auth failure (e.g. resolve_principal_or_raise's
-        # "principal not found" -> AUTH_INVALID) masquerade as a legitimate
-        # client field rejection once the split landed.
+        # INTERNAL_ERROR to SERVICE_UNAVAILABLE, and the base AdCPError default
+        # recovery is "terminal" — so a {SERVICE_UNAVAILABLE, terminal} server fault
+        # would otherwise pass as a field rejection. (#1420 should-fix)
+        # CONFIGURATION_ERROR now passes through untranslated and is
+        # likewise a seller-side fault, never a field rejection.
+        # AUTH_MISSING/AUTH_INVALID (the v3.1.1 split) replace the deprecated
+        # AUTH_REQUIRED alias for auth failures — excluding only the literal
+        # "AUTH_REQUIRED" string let an auth failure (e.g.
+        # resolve_principal_or_raise's "principal not found" -> AUTH_INVALID)
+        # masquerade as a legitimate client field rejection once the split landed.
         assert code and code not in {
             "INTERNAL_ERROR",
             "SERVICE_UNAVAILABLE",
@@ -3460,7 +3462,7 @@ def _seed_valid_account_if_named(ctx: dict, value: str) -> None:
     acme-corp.com natural key, and its sandbox:true variant); every other value —
     including the invalid rows — is left unseeded so production correctly emits
     ACCOUNT_NOT_FOUND / INVALID_REQUEST. Historically these rows only passed
-    because the a2a account param was wire-dropped (salesagent-xpcd); now that
+    because the a2a account param was wire-dropped ; now that
     resolution runs, a valid row REQUIRES its account to exist.
     """
     env = ctx.get("env")

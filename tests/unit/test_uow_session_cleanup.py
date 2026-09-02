@@ -1,6 +1,6 @@
 """Regression tests for UoW session cleanup on commit failure.
 
-beads-0a2: BaseUoW.__exit__ leaks session on commit failure.
+: BaseUoW.__exit__ leaks session on commit failure.
 If session.commit() raises in __exit__, the get_db_session() context manager
 is never exited, leaking the session and connection.
 
@@ -22,7 +22,7 @@ class TestMediaBuyUoWCommitFailureCleanup:
     def test_session_cm_exit_called_on_commit_failure(self):
         """When commit() raises, get_db_session()'s __exit__ must still be called.
 
-        Reproduces beads-0a2: if self.session.commit() raises in __exit__,
+        Reproduces : if self.session.commit() raises in __exit__,
         self._session_cm.__exit__() is never reached, leaking the session.
         """
         from src.core.database.repositories.uow import MediaBuyUoW

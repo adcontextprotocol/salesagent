@@ -691,35 +691,46 @@ class TestCreativeDeliveryResponseStr:
 
 
 class TestNextExpectedAtSerialization:
-    """model_dump() forces next_expected_at=null when notification_type is set.
+    """next_expected_at is omitted when unset — never emitted as null.
 
-    The AdCP protocol requires next_expected_at to be explicitly present
-    (as null) when notification_type is 'final', so consumers know no
-    further reports are expected. The base model excludes None values,
-    so the override on line 304 re-injects it.
+    AdCP 3.1 types the field `{"type": "string"}` and never lists it in `required`,
+    in all five places it is declared. A null fails buyer-side validation whatever
+    the notification_type, and `final` is singled out for omission by both the
+    response schema ("only present ... when notification_type is not 'final'") and
+    the webhook result schema ("Omitted on final notifications").
+
+    These tests previously asserted the inverse — that any notification_type forced
+    `next_expected_at: null` — and production carried a `_should_always_include`
+    override to satisfy them. The graded BDD contract
+    (@T-UC-004-webhook-notification-type, BR-RULE-029 INV-2) always had the correct
+    rule; see docs/test-obligations/UC-004-deliver-media-buy-metrics.md.
 
     Covers: UC-004-SERIAL-01
     """
 
-    def test_final_notification_includes_null_next_expected_at(self):
-        """notification_type='final' forces next_expected_at=null in JSON output.
+    def test_final_notification_omits_next_expected_at(self):
+        """'final' is the case both pinned schemas single out for omission.
 
         Covers: UC-004-SERIAL-01
         """
         resp = _make_media_buy_delivery_response(0, notification_type="final")
         dumped = resp.model_dump(mode="json")
-        assert "next_expected_at" in dumped
-        assert dumped["next_expected_at"] is None
+        assert "next_expected_at" not in dumped, (
+            f"A final report carrying next_expected_at tells the buyer to expect another "
+            f"one. Got {dumped.get('next_expected_at')!r}"
+        )
 
-    def test_scheduled_notification_includes_null_next_expected_at(self):
-        """Any notification_type (not just 'final') forces next_expected_at into JSON.
+    def test_scheduled_notification_omits_unset_next_expected_at(self):
+        """'scheduled' may carry the field, but an unset value is omitted, not nulled.
 
         Covers: UC-004-SERIAL-01
         """
         resp = _make_media_buy_delivery_response(0, notification_type="scheduled")
         dumped = resp.model_dump(mode="json")
-        assert "next_expected_at" in dumped
-        assert dumped["next_expected_at"] is None
+        assert "next_expected_at" not in dumped, (
+            f"The pin types next_expected_at as a string; an unset value is omitted, "
+            f"never serialized as null. Got {dumped.get('next_expected_at')!r}"
+        )
 
     def test_no_notification_type_excludes_next_expected_at(self):
         """Without notification_type, next_expected_at is excluded from JSON (base behavior).

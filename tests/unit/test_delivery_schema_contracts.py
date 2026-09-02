@@ -285,11 +285,35 @@ class TestGetMediaBuyDeliveryResponseMethods:
         resp = _make_delivery_response(media_buy_deliveries=deliveries)
         assert str(resp) == "Retrieved delivery data for 3 media buys."
 
-    def test_model_dump_includes_next_expected_at_when_notification_type_set(self):
+    # next_expected_at is graded against the pin, not against a hand-declared set.
+    # get-media-buy-delivery-response.json types it {"type": "string"} — NOT nullable —
+    # omits it from `required`, and its description scopes it to "webhook deliveries
+    # when notification_type is not 'final'". So null is never a valid wire value, and
+    # 'final' is precisely the case that must NOT carry the field. These three tests
+    # pin that contract; an earlier pair asserted `next_expected_at: null` for
+    # notification_type='final', which the pin forbids on both counts.
+
+    def test_model_dump_omits_next_expected_at_for_final(self):
+        """'final' is the one notification_type the pin's description excludes."""
         resp = _make_delivery_response(notification_type="final")
         dumped = resp.model_dump()
+        assert "next_expected_at" not in dumped, (
+            f"The pin scopes next_expected_at to notification_type != 'final'; emitting it "
+            f"for a final report tells the buyer to expect another one. Got: {dumped.get('next_expected_at')!r}"
+        )
+
+    def test_model_dump_carries_next_expected_at_for_scheduled(self):
+        """A non-final notification carries the timestamp, typed as the pin's string."""
+        resp = _make_delivery_response(
+            notification_type="scheduled",
+            next_expected_at="2025-02-01T00:00:00Z",
+        )
+        dumped = resp.model_dump(mode="json")
         assert "next_expected_at" in dumped
-        assert dumped["next_expected_at"] is None
+        assert isinstance(dumped["next_expected_at"], str), (
+            f"The pin types next_expected_at as a string; a null or non-string value fails "
+            f"buyer-side validation. Got {dumped['next_expected_at']!r}"
+        )
 
     def test_model_dump_omits_next_expected_at_when_no_notification_type(self):
         resp = _make_delivery_response()

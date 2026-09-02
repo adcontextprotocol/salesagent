@@ -13,7 +13,6 @@ and check for the ``pytestbdd_stepdef_*`` fixtures pytest-bdd creates at import
 time. A module with zero step fixtures (e.g. an empty stub) is not flagged —
 only modules that genuinely define steps must be registered.
 
-beads: salesagent-mdhh
 """
 
 from __future__ import annotations
@@ -39,7 +38,7 @@ _STEPDEF_PREFIX = "pytestbdd_stepdef_"
 #     step-text collisions into live shadows (test_architecture_bdd_no_shadowed_steps).
 #     Resolution: add the per-UC harness, resolve the collisions, register it,
 #     and REMOVE the entry.
-#     FIXME(salesagent-mdhh): wire each module + harness, then delete its entry.
+# FIXME(#2132): wire each module + harness, then delete its entry.
 #
 # (B) Intentionally-local: the module IS live, but registered LOCALLY in its test
 #     module (``from … import *``) rather than globally via pytest_plugins — on

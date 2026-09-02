@@ -1,4 +1,4 @@
-# Generated from adcp-req @ render on 2026-06-04T09:53:12Z (merge mode)
+# Generated from adcp-req @ cac2015cd7436b762053f469b952f94f262cf02f on 2026-08-20T12:03:24Z (merge mode)
 # DO NOT EDIT -- re-run: python scripts/compile_bdd.py --merge
 
 Feature: BR-UC-011 Manage Accounts
@@ -24,8 +24,6 @@ Feature: BR-UC-011 Manage Accounts
   Background:
     Given a Seller Agent is operational and accepting requests
     And a tenant is resolvable from the request context
-
-
 
   @T-UC-011-list-main @list @happy-path @post-s1 @post-s2 @post-s3 @partition @boundary
   Scenario: List accounts (authenticated_with_accounts)
@@ -238,6 +236,22 @@ Feature: BR-UC-011 Manage Accounts
     # @bva brand (brand-ref): single_brand_domain -- brand with domain only (single brand)
     # POST-S5: Buyer knows the seller-assigned account_id
     # POST-S6: Buyer knows the action taken per account
+
+  @T-UC-011-sync-schema-valid @sync @schema @v3-1 @envelope
+  Scenario: A sync_accounts response validates against its pinned AdCP schema
+    Given the Buyer Agent has an authenticated connection
+    When the Buyer Agent sends a sync_accounts request with:
+    | brand.domain    | operator        | billing  |
+    | acme-corp.com   | acme-corp.com   | operator |
+    Then the response should be schema-valid against sync-accounts-response.json
+    And the response envelope carries status completed
+    # core/protocol-envelope.json marks `status` REQUIRED on every task response
+    # envelope, and sync-accounts-response.json composes that arm through a
+    # top-level allOf -- so the requirement reaches this response by composition
+    # rather than by being spelled out on it. That is how it went missing in a
+    # real implementation: the response type declared no status at all, and no
+    # transport noticed, because nothing graded the composed arm.
+    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/account/list-accounts-request.json
 
   @T-UC-011-sync-multi-brand @sync @brand-identity @partition @boundary
   Scenario: Sync multi_brand_domain with brand_id and operator (brand with domain + brand_id)

@@ -93,7 +93,7 @@ async def test_get_products_with_brand_domain(sample_tenant, sample_principal, s
 async def test_get_products_brand_manifest_translated_to_brand(sample_tenant, sample_principal, sample_products):
     """Test that brand_manifest is translated to brand via request normalization.
 
-    After the universal request normalization layer (salesagent-3ydk),
+    After the universal request normalization layer ,
     brand_manifest is translated to brand (BrandReference) before the
     handler sees it. So brand_manifest with a valid URL now succeeds.
     """

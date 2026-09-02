@@ -17,8 +17,8 @@
 schema_version: 1
 source:
   repository: adcp-req
-  commit: render
-  compiled_at: "2026-06-04T09:53:13Z"
+  commit: cac2015cd7436b762053f469b952f94f262cf02f
+  compiled_at: "2026-08-20T12:03:24Z"
 
 mappings:
   COMPAT-001:
@@ -1036,6 +1036,26 @@ mappings:
       adcp_feature: "BR-UC-002-create-media-buy.feature"
       obligation_id: null
       upstream_refs: ["BR-UC-002-ext-v"]
+      business_rules: []
+      status: new
+    # Locally-added: the storyboard has no scenario sending a
+    # value that violates a LENGTH/RANGE bound the pinned request schema declares.
+    - adcp_scenario_id: "T-UC-002-ext-bounds-impressions"
+      adcp_feature: "local-constraint-relaxation-rejections.feature"
+      obligation_id: null
+      upstream_refs: []  # locally-added; no upstream storyboard scenario yet
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-UC-002-ext-bounds-packages"
+      adcp_feature: "local-constraint-relaxation-rejections.feature"
+      obligation_id: null
+      upstream_refs: []  # locally-added; no upstream storyboard scenario yet
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-UC-002-ext-bounds-creatives"
+      adcp_feature: "local-constraint-relaxation-rejections.feature"
+      obligation_id: null
+      upstream_refs: []  # locally-added; no upstream storyboard scenario yet
       business_rules: []
       status: new
     - adcp_scenario_id: "T-UC-002-ext-webhook-ssrf"
@@ -2573,6 +2593,13 @@ mappings:
       adcp_feature: "BR-UC-003-update-media-buy.feature"
       obligation_id: null
       upstream_refs: ["BR-UC-003-ext-u"]
+      business_rules: []
+      status: new
+    # Locally-added — see the UC-002 bounds rows above.
+    - adcp_scenario_id: "T-UC-003-ext-bounds-packages"
+      adcp_feature: "local-constraint-relaxation-rejections.feature"
+      obligation_id: null
+      upstream_refs: []  # locally-added; no upstream storyboard scenario yet
       business_rules: []
       status: new
     - adcp_scenario_id: "T-UC-003-new-packages-add"
@@ -6809,6 +6836,12 @@ mappings:
       adcp_feature: "BR-UC-011-manage-accounts.feature"
       obligation_id: null
       upstream_refs: ["BR-RULE-054"]
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-UC-011-sync-schema-valid"
+      adcp_feature: "BR-UC-011-manage-accounts.feature"
+      obligation_id: null
+      upstream_refs: ["core/protocol-envelope.json", "account/sync-accounts-response.json"]
       business_rules: []
       status: new
     - adcp_scenario_id: "T-UC-011-sync-create"
@@ -11177,6 +11210,12 @@ mappings:
       upstream_refs: ["BR-RULE-150"]
       business_rules: ["BR-RULE-150"]
       status: new
+    - adcp_scenario_id: "T-UC-019-confirmed-at-null-survives-exclude-none"
+      adcp_feature: "BR-UC-019-query-media-buys.feature"
+      obligation_id: null
+      upstream_refs: ["BR-RULE-150"]
+      business_rules: ["BR-RULE-150"]
+      status: new
     - adcp_scenario_id: "T-UC-019-inv-150-8"
       adcp_feature: "BR-UC-019-query-media-buys.feature"
       obligation_id: null
@@ -11195,7 +11234,19 @@ mappings:
       upstream_refs: ["BR-RULE-150"]
       business_rules: ["BR-RULE-150"]
       status: new
+    - adcp_scenario_id: "T-UC-019-envelope-status"
+      adcp_feature: "BR-UC-019-query-media-buys.feature"
+      obligation_id: null
+      upstream_refs: ["GH-1900"]
+      business_rules: []
+      status: new
     - adcp_scenario_id: "T-UC-019-inv-150-11"
+      adcp_feature: "BR-UC-019-query-media-buys.feature"
+      obligation_id: null
+      upstream_refs: ["BR-RULE-150"]
+      business_rules: ["BR-RULE-150"]
+      status: new
+    - adcp_scenario_id: "T-UC-019-blob-rule-raw-request"
       adcp_feature: "BR-UC-019-query-media-buys.feature"
       obligation_id: null
       upstream_refs: ["BR-RULE-150"]
@@ -11283,6 +11334,12 @@ mappings:
       adcp_feature: "BR-UC-019-query-media-buys.feature"
       obligation_id: null
       upstream_refs: ["BR-RULE-291"]
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-UC-019-listing-omits-unrenderable-row"
+      adcp_feature: "BR-UC-019-query-media-buys.feature"
+      obligation_id: null
+      upstream_refs: ["BR-RULE-291", "media-buy/get-media-buys-response.json"]
       business_rules: []
       status: new
     - adcp_scenario_id: "T-UC-019-inv-291-1"
@@ -11382,6 +11439,17 @@ mappings:
       business_rules: []
       status: new
     - adcp_scenario_id: "T-UC-019-inv-294-3"
+      adcp_feature: "BR-UC-019-query-media-buys.feature"
+      obligation_id: null
+      upstream_refs: ["BR-RULE-294"]
+      business_rules: ["BR-RULE-294"]
+      status: new
+    # Locally authored: the blob rule — every value read out of the
+    # untyped package_config column is resolved before GetMediaBuysPackage is constructed,
+    # so a legacy-invalid cell degrades ONE field with a terminal advisory instead of
+    # failing the whole listing. No upstream scenario states this; mirror upstream when
+    # BR-RULE-294 is next revised.
+    - adcp_scenario_id: "T-UC-019-blob-degraded-package-field"
       adcp_feature: "BR-UC-019-query-media-buys.feature"
       obligation_id: null
       upstream_refs: ["BR-RULE-294"]

@@ -1,6 +1,5 @@
 """Regression test: 7 adcp 3.6.0 Product fields have no database columns.
 
-Bug: salesagent-qo8a, salesagent-kntn
 
 After upgrading adcp from 3.2.0 to 3.6.0, the Product Pydantic schema inherits
 7 new fields from the library that have no corresponding database columns:

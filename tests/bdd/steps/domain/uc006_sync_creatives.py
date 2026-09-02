@@ -7,7 +7,6 @@ UC-002 (create_media_buy) — same resolve_account(), same exceptions.
 Steps dispatch through CreativeSyncEnv which exercises sync_creatives wrappers
 (MCP/A2A/REST) that call enrich_identity_with_account() → resolve_account().
 
-beads: salesagent-71q, salesagent-99w
 """
 
 from __future__ import annotations
@@ -587,9 +586,7 @@ def _xfail_if_e2e(ctx: dict) -> None:
     if is_e2e(ctx):
         import pytest
 
-        pytest.xfail(
-            "e2e_rest fixture injection gap — factory-created creatives are not in Docker DB. FIXME(salesagent-15cg)"
-        )
+        pytest.xfail("e2e_rest fixture injection gap — factory-created creatives are not in Docker DB. FIXME")
 
 
 def _get_creative_from_db(ctx: dict) -> object:
@@ -5393,7 +5390,7 @@ def then_user_assets_priority_over_generated(ctx: dict) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# Missing step definitions — salesagent-5o9e, pzlv, 28p6, wsc1,
+# Missing step definitions — , pzlv, 28p6, wsc1,
 # thm4, bkbu, yqpf
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -5670,7 +5667,7 @@ def when_sync_cross_principal_assignment(ctx: dict) -> None:
 def then_sync_did_not_fail(ctx: dict) -> None:
     """The cross-principal reference must be skipped — never a raw FK 500 —
     and the skip must be VISIBLE: a synthesized per-item action='failed'
-    result naming the package in assignment_errors (salesagent-9qpj;
+    result naming the package in assignment_errors (;
     the spec's success branch forbids response-level errors, so the outcome
     rides creatives[]). A bare no-error check survives deletion of the
     error recording — this assertion does not.

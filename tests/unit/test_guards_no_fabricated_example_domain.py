@@ -36,12 +36,23 @@ ALLOWLIST: set[tuple[str, int]] = {
     # it stopped importing four primitives from the facade and started importing
     # REQUEST_SIGNING plus two CHECK-clause OPERATIONS from the leaf. The SAME THREE
     # violations are listed, at their new coordinates — none added, none fixed.
+    #
+    # RE-PINNED AGAIN (merge of main into rfc9421-request-signing, +1 line each): the
+    # merge added a single `from enum import StrEnum` import to models.py, above all
+    # three sites. Verified a pure shift: the source text at 425/435/445 in the merged
+    # tree is byte-identical to 424/434/444 in the pre-merge parent, the only hunk above
+    # line 424 is that one-line import, and a full AST scan of src/ still finds exactly
+    # three violations — all three the same `self.tenant.virtual_host or
+    # f"{self.tenant.subdomain}.example.com"` fallback inside Product.effective_properties.
+    # Three entries out, three in; none added, none fixed.
+    #
     # This allowlist is keyed by LINE NUMBER, so any edit above a violation re-reports it
     # as new AND its old coordinate as stale; re-keying it on (file, symbol) is tracked as
-    # a follow-up on #1757.
-    ("src/core/database/models.py", 424),
-    ("src/core/database/models.py", 434),
-    ("src/core/database/models.py", 444),
+    # a follow-up on #1757. This is the second such re-pin, both caused by an unrelated
+    # edit ABOVE the violations rather than by any change to them.
+    ("src/core/database/models.py", 425),
+    ("src/core/database/models.py", 435),
+    ("src/core/database/models.py", 445),
 }
 
 

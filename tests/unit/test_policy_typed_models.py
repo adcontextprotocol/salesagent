@@ -3,7 +3,7 @@
 Verifies that check_brief_compliance accepts BrandManifest (not dict)
 and check_product_eligibility accepts Product (not dict).
 
-salesagent-9qy: Policy service should accept Pydantic models, not dicts.
+: Policy service should accept Pydantic models, not dicts.
 """
 
 from unittest.mock import patch

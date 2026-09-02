@@ -1,11 +1,11 @@
 """Unit tests for format resolver override logic and coverage gaps.
 
-salesagent-c4s: format_resolver uses model_dump() dict roundtrip to merge
+: format_resolver uses model_dump() dict roundtrip to merge
 platform_config overrides, but model_dump() drops exclude=True fields
 (like platform_config), causing the base format's platform_config to be
 silently lost during merging.
 
-salesagent-uujr: Cover get_format(), _get_product_format_override() edge cases,
+: Cover get_format(), _get_product_format_override() edge cases,
 and list_available_formats() error paths — 67% → 100%.
 
 Note: Must use src.core.schemas.Format (which has exclude=True on platform_config),
@@ -19,8 +19,8 @@ not the adcp library Format (which does not).
 #   test_success_returns_formats — AdCP list-creative-formats-response.json: returns formats array
 #
 # DECISION_BACKED (2 tests):
-#   test_base_platform_config_preserved_during_override — bug fix (salesagent-c4s)
-#   test_override_merges_into_existing_platform — bug fix (salesagent-c4s)
+# test_base_platform_config_preserved_during_override — bug fix
+# test_override_merges_into_existing_platform — bug fix
 #
 # CHARACTERIZATION (10 tests):
 #   test_no_platform_config_override_preserves_base — locks: base preserved when no override
@@ -35,9 +35,9 @@ not the adcp library Format (which does not).
 #   test_no_format_overrides_key_returns_none — locks: None for missing key
 #
 # SUSPECT (3 tests):
-#   test_base_format_lookup_fails_returns_none — salesagent-z4zl: swallows AdCPNotFoundError silently
-#   test_registry_creation_fails_returns_empty — salesagent-z60b: infrastructure error → []
-#   test_format_fetch_fails_returns_empty — salesagent-z60b: connection error → []
+# test_base_format_lookup_fails_returns_none — : swallows AdCPNotFoundError silently
+# test_registry_creation_fails_returns_empty — : infrastructure error → []
+# test_format_fetch_fails_returns_empty — : connection error → []
 # ---
 """
 
@@ -384,7 +384,7 @@ class TestProductFormatOverrideEdgeCases:
 
         assert result is None
 
-    # SUSPECT(salesagent-z4zl): swallows AdCPNotFoundError — should override path propagate?
+    # SUSPECT: swallows AdCPNotFoundError — should override path propagate?
     def test_base_format_lookup_fails_returns_none(self):
         """Returns None when recursive get_format call raises AdCPNotFoundError."""
         format_overrides = {"display_300x250": {"platform_config": {"gam": {"width": 1}}}}
@@ -415,7 +415,7 @@ class TestProductFormatOverrideEdgeCases:
 class TestListAvailableFormats:
     """Tests for list_available_formats() error and success paths."""
 
-    # SUSPECT(salesagent-z60b): infrastructure error silently returns [] — should it propagate?
+    # SUSPECT: infrastructure error silently returns [] — should it propagate?
     def test_registry_creation_fails_returns_empty(self):
         """Returns empty list when get_creative_agent_registry raises."""
         with patch(
@@ -428,7 +428,7 @@ class TestListAvailableFormats:
 
         assert result == []
 
-    # SUSPECT(salesagent-z60b): connection error silently returns [] — should it propagate?
+    # SUSPECT: connection error silently returns [] — should it propagate?
     def test_format_fetch_fails_returns_empty(self):
         """Returns empty list when list_all_formats raises."""
         with (

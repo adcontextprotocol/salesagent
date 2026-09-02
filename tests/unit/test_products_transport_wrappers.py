@@ -1,6 +1,6 @@
 """Unit tests for get_products transport wrappers — MCP, A2A, REST, _impl.
 
-salesagent-pm9k: Cover MCP/A2A transport wrapper lines in products.py.
+: Cover MCP/A2A transport wrapper lines in products.py.
 
 Tests the wrapper logic (request construction, error translation,
 response serialization, version compat) independent of business logic.

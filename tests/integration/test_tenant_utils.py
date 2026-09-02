@@ -95,7 +95,7 @@ def test_account_approval_mode_round_trips_through_tenant_context(integration_db
     is serialized by serialize_tenant_to_dict, and populated by TenantContext.from_orm_model
     and TenantContext.from_dict.
 
-    This is the regression test for salesagent-b3un (part of epic salesagent-wwut).
+    This is the regression test for (part of epic ).
     """
     from src.core.tenant_context import TenantContext
     from tests.factories import TenantFactory

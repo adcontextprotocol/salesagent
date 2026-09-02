@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 def fetch_format_spec(agent_url: str, format_id: str) -> Format | None:
     """Fetch one format spec from the creative-agent registry (sync bridge).
 
-    THE single fetch path for format specs (salesagent-mpo1) — create_media_buy,
+    THE single fetch path for format specs — create_media_buy,
     sync_creatives validation, and get_format all route through here so typed
     transient errors behave identically on every tool:
 

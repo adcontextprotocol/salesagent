@@ -1,6 +1,6 @@
 """Regression test: REST /api/v1/authorized-properties must forward filter params.
 
-Bug: salesagent-9763 — Same pattern as salesagent-rppx. ListAuthorizedPropertiesBody
+Bug: — Same pattern as . ListAuthorizedPropertiesBody
 only had adcp_version, dropping property_tags and publisher_domains filters.
 """
 

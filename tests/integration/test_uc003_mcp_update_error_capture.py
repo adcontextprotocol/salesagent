@@ -15,7 +15,6 @@ ToolError envelope and ``result.wire_error_envelope`` is populated.
 A2A and REST already capture the envelope (verified here as a guard); MCP is
 the gap this test pins.
 
-beads: salesagent-ihwl
 """
 
 from __future__ import annotations
@@ -146,8 +145,7 @@ class TestUC003McpUpdateErrorCapture:
 
         assert result.is_error, f"{transport}: expected an error for an empty update"
         assert result.wire_error_envelope is not None, (
-            f"{transport}: wire_error_envelope NOT captured — the MCP update error "
-            f"path bypasses with_error_logging (salesagent-ihwl)."
+            f"{transport}: wire_error_envelope NOT captured — the MCP update error path bypasses with_error_logging ."
         )
         assert_envelope_shape(
             result.wire_error_envelope,

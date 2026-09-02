@@ -19,6 +19,7 @@ import pytest
 from adcp.types import MediaBuyStatus
 from pydantic import RootModel, ValidationError
 
+from src.core.exceptions import AdCPPersistedStateError
 from src.core.schemas import (
     ApprovalStatus,
     CreativeApproval,
@@ -76,6 +77,8 @@ def make_media_buy(
     raw_request=None,
     status="active",
     is_paused=False,
+    revision=1,
+    confirmed_at=datetime(2025, 1, 1, tzinfo=UTC),
 ):
     buy = MagicMock()
     buy.media_buy_id = media_buy_id
@@ -93,6 +96,21 @@ def make_media_buy(
     buy.is_paused = is_paused
     buy.created_at = datetime(2025, 1, 1, tzinfo=UTC)
     buy.updated_at = datetime(2025, 1, 1, tzinfo=UTC)
+    # Real column values, not MagicMocks. Both are spec-required on media_buys[] and
+    # the read path now refuses a row it cannot legitimately publish, so a mock that
+    # leaves them auto-generated is a row no store could ever hold.
+    buy.revision = revision
+    buy.confirmed_at = confirmed_at
+    # This helper stands in for BOTH shapes the module handles: the ORM row the fetch
+    # seam reads (``status``, the persisted column) and the ``_MediaBuyData`` carrier the
+    # build loop projects (``wire_status``, the resolved answer). Tests that patch
+    # ``_fetch_target_media_buys`` feed it as the latter, so it needs the resolved value
+    # too. A corrupt ``status`` deliberately leaves ``wire_status`` unset-as-invalid:
+    # those tests exercise refusal at the seam, which reads the persisted column.
+    try:
+        buy.wire_status = MediaBuyStatus(status)
+    except ValueError:
+        buy.wire_status = status
     return buy
 
 
@@ -150,7 +168,7 @@ class TestComputeStatus:
         ],
     )
     def test_persisted_terminal_status_authoritative_over_flight_window(self, persisted, expected):
-        """Regression (salesagent-36d): a buy persisted as a terminal/explicit
+        """Regression : a buy persisted as a terminal/explicit
         lifecycle status must be reported with that status even when its flight
         window covers today. The persisted MediaBuy.status column is the source
         of truth — terminal states cannot be re-derived from flight dates.
@@ -163,7 +181,7 @@ class TestComputeStatus:
         assert _compute_status(buy, date(2025, 6, 15)) == expected
 
     def test_paused_flag_overrides_active_window(self):
-        """Regression (salesagent-36d): is_paused True reports paused even when
+        """Regression : is_paused True reports paused even when
         the flight window covers today, via the shared resolve_canonical_status."""
         buy = make_media_buy(
             start_date=date(2025, 1, 1),
@@ -259,11 +277,62 @@ class TestFetchTargetMediaBuys:
     TODAY = date(2025, 6, 15)
 
     def _run(self, req, buys):
+        """Run the fetch and stash the advisories it raised on ``self.advisories``."""
         mock_repo = MagicMock()
         mock_repo.get_by_principal.return_value = buys
         mock_uow = MagicMock()
         mock_uow.media_buys = mock_repo
-        return _fetch_target_media_buys(req, "principal_1", mock_uow, self.TODAY)
+        self.advisories: list = []
+        return _fetch_target_media_buys(req, "principal_1", mock_uow, self.TODAY, self.advisories)
+
+    def test_listing_omits_unrenderable_row_with_an_advisory_naming_it(self):
+        """A buyer who asked for everything gets the rest, and is told which row is missing."""
+        good = make_media_buy("buy_good", start_date=date(2025, 1, 1), end_date=date(2025, 12, 31))
+        corrupt = make_media_buy("buy_corrupt", start_date=date(2025, 1, 1), end_date=date(2025, 12, 31))
+        corrupt.revision = 0  # below the pinned minimum — no legal value to publish
+
+        result = self._run(GetMediaBuysRequest(), [good, corrupt])
+
+        assert [b.media_buy_id for b in result] == ["buy_good"]
+        assert len(self.advisories) == 1
+        advisory = self.advisories[0]
+        assert advisory.code == "CONFIGURATION_ERROR"
+        assert advisory.recovery == "terminal", (
+            "a persisted-state defect cannot be retried into success; the advisory must say so"
+        )
+        assert "buy_corrupt" in advisory.message
+        assert "MEDIA_BUY_UNRENDERABLE" in advisory.message
+
+    def test_a_null_revision_is_refused_like_a_below_minimum_one(self):
+        """The ``revision is None`` operand has an oracle now.
+
+        Nothing graded it: deleting the operand left the suite green, because every
+        other case reaches the ``< minimum`` comparison instead. A null column would
+        then have gone straight into that comparison and surfaced at the buyer as a
+        TypeError from inside the read path, rather than the terminal error the
+        seller-side defect deserves.
+        """
+        corrupt = make_media_buy("buy_null_rev", start_date=date(2025, 1, 1), end_date=date(2025, 12, 31))
+        corrupt.revision = None
+
+        req = GetMediaBuysRequest(media_buy_ids=["buy_null_rev"])
+        with pytest.raises(AdCPPersistedStateError):
+            self._run(req, [corrupt])
+
+    def test_named_unrenderable_row_is_refused_rather_than_omitted(self):
+        """A buyer who NAMED the broken row is told it is broken, not that it is absent.
+
+        Omitting here would answer "no such media buy" to a buyer asking about that
+        exact buy. Ruling R-M1: a seller-side store defect is terminal, not a silent
+        empty result.
+        """
+        corrupt = make_media_buy("buy_corrupt", start_date=date(2025, 1, 1), end_date=date(2025, 12, 31))
+        corrupt.revision = 0
+
+        req = GetMediaBuysRequest(media_buy_ids=["buy_corrupt"])
+        with pytest.raises(AdCPPersistedStateError):
+            self._run(req, [corrupt])
+        assert self.advisories == [], "a refusal carries the error, not an advisory"
 
     def test_media_buy_ids_with_status_filter_excludes_non_matching(self):
         active = make_media_buy("buy_active", start_date=date(2025, 1, 1), end_date=date(2025, 12, 31))
@@ -647,13 +716,18 @@ class TestTargetingOverlayRoundTrip:
         assert good_response_pkg.targeting_overlay.property_list.list_id == "v1"
 
         # Failure surfaced via the response errors channel — buyer can reconcile.
-        # Uses the standard ``SERVICE_UNAVAILABLE`` wire code (seller-side data
-        # integrity, matching the sibling per-creative advisory) with the
-        # rehydration detail in the message.
+        # CONFIGURATION_ERROR / recovery "terminal", not the sibling per-creative
+        # advisory's SERVICE_UNAVAILABLE. Selected by lookup rather than by name: the
+        # pin gives SERVICE_UNAVAILABLE recovery "transient", which advises a retry that
+        # can never succeed against a permanently corrupt stored blob. Both halves are
+        # asserted because the code alone cannot carry the claim -- core/error.json makes
+        # error.recovery authoritative and enumMetadata only its documentary mirror, so a
+        # test checking the code would pass with the buyer still told to retry forever.
         assert response.errors is not None
         assert len(response.errors) == 1
         err = response.errors[0]
-        assert err.code == "SERVICE_UNAVAILABLE"
+        assert err.code == "CONFIGURATION_ERROR"
+        assert err.recovery == "terminal"
         assert "TARGETING_REHYDRATION_FAILED" in err.message
         assert err.field is not None and "targeting_overlay" in err.field
 
@@ -683,6 +757,10 @@ class TestGetMediaBuysResponseStructure:
                     status=MediaBuyStatus.active,
                     currency="USD",
                     total_budget=1000.0,
+                    # Spec-required on media_buys[] at 3.1.1; the model enforces them
+                    # now that it is grounded on the library item type.
+                    confirmed_at=now,
+                    revision=1,
                     packages=[
                         GetMediaBuysPackage(
                             package_id="pkg_1",

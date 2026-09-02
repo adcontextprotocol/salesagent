@@ -3,7 +3,6 @@
 List, create, edit, and manage account status via the admin UI.
 Uses AccountRepository via AccountUoW for all data access.
 
-beads: salesagent-7kn
 """
 
 import logging

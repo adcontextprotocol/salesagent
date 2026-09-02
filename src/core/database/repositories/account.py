@@ -3,7 +3,6 @@
 Core invariant: every query includes tenant_id in the WHERE clause. The tenant_id
 is set at construction time and injected into all queries automatically.
 
-beads: salesagent-m44
 """
 
 from __future__ import annotations

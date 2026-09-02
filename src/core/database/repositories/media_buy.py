@@ -6,20 +6,24 @@ is set at construction time and injected into all queries automatically.
 Cross-tenant queries (for schedulers) use class methods that explicitly accept a
 session and do not enforce tenant isolation — these are system-level operations.
 
-beads: salesagent-t735 (foundation), salesagent-2lp8 (epic), salesagent-to9i (admin/scheduler migration),
-       salesagent-dyb6 (write methods)
+        (write methods)
 """
 
 from __future__ import annotations
 
 import datetime
+from collections.abc import Collection
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from src.core.database.models import MediaBuy, MediaPackage
+from src.core.database.models import (
+    MediaBuy,
+    MediaPackage,
+    PersistedMediaBuyStatus,
+)
 
 if TYPE_CHECKING:
     from adcp.types import ContextObject
@@ -39,7 +43,15 @@ class MediaBuyRepository:
         tenant_id: Tenant scope for all queries.
     """
 
-    _MEDIA_BUY_IMMUTABLE_FIELDS: frozenset[str] = frozenset({"tenant_id", "media_buy_id", "created_at"})
+    # "revision" and "confirmed_at" are repository-managed — "revision" is bumped on
+    # every successful mutation (see _bump_revision) and "confirmed_at" is stamped
+    # write-once the first time the buy reaches a committed status (see
+    # _stamp_confirmation_if_needed). Callers may never write either directly:
+    # letting update_fields set confirmed_at would walk straight through the
+    # write-once guard, because the stamp helper no-ops on an already-set value.
+    _MEDIA_BUY_IMMUTABLE_FIELDS: frozenset[str] = frozenset(
+        {"tenant_id", "media_buy_id", "created_at", "revision", "confirmed_at"}
+    )
     _PACKAGE_IMMUTABLE_FIELDS: frozenset[str] = frozenset({"media_buy_id", "package_id"})
 
     def __init__(self, session: Session, tenant_id: str) -> None:
@@ -129,7 +141,7 @@ class MediaBuyRepository:
         principal_id: str,
         *,
         media_buy_ids: list[str] | None = None,
-        statuses: list[str] | None = None,
+        statuses: list[PersistedMediaBuyStatus] | None = None,
     ) -> list[MediaBuy]:
         """Get media buys for a principal within the tenant.
 
@@ -260,7 +272,7 @@ class MediaBuyRepository:
         """Get all media buys for the tenant."""
         return list(self._session.scalars(select(MediaBuy).where(MediaBuy.tenant_id == self._tenant_id)).all())
 
-    def list_by_statuses(self, statuses: list[str]) -> list[MediaBuy]:
+    def list_by_statuses(self, statuses: list[PersistedMediaBuyStatus]) -> list[MediaBuy]:
         """Get media buys for the tenant filtered by status list."""
         return list(
             self._session.scalars(
@@ -294,7 +306,7 @@ class MediaBuyRepository:
     def list_in_flight_on_date(
         self,
         target_date: datetime.date,
-        statuses: list[str] | None = None,
+        statuses: list[PersistedMediaBuyStatus] | None = None,
     ) -> list[MediaBuy]:
         """Get media buys whose flight period covers target_date.
 
@@ -324,6 +336,7 @@ class MediaBuyRepository:
     def create_from_request(
         self,
         *,
+        seller_committed: bool = False,
         media_buy_id: str,
         req: Any,
         principal_id: str,
@@ -332,7 +345,7 @@ class MediaBuyRepository:
         currency: str,
         start_time: datetime.datetime,
         end_time: datetime.datetime,
-        status: str = "draft",
+        status: PersistedMediaBuyStatus = PersistedMediaBuyStatus.DRAFT,
         order_name: str | None = None,
         campaign_objective: str | None = None,
         kpi_goal: str | None = None,
@@ -391,7 +404,7 @@ class MediaBuyRepository:
             "end_date": end_time.date(),
             "start_time": start_time,
             "end_time": end_time,
-            "status": status,
+            "status": PersistedMediaBuyStatus.parse(status, media_buy_id=media_buy_id),
             "raw_request": raw,
             # Canonical request hash as computed by the idempotency probe —
             # raw_request is not canonicalizable (injected package_ids,
@@ -409,62 +422,177 @@ class MediaBuyRepository:
             kwargs["account_id"] = account_id
 
         media_buy = MediaBuy(**kwargs)
+        self._stamp_confirmation_if_needed(media_buy, seller_committed=seller_committed)
         self._session.add(media_buy)
         self._session.flush()
         return media_buy
 
-    def create(self, media_buy: MediaBuy) -> MediaBuy:
+    def create(self, media_buy: MediaBuy, *, seller_committed: bool = False) -> MediaBuy:
         """Persist a new media buy within this tenant.
 
         The media_buy.tenant_id must match the repository's tenant_id.
         Raises ValueError if there is a tenant mismatch.
 
         Does NOT commit — the UoW handles that.
+
+        Stamps ``confirmed_at`` before the flush, so a caller-built row that is
+        already in a committed status cannot be persisted with a NULL
+        seller-commitment instant. This is a forward-lock rather than a fix for a
+        live path: today every production create goes through
+        ``create_from_request`` (this method has no production callers), but both
+        entry points must hold the invariant or the next caller to pick this one
+        reopens the hole.
         """
         if media_buy.tenant_id != self._tenant_id:
             raise ValueError(
                 f"Tenant mismatch: media_buy.tenant_id={media_buy.tenant_id!r} "
                 f"!= repository tenant_id={self._tenant_id!r}"
             )
+        # The caller built this row itself, so its status column is still a raw
+        # string; parse it at the door like any other untyped input.
+        media_buy.status = PersistedMediaBuyStatus.parse(media_buy.status, media_buy_id=media_buy.media_buy_id)
+        self._stamp_confirmation_if_needed(media_buy, seller_committed=seller_committed)
         self._session.add(media_buy)
         self._session.flush()
         return media_buy
 
+    @staticmethod
+    def _bump_revision(media_buy: MediaBuy) -> None:
+        """Increment the persisted monotonic revision counter by 1.
+
+        Assigning a SQL expression rather than doing a Python read-modify-write is
+        deliberate: it emits ``UPDATE ... SET revision = revision + 1``, so the
+        database serializes concurrent bumps. A read-modify-write would let
+        two mutations that read the same value write the same value, and ``revision``
+        is the buyer's optimistic-concurrency token — it MUST strictly increase on
+        every successful mutation, including two landing in the same clock tick.
+
+        The attribute holds a SQL expression until the next refresh, so a caller
+        reading ``media_buy.revision`` between this call and the flush gets that
+        expression object rather than an int.
+
+        That does NOT announce itself. Measured across ten read shapes, only two raise
+        — ``int(x)`` and ``bool(x)``. Arithmetic and comparison, the two an earlier
+        version of this docstring named as the raising cases, silently build a further
+        SQL expression: ``x + 1`` and ``x > 2`` both succeed and return an object, not a
+        number.
+
+        The ground that actually holds the invariant is the call sites, not the type.
+        Four of the five direct callers flush on the very next line, and the fifth is
+        ``_bump_parent_revision``, whose own two callers both flush on their next line.
+        So no exercised path reads the attribute while it holds an expression. There is
+        no guard here because the window is closed by construction rather than detected
+        — but if a future caller stops flushing, nothing will raise.
+        """
+        media_buy.revision = MediaBuy.revision + 1
+
+    @staticmethod
+    def _stamp_confirmation_if_needed(media_buy: MediaBuy, *, seller_committed: bool) -> bool:
+        """Write ``confirmed_at`` the first time the seller actually commits.
+
+        Write-once by design: ``confirmed_at`` is the instant the seller committed to
+        running the buy, so it must stay stable across every later transition rather
+        than tracking the most recent one. Returns whether it stamped.
+
+        ``seller_committed`` is passed by the caller and is NOT inferred from status.
+        It used to be ``is_media_buy_seller_confirmed(media_buy.status)``, and that
+        proxy is lossy at exactly one member: ``media_buy_create._compute_status``
+        returns PENDING_CREATIVES for ``not has_creatives or not creatives_approved``,
+        which is two different states wearing one name --
+
+          * ``not has_creatives``     an auto-approved buy with nothing supplied yet.
+                                      The adapter WAS contacted; the seller committed.
+          * ``not creatives_approved`` a buy held on creative review. The hold returns
+                                      before the adapter is ever reached; no commitment.
+
+        A status-keyed rule must be wrong about one of them, whichever way it is set:
+        including the member minted a commitment for a held buy that a later failure
+        carried to its grave, and excluding it dropped the commitment an auto-approved
+        buy had genuinely earned.
+
+        Commitment is an EVENT, so it is recorded where it happens. The two writers
+        that know are the synchronous create after the adapter returns, and the single
+        post-adapter approval writer. Every other caller leaves the default and cannot
+        mint one by accident -- fail-closed, because a false commitment instant is
+        buyer-visible and write-once, while a missing one is corrected by the next
+        genuine commit.
+
+        Pinned contract: ``create-media-buy-response.json`` @ 3.1.1 arm0 types
+        ``confirmed_at`` ["string","null"], lists it in ``required``, and describes it
+        as "the moment the seller committed... May be null in deferred or
+        manual-approval flows until seller commitment occurs" -- an event, in the
+        spec's own words. Its one hard constraint is that a null value forbids
+        ``status == "active"``, which holds: ACTIVE is only ever reached through a
+        writer that commits.
+
+        Graded by @T-UC-002-v31-success-revision-and-actions (the auto-approval arm,
+        which requires a timestamp) and by the approval-route integration tests (the
+        held arm, which requires NULL). Settles the question filed as #2116.
+        """
+        if media_buy.confirmed_at is not None:
+            return False
+        if not seller_committed:
+            return False
+        media_buy.confirmed_at = datetime.datetime.now(datetime.UTC)
+        return True
+
     def update_status(
         self,
         media_buy_id: str,
-        status: str,
+        status: PersistedMediaBuyStatus,
         *,
+        seller_committed: bool = False,
         approved_at: datetime.datetime | None = None,
         approved_by: str | None = None,
     ) -> MediaBuy | None:
         """Update the status of a media buy within this tenant.
 
         Returns the updated MediaBuy, or None if not found in this tenant.
+
+        The status must be a member of the persisted vocabulary. Rejecting an
+        unknown value HERE is what lets every reader stop guessing: the wire
+        projection maps persisted statuses to protocol ones, and a value it has no
+        row for would otherwise be reported as a generic serving state — publishing
+        ``active`` for a state nobody defined, with no commitment instant to go with
+        it, which the pinned response schema forbids. A closed vocabulary is enforced
+        where values enter, not interpreted where they are read.
         """
+        normalized = PersistedMediaBuyStatus.parse(status, media_buy_id=media_buy_id)
         media_buy = self.get_by_id(media_buy_id)
         if media_buy is None:
             return None
-        media_buy.status = status
+        # Store the canonical spelling: casing is not meaning, so it is normalized
+        # once here rather than tolerated by every downstream reader.
+        media_buy.status = normalized
         if approved_at is not None:
             media_buy.approved_at = approved_at
         if approved_by is not None:
             media_buy.approved_by = approved_by
+        # Stamp before bumping: _bump_revision leaves revision holding a SQL
+        # expression, and reading any attribute after that can trigger a refresh
+        # mid-mutation. The stamp reads status and confirmed_at, so it goes first.
+        self._stamp_confirmation_if_needed(media_buy, seller_committed=seller_committed)
+        self._bump_revision(media_buy)
         self._session.flush()
         return media_buy
 
-    def update_fields(self, media_buy_id: str, **kwargs: Any) -> MediaBuy | None:
+    def update_fields(self, media_buy_id: str, *, seller_committed: bool = False, **kwargs: Any) -> MediaBuy | None:
         """Update arbitrary fields on a media buy within this tenant.
 
         Only updates fields that are valid MediaBuy column attributes.
         Returns the updated MediaBuy, or None if not found in this tenant.
         Raises ValueError if any kwarg is not a valid MediaBuy attribute or
         if the caller attempts to update an immutable field (tenant_id,
-        media_buy_id, created_at).
+        media_buy_id, created_at, revision, confirmed_at).
         """
         blocked = self._MEDIA_BUY_IMMUTABLE_FIELDS & kwargs.keys()
         if blocked:
             raise ValueError(f"Cannot update immutable field(s): {', '.join(sorted(blocked))}")
+        # status is mutable here, so this door needs the same vocabulary check
+        # update_status applies — otherwise the closed vocabulary is enforced on one
+        # write path and bypassable on another.
+        if "status" in kwargs:
+            kwargs["status"] = PersistedMediaBuyStatus.parse(kwargs["status"], media_buy_id=media_buy_id)
         media_buy = self.get_by_id(media_buy_id)
         if media_buy is None:
             return None
@@ -472,12 +600,36 @@ class MediaBuyRepository:
             if not hasattr(media_buy, key):
                 raise ValueError(f"MediaBuy has no attribute {key!r}")
             setattr(media_buy, key, value)
+        # Same ordering rule as update_status: stamp (which reads attributes) before
+        # the bump (which replaces one with a SQL expression).
+        self._stamp_confirmation_if_needed(media_buy, seller_committed=seller_committed)
+        self._bump_revision(media_buy)
         self._session.flush()
         return media_buy
 
     # ------------------------------------------------------------------
     # MediaPackage writes
     # ------------------------------------------------------------------
+
+    def _bump_parent_revision(self, media_buy_id: str) -> None:
+        """Fetch the parent buy and move its concurrency token.
+
+        Package-level writes change what the buyer sees on the media buy, so they
+        move its revision too: they persist the package directly on the session
+        rather than going through update_status / update_fields, which would
+        otherwise leave the parent's token stale.
+
+        For the two package writers that hold only the package (update_package_config,
+        update_package_fields). The two that already hold the parent row
+        (create_package, create_packages_bulk) call ``_bump_revision`` directly rather
+        than paying for a second lookup.
+
+        Raises rather than skipping when the parent is missing: get_package joins
+        through MediaBuy under the tenant filter, so a package that was found
+        guarantees a parent that exists. Swallowing a miss here would leave the
+        buyer's concurrency token stale with no signal.
+        """
+        self._bump_revision(self.get_by_id_or_raise(media_buy_id))
 
     def create_package(
         self,
@@ -506,6 +658,7 @@ class MediaBuyRepository:
             pacing=pacing,
         )
         self._session.add(package)
+        self._bump_revision(media_buy)
         self._session.flush()
         return package
 
@@ -523,6 +676,7 @@ class MediaBuyRepository:
         if package is None:
             return None
         package.package_config = package_config
+        self._bump_parent_revision(media_buy_id)
         self._session.flush()
         return package
 
@@ -550,6 +704,7 @@ class MediaBuyRepository:
             if not hasattr(package, key):
                 raise ValueError(f"MediaPackage has no attribute {key!r}")
             setattr(package, key, value)
+        self._bump_parent_revision(media_buy_id)
         self._session.flush()
         return package
 
@@ -578,6 +733,7 @@ class MediaBuyRepository:
                     f"Package {pkg.package_id!r} has media_buy_id={pkg.media_buy_id!r} but expected {media_buy_id!r}"
                 )
             self._session.add(pkg)
+        self._bump_revision(media_buy)
         self._session.flush()
         return packages
 
@@ -586,10 +742,16 @@ class MediaBuyRepository:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def get_all_by_statuses(session: Session, statuses: list[str]) -> list[MediaBuy]:
+    def get_all_by_statuses(session: Session, statuses: Collection[PersistedMediaBuyStatus]) -> list[MediaBuy]:
         """Get media buys across ALL tenants filtered by status.
 
         This is a system-level query for schedulers that need to process
         media buys regardless of tenant. Not tenant-scoped.
+
+        Takes the enum, not strings. A ``list[str]`` parameter let a caller spell the
+        same set of states a second time, next to the enum set it already had, and the
+        two drifted apart in silence — adding a member to one left the other behind.
+        ``PersistedMediaBuyStatus`` is a ``StrEnum``, so members bind against the
+        ``String`` column exactly as the bare strings did.
         """
         return list(session.scalars(select(MediaBuy).where(MediaBuy.status.in_(statuses))).all())

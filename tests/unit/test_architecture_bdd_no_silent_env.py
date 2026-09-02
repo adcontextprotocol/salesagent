@@ -25,7 +25,7 @@ from tests.unit._architecture_helpers import assert_violations_match_allowlist, 
 from tests.unit._bdd_guard_helpers import iter_bdd_steps
 
 # ── Pre-existing violations ──────────────────────────────────────────────
-# FIXME: replace ctx.get("env") with ctx["env"] and hasattr() with typed
+# FIXME(#2131): replace ctx.get("env") with ctx["env"] and hasattr() with typed
 # protocol checks as UC-004 harness matures. Allowlist can only shrink.
 
 _CTX_GET_ENV_ALLOWLIST: set[tuple[str, str]] = set()

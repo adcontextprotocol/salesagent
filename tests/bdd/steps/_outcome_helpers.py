@@ -67,6 +67,17 @@ def _wire_body(ctx: dict) -> dict:
             "Transport.IMPL explicitly) to declare whether a real wire must exist."
         )
     if wire is None and transport is not Transport.IMPL:
+        # No wire on ctx for a real-wire transport. Defer to the guarded read on
+        # TransportResult — the object that HOLDS the wire — so a step definition and
+        # an integration test asserting the same thing share ONE implementation and
+        # cannot drift (#1941). It also tells the two failures apart: an errored call
+        # never had a success body, versus a dispatch that bypassed the real pipeline.
+        # A stashed ctx["wire_response"] still wins above, because a caller that
+        # re-dispatches without rewriting ctx["result"] would otherwise be graded
+        # against the STALE result.
+        result = ctx.get("result")
+        if result is not None:
+            return result.require_wire()
         raise AssertionError(f"{transport}: wire_response missing — env does not stash success-path wire")
     if wire is not None:
         return wire

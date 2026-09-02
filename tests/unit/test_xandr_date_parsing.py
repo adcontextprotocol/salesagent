@@ -6,7 +6,7 @@ Python 3.11+ is more permissive but Xandr may also return other variants.
 
 The fix uses dateutil.parser.parse() which handles any reasonable format.
 
-GH #1078 follow-up — salesagent-7jan.
+GH #1078 follow-up — .
 """
 
 import ast

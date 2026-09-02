@@ -380,21 +380,35 @@ def _extract_simple_values(items: list) -> set[str]:
 
 
 def _extract_system_values(items: list) -> dict[str, set[str]]:
-    """Extract {system: set(values)} from a list of GeoMetro/GeoPostalArea objects or dicts."""
-    from adcp.types import GeoMetro
-    from adcp.types import PostalArea as GeoPostalArea  # adcp 6.6 renamed GeoPostalArea → PostalArea
+    """Extract ``{system: set(values)}`` from geo items that carry a system and values.
 
+    Reads ``system``/``values`` off whatever it is given rather than gating on a list of
+    known classes. The gate that used to be here named ``GeoMetro`` and ``PostalArea``
+    and dropped everything else through a bare ``else: continue`` — so an item type it
+    did not recognise produced no values, and the caller could not tell that from a
+    genuine absence of overlap.
+
+    The drop was real but MASKED, and the distinction matters. The SDK emits a distinct
+    class per position, and the pin's ``geo_metros_exclude`` elements are
+    ``GeoMetrosExcludeItem``, which does NOT subclass ``GeoMetro`` — unlike the countries
+    and regions exclude types, which do subclass their include-side classes. That element
+    type would have fallen straight through the gate. It never did, because the schema
+    redeclared the field as ``list[GeoMetro]``, so Pydantic coerced every value to the
+    include-side class before this function saw it.
+
+    So the redeclaration was load-bearing: it existed to keep one field out of a swallow
+    that still ate every other unrecognised type. Deleting the gate is what makes it
+    unnecessary, which is why the redeclaration could be removed in the same change rather
+    than kept with a comment explaining why it must stay.
+    """
     by_system: dict[str, set[str]] = {}
     for item in items:
-        system: str | None
-        if isinstance(item, (GeoMetro, GeoPostalArea)):
-            system = enum_value(item.system)
-            vals = set(item.values)
-        elif isinstance(item, dict):
+        if isinstance(item, dict):
             system = enum_value(item.get("system", ""))
             vals = set(item.get("values", []))
         else:
-            continue
+            system = enum_value(item.system)
+            vals = set(item.values)
         if system is None:
             continue
         by_system.setdefault(system, set()).update(vals)

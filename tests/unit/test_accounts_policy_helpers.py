@@ -7,7 +7,7 @@ Covers:
 These are pure functions with no DB or transport dependencies, so they are
 tested in isolation without the harness.
 
-Part of epic salesagent-ng3n (Complete #1184), ticket salesagent-bh22.
+Part of epic (Complete #1184), ticket .
 """
 
 from __future__ import annotations
@@ -128,7 +128,7 @@ class TestBuildSetupForApproval:
 class TestBuildSyncResult:
     """BR-UC-011 POST-S5: seller-assigned account_id round-trips through sync responses.
 
-    Regression guard for salesagent-8c5: _build_sync_result previously dropped
+    Regression guard for : _build_sync_result previously dropped
     account_id, leaving buyers without the seller-assigned identifier they need
     for subsequent account-scoped operations.
     """

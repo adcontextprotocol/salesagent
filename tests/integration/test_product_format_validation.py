@@ -11,7 +11,6 @@ format validation behavior under different creative agent states:
 These are real integration tests: real DB, real Flask app, real form POST.
 Only the creative agent registry is mocked at the boundary.
 
-Fixes: salesagent-5dc
 """
 
 import json

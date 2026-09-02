@@ -13,9 +13,9 @@ filter tenant-only. Principal A referencing principal B's ``creative_id``:
   under A's ``principal_id``.
 
 Expected — uniform with the sync_creatives gate fixed in 555069ffe
-(salesagent-hpjq): a cross-principal creative_id resolves to NOT FOUND.
+: a cross-principal creative_id resolves to NOT FOUND.
 CREATIVE_REJECTED on the wire naming the id, nothing leaked from B's row,
-never a 500. salesagent-ft8s.
+never a 500. .
 """
 
 from __future__ import annotations

@@ -8,7 +8,6 @@ object as result.payload, so result.payload.status is the domain MediaBuyStatus
 After egnl, _update_media_buy_impl returns UpdateMediaBuyResult wrapping
 the domain response with the protocol TaskStatus. result.payload.status == "completed".
 
-beads: salesagent-egnl
 """
 
 from __future__ import annotations

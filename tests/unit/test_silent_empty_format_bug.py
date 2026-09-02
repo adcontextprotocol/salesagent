@@ -1,4 +1,4 @@
-"""Regression tests for salesagent-kwws: silent return [] masks agent failures.
+"""Regression tests for : silent return [] masks agent failures.
 
 _fetch_formats_from_agent and _fetch_formats_raw_mcp have paths that silently
 return [] without raising. list_all_formats_with_errors then records no error,
@@ -10,7 +10,6 @@ list_all_formats_with_errors captures it as an error and triggers graceful
 degradation.
 
 Bug: prebid/salesagent#1136
-Beads: salesagent-kwws
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch

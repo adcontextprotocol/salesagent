@@ -15,7 +15,7 @@ from src.admin.utils import require_tenant_access
 from src.admin.utils.audit_decorator import log_admin_action
 from src.core.database.database_session import get_db_session
 from src.core.database.integrity import resolve_or_write
-from src.core.database.models import PricingOption, Product, ProductInventoryMapping, Tenant
+from src.core.database.models import PersistedMediaBuyStatus, PricingOption, Product, ProductInventoryMapping, Tenant
 from src.core.database.product_pricing import get_product_pricing_options
 from src.core.database.repositories.media_buy import MediaBuyRepository
 from src.core.schemas import Format
@@ -2147,7 +2147,27 @@ def delete_product(tenant_id, product_id):
 
             # Check if product is used in any active media buys
             mb_repo = MediaBuyRepository(db_session, tenant_id)
-            active_buys = mb_repo.list_by_statuses(["pending", "active", "paused"])
+            # SCHEDULED is here because a buy whose flight window has not opened yet is
+            # still a live commitment: the seller has agreed to run it, and deleting the
+            # product underneath it breaks a buy that has not had its chance to deliver.
+            # It became reachable when the admin approval routes started writing the
+            # resolved flight-window status -- a pre-window buy used to land `active`
+            # (and so was protected by that member) and now lands `scheduled`.
+            #
+            # Listed explicitly rather than reusing models._SELLER_COMMITTED_STATUSES,
+            # although that set is a near-match and the resemblance is a trap: it also
+            # contains COMPLETED and CANCELED. A finished or cancelled buy must NOT
+            # block product deletion -- it has no future delivery to protect -- so
+            # adopting the set would silently make products undeletable forever.
+            # The correct membership rule for THIS guard is "could still deliver".
+            active_buys = mb_repo.list_by_statuses(
+                [
+                    PersistedMediaBuyStatus.PENDING,
+                    PersistedMediaBuyStatus.SCHEDULED,
+                    PersistedMediaBuyStatus.ACTIVE,
+                    PersistedMediaBuyStatus.PAUSED,
+                ]
+            )
 
             # Check if any active media buys reference this product
             for buy in active_buys:

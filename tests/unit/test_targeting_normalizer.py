@@ -1,6 +1,6 @@
 """Tests for Targeting.normalize_legacy_geo() model validator.
 
-Regression tests for salesagent-uca: ensures the legacy normalizer correctly
+Regression tests for : ensures the legacy normalizer correctly
 converts bare region codes to ISO 3166-2, drops v2 keys when v3 present,
 and sets had_city_targeting flag for city fields.
 """
