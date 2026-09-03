@@ -449,7 +449,7 @@ class TestWireReadersBranchOnTheDeclaration:
     def test_readers_raise_when_a_declared_wire_was_not_stashed(self, payload):
         """has_wire with no wire_response is a harness bug — raise, never serialize."""
         result = TransportResult(payload=payload, wire_response=None, has_wire=True)
-        ctx = {"result": result, "response": payload, "wire_response": None}
+        ctx = {"result": result, "response": payload, "wire_response": None, "transport": Transport.REST}
         for reader, args in ((wire_field, (ctx, "formats")), (wire_dict, (ctx,))):
             with pytest.raises(AssertionError, match="wire_response"):
                 reader(*args)
@@ -459,14 +459,19 @@ class TestWireReadersBranchOnTheDeclaration:
         stashed = {"formats": [{"format_id": {"agent_url": "https://x.test", "id": "sentinel"}}]}
         assert stashed != payload.model_dump(mode="json")
         result = TransportResult(payload=payload, wire_response=stashed, has_wire=True)
-        ctx = {"result": result, "response": payload, "wire_response": stashed}
+        ctx = {"result": result, "response": payload, "wire_response": stashed, "transport": Transport.REST}
         assert wire_dict(ctx) == stashed
         assert wire_field(ctx, "formats") == stashed["formats"]
 
     def test_readers_use_the_production_serializer_only_when_no_wire_is_declared(self, payload):
-        """has_wire=False is the ONLY path onto the serializer."""
+        """has_wire=False is the ONLY path onto the serializer.
+
+        ``Transport.IMPL``, not a real-wire transport: this row's declaration IS "no
+        wire", and the two must agree — a REST leg declaring it captured nothing is a
+        contradiction the loud guard exists to refuse, not a serializer case.
+        """
         result = TransportResult(payload=payload, wire_response=None, has_wire=False)
-        ctx = {"result": result, "response": payload, "wire_response": None}
+        ctx = {"result": result, "response": payload, "wire_response": None, "transport": Transport.IMPL}
         serialized = payload.model_dump(mode="json")
         assert wire_dict(ctx) == serialized
         assert wire_field(ctx, "formats") == serialized["formats"]
@@ -479,7 +484,10 @@ class TestWireReadersBranchOnTheDeclaration:
         so a dispatch that THREW lands here and must not be misdiagnosed as "never
         dispatched".
         """
-        ctx = {"response": payload, "error": RuntimeError("boom-from-dispatch")}
+        # A transport IS declared: without one the readers stop at the unset-transport
+        # guard, which is a different diagnostic and would let this test pass without
+        # ever reaching the missing-``result`` message it exists to pin.
+        ctx = {"response": payload, "error": RuntimeError("boom-from-dispatch"), "transport": Transport.REST}
         for reader, args in ((wire_field, (ctx, "formats")), (wire_dict, (ctx,))):
             with pytest.raises(AssertionError, match="boom-from-dispatch"):
                 reader(*args)
