@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pytest_bdd import parsers, then
 
-from tests.bdd.steps._outcome_helpers import payload_or_none, wire_error_envelope_or_none
+from tests.bdd.steps._outcome_helpers import payload_or_none, wire_error_dict, wire_error_envelope_or_none
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -190,14 +190,15 @@ def _wire_envelope(ctx: dict) -> dict:
     falls back to the synthesized envelope only where no wire exists by
     definition (IMPL). See tests/CLAUDE.md § Error Verification Policy.
     """
-    envelope = ctx.get("wire_error_envelope")
-    if envelope is None:
-        envelope = ctx.get("synthesized_error_envelope")
-    assert isinstance(envelope, dict), (
-        f"no wire error envelope captured — error={ctx.get('error')!r}, "
-        f"response={'present' if payload_or_none(ctx) is not None else 'absent'}"
-    )
-    return envelope
+    # Through the guarded accessor, NOT ``ctx.get``. The two ctx copies this used to
+    # read were deleted in the same change that wrote this docstring (``_dispatch.py``:
+    # "NO ctx envelope copies. Then steps read ctx['result'].error_envelope()"), so both
+    # lookups returned None and every caller failed with "no wire error envelope
+    # captured" against a dispatch that had captured one. ``wire_error_dict`` IS the
+    # behaviour described above — real wire first, synthesized only where no wire exists
+    # by definition — decided from the dispatcher's own ``has_wire`` declaration rather
+    # than from which ctx key happens to be populated.
+    return wire_error_dict(ctx)
 
 
 def _assert_wire_error(ctx: dict, code: str, *, recovery: str | None = None) -> None:
