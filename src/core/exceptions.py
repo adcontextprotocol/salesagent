@@ -11,15 +11,17 @@ to help buyer agents decide whether to retry, fix, or abandon a request.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+import math
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, get_args
 
 from adcp.server.helpers import STANDARD_ERROR_CODES, adcp_error
+from adcp.types import Error as LibraryError
 from pydantic import BaseModel, ValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
-    from adcp.types import ContextObject, Error
+    from adcp.types import ContextObject
 
 logger = logging.getLogger(__name__)
 
@@ -31,70 +33,174 @@ RecoveryHint = Literal["transient", "correctable", "terminal"]
 # Every code that reaches the wire (buyer agent) MUST be in
 # WIRE_STANDARD_CODES.  Codes in ERROR_CODE_MAPPING are translated at the
 # transport boundary; codes in INTERNAL_CODES never leave the server.
+#
+# Two tables, one job each, so neither answers a question the other owns:
+#   * WIRE_STANDARD_CODES  — which code NAMES may reach a buyer. Membership only;
+#     its values are empty by construction (see below).
+#   * RECOVERY_BY_WIRE_CODE — what each of those codes means for retry. Loaded
+#     from the pinned spec at import; the only recovery classification either
+#     TABLE in this module carries.
+# Recovery is DERIVED, not stated. ``AdCPError.recovery`` is a read-only property
+# that looks its wire code up in RECOVERY_BY_WIRE_CODE, so the only way to say
+# "this is terminal" is to raise a class whose code the pinned enumMetadata
+# classifies terminal. There is no ``recovery=`` kwarg on ``__init__`` or on
+# ``synthesize`` to disagree with the pin through, and no raise site in ``src/``
+# carries a hand-typed recovery literal.
+#
+# One hand-typed surface remains, and it is graded: the per-class
+# ``_default_recovery`` literals below. They are the fallback for a code the pin
+# does not define, and
+# tests/unit/test_architecture_error_recovery_enum_conformance.py checks every
+# class whose code the pin DOES define against this same table — so a literal
+# that contradicts the pin fails a test rather than reaching a buyer.
+
+
+def _load_pinned_recovery() -> dict[str, RecoveryHint]:
+    """Read the normative ``recovery`` classification for every pinned wire code.
+
+    Source: the installed SDK's own plain schema tree, ``adcp/_schemas/<major.minor>/
+    enums/error-code.json`` → ``enumMetadata``. That block is normative — its
+    ``$comment`` states "SDKs MUST consume this block instead of parsing
+    'Recovery: X' from enumDescriptions prose" — so it is machine-read here rather
+    than transcribed. A pin bump moves this table with zero edits to this file.
+
+    Deliberately NOT sourced from ``adcp.server.helpers.STANDARD_ERROR_CODES``:
+    probed at the 6.6.0 pin, the helper's own ``recovery`` values contradict the
+    schema on 7 of its 38 codes (UNSUPPORTED_FEATURE, AUTHORIZATION_REQUIRED,
+    IDEMPOTENCY_CONFLICT and IDEMPOTENCY_EXPIRED terminal-vs-correctable;
+    ACCOUNT_PAYMENT_REQUIRED and BUDGET_EXHAUSTED correctable-vs-terminal;
+    CONFLICT correctable-vs-transient). The SDK is a cross-check, not the
+    authority (CLAUDE.md spec-grounding gate).
+
+    Mirrors ``_pinned_recovery_by_code`` in
+    tests/unit/test_architecture_error_recovery_enum_conformance.py, which keeps
+    its OWN independent load — src cannot import from tests, and the duplicated
+    path derivation is what lets that oracle grade this loader instead of
+    agreeing with it.
+    """
+    import json
+    from pathlib import Path
+
+    import adcp
+
+    major, minor = adcp.get_adcp_spec_version().split(".")[:2]
+    schema_path = Path(adcp.__file__).parent / "_schemas" / f"{major}.{minor}" / "enums" / "error-code.json"
+    metadata = json.loads(schema_path.read_text())["enumMetadata"]
+    table = {
+        code: entry["recovery"] for code, entry in metadata.items() if isinstance(entry, dict) and "recovery" in entry
+    }
+
+    # The file-shape invariants live HERE, in the seam that reads the file, so a
+    # partial table can never be RETURNED. Checked at module scope they would be
+    # checked on a partial table that already exists and has already been handed
+    # to every caller. `raise`, not `assert`: -O deletes an assert, and a pin
+    # whose enforcement vanishes under an interpreter flag is not enforcement.
+    if len(table) < 90:
+        raise RuntimeError(
+            f"RECOVERY_BY_WIRE_CODE loaded only {len(table)} codes from the pinned enumMetadata; "
+            f"the 3.1 pin defines 92. The loader is reading the wrong file or shape."
+        )
+    bad_values = {v for v in table.values() if v not in get_args(RecoveryHint)}
+    if bad_values:
+        raise RuntimeError(f"Pinned enumMetadata carries recovery value(s) outside RecoveryHint: {bad_values}")
+
+    return table
+
+
+# The recovery classification for every code the pinned spec defines (92 at the
+# 3.1 pin). Read-only vocabulary: consumers look a code up, never assign one.
+RECOVERY_BY_WIRE_CODE: dict[str, RecoveryHint] = _load_pinned_recovery()
 
 # Spec codes the SDK helper table has not caught up to. The pinned 3.1.1 enum
-# (dist/schemas/3.1.1/enums/error-code.json) defines these as real wire codes;
-# adcp 6.6.0's ``STANDARD_ERROR_CODES`` predates them, and the SDK is a
-# cross-check, not the authority. CREATIVE_NOT_FOUND per the enum: correctable,
-# and "Sellers MUST return this code uniformly for any creative_id not owned by
-# the calling account" (#1430 review). CONFIGURATION_ERROR per the enum:
-# terminal — "the buyer cannot resolve a seller-side deployment
-# misconfiguration and MUST NOT auto-retry" (#1430 review). AUTH_MISSING /
-# AUTH_INVALID (v3.1.1 error-code.json) replace the deprecated AUTH_REQUIRED
-# alias with a split: AUTH_MISSING ("No credentials were presented ...
-# Recovery: correctable") vs AUTH_INVALID ("Credentials were presented but
-# rejected ... Recovery: terminal") — see salesagent-mkso. adcp 6.6.0 has not
-# implemented the split yet (SDK is a cross-check, not authoritative). The
-# remaining demoted spec code (BILLING_NOT_SUPPORTED) is tracked for the same
-# treatment in #1602.
-_SPEC_SUPPLEMENT_CODES: dict[str, dict[str, str]] = {
-    "CREATIVE_NOT_FOUND": {"recovery": "correctable", "message": "Creative not found"},
-    "CONFIGURATION_ERROR": {"recovery": "terminal", "message": "Configuration error"},
-    "AUTH_MISSING": {"recovery": "correctable", "message": "No credentials were presented"},
-    "AUTH_INVALID": {"recovery": "terminal", "message": "Credentials were presented but rejected"},
-    # v3.1.1 error-code.json: authenticated caller not authorized under the
-    # seller's own policies (distinct from AUTHORIZATION_REQUIRED, which is a
-    # downstream-platform-connection gap). Replaces the deprecated AUTH_REQUIRED
-    # alias for AdCPAuthorizationError (salesagent-otc5).
-    "PERMISSION_DENIED": {"recovery": "correctable", "message": "Not authorized for this action"},
-    # v3.1.1 error-code.json: buyer pinned an adcp_version/adcp_major_version
-    # this seller doesn't support. Recovery: correctable — the buyer can
-    # re-pin to a version this seller advertises via get_adcp_capabilities.adcp
-    # and retry (salesagent-rldj, #1592 C4).
-    "VERSION_UNSUPPORTED": {"recovery": "correctable", "message": "Requested AdCP version is not supported"},
-    # v3.1.1 error-code.json: a settings-update (AccountReference) sync_accounts
-    # entry matched no existing account -- settings-update entries MUST NOT
-    # provision a new account, so the mismatch is rejected rather than silently
-    # falling through to provisioning. Recovery: correctable -- the buyer can
-    # provision the account via 'brand'/'operator'/'billing' instead
-    # (salesagent-5g8e, #1592 A2).
-    "UNSUPPORTED_PROVISIONING": {
-        "recovery": "correctable",
-        "message": "Settings-update entry matched no existing account",
-    },
-    # v3.1.1 error-code.json: the seller declines the requested `billing` value,
-    # either at the seller-wide capability level or the per-account-relationship
-    # level. Recovery: correctable -- the buyer can re-check get_adcp_capabilities
-    # for supported_billing and resubmit with a supported value (closes the
-    # #1602 half tracked here; UNSUPPORTED_PROVISIONING above closed the other).
-    "BILLING_NOT_SUPPORTED": {
-        "recovery": "correctable",
-        "message": "Billing model is not supported by this seller",
-    },
-}
+# (enums/error-code.json, shipped inside the installed adcp SDK) defines these
+# as real wire codes; adcp 6.6.0's ``STANDARD_ERROR_CODES`` predates them, and
+# the SDK is a cross-check, not the authority. Their recovery classifications
+# are NOT repeated here — this is a set of code NAMES; RECOVERY_BY_WIRE_CODE
+# answers what they mean, machine-read from the same pin the citations below
+# quote.
+#
+# * CREATIVE_NOT_FOUND — "Sellers MUST return this code uniformly for any
+#   creative_id not owned by the calling account" (#1430 review).
+# * CONFIGURATION_ERROR — "the buyer cannot resolve a seller-side deployment
+#   misconfiguration and MUST NOT auto-retry" (#1430 review).
+# * AUTH_MISSING / AUTH_INVALID — v3.1.1 replaces the now-deprecated
+#   AUTH_REQUIRED alias with a split: AUTH_MISSING ("No credentials were
+#   presented"; correctable) vs AUTH_INVALID ("Credentials were presented but
+#   rejected"; terminal). See salesagent-mkso; adcp 6.6.0 has not implemented
+#   the split yet.
+# * PERMISSION_DENIED — authenticated caller not authorized under the seller's
+#   own policies. Distinct from AUTHORIZATION_REQUIRED, which is a
+#   downstream-platform-connection gap. Replaces the deprecated AUTH_REQUIRED
+#   alias for AdCPAuthorizationError (salesagent-otc5).
+# * VERSION_UNSUPPORTED — buyer pinned an adcp_version/adcp_major_version this
+#   seller doesn't support; the buyer can re-pin to a version advertised via
+#   get_adcp_capabilities.adcp and retry (salesagent-rldj, #1592 C4).
+# * UNSUPPORTED_PROVISIONING — a settings-update (AccountReference)
+#   sync_accounts entry matched no existing account. Settings-update entries
+#   MUST NOT provision a new account, so the mismatch is rejected rather than
+#   silently falling through to provisioning (salesagent-5g8e, #1592 A2).
+# * BILLING_NOT_SUPPORTED — the seller declines the requested `billing` value,
+#   at the seller-wide capability level or the per-account-relationship level.
+#   Promoting it here (with UNSUPPORTED_PROVISIONING) closes #1602: it is a
+#   pinned wire code, no longer a demotion translated to UNSUPPORTED_FEATURE.
+_SPEC_SUPPLEMENT_CODES: frozenset[str] = frozenset(
+    {
+        "CREATIVE_NOT_FOUND",
+        "CONFIGURATION_ERROR",
+        "AUTH_MISSING",
+        "AUTH_INVALID",
+        "PERMISSION_DENIED",
+        "VERSION_UNSUPPORTED",
+        "UNSUPPORTED_PROVISIONING",
+        "BILLING_NOT_SUPPORTED",
+    }
+)
 
-# SDK STANDARD_ERROR_CODES entries AdCP v3.1.1 dropped; translated to their
-# canonical v3.1.1 target via ERROR_CODE_MAPPING, never emitted standalone.
-# NOT_SUPPORTED is the legacy SDK feature-unsupported code; v3.1.1's
-# error-code.json canonicalizes feature-unsupported as UNSUPPORTED_FEATURE, so
-# NOT_SUPPORTED has zero production raise sites and must not reach the wire.
+# Codes the SDK helper ships that the PINNED spec does not define. The pin is the
+# authority and the helper is a cross-check (CLAUDE.md spec-grounding gate), so a
+# helper-only code is not a wire code -- it has no normative recovery
+# classification, and admitting it would leave the recovery table partial and
+# every lookup falling back to an authored default, which is exactly what
+# invariant I6 ("recovery is derived, never authored") forbids.
+#
+# NOT_SUPPORTED is the single code by which adcp.server.helpers.STANDARD_ERROR_CODES
+# (38 entries) exceeds the pinned 3.1 enum (92 entries): absent from `enum` and
+# from `enumMetadata`, and absent from the whole of dist/ at v3.1.1. The SDK even
+# assigns it recovery="terminal", which _load_pinned_recovery's docstring above
+# already explains is not a value to trust. UNSUPPORTED_FEATURE, which IS pinned,
+# is the code this seller emits instead; nothing in src/ produces the bare one,
+# and ERROR_CODE_MAPPING translates it to UNSUPPORTED_FEATURE belt-and-braces so
+# a stray raise site collapses to the canonical code rather than to the generic
+# SERVICE_UNAVAILABLE.
 _SPEC_DEMOTED_CODES: frozenset[str] = frozenset({"NOT_SUPPORTED"})
 
-# The authoritative wire-code table: SDK baseline + pinned-spec supplement,
-# minus the codes AdCP v3.1.1 demoted (which translate to a canonical target).
+# The authoritative wire-code table: SDK code-name baseline + pinned-spec
+# supplement. Values are empty on purpose and every consumer is a membership
+# check — carrying the SDK's own recovery values here would leave 7 codes
+# answering a recovery question with a value the pin contradicts, one line below
+# the table that reads the pin. An accidental value read is a loud KeyError for
+# every code instead of a silently wrong classification for some. Look a
+# classification up in RECOVERY_BY_WIRE_CODE, never here.
 WIRE_STANDARD_CODES: dict[str, dict[str, str]] = {
-    k: v for k, v in {**STANDARD_ERROR_CODES, **_SPEC_SUPPLEMENT_CODES}.items() if k not in _SPEC_DEMOTED_CODES
+    code: {} for code in (*STANDARD_ERROR_CODES, *sorted(_SPEC_SUPPLEMENT_CODES)) if code not in _SPEC_DEMOTED_CODES
 }
+
+# The wire set is TOTAL over the recovery table, by construction rather than by
+# inspection. Deleting one helper-only code would only remove today's instance:
+# the set is DERIVED from the SDK helper, so the next helper code the SDK ships
+# ahead of the pin would re-create the partial table verbatim and silently. This
+# raise turns that drift into an import failure that NAMES the offending code and
+# states the two ways to resolve it, so nobody has to rediscover which is right.
+_UNPINNED_WIRE_CODES = set(WIRE_STANDARD_CODES) - set(RECOVERY_BY_WIRE_CODE)
+if _UNPINNED_WIRE_CODES:
+    raise RuntimeError(
+        f"Wire code(s) with no pinned recovery classification: {sorted(_UNPINNED_WIRE_CODES)}. "
+        f"The SDK helper ships a code the pinned enumMetadata does not classify. Either the pin "
+        f"moved and _SPEC_SUPPLEMENT_CODES should carry it, or the helper is ahead of the spec and "
+        f"_SPEC_DEMOTED_CODES should -- with a reason. It may not simply enter the wire set: an "
+        f"unclassified code makes RECOVERY_BY_WIRE_CODE partial and sends every lookup to an "
+        f"authored default."
+    )
 
 ERROR_CODE_MAPPING: dict[str, str] = {
     # Internal-only codes that occasionally leak to the wire when a raise site
@@ -191,9 +297,32 @@ INTERNAL_CODES: frozenset[str] = frozenset(
     }
 )
 
-# Sanity check: every mapping target must be a standard code.
+# Every mapping target must be a standard code. A `raise`, not an `assert`:
+# `python -O` deletes an assert, and an invariant with an off switch is not one.
+# It stays at module scope rather than moving into the loader because it reads
+# ERROR_CODE_MAPPING, which is defined below the loader's own return.
 _NON_STANDARD_TARGETS = set(ERROR_CODE_MAPPING.values()) - set(WIRE_STANDARD_CODES)
-assert not _NON_STANDARD_TARGETS, f"ERROR_CODE_MAPPING contains non-standard targets: {_NON_STANDARD_TARGETS}"
+if _NON_STANDARD_TARGETS:
+    raise RuntimeError(f"ERROR_CODE_MAPPING contains non-standard targets: {_NON_STANDARD_TARGETS}")
+
+# `ERROR_CODE_MAPPING` targets must also be CLASSIFIED, not merely standard. This
+# used to be a separate check against RECOVERY_BY_WIRE_CODE; it is now implied by
+# the drift raise above (wire <= recovery, by construction) plus
+# _NON_STANDARD_TARGETS (targets <= wire), so keeping it would be a detector for a
+# state two other invariants already make unreachable.
+
+# Nothing may enter the spec supplement that the PIN does not classify. Distinct
+# from the drift raise: that one asks whether the wire set is total, this one asks
+# whether the supplement was populated from the pin rather than from wishful
+# thinking. Stays at module scope — it reads _SPEC_SUPPLEMENT_CODES, defined below
+# the loader.
+_UNCLASSIFIED_SUPPLEMENT = _SPEC_SUPPLEMENT_CODES - set(RECOVERY_BY_WIRE_CODE)
+if _UNCLASSIFIED_SUPPLEMENT:
+    raise RuntimeError(
+        f"Spec-supplement code(s) absent from the pinned enumMetadata: {_UNCLASSIFIED_SUPPLEMENT}. "
+        f"The supplement exists because the SDK helper lags the pin — a code the PIN lacks does not "
+        f"belong in it."
+    )
 
 
 def translate_error_code(code: str) -> str:
@@ -224,44 +353,61 @@ def to_wire_error_code(code: str) -> str:
     return translated if translated in WIRE_STANDARD_CODES else "SERVICE_UNAVAILABLE"
 
 
-def advisory_recovery_for(code: str) -> RecoveryHint:
-    """Recovery classification for a hand-built ``errors[]`` advisory.
+def wire_advisory(
+    code: str,
+    message: str,
+    *,
+    field: str | None = None,
+    suggestion: str | None = None,
+) -> LibraryError:
+    """Build an ``errors[]`` advisory entry with the recovery the PIN assigns its code.
 
-    Derived from the ``AdCPError`` subclass that owns *code* — each subclass's
-    ``_default_recovery`` is already the spec-cited classification (see the
-    per-class docstrings citing v3.1.1 ``error-code.json`` enumMetadata), so this
-    reads the existing authority rather than adding a parallel table that could
-    drift from it.
+    The ONE constructor for a per-item advisory. ``recovery`` is DERIVED, never
+    chosen: pass the code that describes what happened and the buyer-facing retry
+    semantics follow from ``RECOVERY_BY_WIRE_CODE``. That is the whole point —
+    ``adcp.types.Error`` types ``code`` as a bare ``str`` and leaves ``recovery``
+    free, so a hand-built advisory could pair a code with a recovery the pinned
+    enumMetadata contradicts, and nothing downstream would catch it: advisories
+    ride inside a SUCCESS response and never pass the boundary translator, so the
+    pair here IS the wire contract.
 
-    Falls back to ``transient`` for a code no subclass claims, which is exactly
-    what the spec tells receivers to assume: ``#/properties/code`` — "read
-    ``error.recovery`` ... and fall back to ``transient`` when ``recovery`` is
-    absent". ``to_wire_error_code`` collapses unmapped codes to
-    ``SERVICE_UNAVAILABLE``, whose pinned classification is also ``transient``,
-    so the fallback and the collapse agree.
+    The code is normalized through ``to_wire_error_code`` first, so an
+    internal-only code (``ADAPTER_ERROR``, ``API_ERROR``) can neither leak to the
+    buyer nor carry a foreign classification.
+
+    Populating ``recovery`` on every advisory is what the pin asks for:
+    ``Error.recovery``'s own description says senders SHOULD populate it on every
+    error from 3.1 onward, because a receiver that does not recognize the code
+    MUST still be able to classify from ``recovery``.
+
+    ``suggestion`` has no caller yet: the advisory sites migrated so far carry a
+    message and a field, not a suggestion. It is here so the sites that DO carry
+    one arrive through this constructor rather than around it.
     """
-    for cls in _iter_adcp_error_subclasses():
-        if getattr(cls, "_default_error_code", None) == code:
-            return cls._default_recovery
-    return "transient"
+    wire_code = to_wire_error_code(code)
+    return LibraryError(
+        code=wire_code,
+        message=message,
+        # A subscript, not ``.get``: ``to_wire_error_code`` guarantees membership in
+        # WIRE_STANDARD_CODES, and the drift raise above guarantees
+        # WIRE_STANDARD_CODES <= RECOVERY_BY_WIRE_CODE. There is no unclassified
+        # wire code left for a fallback to answer, so an authored default here
+        # would be unreachable code asserting the opposite.
+        recovery=RECOVERY_BY_WIRE_CODE[wire_code],
+        field=field,
+        suggestion=suggestion,
+    )
 
 
-def _iter_adcp_error_subclasses() -> Iterator[type[AdCPError]]:
-    """Every concrete AdCPError subclass, depth-first."""
-    stack: list[type[AdCPError]] = [AdCPError]
-    seen: set[type] = set()
-    while stack:
-        cls = stack.pop()
-        if cls in seen:
-            continue
-        seen.add(cls)
-        yield cls
-        stack.extend(cls.__subclasses__())
-
-
-def normalize_advisory_errors(errors: list[Error]) -> list[Error]:
-    """Re-code hand-built ``errors[]`` advisories to guaranteed-standard wire codes
+def normalize_advisory_errors(errors: list[LibraryError]) -> list[LibraryError]:
+    """Re-code already-built ``errors[]`` advisories to guaranteed-standard wire codes
     and populate ``recovery``, preserving every other caller-set field verbatim.
+
+    The bulk counterpart to :func:`wire_advisory`, and it reads the same single
+    authority: ``wire_advisory`` DERIVES the (code, recovery) pair when an advisory
+    is constructed; this re-derives it for a list of advisories already assembled
+    with their per-item ``details``/``issues``/``source`` payloads, which
+    ``wire_advisory``'s narrow signature deliberately does not carry.
 
     Unlike a raised ``AdCPError`` (translated at the transport boundary), advisory
     entries serialize verbatim, so an internal-only code would leak to the buyer.
@@ -271,9 +417,17 @@ def normalize_advisory_errors(errors: list[Error]) -> list[Error]:
 
     ``field``/``suggestion``/``details``/``retry_after``/``issues``/``source``/
     ``sdk_id`` pass through untouched -- only ``code`` is re-coded. ``recovery``
-    is FILLED via ``advisory_recovery_for`` only when the caller left it unset;
-    an explicit ``recovery`` the caller pinned (e.g. because the code's default
-    classification doesn't fit the specific advisory) is never clobbered.
+    is FILLED from ``RECOVERY_BY_WIRE_CODE`` -- the pinned enumMetadata, the one
+    table in this module that answers a recovery question -- only when the caller
+    left it unset. An explicit ``recovery`` the caller pinned (e.g. media_buy_list's
+    blob-defect advisories, whose classification is narrower than the code's
+    enum-wide default) is never clobbered.
+
+    The lookup is a subscript, not a ``.get``, for the same reason as
+    ``wire_advisory``'s: ``to_wire_error_code`` guarantees membership in
+    WIRE_STANDARD_CODES, and the drift raise above guarantees
+    WIRE_STANDARD_CODES <= RECOVERY_BY_WIRE_CODE, so no authored fallback is
+    reachable here.
 
     ``recovery`` is populated even though ``core/error.json`` lists only
     ``[code, message]`` as required: the ``recovery`` property description is
@@ -285,13 +439,11 @@ def normalize_advisory_errors(errors: list[Error]) -> list[Error]:
     shared by every ``_impl`` that emits advisories, and a tool importing an
     advisory normalizer from a sibling tool module is a layering inversion.
     """
-    from adcp.types import Error
-
     return [
-        Error(  # structural-guard: advisory entry serialized verbatim into a response errors[]
+        LibraryError(  # structural-guard: advisory entry serialized verbatim into a response errors[]
             code=(wire_code := to_wire_error_code(e.code)),
             message=e.message,
-            recovery=e.recovery if e.recovery is not None else advisory_recovery_for(wire_code),
+            recovery=e.recovery if e.recovery is not None else RECOVERY_BY_WIRE_CODE[wire_code],
             field=e.field,
             suggestion=e.suggestion,
             details=e.details,
@@ -340,6 +492,26 @@ def _serialize_context(
     return context.model_dump(mode="json", exclude_none=True)
 
 
+# The spec Error model bounds retry_after to [1, 3600] seconds (clients clamp
+# anyway); never emit more even when the underlying wait is longer. A spec
+# constant, not an operational knob — deliberately not env-tunable.
+RETRY_AFTER_MAX = 3600
+
+
+def clamp_retry_after(seconds: float) -> int:
+    """Clamp a raw retry_after to the spec Error model's [1, RETRY_AFTER_MAX] bound.
+
+    The single home for the floor/ceiling every emitter shares — the idempotency
+    policy's rejection branches and the egress seam's Retry-After passthrough.
+    Callers layer any context-specific cap (e.g. an insert-rate window) on top.
+
+    It lives here rather than beside either caller because this module already
+    owns ``AdCPError.retry_after`` and the spec Error shape, so neither emitter
+    ends up importing the other.
+    """
+    return min(max(1, math.ceil(seconds)), RETRY_AFTER_MAX)
+
+
 class AdCPError(Exception):
     """Base exception for all AdCP errors.
 
@@ -383,9 +555,9 @@ class AdCPError(Exception):
     _default_suggestion: ClassVar[str | None] = None
 
     # Instance attributes — set in __init__ from _default_* unless overridden.
+    # ``recovery`` is NOT among them: it is a read-only property, derived below.
     error_code: str
     status_code: int
-    recovery: RecoveryHint
 
     def __init__(
         self,
@@ -394,7 +566,6 @@ class AdCPError(Exception):
         error_code: str | None = None,
         status_code: int | None = None,
         details: dict[str, Any] | None = None,
-        recovery: RecoveryHint | None = None,
         field: str | None = None,
         suggestion: str | None = None,
         retry_after: int | None = None,
@@ -413,7 +584,35 @@ class AdCPError(Exception):
         self.context = context
         self.error_code = error_code if error_code is not None else type(self)._default_error_code
         self.status_code = status_code if status_code is not None else type(self)._default_status_code
-        self.recovery = recovery if recovery is not None else type(self)._default_recovery
+
+    @property
+    def recovery(self) -> RecoveryHint:
+        """The buyer-facing retry classification for this error's WIRE code.
+
+        Read-only and DERIVED — there is no way to say "I want terminal" except by
+        raising a class whose wire code the pinned enumMetadata classifies terminal.
+        Possession of the class is the proof. Before this, ``recovery=`` was a free
+        constructor kwarg, so a raise site could pair any code with any
+        classification and nothing in the system disagreed: the wire carried
+        SERVICE_UNAVAILABLE + terminal (retry forever / do not retry) and a green
+        test graded it.
+
+        Derivation follows ``wire_error_code``, NOT ``error_code``: the buyer reads
+        the translated code, so the classification must be the one the pin assigns
+        to what they actually receive.
+
+        This one keeps its ``.get``, unlike :func:`wire_advisory`'s subscript, and
+        the difference is the DOMAIN. ``wire_advisory`` reads
+        ``to_wire_error_code``'s output, which is guaranteed to be in
+        WIRE_STANDARD_CODES. This reads ``ERROR_CODE_MAPPING.get(code, code)`` --
+        a pass-through -- so its domain is whatever any raise site put in
+        ``error_code``, which is literally unbounded: ``synthesize`` accepts an
+        arbitrary string, and ``tool_error_logging`` passes
+        ``type(error).__name__``, so ``"ValueError"`` can arrive here. Making this
+        a subscript would turn the boundary error handler into a ``KeyError``
+        raised while already handling a failure.
+        """
+        return RECOVERY_BY_WIRE_CODE.get(self.wire_error_code, type(self)._default_recovery)
 
     @property
     def wire_error_code(self) -> str:
@@ -434,7 +633,6 @@ class AdCPError(Exception):
         *,
         error_code: str,
         status_code: int | None = None,
-        recovery: RecoveryHint | None = None,
         details: dict[str, Any] | None = None,
         field: str | None = None,
         suggestion: str | None = None,
@@ -454,12 +652,15 @@ class AdCPError(Exception):
         attributes are a footgun the public API should not invite; this method
         documents the synthesis intent explicitly so reviewers can audit
         every site that bypasses the typed class hierarchy.
+
+        ``recovery`` is deliberately NOT a parameter here either. A synthesized
+        error derives its classification from the code it was given, exactly like
+        a typed raise: the code is the choice, the retry semantics follow.
         """
         return cls(
             message,
             error_code=error_code,
             status_code=status_code,
-            recovery=recovery,
             details=details,
             field=field,
             suggestion=suggestion,
@@ -559,7 +760,26 @@ class AdCPValidationError(AdCPError):
 
     _default_status_code: ClassVar[int] = 400
     _default_error_code: ClassVar[str] = "VALIDATION_ERROR"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
+
+
+class AdCPBlockedUrlError(AdCPValidationError):
+    """Raised when a URL is refused by SSRF egress policy."""
+
+    _default_message: ClassVar[str] = "URL resolves to a restricted range."
+
+    def __init__(
+        self,
+        *,
+        field: str | None = None,
+        suggestion: str | None = None,
+        context: ContextObject | dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            type(self)._default_message,
+            field=field,
+            suggestion=suggestion,
+            context=context,
+        )
 
 
 class AdCPVersionUnsupportedError(AdCPError):
@@ -571,7 +791,6 @@ class AdCPVersionUnsupportedError(AdCPError):
 
     _default_status_code: ClassVar[int] = 400
     _default_error_code: ClassVar[str] = "VERSION_UNSUPPORTED"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPInvalidRequestError(AdCPValidationError):
@@ -616,7 +835,15 @@ class AdCPAuthenticationError(AdCPError):
 
     _default_status_code: ClassVar[int] = 401
     _default_error_code: ClassVar[str] = "AUTH_INVALID"
-    _default_recovery: ClassVar[RecoveryHint] = "terminal"
+    # No ``_default_recovery``: recovery is derived from the pinned enumMetadata,
+    # which classifies AUTH_INVALID ``terminal``. Declaring it here would only
+    # re-open the divergence channel the derivation closed.
+    #
+    # Every presented-but-rejected authentication failure shares one buyer fix
+    # hint, so the graded top-level suggestion (error.json) can never be forgotten
+    # at a raise site (#1417 round-8 review item 4: 11 of 12 raise sites emitted an
+    # empty suggestion). AdCPAuthRequiredError overrides it for the
+    # absent-credential framing.
     _default_suggestion: ClassVar[str | None] = AUTH_INVALID_SUGGESTION
 
 
@@ -629,7 +856,6 @@ class AdCPAuthRequiredError(AdCPAuthenticationError):
     """
 
     _default_error_code: ClassVar[str] = "AUTH_MISSING"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
     _default_suggestion: ClassVar[str | None] = AUTH_MISSING_SUGGESTION
 
 
@@ -646,7 +872,6 @@ class AdCPAuthorizationError(AdCPError):
 
     _default_status_code: ClassVar[int] = 403
     _default_error_code: ClassVar[str] = "PERMISSION_DENIED"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPPolicyViolationError(AdCPAuthorizationError):
@@ -660,7 +885,6 @@ class AdCPPolicyViolationError(AdCPAuthorizationError):
     """
 
     _default_error_code: ClassVar[str] = "POLICY_VIOLATION"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPNotFoundError(AdCPError):
@@ -673,7 +897,6 @@ class AdCPNotFoundError(AdCPError):
 
     _default_status_code: ClassVar[int] = 404
     _default_error_code: ClassVar[str] = "NOT_FOUND"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPAccountNotFoundError(AdCPNotFoundError):
@@ -685,7 +908,6 @@ class AdCPAccountNotFoundError(AdCPNotFoundError):
     """
 
     _default_error_code: ClassVar[str] = "ACCOUNT_NOT_FOUND"
-    _default_recovery: ClassVar[RecoveryHint] = "terminal"
 
 
 class AdCPAccountSetupRequiredError(AdCPError):
@@ -693,7 +915,6 @@ class AdCPAccountSetupRequiredError(AdCPError):
 
     _default_status_code: ClassVar[int] = 422
     _default_error_code: ClassVar[str] = "ACCOUNT_SETUP_REQUIRED"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPAccountSuspendedError(AdCPError):
@@ -705,7 +926,6 @@ class AdCPAccountSuspendedError(AdCPError):
 
     _default_status_code: ClassVar[int] = 403
     _default_error_code: ClassVar[str] = "ACCOUNT_SUSPENDED"
-    _default_recovery: ClassVar[RecoveryHint] = "terminal"
 
 
 class AdCPAccountPaymentRequiredError(AdCPError):
@@ -720,7 +940,6 @@ class AdCPAccountPaymentRequiredError(AdCPError):
 
     _default_status_code: ClassVar[int] = 402
     _default_error_code: ClassVar[str] = "ACCOUNT_PAYMENT_REQUIRED"
-    _default_recovery: ClassVar[RecoveryHint] = "terminal"
 
 
 class AdCPConflictError(AdCPError):
@@ -735,7 +954,6 @@ class AdCPConflictError(AdCPError):
 
     _default_status_code: ClassVar[int] = 409
     _default_error_code: ClassVar[str] = "CONFLICT"
-    _default_recovery: ClassVar[RecoveryHint] = "transient"
 
 
 class AdCPAccountAmbiguousError(AdCPConflictError):
@@ -744,7 +962,6 @@ class AdCPAccountAmbiguousError(AdCPConflictError):
     _default_error_code: ClassVar[str] = "ACCOUNT_AMBIGUOUS"
     # ACCOUNT_AMBIGUOUS is correctable per the enum (the buyer disambiguates with
     # an explicit account_id) — override the transient CONFLICT parent (#1417).
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPGoneError(AdCPError):
@@ -757,7 +974,6 @@ class AdCPGoneError(AdCPError):
 
     _default_status_code: ClassVar[int] = 410
     _default_error_code: ClassVar[str] = "INVALID_STATE"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPBudgetExhaustedError(AdCPError):
@@ -770,7 +986,6 @@ class AdCPBudgetExhaustedError(AdCPError):
 
     _default_status_code: ClassVar[int] = 422
     _default_error_code: ClassVar[str] = "BUDGET_EXHAUSTED"
-    _default_recovery: ClassVar[RecoveryHint] = "terminal"
 
 
 class AdCPRateLimitError(AdCPError):
@@ -778,7 +993,6 @@ class AdCPRateLimitError(AdCPError):
 
     _default_status_code: ClassVar[int] = 429
     _default_error_code: ClassVar[str] = "RATE_LIMITED"
-    _default_recovery: ClassVar[RecoveryHint] = "transient"
 
 
 class AdCPAdapterError(AdCPError):
@@ -786,24 +1000,36 @@ class AdCPAdapterError(AdCPError):
 
     _default_status_code: ClassVar[int] = 502
     _default_error_code: ClassVar[str] = "SERVICE_UNAVAILABLE"
-    _default_recovery: ClassVar[RecoveryHint] = "transient"
 
 
 class AdCPConfigurationError(AdCPError):
     """Server-side configuration is broken (500).
 
-    Raised when encrypted secrets cannot be decrypted (key rotation,
-    corruption, missing ENCRYPTION_KEY). Callers should NOT silently
-    fall back — the configuration needs admin intervention, so recovery is
-    ``terminal``: the buyer has no lever to fix server config and per the
-    pinned enum "MUST NOT auto-retry". CONFIGURATION_ERROR is a
+    Two families of raise site, one meaning — this deployment is pointed at
+    something wrong, and only an operator can repoint it:
+
+    * local config: encrypted secrets that cannot be decrypted (key rotation,
+      corruption, missing ENCRYPTION_KEY), a missing API key.
+    * a REMOTE endpoint that is operator configuration — a registered creative
+      or signals agent — refusing us, rejecting us with a terminal 4xx, or
+      answering with something unparseable. The address came from this
+      deployment, not from the buyer, so the buyer has no lever either way.
+
+    Callers should NOT silently fall back. Recovery is ``terminal``: per the
+    pinned enum the buyer "cannot resolve a seller-side deployment
+    misconfiguration and MUST NOT auto-retry". Choosing this class IS how a
+    raise site says terminal — do not hand-type ``recovery="terminal"`` onto a
+    code the pin classifies otherwise. CONFIGURATION_ERROR is a
     _SPEC_SUPPLEMENT_CODES pass-through — it reaches the wire untranslated
     (#1430 review).
+
+    NOT for a buyer-supplied URL: that is ``AdCPBlockedUrlError``. Telling a
+    buyer the SELLER is misconfigured about an address they chose inverts the
+    provenance.
     """
 
     _default_status_code: ClassVar[int] = 500
     _default_error_code: ClassVar[str] = "CONFIGURATION_ERROR"
-    _default_recovery: ClassVar[RecoveryHint] = "terminal"
 
 
 class AdCPPersistedStateError(AdCPConfigurationError):
@@ -847,7 +1073,6 @@ class AdCPServiceUnavailableError(AdCPError):
 
     _default_status_code: ClassVar[int] = 503
     _default_error_code: ClassVar[str] = "SERVICE_UNAVAILABLE"
-    _default_recovery: ClassVar[RecoveryHint] = "transient"
 
 
 # ---------------------------------------------------------------------------
@@ -870,7 +1095,6 @@ class AdCPMediaBuyNotFoundError(AdCPNotFoundError):
     """
 
     _default_error_code: ClassVar[str] = "MEDIA_BUY_NOT_FOUND"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPPackageNotFoundError(AdCPNotFoundError):
@@ -882,7 +1106,6 @@ class AdCPPackageNotFoundError(AdCPNotFoundError):
     """
 
     _default_error_code: ClassVar[str] = "PACKAGE_NOT_FOUND"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPProductNotFoundError(AdCPNotFoundError):
@@ -897,7 +1120,6 @@ class AdCPProductNotFoundError(AdCPNotFoundError):
     """
 
     _default_error_code: ClassVar[str] = "PRODUCT_NOT_FOUND"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPContextNotFoundError(AdCPNotFoundError):
@@ -916,7 +1138,6 @@ class AdCPContextNotFoundError(AdCPNotFoundError):
     """
 
     _default_error_code: ClassVar[str] = "SESSION_NOT_FOUND"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPCreativeNotFoundError(AdCPNotFoundError):
@@ -933,7 +1154,6 @@ class AdCPCreativeNotFoundError(AdCPNotFoundError):
     """
 
     _default_error_code: ClassVar[str] = "CREATIVE_NOT_FOUND"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPFormatNotFoundError(AdCPNotFoundError):
@@ -948,7 +1168,6 @@ class AdCPFormatNotFoundError(AdCPNotFoundError):
     """
 
     _default_error_code: ClassVar[str] = "FORMAT_NOT_FOUND"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPTaskNotFoundError(AdCPNotFoundError):
@@ -963,7 +1182,6 @@ class AdCPTaskNotFoundError(AdCPNotFoundError):
     """
 
     _default_error_code: ClassVar[str] = "TASK_NOT_FOUND"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPBudgetTooLowError(AdCPError):
@@ -971,7 +1189,6 @@ class AdCPBudgetTooLowError(AdCPError):
 
     _default_status_code: ClassVar[int] = 422
     _default_error_code: ClassVar[str] = "BUDGET_TOO_LOW"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPCapabilityNotSupportedError(AdCPError):
@@ -995,7 +1212,6 @@ class AdCPCapabilityNotSupportedError(AdCPError):
 
     _default_status_code: ClassVar[int] = 422
     _default_error_code: ClassVar[str] = "UNSUPPORTED_FEATURE"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPIdempotencyConflictError(AdCPConflictError):
@@ -1012,7 +1228,6 @@ class AdCPIdempotencyConflictError(AdCPConflictError):
     """
 
     _default_error_code: ClassVar[str] = "IDEMPOTENCY_CONFLICT"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPIdempotencyExpiredError(AdCPConflictError):
@@ -1038,7 +1253,6 @@ class AdCPIdempotencyExpiredError(AdCPConflictError):
     """
 
     _default_error_code: ClassVar[str] = "IDEMPOTENCY_EXPIRED"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPCreativeRejectedError(AdCPError):
@@ -1046,7 +1260,6 @@ class AdCPCreativeRejectedError(AdCPError):
 
     _default_status_code: ClassVar[int] = 422
     _default_error_code: ClassVar[str] = "CREATIVE_REJECTED"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPBudgetExceededError(AdCPError):
@@ -1054,7 +1267,6 @@ class AdCPBudgetExceededError(AdCPError):
 
     _default_status_code: ClassVar[int] = 422
     _default_error_code: ClassVar[str] = "BUDGET_EXCEEDED"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPProductUnavailableError(AdCPError):
@@ -1062,7 +1274,6 @@ class AdCPProductUnavailableError(AdCPError):
 
     _default_status_code: ClassVar[int] = 422
     _default_error_code: ClassVar[str] = "PRODUCT_UNAVAILABLE"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 # ---------------------------------------------------------------------------
@@ -1143,7 +1354,6 @@ class AdCPMediaBuyRejectedError(AdCPError):
 
     _default_status_code: ClassVar[int] = 422
     _default_error_code: ClassVar[str] = "MEDIA_BUY_REJECTED"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 class AdCPInventoryUnavailableError(AdCPError):
@@ -1156,7 +1366,6 @@ class AdCPInventoryUnavailableError(AdCPError):
 
     _default_status_code: ClassVar[int] = 422
     _default_error_code: ClassVar[str] = "INVENTORY_UNAVAILABLE"
-    _default_recovery: ClassVar[RecoveryHint] = "correctable"
 
 
 # ---------------------------------------------------------------------------

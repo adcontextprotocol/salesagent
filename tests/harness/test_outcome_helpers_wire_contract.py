@@ -248,7 +248,14 @@ class TestEnvelopeFieldPointer:
         assert_envelope_shape(_error_envelope(None), "VALIDATION_ERROR", recovery="correctable")
 
     def test_assert_wire_error_forwards_field(self):
-        result = TransportResult(payload=None, envelope={}, wire_error_envelope=_error_envelope("budget"))
+        # has_wire=True is the honest declaration for this fixture: it carries a
+        # real ``wire_error_envelope``, which is only ever captured from actual
+        # wire bytes (REST body, MCP ToolError text, A2A failed-Task DataPart).
+        # Declaring False would model a dispatch that never sent — which cannot
+        # hold this envelope.
+        result = TransportResult(
+            payload=None, envelope={}, wire_error_envelope=_error_envelope("budget"), has_wire=True
+        )
         result.assert_wire_error("VALIDATION_ERROR", field="budget")
         with pytest.raises(AssertionError, match=r"errors\[0\].field='budget'"):
             result.assert_wire_error("VALIDATION_ERROR", field="promoted_offering")

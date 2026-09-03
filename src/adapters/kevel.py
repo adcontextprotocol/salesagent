@@ -1,18 +1,20 @@
 import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
 
-import requests
+from pydantic import JsonValue
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
+from src.adapters.vendor_http import VendorHttpClient, require_vendor
 from src.core.exceptions import (
-    AdCPAdapterError,
     AdCPCapabilityNotSupportedError,
     AdCPPackageNotFoundError,
 )
 from src.core.schemas import *
+from src.core.security.outbound_http import OperatorEndpoint, OutboundError
 
 
 class Kevel(AdServerAdapter):
@@ -52,6 +54,7 @@ class Kevel(AdServerAdapter):
         self.userdb_enabled = self.config.get("userdb_enabled", False)
         self.frequency_capping_enabled = self.config.get("frequency_capping_enabled", False)
 
+        self._vendor: VendorHttpClient | None = None
         if self.dry_run:
             self.log("Running in dry-run mode - Kevel API calls will be simulated", dry_run_prefix=False)
         else:
@@ -61,7 +64,10 @@ class Kevel(AdServerAdapter):
             self.api_key = self._require_config(
                 self.api_key, field="api_key", message="Kevel config is missing 'api_key'"
             )
-            self.headers = {"X-Adzerk-ApiKey": self.api_key, "Content-Type": "application/json"}
+            self._vendor = VendorHttpClient(
+                base_url=self.base_url,
+                headers={"X-Adzerk-ApiKey": self.api_key, "Content-Type": "application/json"},
+            )
 
     # Supported device types (Kevel doesn't support CTV)
     SUPPORTED_DEVICE_TYPES = {"mobile", "desktop", "tablet"}
@@ -307,7 +313,7 @@ class Kevel(AdServerAdapter):
                 self.log("  }")
         else:
             # Create campaign in Kevel
-            campaign_payload = {
+            campaign_payload: dict[str, JsonValue] = {
                 "AdvertiserId": int(self.advertiser_id) if self.advertiser_id else 0,
                 "Name": f"AdCP Campaign {media_buy_id}",
                 "StartDate": start_time.isoformat(),
@@ -316,8 +322,7 @@ class Kevel(AdServerAdapter):
                 "IsActive": True,
             }
 
-            response = requests.post(f"{self.base_url}/campaign", headers=self.headers, json=campaign_payload)
-            response.raise_for_status()
+            response = require_vendor(self._vendor, vendor="Kevel").call("POST", "/campaign", json=campaign_payload)
             campaign_data = response.json()
             campaign_id = campaign_data["Id"]
             self.audit_logger.log_success(f"Created Kevel Campaign ID: {campaign_id}")
@@ -363,8 +368,9 @@ class Kevel(AdServerAdapter):
                             )  # Convert to hours, minimum 1 (int for Kevel API)
                             flight_payload["FreqCapType"] = 1  # 1 = per user (cookie-based)
 
-                flight_response = requests.post(f"{self.base_url}/flight", headers=self.headers, json=flight_payload)
-                flight_response.raise_for_status()
+                flight_response = require_vendor(self._vendor, vendor="Kevel").call(
+                    "POST", "/flight", json=flight_payload
+                )
 
             # Use the actual campaign ID from Kevel
             media_buy_id = f"kevel_{campaign_id}"
@@ -410,10 +416,9 @@ class Kevel(AdServerAdapter):
         else:
             try:
                 # Get all flights for the campaign to map package names to flight IDs
-                flights_response = requests.get(
-                    f"{self.base_url}/flight", headers=self.headers, params={"campaignId": media_buy_id}
+                flights_response = require_vendor(self._vendor, vendor="Kevel").call(
+                    "GET", "/flight", params={"campaignId": media_buy_id}
                 )
-                flights_response.raise_for_status()
                 flights = flights_response.json().get("items", [])
                 flight_map = {flight["Name"]: flight["Id"] for flight in flights}
 
@@ -440,10 +445,9 @@ class Kevel(AdServerAdapter):
                         continue
 
                     # Create the creative
-                    creative_response = requests.post(
-                        f"{self.base_url}/creative", headers=self.headers, json=creative_payload
+                    creative_response = require_vendor(self._vendor, vendor="Kevel").call(
+                        "POST", "/creative", json=creative_payload
                     )
-                    creative_response.raise_for_status()
                     creative_data = creative_response.json()
                     creative_id = creative_data["Id"]
 
@@ -455,12 +459,17 @@ class Kevel(AdServerAdapter):
                     if flight_ids_to_associate:
                         for flight_id in flight_ids_to_associate:
                             ad_payload = {"CreativeId": creative_id, "FlightId": flight_id, "IsActive": True}
-                            ad_response = requests.post(f"{self.base_url}/ad", headers=self.headers, json=ad_payload)
-                            ad_response.raise_for_status()
+                            ad_response = require_vendor(self._vendor, vendor="Kevel").call(
+                                "POST", "/ad", json=ad_payload
+                            )
 
                     created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="approved"))
 
-            except requests.exceptions.RequestException as e:
+            except OutboundError as e:
+                # Narrowed, not widened: AdCPPackageNotFoundError is raised inside
+                # this same try and is deliberately NOT caught here — widening to
+                # AdCPError would swallow it and report a package-not-found as an
+                # adapter failure.
                 self.log(f"Error creating Kevel Creative or Ad: {e}")
                 for asset in assets:
                     if not any(s.creative_id == asset["creative_id"] for s in created_asset_statuses):
@@ -541,15 +550,14 @@ class Kevel(AdServerAdapter):
             )
         else:
             # Queue a report in Kevel
-            report_request = {
+            report_request: dict[str, JsonValue] = {
                 "StartDate": date_range.start.isoformat(),
                 "EndDate": date_range.end.isoformat(),
                 "GroupBy": ["day", "campaign", "flight"],
                 "Filter": {"CampaignId": media_buy_id},
             }
 
-            response = requests.post(f"{self.base_url}/report/queue", headers=self.headers, json=report_request)
-            response.raise_for_status()
+            response = require_vendor(self._vendor, vendor="Kevel").call("POST", "/report/queue", json=report_request)
             report_id = response.json()["Id"]
 
             # Poll for report completion (simplified - in production would need proper polling)
@@ -558,8 +566,7 @@ class Kevel(AdServerAdapter):
             time.sleep(1)
 
             # Get report results
-            results_response = requests.get(f"{self.base_url}/report/{report_id}/results", headers=self.headers)
-            results_response.raise_for_status()
+            results_response = require_vendor(self._vendor, vendor="Kevel").call("GET", f"/report/{report_id}/results")
 
             # Parse results and aggregate
             results = results_response.json()
@@ -687,18 +694,16 @@ class Kevel(AdServerAdapter):
 
                 if action in ["pause_media_buy", "resume_media_buy"]:
                     # Update campaign status
-                    update_payload = {"IsActive": action == "resume_media_buy"}
-                    update_response = requests.put(
-                        f"{self.base_url}/campaign/{campaign_id}", headers=self.headers, json=update_payload
+                    update_payload: dict[str, JsonValue] = {"IsActive": action == "resume_media_buy"}
+                    update_response = require_vendor(self._vendor, vendor="Kevel").call(
+                        "PUT", f"/campaign/{campaign_id}", json=update_payload
                     )
-                    update_response.raise_for_status()
 
                 elif action in ["pause_package", "resume_package"] and package_id:
                     # Get flight ID by name
-                    flights_response = requests.get(
-                        f"{self.base_url}/flight", headers=self.headers, params={"campaignId": campaign_id}
+                    flights_response = require_vendor(self._vendor, vendor="Kevel").call(
+                        "GET", "/flight", params={"campaignId": campaign_id}
                     )
-                    flights_response.raise_for_status()
                     flights = flights_response.json().get("items", [])
 
                     flight = next((f for f in flights if f["Name"] == package_id), None)
@@ -708,10 +713,9 @@ class Kevel(AdServerAdapter):
                     # Update flight status
                     is_resume = action == "resume_package"
                     update_payload = {"IsActive": is_resume}
-                    update_response = requests.put(
-                        f"{self.base_url}/flight/{flight['Id']}", headers=self.headers, json=update_payload
+                    update_response = require_vendor(self._vendor, vendor="Kevel").call(
+                        "PUT", f"/flight/{flight['Id']}", json=update_payload
                     )
-                    update_response.raise_for_status()
 
                     # Return affected package with paused state
                     return UpdateMediaBuySuccess.carrier(
@@ -733,10 +737,9 @@ class Kevel(AdServerAdapter):
                     and budget is not None
                 ):
                     # Get flight ID by name
-                    flights_response = requests.get(
-                        f"{self.base_url}/flight", headers=self.headers, params={"campaignId": campaign_id}
+                    flights_response = require_vendor(self._vendor, vendor="Kevel").call(
+                        "GET", "/flight", params={"campaignId": campaign_id}
                     )
-                    flights_response.raise_for_status()
                     flights = flights_response.json().get("items", [])
 
                     flight = next((f for f in flights if f["Name"] == package_id), None)
@@ -752,11 +755,10 @@ class Kevel(AdServerAdapter):
                         new_impressions = budget  # budget param contains impressions
 
                     # Update flight impressions
-                    impressions_payload: dict[str, int] = {"Impressions": new_impressions}
-                    update_response = requests.put(
-                        f"{self.base_url}/flight/{flight['Id']}", headers=self.headers, json=impressions_payload
+                    impressions_payload: dict[str, JsonValue] = {"Impressions": new_impressions}
+                    update_response = require_vendor(self._vendor, vendor="Kevel").call(
+                        "PUT", f"/flight/{flight['Id']}", json=impressions_payload
                     )
-                    update_response.raise_for_status()
 
                 return UpdateMediaBuySuccess.carrier(
                     media_buy_id=media_buy_id,
@@ -764,6 +766,17 @@ class Kevel(AdServerAdapter):
                     implementation_date=today,
                 )
 
-            except requests.exceptions.RequestException as e:
+            except OutboundError as e:
+                # Delegates rather than rewrapping: raise_mapped_outbound_error already
+                # produces the right AdCP class per failure (refusal -> configuration,
+                # 429 -> rate limited, terminal 4xx -> adapter, 5xx re-raised as the
+                # service-unavailable it already is). The old
+                # `raise AdCPAdapterError(str(e))` would now wrap an AdCP error in an
+                # AdCP error. Note the message text changes: str(e) used to carry the
+                # requests detail, and the seam's is a fixed constant by design.
+                # Imported here, not at module level: src.core.helpers.__init__ pulls
+                # in adapter_helpers, which imports the adapters — including this one.
+                from src.core.helpers.outbound_error_mapping import raise_mapped_outbound_error
+
                 self.log(f"Error updating Kevel flight: {e}")
-                raise AdCPAdapterError(str(e)) from e
+                raise_mapped_outbound_error(e, provenance=OperatorEndpoint("Kevel"), logger=logging.getLogger(__name__))

@@ -36,8 +36,10 @@
                 <div class="form-group">
                     <label for="auth_type">Authentication Type *</label>
                     <select id="auth_type" name="auth_type" class="form-control" onchange="toggleAuthFields()">
-                        <option value="none">None (Testing Only - Not Secure)</option>
-                        <option value="hmac_sha256" selected>HMAC-SHA256 (Recommended)</option>
+                        <option value="{{ no_authentication }}">None (Testing Only - Not Secure)</option>
+                        {% for scheme in auth_schemes %}
+                        <option value="{{ scheme }}" selected>{{ scheme }} (Recommended)</option>
+                        {% endfor %}
                     </select>
                     <small class="help-text">HMAC signatures let you verify webhooks are genuinely from us</small>
                 </div>
@@ -98,8 +100,15 @@
                             <code>{{ webhook.url }}</code>
                         </td>
                         <td>
-                            {% if webhook.authentication_type == 'hmac_sha256' %}
-                            <span class="badge badge-success">🔐 HMAC-SHA256</span>
+                            {# The badge renders the STORED spelling, never a literal. Both
+                               sides of this merge renamed auth_type -> authentication_type
+                               (the actual column); ours additionally compared it to
+                               'hmac_sha256', a spelling nothing writes -- the form's options
+                               come from AuthenticationScheme, whose value is 'HMAC-SHA256',
+                               so that branch was dead and every authenticated webhook would
+                               have rendered the "None" warning. #}
+                            {% if webhook.authentication_type %}
+                            <span class="badge badge-success">🔐 {{ webhook.authentication_type }}</span>
                             {% else %}
                             <span class="badge badge-warning">⚠️ None</span>
                             {% endif %}
@@ -416,7 +425,7 @@ function toggleAuthFields() {
     const authType = document.getElementById('auth_type').value;
     const hmacFields = document.getElementById('hmac_fields');
 
-    if (authType === 'hmac_sha256') {
+    if (authType !== '{{ no_authentication }}') {
         hmacFields.style.display = 'block';
         document.getElementById('hmac_secret').required = true;
     } else {

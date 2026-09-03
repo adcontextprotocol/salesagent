@@ -12,11 +12,26 @@ Replaces the per-boundary helpers (``_assert_two_layer_envelope``,
 ``_assert_mcp_envelope``, ``_assert_a2a_envelope``, ``_assert_rest_envelope``)
 that all verified the same shape with diverging signatures. A spec change to
 the envelope now requires updating exactly one helper.
+
+The helper catches TWO kinds of drift, not one:
+
+- exception <-> wire: the two envelope layers must agree with each other and
+  with the caller's expectation, so a typed exception whose recovery stops
+  reaching the wire reddens.
+- wire <-> spec: the ``recovery`` the caller pins must be the one the pinned
+  ``error-code.json`` ``enumMetadata`` classifies that code as. Checking only
+  the first left the helper blind to the second, and a *shipped, green* test
+  graded ``SERVICE_UNAVAILABLE`` + ``terminal`` — a pair the normative pin
+  contradicts (``SERVICE_UNAVAILABLE`` is ``transient``). Deriving the
+  expectation from the pin makes that contradiction unwritable in any future
+  test rather than merely absent from today's ones.
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+from tests.helpers import pinned_schema
 
 
 def assert_no_raw_validation_leak(message: str) -> None:
@@ -49,19 +64,43 @@ def assert_envelope_shape(
                 is mandatory: it is the buyer-facing retry semantics
                 (``correctable`` / ``transient`` / ``terminal``) and a silent
                 drift between a typed exception's recovery and the wire is
-                exactly the regression this helper exists to catch.
+                exactly the regression this helper exists to catch. It must
+                ALSO agree with the pinned ``enumMetadata`` classification of
+                *code* whenever the pin defines one: the caller's literal pins
+                intent, but an intent the spec contradicts is not gradeable.
+                Codes the pin does not classify (e.g. ``NOT_SUPPORTED``) keep
+                the caller's literal as the only expectation.
         message_substr: If provided, must appear in ``errors[0].message``.
                 ``adcp_error.message`` is allowed to differ (it carries the
                 envelope-level summary).
-        field: If provided, ``errors[0].field`` must equal it exactly — the
-                error.json ``field`` pointer naming WHICH request field was
-                rejected. Asserted at the protocol top level only: a copy buried
-                in the free-form ``details`` dict is not at the protocol position
-                and does not satisfy the contract (same burial rule as
-                ``extract_wire_suggestion``). This lives here, on the one envelope
-                primitive, rather than as a second free-function error surface —
-                a parallel error-assertion mechanism is exactly what step
-                definitions must not have to choose between.
+        field: If provided, the ``core/error.json`` ``field`` pointer naming
+                WHICH request field was rejected — a JSONPath-lite path into
+                the buyer's request payload (``core/error.json`` @3.1.1, e.g.
+                ``property_list.agent_url``). Both ``errors[0].field`` and
+                ``adcp_error.field`` must equal it exactly, checked on BOTH
+                layers for the same reason ``recovery`` is: the pinned
+                storyboards read both in the wild —
+                ``proposal_finalize.yaml:207/352/397`` grade
+                ``adcp_error.field`` while the other scenarios grade
+                ``errors[0].field`` — and ``error-handling.mdx:88`` calls
+                populating only one layer "the source-of-truth for most
+                interop bugs". ``errors[0].field`` is the CANONICAL protocol
+                position and is therefore asserted — and reported — first;
+                ``adcp_error.field`` is the envelope-level mirror
+                ``build_two_layer_error_envelope`` copies out of ``errors[0]``,
+                so a divergence is a mirroring bug and reads best after the
+                canonical layer has already been pinned. Asserted at the
+                protocol top level of each layer only: a copy buried in the
+                free-form ``details`` dict is not at the protocol position and
+                does not satisfy the contract (same burial rule as
+                ``extract_wire_suggestion``). ``None`` (the default) does not
+                assert absence: ``field`` is optional in the schema, so most
+                envelopes legally carry none. A call site that needs "no
+                ``field`` key at all" asserts that itself. This lives here, on
+                the one envelope primitive, rather than as a second
+                free-function error surface — a parallel error-assertion
+                mechanism is exactly what step definitions must not have to
+                choose between.
         check_mcp_tool_error: If ``True``, additionally assert that ``target``
                 is an ``AdCPToolError`` instance before reading its envelope.
                 MCP-boundary call sites use this to pin the exception type as
@@ -91,10 +130,26 @@ def assert_envelope_shape(
         f"errors[0].recovery={body['errors'][0].get('recovery')!r}, expected {recovery!r}"
     )
 
+    pinned_recovery = pinned_schema.recovery_by_code().get(code)
+    assert pinned_recovery is None or pinned_recovery == recovery, (
+        f"this call grades ({code!r}, {recovery!r}), but the pinned error-code.json "
+        f"enumMetadata says {code!r} is {pinned_recovery!r} — a test may not grade a pair "
+        f"the spec contradicts. The enumMetadata recovery is normative, so either the raise "
+        f"site is wrong (pick the exception class whose pinned recovery IS the intent) or "
+        f"the pin moved (advance it); do not relax this helper."
+    )
+
+    if field is not None:
+        # errors[0] is the canonical protocol position, so it is pinned (and
+        # reported) FIRST; adcp_error is the envelope-level mirror that
+        # build_two_layer_error_envelope copies out of errors[0].
+        assert body["errors"][0].get("field") == field, (
+            f"errors[0].field={body['errors'][0].get('field')!r}, expected {field!r}"
+        )
+        assert body["adcp_error"].get("field") == field, (
+            f"adcp_error.field={body['adcp_error'].get('field')!r}, expected {field!r}"
+        )
+
     if message_substr is not None:
         actual = body["errors"][0].get("message", "")
         assert message_substr in actual, f"errors[0].message={actual!r} does not contain {message_substr!r}"
-
-    if field is not None:
-        actual_field = body["errors"][0].get("field")
-        assert actual_field == field, f"errors[0].field={actual_field!r}, expected {field!r}"

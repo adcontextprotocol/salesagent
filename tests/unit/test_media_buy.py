@@ -28,6 +28,7 @@ from src.core.exceptions import (
     AdCPAuthenticationError,
     AdCPAuthorizationError,
     AdCPBudgetExceededError,
+    AdCPConfigurationError,
     AdCPContextNotFoundError,
     AdCPCreativeRejectedError,
     AdCPProductNotFoundError,
@@ -801,6 +802,7 @@ class TestBuildAdapterAssetFormatFallback:
         return creative
 
     def test_cache_miss_uses_format_resolver_fallback(self):
+        from src.core.security.outbound_http import CounterpartyUrl
         from src.core.tools.media_buy_create import _build_adapter_asset_from_creative
 
         spec = MagicMock()
@@ -816,6 +818,7 @@ class TestBuildAdapterAssetFormatFallback:
             agent_url="https://creative.adcontextprotocol.org",
             tenant_id="t1",
             product_id=None,
+            provenance=CounterpartyUrl(field=None),
         )
         assert err is None and asset is not None
 
@@ -866,6 +869,43 @@ class TestBuildAdapterAssetFormatFallback:
                 _build_adapter_asset_from_creative(
                     self._creative(), [{"package_id": "p1", "weight": 100}], tenant_id="t1"
                 )
+
+    def test_fallback_forwards_the_same_provenance_as_the_first_fetch(self):
+        """The fallback dial must carry the SAME provenance as the cached-fetch dial.
+
+        ``_build_adapter_asset_from_creative`` dials the SAME buyer-supplied
+        ``creative.agent_url`` twice: once through ``_get_format_spec_sync``
+        (already passes ``CounterpartyUrl(field=None)``), and again through
+        ``format_resolver.get_format`` when the first dial misses. Omitting
+        provenance on the second dial silently reclassifies a buyer-chosen URL
+        as operator configuration, so a subsequent refusal on that URL comes
+        back CONFIGURATION_ERROR/terminal instead of VALIDATION_ERROR/correctable
+        (salesagent-6gpt.1 diff-review round 1 BLOCKING finding, proven
+        load-bearing by round 2's executed trace: the fix routes the same
+        provenance through ``format_resolver.get_format`` ->
+        ``fetch_format_spec`` -> ``registry.get_format`` ->
+        ``get_formats_for_agent`` -> ``is_counterparty`` -> the egress seam).
+
+        Grades the WIRING at the ``fetch_format_spec`` boundary — the frame
+        the diff-review finding was actually about — rather than a live seam
+        refusal, which would make this test's outcome depend on the
+        ``ADCP_TESTING`` reference-format short-circuit two frames further
+        down (an environment detail unrelated to what this regression is).
+        """
+        from src.core.security.outbound_http import CounterpartyUrl
+        from src.core.tools.media_buy_create import _build_adapter_asset_from_creative
+
+        with (
+            patch("src.core.tools.media_buy_create._get_format_spec_sync", return_value=None),
+            patch("src.core.format_resolver.fetch_format_spec", return_value=None) as fetch_spec,
+        ):
+            _build_adapter_asset_from_creative(self._creative(), [{"package_id": "p1", "weight": 100}], tenant_id="t1")
+
+        fetch_spec.assert_called_once_with(
+            "https://creative.adcontextprotocol.org",
+            "display_300x250",
+            provenance=CounterpartyUrl(field=None),
+        )
 
 
 class TestCreateMediaBuyCreativeValidation:
@@ -1265,15 +1305,21 @@ class TestCreateMediaBuyImplAuth:
                 ),
             ),
         ):
-            with pytest.raises(AdCPValidationError, match="(?i)setup.*incomplete|required.*tasks"):
+            with pytest.raises(AdCPConfigurationError, match="(?i)setup.*incomplete|required.*tasks"):
                 await _create_media_buy_impl(req, identity=identity)
 
     @pytest.mark.asyncio
     async def test_setup_incomplete_recovery_is_terminal(self):
         """Setup incomplete errors are terminal — buyer can't fix by retrying.
 
-        Admin must complete tenant setup (currency limits, property tags).
-        Covers: (PR #1083 review)
+        Admin must complete tenant setup (currency limits, property tags), so this
+        is a SELLER-side configuration fault: the class is AdCPConfigurationError,
+        whose pinned enumMetadata recovery IS terminal. It used to be
+        AdCPValidationError carrying a hand-typed recovery="terminal" on a wire
+        code (VALIDATION_ERROR) the pin classifies correctable — the intent was
+        right and the pair contradicted the spec. Choosing the class whose pinned
+        recovery is the intent is how that intent is now expressed.
+        Covers: PR #1083 review
         """
         from src.core.tools.media_buy_create import _create_media_buy_impl
         from src.services.setup_checklist_service import SetupIncompleteError
@@ -1297,9 +1343,13 @@ class TestCreateMediaBuyImplAuth:
                 ),
             ),
         ):
-            with pytest.raises(AdCPValidationError) as exc_info:
+            with pytest.raises(AdCPConfigurationError) as exc_info:
                 await _create_media_buy_impl(req, identity=identity)
             assert exc_info.value.recovery == "terminal"
+            assert exc_info.value.error_code == "CONFIGURATION_ERROR", (
+                "the terminal verdict must be carried by a code the pin classifies terminal, "
+                f"not hand-typed onto a correctable one; got {exc_info.value.error_code!r}"
+            )
 
 
 class TestIdempotencyKeyRequired:

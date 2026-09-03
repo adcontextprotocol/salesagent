@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -146,10 +147,16 @@ def _adcp_error_from_code(
         f"INTERNAL code {error_code!r} reached harness reconstruction — production wire leaked an internal-only code"
     )
     exc_cls = _CODE_TO_CLASS.get(error_code, AdCPError)
+    # ``recovery`` is deliberately NOT passed: it is a read-only property derived
+    # from the wire code, so the reconstruction reports the same classification
+    # production does. The value actually observed on the wire is not lost — the
+    # caller stashes the whole real envelope as ``_wire_error_envelope`` (surfaced
+    # as ``result.wire_error_envelope``), which is where a test that wants to grade
+    # the wire's own recovery must read it. Asserting ``.recovery`` on this object
+    # would compare the derivation against itself and pass under any wire value.
     reconstructed = exc_cls(
         message=message,
         details=details,
-        recovery=recovery or "terminal",
         suggestion=suggestion,
         field=field,
     )
@@ -607,6 +614,36 @@ def _jsonrpc_body(response: Any, *, surface: str) -> dict[str, Any]:
     raise AssertionError(f"{surface} SSE response carried no JSON-RPC envelope: {response.text[:800]!r}")
 
 
+def _a2a_send_message_configuration(spec: dict[str, Any]) -> Any:
+    """Build the A2A ``SendMessageConfiguration`` carrying a protocol-level push config.
+
+    ``message/send`` registers a webhook one level ABOVE the AdCP tool
+    parameters: ``params.configuration.task_push_notification_config``
+    (``src/a2a_server/adcp_a2a_server.py`` — ``on_message_send`` reads it before
+    any skill routing happens). It is therefore not reachable by putting a
+    ``push_notification_config`` in the skill parameters, and it exists on no
+    other transport — MCP and REST have no equivalent protocol envelope.
+
+    *spec* is the plain dict a step writes (``{"url": ..., "authentication":
+    {"scheme": ..., "credentials": ...}}``). Note the SINGULAR ``scheme``: the
+    A2A wire type is the protobuf ``AuthenticationInfo``, not the AdCP
+    ``Authentication`` object with its ``schemes`` array. Absent credentials are
+    sent as the protobuf default (empty string) rather than omitted, because
+    that is what a buyer's client actually puts on the wire for an unset
+    protobuf string — the field cannot be "missing" in proto3.
+    """
+    from a2a.types import AuthenticationInfo, SendMessageConfiguration, TaskPushNotificationConfig
+
+    fields: dict[str, Any] = {"url": spec["url"]}
+    authentication = spec.get("authentication")
+    if authentication is not None:
+        fields["authentication"] = AuthenticationInfo(
+            scheme=authentication.get("scheme") or "",
+            credentials=authentication.get("credentials") or "",
+        )
+    return SendMessageConfiguration(task_push_notification_config=TaskPushNotificationConfig(**fields))
+
+
 class _TestClock:
     """Minimal clock for BDD relative date-token resolution.
 
@@ -634,6 +671,45 @@ class _TestClock:
         from datetime import UTC, datetime, timedelta
 
         return self._iso(datetime.now(UTC) - timedelta(days=days))
+
+
+class _GuardedPatchers:
+    """Append-only VIEW of the cleanup registry, in the ``.append(patcher)`` shape.
+
+    Deliberately not a list. Call sites that predate the registry spell patcher
+    registration as ``self._patchers.append(patcher)``
+    (``tests/harness/capabilities.py``, ``tests/harness/signing_capability.py``);
+    this keeps that spelling working while leaving exactly ONE teardown
+    mechanism. Every append forwards straight into :meth:`BaseTestEnv._guard`,
+    so a patcher registered through it is released by the SAME
+    ``_release_entered`` pass as the database and the ``EXTERNAL_PATCHES``:
+    reverse acquisition order, exactly once, on both release paths — including
+    the ``__enter__``-failed path, where Python never calls ``__exit__``.
+
+    Holding a private list here instead would reintroduce the split teardown the
+    registry replaced. Two lists mean two unwind points, and the ORDERING
+    BETWEEN them is lost: a patch taken after the DB session could no longer be
+    guaranteed to stop before that session closes. Reverse acquisition order
+    across all resources is the property that makes a partially-entered env
+    safe, and it only holds while there is one list.
+    """
+
+    __slots__ = ("_env",)
+
+    def __init__(self, env: BaseTestEnv) -> None:
+        self._env = env
+
+    def append(self, patcher: Any) -> None:
+        """Register an ALREADY-STARTED *patcher*'s ``stop()`` with the registry.
+
+        Mirrors the contract the call sites already rely on: they call
+        ``patcher.start()`` and then append, so this registers teardown only —
+        it never starts anything itself.
+        """
+        # `patch()` exposes `.attribute`; `patch.dict` and the ExitStack adapter
+        # in signing_capability.py expose neither. The label is diagnostic only.
+        label = getattr(patcher, "attribute", None) or type(patcher).__name__
+        self._env._guard(f"patcher:{label}", patcher.stop)
 
 
 class BaseTestEnv:
@@ -712,7 +788,7 @@ class BaseTestEnv:
         self._e2e_engine: Any = None
         self._tenant_overrides = tenant_overrides
         self.mock: dict[str, MagicMock] = {}
-        self._patchers: list[Any] = []
+        self._enter_cleanups: list[tuple[str, Callable[[], None]]] = []
         self._session: Session | None = None
         self._identity_cache: dict[str, ResolvedIdentity] = {}
         self._rest_client: Any = None  # Lazy-created TestClient
@@ -1199,8 +1275,10 @@ class BaseTestEnv:
 
         No restore is registered: the in-process legs get a per-test database and the
         e2e leg's live database is truncated per scenario by the BDD conftest
-        (``_reset_e2e_db``), and ``__exit__`` closes the session BEFORE it unwinds
-        ``_patchers``, so a teardown-time DB write would have nothing to write through.
+        (``_reset_e2e_db``), so a teardown-time DB write would have nothing to write
+        through. (The release order is now the registry's — reverse acquisition, so
+        patches taken after the session are stopped BEFORE it closes — but nothing
+        here depends on that, precisely because no restore is registered.)
         """
         from src.core.database.models import Tenant
         from tests.harness.signing_capability import ensure_declarable_identity_host
@@ -1562,7 +1640,10 @@ class BaseTestEnv:
             skill_name: A2A skill name (e.g., "get_products").
             response_cls: Pydantic model class to parse artifact data into.
             **kwargs: Skill parameters. ``identity`` is popped and used for
-                the identity mock; remaining kwargs become skill parameters.
+                the identity mock; ``a2a_push_notification_config`` is popped
+                and sent as the protocol-level ``SendMessageConfiguration``
+                (see :func:`_a2a_send_message_configuration`) rather than as a
+                skill parameter; remaining kwargs become skill parameters.
         """
         if self.can_sign:
             return self._run_a2a_over_http(skill_name, response_cls, **kwargs)
@@ -1580,6 +1661,10 @@ class BaseTestEnv:
 
         # Pop identity — used for the handler mock, not sent as a skill parameter.
         identity = kwargs.pop("identity", NO_IDENTITY_OVERRIDE)
+        # Pop the protocol-level push config — it belongs on SendMessageRequest.
+        # configuration, one level above the skill parameters (see
+        # _a2a_send_message_configuration).
+        protocol_push_config = kwargs.pop("a2a_push_notification_config", None)
         a2a_identity = self.identity_for(Transport.A2A) if identity is NO_IDENTITY_OVERRIDE else identity
 
         # The real A2A handler writes audit logs which require the tenant to exist
@@ -1629,7 +1714,13 @@ class BaseTestEnv:
             set_current_tenant(a2a_identity.tenant)
 
         message = create_a2a_message_with_skill(skill_name=skill_name, parameters=parameters)
-        params = SendMessageRequest(message=message)
+        if protocol_push_config is None:
+            params = SendMessageRequest(message=message)
+        else:
+            params = SendMessageRequest(
+                message=message,
+                configuration=_a2a_send_message_configuration(protocol_push_config),
+            )
 
         async def _call():
             return await handler.on_message_send(params, server_context)
@@ -2655,57 +2746,204 @@ class BaseTestEnv:
     # -- Context manager protocol ------------------------------------------
 
     def __enter__(self) -> Self:
-        # 1. Database setup (integration mode only)
+        # The nested-env guard runs BEFORE the try: it must not unwind the OUTER
+        # env's factories. Everything that ACQUIRES anything runs inside.
         if self.use_real_db:
-            from sqlalchemy.orm import Session as SASession
-
-            from src.core.database.database_session import get_engine
             from tests.factories import ALL_FACTORIES
 
-            # Guard against nested envs — session binding is global
             for f in ALL_FACTORIES:
                 assert f._meta.sqlalchemy_session is None, (
                     f"Factory {getattr(f, '__name__', type(f).__name__)} session already bound — "
                     "nested IntegrationEnv contexts are not supported"
                 )
 
-            # E2E mode connects directly to the specified database (the live
-            # server's Postgres via e2e_config.postgres_url) instead of the cached
-            # engine, so factory writes land in the DB the HTTP server reads.
-            if self._database_url:
-                from sqlalchemy import create_engine
+        try:
+            # 0. Subclass setup that must precede the database and the mocks.
+            self._enter_pre()
 
-                from src.core.database.database_session import _pydantic_json_serializer
+            # 1. Database setup (integration mode only). INSIDE the try: the
+            #    engine and the session are resources, and a SASession(bind=...)
+            #    failure used to leak the engine's connection pool.
+            if self.use_real_db:
+                from sqlalchemy.orm import Session as SASession
 
-                self._e2e_engine = create_engine(
-                    self._database_url, echo=False, json_serializer=_pydantic_json_serializer
-                )
-                engine = self._e2e_engine
-            else:
-                engine = get_engine()
-            self._session = SASession(bind=engine)
+                from src.core.database.database_session import get_engine
+                from tests.factories import ALL_FACTORIES
 
-            for f in ALL_FACTORIES:
-                f._meta.sqlalchemy_session = self._session
+                # E2E mode connects directly to the specified database (the live
+                # server's Postgres via e2e_config.postgres_url) instead of the
+                # cached engine, so factory writes land in the DB the HTTP
+                # server reads.
+                if self._database_url:
+                    from sqlalchemy import create_engine
 
-        # 2. Start patches
-        for name, target in self.EXTERNAL_PATCHES.items():
-            if name in self.ASYNC_PATCHES:
-                patcher = patch(target, new_callable=AsyncMock)
-            else:
-                patcher = patch(target)
-            self.mock[name] = patcher.start()
-            self._patchers.append(patcher)
+                    from src.core.database.database_session import _pydantic_json_serializer
 
-        self._configure_mocks()
+                    self._e2e_engine = create_engine(
+                        self._database_url, echo=False, json_serializer=_pydantic_json_serializer
+                    )
+                    self._guard("db_engine", self._dispose_engine)
+                    engine = self._e2e_engine
+                else:
+                    engine = get_engine()
 
-        # 3. E2E discovery-path seeding: the live server authenticates against
-        #    its own DB, so seed tenant/principal even for scenarios that never
-        #    run a tenant-creating Given step. Idempotent; no-op in-process.
-        if self.use_real_db and self.is_e2e:
-            self._seed_e2e_identity()
+                self._session = SASession(bind=engine)
+                self._guard("db_session", self._close_session)
+
+                for f in ALL_FACTORIES:
+                    f._meta.sqlalchemy_session = self._session
+                self._guard("db_factories", self._unbind_factories)
+
+            # 2. Start patches
+            for name, target in self.EXTERNAL_PATCHES.items():
+                if name in self.ASYNC_PATCHES:
+                    patcher = patch(target, new_callable=AsyncMock)
+                else:
+                    patcher = patch(target)
+                self.mock[name] = patcher.start()
+                self._guard(f"patch:{name}", patcher.stop)
+
+            self._configure_mocks()
+
+            # 3. E2E discovery-path seeding: the live server authenticates against
+            #    its own DB, so seed tenant/principal even for scenarios that never
+            #    run a tenant-creating Given step. Idempotent; no-op in-process.
+            if self.use_real_db and self.is_e2e:
+                self._seed_e2e_identity()
+
+            # 4. Subclass setup that needs the entered base and configured mocks.
+            self._enter_post()
+        except BaseException:
+            self._unwind_partial_enter()
+            raise
 
         return self
+
+    # -- Subclass setup hooks ----------------------------------------------
+    #
+    # A subclass extends entry through these, never by overriding __enter__.
+    # The reason is structural, not stylistic: a cooperative
+    # ``super().__enter__()`` chain places a subclass's own setup OUTSIDE this
+    # method's try by construction, whichever side of the super() call it sits
+    # on. Every resource a hook acquires must be registered with :meth:`_guard`
+    # on the line it is acquired.
+    #
+    # ``tests/harness/test_harness_base.py::test_harness_envs_define_no_enter_exit``
+    # enforces that: __enter__/__exit__ (and their async twins) may be defined
+    # only on BaseTestEnv and on AdminAccountEnv, which is not a BaseTestEnv.
+
+    def _enter_pre(self) -> None:
+        """Setup that must run before the database binding and the mocks.
+
+        Overridden by e.g. ``LocalOriginMixin``, whose TLS origin must exist
+        before ``_configure_mocks`` runs — ``CircuitBreakerEnv._configure_mocks``
+        programs ``self.origin``.
+        """
+
+    def _enter_post(self) -> None:
+        """Setup that needs the entered base and the configured mocks.
+
+        Overridden by e.g. ``CircuitBreakerEnv``, which attaches a log handler
+        once the env is otherwise live.
+        """
+
+    # -- The one cleanup registry ------------------------------------------
+
+    def _guard(self, label: str, cleanup: Callable[[], None]) -> None:
+        """Register *cleanup* to run on BOTH release paths, newest first.
+
+        Call it on the line the resource is acquired. Anything acquired without
+        a matching _guard survives a failed __enter__ for the rest of the
+        process: Python does not call __exit__ when __enter__ raises, and the
+        factory binding is GLOBAL. Measured before this registry existed: two
+        real setup failures produced 350 further errors in one bdd_e2e run, and
+        the two causes were indistinguishable in the report.
+        """
+        self._enter_cleanups.append((label, cleanup))
+
+    @property
+    def _patchers(self) -> _GuardedPatchers:
+        """The registry, in the legacy ``_patchers.append(patcher)`` shape.
+
+        A property, not an attribute, so that there is nothing to keep in sync:
+        it cannot drift from ``_enter_cleanups`` and cannot be reassigned to a
+        real list that would then be unwound by nobody. See
+        :class:`_GuardedPatchers` for why this is a view rather than a second
+        list.
+        """
+        return _GuardedPatchers(self)
+
+    def _release_entered(self, errors: list[Exception] | None) -> None:
+        """Run every registered cleanup in REVERSE registration order, then clear.
+
+        LIFO is deliberate and is a change from the pre-registry teardown, which
+        released the database BEFORE the patches. Releasing in reverse
+        acquisition order is the property that makes a partially-entered env
+        safe, and no teardown here depends on a patch still being active.
+
+        *errors* collects failures when the caller wants them (``__exit__``,
+        which raises them as a group). ``None`` means best-effort and silent —
+        the partial-enter path, where the caller is already raising and a
+        cleanup detail must not replace the real cause.
+        """
+        for _label, cleanup in reversed(self._enter_cleanups):
+            try:
+                cleanup()
+            except Exception as e:
+                if errors is not None:
+                    errors.append(e)
+        self._enter_cleanups.clear()
+
+    # Three cleanups, not one, and each registered on the line its resource is
+    # acquired. A single "db" cleanup registered after all three acquisitions
+    # left an already-created engine undisposed when SASession(bind=engine)
+    # raised — exactly the pool leak of GH #1430, still open. Splitting also
+    # fixes the second half: each runs in its own _release_entered try, so a
+    # failure is COLLECTED into __exit__'s error list rather than swallowed by a
+    # suppress() that head did not have. Registration order engine -> session ->
+    # factories means LIFO release is factories -> session -> engine, which is
+    # exactly the order the pre-registry __exit__ used.
+
+    def _unbind_factories(self) -> None:
+        from tests.factories import ALL_FACTORIES
+
+        for f in ALL_FACTORIES:
+            f._meta.sqlalchemy_session = None
+
+    def _close_session(self) -> None:
+        if self._session is not None:
+            session, self._session = self._session, None
+            session.close()
+
+    def _dispose_engine(self) -> None:
+        """Closing the session alone leaves its pool's connections open, and
+        ~300 e2e envs per run accumulate toward the server's max_connections
+        (GH #1430)."""
+        if getattr(self, "_e2e_engine", None) is not None:
+            engine, self._e2e_engine = self._e2e_engine, None
+            engine.dispose()
+
+    def _unwind_partial_enter(self) -> None:
+        """Release whatever ``__enter__`` had acquired before it failed.
+
+        Best-effort and SILENT by design, unlike ``__exit__``: the caller is
+        already raising, and an error raised from here would replace the real
+        cause with a cleanup detail. That is why ``_release_entered`` takes
+        ``None`` on this path and an error list on the other.
+
+        The GLOBAL state — the factory session binding — is released
+        unconditionally at the end even if a registered cleanup misbehaved,
+        because a leaked binding fails every later scenario on the worker.
+        """
+        self._release_entered(None)
+        self.mock.clear()
+
+        if self.use_real_db:
+            with suppress(Exception):
+                from tests.factories import ALL_FACTORIES
+
+                for f in ALL_FACTORIES:
+                    f._meta.sqlalchemy_session = None
 
     def __exit__(self, *exc: object) -> bool:
         errors: list[Exception] = []
@@ -2720,43 +2958,10 @@ class BaseTestEnv:
             except Exception as e:
                 errors.append(e)
 
-        # 2. Unbind factories (integration mode only)
-        if self.use_real_db:
-            try:
-                from tests.factories import ALL_FACTORIES
-
-                for f in ALL_FACTORIES:
-                    f._meta.sqlalchemy_session = None
-            except Exception as e:
-                errors.append(e)
-
-            try:
-                if self._session:
-                    self._session.close()
-                    self._session = None
-            except Exception as e:
-                errors.append(e)
-
-            # Dispose the per-env E2E engine: each e2e-mode env creates its own
-            # engine, and closing the session alone leaves its pool's connections
-            # open for the rest of the worker's life. With the ledger retirement
-            # (~300 more scenarios building e2e envs per run, PR #1430 review),
-            # thousands of scenarios x 8 workers exhausted Postgres
-            # max_connections ("sorry, too many clients").
-            try:
-                if self._e2e_engine is not None:
-                    self._e2e_engine.dispose()
-                    self._e2e_engine = None
-            except Exception as e:
-                errors.append(e)
-
-        # 3. Stop patches — each in its own try block
-        for patcher in reversed(self._patchers):
-            try:
-                patcher.stop()
-            except Exception as e:
-                errors.append(e)
-        self._patchers.clear()
+        # 2. Release everything __enter__ registered, newest first. This covers
+        #    the database (factory unbind / session close / engine dispose) and
+        #    every patch, plus whatever the subclass hooks acquired.
+        self._release_entered(errors)
         self.mock.clear()
         self._identity_cache.clear()
 

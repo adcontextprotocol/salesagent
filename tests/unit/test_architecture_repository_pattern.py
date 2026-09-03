@@ -1506,14 +1506,16 @@ class TestRepositoriesDoNotImportProtocolResponseTypes:
 _DONATED_SESSION_PARAMS = frozenset({"repo", "session", "db", "db_session", "uow"})
 
 #: The connection-lifetime boundary: the functions a caller reaches to do signed outbound
-#: work. Named for the INVARIANT rather than for the webhook path, because the outbound
-#: client seam joined it and sends no webhook.
+#: work. Named for the INVARIANT rather than for the webhook path, because the boundary is
+#: about who owns the connection lifetime, not about what is being sent. The outbound
+#: client seam once had an entry here (``build_adcp_multi_agent_client``); #1802 deleted
+#: that function outright when the registries moved onto the guarded MCP seam, so the
+#: entry went with it — a deleted function cannot donate a session.
 _DELIVERY_BOUNDARY = (
     ("src/core/signing/webhook_sender_factory.py", "deliver_adcp_webhook"),
     ("src/core/signing/webhook_sender_factory.py", "deliver_adcp_webhook_sync"),
     ("src/core/signing/webhook_sender_factory.py", "adcp_webhook_sender"),
     ("src/core/signing/webhook_sender_factory.py", "signing_repo"),
-    ("src/core/helpers/adapter_helpers.py", "build_adcp_multi_agent_client"),
 )
 
 #: The queued-delivery entry, which the retry loop is the sole consumer of.
@@ -1555,8 +1557,8 @@ class TestDeliveryBoundaryTakesNoDonatedSession:
     connection's lifetime belonged to the caller, not to the work.
 
     The parameter is gone, so the defect is unrepresentable at this boundary —
-    ``signing_repo`` always opens its own short session, and
-    ``build_adcp_multi_agent_client`` now enters it rather than taking one.
+    ``signing_repo`` always opens its own short session, and every remaining entry
+    enters it rather than taking one.
 
     MUTATION: add ``repo: SigningKeyRepository | None = None`` back to any signature in
     ``_DELIVERY_BOUNDARY`` and this goes RED.

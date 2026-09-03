@@ -11,7 +11,6 @@ This test validates that our A2A server sends the correct payload type based on 
 
 import json
 import uuid
-from time import sleep
 from typing import Any
 
 import httpx
@@ -19,7 +18,8 @@ import pytest
 
 from tests.e2e._signing_e2e import origin, resolvable_signing_counterparty
 from tests.e2e._tenant_state import set_mock_approval
-from tests.e2e._webhook_capture import WebhookCaptureHandler, run_webhook_capture_server, tls_capture
+from tests.e2e._webhook_capture import tls_capture
+from tests.e2e._webhook_capture_loopback import WebhookCaptureHandler, run_webhook_capture_server
 from tests.e2e.adcp_request_builder import (
     build_a2a_message_send,
     build_adcp_media_buy_request,
@@ -27,8 +27,9 @@ from tests.e2e.adcp_request_builder import (
     parse_tool_result,
 )
 from tests.e2e.conftest import e2e_in_network
-from tests.e2e.utils import make_mcp_client
+from tests.e2e.utils import make_mcp_client, wait_until
 from tests.e2e.webhook_capture_service import decode_body
+from tests.factories import WebhookTaskContextFactory
 from tests.helpers.signing import signed_headers
 
 #: The A2A JSON-RPC endpoint, as the SIGNATURE covers it: ``@target-uri`` is
@@ -38,6 +39,15 @@ _A2A_PATH = "/a2a"
 #: The tenant hint every request in this module carries. The stack's own seeded
 #: buyer lives here (``scripts/setup/init_database_ci.py``).
 _TENANT_SUBDOMAIN = "ci-test"
+
+#: The callback secret a registration hands the seller, at the pinned
+#: ``Authentication.credentials`` minimum of 32 characters
+#: (``src/core/security/webhook_egress.py`` maps a shorter one to
+#: ``credentials_too_short``). These cases grade the webhook PAYLOAD shape, so the
+#: credential is incidental fixture data — but a shorter one is refused at the
+#: egress seam and NO webhook arrives at all, which would fail them for a reason
+#: they do not test.
+_CALLBACK_CREDENTIALS = "e2e-webhook-token-padded-to-32ch"
 
 
 async def _post_signed_a2a(live_server: dict, *, token: str, message: dict[str, Any]) -> httpx.Response:
@@ -177,13 +187,14 @@ def assert_no_classification_errors(received: list[dict[str, Any]]) -> None:
     )
 
 
-def classified_capture(payload: dict[str, Any], path: str) -> dict[str, Any]:
+def classified_capture(payload: dict[str, Any], path: str | None) -> dict[str, Any]:
     """One capture, classified — the shape every assertion in this module reads.
 
     A module-level function rather than a handler method so the SAME classification
-    runs whether the payload came from the in-process receiver (unit-style leg) or
-    was read back from the TLS capture service, instead of the two legs grading
-    subtly different things.
+    runs whether the payload came from the in-process receiver (hermetic leg, where
+    ``path`` is the receiver's own ``self.path``) or was read back from the TLS
+    capture origin (compose leg, where ``path`` is the recorded request path),
+    instead of the two legs grading subtly different things.
 
     A2A wire contract is camelCase (proto json_name): taskId, contextId, messageId.
     snake_case (task_id, context_id) is a spec violation — the a2a-sdk protobuf
@@ -214,10 +225,14 @@ def classified_capture(payload: dict[str, Any], path: str) -> dict[str, Any]:
 
 
 class WebhookPayloadCapture(WebhookCaptureHandler):
-    """Webhook receiver that captures each payload with its A2A classification.
+    """HERMETIC-ONLY webhook receiver that captures each payload with its A2A classification.
 
-    Extends the shared capture handler via the ``record`` hook — only the
-    classification logic lives here, never a copied ``do_POST``.
+    Extends the shared loopback capture handler via the ``record`` hook — only the
+    classification logic lives here, never a copied ``do_POST``. Used exclusively by
+    ``TestProtocolWebhookWireFormat`` (no Docker stack, no database); the
+    compose-coupled classes above capture through the TLS origin instead, where a
+    server-side subclass hook has nowhere to live because the receiver is a
+    separate long-lived service.
     """
 
     received_webhooks: list[dict[str, Any]] = []
@@ -233,6 +248,10 @@ class _ClassifiedCaptureHandle:
     reading the same shape they always did, while the bytes now come from the TLS
     capture origin. ``received()`` re-reads on every call — the capture service is a
     separate process, so a poll loop must call it each turn rather than hold a list.
+
+    It decodes ``raw()`` rather than calling ``payloads()``: only the raw entry
+    carries the request ``path``, and one readback per call is what keeps a capture
+    landing mid-poll from being seen by the body read but not the path read.
     """
 
     def __init__(self, handle) -> None:
@@ -305,7 +324,7 @@ class TestA2AWebhookPayloadTypes:
             context_id=context_id,
             push_notification_config={
                 "url": webhook_capture_server.url,
-                "authentication": {"schemes": ["Bearer"], "credentials": "test-webhook-token"},
+                "authentication": {"schemes": ["Bearer"], "credentials": _CALLBACK_CREDENTIALS},
             },
         )
 
@@ -319,13 +338,7 @@ class TestA2AWebhookPayloadTypes:
         assert "error" not in result, f"A2A error: {result.get('error')}"
 
         # Wait for webhook to be delivered
-        timeout_seconds = 15
-        poll_interval = 0.5
-        elapsed = 0
-
-        while elapsed < timeout_seconds and not webhook_capture_server.received():
-            sleep(poll_interval)
-            elapsed += poll_interval
+        wait_until(lambda: bool(webhook_capture_server.received()), timeout_seconds=15, poll_interval=0.5)
 
         # Verify webhook was received
         received = webhook_capture_server.received()
@@ -406,7 +419,7 @@ class TestA2AWebhookPayloadTypes:
                 context_id=context_id,
                 push_notification_config={
                     "url": webhook_capture_server.url,
-                    "authentication": {"schemes": ["Bearer"], "credentials": "test-webhook-token"},
+                    "authentication": {"schemes": ["Bearer"], "credentials": _CALLBACK_CREDENTIALS},
                 },
             )
 
@@ -418,21 +431,16 @@ class TestA2AWebhookPayloadTypes:
             # Request should succeed (returns submitted status for async operations)
             assert response.status_code == 200, f"A2A request failed: {response.text}"
 
-            # Wait for webhook to be delivered
-            timeout_seconds = 15
-            poll_interval = 0.5
-            elapsed = 0
-
             # A manual-approval media buy emits the intermediate `submitted`
             # TaskStatusUpdateEvent first, then (mock auto-approval simulation) a
             # terminal `completed` Task. Breaking on merely the first delivery
             # races against that ordering — poll until the submitted webhook is
             # actually captured (or timeout).
-            while elapsed < timeout_seconds and not any(
-                w["status"] == "submitted" for w in webhook_capture_server.received()
-            ):
-                sleep(poll_interval)
-                elapsed += poll_interval
+            wait_until(
+                lambda: any(w["status"] == "submitted" for w in webhook_capture_server.received()),
+                timeout_seconds=15,
+                poll_interval=0.5,
+            )
 
             received = webhook_capture_server.received()
             assert received, "Expected at least one webhook delivery"
@@ -515,12 +523,7 @@ class TestA2AWebhookPayloadTypes:
             await client.post(a2a_url, json=message, headers=headers)
 
         # Wait for webhooks
-        timeout_seconds = 15
-        elapsed = 0
-
-        while elapsed < timeout_seconds and not webhook_capture_server.received():
-            sleep(0.5)
-            elapsed += 0.5
+        wait_until(lambda: bool(webhook_capture_server.received()), timeout_seconds=15, poll_interval=0.5)
 
         received = webhook_capture_server.received()
         assert received, "Expected at least one webhook delivery"
@@ -602,11 +605,7 @@ class TestWebhookPayloadStructure:
             await client.post(a2a_url, json=message, headers=headers)
 
         # Wait for webhook
-        timeout_seconds = 15
-        elapsed = 0
-        while elapsed < timeout_seconds and not webhook_capture_server.received():
-            sleep(0.5)
-            elapsed += 0.5
+        wait_until(lambda: bool(webhook_capture_server.received()), timeout_seconds=15, poll_interval=0.5)
 
         received = webhook_capture_server.received()
         assert received, "Expected at least one webhook delivery"
@@ -684,11 +683,7 @@ class TestWebhookPayloadStructure:
                 await client.post(a2a_url, json=message, headers=headers)
 
             # Wait for webhook
-            timeout_seconds = 15
-            elapsed = 0
-            while elapsed < timeout_seconds and not webhook_capture_server.received():
-                sleep(0.5)
-                elapsed += 0.5
+            wait_until(lambda: bool(webhook_capture_server.received()), timeout_seconds=15, poll_interval=0.5)
 
             received = webhook_capture_server.received()
             assert received, "Expected at least one webhook delivery"
@@ -729,6 +724,33 @@ class TestProtocolWebhookWireFormat:
     raise SnakeCaseWireViolation in the capture classifier).
     """
 
+    @pytest.fixture(autouse=True)
+    def _open_egress_hatches(self):
+        """Open the private-range hatch and trust the generated CA: the callback
+        is a real https://127.0.0.1 capture server now (salesagent-e6h0 widened
+        the webhook capture's TLS coverage to loopback addresses, matching the
+        generated CA's IP SAN).
+
+        These tests grade the WIRE FORMAT, not egress policy — the loopback
+        capture URL is incidental transport. Without the private-range hatch
+        the seam refuses the address before any payload reaches the wire, in
+        exactly the host-run posture (no compose env) this hermetic class runs
+        in. There is no scheme hatch left to open — the capture genuinely
+        serves https now, so there is nothing to relax.
+        """
+        import os
+        from unittest.mock import patch
+
+        from tests.helpers.egress_hatches import egress_hatch_env
+        from tests.helpers.tls_material import load_gen_test_tls
+
+        gen_test_tls = load_gen_test_tls()
+        gen_test_tls.ensure_test_tls()
+        env = egress_hatch_env(private=True)
+        env["SSL_CERT_FILE"] = str(gen_test_tls.COMBINED_CERT)
+        with patch.dict(os.environ, env):
+            yield
+
     def _send_and_capture(self, payload) -> dict[str, Any]:
         """Send `payload` via the real service and return the classified capture."""
         import asyncio
@@ -736,8 +758,11 @@ class TestProtocolWebhookWireFormat:
         from src.core.database.models import PushNotificationConfig
         from src.services.protocol_webhook_service import ProtocolWebhookService
 
-        # host='127.0.0.1': this class is unit-style (no Docker) — the service
-        # runs in-process, so loopback is always the right callback host.
+        # host='127.0.0.1': this class is unit-style (no Docker) — the service runs
+        # in-process, so loopback is always the right callback host. The loopback
+        # receiver serves REAL https there (the generated CA covers the loopback IP
+        # SANs), which is why ``_open_egress_hatches`` above has to trust that CA as
+        # well as open the private-range hatch.
         #
         # ADCP_TESTING is NOT set here. The autouse fixture (tests/conftest.py)
         # already sets it for every test, so a second setenv only obscured which
@@ -746,7 +771,9 @@ class TestProtocolWebhookWireFormat:
         # (salesagent-og9k.4). Removing it changes no behaviour and stops the
         # redundant spelling from being copied.
         #
-        # The SSRF gate itself is never patched: that would hide regressions.
+        # The SSRF gate itself is never patched: the hatch above is the seam's own
+        # documented environment switch, not a monkeypatched validator, so a
+        # regression in the gate still surfaces here.
         with run_webhook_capture_server(
             WebhookPayloadCapture, WebhookPayloadCapture.received_webhooks, host="127.0.0.1"
         ) as info:
@@ -758,8 +785,19 @@ class TestProtocolWebhookWireFormat:
                 authentication_type=None,
                 authentication_token=None,
             )
+
             service = ProtocolWebhookService()
-            sent = asyncio.run(service.send_notification(config, payload, metadata={"task_type": "create_media_buy"}))
+            # The typed task identity, not a loose dict. send_notification used to
+            # take metadata and rebuild a context from it downstream, which reset
+            # sequence_number and notification_type on the way to the delivery row.
+            #
+            # The factory's ``tenant_id`` default of None is load-bearing here and
+            # is the reason this stays hermetic: ``delivery_signer_for_tenant(None)``
+            # is a DECIDED unsigned posture, not a lookup, so nothing in this class
+            # needs a database to resolve signing material. A named tenant here
+            # would demand one.
+            task = WebhookTaskContextFactory()
+            sent = asyncio.run(service.send_notification(config, payload, task=task))
             assert sent is True, "ProtocolWebhookService.send_notification should report success"
 
             received = list(info["received"])

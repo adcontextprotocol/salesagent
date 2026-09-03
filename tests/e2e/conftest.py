@@ -298,8 +298,20 @@ def docker_services_e2e(request):
         # clear of the Linux ephemeral range (32768+), which the 20000-30000
         # choice for those two was already picked to avoid.
         tls_port = int(os.getenv("ADCP_TLS_PORT")) if os.getenv("ADCP_TLS_PORT") else find_free_port(15000, 20000)
+        # webhook-capture's plain-HTTP READBACK control-plane (salesagent-amht.3)
+        # — same dynamic-allocation reasoning as tls_port above (a fixed default
+        # would let two concurrent stacks cross-wire onto the same host port).
+        # DELIVERY never uses this port; it goes through tls_port above.
+        webhook_capture_port = (
+            int(os.getenv("WEBHOOK_CAPTURE_PORT"))
+            if os.getenv("WEBHOOK_CAPTURE_PORT")
+            else find_free_port(30000, 32000)
+        )
 
-        print(f"Using ports: Server={mcp_port} (MCP+A2A+Admin), Postgres={postgres_port}, TLS={tls_port}")
+        print(
+            f"Using ports: Server={mcp_port} (MCP+A2A+Admin), Postgres={postgres_port}, "
+            f"TLS={tls_port}, WebhookCapture={webhook_capture_port}"
+        )
 
         # Set port env vars in os.environ for ONE consumer: the docker-compose
         # subprocess, which inherits them via os.environ.copy() at the call below.
@@ -315,6 +327,7 @@ def docker_services_e2e(request):
         os.environ["ADCP_SALES_PORT"] = str(mcp_port)
         os.environ["POSTGRES_PORT"] = str(postgres_port)
         os.environ["ADCP_TLS_PORT"] = str(tls_port)
+        os.environ["WEBHOOK_CAPTURE_PORT"] = str(webhook_capture_port)
 
         env = os.environ.copy()
         # Set 5 seconds interval for delivery webhooks in E2E tests

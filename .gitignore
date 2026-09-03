@@ -64,7 +64,7 @@ check_*.py
 diagnose_*.py
 fix_*.py
 sync_*.py
-!scripts/sync_*.py
+!scripts/**/sync_*.py
 !src/**/sync_*.py
 test_sync.py
 
@@ -155,6 +155,7 @@ test-results/
 .claude/commands/code-review.md
 .claude/skills/code-review/
 .claude/reports
+.claude/scheduled_tasks.lock
 .perles/
 
 # Private local rules (agent tooling, personal workflows)

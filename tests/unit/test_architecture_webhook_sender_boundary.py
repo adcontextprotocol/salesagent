@@ -58,7 +58,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit._architecture_helpers import assert_violations_match_allowlist
+from tests.unit._architecture_helpers import assert_violations_match_allowlist, iter_call_expressions
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -111,13 +111,13 @@ ADCP_WEBHOOK_SENDERS: frozenset[tuple[str, str]] = frozenset(
 
 #: AdCP senders that are still UNSIGNED, each with the ticket that will sign them. Only
 #: shrinks, and every entry must carry the FIXME at its source.
-ALLOWED_UNROUTED: frozenset[tuple[str, str]] = frozenset(
-    {
-        # salesagent-hop4 — the mock adapter's task_completed notification. A
-        # registration-derived destination with no signature.
-        ("src/adapters/mock_ad_server.py", "self.async_webhook_url"),
-    }
-)
+#: EMPTY, as of #1802. The last entry — the mock adapter's ``task_completed``
+#: notification — went away by the prescribed route rather than by exemption: its
+#: hand-rolled POST is now a ``deliver_webhook`` call, so the destination is checked and
+#: the body canonically serialized by the module. It stays unauthenticated, which is the
+#: point of the prescription: absent scheme/credentials is a VALUE the boundary
+#: understands, not a reason to bypass it. Nothing may be added back.
+ALLOWED_UNROUTED: frozenset[tuple[str, str]] = frozenset()
 
 #: The boundary module itself. Its POST is the one every routed sender is routed TO, so
 #: discovering it as an unrouted sender would be the detector reporting the destination as
@@ -143,7 +143,31 @@ BOUNDARY_MODULE = "src/core/signing/webhook_sender_factory.py"
 #: that stopped making it would be shipping unsigned bytes whatever else the module imports.
 STRATEGY_SEAM = "build_auth_headers"
 
+#: How the boundary can put bytes on the wire. ``asend`` is the current answer: #1802
+#: collapsed address policy onto the egress seam, and this module's ``import httpx`` went
+#: with the raw client it served. ``post`` stays in the set so a regression to a
+#: hand-held client is still caught rather than silently un-graded — which is precisely
+#: what happened when the send verb changed and this test kept passing with an empty
+#: population (see ``test_the_boundary_actually_sends_something``).
+BOUNDARY_SEND_VERBS = frozenset({"asend", "send", "post"})
+
 CLASSIFIED = AD_SERVER_AND_API_CALLS | NON_ADCP_RECEIVERS | ADCP_WEBHOOK_SENDERS
+
+
+def _send_sites(node: ast.AST) -> list[ast.Call]:
+    """Every call under *node* that puts bytes on the wire, in either spelling.
+
+    ``asend(...)`` is a bare :class:`ast.Name` (imported directly from the seam);
+    ``client.post(...)`` is an :class:`ast.Attribute`. Matching only one of the two is how
+    a send verb change goes un-graded.
+    """
+    sites = []
+    for call in iter_call_expressions(node):
+        func = call.func
+        name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+        if name in BOUNDARY_SEND_VERBS:
+            sites.append(call)
+    return sites
 
 
 def _destination(call: ast.Call) -> ast.expr | None:
@@ -256,43 +280,60 @@ class TestOutboundWebhookSenderBoundary:
             ),
         )
 
-    def test_the_boundary_signs_what_it_posts(self):
-        """Every POST in the boundary module takes its headers from a JWK signer.
+    def test_the_boundary_signs_what_it_sends(self):
+        """Every send in the boundary module takes its headers from a JWK signer.
 
         The paired half of :data:`BOUNDARY_MODULE`'s exemption from the scan. Exempting the
-        boundary is necessary — its POST is the destination every routed sender is routed TO
+        boundary is necessary — its send is the destination every routed sender is routed TO
         — but an exemption with nothing behind it is a place to hide an unsigned send, which
         is the precise failure this guard exists to prevent.
 
-        So the check is positive and AST-based rather than a substring: every ``.post`` call
-        in the module must sit in a function that also calls ``build_auth_headers``, the one
-        seam that turns a body into RFC 9421 headers. A new POST added here without signing
+        So the check is positive and AST-based rather than a substring: every send call in
+        the module must sit in a function that also reaches ``build_auth_headers``, the one
+        seam that turns a body into RFC 9421 headers. A new send added here without signing
         fails immediately, and it cannot be satisfied by the module merely importing
         something signing-shaped elsewhere.
+
+        The signing seam is matched whether it is CALLED or PASSED. #1802 turned the send
+        into ``asend(..., sign=strategy.build_auth_headers)``: the signature is applied by
+        the seam's per-attempt hook, so the boundary hands the callback over rather than
+        invoking it, and a call-only matcher would read a correctly-signed send as unsigned.
         """
         tree = ast.parse((ROOT / BOUNDARY_MODULE).read_text(encoding="utf-8"), BOUNDARY_MODULE)
         unsigned: list[str] = []
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            posts = [
-                sub
-                for sub in ast.walk(node)
-                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) and sub.func.attr == "post"
-            ]
-            if not posts:
+            sends = _send_sites(node)
+            if not sends:
                 continue
-            signs = any(
-                isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) and sub.func.attr == STRATEGY_SEAM
-                for sub in ast.walk(node)
-            )
+            # Attribute, not Call: `sign=strategy.build_auth_headers` never calls it here.
+            signs = any(isinstance(sub, ast.Attribute) and sub.attr == STRATEGY_SEAM for sub in ast.walk(node))
             if not signs:
-                unsigned.extend(f"{node.name}@{post.lineno}" for post in posts)
+                unsigned.extend(f"{node.name}@{send.lineno}" for send in sends)
 
         assert not unsigned, (
             f"{BOUNDARY_MODULE} is exempt from the sender scan because it IS the boundary, but these "
-            f"POSTs in it never call {STRATEGY_SEAM}(), so they go out unsigned: {unsigned}. The "
-            "exemption is only sound while everything the boundary posts is signed by it."
+            f"sends in it never reach {STRATEGY_SEAM}, so they go out unsigned: {unsigned}. The "
+            "exemption is only sound while everything the boundary sends is signed by it."
+        )
+
+    def test_the_boundary_actually_sends_something(self):
+        """The test above must have a population, or the exemption is unguarded.
+
+        Not hypothetical. When #1802 replaced this module's ``httpx`` client with the egress
+        seam, the send verb changed from ``.post`` to ``asend`` and the sibling test kept
+        passing — over zero sites. A vacuous positive check is worse than none: it reads as
+        "everything the boundary sends is signed" while grading nothing at all.
+        """
+        tree = ast.parse((ROOT / BOUNDARY_MODULE).read_text(encoding="utf-8"), BOUNDARY_MODULE)
+        sends = [f"{site.lineno}" for site in _send_sites(tree)]
+
+        assert sends, (
+            f"no send site found in {BOUNDARY_MODULE} using any of {sorted(BOUNDARY_SEND_VERBS)}. Either "
+            "the boundary no longer sends (delete its exemption and let the scan cover it), or it "
+            f"acquired a new send verb — add it to BOUNDARY_SEND_VERBS so test_the_boundary_signs_"
+            "what_it_sends grades it."
         )
 
     def test_allowlisted_senders_carry_the_fixme_at_the_source(self):

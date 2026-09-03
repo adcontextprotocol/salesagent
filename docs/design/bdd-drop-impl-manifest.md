@@ -26,7 +26,7 @@
 | C4 | `tests/bdd/steps/generic/when_request.py::_call`/`_call_via` (~27-36, ~45) | Delete the `call_impl` fallback and the "unrecognized → `Transport.IMPL`" default mapping; require an explicit wire transport. |
 
 **Keep (do NOT touch):** `Transport.IMPL` enum, `ImplDispatcher`, `DISPATCHERS[IMPL]`,
-`env.call_impl`, `synthesized_error_envelope` — used by unit/integration tests.
+`env.call_impl`, the private `_synthesized_error_envelope` (via `result.error_envelope()`) — used by unit/integration tests.
 
 ## Section 2 — Ledger cleanup (S1)
 

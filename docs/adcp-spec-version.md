@@ -57,14 +57,31 @@ The two are different namespaces and are **not** identical:
 - `media_buy_status` is the DOMAIN status, mirrored by
   `_mirror_media_buy_status` (`src/core/schemas/_base.py`).
 
-3.1.1's `pending_creatives_to_start.yaml` storyboard grades both as
-`field_value`, which is what we emit. The `_dual_emit_media_buy_status`
-validator additionally backfills the deprecated **body** `status` from
-`media_buy_status` for the deprecation window; it never touches the wire
-top-level `status`. Behavior is pinned by
-`tests/bdd/features/BR-UC-002-media-buy-status-dual-emit.feature` and the
-`then_dual_emit_media_buy_status` step — `test_adcp_spec_version.py` guards
-only the SDK pin, not this behavior.
+The graded storyboard moved to that model, which is why our wire looks the way
+it does:
+
+- **Then (3.1.0-beta.3):** the storyboard graded the body `status` as
+  `field_value_or_absent` that MUST equal `media_buy_status` — the deprecated
+  "both identical" model (#4908). Our wire deliberately diverged from it.
+- **Now (pinned 3.1.1):** `dist/compliance/3.1.1/domains/media-buy/scenarios/pending_creatives_to_start.yaml`
+  grades `media_buy_status` as `field_value` (the DOMAIN status, L146-148) and
+  separately grades `status` as `field_value` `'completed'` (the PROTOCOL
+  `TaskStatus`, protocol envelope, L150-153). There are ZERO
+  `field_value_or_absent` checks in that file. The two fields are NOT required
+  to be identical — which is the model our wire already implemented.
+
+The `_dual_emit_media_buy_status` validator additionally backfills the
+deprecated **body** `status` from `media_buy_status` for the deprecation
+window; it never touches the wire top-level `status`. That backfill remains
+live production code — it is the deprecation window, not a divergence from the
+pin.
+
+Grounding for the dual-emit behavior is the value-pinned `media_buy_status`
+assertions in `tests/bdd/features/BR-UC-002-media-buy-status-dual-emit.feature`
+and the `then_dual_emit_media_buy_status` step in
+`tests/bdd/steps/domain/uc002_create_media_buy.py` (see PR #1417).
+`tests/unit/test_adcp_spec_version.py` guards the SDK pin and the version claims
+in this document — not this behavior.
 
 ## Wire negotiation
 

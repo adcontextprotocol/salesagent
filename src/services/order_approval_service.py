@@ -12,15 +12,24 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
 from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import SyncJob
+from src.core.security.webhook_egress import deliver_webhook
+from src.core.signing import delivery_signer_for_tenant
 from src.core.thread_registry import ThreadRegistry
-from src.core.webhook_validator import reject_unsafe_outbound_webhook_url, webhook_url_for_log
+from src.core.webhook_validator import webhook_url_for_log
+from src.core.webhooks.delivery import WebhookDeliveryOutcome
 
 logger = logging.getLogger(__name__)
+
+#: The per-attempt timeout and attempt budget this sender asks the seam for.
+#: Both were previously the SDK sender's own (``webhook_sender_factory._TIMEOUT_SECONDS``
+#: = 10.0) and this module's hand-rolled ``range(3)`` ladder respectively; naming them
+#: here keeps the ASK visible at the one call site while the seam keeps the schedule.
+_DELIVERY_TIMEOUT_SECONDS = 10.0
+_DELIVERY_MAX_ATTEMPTS = 3
 
 # Global registry of running approval threads. ThreadRegistry reaps dead
 # threads on every read — same defensive cleanup as the sync registry
@@ -351,10 +360,13 @@ def _mark_approval_failed(
 class ApprovalWebhookAuth:
     """The buyer's registration, PROJECTED to primitives — the row never escapes.
 
-    Structurally satisfies :class:`~src.core.signing.webhook_sender_factory.WebhookAuthConfig`
-    (``url`` / ``authentication_type`` / ``authentication_token``), so it is passed as
-    ``config=`` to the delivery boundary unchanged, plus ``validation_token`` for the one
-    extra header this service adds.
+    Carries exactly what the egress seam takes — ``authentication_type`` /
+    ``authentication_token``, which :func:`~src.core.security.webhook_egress.deliver_webhook`
+    accepts as the stored PRIMITIVES ``scheme=`` / ``credentials=`` — plus ``url`` for
+    provenance and ``validation_token`` for the one extra header this service adds.
+    Nothing here interprets those two values: the seam validates the pair against the
+    pinned ``Authentication`` type and picks the arm, which is why this projection has no
+    "is it HMAC" helper for a caller to disagree with the seam through.
 
     WHY A PROJECTION AND NOT THE ORM ROW (#1878). The loader used to return the live row
     and carried a paragraph explaining why that was safe: "Detaching it at the end of the
@@ -405,17 +417,20 @@ def _load_approval_webhook_config(tenant_id: str, principal_id: str, webhook_url
 def _approval_webhook_headers(config: ApprovalWebhookAuth | None) -> dict[str, str]:
     """The genuinely EXTRA headers for an order-approval webhook POST.
 
-    Neither ``Content-Type`` nor the authentication header belongs here. The
-    delivery boundary (``src.core.signing.webhook_sender_factory``, #1291 C1)
-    frames the body it serialized, and derives the auth scheme from this same
-    ``config`` row — legacy HMAC, legacy bearer (which is where a ``basic``
-    registration now lands, since any non-HMAC scheme carrying a credential
-    selects the bearer arm), or the RFC 9421 default when no ``authentication``
-    block was registered. Setting either header here would authenticate the
-    delivery twice, in two disagreeing ways.
+    Neither ``Content-Type`` nor the authentication header belongs here. The egress
+    seam (``src.core.security.webhook_egress``) frames the body it serialized —
+    ``prepare_signed_request`` ``setdefault``\\ s ``application/json``, and its RFC 9421
+    arm REFUSES any other spelling because the signer covers that exact value — and it
+    derives the auth arm from this same ``config`` row: legacy HMAC, legacy bearer, or
+    the RFC 9421 profile when no ``authentication`` block was registered. Setting
+    either header here would authenticate the delivery twice, in two disagreeing ways,
+    and a hand-written ``Content-Type`` would additionally trip the seam's own guard.
 
     ``validation_token`` is a receiver-side echo, not an auth scheme, so it
-    stays a plain extra header.
+    stays a plain extra header. It is also sender-local — this sender emits it
+    and ``protocol_webhook_service`` does not — so it deliberately stays out of
+    any shared auth resolver rather than silently changing one sender's headers
+    under cover of unification.
     """
     headers = {"User-Agent": "AdCP-Sales-Agent/1.0 (Order Approval Notifications)"}
     if config and config.validation_token:
@@ -423,89 +438,127 @@ def _approval_webhook_headers(config: ApprovalWebhookAuth | None) -> dict[str, s
     return headers
 
 
-def _reject_unsafe_approval_webhook_url(webhook_url: str) -> bool:
-    """Return True when the order-approval outbound URL fails the SSRF gate."""
-    rejected, _error_msg = reject_unsafe_outbound_webhook_url(webhook_url, log=logger, kind="OrderApproval")
-    return rejected
-
-
-def _post_approval_webhook_with_retries(
+def _post_approval_webhook(
     webhook_url: str,
     payload: dict[str, Any],
     headers: dict[str, str],
     config: ApprovalWebhookAuth | None,
     tenant_id: str,
-) -> None:
-    """Deliver the approval payload with retries, authenticated per *config*.
+) -> WebhookDeliveryOutcome:
+    """Deliver the approval payload through the ONE egress seam and say what became of it.
 
-    Serialization, authentication and the POST are ONE act at the signing
-    boundary (#1441), so the bytes signed are the bytes sent; ``config`` selects
-    the arm. No ``repo`` is passed: this caller holds no session, and
-    ``webhook_sender_factory.signing_repo`` opens a short-lived one per
-    delivery precisely so senders don't each grow their own.
+    GH #1802. Everything this function used to own is now the seam's, and the deletions
+    are the point rather than a side effect:
 
-    Redirects are still never followed — the boundary's ``httpx`` client keeps
-    the library default (``follow_redirects=False``), so a 302 to a metadata or
-    private address cannot bypass the pre-send SSRF gate.
+    * the hand-rolled ``for attempt in range(3)`` / ``time.sleep(2 ** attempt)`` ladder —
+      ``deliver_webhook`` owns the attempt budget, the BR-RULE-029 backoff and which
+      statuses are worth another attempt, so a fourth sender can no longer retry on a
+      schedule the other three do not;
+    * the ``validate_url`` pre-flight in :func:`_send_approval_webhook` — ``send``'s own
+      ``EgressPolicy.resolve_for_dial`` applies the identical policy and is the resolution
+      that actually gets pinned, so the pre-flight was a second copy of address policy
+      whose only unique contribution was a DNS-rebinding window between the two lookups;
+    * the ``except Exception`` transport arm — transport failure is now an OUTCOME kind,
+      not an exception each sender re-derives its own literals from.
+
+    Authentication is likewise one decision, made once, at the seam. The stored PRIMITIVES
+    go over as ``scheme=`` / ``credentials=`` (never a type this caller constructed and
+    would have to interpret a ``ValidationError`` from), and ``signer=`` carries the
+    tenant's RFC 9421 strategy for the arm the pinned schema selects by the ABSENCE of an
+    ``authentication`` block. Handing over a strategy rather than a signature is
+    load-bearing: the seam invokes ``build_auth_headers`` once PER ATTEMPT over
+    ``request.content``, so every retry carries a fresh ``nonce`` over the exact bytes
+    httpx is about to transmit — a signature computed once above a retry loop is one a
+    conformant receiver must reject on attempt two.
+
+    What stays local is the logging contract: every message names the SANITIZED URL, never
+    the raw one, so a webhook URL carrying userinfo credentials or a query token cannot
+    reach the logs; the level comes from ``outcome.log_level`` so this sender cannot log a
+    refused destination at a different severity than the other three; and ``outcome.detail``
+    is pre-sanitized at construction, so no resolved address is interpolated here.
     """
-    from adcp.webhooks import generate_webhook_idempotency_key
+    # The tenant's RFC 9421 strategy, resolved on a session the signing layer opens and
+    # CLOSES here, before ``deliver_webhook`` below can dial anything (#1757). One shared
+    # ``delivery_signer_for_tenant`` rather than a local composition of ``signing_repo`` +
+    # ``webhook_delivery_signer``: all three webhook senders needed the identical
+    # open-read-close, and three copies is how the key a delivery is signed with starts
+    # depending on which transport carried it.
+    #
+    # No ``try``, and that is the no-silent-downgrade rule. ``None`` is returned only for
+    # the DECIDED postures (no tenant/repository, or published capabilities that already
+    # say ``webhook_signing.supported=false``), which mean "this receiver was told not to
+    # expect a Signature header" and are delivered plain by the seam. Every other outcome
+    # RAISES out of the helper — notably ``AdCPConfigurationError`` when the key's ``alg``
+    # contradicts the declared ``webhook_signing.algorithms`` — and PROPAGATES past the
+    # call below, so nothing is serialized and nothing is sent. This sender lets it reach
+    # the two polling-thread callers that already wrap their call; the other two senders
+    # book the same raise their own way, which is why the helper resolves and never handles.
+    #
+    # Resolved UNCONDITIONALLY, without first asking whether ``config`` selects a legacy
+    # arm. That is the seam's stated contract (``deliver_webhook``'s ``signer`` docstring:
+    # "a caller reading a stored row cannot know which arm the row selects, so it passes
+    # the tenant's signer unconditionally and this match decides"), and re-deriving the arm
+    # here is precisely the duplicated selector GH #1802 exists to delete. Consequence,
+    # stated rather than discovered: a tenant whose 9421 declaration is inconsistent now
+    # fails loudly even on a legacy-registered delivery, where the old SDK path returned
+    # early and never looked.
+    signer = delivery_signer_for_tenant(tenant_id)
 
-    from src.core.signing import deliver_adcp_webhook_sync
-
-    # ONE key per distinct event, reused across this event's retries — a fresh
-    # one per attempt would defeat the receiver's dedup.
-    idempotency_key = generate_webhook_idempotency_key()
+    outcome = deliver_webhook(
+        webhook_url,
+        payload,
+        # No ``field=``-style provenance is available and none is fabricated: this URL is
+        # read back out of a stored registration, so there is no live request document to
+        # name a path into.
+        scheme=config.authentication_type if config else None,
+        credentials=config.authentication_token if config else None,
+        headers=headers,
+        timeout=_DELIVERY_TIMEOUT_SECONDS,
+        max_attempts=_DELIVERY_MAX_ATTEMPTS,
+        signer=signer,
+    )
 
     safe_url = webhook_url_for_log(webhook_url)
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            delivery = deliver_adcp_webhook_sync(
-                url=webhook_url,
-                payload=payload,
-                idempotency_key=idempotency_key,
-                config=config,
-                tenant_id=tenant_id,
-                extra_headers=headers,
-            )
-
-            if 200 <= delivery.status_code < 300:
-                logger.info(
-                    "Approval webhook sent to %s (status: %s, attempt: %s)",
-                    safe_url,
-                    payload.get("status"),
-                    attempt + 1,
-                )
-                return
-
-            logger.warning(
-                "Approval webhook to %s returned status %s (attempt: %s/%s)",
-                safe_url,
-                delivery.status_code,
-                attempt + 1,
-                max_retries,
-            )
-
-        except httpx.TimeoutException:
-            logger.warning(
-                "Approval webhook to %s timed out (attempt: %s/%s)",
-                safe_url,
-                attempt + 1,
-                max_retries,
-            )
-        except httpx.RequestError as e:
-            logger.warning(
-                "Approval webhook to %s failed: %s (attempt: %s/%s)",
-                safe_url,
-                e,
-                attempt + 1,
-                max_retries,
-            )
-
-        if attempt < max_retries - 1:
-            time.sleep(2**attempt)
-
-    logger.error("Failed to send approval webhook to %s after %s attempts", safe_url, max_retries)
+    if outcome.kind == "delivered":
+        logger.log(
+            outcome.log_level,
+            "Approval webhook sent to %s (status: %s, http: %s, attempts: %s)",
+            safe_url,
+            payload.get("status"),
+            outcome.http_status,
+            outcome.attempts,
+        )
+    elif outcome.kind == "refused_destination":
+        # TERMINAL and EXPLICIT, and not an exception to be mistaken for a transport
+        # blip: ``send`` raised ``OutboundRequestBlocked`` out of ``resolve_for_dial``
+        # BEFORE it built a request, so ``attempts`` is zero, ``signer`` was never
+        # invoked and no unsigned body was ever produced to fall back to. Nothing about
+        # the destination changes on a second look, so there is nothing to retry. The
+        # sentence is the one every sender uses and names ONLY the sanitized URL — the
+        # underlying refusal names the resolved address (``egress/policy.py``), which
+        # must not reach a log.
+        logger.log(outcome.log_level, "Approval webhook to %s was refused by egress policy", safe_url)
+    elif outcome.kind == "refused_auth":
+        # FAIL-CLOSED. The buyer's stored registration asks for an authentication this
+        # seller cannot produce conformantly; nothing was dialled. ``detail``/``reason``
+        # are the seam's closed vocabulary, pre-sanitized at construction.
+        logger.log(
+            outcome.log_level,
+            "Approval webhook to %s was refused: %s",
+            safe_url,
+            outcome.detail or outcome.reason,
+        )
+    else:
+        logger.log(
+            outcome.log_level,
+            "Approval webhook to %s did not deliver (%s, http: %s, attempts: %s): %s",
+            safe_url,
+            outcome.kind,
+            outcome.http_status,
+            outcome.attempts,
+            outcome.detail,
+        )
+    return outcome
 
 
 def _send_approval_webhook(
@@ -517,8 +570,24 @@ def _send_approval_webhook(
     message: str,
     order_id: str | None = None,
     attempts: int | None = None,
-):
+) -> WebhookDeliveryOutcome:
     """Send webhook notification for approval status update.
+
+    Returns the seam's :class:`~src.core.webhooks.delivery.WebhookDeliveryOutcome` rather
+    than ``None``. That is what stops a refused destination being indistinguishable from a
+    delivery to everything upstream — the defect the deleted
+    ``_reject_unsafe_approval_webhook_url`` bool had, and which a bare ``return`` after a
+    log line would quietly reinstate.
+
+    There is deliberately no blanket ``except Exception`` around this body any more. It
+    used to reduce EVERY failure to one log line, including the two that must not be
+    reduced: a tenant whose RFC 9421 signer cannot be built (see
+    :func:`~src.core.signing.delivery_signer_for_tenant`, resolved in
+    :func:`_post_approval_webhook` — that must fail the delivery, never downgrade it to
+    an unsigned send) and a failure to read the registration at all. Transport failure no
+    longer needs the guard, because it is an outcome rather than an exception. Both
+    callers, :func:`_mark_approval_complete` and :func:`_mark_approval_failed`, already
+    wrap their call, so nothing escapes into the polling thread.
 
     Args:
         webhook_url: Webhook URL to POST to
@@ -530,36 +599,37 @@ def _send_approval_webhook(
         order_id: GAM order ID (if available)
         attempts: Number of polling attempts (if available)
     """
-    try:
-        payload: dict[str, Any] = {
-            "event": "order_approval_update",
-            "media_buy_id": media_buy_id,
-            "status": status,
-            "message": message,
-            "timestamp": datetime.now(UTC).isoformat(),
-            "tenant_id": tenant_id,
-            "principal_id": principal_id,
-        }
+    from adcp.webhooks import generate_webhook_idempotency_key
 
-        if order_id:
-            payload["order_id"] = order_id
-        if attempts is not None:
-            payload["attempts"] = attempts
+    payload: dict[str, Any] = {
+        "event": "order_approval_update",
+        "media_buy_id": media_buy_id,
+        "status": status,
+        "message": message,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "tenant_id": tenant_id,
+        "principal_id": principal_id,
+        # Carried in the BODY, exactly where the SDK sender this call replaces injected
+        # it (``WebhookSender.send_raw``: ``{**payload, "idempotency_key": key}``), so
+        # routing through the seam does not quietly cost the receiver its dedup key.
+        # ONE key per distinct EVENT: the seam serializes once and retries those same
+        # bytes, so every attempt of this event carries this key and no other.
+        "idempotency_key": generate_webhook_idempotency_key(),
+    }
 
-        if _reject_unsafe_approval_webhook_url(webhook_url):
-            return
+    if order_id:
+        payload["order_id"] = order_id
+    if attempts is not None:
+        payload["attempts"] = attempts
 
-        config = _load_approval_webhook_config(tenant_id, principal_id, webhook_url)
-        _post_approval_webhook_with_retries(
-            webhook_url,
-            payload,
-            _approval_webhook_headers(config),
-            config,
-            tenant_id,
-        )
-
-    except Exception as e:
-        logger.error(f"Error sending approval webhook: {e}", exc_info=True)
+    config = _load_approval_webhook_config(tenant_id, principal_id, webhook_url)
+    return _post_approval_webhook(
+        webhook_url,
+        payload,
+        _approval_webhook_headers(config),
+        config,
+        tenant_id,
+    )
 
 
 def get_active_approvals() -> list[str]:

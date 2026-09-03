@@ -1,26 +1,36 @@
 """A stored URL is re-judged at SEND time, not trusted because it was judged at WRITE time.
 
-Two senders dial an operator-supplied URL read back out of config or a DB row,
-with no destination policy at the moment of the call:
+Two senders dial an operator-supplied URL read back out of config or a DB row:
 
 * ``src/admin/blueprints/tenants.py`` — the "send test message" route POSTs to
-  ``tenant.slack_webhook_url``. The SAME blueprint gates on WRITE
-  (``WebhookURLValidator.validate_webhook_url`` in ``update_slack``), which makes
-  this the sharpest case: a row that was safe when written, or written before the
-  gate existed, or edited directly in the database, is dialled on nobody's policy.
+  ``tenant.slack_webhook_url``. The SAME blueprint gates on WRITE, which makes this
+  the sharpest case: a row that was safe when written, or written before the gate
+  existed, or edited directly in the database, must not be dialled on nobody's policy.
 * ``src/adapters/base_workflow.py`` — POSTs to ``tenant_config["slack"]["webhook_url"]``.
 
-All three are the same act, so they get ONE implementation rather than three
-gates that can drift — ``deliver_json_to_allowed_destination``. That is the same
-direction salesagent-og9k.8 argues for on the four existing send paths.
+RETARGETED (GH #1802). The obligation is unchanged; the mechanism that satisfies it
+moved and got stronger. This branch answered it with one local helper,
+``webhook_validator.deliver_json_to_allowed_destination``, which judged the URL just
+before handing it to ``requests.post``. #1802 deleted that helper along with the other
+three copies of address policy and put the judgement inside the egress seam:
+``SlackNotifier.send_message`` -> ``webhook_delivery.deliver_webhook_with_retry`` ->
+``webhook_egress.deliver_webhook`` -> ``outbound_http.send``, whose FIRST act is
+``EgressPolicy.resolve_for_dial`` — it re-resolves DNS and raises
+``OutboundRequestBlocked`` before a transport object exists at all.
 
-The discriminator throughout is that **no HTTP call is made**, asserted on
-``requests.post``. Asserting only "an exception was raised" would pass against a
-connection failure to the blocked host — which is what a refused destination
-looks like anyway — so it would grade nothing.
+That is strictly better than what this guard used to pin: the old helper resolved once
+and then let ``requests`` resolve again, leaving a TOCTOU window between the two; the
+seam resolves once and PINS the connection to the address it validated. So the shared
+sender these two sites must route through is now ``send_message``.
 
-Every refusal is paired with an ACCEPT case. Without one, deleting the send
-entirely would satisfy every refusal here.
+The discriminator is unchanged and is the point of the file: **no HTTP call is made**.
+Asserting only "an exception was raised" would pass against a connection failure to the
+blocked host — which is what a refused destination looks like anyway — so it would
+grade nothing. Here it is asserted at the socket boundary BELOW the policy, which a
+refusal never reaches.
+
+Every refusal is paired with an ACCEPT case. Without one, deleting the send entirely
+would satisfy every refusal here.
 """
 
 from __future__ import annotations
@@ -34,10 +44,10 @@ from tests.unit._architecture_helpers import called_function_names, parse_module
 
 #: Destinations production's gate refuses, one per class it exists to catch.
 BLOCKED_URLS = [
-    pytest.param("http://169.254.169.254/hook", id="cloud-metadata"),
-    pytest.param("http://host.docker.internal:9999/hook", id="blocked-hostname"),
-    pytest.param("http://10.0.0.5/hook", id="rfc1918-literal"),
-    pytest.param("http://[::1]/hook", id="ipv6-loopback-literal"),
+    pytest.param("https://169.254.169.254/hook", id="cloud-metadata"),
+    pytest.param("https://host.docker.internal:9999/hook", id="blocked-hostname"),
+    pytest.param("https://10.0.0.5/hook", id="rfc1918-literal"),
+    pytest.param("https://[::1]/hook", id="ipv6-loopback-literal"),
 ]
 
 _PUBLIC_URL = "https://hooks.slack.com/services/T000/B000/xxxx"
@@ -48,58 +58,64 @@ SENDER_CALL_SITES = [
     ("src/adapters/base_workflow.py", "_send_workflow_notification"),
 ]
 
-_SHARED_SENDER = "deliver_json_to_allowed_destination"
+#: The one sender both sites delegate to. Everything below it — retry ladder, auth
+#: selection, address policy — belongs to the seam, not to the call sites.
+_SHARED_SENDER = "send_message"
+
+#: The socket boundary, BELOW the policy. Deliberately not the seam's own
+#: ``_sync_transport``: that function IS where ``resolve_for_dial`` runs, so patching it
+#: would remove the gate being graded and every refusal test would pass vacuously.
+#: ``httpx.HTTPTransport.handle_request`` is the first thing a refusal never reaches.
+_SOCKET_BOUNDARY = "httpx.HTTPTransport.handle_request"
 
 
-def _ok_response() -> MagicMock:
-    response = MagicMock()
-    response.status_code = 200
-    response.text = "ok"
-    response.raise_for_status = MagicMock()
-    return response
+def _notifier(url: str):
+    from src.services.slack_notifier import SlackNotifier
+
+    return SlackNotifier(webhook_url=url)
 
 
 class TestSharedSenderRefusesBlockedDestinations:
     @pytest.mark.parametrize("blocked_url", BLOCKED_URLS)
     def test_blocked_destination_is_not_dialled(self, blocked_url):
-        from src.core.webhook_validator import deliver_json_to_allowed_destination
+        with patch(_SOCKET_BOUNDARY) as socket:
+            delivered = _notifier(blocked_url).send_message("hi", max_retries=1)
 
-        with patch("requests.post") as post:
-            delivered = deliver_json_to_allowed_destination(blocked_url, {"text": "hi"}, kind="Test")
-
-        assert post.call_count == 0, (
-            f"POSTed to {blocked_url!r} — a stored URL is being trusted because it was judged at write "
-            "time, not because it is safe now"
+        assert socket.call_count == 0, (
+            f"reached the socket for {blocked_url!r} — a stored URL is being trusted because it was "
+            "judged at write time, not because it is safe now"
         )
         assert delivered is False
 
     def test_refusal_does_not_echo_the_blocked_range_to_the_caller(self):
-        """AdCP 3.1.1 L1/security.mdx:104-119 step 6 — detailed causes are a topology side channel."""
-        from src.core.webhook_validator import deliver_json_to_allowed_destination
-
-        with patch("requests.post"):
-            delivered = deliver_json_to_allowed_destination("http://10.0.0.5/hook", {}, kind="Test")
+        """AdCP 3.1.1 L1/security.mdx step 6 — detailed causes are a topology side channel."""
+        with patch(_SOCKET_BOUNDARY):
+            delivered = _notifier("https://10.0.0.5/hook").send_message("hi", max_retries=1)
 
         assert delivered is False  # a bool, carrying no cause back to the caller
 
     def test_public_destination_is_still_delivered(self):
         """The gate is a policy, not a kill switch."""
-        from src.core.webhook_validator import deliver_json_to_allowed_destination
+        ok = MagicMock()
+        ok.status_code = 200
+        ok.text = "ok"
 
         with (
-            patch("socket.gethostbyname", return_value="93.184.216.34"),
-            patch("requests.post", return_value=_ok_response()) as post,
+            patch("src.core.security.webhook_egress.deliver_webhook") as deliver,
         ):
-            delivered = deliver_json_to_allowed_destination(_PUBLIC_URL, {"text": "hi"}, kind="Test")
+            deliver.return_value = MagicMock(delivered=True, attempts=1, kind="delivered", detail="", log_level=20)
+            with patch("src.core.webhook_delivery.deliver_webhook", deliver):
+                delivered = _notifier(_PUBLIC_URL).send_message("hi", max_retries=1)
 
+        assert deliver.call_count == 1, "a public destination must still reach the seam"
+        assert deliver.call_args.args[0] == _PUBLIC_URL
         assert delivered is True
-        assert post.call_count == 1
 
 
 @pytest.mark.arch_guard
 @pytest.mark.parametrize(("path", "func_name"), SENDER_CALL_SITES)
 def test_each_stored_url_sender_routes_through_the_shared_sender(path: str, func_name: str) -> None:
-    """Each site delegates rather than keeping its own ``requests.post``.
+    """Each site delegates rather than keeping its own HTTP client.
 
     Without this the shared sender could exist, be fully tested, and be used by
     nobody — which is exactly the state the TLS capture receiver was found in.

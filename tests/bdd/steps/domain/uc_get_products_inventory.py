@@ -9,7 +9,7 @@ Then steps: publisher_properties assertions (selection_type, field presence)
 Steps store results in ctx:
     ctx["response"] — GetProductsResponse on success
     ctx["error"] — Exception on failure
-    ctx["wire_error_envelope"] — transport wire envelope on tool error
+    ctx["result"].error_envelope() — the error envelope on tool error
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Any
 
 from pytest_bdd import given, parsers, then, when
 
-from tests.bdd.steps._outcome_helpers import _require_response
+from tests.bdd.steps._outcome_helpers import assert_wire_rejection, require_payload
 from tests.bdd.steps.generic._brand_param import parse_brand_gherkin_param
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.factories import (
@@ -38,7 +38,7 @@ def _call_get_products(ctx: dict, **kwargs: Any) -> None:
     Delegates to the universal ``dispatch_request`` helper (#1417): it
     routes through ``env.call_via`` for the parametrized transport, stores the
     normalized ``ctx['result']`` plus ``ctx['response']`` / ``ctx['error']`` /
-    ``ctx['wire_error_envelope']``, and fails loudly if no transport is set
+    ``ctx['result'].error_envelope()``, and fails loudly if no transport is set
     (the IMPL ``call_impl`` fallback was removed — a missing transport is a
     wiring bug, not an IMPL bypass).
     """
@@ -201,7 +201,7 @@ def when_request_products_with_brand(ctx: dict, brand: str) -> None:
 def then_has_products(ctx: dict) -> None:
     """Assert the response has exactly the product created in the Given step."""
     assert "error" not in ctx, f"Request failed: {ctx.get('error')}"
-    response = _require_response(ctx)
+    response = require_payload(ctx)
     expected = ctx["product"]
     assert response.products is not None, "Response has no products"
     assert len(response.products) == 1, f"Expected 1 product, got {len(response.products)}"
@@ -217,13 +217,31 @@ def then_has_products(ctx: dict) -> None:
 def then_rejected_validation_field(ctx: dict, field: str) -> None:
     """Assert the wire envelope is VALIDATION_ERROR and names the field structurally.
 
-    errors[0].field is the canonical error.json pointer; the envelope builder
-    mirrors errors[0] verbatim into adcp_error
-    (exceptions.build_two_layer_error_envelope), so pinning errors[0].field via
-    the field= kwarg also pins the adcp_error mirror — no separate hand-rolled
-    read needed.
+    Shared beyond this use case: it also binds the brand-shorthand scenarios and
+    every request-level refusal in ``local-egress-ssrf-refusal.feature`` (the
+    egress module used to carry a twin of this sentence for INVALID_REQUEST; the
+    seam and the DNS-free registration gate now answer with one code, so there is
+    one step). The rationale that came with it, and applies to every caller:
+
+    ``correctable`` is the load-bearing half. For the egress callers, the refusal
+    once surfaced as SERVICE_UNAVAILABLE / transient, which tells the buyer to
+    retry a request that will be refused identically forever; generally, it is the
+    assertion that says the buyer can fix this themselves. ``field`` is the other
+    half — where the message must disclose nothing (AdCP 3.1.1 L1 § "Webhook URL
+    validation (SSRF)" point 6), it is the ONLY channel that can say WHICH of the
+    request's inputs to fix. That is what keeps an agent-supplied inventory
+    source explicit: a ``property_list.agent_url`` the egress seam refuses is
+    named back to the buyer as a rejected field, never dropped as a silently
+    skipped source.
+
+    Collapsing to one call does not drop a layer. ``field=`` reaches
+    ``assert_envelope_shape``, which pins ``errors[0].field`` — the canonical
+    error.json pointer — AND the envelope-level ``adcp_error.field`` that
+    ``exceptions.build_two_layer_error_envelope`` mirrors verbatim from
+    ``errors[0]``. Those are exactly the two reads this step used to hand-roll,
+    so both remain graded with no separate hand-rolled envelope walk.
     """
-    ctx["result"].assert_wire_error("VALIDATION_ERROR", recovery="correctable", field=field)
+    assert_wire_rejection(ctx, "VALIDATION_ERROR", recovery="correctable", field=field)
 
 
 @then(parsers.parse('the first product publisher_properties selection_type is "{expected}"'))

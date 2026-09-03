@@ -69,9 +69,38 @@ def _relaxes(keyword: ast.keyword) -> bool:
     return not (isinstance(value, ast.Constant) and value.value is False)
 
 
+#: The egress seam — the ONE owner of address policy after GH #1802. These two files
+#: plumb the posture (``allow_private=``) and read the operator's env once; that is the
+#: policy deciding its own terms, not a caller opting out of it. Everywhere else in
+#: ``src/`` the keyword and the env name remain a build failure, which is the invariant
+#: this file has always been about: a counterparty-supplied URL must never be followed
+#: into the private network by a call site that decided to skip the gate.
+#:
+#: RECONCILED AT MERGE (GH #1802 x salesagent-mp53.9 / OWNER DECISION 3). This branch
+#: withdrew the env hatch and reached its e2e receiver by moving the compose network onto
+#: a NON-PRIVATE per-stack subnet instead; that route is live and measured working (the
+#: stack now sits on 223.255.255.0/24, which EgressPolicy accepts on its own terms). The
+#: hatch is still needed for a case the subnet cannot answer: upstream's in-runner
+#: ``local_http_origin`` fixtures bind LOOPBACK inside the test container, which is
+#: private under any subnet. So both survive, and what this guard now pins is the thing
+#: that actually protects production — the posture is owned by the policy, and its
+#: DEFAULT IS OFF (``test_the_env_hatch_defaults_to_off``). A deployment that does not
+#: set the variable keeps the pin, which is what the old absolute ban was buying.
+SEAM_OWNED = (
+    "src/core/security/outbound_http.py",
+    "src/core/security/egress/policy.py",
+)
+
+
+def _is_seam_owned(relative: str) -> bool:
+    return relative.replace("\\", "/") in SEAM_OWNED
+
+
 def _find_private_destination_violations(repo) -> list[str]:
     violations: list[str] = []
     for path in src_python_files(repo):
+        if _is_seam_owned(str(path.relative_to(repo))):
+            continue
         tree = safe_parse(path)
         if tree is None:
             continue
@@ -94,6 +123,45 @@ def test_no_src_call_site_relaxes_private_destinations() -> None:
         ),
         docs_link="docs/development/structural-guards.md",
     )
+
+
+@pytest.mark.arch_guard
+def test_the_env_hatch_defaults_to_off() -> None:
+    """Production, which sets nothing, keeps the pin.
+
+    This is what the absolute ban on the NAME was really buying, and it is now asserted
+    on BEHAVIOUR rather than on a string's absence — so it survives the seam legitimately
+    owning the posture, and it catches the failure the old rule could not: a hatch whose
+    default flipped to on.
+    """
+    import os
+    from unittest.mock import patch
+
+    from src.core.security.outbound_http import _env_flag
+
+    with patch.dict(os.environ, {}, clear=True):
+        assert _env_flag(FORBIDDEN_ENV_HATCH) is False, (
+            f"{FORBIDDEN_ENV_HATCH} must default to OFF. A deployment that sets nothing has to keep "
+            "the SSRF pin; a default-on hatch opens 127.0.0.1, 169.254.169.254 and all of RFC1918 "
+            "in every deployment at once."
+        )
+
+    # The seam's contract is exactly ``== "true"`` case-insensitively — NOT "1"/"yes".
+    # Asserted so the test above cannot pass vacuously against a hatch that ignores every
+    # value, and so the compose stack's spelling stays the one the reader accepts.
+    for truthy in ("true", "TRUE", "True"):
+        with patch.dict(os.environ, {FORBIDDEN_ENV_HATCH: truthy}, clear=True):
+            assert _env_flag(FORBIDDEN_ENV_HATCH) is True, (
+                f"the hatch must respond to {truthy!r} — otherwise the in-runner loopback fixtures "
+                "it exists for are silently unreachable and the default-off assertion is vacuous."
+            )
+
+    for falsy in ("1", "yes", "on", ""):
+        with patch.dict(os.environ, {FORBIDDEN_ENV_HATCH: falsy}, clear=True):
+            assert _env_flag(FORBIDDEN_ENV_HATCH) is False, (
+                f"{falsy!r} must NOT open the hatch — a near-miss spelling that silently relaxed the "
+                "pin would be worse than one that silently kept it."
+            )
 
 
 @pytest.mark.arch_guard
@@ -155,6 +223,8 @@ def _find_env_hatch_violations(repo) -> list[str]:
         except (UnicodeDecodeError, OSError):
             continue
         if FORBIDDEN_ENV_HATCH not in text:
+            continue
+        if _is_seam_owned(str(path.relative_to(repo))):
             continue
         for lineno, line in enumerate(text.splitlines(), start=1):
             if FORBIDDEN_ENV_HATCH in line:

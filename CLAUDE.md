@@ -34,7 +34,7 @@ This guide helps you work effectively with the Prebid Sales Agent codebase maint
 - If you are asked to refactor duplicated code, that is a **bug fix**, not an "improvement"
 - **NEVER** cite "avoid over-engineering" or "keep it simple" to justify leaving duplicated logic in place
 - Duplicated code is a defect. It means the next person who fixes a bug in one copy will miss the other copy. This is not theoretical — it has caused real bugs in this codebase
-- **Enforced by:** `check_code_duplication.py` pre-commit hook (pylint R0801, ratcheting baseline in `.duplication-baseline`)
+- **Enforced by:** `check_code_duplication.py` in `make quality` (pylint R0801, ratcheting baseline in `.duplication-baseline`)
 
 **How to apply DRY correctly:**
 ```python
@@ -98,12 +98,14 @@ AST-scanning tests enforce architecture invariants on every `make quality` run. 
 | No raw MediaPackage select | All MediaPackage access goes through repository, not raw `select()` | `test_architecture_no_raw_media_package_select.py` |
 | No import-time filesystem I/O | `src/` and `scripts/` modules touch no files while being imported | `test_architecture_no_import_time_fs_io.py` |
 | No raw select outside repos | All ORM model queries go through repositories, not raw `select()` | `test_architecture_no_raw_select.py` |
+| No raw egress | All outbound HTTP goes through `src/core/security/outbound_http.py`, never raw `httpx`/`requests`/`urlopen`/`aiohttp` | `ruff-egress.toml` (TID251 over `src/` + `scripts/`, in `make quality-ci`) + `test_ruff_egress_bans.py` |
+| No destination rewrite | Nothing under `src/` rebuilds a URL or swaps its netloc/scheme ahead of the seam | `test_architecture_no_destination_rewrite.py` |
 | BDD no-op Then steps | Then steps must assert, not delegate to `_pending()`-like no-ops | `test_architecture_bdd_no_pass_steps.py` |
 | BDD trivial assertions | Then steps must compare values, not just check truthiness | `test_architecture_bdd_no_trivial_assertions.py` |
 | BDD no dict registry | Given steps must use factories, not raw dicts | `test_architecture_bdd_no_dict_registry.py` |
 | BDD no duplicate steps | No 3+ step functions with identical bodies | `test_architecture_bdd_no_duplicate_steps.py` |
 | BDD no silent env | No `ctx.get("env")` or `hasattr(env, ...)` in step functions | `test_architecture_bdd_no_silent_env.py` |
-| Code duplication (DRY) | Duplicate block count in src/ and tests/ cannot increase | `check_code_duplication.py` (pre-commit + make quality) |
+| Code duplication (DRY) | Duplicate block count in src/ and tests/ cannot increase | `check_code_duplication.py` (make quality) |
 | Workflow tenant isolation | WorkflowRepository queries join DBContext for tenant scoping | `test_architecture_workflow_tenant_isolation.py` |
 | No split mock assertions | Tests use `assert_called_once_with()`, not `assert_called_once()` + `call_args` | `test_architecture_weak_mock_assertions.py` |
 | Single migration head | Alembic migration graph has exactly one head | `test_architecture_single_migration_head.py` |
@@ -347,6 +349,37 @@ with get_db_session() as session:
   code must use factories regardless. The structural guard (`test_architecture_repository_pattern.py`)
   will catch new violations immediately at `make quality`. Pre-existing violations are allowlisted
   and tracked with FIXME comments — they shrink over time, never grow.
+
+### 9. Outbound HTTP: The Application Implements No SSRF Protection
+**Every outbound request goes through `src/core/security/outbound_http.py` (`send` / `asend`).**
+
+Do not add URL validation, private-IP checks, metadata blocklists, resolve-then-check, or
+redirect re-validation anywhere else — `adcp.signing` owns address validation and IP pinning,
+httpx owns the response state machine (including NOT following redirects). If you find yourself
+writing `ipaddress`, `socket.gethostbyname`, or a hostname blocklist in `src/`, stop: that logic
+is already owned elsewhere.
+
+**Why:** address, TLS, redirect and retry policy re-decided at each call site is exactly how SSRF
+kept recurring here (#1589) — one call site always forgets one of them. One seam, one decision.
+
+```python
+# CORRECT: the seam decides address, TLS, redirect and retry policy
+from src.core.security.outbound_http import asend
+
+result = await asend(url, json=payload)
+```
+
+```python
+# WRONG: raw client plus hand-rolled address policy at the call site
+import httpx, ipaddress, socket
+
+if ipaddress.ip_address(socket.gethostbyname(host)).is_private:  # TOCTOU, and not our job
+    raise ValueError("blocked")
+async with httpx.AsyncClient() as client:
+    await client.post(url, json=payload)
+```
+
+- **Enforced by:** `ruff-egress.toml` — src-scoped TID251 import bans run by `make quality-ci`; `tests/unit/test_ruff_egress_bans.py` proves every ban fires and every `# noqa: TID251` exemption is live, not prose; `tests/unit/test_architecture_no_destination_rewrite.py` keeps destinations unrewritten ahead of the seam
 
 ---
 

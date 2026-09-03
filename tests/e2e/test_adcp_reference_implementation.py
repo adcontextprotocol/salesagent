@@ -6,31 +6,32 @@ sync and async (webhook) responses, using the request-builder helpers for schema
 
 import json
 import uuid
-from time import sleep
+from time import monotonic, sleep
 
 import pytest
 
-from tests.e2e._webhook_capture import WebhookCaptureHandler, run_webhook_capture_server
+from tests.e2e._webhook_capture import run_webhook_capture_server
 from tests.e2e.adcp_request_builder import (
     build_creative,
     build_default_campaign_request,
     build_sync_creatives_request,
     parse_tool_result,
 )
-from tests.e2e.utils import make_mcp_client
-
-
-class WebhookReceiver(WebhookCaptureHandler):
-    """Webhook receiver for async notification tests."""
-
-    received_webhooks: list = []
+from tests.e2e.utils import make_mcp_client, wait_until
 
 
 @pytest.fixture
 def webhook_server():
-    # Loopback-pinned: this lifecycle reaches the server over the host loopback, so the
-    # callback host stays 127.0.0.1 rather than honoring ADCP_WEBHOOK_HOST.
-    with run_webhook_capture_server(WebhookReceiver, WebhookReceiver.received_webhooks, host="127.0.0.1") as info:
+    """Register a fresh capture key against the shared webhook-capture service.
+
+    Previously loopback-pinned (``host="127.0.0.1"``) — dead on arrival for a
+    containerized adcp-server, which cannot reach the host's loopback
+    (salesagent-amht.3's architect review; masked because this lifecycle test
+    never asserts on ``received``, only on ``url`` being accepted by the
+    server). ``webhooks.adcp.test`` is reachable both host-run and in-network,
+    so this now actually works instead of merely compiling.
+    """
+    with run_webhook_capture_server() as info:
         yield info
 
 
@@ -250,13 +251,17 @@ class TestAdCPReferenceImplementation:
         loopback-pinned fixture — so the webhook lands once the server links the mapping
         before firing. Discovers all ids from prior responses.
         """
-        # host='127.0.0.1' explicitly: this lifecycle reaches the server over host
-        # loopback, so the callback must be a loopback literal. The parameter is
-        # required now — the old ADCP_WEBHOOK_HOST default silently produced the
-        # same value here while meaning something else in-network.
-        with run_webhook_capture_server(
-            WebhookReceiver, WebhookReceiver.received_webhooks, host="127.0.0.1"
-        ) as webhook:
+        # No callback host to choose any more, and that is the fix rather than a
+        # loss. This leg used to pin host='127.0.0.1' — correct only for a
+        # host-run receiver, and dead on arrival for the containerized
+        # adcp-server that actually POSTs here, which cannot reach the host's
+        # loopback. The handle is now the shared compose capture service
+        # addressed at ``webhooks.adcp.test``, reachable both host-run and
+        # in-network, so the delivery this test asserts on can genuinely land.
+        # One flavor end to end: the key is minted by ``register_capture_key``,
+        # delivered at ``delivery_url_for``, and read back through the
+        # ``ReceivedView`` behind ``webhook["received"]``.
+        with run_webhook_capture_server() as webhook:
             async with make_mcp_client(live_server, token=test_auth_token) as client:
                 products_data = parse_tool_result(
                     await client.call_tool(
@@ -277,21 +282,20 @@ class TestAdCPReferenceImplementation:
                 # quiescence: wait for the first, then keep clearing until a quiet window passes with
                 # no new arrival. A single clear() leaves a late/duplicate create webhook to land in
                 # the update window below and falsely satisfy the assertion (intermittent XPASS).
-                deadline = 0.0
-                while deadline < 15.0 and not webhook["received"]:
-                    sleep(0.5)
-                    deadline += 0.5
+                wait_until(lambda: bool(webhook["received"]), timeout_seconds=15, poll_interval=0.5)
                 assert webhook["received"], (
                     "Expected the create-completion webhook to land (create delivery is fixed); "
                     "none arrived, so the update delivery below cannot be isolated."
                 )
-                quiet = 0.0
-                while quiet < 4.0:
+                # Debounce, not poll-until-truthy: keep resetting a 4s quiet window every
+                # time a new (re-delivered) webhook lands, distinct from wait_until's
+                # poll-until-condition shape.
+                quiet_deadline = monotonic() + 4.0
+                while monotonic() < quiet_deadline:
                     sleep(0.5)
-                    quiet += 0.5
                     if webhook["received"]:
                         webhook["received"].clear()
-                        quiet = 0.0
+                        quiet_deadline = monotonic() + 4.0
                 webhook["received"].clear()
 
                 update_data = parse_tool_result(
@@ -307,10 +311,7 @@ class TestAdCPReferenceImplementation:
                 )
                 assert update_data.get("media_buy_id") == media_buy_id
 
-                waited = 0.0
-                while waited < 15.0 and not webhook["received"]:
-                    sleep(0.5)
-                    waited += 0.5
+                wait_until(lambda: bool(webhook["received"]), timeout_seconds=15, poll_interval=0.5)
 
                 assert webhook["received"], (
                     "Expected a task-status webhook within 15s of update_media_buy, got none "

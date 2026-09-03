@@ -20,6 +20,7 @@ from src.core.database.database_session import get_db_session
 from src.core.database.integrity import resolve_or_write
 from src.core.database.models import AuthorizedProperty, PropertyTag, PublisherPartner, Tenant
 from src.core.domain_config import get_tenant_url
+from src.services.adagents_error_messages import describe_adagents_error
 
 logger = logging.getLogger(__name__)
 
@@ -379,7 +380,9 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
             async def check_publisher(domain: str) -> tuple[str, dict]:
                 """Check a single publisher and return status."""
                 try:
-                    # Fetch adagents.json
+                    # Sanctioned self-pinning dialer, deliberately outside the
+                    # egress seam -- see src/core/security/outbound_http.py's
+                    # module docstring.
                     adagents_data = await fetch_adagents(domain, timeout=10.0)
 
                     # Check if agent is authorized
@@ -419,12 +422,13 @@ def sync_publisher_partners(tenant_id: str) -> Response | tuple[Response, int]:
                         {"status": "error", "is_verified": False, "error": "Request timed out", "context": None},
                     )
                 except AdagentsValidationError as e:
+                    logger.error("Invalid adagents.json for %r: %s", domain, e)
                     return (
                         domain,
                         {
                             "status": "error",
                             "is_verified": False,
-                            "error": f"Invalid adagents.json: {str(e)}",
+                            "error": describe_adagents_error(e),
                             "context": None,
                         },
                     )
@@ -535,7 +539,9 @@ def get_publisher_properties(tenant_id: str, partner_id: int) -> Response | tupl
             logger.info(f"Fetching properties for {partner.publisher_domain}")
 
             try:
-                # Fetch adagents.json
+                # Sanctioned self-pinning dialer, deliberately outside the
+                # egress seam -- see src/core/security/outbound_http.py's
+                # module docstring.
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
@@ -574,7 +580,8 @@ def get_publisher_properties(tenant_id: str, partner_id: int) -> Response | tupl
             except AdagentsTimeoutError:
                 return jsonify({"error": "Request timed out", "is_authorized": False}), 200
             except AdagentsValidationError as e:
-                return jsonify({"error": f"Invalid adagents.json: {str(e)}", "is_authorized": False}), 200
+                logger.error("Invalid adagents.json: %s", e)
+                return jsonify({"error": describe_adagents_error(e), "is_authorized": False}), 200
 
     except Exception as e:
         logger.error(f"Error fetching publisher properties: {e}", exc_info=True)

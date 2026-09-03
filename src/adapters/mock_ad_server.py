@@ -1,12 +1,9 @@
 import logging
 import random
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from src.core.schemas import Snapshot
 
 # adcp 3.6.0: BrandManifest removed from CreateMediaBuyRequest; now uses BrandReference (brand field)
 from pydantic import Field
@@ -40,9 +37,11 @@ from src.core.schemas import (
     MediaPackage,
     PackagePerformance,
     ReportingPeriod,
+    Snapshot,
     UpdateMediaBuyResponse,
     UpdateMediaBuySuccess,
 )
+from src.core.security.webhook_egress import deliver_webhook
 
 
 def simulate_breakdowns(impressions: float, spend: float) -> tuple[list[dict], list[dict]]:
@@ -343,16 +342,9 @@ class MockAdServer(AdServerAdapter):
         test_behavior = self._read_test_behavior()
         if not test_behavior.get(flag):
             return
-        from src.core.exceptions import AdCPAdapterError
+        from src.core.helpers.adapter_helpers import raise_injected_adapter_failure
 
-        details = test_behavior.get("error_details")
-        suggestion = (details or {}).pop("suggestion", None) if isinstance(details, dict) else None
-        raise AdCPAdapterError(
-            test_behavior.get("error_message", "Test adapter failure"),
-            recovery=test_behavior.get("recovery", "transient"),
-            suggestion=suggestion or "Retry the operation or contact ad server support",
-            details=details or None,
-        )
+        raise_injected_adapter_failure(test_behavior)
 
     def _validate_targeting(self, targeting_overlay):
         """Mock adapter accepts all targeting."""
@@ -506,8 +498,6 @@ class MockAdServer(AdServerAdapter):
 
         from datetime import UTC, datetime
 
-        import requests
-
         payload = {
             "event": "task_completed",
             "step_id": step_id,
@@ -518,14 +508,28 @@ class MockAdServer(AdServerAdapter):
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
-        try:
-            response = requests.post(
-                self.async_webhook_url, json=payload, headers={"Content-Type": "application/json"}, timeout=10
-            )
-            response.raise_for_status()
+        # Through the webhook module, not the raw seam. This notification is
+        # unauthenticated by design — it is a dev adapter telling a local listener a
+        # step finished — but "unauthenticated" is a value the module understands,
+        # not a reason to skip it: the body still gets the canonical serialization,
+        # the destination still gets checked, and the result is an outcome rather
+        # than an exception to guess at. max_attempts=1 keeps the previous
+        # behaviour: a step-completion ping that silently retries is noise.
+        # No scheme/credentials: this notification is unauthenticated by design —
+        # a dev adapter telling a local listener a step finished. deliver_webhook
+        # takes the stored primitives, and their absence IS "unauthenticated"; it is
+        # not a reason to bypass the module, which still owns the canonical body,
+        # the destination check, and the outcome.
+        outcome = deliver_webhook(
+            self.async_webhook_url,
+            payload,
+            timeout=10.0,
+            max_attempts=1,
+        )
+        if outcome.kind == "delivered":
             self.log(f"📤 Sent webhook notification for {step_id}")
-        except Exception as e:
-            self.log(f"⚠️ Webhook failed for {step_id}: {e}")
+        else:
+            self.log(f"⚠️ Webhook failed for {step_id}: {outcome.kind} — {outcome.detail}")
 
     def create_media_buy(
         self,

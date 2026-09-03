@@ -7,11 +7,18 @@ A bare KeyError gives no diagnostic — the test output is just ``KeyError:
 mirror image is ``ctx["error"]`` on a success path: ``KeyError: 'error'`` with
 no hint that the operation succeeded when an error was expected.
 
-Then steps must instead use the shared ``_require_response(ctx)`` /
-``_require_error(ctx)`` helpers (or the generic ``_require(ctx, key)``), which
-fail with a message naming the missing key and surfacing the recorded outcome.
-Reading by ``ctx.get(key)`` is also fine — only the bare subscript is the
-antipattern.
+Then steps must instead use the shared ``_require_error(ctx)`` helper (or the
+generic ``_require(ctx, key)``), which fails with a message naming the missing
+key and surfacing the recorded outcome. For ``error`` reading by
+``ctx.get("error")`` is also fine — only the bare subscript is the antipattern.
+
+``response`` is NO LONGER one of these keys. The dispatch seams stopped writing
+it: a copy of the payload cannot tell a Then whether it holds a wire fact or an
+in-process reconstruction. Steps read the dispatch's own TransportResult through
+``require_payload`` / ``payload_or_none``, and
+``test_architecture_bdd_wire_discipline``'s Check D bans BOTH the subscript and
+the ``ctx.get`` form outright — so pointing anyone at ``_require_response`` here
+would send them to re-open the retired key.
 
 ``env`` is intentionally NOT guarded here: the harness guarantees it and the
 ``no-silent-env`` guard already requires ``ctx["env"]`` (a hard failure on a
@@ -36,7 +43,9 @@ from tests.unit._bdd_guard_helpers import iter_then_functions
 # key, add it here and convert every existing reader in the SAME change — this
 # guard has no per-key allowlist (allowlists only shrink, never grow).
 _GUARDED_KEYS: dict[str, str] = {
-    "response": "_require_response(ctx)",
+    # NOT "response": that key is retired entirely, and banning only its bare
+    # subscript here would imply ctx.get("response") is acceptable. Check D in
+    # test_architecture_bdd_wire_discipline bans both forms.
     "error": "_require_error(ctx)",
 }
 

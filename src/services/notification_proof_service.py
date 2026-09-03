@@ -58,12 +58,12 @@ scope, so the obligation is prose plus schema, and
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
-import httpx
 from adcp.types import NotificationConfig
 
-from src.core.security.url_validator import check_url_ssrf, is_reserved_tld_host
+from src.core.security.outbound_http import CounterpartyUrl, OutboundRequestBlocked, validate_url
+from src.core.security.url_validator import is_reserved_tld_host
 
 if TYPE_CHECKING:
     from adcp.webhook_auth import JwkSignerStrategy
@@ -79,6 +79,31 @@ logger = logging.getLogger(__name__)
 #: The spec SHOULDs 10s too — this deployment is stricter because the in-request-cycle
 #: carve-out is what makes the whole handshake permissible at all.
 CHALLENGE_TIMEOUT_SECONDS = 2.0
+
+
+class ChallengeResponse(Protocol):
+    """The two members a challenge answer is judged on: its status and its bytes.
+
+    Structural, so this module holds no ``httpx`` type of its own.
+    ``ruff-egress.toml`` bans importing ``httpx`` anywhere in ``src/`` outside the
+    egress seam (GH #1589), and the ban reads IMPORTS -- a ``TYPE_CHECKING``-only
+    import fires it just the same -- so an annotation is not a way around it. A
+    proof-of-control answer needs exactly ``status_code`` and ``content``, which
+    is the whole of what :func:`_response_proves_control` reads.
+
+    Declared read-only so a plain attribute and a property both satisfy it
+    (``httpx.Response.content`` is a property). It is deliberately NOT wide
+    enough to accept the seam's ``OutboundResult``, which spells the status
+    ``http_status``: when ``send_signed_challenge`` moves onto ``asend``
+    (GH #1890), this annotation goes red at that edit instead of quietly
+    accepting a differently-shaped object.
+    """
+
+    @property
+    def status_code(self) -> int: ...
+
+    @property
+    def content(self) -> bytes: ...
 
 
 class ChallengeSigning(NamedTuple):
@@ -173,15 +198,43 @@ class NotificationProofService:
             )
             return False
 
-        # Full SSRF check at FIRE time (not write time): we are about to send a
-        # request, so where the name actually resolves now matters. Kept OURS rather than
-        # delegated to the SDK's IP-pinned transport, which would move destination policy
-        # for every existing receiver URL (GH #1802, the egress seam). The residual
-        # TOCTOU — we resolve, then httpx resolves again — is pre-existing and is what
-        # GH #1890 closes.
-        safe, reason = check_url_ssrf(url, require_https=True)
-        if not safe:
-            logger.info("Notification proof for account %s refused: %s", account_id, reason)
+        # Destination policy at FIRE time (not write time): registration already took the
+        # DNS-free verdict, and this is the moment something is about to dial, so where
+        # the name resolves NOW is what matters.
+        #
+        # ONE address policy, the egress seam's. This site used to call
+        # ``url_validator.check_url_ssrf`` — the fourth copy of that policy, which
+        # GH #1802 deleted. ``validate_url`` reaches the SAME
+        # ``EgressPolicy.resolve_for_dial`` verdict ``send``/``asend`` reach and opens no
+        # socket, which is exactly what this site needs; https is unconditional there
+        # (GH #1757), so the old ``require_https=True`` is implicit, not dropped. Nothing
+        # is re-implemented locally: a second spelling of "where does this land" is the
+        # defect #1802 makes structurally impossible.
+        #
+        # The refusal is deliberately OPAQUE. ``resolve_for_dial`` logs its own cause at
+        # WARNING and raises WITHOUT one, because echoing a fetch error back to the party
+        # that supplied the URL is what AdCP 3.1.1 ``security.mdx`` point 6 forbids — so
+        # nothing is interpolated below. The outcome for the caller is unchanged: an
+        # explicit, logged refusal that returns False.
+        #
+        # ``CounterpartyUrl`` marks BUYER provenance. No field: this service is handed a
+        # NotificationConfig, never the request document or the entry's index, so there is
+        # no honest ``notification_configs[i].url`` locator to name here (a fabricated one
+        # is worse than none) — and the refusal is swallowed into False rather than an
+        # envelope anyway.
+        #
+        # The residual TOCTOU — we resolve here, ``send_signed_challenge``'s own client
+        # resolves again — is unchanged by this port; GH #1890 closes it by moving that
+        # POST onto the seam, which resolves once and pins.
+        try:
+            validate_url(url, provenance=CounterpartyUrl(field=None))
+        except OutboundRequestBlocked:
+            logger.info(
+                "Notification proof for account %s refused: the egress seam refused this destination "
+                "before any connection was attempted (the cause is logged by the seam, not echoed "
+                "here — AdCP 3.1.1 security.mdx point 6)",
+                account_id,
+            )
             return False
 
         try:
@@ -281,7 +334,7 @@ def _build_challenge(account_id: str, config: NotificationConfig, seller_agent_u
     return challenge, json.dumps(payload, separators=(",", ":")).encode("utf-8")
 
 
-def _response_proves_control(account_id: str, url: str, response: httpx.Response, challenge: str) -> bool:
+def _response_proves_control(account_id: str, url: str, response: ChallengeResponse, challenge: str) -> bool:
     """Whether *response* proves control: 2xx AND an echo of the single-use value.
 
     The rule this replaces -- "any 2xx is proof" -- is satisfied by every endpoint that

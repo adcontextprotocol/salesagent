@@ -14,20 +14,52 @@ bypass: the compose network moves onto a NON-PRIVATE, per-stack-allocated subnet
 (candidate base ``192.88.99.0/24``, sliced per stack). Nothing in ``src/``
 changes; no env hatch is introduced (pinned separately by
 ``tests/unit/test_architecture_no_private_destinations.py``). The gate's
-documented terms are exhaustively address arithmetic — ``BLOCKED_NETWORKS`` plus
-``is_loopback``/``is_link_local``/``is_private`` — and the destination genuinely
-satisfies them. Per AdCP 3.1.1 (``v3.1.1:docs/creative/canonical-formats.mdx``)
-the forbidden set is RFC1918 / loopback / link-local / CGNAT plus RFC 6761
-special-use NAMES; today's 172.16/12 default bridge is explicitly forbidden and
-192.88.99.0/24 is none of them, so moving the network makes the stack MORE
-conformant, not less.
+documented terms are exhaustively address arithmetic —
+``EgressPolicy._blocked_address``'s ``is_loopback``/``is_link_local``/
+``is_private`` flag half plus its supplement ranges — and the destination is
+meant to genuinely satisfy them. Per AdCP 3.1.1
+(``v3.1.1:docs/creative/canonical-formats.mdx``) the forbidden set is RFC1918 /
+loopback / link-local / CGNAT plus RFC 6761 special-use NAMES; today's 172.16/12
+default bridge is explicitly forbidden.
+
+**Which gate, after GH #1802.** ``url_validator``'s SSRF half is deleted — that
+module is now the reserved-TLD family only — and address policy is spelled once,
+in ``src/core/security/egress/policy.py``, as two verdicts. The
+two are NOT interchangeable here and this module deliberately uses both:
+
+* :meth:`EgressPolicy.check_registration` — DNS-free, and it reads NO
+  environment. That is what the refusal arms need. The dial verdict is opened by
+  ``ADCP_OUTBOUND_ALLOW_PRIVATE``, which ``docker-compose.e2e.yml`` sets to
+  ``"true"`` on the ``tests`` service for the runner's own loopback fixtures —
+  measured: under that hatch the dial verdict ACCEPTS ``10.0.0.7`` and
+  ``127.0.0.1``, so grading the refusals through it would assert nothing in the
+  one stack this module exists to falsify.
+* :func:`outbound_http.validate_url` (the dial verdict, DNS-full, IP-pinning) —
+  what the capture origin has to survive, because "resolves to an address the
+  gate accepts" is a claim only DNS can settle.
+
+Neither returns ``(bool, str)``: both RAISE, and the dial refusal is
+deliberately opaque (AdCP 3.1.1 ``building/by-layer/L1/security.mdx`` point 6 —
+a refusal never echoes the resolved address back), so there is no reason string
+to assert on. HTTPS is unconditional since GH #1757, so the old
+``require_https=`` argument has no successor and needs none.
 
 **What this module proves.** 127.0.0.1, a literal RFC1918 address, link-local and
 the cloud-metadata address are ALL still refused from inside the stack by the
-real ``check_url_ssrf``; the capture hostname is not a reserved-TLD name; and it
+real egress policy; the capture hostname is not a reserved-TLD name; and it
 resolves INTO this stack's own declared subnet rather than out to public DNS
 (the bounded DNS-leak risk recorded under OWNER DECISION 4 — ``adcp-e2e.dev`` is
 an unregistered name and real DNS is never consulted).
+
+**KNOWN CONFLICT, in-network only (GH #1802 × salesagent-mp53.9).** #1802 added
+``192.88.99.0/24`` to ``EgressPolicy._SUPPLEMENT_NETWORKS`` (6to4 relay anycast,
+RFC 7526) and refuses it under EVERY posture — the hatch explicitly cannot open
+it. That is the exact pool ``scripts/dev/alloc-e2e-subnet.sh`` slices this
+stack's network out of, so the two accept-case tests below now fail in-network:
+the stack squats a range the merged gate forbids. The premise is what broke, not
+the assertions, so they are left asserting acceptance rather than relaxed to
+match — moving the pool (or reconciling the supplement entry) is owned by
+``alloc-e2e-subnet.sh`` / ``docker-compose.e2e.yml`` / ``policy.py``, not here.
 
 **What it does NOT prove, stated rather than implied.** With the network on a
 non-private subnet, other in-stack services (``postgres:5432``, ``tests:8080``)
@@ -46,7 +78,10 @@ import socket
 
 import pytest
 
-from src.core.security.url_validator import check_url_ssrf, is_reserved_tld_host
+from src.core.exceptions import AdCPBlockedUrlError
+from src.core.security.egress.policy import EgressPolicy
+from src.core.security.outbound_http import OperatorEndpoint, OutboundRequestBlocked, validate_url
+from src.core.security.url_validator import is_reserved_tld_host
 from tests.e2e.conftest import e2e_in_network
 
 #: The success-leg receiver (OWNER DECISION 4, salesagent-mp53.9). Kept as a
@@ -106,11 +141,19 @@ class TestTheGateIsStillArmed:
         with no compose network. This one runs where the receiver is actually
         reachable, which is the only place "we reached it without disarming the
         gate" can be told apart from "we reached it by disarming the gate".
-        """
-        is_safe, error = check_url_ssrf(url, require_https=False)
 
-        assert is_safe is False, f"{url} was ACCEPTED by check_url_ssrf — the egress gate is disarmed"
-        assert error != "", f"{url} was refused with an empty reason"
+        Graded through the REGISTRATION verdict, for two reasons the dial verdict
+        cannot satisfy here (both measured, see the module docstring): it reads no
+        ``ADCP_OUTBOUND_ALLOW_PRIVATE``, which this stack sets on the runner and
+        which would otherwise turn four of these six refusals into acceptances;
+        and it is DNS-free, so ``host.docker.internal`` is refused by name off the
+        seam's own blocklist instead of by whatever a live resolver happens to
+        answer. Same ``_blocked_address`` predicate either way — this is the
+        posture-independent half of it, which is precisely what "still armed"
+        means.
+        """
+        with pytest.raises(AdCPBlockedUrlError):
+            EgressPolicy.check_registration(url)
 
 
 class TestTheCaptureOriginPassesOnItsOwnTerms:
@@ -153,24 +196,50 @@ class TestTheCaptureOriginPassesOnItsOwnTerms:
 
     @requires_in_network
     def test_this_stacks_subnet_is_one_the_gate_accepts(self) -> None:
-        """The declared subnet is outside every range the gate blocks — the whole premise."""
+        """The declared subnet is outside every range the gate blocks — the whole premise.
+
+        The registration verdict again, and here the hatch-free property is what
+        keeps the test from being vacuous: the dial verdict runs with
+        ``allow_private=True`` in this stack, so it would accept a private subnet
+        too and report success for a stack whose premise had collapsed.
+        """
         subnet = stack_subnet()
+        url = f"https://{subnet.network_address + 1}:8443/webhook"
 
-        is_safe, error = check_url_ssrf(f"https://{subnet.network_address + 1}:8443/webhook", require_https=True)
-
-        assert is_safe is True, f"an address in this stack's own subnet {subnet} is refused: {error}"
+        try:
+            EgressPolicy.check_registration(url)
+        except AdCPBlockedUrlError as exc:
+            raise AssertionError(
+                f"an address in this stack's own subnet {subnet} is refused by the egress policy. "
+                "If the subnet is under 192.88.99.0/24, this is the GH #1802 conflict recorded in "
+                "the module docstring: that range is now in EgressPolicy._SUPPLEMENT_NETWORKS and is "
+                "refused under every posture. The pool in scripts/dev/alloc-e2e-subnet.sh has to move"
+            ) from exc
 
     @requires_in_network
     def test_the_capture_origin_passes_the_unpatched_gate(self) -> None:
         """The delivery URL the receiver hands out survives the real gate, HTTPS required.
 
-        ``require_https=True`` is the proof-of-control path's own call
-        (``notification_proof_service``), so this grades the exact predicate that
-        path applies — name, scheme and resolved address together, with nothing
-        monkeypatched.
+        The DIAL verdict here, unlike the two arms above: this is the only claim
+        that needs DNS, because "the origin lands on an address the gate accepts"
+        is not decidable without resolving it, and resolving it is what the
+        delivery path itself does. HTTPS is no longer an argument — GH #1757 made
+        it unconditional — so the old ``require_https=True`` is carried by the
+        ``https://`` in the URL and by the seam's own scheme check.
+
+        In-network only, and the resolution is answered by the compose network's
+        embedded DNS: that is the same real lookup this module's sibling
+        ``socket.gethostbyname`` assertion makes, and the reason ``adcp-e2e.dev``
+        being unregistered has no functional consequence.
         """
         url = f"https://{CAPTURE_HOSTNAME}:8443/webhook/probe"
 
-        is_safe, error = check_url_ssrf(url, require_https=True)
-
-        assert is_safe is True, f"{url} was refused by the unpatched gate: {error}"
+        try:
+            validate_url(url, provenance=OperatorEndpoint(name="the e2e webhook capture receiver"))
+        except OutboundRequestBlocked as exc:
+            raise AssertionError(
+                f"{url} was refused by the unpatched gate. The refusal is opaque by design "
+                "(AdCP 3.1.1 L1 security point 6), so check the seam's log line for the cause; if the "
+                "origin resolves under 192.88.99.0/24 it is the GH #1802 supplement-range conflict "
+                "recorded in the module docstring"
+            ) from exc

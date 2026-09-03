@@ -84,6 +84,14 @@ ALLOWLIST_ALWAYS_DB_WRITE: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+#: NOTE (#1802): four entries left ``ALLOWLIST_NOT_WIRE_DISPATCHED`` below in the
+#: same change that added the entries here and in ``ALLOWLIST_NOT_BDD_REACHABLE``.
+#: ``set_http_status``/``set_http_sequence`` gained real ``@realize_e2e``
+#: realizations against the live local origin, which removes them from this
+#: guard's population entirely (the honest declaration, not an exemption);
+#: ``set_url_invalid``/``set_url_valid`` were deleted along with the patched
+#: SSRF knob they poked, when address policy collapsed onto ``EgressPolicy``.
+
 ALLOWLIST_NOT_WIRE_DISPATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         # WebhookMixin / CircuitBreakerMixin: WebhookEnv.call_deliver /
@@ -95,14 +103,7 @@ ALLOWLIST_NOT_WIRE_DISPATCHED: frozenset[tuple[str, str]] = frozenset(
         # _impl" case. The mock takes effect identically in every parametrized
         # "transport" row because the call itself never leaves the process, so
         # @realize_e2e would be an inert no-op wrapper (salesagent-689e scan).
-        ("tests/harness/_mixins.py", "set_http_status"),
-        ("tests/harness/_mixins.py", "set_http_sequence"),
         ("tests/harness/_mixins.py", "set_http_error"),
-        ("tests/harness/_mixins.py", "set_url_invalid"),
-        # set_url_valid is set_url_invalid's mirror (same in-process SSRF mock
-        # knob, opposite value; added by #1697) -- same never-leaves-the-process
-        # classification as the rest of this bucket.
-        ("tests/harness/_mixins.py", "set_url_valid"),
         ("tests/harness/_mixins.py", "set_http_response"),
     }
 )
@@ -118,6 +119,25 @@ ALLOWLIST_NOT_BDD_REACHABLE: frozenset[tuple[str, str]] = frozenset(
         ("tests/harness/_mixins.py", "set_dynamic_variants"),
         ("tests/harness/_mixins.py", "set_property_list"),
         ("tests/harness/_mixins.py", "set_ranking_disabled"),
+        # #1802 arrivals, same classification, re-verified by grep against
+        # tests/bdd/steps/ with a positive control (set_adapter_response, which
+        # DOES appear there):
+        #
+        # WebhookOutcomeRowsMixin.make_media_buy creates the media_buys row the
+        # webhook_delivery_log foreign key needs. Zero BDD Given steps call it;
+        # its callers are tests/integration/test_webhook_outcome_recorder.py and
+        # siblings. (It would also satisfy ALLOWLIST_ALWAYS_DB_WRITE -- it goes
+        # through MediaBuyFactory on the env session unconditionally -- but the
+        # narrower, verified fact is that no e2e-dispatched step reaches it.)
+        ("tests/harness/_mixins.py", "make_media_buy"),
+        # ProtocolWebhookEnv is integration-only: its four callers are
+        # tests/integration/test_{protocol_webhook_egress,webhook_outcome_recorder,
+        # webhook_refusal_reaches_both_seats,webhook_sender_auth_contract}.py, none
+        # of which run over e2e. make_config persists a PushNotificationConfig via
+        # the factory session; make_payload builds an in-memory SDK payload and
+        # touches no state at all.
+        ("tests/harness/protocol_webhook.py", "make_config"),
+        ("tests/harness/protocol_webhook.py", "make_payload"),
     }
 )
 
@@ -143,6 +163,18 @@ ALLOWLIST_DEFERRED: frozenset[tuple[str, str, str]] = frozenset(
         # _GIVEN_STEP_METHOD_RE (name is "setup_", not "set_"-prefixed), so
         # this guard doesn't detect it at all -- tracked only in salesagent-jlug.
         ("tests/harness/creative_sync.py", "set_run_async_result", "salesagent-jlug"),
+        # A REAL instance, opened by #1802 rather than by this method changing.
+        # CircuitBreakerMixin.deliver_webhook is now
+        # @realize_e2e(_deliver_via_live_server), so over e2e the LIVE SERVER
+        # sends -- while set_breaker_state still pokes service._circuit_breakers
+        # in the TEST process (via _breaker_for). Two processes, two breakers:
+        # the seed is inert and the scenario grades an unconfigured breaker.
+        # uc004_delivery.py:849 dispatches it, so this is not hypothetical.
+        # The whole seeding family shares the defect -- seed_breaker_failures,
+        # elapse_breaker_timeout, drive_breaker_transition -- but only this one
+        # matches _GIVEN_STEP_METHOD_RE, so it is the only member this guard can
+        # see. The fix belongs in _breaker_for, for all four at once.
+        ("tests/harness/_mixins.py", "set_breaker_state", "salesagent-h7l0h"),
     }
 )
 

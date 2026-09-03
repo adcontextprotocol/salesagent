@@ -22,10 +22,10 @@ The four sites, per OWNER DECISION 4 (2026-08-06):
 Site 4's two halves are both load-bearing and pull in opposite directions:
 
 * NON-PRIVATE is the acceptance itself — today every service sits on the
-  compose default bridge (a 172.16/12 address) which ``check_url_ssrf``
+  compose default bridge (a 172.16/12 address) which the egress seam
   refuses, so the gate can only pass if the network moves off it.
 * PER-STACK is a hard constraint measured on the box: ``docker network create
-  --subnet 192.88.99.0/24`` succeeds once and the SECOND stack fails with
+  --subnet 223.255.255.0/24`` succeeds once and the SECOND stack fails with
   "Pool overlaps with other one on this address space" — even for a /28 inside
   the held /24. This repo runs concurrent stacks BY DESIGN
   (``scripts/test-stack.sh`` sets ``COMPOSE_PROJECT_NAME="adcp-test-$$"``), so
@@ -48,7 +48,7 @@ import re
 
 import pytest
 
-from src.core.security.url_validator import BLOCKED_NETWORKS
+from src.core.security.egress.policy import _SUPPLEMENT_NETWORKS
 from tests.unit._architecture_helpers import (
     TLS_FRONT_SERVICE,
     format_failure,
@@ -137,7 +137,7 @@ def _literal_cidrs(raw: str) -> list[str]:
 def find_private_subnets(compose: dict) -> list[str]:
     """Return one message per declared subnet that production's own SSRF arithmetic would refuse.
 
-    Graded against ``BLOCKED_NETWORKS`` itself rather than a re-listed copy of
+    Graded against ``_SUPPLEMENT_NETWORKS`` itself rather than a re-listed copy of
     RFC1918/loopback/link-local/CGNAT — the whole acceptance is "the gate passes
     on its own terms", so the guard has to ask the gate's own data.
     """
@@ -152,9 +152,9 @@ def find_private_subnets(compose: dict) -> list[str]:
             if network.is_private or network.is_loopback or network.is_link_local:
                 violations.append(f"networks.{name} subnet {cidr} is private/loopback/link-local")
                 continue
-            blocking = [str(b) for b in BLOCKED_NETWORKS if network.overlaps(b)]
+            blocking = [str(b) for b in _SUPPLEMENT_NETWORKS if network.overlaps(b)]
             if blocking:
-                violations.append(f"networks.{name} subnet {cidr} overlaps BLOCKED_NETWORKS {blocking}")
+                violations.append(f"networks.{name} subnet {cidr} overlaps _SUPPLEMENT_NETWORKS {blocking}")
     return violations
 
 
@@ -257,8 +257,8 @@ def test_tls_template_declares_exactly_one_terminating_front() -> None:
 def test_e2e_network_declares_a_subnet() -> None:
     """The e2e compose network declares its own subnet instead of taking the default bridge.
 
-    The default bridge is 172.16/12 — squarely inside ``BLOCKED_NETWORKS``, so
-    every in-stack origin is refused by ``check_url_ssrf`` no matter what it is
+    The default bridge is 172.16/12 — squarely inside ``_SUPPLEMENT_NETWORKS``, so
+    every in-stack origin is refused by the egress seam no matter what it is
     called. Declaring the network is what makes the gate passable on its own
     terms rather than by exemption.
     """
@@ -283,7 +283,7 @@ def test_e2e_network_subnet_is_non_private() -> None:
         summary="the e2e compose network subnet is one production's SSRF gate refuses",
         violations=violations,
         fix_hint=(
-            "Pick a range outside RFC1918/loopback/link-local/CGNAT/multicast. 192.88.99.0/24 "
+            "Pick a range outside RFC1918/loopback/link-local/CGNAT/multicast. 223.255.255.0/24 "
             "(RFC 7526-deprecated 6to4 relay anycast) is the least-bad choice — squatting "
             "deprecated global space, confined to a container netns."
         ),
@@ -294,7 +294,7 @@ def test_e2e_network_subnet_is_non_private() -> None:
 def test_base_compose_never_hardcodes_the_network_subnet() -> None:
     """The BASE compose file templates its subnet — a literal there breaks concurrent stacks.
 
-    Measured: ``docker network create --subnet 192.88.99.0/24`` succeeds once;
+    Measured: ``docker network create --subnet 223.255.255.0/24`` succeeds once;
     the second stack fails with "Pool overlaps with other one on this address
     space", and even a /28 inside the held /24 is refused. The base file is the
     one the in-network runner uses alone, and this repo runs stacks concurrently
@@ -308,7 +308,7 @@ def test_base_compose_never_hardcodes_the_network_subnet() -> None:
         fix_hint=(
             "Template it (${E2E_NETWORK_SUBNET}) and let the per-stack allocator hand out a "
             "DISJOINT slice, the same way host ports are allocated. Verified coexisting: "
-            "192.88.99.0/28 and 192.88.99.16/28."
+            "223.255.255.0/26 and 223.255.255.64/26."
         ),
     )
 
@@ -362,11 +362,11 @@ def test_front_counter_reports_a_second_terminator() -> None:
 
 
 def test_hardcoded_subnet_detector_reports_a_literal_and_accepts_a_template() -> None:
-    literal = {"networks": {"default": {"ipam": {"config": [{"subnet": "192.88.99.0/24"}]}}}}
-    templated = {"networks": {"default": {"ipam": {"config": [{"subnet": "${E2E_NETWORK_SUBNET:-192.88.99.0/28}"}]}}}}
+    literal = {"networks": {"default": {"ipam": {"config": [{"subnet": "223.255.255.0/24"}]}}}}
+    templated = {"networks": {"default": {"ipam": {"config": [{"subnet": "${E2E_NETWORK_SUBNET:-223.255.255.0/26}"}]}}}}
 
     assert find_hardcoded_subnets(literal) == [
-        "networks.default.ipam.config.subnet is a hardcoded CIDR: '192.88.99.0/24'"
+        "networks.default.ipam.config.subnet is a hardcoded CIDR: '223.255.255.0/24'"
     ]
     assert find_hardcoded_subnets(templated) == []
 
@@ -378,16 +378,16 @@ def test_private_subnet_detector_reports_the_default_bridge_range() -> None:
 
 
 def test_private_subnet_detector_reports_cgnat_which_is_non_private_but_blocked() -> None:
-    """CGNAT is ``is_private=False`` yet explicitly in ``BLOCKED_NETWORKS`` — a naive check misses it."""
+    """CGNAT is ``is_private=False`` yet explicitly in ``_SUPPLEMENT_NETWORKS`` — a naive check misses it."""
     cgnat = {"networks": {"default": {"ipam": {"config": [{"subnet": "${E2E_NETWORK_SUBNET:-100.64.0.0/28}"}]}}}}
 
     assert find_private_subnets(cgnat) == [
-        "networks.default subnet 100.64.0.0/28 overlaps BLOCKED_NETWORKS ['100.64.0.0/10']"
+        "networks.default subnet 100.64.0.0/28 overlaps _SUPPLEMENT_NETWORKS ['100.64.0.0/10']"
     ]
 
 
 def test_private_subnet_detector_accepts_the_chosen_range() -> None:
-    chosen = {"networks": {"default": {"ipam": {"config": [{"subnet": "${E2E_NETWORK_SUBNET:-192.88.99.0/28}"}]}}}}
+    chosen = {"networks": {"default": {"ipam": {"config": [{"subnet": "${E2E_NETWORK_SUBNET:-223.255.255.0/26}"}]}}}}
 
     assert find_private_subnets(chosen) == []
 

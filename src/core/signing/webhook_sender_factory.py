@@ -29,24 +29,25 @@ Mode selection is a CONSTRUCTOR choice, so "signed both ways" (which :1425 forbi
 is not a rule to enforce but a shape that cannot be expressed: a ``WebhookSender``
 holds exactly one auth strategy, and ``signs_with_rfc9421`` reports which.
 
-**Destination policy: whoever owns the client owns the SSRF check.** Read at the
-pin, ``adcp/webhooks.py`` branches on ``_owns_client``. ``:1727`` — *"Operator-supplied
-client: trust them completely; they own SSRF"* — and ``:1604``, that operator-supplied
-clients SKIP the SDK's check; while the owned-client path (``:1636``, ``:1715``)
+**Destination policy: there is no operator-supplied client here any more.** Read at
+the pin, ``adcp/webhooks.py`` branches on ``_owns_client``: ``:1727`` — *"Operator-supplied
+client: trust them completely; they own SSRF"* — and ``:1604``, that an operator-supplied
+client SKIPS the SDK's check; while the owned-client path (``:1636``, ``:1715``)
 builds a PINNED transport that resolves the URL, validates it, and pins the
 connection to the validated IP before anything is serialized.
 
-So handing the SDK a plain ``AsyncClient`` never meant "our transport owns SSRF,
-exactly as today". It meant nothing validated the destination AT DELIVERY TIME — only
-the caller's fire-time check, with the TOCTOU between the two resolutions that
-``notification_proof_service`` concedes.
-
-The two SYNCHRONOUS senders now pass ``None``, so the SDK owns a pinned client for
-them (see :func:`adcp_webhook_sender`). Their receivers are buyer-supplied, which is
-exactly the case the pinned path exists for. ``ProtocolWebhookService`` still supplies
-its own long-lived pool and therefore still skips the SDK check; retiring that
-belongs with the egress seam (GH #1802) and the defect it closes (GH #1890), because
-it needs a pool the seam owns rather than a per-delivery client.
+So a ``client=`` parameter on this module was never "our transport owns SSRF,
+exactly as today". It was the one way to reach the SDK arm that validates nothing at
+DELIVERY time, leaving only a caller's fire-time check and the TOCTOU between the two
+resolutions. It is now GONE rather than merely unused (GH #1802, GH #1890): a
+parameter no caller passes today is still a parameter the next caller can pass, and
+the point of a seam is that the unpinned dial is unrepresentable rather than
+discouraged. Every sender built here owns the SDK's pinned client
+(``allow_private_destinations=False``), and the ONE socket this module opens itself —
+:func:`send_signed_challenge` — goes through
+:func:`src.core.security.outbound_http.asend`, which resolves once and pins to that
+address, refuses redirects, sets ``trust_env=False``, applies the port allowlist and
+caps the response body. Nothing in this module imports ``httpx``.
 """
 
 from __future__ import annotations
@@ -60,11 +61,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
-import httpx
 from adcp.webhooks import WebhookDeliveryResult, WebhookSender
 
 from src.core.enum_helpers import enum_value
 from src.core.exceptions import AdCPConfigurationError
+from src.core.security.outbound_http import CounterpartyUrl, OutboundDeliveryFailed, asend
 from src.core.signing.posture import webhook_signing_posture
 from src.core.signing.provider import resolve_signing_material
 
@@ -402,11 +403,15 @@ def _warn_keyless_once(tenant_id: str | None) -> None:
     )
 
 
-def _unauthenticated_sender(client: httpx.AsyncClient | None) -> WebhookSender:
+def _unauthenticated_sender() -> WebhookSender:
+    # ``client=None`` is the SDK's "you own the client" signal, and the only value
+    # this module ever passes: it selects the ``_owns_client`` arm that resolves the
+    # destination, validates it and pins the connection to the validated IP before
+    # anything is serialized (see the module docstring).
     return WebhookSender._from_strategy(
         _UnauthenticatedStrategy(),
         key_id="unauthenticated",
-        client=client,
+        client=None,
         timeout_seconds=_TIMEOUT_SECONDS,
         allow_private_destinations=False,
         allowed_destination_ports=None,
@@ -429,37 +434,68 @@ def _agent_origin(repo: SigningKeyRepository) -> str | None:
     return repo.canonical_origin()
 
 
-def _rfc9421_sender(
+def webhook_delivery_signer(
     *,
     tenant_id: str | None,
     repo: SigningKeyRepository | None,
     now: datetime,
-    client: httpx.AsyncClient | None,
-) -> WebhookSender:
-    """The RFC 9421 arm: the tenant's own key, or an honest unsigned delivery.
+) -> JwkSignerStrategy | None:
+    """The RFC 9421 strategy this tenant's DELIVERIES are signed with, or ``None``.
+
+    The whole of the RFC 9421 arm's decision, with the delivery act removed. It was
+    extracted out of :func:`_rfc9421_sender` (which now calls it) rather than restated
+    beside it, because a second copy of "which key signs this tenant's webhooks" is
+    exactly how one transport signs with a key another transport does not have.
+
+    ``None`` means "deliver unsigned, honestly": a tenant with no active signing key,
+    or a keyed one on an origin whose trust root cannot be published, has
+    ``webhook_signing.supported=false`` in the capabilities a receiver reads, so a
+    signature it could not resolve a key for is worse than no signature. That is a
+    DECIDED posture, warned once per tenant per process, not a fallback taken because
+    something failed — the caller gets ``None`` and delivers plain, and never sees a
+    signer that quietly stopped signing.
 
     The posture read here is the SAME object ``get_adcp_capabilities`` serializes
     (#1291 D1), which is what makes the advertised ``webhook_signing.supported`` and
     this branch one decision rather than two. It therefore inherits the publishability
     gate: on an origin that cannot serve https there is no conformant
     ``identity.brand_json_url`` for a receiver to resolve our key through, so the arm is
-    dropped and the delivery goes out unauthenticated. That removes an UNVERIFIABLE
-    signature rather than withdrawing a capability.
+    dropped. That removes an UNVERIFIABLE signature rather than withdrawing a capability.
 
     The algorithm about to go on the wire is still checked against that posture before
-    the sender is handed back. After D1 the check is unreachable by construction — both
-    sides read one object — which is the point: it is the belt to the derivation's
+    the strategy is handed back. After D1 the check is unreachable by construction —
+    both sides read one object — which is the point: it is the belt to the derivation's
     braces, and a future second derivation trips it instead of shipping.
+
+    The return TYPE is the RFC 9421 oracle, exactly as on :func:`adcp_challenge_signer`:
+    ``JwkSignerStrategy`` is the class behind ``WebhookSender.signs_with_rfc9421``, so a
+    future edit cannot hand a caller a Bearer or legacy-HMAC strategy and still satisfy
+    the annotation. That matters most to the caller this function exists for —
+    :func:`src.core.security.webhook_egress.deliver_webhook`, whose RFC 9421 arm is
+    selected by the ABSENCE of an ``authentication`` block (security.mdx @ v3.1.1 :1424)
+    and which must therefore never be handed a legacy strategy to apply there (:1425
+    forbids answering a legacy registration with an RFC 9421 signature, and the converse
+    shape — a legacy strategy on the 9421 arm — would be the same confusion mirrored).
+
+    It is deliberately NOT the same function as :func:`adcp_challenge_signer`. A
+    challenge and a delivery select the same key by the same two calls
+    (``webhook_signing_posture`` + ``resolve_signing_material``, both shared), but they
+    are different obligations with different failure vocabularies: a challenge that
+    cannot be signed means an activation WILL FAIL and gets its own warning domain,
+    while an unsignable delivery goes out plain. Fusing them would give one of the two
+    conditions the other's log line.
     """
+    from adcp.webhook_auth import JwkSignerStrategy
+
     if repo is None or tenant_id is None:
         _warn_keyless_once(tenant_id)
-        return _unauthenticated_sender(client)
+        return None
 
     origin = _agent_origin(repo)
     posture = webhook_signing_posture(repo, now=now, origin=origin)
     if not posture.supported:
         _warn_keyless_once(tenant_id)
-        return _unauthenticated_sender(client)
+        return None
 
     material = resolve_signing_material(repo, tenant_id=tenant_id, now=now)
     declared = {enum_value(alg) for alg in posture.algorithms or ()}
@@ -470,12 +506,96 @@ def _rfc9421_sender(
             "declaration against the wire would reject every delivery"
         )
 
-    return WebhookSender(
-        private_key=material.private_key,
-        key_id=material.kid,
-        alg=material.alg,
-        client=client,
+    return JwkSignerStrategy(private_key=material.private_key, key_id=material.kid, alg=material.alg)
+
+
+def delivery_signer_for_tenant(tenant_id: str | None, *, now: datetime | None = None) -> JwkSignerStrategy | None:
+    """*tenant_id*'s RFC 9421 delivery strategy, resolved on a session closed BEFORE any dial.
+
+    The open-read-close composition every sender on the egress seam (GH #1802) needs
+    verbatim: own a signing session, consume it eagerly, close it, hand back primitives.
+    It lives HERE, beside the decision it composes, because three senders —
+    ``webhook_delivery_service``, ``order_approval_service`` and
+    ``protocol_webhook_service`` — each wrote it independently and each left a docstring
+    saying it belonged in one place. Three copies of "which session resolves which
+    tenant's key" is how one transport signs with a key another transport does not have,
+    which is the exact failure :func:`webhook_delivery_signer` exists to prevent one level
+    down. ``signing_repo`` is defined below in this module and resolved at call time; it is
+    named here rather than reimplemented so the session lifetime has one owner.
+
+    **The session never spans a socket.** :func:`signing_repo` owns it (it accepts none
+    from a caller) and :func:`webhook_delivery_signer` consumes it EAGERLY — origin,
+    posture and key material are all read before it returns, and the strategy it hands
+    back holds key material rather than a repository — so nothing lazy survives the
+    ``with`` and no pooled connection is parked on a buyer's latency (#1757,
+    salesagent-n78j0.4). Callers must therefore call this BEFORE the delivery call, never
+    inside a context that also holds the connection.
+
+    **No silent downgrade, and no ``try`` here.** ``None`` and a raise are two different
+    answers and this function never converts one into the other:
+
+    * ``None`` is a DECIDED posture, not a failure — no tenant/repository, no ACTIVE
+      signing key, or a key on an origin whose trust root cannot be published. Such a
+      tenant's capabilities already advertise ``webhook_signing.supported=false``, so its
+      receivers have been told not to expect a ``Signature`` header and the delivery goes
+      out plain on the legacy/unauthenticated arm.
+    * anything else RAISES (notably ``AdCPConfigurationError``: the key's ``alg``
+      contradicts the declared ``webhook_signing.algorithms``, which every receiver
+      validating the declaration must reject). Catching that and passing ``signer=None``
+      would turn a misconfiguration into an unsigned delivery to a receiver that IS
+      verifying — the silent downgrade the seam exists to remove. The raise escapes before
+      anything is serialized, so nothing is sent.
+
+    What each caller does with that raise is deliberately NOT unified here, because the
+    three senders genuinely differ and flattening them would change behaviour:
+    ``protocol_webhook_service`` catches it at its own delivery boundary and books an
+    ``unexpected`` outcome with zero attempts (delivery-log row plus audit warning);
+    ``webhook_delivery_service`` lets it reach ``_send_webhook_enhanced``'s outermost
+    handler; ``order_approval_service`` lets it propagate to the two polling-thread
+    callers that already wrap their call. All three send nothing.
+
+    Where *tenant_id* comes from also stays the caller's: the delivery service reads it off
+    the DEQUEUED queue entry (so the key that signs is the one the item being delivered
+    names), while the other two read it off the config row / task context they were handed.
+    That is a different question from "which key signs this tenant's webhooks", and only the
+    latter is shared.
+
+    ``now`` defaults to :func:`datetime.now` in UTC — the value all three call sites passed
+    — and is injectable for the same reason it is on :func:`adcp_webhook_sender`: key
+    validity is a time-dependent decision and a caller pinning a clock must be able to.
+    """
+    with signing_repo(tenant_id) as repo:
+        return webhook_delivery_signer(tenant_id=tenant_id, repo=repo, now=now or datetime.now(UTC))
+
+
+def _rfc9421_sender(
+    *,
+    tenant_id: str | None,
+    repo: SigningKeyRepository | None,
+    now: datetime,
+) -> WebhookSender:
+    """The RFC 9421 arm: the tenant's own key, or an honest unsigned delivery.
+
+    The decision itself is :func:`webhook_delivery_signer`; this function only binds
+    its answer to an SDK sender. ``WebhookSender._from_strategy`` is the same internal
+    constructor the public ``__init__`` uses — read at the pin, ``__init__`` builds
+    exactly ``JwkSignerStrategy(private_key=…, key_id=…, alg=…)`` and then sets the
+    identical seven attributes with ``allow_private_destinations=False``,
+    ``allowed_destination_ports=None`` and ``transport_hooks=()`` — so routing through
+    the strategy changes nothing on the wire and stops the key decision from existing
+    in two places.
+    """
+    strategy = webhook_delivery_signer(tenant_id=tenant_id, repo=repo, now=now)
+    if strategy is None:
+        return _unauthenticated_sender()
+
+    return WebhookSender._from_strategy(
+        strategy,
+        key_id=strategy.key_id,
+        client=None,
         timeout_seconds=_TIMEOUT_SECONDS,
+        allow_private_destinations=False,
+        allowed_destination_ports=None,
     )
 
 
@@ -485,13 +605,16 @@ def build_webhook_sender(
     tenant_id: str | None,
     repo: SigningKeyRepository | None,
     now: datetime,
-    client: httpx.AsyncClient | None = None,
 ) -> WebhookSender:
     """The sender *config*'s receiver has earned — exactly one authentication mode.
 
-    ``client`` is the operator-supplied transport (see the module docstring). Omit it
-    and the SDK owns its own client, which is what callers grading only
-    ``signs_with_rfc9421`` want: no socket is opened either way.
+    Every arm leaves the client to the SDK. There is deliberately no ``client``
+    parameter to pass one in: an operator-supplied client SKIPS the SDK's own
+    destination check (``adcp/webhooks.py`` ``:1604``, ``:1727``), so the parameter
+    was the single way to reach an unpinned delivery from here. Removing it makes
+    that unrepresentable rather than merely unused — see the module docstring. No
+    socket is opened by construction either way, which is what callers grading only
+    ``signs_with_rfc9421`` rely on.
     """
     mode = legacy_auth_mode(config)
     if mode is not None:
@@ -501,18 +624,18 @@ def build_webhook_sender(
             return WebhookSender.from_adcp_legacy_hmac(
                 (config.authentication_token or "").encode("utf-8"),
                 key_id=_LEGACY_HMAC_KEY_ID,
-                client=client,
+                client=None,
                 timeout_seconds=_TIMEOUT_SECONDS,
             )
         if mode == LEGACY_BEARER:
             return WebhookSender.from_bearer_token(
                 config.authentication_token or "",
-                client=client,
+                client=None,
                 timeout_seconds=_TIMEOUT_SECONDS,
             )
-        return _unauthenticated_sender(client)
+        return _unauthenticated_sender()
 
-    return _rfc9421_sender(tenant_id=tenant_id, repo=repo, now=now, client=client)
+    return _rfc9421_sender(tenant_id=tenant_id, repo=repo, now=now)
 
 
 def adcp_challenge_signer(*, tenant_id: str, repo: SigningKeyRepository, now: datetime) -> JwkSignerStrategy | None:
@@ -551,8 +674,9 @@ def adcp_challenge_signer(*, tenant_id: str, repo: SigningKeyRepository, now: da
 
     Reuses :func:`webhook_signing_posture` (the ONE key-presence derivation, which since
     #1291 D1 also carries the trust-root publishability gate) and
-    ``resolve_signing_material`` — the same two calls ``_rfc9421_sender`` makes, so key
-    selection cannot diverge between a challenge and the deliveries that follow it.
+    ``resolve_signing_material`` — the same two calls :func:`webhook_delivery_signer`
+    makes, so key selection cannot diverge between a challenge and the deliveries that
+    follow it.
     """
     from adcp.webhook_auth import JwkSignerStrategy
 
@@ -564,14 +688,32 @@ def adcp_challenge_signer(*, tenant_id: str, repo: SigningKeyRepository, now: da
     return JwkSignerStrategy(private_key=material.private_key, key_id=material.kid, alg=material.alg)
 
 
+@dataclass(frozen=True, slots=True)
+class ChallengeAnswer:
+    """What a proof-of-control challenge came back with: a status and the bytes.
+
+    The seam answers with :class:`~src.core.security.egress.response.OutboundResult`,
+    which spells the status ``http_status`` and carries four more fields the proof
+    decision has no business reading. ``notification_proof_service`` declares the two
+    members it DOES read as a structural protocol (``status_code`` / ``content``)
+    precisely so it holds no transport type of its own, so this is the projection onto
+    that shape — the same move
+    :class:`~src.core.security.outbound_http.WrappedFailure` makes one layer down, and
+    for the same reason: a type crossing a boundary is how an httpx object reaches a
+    module the egress ban forbids importing httpx into.
+    """
+
+    status_code: int
+    content: bytes
+
+
 async def send_signed_challenge(
     *,
     url: str,
     body: bytes,
     strategy: JwkSignerStrategy,
     timeout_seconds: float,
-    client: httpx.AsyncClient | None = None,
-) -> httpx.Response:
+) -> ChallengeAnswer:
     """Sign *body* and POST it — the ONE place a proof-of-control challenge leaves (#1291 C2).
 
     The sign and the POST are one function because no PUBLIC SDK path can send a conformant
@@ -601,7 +743,7 @@ async def send_signed_challenge(
     signature base from ``headers={"Content-Type": "application/json"}`` and covers the
     ``content-type`` component whenever that header is present, while a webhook verifier
     REJECTS a signature whose covered components omit it (``security.mdx`` @ v3.1.1 :1476,
-    ``webhook_signature_components_incomplete``). httpx's ``content=`` path sets no
+    ``webhook_signature_components_incomplete``). The seam's ``content=`` path sets no
     Content-Type of its own, so it ships explicitly or the signature covers a header that
     never left.
 
@@ -609,21 +751,63 @@ async def send_signed_challenge(
     would cover bytes that never went on the wire (#1441's defect class). The caller
     serializes once and hands those exact bytes here.
 
-    Destination policy stays the CALLER's. This opens a plain ``httpx.AsyncClient``
-    rather than the SDK's IP-pinned transport, because adopting that would change
-    behaviour for every existing receiver URL — deferred to GH #1802 (the egress seam)
-    and GH #1890 (the defect it closes). The caller runs its own fire-time SSRF check
-    before calling this, so the destination is validated ONCE, at fire time, and not
-    again when the socket opens — the TOCTOU the module docstring names.
+    **Destination policy is the seam's** (GH #1802, GH #1890). This used to open a bare
+    ``AsyncClient`` of its own, so the destination was validated ONCE at the caller's fire time
+    and never again when the socket opened — the TOCTOU the module docstring named, plus no
+    redirect refusal, no port allowlist, no ``trust_env=False`` and no body cap.
+    :func:`~src.core.security.outbound_http.asend` makes all six the same decision every
+    other outbound call in this application makes: it resolves the host ONCE inside
+    ``EgressPolicy.resolve_for_dial`` and pins the connection to that address, so there is
+    no second resolution left to disagree with the first. ``CounterpartyUrl`` marks the
+    provenance — the URL came off a buyer's registration — with no ``field``, because this
+    module is handed a URL and never the request document a locator would point into.
+
+    The signature is applied through the seam's per-attempt ``sign=`` hook rather than
+    precomputed here. That is what keeps this a SIGNED dial without a client of its own:
+    the hook fires inside ``asend`` after ``client.build_request``, over
+    ``request.content`` — the exact bytes httpx will transmit, which are ``body`` — and over
+    the post-normalization ``request.url``, so signed bytes and wire bytes are one object
+    rather than two that agree. Each attempt gets its own call and therefore its own RFC
+    9421 ``nonce``, which is why the hook exists at all.
+
+    ``max_attempts=1``: a challenge is a handshake inside the request cycle, budgeted by the
+    caller's 2.0s ceiling, and it was exactly one POST before this moved onto the seam.
+    BR-RULE-029's 1s/2s backoff between three attempts would blow that budget several times
+    over for a subscriber that is not going to answer.
+
+    There is NO silent downgrade. ``strategy`` is required and non-optional, so an
+    unsignable challenge cannot reach here at all — :func:`adcp_challenge_signer` returns
+    ``None`` and the caller turns that into "not proven" without dialling. A signer that
+    raises mid-attempt escapes ``asend`` (it is not in the retryable set), and a refused
+    destination raises ``OutboundRequestBlocked`` from ``resolve_for_dial`` before any
+    request is built — so on both paths nothing is sent, rather than something being sent
+    unsigned.
+
+    A non-2xx answer is projected back onto :class:`ChallengeAnswer` rather than allowed to
+    escape as ``OutboundDeliveryFailed``, so the caller keeps grading the status itself and
+    still logs *which* status the endpoint answered. Its ``content`` is empty on that path
+    and honestly so: the seam surfaces no body for an undelivered request (AdCP 3.1.1
+    ``security.mdx`` point 6 — nothing derived from the origin's response rides out on a
+    failure), and the echo check never reads it, because a non-2xx has already failed the
+    2xx gate that precedes it. A transport failure has no status to project and is
+    re-raised unchanged.
     """
-    headers = {
-        "Content-Type": "application/json",
-        **strategy.build_auth_headers(method="POST", url=url, body=body),
-    }
-    if client is not None:
-        return await client.post(url, content=body, headers=headers)
-    async with httpx.AsyncClient(timeout=timeout_seconds) as owned:
-        return await owned.post(url, content=body, headers=headers)
+    try:
+        result = await asend(
+            url,
+            method="POST",
+            content=body,
+            headers={"Content-Type": "application/json"},
+            timeout=timeout_seconds,
+            max_attempts=1,
+            provenance=CounterpartyUrl(field=None),
+            sign=strategy.build_auth_headers,
+        )
+    except OutboundDeliveryFailed as exc:
+        if exc.http_status is None:
+            raise
+        return ChallengeAnswer(status_code=exc.http_status, content=b"")
+    return ChallengeAnswer(status_code=result.http_status, content=result.content)
 
 
 def _warn_unsignable_challenge(tenant_id: str) -> None:
@@ -679,23 +863,18 @@ async def adcp_webhook_sender(
     config: WebhookAuthConfig | None,
     tenant_id: str | None,
     now: datetime | None = None,
-    client: httpx.AsyncClient | None = None,
 ) -> AsyncIterator[WebhookSender]:
-    """A configured sender bound to an HTTP client, or to the SDK's pinned one.
+    """A configured sender bound to the SDK's own pinned client.
 
-    A caller with a long-lived pool (``ProtocolWebhookService``) passes it in and
-    keeps owning its lifecycle. A caller WITHOUT one — the two synchronous senders,
-    which run each delivery on their own event loop and so cannot share a client —
-    now gets ``None``, and the SDK opens its own per-delivery client.
-
-    That is deliberate, and it is a destination-policy change. ``adcp/webhooks.py``
-    branches on ``_owns_client``: an operator-supplied client is trusted completely
-    and SKIPS the SDK's SSRF check (``:1604``, ``:1727``), while the owned-client path
-    (``:1636``, ``:1715``) resolves the URL, validates it against
-    ``resolve_and_validate_host``, and PINS the connection to the validated IP before
-    anything is serialized. Opening a plain client here therefore bought nothing but
-    the loss of that check — the destination went unvalidated at delivery time, with
-    only the caller's fire-time check and the TOCTOU between the two resolutions.
+    There is no ``client`` parameter, and that is a destination-policy decision rather
+    than a missing convenience. ``adcp/webhooks.py`` branches on ``_owns_client``: an
+    operator-supplied client is trusted completely and SKIPS the SDK's SSRF check
+    (``:1604``, ``:1727``), while the owned-client path (``:1636``, ``:1715``) resolves
+    the URL, validates it against ``resolve_and_validate_host``, and PINS the connection
+    to the validated IP before anything is serialized. Passing a plain client bought
+    nothing but the loss of that check — the destination went unvalidated at delivery
+    time, with only a caller's fire-time check and the TOCTOU between the two
+    resolutions — so the way to pass one is gone (GH #1802, GH #1890).
 
     The receivers this reaches are buyer-supplied, so the pinned path is the one they
     should get. ``allow_private_destinations`` stays at the SDK default of ``False``.
@@ -704,9 +883,6 @@ async def adcp_webhook_sender(
     SDK classifier tests — private, loopback, link-local, multicast, reserved — which
     is what that subnet was chosen for. Docker's default bridge (``172.17/16``) and
     RFC 1918 are refused, as they should be.
-
-    ``ProtocolWebhookService`` still supplies its pool and therefore still skips the
-    SDK check; closing that is the egress-seam work in GH #1802.
     """
     # The ``yield`` is OUTSIDE the block on purpose, and moving it back inside restores a
     # real defect: a generator suspended at a ``yield`` holds every context it entered, so
@@ -722,7 +898,6 @@ async def adcp_webhook_sender(
             tenant_id=tenant_id,
             repo=repo,
             now=now or datetime.now(UTC),
-            client=client,
         )
     yield sender
 
@@ -736,15 +911,17 @@ async def deliver_adcp_webhook(
     tenant_id: str | None,
     now: datetime | None = None,
     extra_headers: Mapping[str, str] | None = None,
-    client: httpx.AsyncClient | None = None,
 ) -> WebhookDeliveryResult:
     """Serialize, authenticate and POST one AdCP webhook — the single delivery act.
 
     ``idempotency_key`` is generated ONCE PER EVENT by the caller and reused across
     its retries; the SDK injects it into the signed body, so a fresh key per attempt
     would defeat receiver-side dedup.
+
+    The SDK owns the client, so the POST goes out over its IP-pinned transport — see
+    :func:`adcp_webhook_sender` for why there is no way to hand one in.
     """
-    async with adcp_webhook_sender(config=config, tenant_id=tenant_id, now=now, client=client) as sender:
+    async with adcp_webhook_sender(config=config, tenant_id=tenant_id, now=now) as sender:
         return await sender.send_raw(
             url=url,
             idempotency_key=idempotency_key,

@@ -2,14 +2,12 @@
 
 Covers:
 - resolve_adapter_id() in src/adapters/constants.py
-- build_agent_config() in src/core/helpers/adapter_helpers.py
 - _build_package_responses() and _build_create_success() in src/adapters/base.py
 
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock
@@ -137,122 +135,15 @@ class TestResolveAdapterId:
 
 
 # ---------------------------------------------------------------------------
-# build_agent_config
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class _FakeAgent:
-    """Minimal object satisfying the _HasAgentFields Protocol."""
-
-    name: str
-    agent_url: str
-    auth: dict[str, Any] | None
-    auth_header: str | None
-    timeout: int
-
-
-class TestBuildAgentConfig:
-    """Tests for build_agent_config() — builds adcp AgentConfig from Protocol type."""
-
-    def test_basic_config_values(self):
-        """AgentConfig has correct id, agent_uri, and timeout from agent fields."""
-        from src.core.helpers.adapter_helpers import build_agent_config
-
-        agent = _FakeAgent(
-            name="test-agent",
-            agent_url="http://localhost:9000/mcp",
-            auth=None,
-            auth_header=None,
-            timeout=60,
-        )
-        config = build_agent_config(agent)
-        assert config.id == "test-agent"
-        assert config.agent_uri == "http://localhost:9000/mcp"
-        assert config.timeout == 60.0
-
-    def test_protocol_is_mcp(self):
-        """AgentConfig always uses MCP protocol."""
-        from adcp import Protocol as AdcpProtocol
-
-        from src.core.helpers.adapter_helpers import build_agent_config
-
-        agent = _FakeAgent(name="a", agent_url="http://x", auth=None, auth_header=None, timeout=30)
-        config = build_agent_config(agent)
-        assert config.protocol == AdcpProtocol.MCP
-
-    def test_auth_token_extracted_from_auth_dict(self):
-        """When auth dict has credentials, auth_token is set."""
-        from src.core.helpers.adapter_helpers import build_agent_config
-
-        agent = _FakeAgent(
-            name="secure-agent",
-            agent_url="http://x",
-            auth={"type": "bearer", "credentials": "secret-token-123"},
-            auth_header=None,
-            timeout=30,
-        )
-        config = build_agent_config(agent)
-        assert config.auth_token == "secret-token-123"
-        assert config.auth_type == "bearer"
-
-    def test_auth_type_defaults_to_token(self):
-        """When auth dict has no 'type' key, auth_type defaults to 'token'."""
-        from src.core.helpers.adapter_helpers import build_agent_config
-
-        agent = _FakeAgent(
-            name="a",
-            agent_url="http://x",
-            auth={"credentials": "tok"},
-            auth_header=None,
-            timeout=30,
-        )
-        config = build_agent_config(agent)
-        assert config.auth_type == "token"
-
-    def test_no_auth_gives_none_token(self):
-        """When auth is None, auth_token is None and auth_type is 'token'."""
-        from src.core.helpers.adapter_helpers import build_agent_config
-
-        agent = _FakeAgent(name="a", agent_url="http://x", auth=None, auth_header=None, timeout=30)
-        config = build_agent_config(agent)
-        assert config.auth_token is None
-        assert config.auth_type == "token"
-
-    def test_custom_auth_header(self):
-        """Custom auth_header is passed through to AgentConfig."""
-        from src.core.helpers.adapter_helpers import build_agent_config
-
-        agent = _FakeAgent(
-            name="a",
-            agent_url="http://x",
-            auth=None,
-            auth_header="Authorization",
-            timeout=30,
-        )
-        config = build_agent_config(agent)
-        assert config.auth_header == "Authorization"
-
-    def test_default_auth_header_when_none(self):
-        """When auth_header is None, defaults to 'x-adcp-auth'."""
-        from src.core.helpers.adapter_helpers import build_agent_config
-
-        agent = _FakeAgent(name="a", agent_url="http://x", auth=None, auth_header=None, timeout=30)
-        config = build_agent_config(agent)
-        assert config.auth_header == "x-adcp-auth"
-
-    def test_timeout_converted_to_float(self):
-        """Integer timeout is converted to float for AgentConfig."""
-        from src.core.helpers.adapter_helpers import build_agent_config
-
-        agent = _FakeAgent(name="a", agent_url="http://x", auth=None, auth_header=None, timeout=120)
-        config = build_agent_config(agent)
-        assert isinstance(config.timeout, float)
-        assert config.timeout == 120.0
-
-
-# ---------------------------------------------------------------------------
 # _build_package_responses and _build_create_success
+#
+# build_agent_config (and its _HasAgentFields Protocol) was deleted by
+# salesagent-4n88: both registries that used it now dial through the guarded
+# MCP seam (call_mcp_tool, via src.core.utils.operator_mcp.call_operator_mcp_tool)
+# instead of constructing an adcp AgentConfig for ADCPMultiAgentClient. See
+# tests/unit/test_creative_agent_connection_alias.py and
+# tests/integration/test_auth_header_propagation.py for the replacement
+# coverage (agent_url/auth/auth_header/timeout forwarded to call_mcp_tool).
 # ---------------------------------------------------------------------------
 
 

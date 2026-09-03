@@ -65,8 +65,9 @@ The pure, stdlib-only resolution primitives for source (1) — ``schema_root``,
 file read — live in ``tests/helpers/adcp_pinned_schema.py``, so a caller that
 only needs to LOCATE a pinned schema does not pull in the
 ``jsonschema``/``referencing`` dependency stack. This module re-exports those
-names and adds, on top of them, the jsonschema-validation pieces plus the
-source (2) layer:
+names and adds, on top of them, the jsonschema-validation pieces, the
+source (2) layer, and the pinned-enum readers the test-side oracles grade
+against:
 
 - ``validator_for(ref)`` — a ready-to-use ``Draft7Validator`` with full
   ``$ref`` resolution wired, for validating a payload against a schema
@@ -79,6 +80,15 @@ source (2) layer:
   ``load_canonicalized``, which rewrites them into the root-relative form
   ``load`` itself accepts. This module's ``load`` is the two-source one; the
   extracted module's same-named function reads source (1) only.
+- ``recovery_by_code()`` — the normative ``error-code.json`` ``enumMetadata``
+  ``{code: recovery}`` map, the ONE test-side reader of that block (see its
+  own docstring for why it lives here rather than in each consumer).
+- ``auth_scheme_values()`` — the pinned ``enums/auth-scheme.json`` ``enum``,
+  the ONE test-side reader of that enum, for the same reason.
+
+Both enum readers name no version, so they resolve against source (1), the
+installed SDK's tree — the shape/enum pin — exactly as they did before the
+vendored source existed.
 
 Resolution of a source (1) ref is DELEGATED to the extracted module
 (``_resolve_in_sdk_tree``), never copied, so the SDK search rule the
@@ -98,6 +108,7 @@ onto the other source.
 from __future__ import annotations
 
 import re
+from functools import cache
 from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.parse import urlparse
@@ -126,9 +137,11 @@ from tests.helpers.adcp_pinned_schema import (
 
 __all__ = [
     "PinnedSchemaError",
+    "auth_scheme_values",
     "load",
     "load_canonicalized",
     "normalize_ref",
+    "recovery_by_code",
     "schema_root",
     "validate_against_pinned_schema",
     "validator_for",
@@ -299,6 +312,54 @@ def load(ref: str) -> dict[str, Any]:
     """
     _, _, schema = _resolve_and_load(ref)
     return schema
+
+
+@cache
+def recovery_by_code() -> dict[str, str]:
+    """``{error_code: recovery}`` from the pinned ``error-code.json`` enumMetadata.
+
+    The ONE test-side reader of that block. The block is normative — its own
+    ``$comment`` says "SDKs MUST consume this block ... the recovery
+    classification embedded in that prose is normative and MUST match the value
+    here" — so it is the expectation every test-side recovery oracle grades
+    against, and more than one of them needs it (the recovery-conformance
+    oracle, and ``envelope_assertions.assert_envelope_shape``, which refuses to
+    grade a (code, recovery) pair the pin contradicts). Two independent copies
+    of the same load is the copy-paste shape DRY forbids here, and a second copy
+    can silently drift to a different key filter.
+
+    Reads through this module's own ``load()``, so it stays independent of
+    ``src.core.exceptions.RECOVERY_BY_WIRE_CODE``: a test-side oracle that
+    imported src's table would agree with the thing it grades instead of
+    grading it. The version-free ref resolves against source (1), the installed
+    SDK's tree.
+
+    Cached: the map is a pure function of the installed SDK's pinned tree, and
+    callers hit it once per assertion. Callers share the one dict — read it,
+    never mutate it.
+    """
+    meta = load("error-code.json")["enumMetadata"]
+    return {code: entry["recovery"] for code, entry in meta.items() if isinstance(entry, dict) and "recovery" in entry}
+
+
+@cache
+def auth_scheme_values() -> frozenset[str]:
+    """The pinned ``enums/auth-scheme.json`` ``enum`` — the wire spellings a
+    webhook ``authentication.schemes`` entry may legally carry.
+
+    The ONE test-side reader of that enum, for the same reason
+    ``recovery_by_code`` is the one reader of ``enumMetadata``: the value under
+    test is ``adcp.types.AuthenticationScheme``, and a test that read the
+    spelling off the SDK would agree with the thing it grades instead of
+    grading it. This module reads the SDK's pinned SCHEMA tree, which is
+    generated from the spec rather than hand-maintained alongside the Python
+    enum, so the two can disagree — and that disagreement is exactly what the
+    conformance test in ``tests/unit/test_auth_scheme_pin_conformance.py``
+    exists to catch.
+
+    Cached: a pure function of the installed SDK's pinned tree.
+    """
+    return frozenset(load("enums/auth-scheme.json")["enum"])
 
 
 def _ref_target(target_part: str, *, file_dir: Path, source: _PinnedSource, what: str) -> tuple[_PinnedSource, Path]:

@@ -18,7 +18,8 @@ is byte-identical to origin/main. The fix ran that group in-network, where the
 agent is reached by service name like every other dependency.
 
 This guard grades the SHAPE of every configured destination
-(``check_url_syntax`` — scheme, hostname blocklist, IP-literal ranges) rather
+(``EgressPolicy.check_registration`` via the ``(bool, str)`` wrapper — scheme,
+hostname blocklist, IP-literal ranges; https is unconditional since GH #1757) rather
 than resolving DNS: ``creative-agent`` is a compose service name that resolves
 only inside the stack, which is the whole point of running the suite there.
 """
@@ -30,7 +31,7 @@ import re
 import pytest
 import yaml
 
-from src.core.security.url_validator import check_url_syntax
+from src.core.webhook_validator import WebhookURLValidator
 from tests.unit._architecture_helpers import repo_root
 
 _COMPOSE = "docker-compose.e2e.yml"
@@ -71,7 +72,7 @@ def test_configured_destination_passes_the_armed_gate(service: str, url: str) ->
     """
     mcp_url = url.rstrip("/") + "/mcp"
 
-    is_safe, error = check_url_syntax(mcp_url)
+    is_safe, error = WebhookURLValidator.validate_webhook_url_registration(mcp_url)
 
     assert is_safe, (
         f"{_COMPOSE} points service {service!r} at {url!r}, which the armed "

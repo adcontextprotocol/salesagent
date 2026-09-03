@@ -80,6 +80,7 @@ pytest_plugins = [
     "tests.bdd.steps.domain.uc011_accounts",
     "tests.bdd.steps.domain.admin_accounts",
     "tests.bdd.steps.domain.uc_get_products_inventory",
+    "tests.bdd.steps.domain.egress_ssrf",
     "tests.bdd.steps.domain.uc_brand_shorthand",
     "tests.bdd.steps.domain.compat_normalization",
     "tests.bdd.steps.domain.local_constraint_relaxations",
@@ -1459,9 +1460,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 )
             )
 
-        # FIXME(#1291): E2E_REST — these Thens observe env.mock['post'] or
-        # CircuitBreaker state, neither of which is visible through the Docker HTTP
-        # path.
+        # FIXME(#1291, #2098): E2E_REST — these Thens observe env.mock['post'],
+        # the in-process local origin, or CircuitBreaker state, none of which is
+        # visible through the Docker HTTP path (the local origin listens on the
+        # RUNNER's loopback, not the container's, so a container-side delivery
+        # could never reach it even if the Then could see it).
         #
         # The cited id used to be a beads id that DOES NOT RESOLVE
         # ('bd show' returns no issue found). This project's rule is that code
@@ -1622,6 +1625,18 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             # the field). Strengthening it now would strengthen a row into passing, which
             # proves nothing about production — so it is recorded, not patched, here.
             "T-UC-004-webhook-no-aggregated",
+            # DEFERRED to prebid/salesagent#2060, which owns both halves of the
+            # breaker's missing coverage. These two were briefly un-routed by
+            # #2098's rewrite attempt; they are RESTORED here because #2060's
+            # Conditions are explicit that the routing stays until the scenario
+            # actually grades the live server. Un-routed, the leg reports a plain
+            # PASS, which reads as real coverage — strictly worse than an XPASS,
+            # which at least records that nothing is being graded.
+            #
+            # Measured, not assumed: deleting circuit_breaker.record_failure() from
+            # the server and re-running in-network leaves this leg passing
+            # (test-results/innet_260826_1216 vs _1221, byte-identical counts).
+            # Re-run it yourself with `make mutation-check-breaker`.
             "T-UC-004-webhook-circuit-open",
             # PARKED, NOT GRADUABLE (salesagent-n78j0.13): T-UC-004-webhook-circuit-recovery.
             # Inspected in full against .claude/rules/workflows/xpass-graduation.md. The
@@ -1673,8 +1688,9 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             # Production coverage gap tracked as GH #2060.
             "T-UC-004-webhook-circuit-recovery",
             "T-UC-004-webhook-retry-success",
-            # jdy1-M4: retry/sequence observability — assert on env.mock['post']
-            # call counts / args, not visible over the Docker HTTP path.
+            # #1873: retry/sequence observability — assert on the requests the
+            # in-process origin received, not visible over the Docker HTTP path.
+            # #1873 is the webhook-capture service that makes them observable.
             "T-UC-004-webhook-retry-5xx",
             "T-UC-004-webhook-retry-network",
             "T-UC-004-webhook-no-retry-4xx",
@@ -1683,7 +1699,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         if is_e2e_rest and (marker_names & _UC004_E2E_WEBHOOK_INTERNAL_TAGS):
             item.add_marker(
                 pytest.mark.xfail(
-                    reason="E2E: webhook POST mock + CircuitBreaker state not observable through Docker HTTP",
+                    reason="E2E: in-process webhook origin + CircuitBreaker state not observable through Docker HTTP",
                     strict=False,
                 )
             )
@@ -4146,9 +4162,61 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 # ---------------------------------------------------------------------------
 # Multi-transport dispatch
 # ---------------------------------------------------------------------------
+# Scenario outlines whose <channel> column IS the transport: each Examples row
+# dispatches through its own channel inside the When step, so pytest-level
+# transport multiplication adds zero coverage (×3 identical in-process runs,
+# and an e2e_rest variant that never touches the live server — the channel
+# map has no e2e leg). Run once, like the @mcp/@a2a-tagged scenarios. The
+# UC-010 feature header declares the auth-policy rows deliberately
+# transport-specific (#1592).
+#
+# This is not a claim: ``when_invoke_via_channel`` (uc010_capabilities.py)
+# opens with ``ctx["transport"] = channel``, so it OVERWRITES whatever the
+# pytest-level parametrization put there. Multiplying the outline would emit
+# 27 ids that execute 9 distinct runs, and an ``[e2e_rest]`` id that dispatches
+# in-process — a false green on the live stack, which is worse than not
+# collecting it.
+_CHANNEL_COLUMN_TAGS = {"T-UC-010-auth"}
+
 # Tags that indicate a scenario already dispatches through a specific transport.
 # These scenarios must NOT be multiplied — they have explicit When steps.
-_TRANSPORT_SPECIFIC_TAGS = {"rest", "mcp", "a2a"}
+#
+# The channel-column outlines satisfy that predicate exactly (their When step
+# hard-sets ``ctx["transport"]``), so they are members here rather than a second
+# early return: an extra ``return`` in ``pytest_generate_tests`` is a new
+# e2e_rest exclusion POINT, which
+# ``test_architecture_e2e_rest_escape_hatches.test_e2e_rest_exclusion_points_match_the_pin``
+# pins, whereas this is the same, already-pinned exclusion applied to one more
+# tag. Residual, stated rather than claimed away: membership of this set is not
+# itself ratchet-graded (unlike ``_SINGLE_TRANSPORT_TAGS``, which has
+# ``EXPECTED_SINGLE_TRANSPORT_TAGS``), so a future addition here is reviewable
+# in the diff but not guarded. Pinning this membership belongs to the guard
+# module that owns ``EXPECTED_SINGLE_TRANSPORT_TAGS``.
+_TRANSPORT_SPECIFIC_TAGS = {"rest", "mcp", "a2a"} | _CHANNEL_COLUMN_TAGS
+
+# Scenarios whose graded production is reachable on ONE wire transport only.
+#
+# @a2a_untyped_ingest: the two surviving scenarios are A2A PROTOCOL-ENVELOPE
+# surfaces — the ``message/send`` push config — which has no counterpart on MCP
+# or REST at all. That, and only that, is what makes them single-transport.
+#
+# It used to carry three tool-surface scenarios as well, on the stated grounds
+# that MCP and REST refuse the invalid document above the ingest gate "with a
+# field path relative to the sub-model they validated", so grading them would
+# grade the request model rather than the gate. MEASURED, that was false: every
+# transport reports the ABSOLUTE path
+# ``push_notification_config.authentication.credentials``, which is the literal
+# the scenarios assert. The three now run on all four transports, so the
+# agreement is a standing executable proof rather than a claim in a comment.
+#
+# The tag NAME is now a misnomer — neither survivor is an untyped ingest. It is
+# left for the rename that owns the registry.
+#
+# PARAMETRIZED on that one transport rather than dropped from parametrization:
+# an excluded transport is exactly as ungraded as an xfail but invisible to both
+# escape-hatch detectors (GH #1892), whereas this keeps a real ``[a2a]`` test id
+# that ``--collect-only`` shows.
+_SINGLE_TRANSPORT_TAGS = {"a2a_untyped_ingest": "A2A"}
 
 # UC + tag combinations that should run IMPL-only (no 4-way parametrization).
 # (UC-002 @account used to live here when it ran resolve_account() via IMPL on
@@ -4187,26 +4255,9 @@ _UC002_V31_SUCCESS_WIRED: set[str] = {
 # They must NOT be parametrized across MCP/A2A/REST/IMPL API transports.
 _ADMIN_TAG_PREFIX = "T-ADMIN-"
 
-# Scenario outlines whose <channel> column IS the transport: each Examples row
-# dispatches through its own channel inside the When step, so pytest-level
-# transport multiplication adds zero coverage (×3 identical in-process runs,
-# and an e2e_rest variant that never touches the live server — the channel
-# map has no e2e leg). Run once, like the @mcp/@a2a-tagged scenarios. The
-# UC-010 feature header declares the auth-policy rows deliberately
-# transport-specific (#1592).
-_CHANNEL_COLUMN_TAGS = {"T-UC-010-auth"}
-
 # UCs whose tool has no REST route — parametrize across A2A + MCP only (a REST
 # variant would 404). get_media_buys (UC-019) is A2A/MCP-only.
 _NO_REST_UC_TAG_PREFIXES = ("T-UC-019-",)
-
-# Send-time webhook scenarios that assert in-process mock/circuit-breaker state.
-# Do NOT append e2e_rest (false-green) and do NOT grow _UC004_E2E_WEBHOOK_INTERNAL_TAGS.
-_NO_E2E_REST_TAGS: frozenset[str] = frozenset(
-    {
-        "T-UC-004-webhook-ssrf-blocked",
-    }
-)
 
 
 def _parametrize_ctx(
@@ -4218,11 +4269,18 @@ def _parametrize_ctx(
 ) -> None:
     """Parametrize ``ctx`` over the in-process transports, plus the e2e one when enabled.
 
-    Extracted so the AdCP arm and the admin arm share ONE copy of the
-    append-e2e-when-enabled tail. Duplicating it would be the
-    same logical operation with substituted enum members — the R0801 shape the
-    DRY invariant treats as a defect, against a duplication baseline that may
-    only shrink.
+    Used by the ADMIN arm only, whose e2e member is ``AdminTransport.E2E`` (its
+    own transport axis, not an AdCP wire transport).
+
+    The AdCP arm deliberately does NOT call this: its
+    ``transports.append(Transport.E2E_REST)`` must stay INLINE in
+    ``pytest_generate_tests``, because
+    ``test_architecture_e2e_rest_escape_hatches.test_e2e_rest_parametrize_gate_matches_pin``
+    pins that gate's condition by walking the hook's own AST. Hidden behind this
+    helper the detector reads ``None`` — which is the "a helper hands back a
+    narrowed list" residual that guard's docstring names as uncaught. Keeping
+    the append inline keeps the gate reviewable, and is worth the four
+    near-duplicate lines.
     """
     transports = list(base_transports)
     ids = list(base_ids)
@@ -4254,11 +4312,18 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
 
     marker_names = {m.name for m in metafunc.definition.iter_markers()}
     if marker_names & _TRANSPORT_SPECIFIC_TAGS:
-        # Transport-specific scenario — don't multiply
+        # Transport-specific scenario — don't multiply. Includes the
+        # channel-column outlines (_CHANNEL_COLUMN_TAGS), whose When step sets
+        # ctx["transport"] from the <channel> Examples column itself.
         return
 
-    if marker_names & _CHANNEL_COLUMN_TAGS:
-        # Channel-column outline — each row dispatches via its own channel
+    # Single-transport scenarios still get a real (one-element) parametrization,
+    # so the transport that grades them is visible at collection. See
+    # _SINGLE_TRANSPORT_TAGS.
+    single = marker_names & _SINGLE_TRANSPORT_TAGS.keys()
+    if single:
+        transport = Transport[_SINGLE_TRANSPORT_TAGS[next(iter(single))]]
+        metafunc.parametrize("ctx", [transport], ids=[transport.value], indirect=True)
         return
 
     # Admin scenarios are not AdCP tool surfaces (no a2a/mcp/rest/e2e_rest), but
@@ -4300,23 +4365,34 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     if no_rest_uc:
         transports = [Transport.A2A, Transport.MCP]
 
-    # In-process-only webhook scenarios (PR #1697) have no e2e-observable
-    # surface — skip e2e_rest rather than xfail (shrink-only ratchet /
-    # false-green).
-    skip_e2e_rest = no_rest_uc or bool(marker_names & _NO_E2E_REST_TAGS)
-
     # `Transport` is a StrEnum whose values ARE the parametrize ids ("a2a",
     # "mcp", "rest", "e2e_rest"), so deriving them keeps ONE source for both the
     # transport set and its spelling. A second literal list is how the ids and
     # the transports drift apart — and the ids are what every xfail route,
     # ledger entry and `_transport_of` call matches on.
-    _parametrize_ctx(
-        metafunc,
-        transports,
-        [t.value for t in transports],
-        None if skip_e2e_rest else Transport.E2E_REST,
-        None if skip_e2e_rest else Transport.E2E_REST.value,
-    )
+    ids = [t.value for t in transports]
+
+    # The e2e_rest append is INLINE, and `no_rest_uc` is the ONLY thing allowed
+    # to suppress it. #1802 deleted the old `_NO_E2E_REST_TAGS` tag-set that was
+    # ANDed in here to drop @T-UC-004-webhook-ssrf-blocked: a parametrize-time
+    # drop is invisible to every escape-hatch detector (it lives in this hook,
+    # not in `pytest_collection_modifyitems`, and never raises an xfail), so the
+    # scenario was ungraded on e2e_rest while its node id claimed nothing.
+    #
+    # Its replacement is live in `tests/harness/_mixins.py` and pinned by
+    # `EXPECTED_UNSUPPORTED_DECLARATIONS`: the two genuinely process-local
+    # assertions (`assert_no_retry_schedule_entered`,
+    # `assert_circuit_breaker_failure_recorded`) are declared
+    # `E2EUnsupportedSetup`, which the report hook above turns into an xfail
+    # WITH A REASON, while the scenario's two wire-observable outcomes
+    # (`success is False`, `delivery_attempts == 0`) now grade live. Do not
+    # reintroduce a tag set here — `test_e2e_rest_parametrize_gate_matches_pin`
+    # pins this exact condition.
+    if os.environ.get("BDD_E2E_ENABLED") == "true" and not no_rest_uc:
+        transports.append(Transport.E2E_REST)
+        ids.append(Transport.E2E_REST.value)
+
+    metafunc.parametrize("ctx", transports, ids=ids, indirect=True)
 
 
 def _ssl_failure(exc: BaseException | None, depth: int = 0) -> ssl.SSLError | None:
@@ -4404,7 +4480,7 @@ def e2e_stack():
         #   * a TLS/certificate failure is a BROKEN RIG -> raise. Reporting it as
         #     "absent" would hand back the plaintext config below and let an https
         #     scenario grade the http branch while reporting green — the exact
-        #     vacuity salesagent-tgzb exists to remove.
+        #     vacuity #1291's TLS front exists to remove.
         #   * a transport/HTTP failure means nothing is listening -> None, so the
         #     in-process transports still run on a machine with no Docker stack.
         #   * anything else is a bug in this probe or in httpx -> propagate. A
@@ -4940,6 +5016,57 @@ _UC003_STORYBOARD_CLIENT_TAGS = frozenset(
 )
 
 ENV_ROUTES: list[EnvRoute] = [
+    # ── @egress (local SSRF / webhook-credential refusal feature) ───────────
+    # These scenarios carry T-EGRESS-* identity tags, NOT T-UC-<n>, so
+    # storyboard_spec.detect_uc returns None for them and no coarse bucket can
+    # claim them. They are UNSCOPED `when` rows (no _uc(...) wrapper) declared
+    # FIRST, which is exactly how the former elif chain expressed them: the
+    # egress tests checked before the shared UC arms and each borrowed one arm's
+    # env. Two of them need an env that does NOT patch the surface under test —
+    # a refusal manufactured by a mock proves nothing about the real egress seam.
+    EnvRoute(
+        tag="egress-sync",
+        # sync_creatives leg: the buyer-supplied agent_url must be refused by the
+        # REAL registry plus the REAL egress seam, so it takes the unpatched
+        # registry variant rather than CreativeSyncEnv.
+        when=lambda m: "egress_sync" in m,
+        env_builder=_env("tests.harness.creative_sync.RealRegistryCreativeSyncEnv"),
+    ),
+    EnvRoute(
+        tag="egress-sync-creds",
+        # The CREDENTIAL half of the registration is refused before the
+        # per-creative loop is reached, so it wants the ordinary
+        # (registry-mocked) sync env, not the real-registry variant above.
+        when=lambda m: "egress_sync_creds" in m,
+        env_builder=_env("tests.harness.creative_sync.CreativeSyncEnv"),
+    ),
+    EnvRoute(
+        tag="egress-update",
+        # Dispatches a real update_media_buy carrying a push_notification_config,
+        # so it needs the UC-003 ext arm: the update wrappers plus a seeded
+        # existing media buy for the update to target.
+        when=lambda m: "egress_update" in m,
+        env_builder=_env("tests.harness.media_buy_dual.MediaBuyDualEnv"),
+        seed=_seed_update_with_existing_buy,
+    ),
+    EnvRoute(
+        tag="egress-create",
+        # Ingest-time refusal of a buyer webhook URL — dispatches a real
+        # create_media_buy, so it needs the UC-004 "create" arm's env and the
+        # full create dependency chain.
+        when=lambda m: "egress_create" in m,
+        env_builder=_env("tests.harness.media_buy_create.MediaBuyCreateEnv"),
+        seed=_seed_media_buy_chain,
+    ),
+    EnvRoute(
+        tag="egress-get-products",
+        # The remaining @egress scenarios dispatch get_products (and the A2A
+        # message/send envelope pair). They share the UC-GET-PRODUCTS arm and
+        # differ only in the env: the refusal must come from the REAL
+        # resolve_property_list, so ProductEnv's patch is not applied.
+        when=lambda m: "egress" in m,
+        env_builder=_env("tests.harness.product.RealResolverProductEnv"),
+    ),
     # ── UC-002 ──────────────────────────────────────────────────────────────
     EnvRoute(
         tag="uc002-account",

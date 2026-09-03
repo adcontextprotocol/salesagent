@@ -69,13 +69,16 @@ _MODE_LITERALS = frozenset({"hmac-sha256", "hmac_sha256", "hmac", "bearer", "rfc
 #: deferred, not accepted — see the disposition table on the C2 review for the ticket that
 #: owns each group.
 ALLOWLIST = {
-    # --- The persist-the-scheme sites: they pluck schemes[0] to write it to the
-    # PushNotificationConfig row. A different operation from deriving a mode, which is why
-    # C2 did not widen to cover them; they should terminate in the parameterized upsert.
-    ("src/core/tools/media_buy_create.py", "_create_media_buy_impl"),
-    ("src/services/delivery_webhook_scheduler.py", "_send_report_for_media_buy"),
-    ("src/admin/blueprints/creatives.py", "_call_webhook_for_creative_status"),
-    ("src/core/context_manager.py", "_send_push_notifications"),
+    # --- The persist-the-scheme sites are GONE (#1802), all four of them, together with
+    # the admin form's scheme->mode branch. C2 predicted the shape of the fix -- "they
+    # should terminate in the parameterized upsert" -- and that is what happened: each now
+    # ends in the shared ingest (``accept_push_notification_config`` /
+    # ``accept_push_notification_primitives``) and holds a ``ValidatedWebhookRegistration``
+    # that knows its own columns, so none plucks ``schemes`` to decide anything.
+    # ``register_webhook``'s ``auth_type == "hmac_sha256"`` arm -- the fourth spelling
+    # itself -- was deleted as dead, the form having posted canonical ``HMAC-SHA256``
+    # since its options came from the enum.
+    #
     # --- The singular read that started this: binding on `scheme` alone leaves the
     # credential-rotation half stale, so it cannot adopt the shared derivation as-is.
     ("src/core/tools/accounts.py", "_proof_tuple"),
@@ -83,8 +86,22 @@ ALLOWLIST = {
     ("src/a2a_server/adcp_a2a_server.py", "on_get_task_push_notification_config"),
     ("src/a2a_server/adcp_a2a_server.py", "on_create_task_push_notification_config"),
     ("src/a2a_server/adcp_a2a_server.py", "on_list_task_push_notification_configs"),
-    # --- The admin webhook form's own scheme->mode branch (the fourth spelling).
-    ("src/admin/blueprints/principals.py", "register_webhook"),
+    # ``_a2a_push_config_auth`` (#1802) is the same boundary, deduplicated: it is the ONE
+    # pluck the two push-config surfaces now share, replacing the copy each carried. Its
+    # output goes straight to ``accept_push_notification_primitives`` and it maps no
+    # scheme to a mode, so it is the singular->plural translation the module docstring
+    # already sanctions -- listed because the detector reads the field name, not the fate
+    # of the value.
+    ("src/a2a_server/adcp_a2a_server.py", "_a2a_push_config_auth"),
+    # --- Not a derivation at all: ``from_stash`` (#1802) reads the stored ``schemes``
+    # ONLY to name them in the refusal a rehydrated-but-undeliverable row raises, so an
+    # operator can tell WHICH registrations stopped delivering. Nothing branches on the
+    # value and no mode comes out of it. ``declared_auth`` is not the fix here twice over:
+    # it returns ``schemes[0]`` alone, which would make the message un-enumerable (the one
+    # property that comment defends), and it would pull the signing facade -- keys ->
+    # database -> adapters -- into a module whose only imports today are exceptions,
+    # schema helpers and the URL gate.
+    ("src/core/webhooks/registration.py", "from_stash"),
 }
 
 

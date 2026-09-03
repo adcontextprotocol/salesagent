@@ -1,9 +1,12 @@
 """Unit tests for order approval service."""
 
+import json
+import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
-import httpx
 import pytest
 
 from src.services.order_approval_service import (
@@ -181,149 +184,180 @@ def test_get_approval_status_not_found(mock_db_session):
     assert status is None
 
 
-def test_webhook_notification_sent_on_success():
-    """Test webhook notification is sent when approval succeeds."""
-    from src.services.order_approval_service import _send_approval_webhook
-    from tests.helpers.webhook_wire import capture_outbound_webhooks, constructed_http_clients
+# ─────────────────────────────────────────────────────────────────────────────
+# Two webhook unit tests that lived here were REMOVED, not repaired, when
+# ``_send_approval_webhook`` stopped speaking httpx and started handing the URL
+# to the egress seam (``src.core.security.webhook_egress.deliver_webhook``, and
+# through it ``src.core.security.outbound_http.send``):
+#
+#   * ``test_webhook_notification_sent_on_success`` claimed: the payload carries
+#     event/media_buy_id/status/order_id/attempts, and a stored bearer
+#     PushNotificationConfig becomes ``Authorization: Bearer <token>``. It read
+#     those off a substituted ``httpx.Client``, plus (from #1697)
+#     ``httpx.Client(timeout=10.0, follow_redirects=False)`` — a constructor the
+#     module no longer calls at all. Regraded against a real origin in
+#     ``tests/integration/test_order_approval_webhook.py``
+#     (``TestDeliveredPayload``, ``TestStoredCredential`` — which also covers the
+#     no-config direction the old test only hit incidentally).
+#
+#     Its RFC 9421 half — a bearer-registered row must NOT also be signed
+#     (``"signature-input" not in headers``, #1291 C1) — moved with it rather
+#     than lapsing: that arm is now chosen inside ``_headers_for`` from the
+#     ABSENCE of an ``authentication`` block, and both directions are graded on
+#     a real socket by ``TestSigningIsGatedByTheScheme`` in the same file
+#     (``test_a_bearer_row_is_delivered_unsigned``, ``test_a_row_less_delivery_is_unsigned``)
+#     and by ``tests/integration/test_order_approval_webhook_signing.py``.
+#     Grading it here would mean asserting the seam's arm selection through a
+#     mock of the seam, which is the caller re-deriving a decision GH #1802
+#     moved out of every caller.
+#   * ``test_webhook_retries_on_failure`` claimed: a failing POST is retried to
+#     three attempts. The hand-rolled ``for attempt in range(...)`` /
+#     ``time.sleep(2 ** attempt)`` loop it patched no longer exists; the seam owns
+#     attempt count, retry classification and BR-RULE-029 backoff. Regraded in
+#     ``tests/integration/test_order_approval_webhook.py``
+#     (``TestRetryClassification``, ``TestExhaustedDeliveryIsSilent``) and, for
+#     the spacing, once in ``tests/integration/test_outbound_http.py``.
+#
+#     Its second claim — every attempt of one event carries the SAME
+#     ``idempotency_key`` — did NOT move, because it is a claim about what THIS
+#     sender puts in the body, and no other suite makes it. It is kept below,
+#     retargeted: the key is minted once per ``_send_approval_webhook`` call and
+#     travels in the single ``content=`` byte string ``deliver_webhook``
+#     serializes and the seam replays on every attempt, so "same key on every
+#     retry" is now structural rather than something to count POSTs for.
+#
+# The SSRF obligation from #1697 stays here for the same reason: it is a claim
+# about THIS call site — that the order-approval sender shares the gate — which
+# the seam's own suite cannot make on its behalf.
+# ─────────────────────────────────────────────────────────────────────────────
 
-    # The client the sender builds is spied THROUGH the wire capture: the capture
-    # rebinds httpx.Client/AsyncClient to inject its transport, so the spy has to be
-    # installed first for the capture to wrap it.
-    # The loader now opens a UNIT OF WORK and returns a PROJECTION, so it is patched at
-    # its own seam rather than through a session it no longer opens (#1878). The
-    # get_db_session patch still stands for the signing path's own reads.
+
+@contextmanager
+def _unregistered_and_unsigned() -> Iterator[None]:
+    """The two DB-backed reads a delivery makes, answered without a database.
+
+    Both are patched at THEIR OWN seam. Neither goes through the ``get_db_session``
+    symbol this service module imports any more, so the patch these tests used to
+    carry (``src.services.order_approval_service.get_db_session``) covered nothing
+    on the delivery path and would let a unit test dial Postgres:
+
+    * ``_load_approval_webhook_config`` opens a ``PushNotificationConfigUoW`` and
+      returns a projection, so the session belongs to
+      ``src.core.database.repositories.uow`` (#1878). ``None`` is the no-registration
+      case: no stored ``authentication`` block, which is the arm the pinned schema
+      selects by absence.
+    * ``delivery_signer_for_tenant`` resolves through ``signing_repo``, which opens
+      its OWN session inside ``src.core.signing.webhook_sender_factory`` and
+      deliberately accepts none from a caller (#1757) — precisely so no session is
+      held across a socket.
+
+    ``signing_repo`` is what gets patched, not ``delivery_signer_for_tenant``, so the
+    posture decision still RUNS: ``webhook_delivery_signer`` returns ``None`` for a
+    tenant with no repository, which is a DECIDED posture (deliver plain) and not a
+    fabricated value. That is also why the assertions below can require ``sign=None``
+    on the seam call instead of ``ANY`` — a signer that appeared here would mean the
+    resolution had been mocked away rather than exercised.
+    """
+
+    @contextmanager
+    def _no_signing_repo(tenant_id: str | None) -> Iterator[None]:
+        yield None
+
     with (
-        patch("src.services.order_approval_service.get_db_session") as mock_db,
-        patch("src.services.order_approval_service._load_approval_webhook_config") as mock_load,
-        constructed_http_clients() as built,
-        capture_outbound_webhooks() as captured,
+        patch("src.services.order_approval_service._load_approval_webhook_config", return_value=None),
+        patch("src.core.signing.webhook_sender_factory.signing_repo", _no_signing_repo),
     ):
-        # Mock push notification config
-        mock_db_instance = MagicMock()
-        mock_db.return_value.__enter__.return_value = mock_db_instance
+        yield
 
-        from src.core.database.models import PushNotificationConfig
 
-        mock_config = PushNotificationConfig(
-            tenant_id="tenant_1",
-            principal_id="principal_1",
-            url="https://example.com/webhook",
-            authentication_type="bearer",
-            authentication_token="test_token",
-            is_active=True,
-        )
-        # Answered on BOTH shapes so the test grades the sender, not the query style:
-        # PushNotificationConfigRepository.list_active_by_principal reads `.all()`, the
-        # direct `select(PushNotificationConfig)` in the signing path reads `.first()`.
-        mock_db_instance.scalars.return_value.all.return_value = [mock_config]
-        mock_db_instance.scalars.return_value.first.return_value = mock_config
+def test_approval_webhook_rejects_metadata_url_without_post(caplog):
+    """Order-approval sender must share the outbound SSRF gate (no open redirect).
 
-        from src.services.order_approval_service import ApprovalWebhookAuth
+    Repointed off ``patch("httpx.Client")``: the sender does not speak httpx any
+    more, so a mock standing in for it would grade a transport this module never
+    touches. ``send`` is spied with ``wraps=`` instead, so the REAL validation
+    runs — the link-local metadata address is refused inside the seam before any
+    connection is attempted (and stays refused even with the private/insecure
+    escape hatches on), and production RECORDS the refusal rather than raising.
 
-        mock_load.return_value = ApprovalWebhookAuth(
-            url="https://example.com/webhook",
-            authentication_type="bearer",
-            authentication_token="test_token",
-            validation_token=None,
-        )
+    Three halves are asserted, and the third is what the egress merge added: the
+    raw URL reached the gate under the attempt budget and signing posture this
+    call site asks for; the gate refused it — which is what "nothing was POSTed"
+    means once no local transport exists to count; and the refusal comes back as
+    a ``refused_destination`` OUTCOME with zero attempts, logged at the level the
+    OUTCOME dictates. That last one is not decoration. Its predecessor, a bool
+    from ``_reject_unsafe_approval_webhook_url``, made a refused destination
+    indistinguishable from a delivery to both polling-thread callers, and a bare
+    ``return`` after a log line would quietly reinstate that.
+    """
+    from src.core.security.outbound_http import send as real_send
+    from src.services.order_approval_service import _send_approval_webhook
 
-        # The loader now opens a UNIT OF WORK and returns a PROJECTION, so it is patched
-        # at its own seam rather than through a session it no longer opens (#1878). The
-        # get_db_session patch above still stands for the signing path's own reads.
+    metadata_url = "http://169.254.169.254/latest/meta-data/"
 
-        # Send webhook
-        _send_approval_webhook(
-            webhook_url="https://example.com/webhook",
+    with (
+        _unregistered_and_unsigned(),
+        # The seam call now lives one layer down, inside deliver_webhook
+        # (src.core.security.webhook_egress) -- the shared delivery function every
+        # webhook sender routes through since salesagent-47n9.1.
+        patch("src.core.security.webhook_egress.send", wraps=real_send) as spy_send,
+        caplog.at_level(logging.ERROR, logger="src.services.order_approval_service"),
+    ):
+        outcome = _send_approval_webhook(
+            webhook_url=metadata_url,
             tenant_id="tenant_1",
             principal_id="principal_1",
             media_buy_id="mb_123",
             status="approved",
             message="Order approved successfully",
-            order_id="12345",
-            attempts=3,
         )
 
-        # Verify HTTP POST was made — graded on the bytes and headers that would
-        # have gone on the socket, not on a mock's call args.
-        assert len(captured) == 1
-        request = captured[0]
+    # content=, not json=: deliver_webhook serializes once (via
+    # prepare_signed_request) and transmits those exact bytes via content=, never
+    # json= (salesagent-47n9.1's Core Invariant -- no webhook sender may reach
+    # json= on the egress seam). sign=None because the tenant has no signing
+    # repository here, which is a decided posture rather than a mocked-away one --
+    # see _unregistered_and_unsigned.
+    spy_send.assert_called_once_with(metadata_url, content=ANY, headers=ANY, timeout=10.0, max_attempts=3, sign=None)
 
-        # Check webhook payload
-        assert request.url == "https://example.com/webhook"
-        payload = request.payload
-        assert payload["event"] == "order_approval_update"
-        assert payload["media_buy_id"] == "mb_123"
-        assert payload["status"] == "approved"
-        assert payload["order_id"] == "12345"
-        assert payload["attempts"] == 3
-
-        # Check authentication header — the buyer registered `bearer`, so the
-        # boundary must select the legacy token mode and NOT sign (#1291 C1).
-        assert request.headers["authorization"] == "Bearer test_token"
-        assert "signature-input" not in request.headers
-
-        # The delivering client must refuse redirects — an open redirect would walk this
-        # POST, Authorization header and all, to whatever host the receiver names — and
-        # must not hang waiting on it.
-        assert built, "no HTTP client was constructed for the approval webhook"
-        assert all(client.follow_redirects is False for client in built)
-        assert all(client.timeout == httpx.Timeout(10.0) for client in built)
+    # attempts == 0 is the load-bearing number: `send` raised OutboundRequestBlocked
+    # out of resolve_for_dial BEFORE it built a request, so no body was ever produced
+    # and there is nothing an unsigned fallback could have been made from.
+    assert outcome.kind == "refused_destination"
+    assert outcome.attempts == 0
+    assert "was refused by egress policy" in caplog.text
+    assert [record.levelno for record in caplog.records] == [logging.ERROR]
 
 
-def test_approval_webhook_rejects_metadata_url_without_post():
-    """Order-approval sender must share the outbound SSRF gate (no open redirect)."""
+def test_approval_webhook_payload_carries_one_idempotency_key():
+    """The dedup key survives the move onto the egress seam, in the body.
+
+    Retained from ``test_webhook_retries_on_failure`` (see the ledger above), which
+    graded it by POSTing three times and collecting one key out of three captured
+    bodies. That shape is gone with the local retry ladder, but the obligation is
+    not the seam's to keep: the SDK sender this call replaces injected the key
+    itself (``WebhookSender.send_raw``: ``{**payload, "idempotency_key": key}``),
+    so routing through ``deliver_webhook`` — which injects nothing — is exactly the
+    change that could cost the receiver its dedup key without any other suite
+    noticing.
+
+    Graded on the bytes handed to the seam. "Same key on every attempt" needs no
+    counting any more: ``deliver_webhook`` serializes ONCE into the ``content=``
+    byte string asserted here and ``send`` replays that same object on every
+    attempt, so one key in these bytes IS one key per event.
+    """
+    from src.core.security.egress.response import OutboundResult
     from src.services.order_approval_service import _send_approval_webhook
-    from tests.helpers.webhook_wire import capture_outbound_webhooks
+
+    webhook_url = "https://buyer.example.com/webhook"
+    accepted = OutboundResult(http_status=200, headers={}, content=b"", attempts=1, duration_seconds=0.01)
 
     with (
-        patch("src.services.order_approval_service.get_db_session") as mock_db,
-        capture_outbound_webhooks() as captured,
+        _unregistered_and_unsigned(),
+        patch("src.core.security.webhook_egress.send", return_value=accepted) as spy_send,
     ):
-        mock_db_instance = MagicMock()
-        mock_db.return_value.__enter__.return_value = mock_db_instance
-        mock_db_instance.scalars.return_value.first.return_value = None
-        mock_db_instance.scalars.return_value.all.return_value = []
-
-        _send_approval_webhook(
-            webhook_url="http://169.254.169.254/latest/meta-data/",
-            tenant_id="tenant_1",
-            principal_id="principal_1",
-            media_buy_id="mb_123",
-            status="approved",
-            message="Order approved successfully",
-        )
-
-        # Nothing reached the socket on ANY client — stronger than "httpx.Client was
-        # never constructed", which a delivery path that moved to the async signing
-        # client would satisfy vacuously. The link-local literal is refused by the real
-        # gate (no DNS involved), so the gate itself is graded rather than mocked out.
-        assert captured == []
-
-
-@patch("src.services.order_approval_service.time.sleep")
-def test_webhook_retries_on_failure(mock_sleep):
-    """Test webhook retries on HTTP failure."""
-    import src.services.order_approval_service as service_module
-    from tests.helpers.webhook_wire import capture_outbound_webhooks
-
-    # The receiver fails twice, then accepts.
-    with (
-        patch.object(service_module, "get_db_session") as mock_db,
-        # No registration for this URL — patched at the loader's own seam, which now
-        # opens a unit of work rather than the session this test mocks (#1878).
-        patch.object(service_module, "_load_approval_webhook_config", return_value=None),
-        capture_outbound_webhooks(status_codes=(500, 500, 200)) as captured,
-    ):
-        # Mock DB — no auth config, on both the repository (`.all()`) and the direct
-        # `select()` (`.first()`) read shapes.
-        mock_db_instance = MagicMock()
-        mock_db.return_value.__enter__.return_value = mock_db_instance
-        mock_db_instance.scalars.return_value.first.return_value = None
-        mock_db_instance.scalars.return_value.all.return_value = []
-
-        # Send webhook
-        service_module._send_approval_webhook(
-            webhook_url="https://example.com/webhook",
+        outcome = _send_approval_webhook(
+            webhook_url=webhook_url,
             tenant_id="tenant_1",
             principal_id="principal_1",
             media_buy_id="mb_123",
@@ -331,13 +365,11 @@ def test_webhook_retries_on_failure(mock_sleep):
             message="Order approved",
         )
 
-        # EXACTLY three: two refusals and the acceptance. This was `>= 3 and <= 4` with
-        # the comment "may see 4 calls ... 3 + 1 pollution" — a bound widened to tolerate
-        # another test's delivery landing in the capture window. The capture is scoped to
-        # this test's own traffic now (GH #2055), so the tolerance is no longer needed and
-        # an extra delivery is a defect again rather than an expected nuisance.
-        assert len(captured) == 3, f"Expected exactly 3 retry attempts, got {len(captured)}"
+    spy_send.assert_called_once_with(webhook_url, content=ANY, headers=ANY, timeout=10.0, max_attempts=3, sign=None)
+    assert outcome.kind == "delivered"
 
-        # Every retry carries the SAME idempotency_key, so the receiver dedupes the
-        # event rather than processing it three times.
-        assert len({request.payload["idempotency_key"] for request in captured}) == 1
+    # The one thing content=ANY above cannot pin: a per-event value, so there is no
+    # literal to compare it against in the atomic assertion.
+    payload = json.loads(spy_send.call_args.kwargs["content"])
+    assert isinstance(payload["idempotency_key"], str)
+    assert payload["idempotency_key"] != ""

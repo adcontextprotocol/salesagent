@@ -24,6 +24,7 @@ from src.core.database.models import Principal, Tenant
 from src.core.domain_config import get_sales_agent_domain
 from src.core.validation import sanitize_form_data, validate_form_data
 from src.services.setup_checklist_service import SetupChecklistService
+from src.services.slack_notifier import SlackNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -467,45 +468,6 @@ def update(tenant_id):
     return redirect(url_for("tenants.settings", tenant_id=tenant_id))
 
 
-@tenants_bp.route("/<tenant_id>/update_slack", methods=["POST"])
-@log_admin_action("update_slack")
-@require_tenant_access()
-def update_slack(tenant_id):
-    """Update tenant Slack settings."""
-    try:
-        from src.core.webhook_validator import WebhookURLValidator
-
-        # Sanitize form data
-        form_data = sanitize_form_data(request.form.to_dict())
-        webhook_url = form_data.get("slack_webhook_url", "").strip()
-
-        # Validate webhook URL for SSRF protection
-        if webhook_url:
-            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(webhook_url)
-            if not is_valid:
-                flash(f"Invalid Slack webhook URL: {error_msg}", "error")
-                return redirect(url_for("tenants.settings", tenant_id=tenant_id, section="slack"))
-
-        with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-            if not tenant:
-                flash("Tenant not found", "error")
-                return redirect(url_for("core.index"))
-
-            # Update Slack webhook
-            tenant.slack_webhook_url = webhook_url if webhook_url else None
-            tenant.updated_at = datetime.now(UTC)
-
-            db_session.commit()
-            flash("Slack settings updated successfully", "success")
-
-    except Exception as e:
-        logger.error(f"Error updating Slack settings: {e}", exc_info=True)
-        flash("Error updating Slack settings", "error")
-
-    return redirect(url_for("tenants.settings", tenant_id=tenant_id, section="slack"))
-
-
 @tenants_bp.route("/<tenant_id>/test_slack", methods=["POST"])
 @log_admin_action("test_slack")
 @require_tenant_access()
@@ -520,59 +482,71 @@ def test_slack(tenant_id):
             if not tenant.slack_webhook_url:
                 return jsonify({"success": False, "error": "No Slack webhook configured"}), 400
 
-            from src.core.webhook_validator import deliver_json_to_allowed_destination
-
-            # Re-judged at SEND time, not trusted because update_slack gated it on
-            # WRITE: this row may predate that gate, or have been edited directly in
-            # the database. One shared sender so this path cannot drift onto a
+            # One Block Kit owner. This route used to assemble its own blocks and
+            # dial the raw egress seam, duplicating what slack_notifier already does
+            # — and skipping its retry/record bookkeeping in the process.
+            #
+            # The SEND-time re-judgement this route used to spell out for itself is
+            # preserved, not dropped: the stored URL is never trusted because
+            # settings.update_slack gated it on WRITE (redirect_if_url_blocked). This
+            # row may predate that gate or have been edited straight into the
+            # database. send_message -> webhook_delivery.deliver_webhook_with_retry ->
+            # the egress seam re-runs EgressPolicy.resolve_for_dial, which re-resolves
+            # DNS at dial time and raises OutboundRequestBlocked on refusal. That is
+            # strictly LOUDER than the helper it replaces: a write-time verdict cannot
+            # see a hostname that was re-pointed afterwards, and the seam also refuses
+            # to chase redirects. One shared sender, so this path cannot drift onto a
             # different policy from the other stored-URL senders.
-            delivered = deliver_json_to_allowed_destination(
-                tenant.slack_webhook_url,
-                {
-                    "text": f"\N{PARTY POPPER} Test message from Prebid Sales Agent for {tenant.name}",
-                    "blocks": [
-                        {
-                            "type": "section",
-                            "text": {
+            #
+            # max_retries=1 is preserved deliberately: a test notification that
+            # silently sends three times is worse than one that fails visibly. That
+            # decision predates this change and survives it; the notifier grew a
+            # passthrough rather than the route keeping its own dialer.
+            sent = SlackNotifier(webhook_url=tenant.slack_webhook_url).send_message(
+                text=f"🎉 Test message from Prebid Sales Agent for {tenant.name}",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"*Test Notification*\nThis is a test message from the "
+                                f"Prebid Sales Agent for *{tenant.name}*."
+                            ),
+                        },
+                    },
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
                                 "type": "mrkdwn",
-                                "text": (
-                                    f"*Test Notification*\nThis is a test message from the "
-                                    f"Prebid Sales Agent for *{tenant.name}*."
-                                ),
-                            },
-                        },
-                        {
-                            "type": "context",
-                            "elements": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"Sent at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                                }
-                            ],
-                        },
-                    ],
-                },
-                kind="TenantTestSlack",
-                timeout=5,
-                log=logger,
+                                "text": f"Sent at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                            }
+                        ],
+                    },
+                ],
+                tenant_id=tenant.tenant_id,
+                max_retries=1,
             )
 
-            if delivered:
-                return jsonify({"success": True, "message": "Test message sent successfully"})
-            # The cause is logged, never returned: it names the destination policy
-            # and our topology (AdCP 3.1.1 L1/security.mdx:104-119 step 6).
-            return (
-                jsonify({"success": False, "error": "Test message could not be delivered"}),
-                400,
-            )
+            if not sent:
+                # Same contract the OutboundError arm used to serve: 400 with an
+                # opaque message. An egress refusal is reported, never swallowed —
+                # the cause is logged by the seam but never returned, because it
+                # names the destination policy and our topology (AdCP 3.1.1
+                # L1/security.mdx:104-119 step 6). Slack's own response body is a
+                # counterparty response and is likewise never echoed to the operator.
+                return jsonify({"success": False, "error": "Slack webhook delivery failed"}), 400
 
-    # No `except requests.exceptions.RequestException` here: 1910d8489 routed this
-    # send through deliver_json_to_allowed_destination, which catches
-    # requests.RequestException itself (src/core/webhook_validator.py:187) and reports
-    # failure as a False return. The handler that used to sit here was left behind with
-    # its `import requests` already gone, so it was both unreachable AND a NameError if
-    # anything had reached it -- it would have masked the real exception with a lookup
-    # failure. mypy --check-untyped-defs caught it (name-defined, ADR-009 / #1611).
+            return jsonify({"success": True, "message": "Test message sent successfully"})
+
+    # No `except requests.exceptions.RequestException` here, deliberately: this send
+    # goes through the egress seam, which reports transport failure and destination
+    # refusal as a False return rather than by raising `requests` types at this
+    # frame. The handler that used to sit here outlived its `import requests`, so it
+    # was both unreachable AND a NameError if anything had reached it -- it would
+    # have masked the real exception with a lookup failure. mypy
+    # --check-untyped-defs caught it (name-defined, ADR-009 / #1611).
     except Exception as e:
         logger.error(f"Unexpected error testing Slack: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Internal server error"}), 500

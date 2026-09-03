@@ -6,11 +6,12 @@ import secrets
 import uuid
 from datetime import UTC, datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 from sqlalchemy import delete, func, select
 
 from src.admin.auth_helpers import require_api_key_auth
 from src.admin.utils.operator_errors import safe_error_message
+from src.admin.utils.url_policy import json_error_if_url_blocked
 from src.core.database.database_session import get_db_session
 from src.core.database.integrity import resolve_or_write
 from src.core.database.models import (
@@ -35,6 +36,30 @@ require_tenant_management_api_key = require_api_key_auth(
     config_key="tenant_management_api_key",
     header="X-Tenant-Management-API-Key",
 )
+
+# Webhook URLs an operator can set through this API. Every one of them is
+# stored now and fetched later, so all three are graded by the same ingest-time
+# egress policy on both create and update — one table, so the two paths cannot
+# drift into covering different fields.
+_WEBHOOK_URL_FIELDS = {
+    "slack_webhook_url": "Slack webhook URL",
+    "slack_audit_webhook_url": "Slack audit webhook URL",
+    "hitl_webhook_url": "HITL webhook URL",
+}
+
+
+def _webhook_url_refusal(data: dict) -> tuple[Response, int] | None:
+    """A 400 for the first webhook URL in *data* that fails egress policy, else ``None``.
+
+    Absent and empty fields are skipped: on create they are simply not being
+    set, and on update an empty value clears the webhook rather than pointing
+    it somewhere.
+    """
+    for field_name, field_label in _WEBHOOK_URL_FIELDS.items():
+        url = data.get(field_name)
+        if url and (blocked := json_error_if_url_blocked(url, field_label)):
+            return blocked
+    return None
 
 
 @tenant_management_api.route("/health", methods=["GET"])
@@ -101,8 +126,6 @@ def create_tenant():
 
     with get_db_session() as db_session:
         try:
-            from src.core.webhook_validator import WebhookURLValidator
-
             data = request.get_json()
 
             # Validate required fields
@@ -111,18 +134,8 @@ def create_tenant():
                 if field not in data:
                     return jsonify({"error": f"Missing required field: {field}"}), 400
 
-            # Validate webhook URLs for SSRF protection
-            webhook_fields = {
-                "slack_webhook_url": "Slack webhook URL",
-                "slack_audit_webhook_url": "Slack audit webhook URL",
-                "hitl_webhook_url": "HITL webhook URL",
-            }
-            for field_name, field_label in webhook_fields.items():
-                url = data.get(field_name)
-                if url:
-                    is_valid, error_msg = WebhookURLValidator.validate_webhook_url(url)
-                    if not is_valid:
-                        return jsonify({"error": f"Invalid {field_label}: {error_msg}"}), 400
+            if blocked := _webhook_url_refusal(data):
+                return blocked
 
             # Generate tenant ID
             tenant_id = f"tenant_{uuid.uuid4().hex[:8]}"
@@ -403,21 +416,10 @@ def update_tenant(tenant_id):
             if not tenant:
                 return jsonify({"error": "Tenant not found"}), 404
 
-            from src.core.webhook_validator import WebhookURLValidator
-
             data = request.get_json()
 
-            # Validate webhook URLs before updating for SSRF protection
-            webhook_fields = {
-                "slack_webhook_url": "Slack webhook URL",
-                "slack_audit_webhook_url": "Slack audit webhook URL",
-                "hitl_webhook_url": "HITL webhook URL",
-            }
-            for field_name, field_label in webhook_fields.items():
-                if field_name in data and data[field_name]:
-                    is_valid, error_msg = WebhookURLValidator.validate_webhook_url(data[field_name])
-                    if not is_valid:
-                        return jsonify({"error": f"Invalid {field_label}: {error_msg}"}), 400
+            if blocked := _webhook_url_refusal(data):
+                return blocked
 
             # Update fields based on provided data
             if "name" in data:

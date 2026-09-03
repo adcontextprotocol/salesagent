@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, NoReturn, Protocol
+from typing import TYPE_CHECKING, NoReturn
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from adcp import ADCPMultiAgentClient, AgentConfig
     from adcp.exceptions import ADCPError
 
     from src.adapters import AdServerAdapter
@@ -16,6 +13,7 @@ if TYPE_CHECKING:
     from src.core.database.models import Tenant as DBTenant
     from src.core.tenant_context import TenantContext
     from src.core.testing_hooks import TestingContext
+    from src.core.utils.mcp_client import SignMcpAttempt
 
     #: Same shape as ResolvedIdentity.tenant (src/core/resolved_identity.py).
     IdentityTenant = TenantContext | dict[str, object]
@@ -25,77 +23,97 @@ if TYPE_CHECKING:
     TenantLike = DBTenant | IdentityTenant | None
 
 
-class _HasAgentFields(Protocol):
-    """Structural type for objects with agent config fields (CreativeAgent, SignalsAgent)."""
+def request_signer_for_tenant(*, tenant_id: str | None) -> SignMcpAttempt | None:
+    """The ONE place that decides whether *tenant_id*'s outbound agent calls are signed.
 
-    name: str
-    agent_url: str
-    auth: dict[str, str] | None
-    auth_header: str | None
-    timeout: int
+    Returns the ``adcp/request-signing/v1`` signing CALLBACK the tenant signs
+    with, or ``None`` when this tenant honestly signs nothing. Both agent
+    registries (``CreativeAgentRegistry``, ``SignalsAgentRegistry``) call THIS
+    rather than each re-deriving the posture, so a future call site cannot
+    silently skip RFC 9421 request signing (#1291 C3) and the two registries
+    cannot drift apart on when a tenant signs. They previously held three
+    independent copies of the gate below, and they had ALREADY drifted: the
+    creative registry spelled the key-presence half ``signing_key_backed(repo,
+    now=now).signs``, whose ``_private_half_is_resolvable`` conjunct folds an
+    unreadable private half into ``False`` -- so one registry raised on a
+    broken KEK while the other dialled unsigned, on the same tenant, in the
+    same deployment. That is precisely the failure a single home makes
+    unconstructible.
 
+    Consumed by the SSRF-guarded MCP seam, which is the only thing in ``src/``
+    that dials another agent::
 
-def build_agent_config(agent: _HasAgentFields) -> AgentConfig:
-    """Build an adcp AgentConfig from any object with standard agent fields.
+        await call_mcp_tool(
+            agent_url, tool, arguments,
+            sign=request_signer_for_tenant(tenant_id=tenant_id),
+        )
 
-    Shared by CreativeAgentRegistry and SignalsAgentRegistry to avoid
-    duplicating the auth-extraction and config-building logic.
+    A CALLBACK, not the strategy object, and the return type is exactly
+    ``call_mcp_tool``'s ``sign=`` parameter type
+    (:class:`~src.core.utils.mcp_client.SignMcpAttempt`), so the answer drops
+    into the only thing anyone does with it and mypy checks the fit. Handing
+    back the strategy instead would make every call site write ``signer
+    .build_signed_headers if signer is not None else None`` -- re-scattering,
+    once per dial, the very conditional this function exists to own; four call
+    sites across the two registries want the callback and nothing in ``src/``
+    wants the strategy. Narrowing also keeps the crypto pinned: a caller
+    holding a :class:`~src.core.signing.RequestSignerStrategy` could mint
+    headers OUTSIDE the guarded transport, which defeats the per-message,
+    per-retry ``created``/``nonce`` the seam exists to compute over the exact
+    bytes on the wire. (:func:`~src.core.signing.delivery_signer_for_tenant`
+    returns a strategy for the WEBHOOK direction because its senders genuinely
+    need the object; that asymmetry is the callers', not an inconsistency.)
+
+    THIS FUNCTION BUILDS NO CLIENT. Its predecessor
+    (``build_adcp_multi_agent_client``) constructed an ``ADCPMultiAgentClient``
+    and handed it a ``SigningConfig``, which put an un-pinned dialer -- no
+    resolve-once IP pin, no redirect refusal, no port policy -- beside the
+    guarded egress seam; #1802 banned constructing that client for exactly that
+    reason (``ruff-egress.toml``, ``adcp.ADCPMultiAgentClient``). Yielding a
+    *callback* instead lets the signature be computed INSIDE the guarded
+    transport, per HTTP message and per retry, over the exact bytes that go on
+    the wire (:func:`src.core.utils.mcp_client._install_signing_hook`) -- which
+    is also what RFC 9421's replay-rejectable ``nonce`` requires and what the
+    SDK's operation-name ContextVar could never deliver on the MCP transport
+    (adcontextprotocol/adcp-client-python#1017).
+
+    THE POSTURE GATE, unchanged from that predecessor -- a tenant signs only
+    when BOTH hold:
+
+    * an ACTIVE ``request_signing`` key exists for the tenant at *now*; and
+    * the tenant's canonical origin is publishable (``https://``). A signature
+      no conformant receiver could ever resolve a key for is worse than sending
+      nothing (security.mdx @ pinned AdCP 3.1.1 :1226) -- the same gate
+      :func:`~src.core.signing.posture.webhook_signing_posture` applies in the
+      webhook direction (C1). Deliberately parallel to it rather than shared:
+      that one answers what posture to ADVERTISE and returns a posture block;
+      this one answers what to DO and returns a signer.
+
+    ``tenant_id is None`` (a caller with no tenant in scope yet -- e.g. a
+    connectivity smoke-check against an as-yet-unsaved agent config) yields
+    ``None`` and dials unsigned, same as before this seam existed.
+
+    NO SILENT DOWNGRADE. Once the gate says this tenant signs, a strategy that
+    cannot be built RAISES ``AdCPConfigurationError`` (from
+    :func:`~src.core.signing.provider.resolve_signing_material`: a revoked key,
+    a private half this deployment cannot decrypt, a forbidden ref scheme, or
+    the published-JWK tripwire). The predecessor swallowed that exception and
+    dialled unsigned, so a broken KEK downgraded every outbound call silently
+    and looked identical to a tenant that had simply never provisioned a key.
+    :func:`~src.core.signing.posture.signing_key_backed` is NOT used for the
+    key-presence half for the same reason: its ``signs`` field folds that
+    failure into ``False`` (it answers "what may this tenant honestly
+    declare", where degrading is right); here degrading is the defect.
+
+    The signing imports are function-local because the signing layer pulls in
+    the ORM and ``adcp.signing``; module scope would put that on every import
+    of this helper, including admin call sites that only read adapter config.
     """
-    from adcp import AgentConfig as _AgentConfig
-    from adcp import Protocol as AdcpProtocol
-
-    auth_type = "token"
-    auth_token = None
-    if agent.auth:
-        auth_type = agent.auth.get("type", "token")
-        auth_token = agent.auth.get("credentials")
-
-    return _AgentConfig(
-        id=agent.name,
-        agent_uri=str(agent.agent_url),
-        protocol=AdcpProtocol.MCP,
-        auth_token=auth_token,
-        auth_type=auth_type,
-        auth_header=agent.auth_header or "x-adcp-auth",
-        timeout=float(agent.timeout),
-    )
-
-
-def build_adcp_multi_agent_client(agents: Sequence[_HasAgentFields], *, tenant_id: str | None) -> ADCPMultiAgentClient:
-    """The ONE seam that builds an outbound ``ADCPMultiAgentClient``, signed or not.
-
-    This is the ONLY place in ``src/`` that may construct an
-    ``ADCPMultiAgentClient``/``ADCPClient`` for an outbound call to another
-    agent (enforced by ``tests/unit/test_guards_outbound_adcp_client_seam.py``)
-    -- so neither registry (``CreativeAgentRegistry``, ``SignalsAgentRegistry``)
-    ever names ``SigningConfig`` or ``resolve_signing_material`` directly, and a
-    future new call site cannot silently skip RFC 9421 request signing (#1291 C3).
-
-    ``tenant_id`` is ``None`` for callers with no tenant in scope yet
-    (e.g. a connectivity smoke-check against an as-yet-unsaved agent config) --
-    those calls stay unsigned, same as before this seam existed.
-
-    Signing is otherwise STRICTLY ADDITIVE (never breaks a call that works
-    unsigned today):
-
-    * No active signing key for *tenant_id* -> ``signing=None`` (unsigned,
-      same as before this seam existed).
-    * An active key, but the tenant's origin is not publishable (no
-      ``virtual_host``, so :func:`~src.core.agent_identity.canonical_agent_url`
-      derives a non-``https://`` default) -> ``signing=None``. A signature no
-      conformant receiver could ever resolve a key for is worse than sending
-      nothing (security.mdx @ v3.1.1 :1226) -- mirrors
-      :func:`~src.core.signing.posture.webhook_signing_posture`'s gate for the
-      webhook direction (C1).
-    """
-    from adcp import ADCPMultiAgentClient as _ADCPMultiAgentClient
-
     if tenant_id is None:
-        return _ADCPMultiAgentClient(agents=[build_agent_config(agent) for agent in agents])
+        return None
 
     from datetime import UTC, datetime
 
-    from src.core.exceptions import AdCPConfigurationError
     from src.core.signing import (
         REQUEST_SIGNING,
         origin_is_publishable,
@@ -103,21 +121,26 @@ def build_adcp_multi_agent_client(agents: Sequence[_HasAgentFields], *, tenant_i
         signing_config_from_material,
         signing_repo,
     )
+    from src.core.signing import RequestSignerStrategy as _RequestSignerStrategy
 
-    signing = None
+    now = datetime.now(UTC)
     with signing_repo(tenant_id) as repo:
-        if repo is not None:
-            try:
-                material = resolve_signing_material(
-                    repo, tenant_id=tenant_id, purpose=REQUEST_SIGNING, now=datetime.now(UTC)
-                )
-            except AdCPConfigurationError:
-                material = None
+        if repo is None:
+            return None
+        # Both halves of the gate are read on the repository's OWN transaction,
+        # so a rotation cannot be observed from one side and the host from the
+        # other (SigningKeyRepository.canonical_origin).
+        if repo.active_at(now=now, purpose=REQUEST_SIGNING) is None:
+            return None
+        if not origin_is_publishable(repo.canonical_origin()):
+            return None
+        material = resolve_signing_material(repo, tenant_id=tenant_id, purpose=REQUEST_SIGNING, now=now)
 
-            if material is not None and origin_is_publishable(repo.canonical_origin()):
-                signing = signing_config_from_material(material)
-
-    return _ADCPMultiAgentClient(agents=[build_agent_config(agent) for agent in agents], signing=signing)
+    # Projected after the session closes: signing_repo's session is scoped to the
+    # key read, and this projection is pure. The bound method keeps the strategy
+    # (and its key material) alive; no repository outlives the ``with``, so no
+    # pooled connection is parked on an agent's latency (#1757).
+    return _RequestSignerStrategy(signing_config_from_material(material)).build_signed_headers
 
 
 def raise_mapped_adcp_error(exc: ADCPError, *, agent_label: str, logger: logging.Logger) -> NoReturn:
@@ -274,15 +297,66 @@ def get_adapter_class_for_tenant(tenant: TenantLike = None) -> type[AdServerAdap
 
     test_behavior = _read_mock_test_behavior(tenant_id, adapter_type)
     if test_behavior.get("unavailable"):
-        from src.core.exceptions import AdCPAdapterError
-
-        raise AdCPAdapterError(
-            test_behavior.get("error_message", "Adapter unavailable (test fault injection)"),
-            recovery=test_behavior.get("recovery", "transient"),
-            suggestion="Retry the operation or contact ad server support",
+        raise_injected_adapter_failure(
+            test_behavior,
+            default_message="Adapter unavailable (test fault injection)",
         )
 
     return get_adapter_class(adapter_type)
+
+
+def raise_injected_adapter_failure(
+    test_behavior: dict,
+    *,
+    default_message: str = "Test adapter failure",
+    default_suggestion: str = "Retry the operation or contact ad server support",
+) -> NoReturn:
+    """Raise the failure a ``test_behavior`` block asks for. Never returns.
+
+    ONE implementation for both fault-injection sites — this module's
+    ``unavailable`` check and ``MockAdServer._raise_injected_failure`` — because it is
+    one operation with one knob (``test_behavior["recovery"]``), and two copies is how
+    an injected fault starts meaning different things depending on which site read it.
+
+    The knob selects a CLASS, not a recovery value. ``recovery`` is derived from the
+    wire code now, so "give me a terminal failure" is expressible only as "raise the
+    class the pin classifies terminal" — the invariant holding for injected test
+    failures exactly as it does for real ones.
+
+    The buyer suggestion rides the first-class ``suggestion=`` param: error.json places
+    it at the top level of the error object, so a copy buried in ``details`` never
+    reaches the protocol position (#1417). ``error_details`` stays in ``details`` for
+    any other injected keys.
+    """
+    from src.core.exceptions import AdCPAdapterError, AdCPConfigurationError, AdCPValidationError
+
+    recovery_to_class: dict[str, type] = {
+        "transient": AdCPAdapterError,  # SERVICE_UNAVAILABLE
+        "terminal": AdCPConfigurationError,  # CONFIGURATION_ERROR
+        "correctable": AdCPValidationError,  # VALIDATION_ERROR
+    }
+    requested = test_behavior.get("recovery", "transient")
+    try:
+        error_cls = recovery_to_class[requested]
+    except KeyError:
+        # No Quiet Failures: a misspelt knob used to sail through as a free string on
+        # the wire (the "retryable" spelling did exactly that). Typed, not ValueError:
+        # a bad knob is deployment/test configuration, which is what
+        # CONFIGURATION_ERROR means, and src/ may not grow new bare ValueError raises
+        # (test_architecture_no_value_error_in_impl).
+        raise AdCPConfigurationError(
+            f"test_behavior recovery={requested!r} is not a recovery classification. "
+            f"Use one of {sorted(recovery_to_class)} — each selects the exception class "
+            f"whose pinned enumMetadata recovery is that value."
+        ) from None
+
+    details = test_behavior.get("error_details")
+    suggestion = (details or {}).pop("suggestion", None) if isinstance(details, dict) else None
+    raise error_cls(
+        test_behavior.get("error_message", default_message),
+        suggestion=suggestion or default_suggestion,
+        details=details or None,
+    )
 
 
 def get_targeting_capabilities_override(tenant: TenantLike = None) -> TargetingCapabilities | None:

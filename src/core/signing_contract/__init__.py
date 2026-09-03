@@ -26,6 +26,26 @@ Callers outside the signing layer import from HERE for values and from
 ``from src.core.signing import SIGNING_ALG_VALUES`` keeps working.
 """
 
+# SDK primitives re-exported here rather than from ``src.core.signing`` deliberately.
+# The SSRF seam (``src.core.security.outbound_http``, ``egress.policy``) needs the pinned
+# transports and the address validator, and must not reach past the layer for them (rule
+# A). It cannot take them from ``src.core.signing``: that package imports ``keys`` ->
+# database -> adapters -> ``vendor_http`` -> the seam itself, so the seam importing it
+# closes a cycle. This package is the layer's LEAF — no database, no adapters — and the
+# guard counts it as the layer (``LAYER_PREFIXES``), so the boundary holds and the
+# dependency still runs one way. Same reasoning that moved the value-sets here.
+from adcp.signing import (
+    AsyncIpPinnedTransport,
+    IpPinnedTransport,
+    SSRFValidationError,
+    resolve_and_validate_host,
+)
+from adcp.signing.webhook_hmac import (
+    LegacyWebhookHmacError,
+    LegacyWebhookHmacOptions,
+    verify_webhook_hmac,
+)
+
 from src.core.signing_contract._upstream.errors import (
     REQUEST_TO_WEBHOOK_CODE,
     WEBHOOK_TARGET_URI_MALFORMED,
@@ -55,6 +75,13 @@ from src.core.signing_contract.canonical import (
 from src.core.signing_contract.vocabulary import resolved_operation_names
 
 __all__ = [
+    "AsyncIpPinnedTransport",
+    "IpPinnedTransport",
+    "LegacyWebhookHmacError",
+    "LegacyWebhookHmacOptions",
+    "SSRFValidationError",
+    "resolve_and_validate_host",
+    "verify_webhook_hmac",
     "CACHE_MAX_AGE_SECONDS",
     "BrandAgentType",
     "MINTABLE_PURPOSES",

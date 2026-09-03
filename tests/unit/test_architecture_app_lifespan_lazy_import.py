@@ -104,7 +104,7 @@ class TestAppLifespanIsServiceAgnostic:
         assert _RUN_ALL in used_names, (
             f"{_LIFESPAN_FUNC}() must call `{_RUN_ALL}()` so every service's "
             f"self-registered shutdown callback fires. Without it the "
-            f"ProtocolWebhookService requests.Session pool is never released "
+            f"registered shutdown callbacks are never drained "
             f"(PR #1264 fix #3 regression)."
         )
 

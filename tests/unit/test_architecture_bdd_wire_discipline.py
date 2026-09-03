@@ -1,6 +1,6 @@
 """Guard: BDD wire-discipline — error handling goes through the wire, not test-side.
 
-Five complementary checks, locking in the universal-wire-dispatch invariant after the
+Seven complementary checks, locking in the universal-wire-dispatch invariant after the
 holdouts were migrated:
 
 A. **No test-side error construction** (dispatch-side). A step must NOT
@@ -60,10 +60,24 @@ E. **No hand-rolled wire-envelope access** (access-pattern, not symbol-name; PR 
    exempts it. Check D is retained rather than deleted because it is not subsumed
    (``synthesized_error_envelope`` attribute reads and the ``ctx.get`` form are invisible to
    Check E); a looser check running alongside a stricter one cannot relax the stricter one —
-   both must pass.
+   both must pass. The meta-tests at the bottom of this module pin that non-subsumption in
+   BOTH directions.
 
-All five allowlists can only SHRINK. Each entry documents the production gap or tracked
-follow-up that keeps it.
+F. **No private circuit-breaker state reached from a step** (arrange/assert-side, PR #1802).
+   A step must not touch ``<service>._circuit_breakers``. Breaker state is process-local, so a
+   step indexing that dict is unfalsifiable across any process boundary (it grades a test
+   double, not a delivery). Seeding goes through the harness env's breaker accessors — the one
+   place allowed to touch the private dict — and every state READ an assertion depends on goes
+   through the production public API ``WebhookDeliveryService.get_circuit_breaker_state``.
+   Allowlist is permanently EMPTY.
+
+G. **No provenance-stripped ``ctx["response"]`` read** (assertion-side, PR #1802). Documented
+   at its definition below: a copy of the payload cannot tell a Then whether it holds a wire
+   fact or an in-process reconstruction. Steps read the dispatch's own ``TransportResult``.
+
+All seven allowlists can only SHRINK. Each entry documents the production gap or tracked
+follow-up that keeps it. A separate exact-match pin (below) holds the harness's own breaker
+write seam.
 """
 
 from __future__ import annotations
@@ -82,6 +96,11 @@ _WIRE_REFERENCES = (
     "_wire_error_object",
     "assert_wire_error",
     "wire_error_envelope",
+    # The reader pair that replaced the hand-rolled `wire or synthesized`
+    # fallback. A step migrated onto it still references the wire — without
+    # these names it would lose the marker and trip Check B.
+    "error_envelope",
+    "error_envelope_or_none",
 )
 
 # -- Check A: test-side error construction ------------------------------------
@@ -119,23 +138,19 @@ _ATTRIBUTE_ENVELOPE_PARSING_ALLOWLIST: set[str] = set()
 # https://github.com/prebid/salesagent/issues/1995; remove each entry as it migrates
 # onto wire_error_dict / wire_error_envelope_or_none (_outcome_helpers.py).
 #
-# MERGE ARITHMETIC (#1858 into the rfc9421-signing line): this allowlist is the
-# INTERSECTION of what each side still allowed — never the union.
-#   #1858 allowed 5 entries; this side allowed 0 under its own Check D.
+# MERGE ARITHMETIC (#1802 into the rfc9421-signing line): this allowlist is the
+# INTERSECTION of what each side still allowed — never the union. Upstream carried
+# #1858's original 5-entry baseline; this side had already shrunk it to 2.
 #   - The three uc002_nfr entries (then_rate_limiting_enforced, then_payload_size_limits,
-#     then_budget_validated_against_min_order) were FIXED on this side, so they are no
-#     longer found in the merged tree. Re-admitting them would be pure allowlist growth.
-#     REMOVED.
-#   - The two below are still found in the merged tree and were allowed by BOTH sides
-#     (#1858 allowlisted them; this side's Check D leaves them unflagged — one is not a
-#     @then step, the other is the presence-guard shape Check D exempts). KEPT.
-#   - Three further sites that Check E finds in the merged tree were NOT allowed by #1858
-#     (that side had already migrated them onto the guarded accessor, so they never
-#     entered its allowlist). Under the intersection rule they are NOT allowlisted here,
-#     and this guard fails on them until they are migrated:
-#       bdd/steps/generic/then_error.py then_validation_error       (then_error.py:835)
-#       bdd/steps/generic/then_error.py then_real_validation_error  (then_error.py:863)
-#       bdd/steps/domain/uc026_package_media_buy.py then_outcome    (uc026:1928)
+#     then_budget_validated_against_min_order) were FIXED on this side, and the finder
+#     confirms they are no longer found in the merged tree. Re-admitting them would be
+#     pure allowlist growth. REMOVED (5 -> 2).
+#   - The two below are still found in the merged tree and were allowed by BOTH sides. KEPT.
+#   - A previous resolution also recorded three sites that Check E found but neither side
+#     allowed (generic/then_error.py then_validation_error and then_real_validation_error,
+#     domain/uc026_package_media_buy.py then_outcome). All three have since migrated onto
+#     wire_error_envelope_or_none and the finder no longer reports them, so that note is
+#     retired rather than carried forward.
 _WIRE_ENVELOPE_ACCESS_ALLOWLIST: set[str] = {
     # FIXME(#1995): result.wire_error_envelope read directly instead of via the
     # guarded accessor.
@@ -156,6 +171,19 @@ _ACCESS_PATTERN_EXEMPT_MODULES = frozenset(
         "bdd/steps/generic/_dispatch.py",
     }
 )
+
+# -- Check F: private circuit-breaker state in a step -------------------------
+# The private attribute a step may never reach for. Matched as an AST ``Attribute``,
+# never as a source token: a token scan also hits the DOCSTRING at
+# ``uc004_delivery.py`` that *describes* the process-local limitation, which would make
+# the zero allowlist unachievable and the guard unshippable (gra7.3 correction C3).
+_PRIVATE_BREAKER_ATTR = "_circuit_breakers"
+
+# ZERO entries, permanently. Every site migrates onto the harness env's breaker accessors
+# in the same change that lands this check, so a baseline here would be allowlist growth.
+# Keys carry line numbers (unlike checks A/B) precisely BECAUSE the allowlist is empty:
+# nothing is ever stored, so nothing can go stale, and the failure names the exact sites.
+_PRIVATE_BREAKER_ALLOWLIST: set[str] = set()
 
 
 def _iter_step_modules() -> list[tuple[str, ast.Module]]:
@@ -450,8 +478,11 @@ def _exempted_envelope_attribute_ids(func: ast.FunctionDef | ast.AsyncFunctionDe
     Mirrors Check C's exemptions, but DIRECT-FORM ONLY (no one-variable hop):
 
     (a) presence-only -- ``result.wire_error_envelope is not None``, the wire-first
-        guard in front of ``result.assert_wire_error(...)`` (then_error
-        then_validation_error, uc019 then_real_validation_error, uc026 then_outcome);
+        guard in front of ``result.assert_wire_error(...)``. uc019
+        then_real_validation_error is the one remaining site in this shape; the
+        then_error.py (then_validation_error, then_real_validation_error) and uc026
+        then_outcome sites this note used to name have since migrated onto
+        ``wire_error_envelope_or_none``;
     (b) piped straight into ``assert_envelope_shape(...)``, the sanctioned helper;
     (c) inside an f-string -- a diagnostic interpolation cannot influence pass/fail.
 
@@ -558,6 +589,256 @@ def test_no_hand_rolled_wire_envelope_access() -> None:
             "guard + IMPL-synthesized fallback) or wire_error_envelope_or_none(ctx) (no guard, real "
             "envelope or None — use before delegating to result.assert_wire_error). "
             "See then_error.py's _wire_code / _wire_suggestion / _wire_error_object / then_error_recovery."
+        ),
+    )
+
+
+def _private_breaker_hits(tree: ast.Module) -> dict[str, list[int]]:
+    """Map enclosing function name -> sorted line numbers of ``x._circuit_breakers`` access.
+
+    ``ast.Attribute`` only. A string mentioning ``_circuit_breakers`` — a docstring
+    explaining the process-local limitation, a comment, a log line — parses to a
+    ``Constant``, never an ``Attribute``, and is therefore invisible here. That is the
+    whole reason this check is structural rather than a token scan.
+    """
+    owner_of: dict[int, str] = {}
+    for func in _enclosing_functions(tree):
+        for node in _own_nodes(func):
+            owner_of[id(node)] = func.name
+
+    hits: dict[str, list[int]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == _PRIVATE_BREAKER_ATTR:
+            hits.setdefault(owner_of.get(id(node), "<module>"), []).append(node.lineno)
+    return {name: sorted(lines) for name, lines in hits.items()}
+
+
+def _find_private_breaker_access() -> set[str]:
+    """Find every step-side read/write of a service's private ``_circuit_breakers`` dict."""
+    found: set[str] = set()
+    for rel, tree in _iter_step_modules():
+        for func_name, lines in _private_breaker_hits(tree).items():
+            found.add(f"{rel} {func_name}:{','.join(str(n) for n in lines)}")
+    return found
+
+
+def test_no_private_circuit_breaker_state_in_steps() -> None:
+    """gra7.3: steps must not index ``service._circuit_breakers``; go through the env accessors."""
+    assert_violations_match_allowlist(
+        _find_private_breaker_access(),
+        _PRIVATE_BREAKER_ALLOWLIST,
+        fix_hint=(
+            "A BDD step reaches into a service's private _circuit_breakers dict. Breaker state is "
+            "process-local, so that read is unfalsifiable across a process boundary — it grades a "
+            "test double, not a delivery. SEED through the harness env's breaker accessors "
+            "(tests/harness/_mixins.py circuit-breaker mixin — the only place allowed to touch the "
+            "private dict); READ through the production public API "
+            "WebhookDeliveryService.get_circuit_breaker_state (via the env's breaker_snapshot); and "
+            "where the scenario claims deliveries happen, assert the delivery EFFECT (an attempt "
+            "reached the origin), not the state enum alone. The allowlist is permanently empty."
+        ),
+    )
+
+
+# ── Check G: no step reads the provenance-stripped ctx["response"] ────────────
+#
+# The dispatch seams stopped writing that key: a copy of the payload cannot tell
+# a Then whether it holds a wire fact or an in-process reconstruction, which is
+# how a self-grading transport stayed green. Worse, the key had THREE writers
+# with three meanings — dispatch, modules calling production directly, and one
+# step stashing a REQUEST under it — so a reader could not know what it had.
+#
+# Steps read the dispatch's own TransportResult via require_payload /
+# payload_or_none. Modules that still call production directly stash under the
+# explicitly-named ctx["self_dispatched_response"], which the shared accessors
+# know about by name.
+_CTX_RESPONSE_KEY = "response"
+
+# Shrink-only. Every entry is a module whose When calls production DIRECTLY
+# rather than dispatching, with the GitHub issue tracking its migration. When a
+# module migrates its entry goes; nothing may be added.
+# EMPTY, and it stays that way. Every module migrated; the two that still call
+# production directly (uc011's _list_accounts_impl, FIXME(#1880)) stash under the
+# explicitly-named ctx["self_dispatched_response"], which the shared accessors
+# know by name — so they need no exemption from this check at all.
+#
+# MERGE ARITHMETIC (#1802 into the rfc9421-signing line): upstream allowed 0; this
+# side had no such check and therefore allowed 0 under it too. Intersection = 0.
+_CTX_RESPONSE_ALLOWLIST: set[str] = set()
+
+
+def _ctx_response_hits(tree: ast.AST) -> dict[str, list[int]]:
+    """Subscript AND .get access to ctx["response"], per enclosing function.
+
+    ALL FIVE access forms condition C2 made binding — subscript, ``ctx.get``,
+    ``_require*(ctx, "response")``, ``"response" in ctx`` and ``ctx.pop``.
+    Covering only the first two would leave a future step able to re-open the
+    retired key through the shared accessor, which is exactly the escape the
+    design review named.
+
+    Subscript and ``ctx.get`` deliberately: a subscript-only check would miss the ~218
+    ``ctx.get("response")`` reads this lane migrated and would pass on an almost
+    entirely unmigrated tree. A string mentioning the key in a docstring parses
+    to ast.Constant and is invisible to both, which is what makes the pinned set
+    achievable.
+    """
+    hits: dict[str, list[int]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        lines: list[int] = []
+        for child in ast.walk(node):
+            # ctx["response"]
+            if (
+                isinstance(child, ast.Subscript)
+                and isinstance(child.value, ast.Name)
+                and child.value.id == "ctx"
+                and isinstance(child.slice, ast.Constant)
+                and child.slice.value == _CTX_RESPONSE_KEY
+            ):
+                lines.append(child.lineno)
+            # _require(ctx, "response") / any _require*(ctx, "response") helper —
+            # the escape route pass 2 named: a future step could re-open the key
+            # through the shared accessor rather than by subscript.
+            elif (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Name)
+                and child.func.id.startswith("_require")
+                and len(child.args) >= 2
+                and isinstance(child.args[0], ast.Name)
+                and child.args[0].id == "ctx"
+                and isinstance(child.args[1], ast.Constant)
+                and child.args[1].value == _CTX_RESPONSE_KEY
+            ):
+                lines.append(child.lineno)
+            # "response" in ctx — a membership test is a read of the same key
+            elif (
+                isinstance(child, ast.Compare)
+                and isinstance(child.left, ast.Constant)
+                and child.left.value == _CTX_RESPONSE_KEY
+                and any(isinstance(op, ast.In) for op in child.ops)
+                and any(isinstance(c, ast.Name) and c.id == "ctx" for c in child.comparators)
+            ):
+                lines.append(child.lineno)
+            # ctx.pop("response") — a clear of a key nothing writes any more is
+            # dead code that reads as live state management
+            elif (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Attribute)
+                and child.func.attr == "pop"
+                and isinstance(child.func.value, ast.Name)
+                and child.func.value.id == "ctx"
+                and child.args
+                and isinstance(child.args[0], ast.Constant)
+                and child.args[0].value == _CTX_RESPONSE_KEY
+            ):
+                lines.append(child.lineno)
+            # ctx.get("response")
+            elif (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Attribute)
+                and child.func.attr == "get"
+                and isinstance(child.func.value, ast.Name)
+                and child.func.value.id == "ctx"
+                and child.args
+                and isinstance(child.args[0], ast.Constant)
+                and child.args[0].value == _CTX_RESPONSE_KEY
+            ):
+                lines.append(child.lineno)
+        if lines:
+            hits[node.name] = sorted(set(lines))
+    return hits
+
+
+def _find_ctx_response_access() -> set[str]:
+    found: set[str] = set()
+    steps_root = _STEPS_DIR
+    for path in sorted(steps_root.rglob("*.py")):
+        rel = path.relative_to(steps_root).as_posix()
+        if rel == "_outcome_helpers.py":
+            continue  # the accessors themselves; they are the sanctioned readers
+        if _ctx_response_hits(ast.parse(path.read_text())):
+            found.add(rel)
+    return found
+
+
+class TestNoProvenanceStrippedResponseCopy:
+    def test_steps_read_the_dispatch_result_not_a_payload_copy(self):
+        """No step module reads ctx["response"] in any of its five access forms."""
+        assert_violations_match_allowlist(
+            {(module,) for module in _find_ctx_response_access()},
+            {(module,) for module in _CTX_RESPONSE_ALLOWLIST},
+            fix_hint=(
+                "A Then reading ctx['response'] cannot tell a wire fact from an in-process "
+                "reconstruction. Read the dispatch's TransportResult instead — require_payload(ctx) "
+                "when a payload is required, payload_or_none(ctx) when the step branches on which "
+                "path ran. Modules whose When calls production directly stash under "
+                "ctx['self_dispatched_response'], which those accessors know by name."
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# The harness's own write seam, pinned.
+#
+# The circuit-breaker mixin declares that the write side of the breaker "lives
+# here, in the harness, and NOWHERE else". Check F enforces the "nowhere else"
+# half over tests/bdd/steps/. Nothing enforced the "here" half: the mixin
+# could grow a sixth affordance for faking breaker state and no test would
+# notice — which is how `record_breaker_successes` came to let a scenario claim
+# it had delivered N reports while the system delivered nothing. The scan covers
+# the whole harness because `env` in a step is a subclass: pinning only the mixin
+# catches a rename and misses the shape moving one file over.
+#
+# This is an exact-match pin, so ADDING a writer fails and so does REMOVING one
+# without updating the set. Each name below is a deliberate seam, not debt: the
+# set may only shrink as scenarios migrate onto real deliveries.
+# ---------------------------------------------------------------------------
+
+_BREAKER_SEAM_METHODS: set[str] = {
+    "_mixins.py::seed_breaker_failures",
+    "_mixins.py::set_breaker_state",
+    "_mixins.py::elapse_breaker_timeout",
+    "_mixins.py::drive_breaker_transition",
+}
+
+
+def _methods_touching_the_breaker_seam() -> set[str]:
+    """``file::function`` for everything under tests/harness/ that reaches the private breaker.
+
+    The whole harness, not just the mixin, and every function, not just class
+    bodies: ``env`` in a step IS a ``CircuitBreakerEnv``, so the natural home for
+    a new faking affordance is the subclass one file over — and a module-level
+    helper needs no class at all. Both ``_breaker_for`` and the ``_circuit_breakers``
+    dict it wraps are matched, because the historical spelling of this defect
+    poked the dict directly.
+    """
+    harness = _TESTS_ROOT / "harness"
+    found: set[str] = set()
+    for py_file in sorted(harness.rglob("*.py")):
+        tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if fn.name == "_breaker_for":
+                continue
+            for node in ast.walk(fn):
+                if isinstance(node, ast.Attribute) and node.attr in {"_breaker_for", "_circuit_breakers"}:
+                    found.add(f"{py_file.name}::{fn.name}")
+    return found
+
+
+def test_the_harness_breaker_write_seam_does_not_grow() -> None:
+    """The mixin's breaker affordances are exactly the pinned set."""
+    assert_violations_match_allowlist(
+        _methods_touching_the_breaker_seam(),
+        _BREAKER_SEAM_METHODS,
+        fix_hint=(
+            "A new method in the circuit-breaker mixin reaches the private breaker. Before adding "
+            "one, check whether the scenario should DELIVER instead of seeding: a helper that fakes "
+            "N successes lets a Then grade arithmetic the delivery layer never ran, so production "
+            "can stop recording successes and the scenario stays green. Seeding is legitimate only "
+            "for reaching a STARTING state a test cannot afford to spend real failures on."
         ),
     )
 

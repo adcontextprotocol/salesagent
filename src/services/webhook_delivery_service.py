@@ -2,21 +2,56 @@
 
 Authentication is NOT this module's concern: the receiver's own
 ``PushNotificationConfig`` registration selects exactly one mode at the single
-signing boundary (``src.core.signing.webhook_sender_factory``, #1291 C1), which
-serializes, authenticates and POSTs one delivery as a single act.
+egress boundary (:func:`src.core.security.webhook_egress.deliver_webhook`,
+#1291 C1 / GH #1802), which serializes the body ONCE, authenticates those exact
+bytes and transmits them through the SSRF seam
+(``src.core.security.outbound_http.send``) as a single act. This service holds
+no client, no address policy and no signature — it decides WHOM to deliver to
+and WHAT to do with the outcome.
+
+RFC 9421 (#1291): WHETHER a 9421 signature is applied is decided inside that
+boundary and NOT here — ``webhook_egress._headers_for`` keys the arm on the
+ABSENCE of an ``authentication`` block, which is the pinned schema's own
+selector (``security.mdx`` @ v3.1.1 :1424), and applies it as
+``outbound_http.send``'s ``sign=`` hook, invoked once PER ATTEMPT over
+``request.content``. That is what keeps the ``nonce`` fresh across a retry and
+the signature over the exact bytes sent, while this sender never holds a
+signature and never opens a second HTTP client — which is also what keeps it
+clean under ``ruff-egress.toml``'s ``TID251`` table.
+
+What this sender contributes is the one input that boundary cannot derive for
+itself: WHICH TENANT's key. It resolves that once per delivery with
+``src.core.signing.delivery_signer_for_tenant`` — the ONE open-read-close all
+three webhook senders share, so no two of them resolve it differently — and hands
+it over as ``signer=``. The resolution runs on a SHORT session of its own, opened
+after phase 1's session closed and closed before the POST, so #1757's "no
+session held across a POST" is unchanged — see :meth:`_deliver_with_backoff`,
+which also states why a tenant that CANNOT be signed for raises there instead of
+quietly delivering unsigned.
+
+``QueuedWebhook`` therefore carries ``tenant_id`` and ``idempotency_key``:
+they are the two dispatch-level values that arm needs, and they are held on the
+QUEUE ENTRY rather than merged into ``payload``. That separation is the point.
+A dispatch kwarg folded into the body changes the bytes a receiver must verify
+against the signature, which is a defect this merge has already paid for once.
 
 What this service owns:
 - Circuit breaker pattern (CLOSED/OPEN/HALF_OPEN states) for fault tolerance
-- Exponential backoff with jitter for retry logic
-- Replay attack prevention with 5-minute timestamp window
 - Bounded queues (1000 webhooks per endpoint)
 - Support for is_adjusted flag for late-arriving data
 - Per-endpoint isolation to prevent cascading failures
+
+What it NO LONGER owns, and where each went — a local copy of any of these is a
+regression, not a hardening: the retry ladder and its jitter (BR-RULE-029, now
+``src.core.security.egress.attempts.Attempts``, driven by the seam); the
+replay-prevention timestamp (minted by the signer over the body it signs, in
+``webhook_egress.prepare_signed_request``); and the send-time address gate,
+which the seam performs as resolve-validate-and-PIN in the same call that opens
+the socket, leaving no window a re-check here could close.
 """
 
 import atexit
 import logging
-import random
 import threading
 import time
 from collections import deque
@@ -24,19 +59,63 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
+from uuid import uuid4
 
-import httpx
 from adcp import get_adcp_spec_version
 from adcp.webhooks import generate_webhook_idempotency_key
 from pydantic import JsonValue
 
-from src.core.signing import deliver_adcp_webhook_sync
-from src.core.webhook_validator import (
-    reject_unsafe_outbound_webhook_url,
-    webhook_url_for_log,
-)
+from src.core.security.egress.attempts import env_float
+from src.core.security.webhook_egress import deliver_webhook
+from src.core.webhook_validator import webhook_url_for_log
+from src.core.webhooks.delivery import WebhookDeliveryOutcome, WebhookTaskContext
+from src.services.webhook_conclusion import record_conclusion
 
 logger = logging.getLogger(__name__)
+
+# The ``task_type`` this sender stamps on its rows. It differs from the protocol
+# sender's ("media_buy_delivery") because the two senders are answering about
+# different things; ``WebhookTaskContext.records_delivery_log`` admits both. What
+# must NOT differ is what a row SAYS became of a delivery — that vocabulary lives
+# once, in DeliveryRepository.record_outcome.
+DELIVERY_REPORT_TASK_TYPE = "delivery_report"
+
+
+# How long a single delivery attempt may take. Read at CALL time, not import, so a
+# test can shorten it without patching a transport — which is what lets the timeout
+# path be graded against an origin that really stalls, rather than against a mocked
+# clock. Production's value is unchanged.
+_DELIVERY_TIMEOUT_ENV = "ADCP_WEBHOOK_DELIVERY_TIMEOUT_SECONDS"
+_DEFAULT_DELIVERY_TIMEOUT_SECONDS = 10.0
+
+# The breaker's three policy parameters, read at CALL time for the same reason the
+# delivery timeout above is: an import-time read would freeze the first value.
+#
+# These are POLICY, not a test hatch. 5 / 2 / 60s is a default a deployment may
+# legitimately disagree with — a seller with flaky buyers may want to trip later,
+# and one with strict SLOs may want to recover sooner. Until now they were
+# constructor defaults with no reader at all, so no deployment could express that.
+#
+# This is also what lets the e2e stack reach HALF_OPEN without spending 60 real
+# seconds per scenario: docker-compose.e2e.yml supplies a shorter recovery timeout.
+# The code path is identical in both environments — only the VALUE differs, which
+# is the line between configuration and a branch that behaves differently under
+# test. See prebid/salesagent#2094 for the general case.
+_BREAKER_FAILURE_THRESHOLD_ENV = "ADCP_WEBHOOK_BREAKER_FAILURE_THRESHOLD"
+_BREAKER_SUCCESS_THRESHOLD_ENV = "ADCP_WEBHOOK_BREAKER_SUCCESS_THRESHOLD"
+_BREAKER_TIMEOUT_ENV = "ADCP_WEBHOOK_BREAKER_TIMEOUT_SECONDS"
+_DEFAULT_BREAKER_FAILURE_THRESHOLD = 5
+_DEFAULT_BREAKER_SUCCESS_THRESHOLD = 2
+_DEFAULT_BREAKER_TIMEOUT_SECONDS = 60
+
+
+def _configured_breaker() -> "CircuitBreaker":
+    """Build a breaker from the configured policy, falling back to the shipped defaults."""
+    return CircuitBreaker(
+        failure_threshold=int(env_float(_BREAKER_FAILURE_THRESHOLD_ENV, _DEFAULT_BREAKER_FAILURE_THRESHOLD)),
+        success_threshold=int(env_float(_BREAKER_SUCCESS_THRESHOLD_ENV, _DEFAULT_BREAKER_SUCCESS_THRESHOLD)),
+        timeout_seconds=int(env_float(_BREAKER_TIMEOUT_ENV, _DEFAULT_BREAKER_TIMEOUT_SECONDS)),
+    )
 
 
 class CircuitState(Enum):
@@ -150,10 +229,24 @@ class QueuedWebhook:
       session that may well be closed by the time a retry touches it.
 
     ``url`` / ``authentication_type`` / ``authentication_token`` are exactly the three
-    attributes the sender reads off a config (``webhook_sender_factory`` :167-168, :183,
-    :321-322, :445, :452), so this projection satisfies the same attribute contract the
-    ORM row did and is passed as ``config=`` unchanged — the sender's signature does not
-    move.
+    attributes any sender reads off a config, so this projection satisfies the same
+    contract the ORM row did. They are handed to
+    :func:`~src.core.security.webhook_egress.deliver_webhook` as the stored PRIMITIVES
+    it takes (``scheme=`` / ``credentials=``) — that boundary deliberately accepts the
+    raw pair rather than a validated block, so what an invalid registration MEANS is
+    decided once there instead of once per sender.
+
+    ``tenant_id`` and ``idempotency_key`` are dispatch-level values, carried here and
+    NEVER merged into ``payload``. ``tenant_id`` rides on the entry because the delivery
+    phase is reached through ``endpoint_key`` alone, and splitting that composite string
+    back apart to recover a tenant id is not a data path; ``idempotency_key`` is minted
+    ONCE PER EVENT and reused across that event's retries, because a fresh key per
+    attempt would defeat receiver-side dedup. ``tenant_id`` is what the RFC 9421 arm at
+    the egress boundary is keyed to: :meth:`WebhookDeliveryService._deliver_with_backoff`
+    reads it off the DEQUEUED ENTRY to resolve that tenant's signer, so the key that
+    signs is the one the item being delivered names. A SIGNING REPOSITORY used to ride
+    here for the same stated reason, and that was the fault: a repository carries a
+    session, and the strategy resolved from this id does not.
 
     ``payload`` is ``dict[str, JsonValue]``, NOT ``dict[str, Any]``: ``JsonValue`` is
     pydantic's recursive JSON type, so an ORM object in the payload is a TYPE ERROR at
@@ -359,6 +452,188 @@ class WebhookDeliveryService:
             )
             return False
 
+    def _queue_for_config(
+        self,
+        config: Any,
+        *,
+        tenant_id: str,
+        delivery_payload: dict[str, Any],
+    ) -> tuple[str, CircuitBreaker, WebhookQueue, str] | None:
+        """PHASE 1 for ONE receiver: apply the gates, project to primitives, enqueue.
+
+        This is :meth:`_send_webhook_enhanced`'s per-config loop body, extracted so
+        that method stays under the ADR-009 complexity ratchet (#1610). Each
+        ``continue`` in the original loop becomes ``return None``: the caller counts
+        ENDPOINTS THAT TOOK THE WEBHOOK, and every early exit here was already a
+        not-delivered endpoint.
+
+        It runs INSIDE the caller's ``get_db_session()`` block and reads the ORM row
+        there, which is legitimate. What it hands BACK is primitives only -- an
+        endpoint key, the two in-memory per-endpoint objects, and a URL string -- so
+        nothing the delivery phase can see is able to reach a session (#1757,
+        salesagent-n78j0.4). Delivery itself is deliberately NOT done here; see
+        :meth:`_send_webhook_enhanced`'s phase comments.
+
+        Returns:
+            The pending entry to deliver in phase 2, or ``None`` when this endpoint
+            took nothing -- auth-blocked, breaker open, or queue full.
+        """
+        safe_url = webhook_url_for_log(config.url)
+        # Skip auth-blocked endpoints (UC-004-EXT-G-07)
+        if isinstance(getattr(config, "auth_blocked_at", None), datetime):
+            logger.warning(
+                "⚠️ Auth blocked for %s, skipping until credentials reconfigured",
+                safe_url,
+            )
+            return None
+
+        endpoint_key = f"{tenant_id}:{config.url}"
+
+        # Get or create circuit breaker for this endpoint
+        if endpoint_key not in self._circuit_breakers:
+            self._circuit_breakers[endpoint_key] = _configured_breaker()
+
+        # Get or create queue for this endpoint
+        if endpoint_key not in self._queues:
+            self._queues[endpoint_key] = WebhookQueue(max_size=1000)
+
+        circuit_breaker = self._circuit_breakers[endpoint_key]
+        queue = self._queues[endpoint_key]
+
+        # Check circuit breaker
+        if not circuit_breaker.can_attempt():
+            logger.warning(
+                "⚠️ Circuit breaker OPEN for %s, skipping webhook delivery",
+                safe_url,
+            )
+            return None
+
+        # No send-time address gate here: #1697 put one in front of the
+        # raw POST this path used to do, and the egress seam that POST
+        # became now owns exactly that policy -- it resolves, validates
+        # and PINS the connection to the validated IP inside the same
+        # call, so there is no window between the verdict and the
+        # socket. Re-checking here would only re-resolve, which is the
+        # rebinding gap the pin closes, and #1697's refusal-records-a-
+        # failure bookkeeping survives: a refused URL comes back as a
+        # ``refused_destination`` outcome, which reaches record_failure()
+        # through the single conclusion in _deliver_and_conclude.
+        # (Registration-time validation, which must NOT resolve DNS,
+        # still lives in src/core/webhook_validator.py.)
+
+        # Add to queue (bounded). Projected off the ORM row HERE, while the session
+        # is open -- that read is legitimate and stays inside the block. What LEAVES
+        # the block is primitives only, so nothing downstream can reach back into a
+        # session. THE SIGNING REPOSITORY USED TO RIDE ALONG on this entry, and that
+        # was the fault: a repository carries a SESSION, so the entry carried a
+        # pooled connection into a loop that sleeps and POSTs to a buyer-supplied
+        # URL (#1757).
+        #
+        # ``tenant_id`` and ``idempotency_key`` ride on the ENTRY, never on
+        # ``payload``: they are dispatch-level values -- ``tenant_id`` is what the RFC
+        # 9421 arm at the egress boundary is keyed to -- and folding either into the
+        # body would change the bytes a receiver verifies. ONE key per distinct event,
+        # reused across its retries -- a fresh key per attempt would defeat
+        # receiver-side dedup.
+        webhook_data = QueuedWebhook(
+            url=config.url,
+            authentication_type=config.authentication_type,
+            authentication_token=config.authentication_token,
+            payload=delivery_payload,
+            timestamp=datetime.now(UTC),
+            tenant_id=tenant_id,
+            idempotency_key=generate_webhook_idempotency_key(),
+        )
+
+        if not queue.enqueue(webhook_data):
+            logger.warning("⚠️ Queue full for %s, webhook dropped", safe_url)
+            return None
+
+        return endpoint_key, circuit_breaker, queue, config.url
+
+    def _deliver_and_conclude(
+        self,
+        endpoint_key: str,
+        circuit_breaker: CircuitBreaker,
+        queue: WebhookQueue,
+        webhook_url: str,
+        *,
+        tenant_id: str,
+        ctx: WebhookTaskContext,
+    ) -> bool:
+        """PHASE 2 for ONE receiver: deliver, then conclude ONCE.
+
+        ONE conclusion per endpoint. The outcome arrives from the delivery function;
+        what to DO about it -- write it down, feed the breaker, count it -- is decided
+        here, once, for every kind. Splitting that across the delivery function's arms
+        is how this sender ended up feeding a breaker but recording nothing.
+
+        Returns:
+            True when the endpoint took the webhook; False for every other outcome.
+        """
+        attempt_started = time.time()
+        outcome = self._deliver_with_backoff(endpoint_key, queue)
+        if outcome is None:
+            # The queue was empty: nothing was attempted, so there is no
+            # outcome to record and no signal to give the breaker.
+            return False
+
+        self._record_conclusion(
+            tenant_id=tenant_id,
+            ctx=ctx,
+            webhook_url=webhook_url,
+            outcome=outcome,
+            response_time_ms=int((time.time() - attempt_started) * 1000),
+        )
+
+        # EVERY non-delivered kind records a breaker failure, exactly as
+        # the base ``except OutboundError`` did: a destination we cannot
+        # deliver to must not look healthy to the breaker.
+        if outcome.kind == "delivered":
+            circuit_breaker.record_success()
+            return True
+        circuit_breaker.record_failure()
+        return False
+
+    @staticmethod
+    def _record_conclusion(
+        *,
+        tenant_id: str,
+        ctx: WebhookTaskContext,
+        webhook_url: str,
+        outcome: WebhookDeliveryOutcome,
+        response_time_ms: int,
+    ) -> None:
+        """Write one delivery-log row on a session THIS method owns.
+
+        A SHORT session opened AFTER the delivery, never the one phase 1 read the
+        receiver rows on: that session is closed by the time we get here, because
+        holding it would park a pooled connection on a third party's latency for the
+        whole retry ladder (#1757). ``record_conclusion``'s own docstring sanctions
+        both ownership shapes and says this one must let the exception reach
+        ``get_db_session`` so its connection handler and fail-fast trip still run --
+        hence the ``try`` wraps the ``with``, and does not sit inside it.
+
+        Persistence is observability; it does not get a vote on delivery. Without
+        this swallow a DB error would turn a webhook that WAS delivered into
+        ``False`` -- and upstream into a spurious retry.
+        """
+        from src.core.database.database_session import get_db_session
+
+        try:
+            with get_db_session() as db:
+                record_conclusion(
+                    db,
+                    tenant_id=tenant_id,
+                    ctx=ctx,
+                    log_id=str(uuid4()),
+                    webhook_url=webhook_url,
+                    outcome=outcome,
+                    response_time_ms=response_time_ms,
+                )
+        except Exception as e:
+            logger.error("Failed to write webhook delivery log: %s", e)
+
     def _send_webhook_enhanced(
         self,
         tenant_id: str,
@@ -379,16 +654,14 @@ class WebhookDeliveryService:
         """
         try:
             # Get webhook configurations
-            from sqlalchemy import select
 
             from src.core.database.database_session import get_db_session
-            from src.core.database.models import PushNotificationConfig
+            from src.core.database.repositories.push_notification_config import (
+                PushNotificationConfigRepository,
+            )
 
             with get_db_session() as db:
-                stmt = select(PushNotificationConfig).filter_by(
-                    tenant_id=tenant_id, principal_id=principal_id, is_active=True
-                )
-                configs = db.scalars(stmt).all()
+                configs = PushNotificationConfigRepository(db, tenant_id).list_active_by_principal(principal_id)
 
                 if not configs:
                     logger.debug(f"⚠️ No webhooks configured for {tenant_id}/{principal_id}")
@@ -396,82 +669,49 @@ class WebhookDeliveryService:
 
                 # PHASE 1 — everything that needs the session: read the receiver rows,
                 # apply the gates, project to primitives, enqueue. Nothing here waits on
-                # a network.
-                pending: list[tuple[str, CircuitBreaker, WebhookQueue]] = []
+                # a network. Each entry is (endpoint_key, breaker, queue, url): four
+                # values, none of which can reach back into a session (#1757).
+                pending: list[tuple[str, CircuitBreaker, WebhookQueue, str]] = []
                 for config in configs:
-                    safe_url = webhook_url_for_log(config.url)
-                    # Skip auth-blocked endpoints (UC-004-EXT-G-07)
-                    if isinstance(getattr(config, "auth_blocked_at", None), datetime):
-                        logger.warning(
-                            "⚠️ Auth blocked for %s, skipping until credentials reconfigured",
-                            safe_url,
-                        )
-                        continue
-
-                    endpoint_key = f"{tenant_id}:{config.url}"
-
-                    # Get or create circuit breaker for this endpoint
-                    if endpoint_key not in self._circuit_breakers:
-                        self._circuit_breakers[endpoint_key] = CircuitBreaker()
-
-                    # Get or create queue for this endpoint
-                    if endpoint_key not in self._queues:
-                        self._queues[endpoint_key] = WebhookQueue(max_size=1000)
-
-                    circuit_breaker = self._circuit_breakers[endpoint_key]
-                    queue = self._queues[endpoint_key]
-
-                    # Check circuit breaker
-                    if not circuit_breaker.can_attempt():
-                        logger.warning(
-                            "⚠️ Circuit breaker OPEN for %s, skipping webhook delivery",
-                            safe_url,
-                        )
-                        continue
-
-                    # Send-time SSRF gate before enqueue/POST (registration may skip DNS).
-                    if self._reject_unsafe_outbound_url(config.url, circuit_breaker):
-                        continue
-
-                    # Add to queue (bounded). ``tenant_id`` rides on the entry because
-                    # ``_deliver_with_backoff`` is reached through ``endpoint_key``
-                    # alone, and splitting that composite string back apart to recover a
-                    # tenant id is not a data path. It is a ``str``, so it costs nothing.
-                    # THE SIGNING REPOSITORY USED TO RIDE ALONG FOR THE SAME STATED
-                    # REASON, and that was the fault: a repository carries a SESSION, so
-                    # the entry carried a pooled connection into a loop that sleeps and
-                    # POSTs to a buyer-supplied URL. ``signing_repo`` now opens its own
-                    # short session, so there is nothing left to hand over (#1757).
-                    # Projected off the ORM row HERE, while the session is open — that
-                    # read is legitimate and stays inside the block. What LEAVES the
-                    # block is primitives only, so nothing downstream can reach back
-                    # into a session (#1757).
-                    webhook_data = QueuedWebhook(
-                        url=config.url,
-                        authentication_type=config.authentication_type,
-                        authentication_token=config.authentication_token,
-                        payload=delivery_payload,
-                        timestamp=datetime.now(UTC),
+                    entry = self._queue_for_config(
+                        config,
                         tenant_id=tenant_id,
-                        # ONE key per distinct event, reused across its retries.
-                        idempotency_key=generate_webhook_idempotency_key(),
+                        delivery_payload=delivery_payload,
                     )
+                    if entry is not None:
+                        pending.append(entry)
 
-                    if not queue.enqueue(webhook_data):
-                        logger.warning("⚠️ Queue full for %s, webhook dropped", safe_url)
-                        continue
+            # The task identity is per-EVENT, not per-receiver: every pending endpoint
+            # is being told about the same delivery report. Built once, out here, from
+            # primitives only — recomputing it per config would be the same pluck
+            # written N times, and it needs no session.
+            ctx = WebhookTaskContext(
+                task_id=media_buy_id,
+                task_type=DELIVERY_REPORT_TASK_TYPE,
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                media_buy_id=media_buy_id,
+                sequence_number=delivery_payload.get("sequence_number", 1),
+                notification_type=delivery_payload.get("notification_type"),
+            )
 
-                    pending.append((endpoint_key, circuit_breaker, queue))
-
-            # PHASE 2 — the session is CLOSED. ``_deliver_with_backoff`` sleeps between
-            # retries and POSTs to a buyer-supplied URL, so a connection held here would
-            # be parked on a third party's latency: a hanging receiver would consume a
-            # pooled connection for the whole backoff. Nothing below needs a session —
-            # the queue carries primitives (``QueuedWebhook``) and ``signing_repo``
-            # opens its own short one for the key read (#1757, salesagent-n78j0.4).
+            # PHASE 2 — the session is CLOSED. The egress seam retries on the
+            # BR-RULE-029 schedule and POSTs to a buyer-supplied URL, so a connection
+            # held here would be parked on a third party's latency: a hanging receiver
+            # would consume a pooled connection for the whole ladder. Nothing below
+            # needs the caller's session — the queue carries primitives
+            # (``QueuedWebhook``) and the delivery-log write opens its own short one
+            # (#1757, salesagent-n78j0.4).
             sent_count = 0
-            for endpoint_key, circuit_breaker, queue in pending:
-                if self._deliver_with_backoff(endpoint_key, circuit_breaker, queue):
+            for endpoint_key, circuit_breaker, queue, webhook_url in pending:
+                if self._deliver_and_conclude(
+                    endpoint_key,
+                    circuit_breaker,
+                    queue,
+                    webhook_url,
+                    tenant_id=tenant_id,
+                    ctx=ctx,
+                ):
                     sent_count += 1
 
             if sent_count > 0:
@@ -484,120 +724,214 @@ class WebhookDeliveryService:
             logger.error(f"❌ Error in webhook delivery: {e}", exc_info=True)
             return False
 
-    def _reject_unsafe_outbound_url(self, url: str, circuit_breaker: CircuitBreaker) -> bool:
-        """Return True when outbound URL fails SSRF (caller must skip delivery)."""
-        rejected, _error_msg = reject_unsafe_outbound_webhook_url(url, log=logger, kind="Application")
-        if rejected:
-            circuit_breaker.record_failure()
-            return True
-        return False
-
     def _deliver_with_backoff(
         self,
         endpoint_key: str,
-        circuit_breaker: CircuitBreaker,
         queue: WebhookQueue,
-    ) -> bool:
-        """Deliver webhook with exponential backoff and jitter.
+    ) -> WebhookDeliveryOutcome | None:
+        """Deliver one queued webhook and say WHAT BECAME OF IT.
+
+        Returns the outcome rather than a bool, and feeds neither the circuit
+        breaker nor the delivery log itself: this function knows what happened,
+        and :meth:`_send_webhook_enhanced` decides what to do about it, once, for
+        every kind. Concluding in ``bool`` here is what destroyed the fact that a
+        refusal is not a failure — and left this sender, alone among the two,
+        writing no delivery-log row at all.
 
         Args:
             endpoint_key: Unique endpoint identifier
-            circuit_breaker: Circuit breaker for this endpoint
             queue: Webhook queue for this endpoint
 
         Returns:
-            True if delivered successfully, False otherwise
-        """
-        max_retries = 3
-        base_delay = 1.0  # Initial delay in seconds
+            The outcome, or ``None`` when the queue was empty and nothing was
+            attempted — which is not an outcome and must not be recorded as one.
 
+        Raises:
+            AdCPConfigurationError: when this tenant IS configured to sign its
+                deliveries but the signer cannot be honestly built. Nothing is sent.
+        """
         webhook_data = queue.dequeue()
         if not webhook_data:
-            return False
+            return None
 
         payload = webhook_data.payload
         safe_url = webhook_url_for_log(webhook_data.url)
 
-        # Authentication is NOT decided here — the receiver's registration selects
-        # exactly one mode at the single boundary (#1291 C1). What stays local is the
-        # one header this service adds for operator telemetry; ``Content-Type`` and
-        # every auth/signature header belong to the sender that serialized the body.
-        headers = {"User-Agent": "AdCP-Sales-Agent/2.3 (Enhanced Webhooks)"}
+        # WHICH TENANT'S KEY -- the one input the egress boundary cannot derive for
+        # itself. WHETHER a 9421 signature is applied at all remains that boundary's
+        # decision (``_headers_for`` keys the arm on the ABSENCE of an
+        # ``authentication`` block, security.mdx @ v3.1.1 :1424); this only says which
+        # key would sign if it is, so a legacy-registered receiver is unaffected by
+        # what is resolved here. Read off the DEQUEUED ENTRY rather than a tenant
+        # threaded down in parallel, so the key that signs is the one the item being
+        # delivered names.
+        #
+        # ONE call, and the open-read-close it used to spell out inline is now the
+        # signing layer's own ``delivery_signer_for_tenant`` -- the same function the
+        # other two senders call, so the key a tenant's deliveries are signed with
+        # cannot differ with the transport they took. Its session is opened after phase
+        # 1's session closed and is closed before the POST below; it consumes the
+        # repository EAGERLY, so nothing lazy survives the close and no connection is
+        # parked on a third party's latency (#1757, salesagent-n78j0.4).
+        #
+        # NO ``try`` HERE, DELIBERATELY, and the one below must not be widened over
+        # it. ``None`` and a raise are two different answers, and the helper never
+        # converts one into the other:
+        #
+        #   * ``None`` is a DECIDED posture, not a failure -- this tenant has no
+        #     ACTIVE signing key, or a key on an origin whose trust root cannot be
+        #     published. Its capabilities already advertise
+        #     ``webhook_signing.supported=false``, so a receiver has been told not to
+        #     expect a ``Signature`` header, and delivery proceeds on the legacy arms
+        #     exactly as it did before this parameter existed.
+        #   * a raise means the tenant IS configured to sign and we cannot honour it
+        #     (``AdCPConfigurationError``: it would sign with an algorithm it does not
+        #     declare, which every receiver validating the declaration must reject).
+        #     Catching that and passing ``signer=None`` would convert a
+        #     misconfiguration into an UNSIGNED delivery to a receiver that is
+        #     verifying -- the silent downgrade this seam exists to remove, and the
+        #     exact shape ("signed on one path, unsigned on another") the three
+        #     senders used to have. So it escapes to ``_send_webhook_enhanced``'s
+        #     outermost handler, which logs the configuration error's own sentence,
+        #     and NOTHING is sent. THIS sender's disposition of the raise is local to
+        #     it; the other two book it their own way, which is why the helper carries
+        #     the resolution and not the handling.
+        #
+        # Imported in-function, matching this module's existing convention for the
+        # signing/database chain: ``src.core.signing`` pulls the adcp webhook SDK and
+        # its httpx client in transitively, and this module builds a singleton at
+        # import time. From the FACADE, never the submodule: everything under
+        # ``src/core/signing/`` is private to that layer
+        # (``tests/unit/test_architecture_signing_layer_boundary.py``, rule B).
+        from src.core.signing import delivery_signer_for_tenant
 
-        # Exponential backoff with jitter
-        for attempt in range(max_retries):
-            try:
-                # Calculate delay with exponential backoff and jitter
-                if attempt > 0:
-                    # Base delay * 2^attempt + random jitter (0-1 seconds)
-                    delay = (base_delay * (2**attempt)) + random.uniform(0, 1)
-                    logger.debug(f"Retrying webhook delivery after {delay:.2f}s (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(delay)
+        signer = delivery_signer_for_tenant(webhook_data.tenant_id)
 
-                # Send webhook — serialize, authenticate and POST as one act, so the
-                # bytes signed are the bytes sent (#1441). The destination was already
-                # SSRF-gated above (the sender owns authentication, the caller owns
-                # destination policy) and the sender's client leaves httpx's
-                # ``follow_redirects`` at its False default, so an open redirect
-                # cannot walk the POST off the vetted host.
-                delivery = deliver_adcp_webhook_sync(
-                    url=webhook_data.url,
-                    payload=payload,
-                    idempotency_key=webhook_data.idempotency_key,
-                    config=webhook_data,
-                    tenant_id=webhook_data.tenant_id,
-                    extra_headers=headers,
-                )
+        # Signing is owned entirely by deliver_webhook below -- it serializes, signs
+        # and stamps the timestamp as one decision, so this function never holds a
+        # signature and a body serialization as two independent things to keep in
+        # sync. That is #1441's invariant, and routing through the seam PRESERVES it
+        # rather than weakening it: prepare_signed_request returns (headers, bytes)
+        # and those exact bytes are handed to outbound_http.send as ``content=``, so
+        # the signed object and the transmitted object are one object, not two that
+        # have to agree. httpx never re-serializes on the ``content=`` path.
+        #
+        # The auth DECISION above that transport is owned entirely by
+        # deliver_webhook/adeliver_webhook (salesagent-47n9.24, GH #1894). This
+        # sender used to make it inline and made it wrong four ways at once: it read
+        # webhook_secret (a column with zero writers in src/, so the signing branch
+        # was unreachable for any row a buyer can create), signed on a truthy secret
+        # rather than on the scheme, silently downgraded a weak secret to an UNSIGNED
+        # delivery, and compared "bearer" against an enum every writer stores as
+        # "Bearer". One seam call replaces all four, and the pinned Authentication
+        # type is what makes "what if it is none of these" un-writable.
+        #
+        # ``Content-Type`` is passed explicitly and is load-bearing, not decoration:
+        # the seam transmits ``content=`` bytes, on which httpx sets no Content-Type
+        # of its own, while every signer covers ``content-type`` -- so it ships here
+        # or the signature covers a header that never left.
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "AdCP-Sales-Agent/2.3 (Enhanced Webhooks)",
+        }
 
-                if 200 <= delivery.status_code < 300:
-                    logger.debug(
-                        "Webhook delivered to %s (status: %s)",
-                        safe_url,
-                        delivery.status_code,
-                    )
-                    circuit_breaker.record_success()
-                    return True
+        # ONE call. The seam validates the stored pair against the pinned type,
+        # applies whatever that scheme requires, dials through
+        # src.core.security.outbound_http.send -- which resolves, validates and PINS
+        # the connection to the validated IP, refuses redirects and caps the response
+        # -- retries on the BR-RULE-029 schedule, and reports what became of it. This
+        # sender no longer decides anything about authentication, address policy or
+        # retry: three senders each deciding is how one buyer's HMAC row signed on one
+        # path, went out unsigned on another, and matched nothing on a third.
+        #
+        # The credential-length rule that used to be argued about here now lives at
+        # the seam, applied to every sender at once. Pinned AdCP 3.1.1
+        # (core/push-notification-config.json) requires authentication.credentials
+        # with minLength 32, and owner ruling #2 for Epic D says a present-but
+        # -non-conforming block REFUSES rather than silently downgrading to a plain
+        # send. A stored row that cannot be delivered conformantly is not a delivery
+        # we should be making; its owner re-registers. Do NOT re-add a local
+        # tolerance here -- that reinstates the divergence this seam removed.
+        #
+        # ``payload`` is passed UNTOUCHED. ``tenant_id`` and ``idempotency_key`` stay
+        # on the queue entry and are NOT merged into it: a dispatch-level value folded
+        # into a request body is a defect this merge has already paid for once, and
+        # here it would additionally change the bytes the signature covers.
+        #
+        # No ``field=``: this URL is read back out of storage, not off a request
+        # document. Every log names ``safe_url`` (scheme://host/path), never the raw
+        # URL, which may carry userinfo credentials or a query token.
+        #
+        # ``signer`` is passed UNCONDITIONALLY, and that is not a dropped decision: a
+        # sender reading a stored row cannot know which arm the row selects, so it
+        # offers the tenant's strategy and ``_headers_for`` decides. On a legacy
+        # registration the seam IGNORES it (:1425 forbids answering a legacy
+        # registration with a 9421 signature); on a refused destination it is never
+        # invoked at all, because ``send`` raises before it builds a request -- so
+        # there is no unsigned body for a blocked send to fall back to.
+        try:
+            outcome = deliver_webhook(
+                webhook_data.url,
+                payload,
+                scheme=webhook_data.authentication_type,
+                credentials=webhook_data.authentication_token,
+                headers=headers,
+                timeout=env_float(_DELIVERY_TIMEOUT_ENV, _DEFAULT_DELIVERY_TIMEOUT_SECONDS),
+                max_attempts=3,
+                signer=signer,
+            )
+        except Exception as e:
+            # DELIBERATELY KEPT. The seam maps its OWN failure taxonomy onto the
+            # outcome, so nothing it raises lands here -- but no outcome kind covers
+            # a NON-transport failure, and this function must never let one escape
+            # into the poller thread, where there is no caller left to receive it.
+            # The pinned transport's own wrong-host guard raises a bare RuntimeError,
+            # which belongs here.
+            logger.error("Unexpected error delivering to %s: %s", safe_url, e, exc_info=True)
+            # No outcome kind covers a NON-transport failure, so this arm builds
+            # the one it means, named by EXCEPTION TYPE only -- the exception's own
+            # text can name hostnames, and ``detail`` is persisted verbatim. It no
+            # longer feeds the breaker itself: every kind reaches the caller's single
+            # conclusion, so no arm can be the one that forgets.
+            return WebhookDeliveryOutcome.unexpected(type(e).__name__)
 
-                # Client errors (4xx): do NOT retry — the request is invalid
-                if 400 <= delivery.status_code < 500:
-                    logger.warning(
-                        "Webhook delivery to %s returned client error %s, will not retry",
-                        safe_url,
-                        delivery.status_code,
-                    )
-                    circuit_breaker.record_failure()
-                    return False
-
+        if outcome.kind != "delivered":
+            if outcome.kind == "refused_auth":
+                # FAIL-CLOSED, and deliberately log-and-return rather than raise. The
+                # buyer asked for an authentication this sender cannot produce; an
+                # unsigned POST to an endpoint that will reject it is strictly worse
+                # than no POST, because it is an unauthenticated request to a third
+                # party that no receiver can attribute to us. It is NOT a quiet
+                # failure: the refusal is returned as a first-class outcome, logged at
+                # ERROR, written to webhook_delivery_log and counted against the
+                # breaker by the single conclusion in _deliver_and_conclude. By the
+                # time control reaches here the poller is on its own thread with no
+                # request in flight, so there is no caller left to receive a raise.
+                logger.error("Refusing to deliver webhook to %s: %s", safe_url, outcome.detail or outcome.reason)
+            elif outcome.kind == "client_error":
+                # The seam logs nothing on a non-retryable 4xx and its records do not
+                # propagate here, so this is the only operator-visible trace.
                 logger.warning(
-                    "Webhook delivery to %s returned status %s (attempt: %s/%s)",
+                    "Webhook delivery to %s returned client error %s, will not retry",
                     safe_url,
-                    delivery.status_code,
-                    attempt + 1,
-                    max_retries,
+                    outcome.http_status,
                 )
-
-            except httpx.TimeoutException:
+            elif outcome.kind == "refused_destination":
+                # Severity carried on the outcome, not chosen here (salesagent-pldmk.39).
+                logger.log(outcome.log_level, "Webhook delivery to %s was refused by egress policy", safe_url)
+            else:
+                cause = f"status {outcome.http_status}" if outcome.http_status is not None else "no response"
                 logger.warning(
-                    "Webhook delivery to %s timed out (attempt: %s/%s)",
-                    safe_url,
-                    attempt + 1,
-                    max_retries,
+                    "Webhook delivery to %s failed after %s attempts (%s)", safe_url, outcome.attempts, cause
                 )
-            except httpx.RequestError as e:
-                logger.warning(
-                    "Webhook delivery to %s failed: %s (attempt: %s/%s)",
-                    safe_url,
-                    e,
-                    attempt + 1,
-                    max_retries,
-                )
-            except Exception as e:
-                logger.error("Unexpected error delivering to %s: %s", safe_url, e, exc_info=True)
-                break
+            return outcome
 
-        # All retries failed
-        circuit_breaker.record_failure()
-        return False
+        logger.debug(
+            "Webhook delivered to %s (status: %s)",
+            safe_url,
+            outcome.http_status,
+        )
+        return outcome
 
     def reset_sequence(self, media_buy_id: str):
         """Reset sequence number for a media buy.

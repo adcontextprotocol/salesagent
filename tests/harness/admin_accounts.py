@@ -180,11 +180,20 @@ class AdminAccountEnv:
         return self._mode
 
     def __enter__(self) -> AdminAccountEnv:
-        if self._mode == "integration":
-            self._setup_integration()
-        else:
-            self._setup_e2e()
-        self._ensure_tenant()
+        # Not a BaseTestEnv, so it keeps its own __enter__ — but it owes the same
+        # guarantee. Python does not call __exit__ when __enter__ raises, so a
+        # failure in _ensure_tenant used to strand the Flask client (integration)
+        # or the requests session (e2e) for the rest of the process. __exit__ is
+        # None-safe on every branch, so calling it here is the whole fix.
+        try:
+            if self._mode == "integration":
+                self._setup_integration()
+            else:
+                self._setup_e2e()
+            self._ensure_tenant()
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def __exit__(self, *exc: object) -> None:

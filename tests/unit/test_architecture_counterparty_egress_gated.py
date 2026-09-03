@@ -2,7 +2,18 @@
 
 A "counterparty URL" is one this process did not choose — a buyer-supplied agent
 URL, an operator-configured agent or webhook URL, a URL read back out of a DB row.
-Dialling one without ``check_url_ssrf`` / ``WebhookURLValidator`` is SSRF.
+Dialling one without the egress seam's destination policy is SSRF.
+
+RETARGETED (GH #1802). The required seam call used to be ``check_url_ssrf`` /
+``reject_unsafe_outbound_webhook_url`` — this branch's local gates, each judging the URL
+just before a raw client was constructed. #1802 deleted all of them and put the
+judgement INSIDE the dial: ``outbound_http.send``/``asend`` and
+``webhook_egress.deliver_webhook`` open with ``EgressPolicy.resolve_for_dial``, which
+re-resolves DNS and pins the connection to the address it validated. So the required
+call per row is now the seam entry point itself, and the property is stronger than it
+was: the old gates left a TOCTOU window between their resolution and the client's, and
+a caller could call the gate and then dial something else. Routing through the seam
+makes "the URL judged" and "the URL dialled" the same act.
 
 WHY THIS GUARD IS A REGISTRY AND NOT A TREE SCAN
 ------------------------------------------------
@@ -44,19 +55,22 @@ GATED_ENTRY_POINTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "src/core/creative_agent_registry.py",
         "_fetch_formats_raw_mcp",
-        ("check_url_ssrf",),
+        ("asend",),
     ),
     (
+        # Was ``_validate_agent_url``: a separate pre-check that resolved the URL and then
+        # handed it to a client that resolved it again. #1802 removed the function along
+        # with that window — the dial itself is now the gate, one frame up in the caller.
         "src/core/property_list_resolver.py",
-        "_validate_agent_url",
-        ("check_url_ssrf",),
+        "resolve_property_list",
+        ("asend",),
     ),
     (
         "src/core/webhook_delivery.py",
         "deliver_webhook_with_retry",
-        # The SHARED send-time entry point, not validate_webhook_url — that was the
-        # registration-time gate this path used to reach for (salesagent-og9k.8).
-        ("reject_unsafe_outbound_webhook_url",),
+        # The SHARED send-time entry point. ``deliver_webhook`` reaches
+        # ``outbound_http.send`` -> ``EgressPolicy.resolve_for_dial``.
+        ("deliver_webhook",),
     ),
 )
 
@@ -92,7 +106,8 @@ def test_counterparty_egress_entry_point_calls_the_seam(path: str, func_name: st
         summary=f"{path}::{func_name} dials a counterparty URL without the seam's destination policy",
         violations=[f"{path}::{func_name}: missing call to {', '.join(missing)}"],
         fix_hint=(
-            "Call check_url_ssrf(url) (or WebhookURLValidator) on the URL that is actually DIALLED, before "
+            "Dial through the egress seam (asend / send / deliver_webhook), which applies "
+            "EgressPolicy.resolve_for_dial to the URL it is about to open. Gating a pre-rewrite or "
             "the HTTP client is constructed. Gating a pre-rewrite or pre-suffixed URL means the URL judged "
             "is not the URL dialled."
         ),

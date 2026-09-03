@@ -1,16 +1,45 @@
-"""Unit tests for creative agent TextContent fallback.
+"""Unit tests for the creative agent's raw-MCP fetch and MCP tool-result parser.
 
-Tests the fallback path when the adcp SDK 3.6.0 rejects TextContent
-responses from creative agents that don't return structuredContent.
+The fallback classes that used to live here (``TestStructuredContentFallbackTrigger``,
+``TestSchemaValidationFailureTriggersFallback``) tested a mechanism that no
+longer exists: the adcp SDK's own strict Pydantic parsing of
+``list_creative_formats`` responses, which sometimes rejected a TextContent-only
+reply and triggered a fallback to the raw-MCP path. The SDK client
+(``ADCPMultiAgentClient``) has been removed from the OPERATOR agent path
+entirely — it is routed through the guarded MCP seam instead — so there is no SDK-side
+strict parser left to reject anything, and therefore nothing left to trigger a
+fallback FROM. ``_parse_mcp_tool_result``'s own tolerant, per-format validation
+(covered below) is now the ONLY ingestion path, for both the operator method
+and the counterparty raw-MCP method.
 
+The egress obligations that used to be graded here against a LOCAL
+``check_url_ssrf`` pre-check are retargeted, not dropped. That pre-check was
+deleted deliberately — the seam refuses or it sends, and re-deciding the
+destination above it only bought a TOCTOU window and a second copy of a
+decision ``asend`` already owns. So destination policy (blocked hostnames, IP
+literals, resolve-then-check) is graded where it now lives, at the seam; what
+this module still owes, and grades below, is that a seam refusal reaches the
+caller UNCHANGED — not laundered into another code, not retried, and never
+re-dialled through an HTTP client of this module's own.
+
+Every test here drives the fetch by deciding what the SEAM answers. Nothing
+programs ``httpx`` to answer for it: a test that did would grade a transport
+this module no longer owns.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+import json
 
+import httpx
 import pytest
 
 from src.core.creative_agent_registry import CreativeAgent, CreativeAgentRegistry
-from src.core.exceptions import AdCPAdapterError, AdCPRateLimitError, AdCPServiceUnavailableError
+from src.core.exceptions import AdCPValidationError
+from src.core.security.outbound_http import (
+    CounterpartyUrl,
+    OutboundDeliveryFailed,
+    OutboundRequestBlocked,
+    OutboundResult,
+)
 
 
 @pytest.fixture
@@ -20,6 +49,15 @@ def registry():
 
 @pytest.fixture
 def agent():
+    """One agent config for every fetch test.
+
+    The hostname is inert: ``asend`` is replaced in each test, so nothing here
+    ever resolves or dials. What makes a URL the BUYER's on this path is the
+    ``CounterpartyUrl`` provenance the caller passes, not the host it names —
+    which is why one fixture serves both the transport tests and the
+    buyer-refusal tests. The auth config is carried so the header-forwarding
+    obligation has something to assert on.
+    """
     return CreativeAgent(
         agent_url="https://creative.example.com",
         name="test-agent",
@@ -28,246 +66,254 @@ def agent():
     )
 
 
-@pytest.fixture(autouse=True)
-def agent_host_resolves_publicly():
-    """Make the fixture agent's hostname resolve, without disarming the gate.
-
-    ``_fetch_formats_raw_mcp`` applies the fire-time SSRF check, which resolves
-    DNS. The fixture agent is ``https://creative.example.com``, a name that does
-    not resolve anywhere — so every test that exercises the transport would fail
-    as "Cannot resolve hostname" rather than for its own reason.
-
-    This stubs the RESOLVER (an external dependency), not the policy: scheme,
-    blocked-hostname, IP-literal and resolved-range checks all still run, against
-    a public address. Tests that need a different resolution re-patch inside
-    (see ``test_host_resolving_to_a_private_address_is_refused``), and the
-    blocked-destination cases are decided before DNS is consulted at all, so this
-    cannot mask them.
-    """
-    with patch("socket.gethostbyname", return_value="93.184.216.34"):
-        yield
-
-
 SAMPLE_FORMATS_JSON = '{"formats": [{"format_id": {"agent_url": "https://creative.example.com", "id": "display_image"}, "name": "Display Image", "type": "display"}]}'
 
-
-class TestStructuredContentFallbackTrigger:
-    """Test that the structuredContent error triggers the fallback."""
-
-    @pytest.mark.asyncio
-    async def test_failed_status_with_structured_content_error_triggers_fallback(self, registry, agent):
-        """SDK returns TaskResult(status='failed', error='...structuredContent...') → triggers fallback."""
-        mock_result = MagicMock()
-        mock_result.status = "failed"
-        mock_result.error = "MCP tool list_creative_formats did not return structuredContent. This SDK requires..."
-
-        mock_agent_proxy = MagicMock()
-        mock_agent_proxy.signing = None
-        mock_agent_proxy.list_creative_formats = AsyncMock(return_value=mock_result)
-        mock_client = MagicMock()
-        mock_client.agent.return_value = mock_agent_proxy
-
-        with (
-            patch.object(registry, "_build_adcp_client", return_value=mock_client),
-            patch.object(registry, "_fetch_formats_raw_mcp", new_callable=AsyncMock, return_value=[]) as mock_fallback,
-        ):
-            await registry._fetch_formats_from_agent(mock_client, agent)
-            mock_fallback.assert_called_once_with(agent)
-
-    @pytest.mark.asyncio
-    async def test_failed_status_with_other_error_raises_value_error(self, registry, agent):
-        """SDK returns TaskResult(status='failed', error='some other error') → raises AdCPAdapterError."""
-        mock_result = MagicMock()
-        mock_result.status = "failed"
-        mock_result.error = "Connection refused"
-        mock_result.message = None
-
-        mock_agent_proxy = MagicMock()
-        mock_agent_proxy.signing = None
-        mock_agent_proxy.list_creative_formats = AsyncMock(return_value=mock_result)
-        mock_client = MagicMock()
-        mock_client.agent.return_value = mock_agent_proxy
-
-        with patch.object(registry, "_build_adcp_client", return_value=mock_client):
-            with pytest.raises(AdCPAdapterError, match="Creative agent format fetch failed"):
-                await registry._fetch_formats_from_agent(mock_client, agent)
+BUYER_FIELD = "creatives[0].format_id.agent_url"
 
 
-class TestFetchFormatsRawMcp:
-    """Test the raw HTTP fallback method."""
+def _seam_result(body: dict | str, *, content_type: str = "application/json") -> OutboundResult:
+    """A real :class:`OutboundResult`, as the seam would hand one back.
 
-    @pytest.mark.asyncio
-    async def test_json_response_parses_formats(self, registry, agent):
-        """Raw HTTP returns JSON with result.content[].text → formats parsed."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.json.return_value = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {
-                "content": [{"type": "text", "text": SAMPLE_FORMATS_JSON}],
-            },
-        }
+    Deliberately the seam's own closed type rather than a mock. A ``MagicMock``
+    stand-in answers ``result.headers.get(...)`` with another mock, whose ``in``
+    test is False and whose ``.json()`` is a mock — so BOTH content-type
+    branches fall through to the fetch's terminal "no parseable result" raise.
+    Tests written that way go green while grading none of the branch they name,
+    which is exactly what the SSE and parse-step threading tests below exist to
+    catch.
+    """
+    raw = body if isinstance(body, str) else json.dumps(body)
+    return OutboundResult(
+        http_status=200,
+        headers={"content-type": content_type},
+        content=raw.encode(),
+        attempts=1,
+        duration_seconds=0.01,
+    )
 
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            formats = await registry._fetch_formats_raw_mcp(agent)
-            assert len(formats) == 1
-            assert formats[0].format_id.id == "display_image"
+def _tool_result(content: list[dict]) -> dict:
+    """A JSON-RPC envelope whose ``result`` is an MCP tools/call result."""
+    return {"jsonrpc": "2.0", "id": 1, "result": {"content": content}}
 
-    @pytest.mark.asyncio
-    async def test_sse_response_parses_formats(self, registry, agent):
-        """Raw HTTP returns SSE with data: {...} → formats parsed."""
-        import json
 
-        sse_payload = json.dumps(
-            {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": SAMPLE_FORMATS_JSON}]}}
-        )
-        sse_text = f"data: {sse_payload}\n\n"
+def _patch_asend(monkeypatch, *, result: OutboundResult | None = None, error: Exception | None = None) -> list[dict]:
+    """Replace the egress seam and record every call made through it.
 
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.headers = {"content-type": "text/event-stream"}
-        mock_response.text = sse_text
+    Returns the recorded call list, so a test can assert on what was HANDED to
+    the seam (headers, provenance, and how many times it was asked) as well as
+    on what came back.
+    """
+    calls: list[dict] = []
 
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
+    async def fake_asend(url, **kwargs):
+        calls.append({"url": url, **kwargs})
+        if error is not None:
+            raise error
+        assert result is not None, "_patch_asend needs either a result or an error"
+        return result
 
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            formats = await registry._fetch_formats_raw_mcp(agent)
-            assert len(formats) == 1
-            assert formats[0].format_id.id == "display_image"
+    monkeypatch.setattr("src.core.creative_agent_registry.asend", fake_asend)
+    return calls
 
-    @pytest.mark.asyncio
-    async def test_unexpected_format_raises_runtime_error(self, registry, agent):
-        """Raw HTTP returns unexpected format (no 'result' key) → raises AdCPAdapterError.
 
-        Fix for : silent return [] masked failures as 'no formats'.
+def _forbid_own_http_client(monkeypatch) -> None:
+    """Fail the test if anything builds an HTTP client outside the seam.
+
+    The discriminator for "the refusal was honoured": a test that only asserted
+    "an error was raised" would also pass against a fetch that caught the
+    refusal and re-dialled on raw httpx, because that second dial would fail
+    too. This makes the second dial itself observable.
+    """
+
+    def _refuse(*args, **kwargs):
+        raise AssertionError("the fetch built an HTTP client of its own instead of going through the seam")
+
+    monkeypatch.setattr(httpx, "AsyncClient", _refuse)
+
+
+class TestFetchFormatsRawMcpThroughTheSeam:
+    """``_fetch_formats_raw_mcp`` dials a counterparty agent through ``asend`` only."""
+
+    async def test_json_response_parses_formats(self, registry, agent, monkeypatch):
+        """A JSON tools/call result yields formats, on exactly one dial.
+
+        The positive control for every refusal below: without it, a fetch that
+        refused everything — or that never dialled at all — would satisfy them.
         """
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.json.return_value = {"jsonrpc": "2.0", "id": 1, "error": {"code": -32600}}
-
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPAdapterError, match="No parseable result"):
-                await registry._fetch_formats_raw_mcp(agent)
-
-    @pytest.mark.asyncio
-    async def test_auth_headers_forwarded(self, registry, agent):
-        """Verify auth credentials are included in the HTTP request."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.json.return_value = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"content": [{"type": "text", "text": '{"formats": []}'}]},
-        }
-
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            await registry._fetch_formats_raw_mcp(agent)
-            call_kwargs = mock_http.post.call_args
-            headers = call_kwargs.kwargs.get("headers", {})
-            assert headers.get("x-test-auth") == "test-token"
-
-
-class TestFetchFormatsRawMcpErrorHandling:
-    """Test error handling in the raw HTTP fallback."""
-
-    @pytest.mark.asyncio
-    async def test_timeout_raises_service_unavailable(self, registry, agent):
-        """httpx timeout → AdCPServiceUnavailableError (SERVICE_UNAVAILABLE, transient)."""
-        import httpx
-
-        mock_http = AsyncMock()
-        mock_http.post.side_effect = httpx.ReadTimeout("timed out")
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPServiceUnavailableError, match="Request timed out"):
-                await registry._fetch_formats_raw_mcp(agent)
-
-    @pytest.mark.asyncio
-    async def test_connection_error_raises_service_unavailable(self, registry, agent):
-        """httpx connection error → AdCPServiceUnavailableError (SERVICE_UNAVAILABLE, transient)."""
-        import httpx
-
-        mock_http = AsyncMock()
-        mock_http.post.side_effect = httpx.ConnectError("connection refused")
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPServiceUnavailableError, match="Connection failed"):
-                await registry._fetch_formats_raw_mcp(agent)
-
-    @pytest.mark.asyncio
-    async def test_http_5xx_raises_service_unavailable(self, registry, agent):
-        """httpx HTTP 500 → AdCPServiceUnavailableError (SERVICE_UNAVAILABLE, transient).
-
-        5xx responses from a creative agent are treated as transient — the agent
-        is up but failing. AdCPServiceUnavailableError is the correct typed wrap.
-        """
-        import httpx
-
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server Error", request=MagicMock(), response=mock_response
+        calls = _patch_asend(
+            monkeypatch,
+            result=_seam_result(_tool_result([{"type": "text", "text": SAMPLE_FORMATS_JSON}])),
         )
 
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
+        formats = await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=BUYER_FIELD))
 
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPServiceUnavailableError, match="HTTP 500"):
-                await registry._fetch_formats_raw_mcp(agent)
+        assert len(formats) == 1
+        assert formats[0].format_id.id == "display_image"
+        assert len(calls) == 1, "the fetch dialled more than once — the seam owns attempts, not this method"
 
-    @pytest.mark.asyncio
-    async def test_http_429_raises_rate_limited(self, registry, agent):
-        """httpx HTTP 429 → AdCPRateLimitError (RATE_LIMITED, transient).
+    async def test_sse_response_parses_formats(self, registry, agent, monkeypatch):
+        """A ``text/event-stream`` body carrying ``data: {...}`` yields formats.
 
-        After the inner-retry loop exhausts on repeated 429s, the boundary
-        raises the typed rate-limit error carrying Retry-After in details.
+        The fetch has two content-type branches, each reaching the parse step at
+        its own call site, so the JSON case above does not grade this one.
         """
-        import httpx
+        payload = json.dumps(_tool_result([{"type": "text", "text": SAMPLE_FORMATS_JSON}]))
+        _patch_asend(monkeypatch, result=_seam_result(f"data: {payload}\n\n", content_type="text/event-stream"))
 
-        mock_response = MagicMock()
-        mock_response.status_code = 429
-        mock_response.headers = {"Retry-After": "1"}
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Too Many Requests", request=MagicMock(), response=mock_response
+        formats = await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=BUYER_FIELD))
+
+        assert len(formats) == 1
+        assert formats[0].format_id.id == "display_image"
+
+    async def test_auth_headers_forwarded(self, registry, agent, monkeypatch):
+        """The agent's configured credential rides out under its configured header name."""
+        calls = _patch_asend(
+            monkeypatch,
+            result=_seam_result(_tool_result([{"type": "text", "text": '{"formats": []}'}])),
         )
 
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
+        await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=BUYER_FIELD))
 
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPRateLimitError, match="rate-limited"):
-                await registry._fetch_formats_raw_mcp(agent)
+        assert calls[0]["headers"]["x-test-auth"] == "test-token"
+
+    async def test_the_seam_is_told_whose_url_it_is(self, registry, agent, monkeypatch):
+        """``provenance`` is forwarded to the seam, not re-derived or dropped.
+
+        It is the only thing that decides how a refusal is reported — a lost
+        ``CounterpartyUrl`` turns the buyer's own correctable input into a seller
+        misconfiguration — and nothing else in the fetch would notice.
+        """
+        calls = _patch_asend(
+            monkeypatch,
+            result=_seam_result(_tool_result([{"type": "text", "text": '{"formats": []}'}])),
+        )
+
+        await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=BUYER_FIELD))
+
+        assert calls[0]["provenance"] == CounterpartyUrl(field=BUYER_FIELD)
+
+    async def test_a_seam_refusal_is_not_laundered_or_re_dialled(self, registry, agent, monkeypatch):
+        """A pre-connection refusal reaches the buyer unchanged, and nothing re-dials.
+
+        Replaces the blocked-destination cases this module used to grade against
+        a local ``check_url_ssrf`` pre-check. WHICH destinations are refused is
+        the seam's decision now, and is graded there; what survives here is that
+        the refusal is HONOURED — re-raised as the very object the seam raised,
+        already VALIDATION_ERROR / correctable and already naming the buyer
+        field, rather than rewrapped, retried, or swallowed.
+        """
+        blocked = OutboundRequestBlocked(field=BUYER_FIELD)
+        calls = _patch_asend(monkeypatch, error=blocked)
+        _forbid_own_http_client(monkeypatch)
+
+        with pytest.raises(AdCPValidationError) as excinfo:
+            await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=BUYER_FIELD))
+
+        assert excinfo.value is blocked, "the seam's refusal was rewrapped — its classification was restated elsewhere"
+        assert excinfo.value.error_code == "VALIDATION_ERROR"
+        assert excinfo.value.recovery == "correctable"
+        assert excinfo.value.field == BUYER_FIELD
+        # The refusal must not disclose our policy or the resolved address
+        # (AdCP 3.1.1 building/by-layer/L1/security.mdx:104-119 step 6).
+        message = str(excinfo.value)
+        assert "10.0.0.0/8" not in message and "169.254.0.0/16" not in message, (
+            f"Refusal leaks the blocked CIDR to the caller: {message}"
+        )
+        assert len(calls) == 1, "a refused dial was retried — a refusal is terminal"
+
+    @pytest.mark.parametrize(
+        "http_status",
+        [
+            None,  # transport failure — never reached the wire (timeout, connect error)
+            429,  # rate-limited, retried to exhaustion by the seam
+            503,  # origin up but failing
+        ],
+        ids=["transport-failure", "rate-limited", "server-error"],
+    )
+    async def test_a_delivery_failure_surfaces_unchanged_as_transient(self, registry, agent, monkeypatch, http_status):
+        """A delivered-but-failed dial keeps the seam's own transient classification.
+
+        Replaces the four httpx-exception cases this module used to grade
+        (timeout, connect error, 5xx, 429). Turning a transport exception or a
+        status into a typed AdCP error is the seam's job plus
+        ``raise_mapped_outbound_error``'s, and both are graded where they live —
+        including the choice, for a COUNTERPARTY url, to re-raise rather than
+        re-classify. What remains this module's obligation is that it neither
+        re-classifies the outcome nor runs a retry loop on top of the seam's.
+        """
+        failure = OutboundDeliveryFailed(attempts=3, http_status=http_status)
+        calls = _patch_asend(monkeypatch, error=failure)
+
+        with pytest.raises(Exception) as excinfo:  # noqa: PT011 - identity is the assertion, not the type
+            await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=BUYER_FIELD))
+
+        assert excinfo.value is failure
+        assert excinfo.value.error_code == "SERVICE_UNAVAILABLE"
+        assert excinfo.value.recovery == "transient"
+        assert len(calls) == 1, "the fetch re-tried a dial the seam had already exhausted"
+
+    async def test_a_response_with_no_result_is_a_correctable_buyer_error(self, registry, agent, monkeypatch):
+        """A JSON body carrying no ``result`` refuses as VALIDATION_ERROR / correctable.
+
+        This is the fetch's OWN raise, distinct from the parse step's: the agent
+        answered, but with nothing that is a tools/call result at all. It is
+        graded separately because mutating both raises together lets the parse
+        step's grader mask this one.
+
+        The agent_url is the BUYER's (this method is only reached on the
+        counterparty branch), so the refusal is their correctable input, not a
+        seller misconfiguration and not a transient outage.
+        """
+        _patch_asend(monkeypatch, result=_seam_result({"jsonrpc": "2.0", "id": 1}))  # no "result"
+
+        with pytest.raises(AdCPValidationError, match="No parseable result") as excinfo:
+            await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=BUYER_FIELD))
+
+        exc = excinfo.value
+        assert exc.error_code == "VALIDATION_ERROR"
+        assert exc.recovery == "correctable"
+        assert exc.field == BUYER_FIELD
+
+    async def test_the_fetch_threads_field_down_to_the_refusal(self, registry, agent, monkeypatch):
+        """``_fetch_formats_raw_mcp`` passes its ``field`` into the parse step.
+
+        The helper-level test below proves the raise CARRIES a field it is given;
+        this proves the caller actually GIVES it one. Both halves are needed: the
+        threading lives at two call sites inside the fetch, and deleting it leaves
+        every other test green because no other caller passes a field.
+
+        The body carries a real ``result`` whose content has no text — the
+        condition the PARSE step refuses on. A body with no ``result`` would stop
+        at the fetch's own raise (above) and never exercise the threading, which
+        is why the two are matched on distinct messages.
+        """
+        _patch_asend(monkeypatch, result=_seam_result(_tool_result([{"type": "image", "data": "..."}])))
+
+        with pytest.raises(AdCPValidationError, match="No text content") as excinfo:
+            await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=BUYER_FIELD))
+
+        assert excinfo.value.field == BUYER_FIELD, (
+            "the refusal reached the buyer without naming which input to fix — the fetch "
+            "dropped the field on its way to the parse step"
+        )
+
+    async def test_the_sse_branch_threads_field_into_the_parse_step(self, registry, agent, monkeypatch):
+        """The SSE path threads ``field`` at its OWN call site.
+
+        The fetch has two content-type branches and each calls the parse step
+        separately, so grading only the JSON one leaves the SSE threading free to
+        rot.
+        """
+        sse_field = "creatives[3].format_id.agent_url"
+        payload = json.dumps(_tool_result([{"type": "image"}]))
+        _patch_asend(monkeypatch, result=_seam_result(f"data: {payload}\n", content_type="text/event-stream"))
+
+        with pytest.raises(AdCPValidationError, match="No text content") as excinfo:
+            await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=sse_field))
+
+        assert excinfo.value.error_code == "VALIDATION_ERROR"
+        assert excinfo.value.field == sse_field, "the SSE branch dropped the buyer field on its way to the parse step"
 
 
 class TestParseMcpToolResult:
@@ -283,32 +329,57 @@ class TestParseMcpToolResult:
         assert formats[0].name == "Display Image"
 
     def test_no_text_content_raises(self, registry):
-        """Content with no text items → raises AdCPAdapterError.
+        """Content with no text items → raises AdCPValidationError.
 
-        Fix for : silent return [] masked failures as 'no formats'.
+        A silent ``return []`` used to mask failures as 'no formats'.
         """
         import logging
 
         result = {"content": [{"type": "image", "data": "..."}]}
-        with pytest.raises(AdCPAdapterError, match="No text content"):
+        with pytest.raises(AdCPValidationError, match="No text content") as excinfo:
             registry._parse_mcp_tool_result(result, logging.getLogger())
+        # The agent_url came from the BUYER (this helper is only reached on the
+        # counterparty branch), so an unusable answer is their correctable input —
+        # not a seller misconfiguration, and not a transient outage.
+        assert excinfo.value.error_code == "VALIDATION_ERROR"
+        assert excinfo.value.recovery == "correctable"
+
+    def test_field_names_the_buyer_input_when_the_caller_has_one(self, registry):
+        """A refusal carries the ``field`` that says WHICH buyer input to fix.
+
+        The only production caller reaches here on the counterparty branch, where
+        it holds the buyer's ``creatives[].format_id.agent_url`` path. A sync
+        request carries up to 100 creatives, so without ``field`` the buyer is
+        told their input is correctable but not which one — the same channel
+        lanes 2 and 3 established as the only non-disclosing way to say it.
+
+        Graded directly because every current caller happens to pass ``None``:
+        dropping the threading would otherwise be invisible.
+        """
+        import logging
+
+        result = {"content": [{"type": "image", "data": "..."}]}
+        with pytest.raises(AdCPValidationError) as excinfo:
+            registry._parse_mcp_tool_result(result, logging.getLogger(), field="creatives[0].format_id.agent_url")
+
+        assert excinfo.value.field == "creatives[0].format_id.agent_url"
 
     def test_empty_content_raises(self, registry):
-        """Empty content list → raises AdCPAdapterError.
+        """Empty content list → raises AdCPValidationError.
 
-        Fix for : silent return [] masked failures as 'no formats'.
+        A silent ``return []`` used to mask failures as 'no formats'.
         """
         import logging
 
         result = {"content": []}
-        with pytest.raises(AdCPAdapterError, match="No text content"):
+        with pytest.raises(AdCPValidationError, match="No text content") as excinfo:
             registry._parse_mcp_tool_result(result, logging.getLogger())
+        assert excinfo.value.error_code == "VALIDATION_ERROR"
+        assert excinfo.value.recovery == "correctable"
 
 
 def _mcp_text_result(payload: dict) -> dict:
     """Wrap a list_creative_formats payload as an MCP tools/call TextContent result."""
-    import json
-
     return {"content": [{"type": "text", "text": json.dumps(payload)}]}
 
 
@@ -325,7 +396,7 @@ _KNOWN_FORMAT_B = {
 }
 # AdCP-additive asset_type the canonical reference agent serves but the pinned
 # (and latest) adcp closed Literal union does NOT model. This is the exact
-# production defect class from .
+# production defect class.
 _ADDITIVE_FORMAT = {
     "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "tracking_pixel"},
     "name": "Tracking Pixel",
@@ -334,7 +405,7 @@ _ADDITIVE_FORMAT = {
 
 
 class TestTolerantPerFormatIngestion:
-    """Hermetic regression for (Postel / asymmetric strictness).
+    """Hermetic regression (Postel / asymmetric strictness).
 
     One unknown AdCP-additive asset_type must NOT nuke the whole
     list_creative_formats response. Fully-understood formats are returned;
@@ -409,146 +480,3 @@ class TestTolerantPerFormatIngestion:
             formats = registry._parse_mcp_tool_result(result, logging.getLogger())
         assert len(formats) == 1
         assert formats[0].format_id.id == "tracking_pixel"
-
-
-class TestSchemaValidationFailureTriggersFallback:
-    """: a wholesale schema-parse FAILED from the adcp client must
-    fall back to the raw-MCP path (where per-format tolerance applies), not only
-    transport-class errors."""
-
-    async def _assert_routes_to_fallback(self, registry, agent, error_text):
-        """Drive a status='failed' result with the given error and assert the raw-MCP fallback is taken."""
-        mock_result = MagicMock()
-        mock_result.status = "failed"
-        mock_result.error = error_text
-        mock_result.message = None
-
-        mock_agent_proxy = MagicMock()
-        mock_agent_proxy.signing = None
-        mock_agent_proxy.list_creative_formats = AsyncMock(return_value=mock_result)
-        mock_client = MagicMock()
-        mock_client.agent.return_value = mock_agent_proxy
-
-        with (
-            patch.object(registry, "_build_adcp_client", return_value=mock_client),
-            patch.object(registry, "_fetch_formats_raw_mcp", new_callable=AsyncMock, return_value=[]) as mock_fallback,
-        ):
-            await registry._fetch_formats_from_agent(mock_client, agent)
-            mock_fallback.assert_called_once_with(agent)
-
-    @pytest.mark.asyncio
-    async def test_schema_mismatch_failed_status_triggers_raw_fallback(self, registry, agent):
-        """SDK returns status='failed' with a schema-validation error → raw-MCP fallback."""
-        # The exact wholesale-validation signature observed live (2700 errors).
-        await self._assert_routes_to_fallback(
-            registry, agent, "Response doesn't match expected schema ListCreativeFormatsResponse"
-        )
-
-    @pytest.mark.asyncio
-    async def test_sdk66_schema_validation_phrasing_triggers_raw_fallback(self, registry, agent):
-        """adcp 6.6 rephrased wholesale-validation errors to 'Schema validation failed
-        for <tool>: ...' — observed live against the v3.1.1-pinned reference agent,
-        whose catalog carries post-3.1.1 additive asset_types (pixel_tracker).
-        Must route to the raw-MCP fallback (per-format tolerance), not raise."""
-        await self._assert_routes_to_fallback(
-            registry,
-            agent,
-            "Schema validation failed for list_creative_formats: /formats/0/assets/1 oneOf composition failed (+47 more)",
-        )
-
-
-class TestRawMcpFallbackEgressGate:
-    """The raw-httpx fallback must apply the seam's destination policy.
-
-    ``_fetch_formats_raw_mcp`` dials an operator-configured ``agent.agent_url``
-    directly with httpx, bypassing the adcp SDK's transport. Sibling paths that
-    dial the same CLASS of URL do gate it —
-    ``property_list_resolver._validate_agent_url`` (check_url_ssrf, HTTPS
-    required) and ``signals_agents`` at the admin ingestion boundary — so a
-    creative agent URL is the one that reaches the network on nobody's policy.
-
-    The discriminator is that NO HTTP client is constructed: a test that only
-    asserted "an error was raised" would pass against a connection failure and
-    grade nothing, since a blocked host also fails to connect.
-    """
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "blocked_url",
-        [
-            "http://169.254.169.254/latest/meta-data",  # cloud metadata (credential-leak primitive)
-            "http://host.docker.internal:9999",  # BLOCKED_HOSTNAMES, the #1697 audit vector
-            "http://10.0.0.5/mcp",  # RFC 1918 literal
-            "http://[::1]/mcp",  # IPv6 loopback literal
-        ],
-    )
-    async def test_blocked_destination_is_refused_without_dialling(self, registry, blocked_url):
-        blocked_agent = CreativeAgent(
-            agent_url=blocked_url,
-            name="hostile-agent",
-            auth=None,
-            auth_header=None,
-        )
-        with patch("httpx.AsyncClient") as mock_client:
-            with pytest.raises(AdCPAdapterError) as exc_info:
-                await registry._fetch_formats_raw_mcp(blocked_agent)
-
-        assert mock_client.call_count == 0, (
-            f"An HTTP client was constructed for {blocked_url!r} — the destination policy ran "
-            "after the socket, or not at all"
-        )
-        # The refusal must not disclose our policy or the resolved address
-        # (AdCP 3.1.1 building/by-layer/L1/security.mdx:104-119 step 6).
-        message = str(exc_info.value)
-        assert "10.0.0.0/8" not in message and "169.254.0.0/16" not in message, (
-            f"Refusal leaks the blocked CIDR to the caller: {message}"
-        )
-
-    @pytest.mark.asyncio
-    async def test_public_destination_still_reaches_the_transport(self, registry, agent):
-        """The gate must not refuse the ordinary case — otherwise it is a kill switch.
-
-        Pairs with the parametrized refusals above: without this, deleting the
-        fetch entirely would satisfy them.
-
-        DNS is stubbed by ``agent_host_resolves_publicly``, not the gate — the
-        real policy still runs against a public address. Patching
-        ``check_url_ssrf`` instead would make this control vacuous, which is the
-        mock-based gate control this project forbids.
-        """
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.json.return_value = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"content": [{"type": "text", "text": SAMPLE_FORMATS_JSON}]},
-        }
-
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            formats = await registry._fetch_formats_raw_mcp(agent)
-
-        assert len(formats) == 1
-        assert mock_http.post.await_count == 1
-
-    @pytest.mark.asyncio
-    async def test_host_resolving_to_a_private_address_is_refused(self, registry, agent):
-        """A public-looking NAME that resolves into a private range is refused.
-
-        The four parametrized cases above are all decidable without DNS (blocked
-        hostname, or an IP literal), so they would pass against a syntax-only
-        check. This one only passes if the gate actually resolves — it pins that
-        the fire-time check was not quietly downgraded to ``check_url_syntax``.
-        """
-        with patch("socket.gethostbyname", return_value="10.1.2.3") as resolver:
-            with patch("httpx.AsyncClient") as mock_client:
-                with pytest.raises(AdCPAdapterError):
-                    await registry._fetch_formats_raw_mcp(agent)
-
-        assert resolver.called, "The gate did not resolve DNS — it is not the fire-time check"
-        assert mock_client.call_count == 0, "An HTTP client was constructed for a private-resolving host"

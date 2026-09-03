@@ -24,7 +24,15 @@ from typing import Any
 
 from pytest_bdd import given, parsers, then, when
 
-from tests.bdd.steps._outcome_helpers import WIRE_MISSING, wire_absent, wire_dict, wire_field, wire_lookup
+from tests.bdd.steps._outcome_helpers import (
+    WIRE_MISSING,
+    payload_or_none,
+    require_payload,
+    wire_absent,
+    wire_dict,
+    wire_field,
+    wire_lookup,
+)
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.harness.capabilities import DERIVE_IDENTITY, OMIT_IDENTITY, IdentityMode
 
@@ -543,7 +551,10 @@ def _call_capabilities(ctx: dict, **kwargs: Any) -> None:
     if "identity" not in kwargs and "identity" in ctx:
         kwargs["identity"] = ctx["identity"]
     dispatch_request(ctx, **kwargs)
-    ctx.setdefault("response_history", []).append((ctx.get("response"), ctx.get("error")))
+    # payload_or_none: the history records BOTH outcomes, so a dispatch that
+    # errored must contribute an (None, error) tuple rather than raise here —
+    # then_dual_call_identity is the step that grades presence.
+    ctx.setdefault("response_history", []).append((payload_or_none(ctx), ctx.get("error")))
 
 
 @when("the Buyer Agent calls get_adcp_capabilities")
@@ -1209,8 +1220,27 @@ def then_auth_outcome(ctx: dict, outcome: str) -> None:
     "a success outcome should carry adcp.major_versions, adcp.idempotency, supported_protocols and the media_buy section"
 )
 def then_success_carries_sections(ctx: dict) -> None:
-    if ctx.get("response") is None:
-        return  # conditional Then: only grades success outcomes
+    """Conditional Then over the auth outline: the invalid-A2A row legitimately
+    produces no payload (it is graded as AUTH_INVALID by ``then_auth_outcome``),
+    so this step must not REQUIRE one.
+
+    Both outcomes are graded (#1802). The no-payload path used to ``return``
+    having verified nothing, so a row whose dispatch produced NEITHER a payload
+    NOR an error — a When that never ran, a result the harness dropped, a
+    success row whose call blew up before any envelope existed — read in the
+    report exactly like a graded success. An absent payload is only legitimate
+    when the dispatch actually recorded an error, which is the one thing this
+    step can say about the outcome it does not itself grade.
+    """
+    # payload_or_none: this is a branch SELECTOR, not a requirement — the step
+    # only grades success outcomes and must not raise on the error path.
+    payload = payload_or_none(ctx)
+    assert payload is not None or ctx.get("error") is not None, (
+        "the dispatch produced neither a success payload nor an error — there is no "
+        "outcome to grade, so a silent return here would report a verified success"
+    )
+    if payload is None:
+        return  # the outline's AUTH_INVALID row; its verdict is then_auth_outcome's
     for path in ("adcp.major_versions", "adcp.idempotency", "supported_protocols", "media_buy"):
         wire_field(ctx, path)
 
@@ -1231,7 +1261,9 @@ def then_dual_call_identity(ctx: dict) -> None:
 
 @then("the response should be a success carrying adcp.major_versions, adcp.idempotency and supported_protocols")
 def then_mcp_invalid_token_success(ctx: dict) -> None:
-    assert ctx.get("response") is not None, f"expected success, got error: {ctx.get('error')!r}"
+    # require_payload IS the success assertion this replaces: it raises, naming
+    # the recorded error, when the dispatch produced no payload.
+    require_payload(ctx)
     for path in ("adcp.major_versions", "adcp.idempotency", "supported_protocols"):
         wire_field(ctx, path)
 
@@ -1456,6 +1488,21 @@ def _tp_postal_legacy(ctx: dict) -> None:
     )
 
 
+def _require_wired_row(table: dict[str, Any], key: str, what: str) -> Any:
+    """The assertion an outline row dispatches to, or a loud refusal to grade nothing.
+
+    Both outline-dispatch Then steps below had this same four-line shape. Extracted per
+    the repository's DRY invariant, and because the shared form states the contract the
+    steps depend on: an unwired row is NEVER a pass. The step that follows calls the
+    returned assertion unconditionally, so every path through it takes a verdict — the
+    raise here, or the assertion there.
+    """
+    assertion = table.get(key.strip())
+    if assertion is None:
+        raise NotImplementedError(f"UC-010 {what} row not wired: {key!r} (#1592)")
+    return assertion
+
+
 #: Targeting outline expected-column → assertion. Rows production satisfies
 #: (adapter_unavailable_defaults, nested_absent) pass; the rest execute the real
 #: assertion and fail on dimensions the builder never emits (#1592 gaps, marked
@@ -1488,10 +1535,7 @@ _TARGETING_SATISFY: dict[str, Any] = {
 
 @then(parsers.parse("media_buy.execution.targeting should satisfy {expected_targeting}"))
 def then_targeting_satisfies(ctx: dict, expected_targeting: str) -> None:
-    assertion = _TARGETING_SATISFY.get(expected_targeting.strip())
-    if assertion is None:
-        raise NotImplementedError(f"UC-010 targeting assertion row not wired: {expected_targeting!r} (#1592)")
-    assertion(ctx)
+    _require_wired_row(_TARGETING_SATISFY, expected_targeting, "targeting assertion")(ctx)
 
 
 # ── Thens: degradation + features-partitions outline dispatch ────────
@@ -1582,10 +1626,7 @@ _SATISFY_TABLE: dict[str, Any] = {
 
 @then(parsers.parse("the response should satisfy {expected_assertion}"))
 def then_response_satisfies(ctx: dict, expected_assertion: str) -> None:
-    assertion = _SATISFY_TABLE.get(expected_assertion.strip())
-    if assertion is None:
-        raise NotImplementedError(f"UC-010 assertion row not wired yet: {expected_assertion!r} (#1592)")
-    assertion(ctx)
+    _require_wired_row(_SATISFY_TABLE, expected_assertion, "assertion")(ctx)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1938,7 +1979,16 @@ def then_webhook_signing_supported(ctx: dict, expected: str) -> None:
     seller advertises mutating-webhook emission it MUST equal true; when no trigger
     fires it may be true, false, or absent (honest tautology — no cross-field
     constraint). 'equal to true/false' grades the exact value; anything else is the
-    no-trigger row (present→boolean or absent)."""
+    no-trigger row (present→boolean or absent).
+
+    The absent arm is graded too (#1802): ``supported`` is a REQUIRED member of
+    the webhook_signing object (v3.1.1 get-adcp-capabilities-response.json
+    #/properties/webhook_signing/required — the same reading
+    ``then_webhook_signing_bounds`` states as "supported (required)"), so the only
+    spec-legal way for it to be missing is for the WHOLE block to be missing. A
+    present block that omits it is a schema violation, and this arm used to
+    return having verified nothing at all.
+    """
     expected = expected.strip()
     path = "webhook_signing.supported"
     if expected in ("equal to true", "equal to false"):
@@ -1946,7 +1996,13 @@ def then_webhook_signing_supported(ctx: dict, expected: str) -> None:
         assert actual is (expected == "equal to true"), f"{path} expected {expected}, got {actual!r}"
         return
     value = wire_lookup(ctx, path)
-    if value is not WIRE_MISSING:
+    if value is WIRE_MISSING:
+        block = wire_lookup(ctx, "webhook_signing")
+        assert block is WIRE_MISSING, (
+            f"{path} is absent but the webhook_signing block is present — supported is a "
+            f"required member, so omitting it is schema-invalid: {block!r}"
+        )
+    else:
         assert isinstance(value, bool), f"{path} present but not a boolean: {value!r}"
 
 

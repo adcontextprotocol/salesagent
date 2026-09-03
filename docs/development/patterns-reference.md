@@ -328,7 +328,7 @@ if budget_amount < min_package_budget:
 
 Same check, two implementations, different error handling. When the validation rule changes, one gets updated and the other doesn't.
 
-**Enforced by:** `review-dry` (Category 4: Database Query Patterns, Category 3: Error Handling), `check_code_duplication.py` (pre-commit + make quality)
+**Enforced by:** `review-dry` (Category 4: Database Query Patterns, Category 3: Error Handling), `check_code_duplication.py` (make quality)
 
 ## Quick Reference: Where to Look
 

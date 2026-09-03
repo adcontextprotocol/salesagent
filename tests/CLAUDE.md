@@ -448,30 +448,41 @@ incremental:
 ### TransportResult.wire_error_envelope
 
 `TransportResult` exposes `wire_error_envelope: dict | None` — the two-layer
-error envelope captured at the transport boundary. Populated by all
-dispatchers on error; `None` on success. This is the canonical field for
-error verification.
+error envelope captured at the transport boundary. Populated on error by
+every dispatcher that HAS a wire; `None` on IMPL, which has none, and `None`
+on success. This is the canonical field for error verification.
 
 **Authenticity per transport (matters for what regressions the field catches):**
 
-| Transport | `wire_error_envelope` source                                          | `synthesized_error_envelope`                                          | Catches a regression in...                                |
+| Transport | `wire_error_envelope` source                                          | `_synthesized_error_envelope` (private)                                          | Catches a regression in...                                |
 |-----------|-----------------------------------------------------------------------|-----------------------------------------------------------------------|-----------------------------------------------------------|
 | REST      | HTTP response body (real wire)                                        | `None`                                                                | exception handler + envelope serialization + HTTP framing |
-| MCP       | JSON string in `ToolError`, else the real envelope stashed on the reconstructed error by `_envelope_to_adcp_error` — never synthesized | Built via `build_two_layer_error_envelope` against the caught error   | `_handle_tool_exception` + `build_two_layer_error_envelope` |
+| MCP       | JSON string in `ToolError`, else the real envelope stashed on the reconstructed error by `_envelope_to_adcp_error` — never synthesized | `None`                                                                | `_handle_tool_exception` + `build_two_layer_error_envelope` |
 | A2A       | Failed Task's artifact DataPart, stashed by `_envelope_to_adcp_error` | `None`                                                                | `on_message_send` + `_serialize_for_a2a` + envelope build |
 | IMPL      | `None` (no wire by definition)                                        | Built via `build_two_layer_error_envelope` against the caught error   | `build_two_layer_error_envelope` only                     |
 
-IMPL has no wire. Use `result.synthesized_error_envelope` to see what
-production WOULD emit at the boundary for the same exception, but be aware
-that field cannot catch a regression in the production boundary translator
+Only IMPL synthesizes, and only because it has no wire to lose. MCP used to
+populate this column as well; that made the field a mask rather than a view,
+because on a transport that HAS a wire the synthesized value is either
+redundant or it is hiding a lost capture. It hid exactly that until
+`MediaBuyListEnv` was fixed to capture its MCP wire.
+
+IMPL has no wire. `result.error_envelope()` returns the builder's envelope
+there — that is the only branch on which it may — so you see what production
+WOULD emit at the boundary for the same exception. Be aware that value cannot
+catch a regression in the production boundary translator
 — both IMPL and production call the same envelope builder, so the
 synthesized value moves in lockstep with whatever the builder produces.
 Tests that need to catch real wire-shape regressions must run on REST,
 MCP, or A2A — only those transports observe actual wire bytes.
 
 `result.error` (reconstructed exception) remains available for backward
-compatibility. Reconstruction is lossy — assert on `wire_error_envelope`
-(or `synthesized_error_envelope` for IMPL).
+compatibility. Reconstruction is lossy — assert on `result.error_envelope()`,
+which returns the real wire wherever one exists and the builder's envelope only
+on IMPL. It RAISES when there is none, rather than letting a dead wire path pass
+on a rebuilt shape; `error_envelope_or_none()` is the sibling for callers that
+branch on envelope-presence as control flow. The underlying field is private:
+reading it directly re-opens the substitution this pair exists to close.
 
 ### TransportResult.wire_response (success-path wire)
 

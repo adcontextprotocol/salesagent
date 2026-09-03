@@ -6,15 +6,25 @@ import secrets
 import uuid
 from datetime import UTC, datetime
 
+from adcp.types import AuthenticationScheme
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func, select
 
 from src.admin.services import DashboardService
 from src.admin.utils import require_tenant_access
-from src.admin.utils.audit_decorator import log_admin_action
+from src.admin.utils.audit_decorator import log_admin_action, record_admin_action_failure
 from src.core.database.database_session import get_db_session
 from src.core.database.models import MediaBuy, Principal, PushNotificationConfig, Tenant
 from src.core.database.repositories.uow import PushNotificationConfigUoW
+from src.core.exceptions import AdCPValidationError
+from src.core.webhook_validator import webhook_url_for_log
+from src.core.webhooks.registration import accept_push_notification_primitives
+
+# The form's "no authentication" choice. Defined ONCE and handed to the template
+# (see manage_webhooks) so the rendered <option value> and the comparison below
+# cannot drift apart — the authenticated choices come from AuthenticationScheme
+# for the same reason.
+NO_AUTHENTICATION = "none"
 
 logger = logging.getLogger(__name__)
 
@@ -604,6 +614,14 @@ def manage_webhooks(tenant_id, principal_id):
                 tenant_id=tenant_id,
                 principal=principal,
                 webhooks=webhooks,
+                # The SPELLING comes from the pinned enum, never from a literal:
+                # hardcoding it is how "hmac_sha256" — which nothing in src/
+                # compares against — became the value this form posted. Only
+                # HMAC-SHA256 is offered: Bearer is a member of the enum but this
+                # form has no field to collect a bearer token, and adding one is a
+                # feature, not part of fixing a route that never persisted a row.
+                auth_schemes=[AuthenticationScheme.HMAC_SHA256],
+                no_authentication=NO_AUTHENTICATION,
             )
 
     except Exception as e:
@@ -622,53 +640,125 @@ def _redirect_to_webhooks(tenant_id, principal_id):
 def register_webhook(tenant_id, principal_id):
     """Register a new webhook for a principal."""
     try:
-        from src.core.webhook_validator import WebhookURLValidator
+        # The DEFAULT is the constant too. A literal "none" here would be a third
+        # spelling of the form's unauthenticated choice, alongside the template's
+        # <option value> and the comparison below -- which is the exact drift the
+        # constant exists to prevent.
+        auth_type = request.form.get("auth_type", NO_AUTHENTICATION)
 
-        url = request.form.get("url")
-        auth_type = request.form.get("auth_type", "none")
+        # ONE gate, not two. This route used to run WebhookURLValidator here AND
+        # accept_push_notification_primitives below, so a webhook URL was judged
+        # twice by two different verdicts -- and the two did not agree: the first
+        # resolves DNS (via resolve_for_dial), the second does not.
+        #
+        # DELIBERATE TRADE, and it is a real one: a hostname that RESOLVES into a
+        # private range but is not a literal IP was refused here and is now
+        # accepted at registration. It is still refused before any bytes leave --
+        # the egress seam resolves again and IP-pins at DIAL time, which is the
+        # resolution that actually governs the connection, and the one a
+        # registration-time check cannot make binding anyway (DNS can change
+        # between the two moments). What this removes is a second, weaker,
+        # non-binding answer that made the admin form disagree with every
+        # protocol surface about the same URL.
+        # The scheme is whatever the form posted, and the form's option values are
+        # rendered from AuthenticationScheme itself (webhook_management.html), so it
+        # is already the pinned spelling. Nothing is translated here on purpose: a
+        # route-side lookup table is exactly the drift that put a fifth spelling in
+        # the database once already (GH #1894) -- and it is why the hand-written
+        # `auth_type == "hmac_sha256"` branch this replaced was dead: the form has
+        # posted the canonical "HMAC-SHA256" since the options came from the enum.
+        scheme = None if auth_type == NO_AUTHENTICATION else auth_type
+        credentials = request.form.get("hmac_secret") if scheme else None
 
-        if not url:
-            flash("Invalid webhook URL: URL is required", "error")
-            return _redirect_to_webhooks(tenant_id, principal_id)
+        # The gate produces the VALUE; the repository takes the value. This route
+        # builds no ORM model: a registration reaches the database only as a
+        # ValidatedWebhookRegistration, so a config that skipped the ingest
+        # preconditions cannot be written from here (Epic D). It used to construct
+        # PushNotificationConfig(config_id=/auth_type=/auth_config=) — none of them
+        # columns — so every registration raised TypeError, and the broad
+        # `except Exception` that used to sit below (now narrowed to the gate's own
+        # refusal) rendered that defect as a validation-looking flash.
+        #
+        # The credential rules are the gate's too, not this route's: the pinned
+        # core/push-notification-config.json requires `credentials` whenever an
+        # `authentication` block is present and pins minLength 32, which is exactly
+        # what the hand-written "required" / "at least 32 characters" checks here
+        # used to restate -- a second copy of a rule that can drift from the one
+        # the protocol surfaces enforce.
+        registration = accept_push_notification_primitives(
+            request.form.get("url"),
+            scheme,
+            credentials,
+            field_prefix="webhook",
+        )
 
-        # Validate URL for SSRF protection
-        is_valid, error_msg = WebhookURLValidator.validate_webhook_url(url)
-        if not is_valid:
-            flash(f"Invalid webhook URL: {error_msg}", "error")
-            return _redirect_to_webhooks(tenant_id, principal_id)
-
-        webhook_secret = None
-        if auth_type == "hmac_sha256":
-            webhook_secret = request.form.get("hmac_secret")
-            if not webhook_secret:
-                flash("HMAC secret is required for HMAC authentication", "error")
-                return _redirect_to_webhooks(tenant_id, principal_id)
-            # Match the delivery-side strength rule (WebhookDeliveryService
-            # skips signing for secrets under 32 chars) at registration time.
-            if len(webhook_secret) < 32:
-                flash("HMAC secret must be at least 32 characters", "error")
-                return _redirect_to_webhooks(tenant_id, principal_id)
-
+        # register_admin_webhook, not a route-side find-then-upsert: the id it
+        # writes under is admin_config_id(tenant, principal, registration.url), so
+        # the UNIQUE index -- not a pre-check SELECT that cannot see an uncommitted
+        # racer -- decides which of two concurrent registrations of one URL wins,
+        # and the loser is told exactly what the pre-check would have told it.
+        #
+        # It keys on registration.url, the normalized AnyUrl string that is what
+        # actually gets STORED. Keyed on the raw form value instead, the lookup
+        # misses the row it just wrote for any non-canonical spelling (a path-less
+        # "https://host:9999" stores as ".../"), a second active row is inserted
+        # for the same destination, and the sender delivers twice -- one copy
+        # signed with a secret the receiver cannot verify.
+        #
+        # Its three outcomes are the three this route needs: an ALREADY-ACTIVE row
+        # comes back untouched (returned below as a warning, so a live
+        # registration's secret is never rotated by a repeat submission), a
+        # soft-deleted row is REACTIVATED under that same deterministic id rather
+        # than duplicated beside its own corpse, and a fresh registration inserts.
+        #
+        # webhook_secret carries the posted secret into the RFC 9421 signing-key
+        # column, whose only writer is this admin surface (see the repository's
+        # upsert docstring); the delivery ARM is chosen from the stored
+        # authentication pair the receipt supplies, never from this column.
         with PushNotificationConfigUoW(tenant_id) as uow:
             assert uow.push_notification_configs is not None
             existing = uow.push_notification_configs.register_admin_webhook(
+                registration,
                 principal_id=principal_id,
-                url=url,
-                authentication_type=auth_type if auth_type != "none" else None,
-                authentication_token=None,
-                webhook_secret=webhook_secret,
+                webhook_secret=credentials,
             )
 
         if existing is not None:
             flash("Webhook URL already registered for this principal", "warning")
             return _redirect_to_webhooks(tenant_id, principal_id)
 
-        logger.info(f"Registered webhook {url} for principal {principal_id} in tenant {tenant_id}")
+        # registration.url through webhook_url_for_log, not the form value:
+        # two separate rules, both already written down elsewhere in the tree.
+        # (1) What is STORED is the normalized AnyUrl, so the raw string is
+        # not what an operator would be reading back. The form value has no
+        # name in this handler at all now -- it is consumed by the gate.
+        # (2) A webhook URL is rendered into a log record in exactly ONE way,
+        # by webhook_url_for_log (scheme+host+path, never credentials). The
+        # sibling registration path already logs this same attribute of this
+        # same type that way (media_buy_create.py:2231-2234), and the type
+        # uses it in its own __repr__. AnyUrl normalization strips a newline
+        # but PRESERVES ?token=... and user:pw@ -- so without this call an
+        # operator-registered webhook carrying a bearer token in its query
+        # string would write that token into the admin log at INFO.
+        logger.info(
+            "Registered webhook %s for principal %r in tenant %r",
+            webhook_url_for_log(registration.url),
+            principal_id,
+            tenant_id,
+        )
         flash("Webhook registered successfully", "success")
         return _redirect_to_webhooks(tenant_id, principal_id)
 
-    except Exception as e:
-        logger.error(f"Error registering webhook: {e}", exc_info=True)
+    # Only the gate's own refusals are operator-facing. Anything else is a defect
+    # in this handler and must reach the logs as a 500 rather than being flashed:
+    # a broad `except Exception` here is what let a route that never persisted a
+    # single row look like a validation problem for months.
+    except AdCPValidationError as e:
+        logger.warning("Rejected webhook registration for principal %r: %s", principal_id, e)
+        # The operator gets a flash, not a 500 — so this returns normally, which
+        # means the audit decorator would otherwise record the refusal as a
+        # SUCCESSFUL admin action. Say the action failed explicitly.
+        record_admin_action_failure(e)
         flash(f"Error registering webhook: {str(e)}", "error")
         return _redirect_to_webhooks(tenant_id, principal_id)
 
@@ -677,47 +767,67 @@ def register_webhook(tenant_id, principal_id):
 @log_admin_action("delete_webhook")
 @require_tenant_access()
 def delete_webhook(tenant_id, principal_id, config_id):
-    """Delete a webhook configuration."""
-    try:
-        with PushNotificationConfigUoW(tenant_id) as uow:
-            assert uow.push_notification_configs is not None
-            deleted = uow.push_notification_configs.delete(config_id, principal_id)
+    """Delete a webhook configuration.
 
-        if not deleted:
-            flash("Webhook not found", "error")
-            return _redirect_to_webhooks(tenant_id, principal_id)
+    This route never worked. It filtered on ``config_id``, which is not a column
+    on ``PushNotificationConfig`` -- the primary key is ``id`` -- so every call
+    raised ``InvalidRequestError``, and a broad ``except`` rendered that
+    programming error as an operator flash. The template passes ``webhook.id``,
+    so it was dead for every row, not only soft-deleted ones.
 
-        logger.info(f"Deleted webhook {config_id} for principal {principal_id} in tenant {tenant_id}")
-        flash("Webhook deleted successfully", "success")
+    Both halves of the fix are load-bearing. The lookup AND the delete go through
+    ``PushNotificationConfigRepository.delete`` (via the UoW that owns the
+    commit), which is what removes the opportunity to hand-write a filter against
+    a column that does not exist -- this route is no longer on the raw-select
+    guard's allowlist, and that allowlist only shrinks. And the broad ``except``
+    is gone: a defect in this handler must reach the logs as a 500 rather than be
+    flashed as though it were a condition of the operator's request.
+    """
+    with PushNotificationConfigUoW(tenant_id) as uow:
+        assert uow.push_notification_configs is not None
+        deleted = uow.push_notification_configs.delete(config_id, principal_id)
+
+    if not deleted:
+        flash("Webhook not found", "error")
         return _redirect_to_webhooks(tenant_id, principal_id)
 
-    except Exception as e:
-        logger.error(f"Error deleting webhook: {e}", exc_info=True)
-        flash(f"Error deleting webhook: {str(e)}", "error")
-        return _redirect_to_webhooks(tenant_id, principal_id)
+    logger.info("Deleted webhook %r for principal %r in tenant %r", config_id, principal_id, tenant_id)
+    flash("Webhook deleted successfully", "success")
+    return _redirect_to_webhooks(tenant_id, principal_id)
 
 
 @principals_bp.route("/principals/<principal_id>/webhooks/<config_id>/toggle", methods=["POST"])
 @log_admin_action("toggle_webhook")
 @require_tenant_access()
 def toggle_webhook(tenant_id, principal_id, config_id):
-    """Toggle webhook active status."""
-    try:
-        with PushNotificationConfigUoW(tenant_id) as uow:
-            assert uow.push_notification_configs is not None
-            new_state = uow.push_notification_configs.toggle_active(config_id, principal_id)
+    """Toggle webhook active status.
 
-        if new_state is None:
-            return jsonify({"error": "Webhook not found"}), 404
+    Carried the same never-working ``config_id`` filter as :func:`delete_webhook`
+    and the same broad ``except`` that turned the resulting programming error
+    into a JSON 500. Both are gone: the flip is
+    ``PushNotificationConfigRepository.toggle_active`` (via the UoW that owns the
+    commit), and a defect in this handler now reaches the logs as a real 500
+    instead of being reported to the operator as though it were a condition of
+    their request.
 
-        logger.info(
-            f"Toggled webhook {config_id} to {'active' if new_state else 'inactive'} for principal {principal_id}"
-        )
-        return jsonify({"success": True, "is_active": new_state})
+    ``toggle_active`` returns the NEW ``is_active``, so the value this endpoint
+    reports to the listing's ``fetch()`` is the value the repository wrote --
+    not a second read of a row through a session the handler has since left.
+    """
+    with PushNotificationConfigUoW(tenant_id) as uow:
+        assert uow.push_notification_configs is not None
+        new_state = uow.push_notification_configs.toggle_active(config_id, principal_id)
 
-    except Exception as e:
-        logger.error(f"Error toggling webhook: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+    if new_state is None:
+        return jsonify({"error": "Webhook not found"}), 404
+
+    logger.info(
+        "Toggled webhook %r to %s for principal %r",
+        config_id,
+        "active" if new_state else "inactive",
+        principal_id,
+    )
+    return jsonify({"success": True, "is_active": new_state})
 
 
 @principals_bp.route("/principals/<principal_id>/delete", methods=["DELETE", "POST"])

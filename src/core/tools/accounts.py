@@ -893,10 +893,20 @@ def _check_domain_validity(brand_domain: str) -> list["Error"] | None:
     document and its endpoint can never be proven, so provisioning refuses it
     here rather than letting the notification prover refuse it later.
 
-    The match is the seam's (``reserved_tld_for_host``), not a local one: this
-    site previously iterated ``RESERVED_TLDS`` with a plain ``endswith``, which
-    accepted the bare label ``"test"`` the owning predicate refuses -- so an
-    account was created for a domain the prover would then reject.
+    The match is the owning predicate's (``reserved_tld_for_host``), not a local
+    one: this site previously iterated ``RESERVED_TLDS`` with a plain
+    ``endswith``, which accepted the bare label ``"test"`` the owning predicate
+    refuses -- so an account was created for a domain the prover would then
+    reject. ``test_architecture_reserved_tld_single_matcher.py`` keeps
+    ``url_validator`` the single matcher.
+
+    NOT the SSRF egress seam: #1802 consolidated the four SSRF implementations
+    into ``EgressPolicy``, but the seam has no reserved-TLD notion at all --
+    ``egress.policy._BLOCKED_HOSTNAMES`` is cloud-metadata and localhost
+    aliases, and a ``.example``/``.invalid`` host passes ``check_registration``.
+    Reserved-TLD refusal is notification-proof policy (can this brand document
+    ever exist, can this endpoint ever be proven), not "where does this dial
+    land", so it stays with its owner rather than being pushed into the seam.
     """
     from adcp.types import Error
 
@@ -989,9 +999,15 @@ def _extract_natural_key(entry: SyncEntry) -> tuple[str, str | None, str, bool |
     operator = entry.operator
     if brand is None or operator is None:
         raise AdCPValidationError(
+            # Message from this branch, not #1802's: that wording ("the
+            # account-reference form is not supported by this seller") states a
+            # capability that is now false -- salesagent-5g8e implemented the
+            # settings-update arm, and callers dispatch it to
+            # _process_settings_update_entry above. `recovery=` is dropped per
+            # #1802: recovery is DERIVED from the wire code, not authored, and
+            # AdCPValidationError already pins VALIDATION_ERROR correctable.
             "Each provisioning account entry must include 'brand', 'operator', and 'billing' "
             "(or 'account' for a settings-update entry).",
-            recovery="correctable",
         )
     brand_domain, brand_id = brand_key_parts(brand)
     sandbox = entry.sandbox
@@ -1050,7 +1066,7 @@ def _check_notification_configs(configs: Iterable[NotificationConfig] | None) ->
     """
     from adcp.types import Error
 
-    from src.core.security.url_validator import check_url_syntax
+    from src.core.webhook_validator import WebhookURLValidator
 
     if not configs:
         return None
@@ -1088,11 +1104,21 @@ def _check_notification_configs(configs: Iterable[NotificationConfig] | None) ->
                 ]
 
         url = getattr(config, "url", None)
-        # Syntax only -- NOT the DNS-resolving check_url_ssrf. A buyer may register
-        # a webhook before standing the endpoint up, so requiring resolution at
-        # write time would reject legitimate registrations. Reachability is the
-        # activation proof's job (F4c), at fire time.
-        url_ok, url_error = check_url_syntax(str(url), require_https=True)
+        # Registration-time (DNS-free) verdict, NOT the dial-time one. A buyer may
+        # register a webhook before standing the endpoint up, so resolving here
+        # would reject legitimate registrations. Reachability is the activation
+        # proof's job (F4c), at fire time.
+        #
+        # #1802 deleted url_validator.check_url_syntax and consolidated it into
+        # EgressPolicy.check_registration, which requires https unconditionally
+        # (GH #1757) -- exactly what this site passed require_https=True for.
+        # Reached through WebhookURLValidator, the seam's sanctioned (bool, str)
+        # wrapper, for two reasons: this gate must return a per-account advisory
+        # rather than raise (check_registration raises AdCPBlockedUrlError), and
+        # the wrapper owns the ADCP_TESTING loopback allowance webhook capture
+        # servers depend on. url_error is the seam's own fixed refusal label --
+        # it never interpolates buyer input.
+        url_ok, url_error = WebhookURLValidator.validate_webhook_url_registration(str(url))
         if not url_ok:
             return [
                 Error(  # structural-guard: advisory per-account result in SyncAccountsResponse.errors[]
@@ -1774,7 +1800,6 @@ async def _sync_accounts_impl(
                     f"accounts[{index}] carries both an account reference (settings-update) and "
                     "provisioning fields (brand/operator/billing) -- these are mutually exclusive.",
                     field=f"accounts[{index}]",
-                    recovery="correctable",
                 )
 
             if entry.account is not None:

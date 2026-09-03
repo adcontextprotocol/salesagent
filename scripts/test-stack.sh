@@ -27,9 +27,11 @@ ENV_FILE=".test-stack.env"
 #     publishes -p host:container) so a port already taken by another
 #     stack on 0.0.0.0 is detected,
 #   * wrap-around scan so the full range is still searched.
-# Emits THREE ports: postgres, the plaintext proxy, and the TLS listener
-# (salesagent-tgzb). The TLS port is allocated the same way as the other two
-# rather than pinned to 8443, because several stacks run concurrently on one box.
+# Emits FOUR ports: postgres, the plaintext proxy, the TLS listener
+# (salesagent-tgzb), and webhook-capture's plain-HTTP readback control-plane
+# (salesagent-amht.3). Both the TLS port and the webhook-capture port are
+# allocated the same way as the other two rather than pinned (to 8443 / 8080),
+# because several stacks run concurrently on one box.
 find_ports() {
     uv run python -c "
 import os, socket
@@ -38,15 +40,15 @@ span = hi - lo
 origin = lo + (os.getpid() % span)
 for i in range(span - 1):
     p = lo + ((origin - lo + i) % span)
-    if p + 2 >= hi:
+    if p + 3 >= hi:
         continue
-    socks = [socket.socket() for _ in range(3)]
+    socks = [socket.socket() for _ in range(4)]
     for s in socks:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
     try:
         for offset, s in enumerate(socks):
             s.bind(('', p + offset))
-        print(p, p + 1, p + 2); break
+        print(p, p + 1, p + 2, p + 3); break
     except OSError:
         pass
     finally:
@@ -131,12 +133,12 @@ cmd_up() {
     # blocked all e2e tests (salesagent-18h.12).
     local up_ok=false attempt
     for attempt in 1 2 3; do
-        read POSTGRES_PORT MCP_PORT TLS_PORT <<< $(find_ports)
-        if [ -z "$POSTGRES_PORT" ] || [ -z "$MCP_PORT" ] || [ -z "$TLS_PORT" ]; then
-            echo -e "${RED}No free port triple in 50000-60000 (attempt $attempt)${NC}"
+        read POSTGRES_PORT MCP_PORT TLS_PORT WEBHOOK_CAPTURE_PORT <<< $(find_ports)
+        if [ -z "$POSTGRES_PORT" ] || [ -z "$MCP_PORT" ] || [ -z "$TLS_PORT" ] || [ -z "$WEBHOOK_CAPTURE_PORT" ]; then
+            echo -e "${RED}No free port quadruple in 50000-60000 (attempt $attempt)${NC}"
             sleep 2; continue
         fi
-        export POSTGRES_PORT ADCP_SALES_PORT=$MCP_PORT ADCP_TLS_PORT=$TLS_PORT
+        export POSTGRES_PORT ADCP_SALES_PORT=$MCP_PORT ADCP_TLS_PORT=$TLS_PORT WEBHOOK_CAPTURE_PORT
         export DATABASE_URL="postgresql://adcp_user:secure_password_change_me@127.0.0.1:${POSTGRES_PORT}/adcp_test"
         dc down -v 2>/dev/null || true
         dc build --progress=plain 2>&1 | grep -E "(Step|#|Building|exporting)" | tail -10
@@ -191,13 +193,15 @@ cmd_up() {
     _real_pg=$(dc port postgres 5432 2>/dev/null | sed -E 's/.*:([0-9]+)$/\1/')
     _real_srv=$(dc port proxy 8000 2>/dev/null | sed -E 's/.*:([0-9]+)$/\1/')
     _real_tls=$(dc port tls-proxy 8443 2>/dev/null | sed -E 's/.*:([0-9]+)$/\1/')
+    _real_webhook_capture=$(dc port webhook-capture 8080 2>/dev/null | sed -E 's/.*:([0-9]+)$/\1/')
     if [ -n "$_real_pg" ] && [ "$_real_pg" != "$POSTGRES_PORT" ]; then
         echo -e "${BLUE}Corrected POSTGRES_PORT $POSTGRES_PORT -> $_real_pg (actual Docker binding)${NC}"
         POSTGRES_PORT="$_real_pg"
     fi
     [ -n "$_real_srv" ] && MCP_PORT="$_real_srv"
     [ -n "$_real_tls" ] && TLS_PORT="$_real_tls"
-    export POSTGRES_PORT ADCP_SALES_PORT=$MCP_PORT ADCP_TLS_PORT=$TLS_PORT
+    [ -n "$_real_webhook_capture" ] && WEBHOOK_CAPTURE_PORT="$_real_webhook_capture"
+    export POSTGRES_PORT ADCP_SALES_PORT=$MCP_PORT ADCP_TLS_PORT=$TLS_PORT WEBHOOK_CAPTURE_PORT
     export DATABASE_URL="postgresql://adcp_user:secure_password_change_me@127.0.0.1:${POSTGRES_PORT}/adcp_test"
 
     # Write env file for tox to source
@@ -206,6 +210,7 @@ export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME"
 export POSTGRES_PORT=$POSTGRES_PORT
 export ADCP_SALES_PORT=$MCP_PORT
 export ADCP_TLS_PORT=$TLS_PORT
+export WEBHOOK_CAPTURE_PORT=$WEBHOOK_CAPTURE_PORT
 export E2E_TLS_BASE_URL="https://agent.localhost:$TLS_PORT"
 export E2E_CA_BUNDLE="$(pwd)/.test-tls/ca.pem"
 export DATABASE_URL="$DATABASE_URL"
@@ -216,7 +221,7 @@ export GEMINI_API_KEY="${GEMINI_API_KEY}"
 export ENCRYPTION_KEY="${ENCRYPTION_KEY}"
 EOF
 
-    echo -e "${GREEN}Stack ready (pg:$POSTGRES_PORT srv:$MCP_PORT tls:$TLS_PORT)${NC}"
+    echo -e "${GREEN}Stack ready (pg:$POSTGRES_PORT srv:$MCP_PORT tls:$TLS_PORT webhook-capture:$WEBHOOK_CAPTURE_PORT)${NC}"
     echo -e "${BLUE}Env written to $ENV_FILE — source it before running tox${NC}"
     echo ""
     echo "Run tests with:"
@@ -243,6 +248,7 @@ cmd_status() {
         echo "  POSTGRES_PORT=$POSTGRES_PORT"
         echo "  ADCP_SALES_PORT=$ADCP_SALES_PORT"
         echo "  ADCP_TLS_PORT=${ADCP_TLS_PORT:-<unset>}"
+        echo "  WEBHOOK_CAPTURE_PORT=${WEBHOOK_CAPTURE_PORT:-<unset>}"
         echo "  COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
         dc ps 2>/dev/null || echo "Stack not running"
     else

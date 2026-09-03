@@ -1,38 +1,44 @@
 """Integration regression tests for the FastAPI lifespan shutdown registry.
 
-PR #1264 fix #3 wired the ``ProtocolWebhookService.close()`` (which releases a
-long-lived ``httpx.AsyncClient`` connection pool — real OS file descriptors)
-into ``src.app.app_lifespan``'s shutdown phase. A later change inverted the
-dependency: the service self-registers ``close`` via
-``src.core.lifecycle.register_shutdown`` at first construction, and
-``app_lifespan`` only calls ``run_all_shutdown_callbacks()`` — it never names a
-concrete service.
+PR #1264 fix #3 wired the ``ProtocolWebhookService.close()`` (which released a
+long-lived connection pool — real OS file descriptors) into
+``src.app.app_lifespan``'s shutdown phase. A later change inverted the
+dependency: the owner self-registers ``close`` via
+``src.core.lifecycle.register_shutdown``, and ``app_lifespan`` only calls
+``run_all_shutdown_callbacks()`` — it never names a concrete service.
+
+The egress-seam migration (#1802) then removed that pool outright. Each webhook
+delivery builds a transport pinned to its own destination and discards it, so
+``ProtocolWebhookService`` owns no connection state, has no ``close()``, and
+registers nothing. That left the registry with no producer in ``src/``, so what
+these tests grade is the REGISTRY CONTRACT itself — the general shape every
+future owner will rely on — plus the one thing still assertable about the
+webhook service: that it registers nothing.
 
 These are INTEGRATION tests: they drive the real ASGI lifespan protocol
 (``asgi_lifespan.LifespanManager`` over ``FastAPI(lifespan=app_lifespan)``) and
 exercise the genuine production ``app_lifespan`` — including the real
-``_install_admin_mounts()`` startup hook — with a REAL
-``ProtocolWebhookService`` instance registered through the REAL lifecycle
-registry. They assert on the real ``httpx.AsyncClient`` state, never on a mock.
+``_install_admin_mounts()`` startup hook — against the REAL lifecycle registry.
+No production symbol is patched or mocked.
 
-No production symbol is patched. ``app_lifespan``'s startup legitimately
-mutates the module-global ``src.app.app`` route table. The
-``isolated_global_app_state`` fixture snapshots and restores that global, the
-webhook-service singleton, AND the lifecycle shutdown-callback registry so
-running the real startup/registration does not leak into sibling tests.
+``app_lifespan``'s startup legitimately mutates the module-global
+``src.app.app`` route table. The ``isolated_global_app_state`` fixture restores
+that global, the webhook-service singleton, AND the shutdown-callback registry
+so running the real startup does not leak into sibling tests.
 
-Mutation coverage (verified against real objects):
-  (a) drop the ``await`` on ``run_all_shutdown_callbacks()``  -> pool not released -> FAIL
-  (b) skip ``register_shutdown`` on construction              -> close never called -> FAIL
-  (c) remove the per-callback try/except in the registry      -> close error escapes -> FAIL
+Mutation coverage (honestly 2 of the original 3):
+  (a) drop the ``await`` on ``run_all_shutdown_callbacks()``  -> nothing drains  -> FAIL
+  (c) remove the per-callback try/except in the registry      -> error escapes   -> FAIL
+  (b) "skip ``register_shutdown`` on construction" is gone with the last
+      producer: a test that registers the callback itself can grade the drain,
+      never a production registration.
 
 The companion AST guard ``tests/unit/test_architecture_app_lifespan_lazy_import.py``
-pins the service-agnostic contract so (b)-style regressions also fail fast.
+pins the service-agnostic contract of the shutdown hook.
 """
 
 from __future__ import annotations
 
-import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
@@ -40,7 +46,7 @@ from fastapi import FastAPI
 from src.app import app_lifespan
 from src.core import lifecycle
 from src.services import protocol_webhook_service
-from src.services.protocol_webhook_service import ProtocolWebhookService, get_protocol_webhook_service
+from src.services.protocol_webhook_service import get_protocol_webhook_service
 from tests.helpers.app_state import preserved_global_app_state
 
 pytestmark = pytest.mark.integration
@@ -60,38 +66,39 @@ def isolated_global_app_state():
         yield
 
 
-async def test_lifespan_closes_real_webhook_session_pool(isolated_global_app_state):
-    """The real lifespan shutdown must release the real httpx.AsyncClient pool.
+async def test_lifespan_awaits_every_registered_shutdown_callback(isolated_global_app_state):
+    """The real lifespan shutdown must AWAIT the callbacks the registry holds.
 
-    Constructs the REAL service through ``get_protocol_webhook_service()`` so it
-    self-registers with the REAL lifecycle registry, runs the genuine ASGI
-    lifespan (real startup including ``_install_admin_mounts``, then shutdown),
-    and asserts the real client was closed by production's
-    ``run_all_shutdown_callbacks()`` -> ``close()``.
+    Repointed by salesagent-cnkq. This used to prime a real connection pool on
+    ``ProtocolWebhookService`` and assert the lifespan emptied it. That service
+    now builds and discards a per-destination pinned transport, so it owns no
+    pool and registers nothing — with it went the last producer in ``src/``, and
+    with that, mutation (b) ("skip register_shutdown on construction"): a test
+    that registers the callback itself can only grade the drain, not any
+    production registration. Coverage here is honestly 2 of the original 3
+    mutations, not 3.
 
-    ``is_closed`` is real state on the real client — ``aclose()`` sets it and
-    nothing else does — so this fails under mutation (a) (no await -> coroutine
-    never runs -> client still open) and mutation (b) (no register_shutdown ->
-    close never invoked).
+    What still matters, and is still graded: the lifespan must AWAIT what the
+    registry holds. Fails under mutation (a) — drop the ``await`` and the
+    coroutine never runs.
     """
-    protocol_webhook_service._webhook_service = None
     lifecycle._shutdown_callbacks.clear()
-    service = get_protocol_webhook_service()  # self-registers close
+    awaited: list[str] = []
 
-    assert isinstance(service._client, httpx.AsyncClient)
-    assert not service._client.is_closed, "precondition: the real client must be open before shutdown"
+    async def _close() -> None:
+        awaited.append("closed")
+
+    lifecycle.register_shutdown(_close)
 
     app = FastAPI(lifespan=app_lifespan)
     async with LifespanManager(app):
-        # Startup ran the real _install_admin_mounts(); client intact mid-lifespan.
-        assert not service._client.is_closed, "client must survive until shutdown"
-    # Exiting LifespanManager ran the real shutdown phase -> real close().
+        # Startup ran the real _install_admin_mounts(); nothing drained yet.
+        assert awaited == [], "callbacks must not run until the shutdown phase"
 
-    assert service._client.is_closed, (
-        "FastAPI lifespan shutdown did not release the ProtocolWebhookService "
-        "httpx.AsyncClient connection pool. PR #1264 fix #3 regression: the shutdown "
-        "hook either did not await run_all_shutdown_callbacks() or the service "
-        "never self-registered its close callback."
+    assert awaited == ["closed"], (
+        "FastAPI lifespan shutdown did not await the registered callback. "
+        "Either app_lifespan dropped its await of run_all_shutdown_callbacks(), "
+        "or the registry did not invoke what it held."
     )
 
 
@@ -112,46 +119,64 @@ async def test_lifespan_safe_when_no_callbacks_registered(isolated_global_app_st
     assert protocol_webhook_service._webhook_service is None
 
 
-class _RaisingCloseClient(httpx.AsyncClient):
-    """A REAL ``httpx.AsyncClient`` whose ``aclose()`` raises — not a mock.
+async def test_constructing_the_webhook_service_registers_no_shutdown_callback(isolated_global_app_state):
+    """Constructing the webhook service must leave the shutdown registry empty.
 
-    Subclassing the real client keeps every other behaviour real while letting
-    the test prove the registry's per-callback ``try/except`` actually swallows a
-    failing ``close()``. ``super().aclose()`` still runs (real pool release)
-    before the simulated failure.
-    """
+    ``ProtocolWebhookService`` used to hold a long-lived pooled client and
+    self-register ``close`` to release it. The egress-seam migration
+    (salesagent-cnkq) removed the pool, because ``build_ip_pinned_transport``
+    resolves its destination at construction and refuses to connect anywhere
+    else — so there can be no client that outlives a single delivery, and
+    therefore nothing left to close at shutdown.
 
-    close_calls = 0
+    This grades the removal from the outside, at the registry, rather than by
+    naming the attribute that goes away: a service that still holds a pooled
+    client under some other name would still have to register a close callback
+    to be correct, and would still fail here.
 
-    async def aclose(self) -> None:  # type: ignore[override]
-        type(self).close_calls += 1
-        await super().aclose()
-        raise RuntimeError("simulated httpx.AsyncClient.aclose() failure")
-
-
-async def test_lifespan_swallows_webhook_close_errors(isolated_global_app_state):
-    """A failing ``close()`` must be logged and swallowed, never escape the lifespan.
-
-    Registers a real ``ProtocolWebhookService`` whose real ``AsyncClient``
-    subclass raises in ``aclose()``. The registry's per-callback ``try/except`` must
-    contain it so ``LifespanManager`` exits normally. Fails under mutation (c)
-    (try/except removed -> ``RuntimeError`` propagates out of ``LifespanManager``).
+    The real ASGI lifespan runs afterwards to pin the other half of the
+    requirement — the app starts and stops cleanly with the hook gone.
+    ``test_lifespan_safe_when_no_callbacks_registered`` grades an EMPTY registry
+    that nothing ever tried to fill; this grades a registry that the webhook
+    service was constructed against.
     """
     protocol_webhook_service._webhook_service = None
     lifecycle._shutdown_callbacks.clear()
-    service = ProtocolWebhookService()
-    service._client = _RaisingCloseClient()
-    protocol_webhook_service._webhook_service = service
-    lifecycle.register_shutdown(service.close)
-    _RaisingCloseClient.close_calls = 0
+
+    get_protocol_webhook_service()
+
+    assert lifecycle._shutdown_callbacks == [], (
+        "constructing ProtocolWebhookService registered a shutdown callback: "
+        f"{lifecycle._shutdown_callbacks}. Nothing survives a single delivery any more, "
+        "so there is nothing for the lifespan to release."
+    )
+
+    app = FastAPI(lifespan=app_lifespan)
+    async with LifespanManager(app):
+        pass
+
+
+async def test_lifespan_swallows_a_failing_shutdown_callback(isolated_global_app_state):
+    """A failing callback must be logged and swallowed, never escape the lifespan.
+
+    Repointed by salesagent-cnkq for the same reason as the drain test above: the
+    webhook service no longer has a ``close()`` to make raise. The contract under
+    test is the registry's, not that service's — one bad callback must not take
+    the process down at shutdown. Fails under mutation (c) (per-callback
+    try/except removed -> the error propagates out of ``LifespanManager``).
+    """
+    lifecycle._shutdown_callbacks.clear()
+    calls: list[str] = []
+
+    async def _raising_close() -> None:
+        calls.append("called")
+        raise RuntimeError("close failed")
+
+    lifecycle.register_shutdown(_raising_close)
 
     app = FastAPI(lifespan=app_lifespan)
     # Must NOT raise: the registry wraps each callback in try/except.
     async with LifespanManager(app):
         pass
 
-    assert _RaisingCloseClient.close_calls == 1, (
-        "production shutdown must have invoked the real client.aclose() exactly "
-        f"once; got {_RaisingCloseClient.close_calls} — the close callback was "
-        "not registered/awaited"
-    )
+    assert calls == ["called"], f"production shutdown must have invoked the callback exactly once; got {calls}"

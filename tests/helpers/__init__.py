@@ -59,48 +59,78 @@ def assert_effective_properties_normalized(
         )
 
 
-from tests.helpers.adcp_factories import (
-    create_minimal_product,
-    create_product_with_empty_pricing,
-    create_test_brand_manifest,
-    create_test_creative_asset,
-    create_test_format,
-    create_test_format_id,
-    create_test_media_buy_dict,
-    create_test_media_buy_request_dict,
-    create_test_package,
-    create_test_package_request,
-    create_test_package_request_dict,
-    create_test_pricing_option,
-    create_test_product,
-    create_test_property,
-    create_test_property_dict,
-)
-from tests.helpers.admin_session import admin_auth_session
-from tests.helpers.envelope_assertions import assert_envelope_shape, assert_no_raw_validation_leak
-from tests.helpers.idempotency_seeds import (
-    make_active_cached_success,
-    seed_cached_success,
-    seed_media_buy,
-    seed_principal,
-)
-from tests.helpers.ledger import load_ledger_nodeids
-from tests.helpers.log_assertions import rendered_log_calls
-from tests.helpers.orm_constraints import (
-    check_constraint_sql,
-    check_constraint_values,
-    quoted_values,
-)
-from tests.helpers.race_window import concurrent_commit_in_write_window, operator_answer
+# Lazily re-exported. An eager block here pulled ``adcp_factories`` — and with it
+# factory-boy — into every importer of this package, including the leaf helpers
+# that need nothing but the stdlib. That made an e2e service container exit on
+# import before it ever bound a socket, and made COPYING a helper the cheapest
+# correct move rather than importing it. A leaf that cannot be imported without
+# its heaviest sibling is what manufactures duplication.
+_LAZY_EXPORTS: dict[str, str] = {
+    "SIGNATURE_HEADER": "tests.helpers.hmac_assertions",
+    "TIMESTAMP_HEADER": "tests.helpers.hmac_assertions",
+    "assert_backoff_schedule": "tests.helpers.backoff_assertions",
+    "assert_envelope_shape": "tests.helpers.envelope_assertions",
+    "assert_no_raw_validation_leak": "tests.helpers.envelope_assertions",
+    "assert_delivered_unsigned": "tests.helpers.hmac_assertions",
+    "assert_signature_verifies_over_wire_body": "tests.helpers.hmac_assertions",
+    "admin_auth_session": "tests.helpers.admin_session",
+    "check_constraint_sql": "tests.helpers.orm_constraints",
+    "check_constraint_values": "tests.helpers.orm_constraints",
+    "concurrent_commit_in_write_window": "tests.helpers.race_window",
+    "create_minimal_product": "tests.helpers.adcp_factories",
+    "create_product_with_empty_pricing": "tests.helpers.adcp_factories",
+    "create_test_brand_manifest": "tests.helpers.adcp_factories",
+    "create_test_creative_asset": "tests.helpers.adcp_factories",
+    "create_test_format": "tests.helpers.adcp_factories",
+    "create_test_format_id": "tests.helpers.adcp_factories",
+    "create_test_media_buy_dict": "tests.helpers.adcp_factories",
+    "create_test_media_buy_request_dict": "tests.helpers.adcp_factories",
+    "create_test_package": "tests.helpers.adcp_factories",
+    "create_test_package_request": "tests.helpers.adcp_factories",
+    "create_test_package_request_dict": "tests.helpers.adcp_factories",
+    "create_test_pricing_option": "tests.helpers.adcp_factories",
+    "create_test_product": "tests.helpers.adcp_factories",
+    "create_test_property": "tests.helpers.adcp_factories",
+    "create_test_property_dict": "tests.helpers.adcp_factories",
+    "load_ledger_nodeids": "tests.helpers.ledger",
+    "make_active_cached_success": "tests.helpers.idempotency_seeds",
+    "operator_answer": "tests.helpers.race_window",
+    "quoted_values": "tests.helpers.orm_constraints",
+    "rendered_log_calls": "tests.helpers.log_assertions",
+    "seed_cached_success": "tests.helpers.idempotency_seeds",
+    "seed_media_buy": "tests.helpers.idempotency_seeds",
+    "seed_principal": "tests.helpers.idempotency_seeds",
+}
+
+
+def __getattr__(name: str):
+    module = _LAZY_EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+
+    return getattr(importlib.import_module(module), name)
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_LAZY_EXPORTS))
+
 
 __all__ = [
     # Admin blueprint session helper
     "admin_auth_session",
     # Auth helpers
     "assert_resolve_auth_dep_passes_token",
+    # Backoff schedule assertions
+    "assert_backoff_schedule",
     # Envelope assertions
     "assert_envelope_shape",
     "assert_no_raw_validation_leak",
+    # HMAC signature assertions
+    "SIGNATURE_HEADER",
+    "TIMESTAMP_HEADER",
+    "assert_signature_verifies_over_wire_body",
+    "assert_delivered_unsigned",
     # ORM CHECK-constraint introspection (parity guards)
     "check_constraint_sql",
     "check_constraint_values",

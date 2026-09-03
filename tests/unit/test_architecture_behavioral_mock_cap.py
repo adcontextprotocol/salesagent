@@ -37,15 +37,17 @@ BEHAVIORAL_MOCK_CONSTRUCTION_CAP: dict[str, int] = {
     "tests/integration/test_create_media_buy_behavioral.py": 38,
     "tests/integration/test_creative_sync_behavioral.py": 1,
     "tests/integration/test_delivery_poll_behavioral.py": 2,
-    "tests/integration/test_delivery_webhook_behavioral.py": 5,
+    "tests/integration/test_delivery_webhook_behavioral.py": 0,
     "tests/integration/test_get_products_behavioral.py": 44,
     "tests/unit/test_authorized_properties_behavioral.py": 23,
     "tests/unit/test_creative_formats_behavioral.py": 17,
     "tests/unit/test_delivery_poll_behavioral.py": 14,
-    # 6 -> 5 (#1757): the queue entry became a frozen dataclass of primitives, so the
-    # retry-loop test builds a real QueuedWebhook instead of mocking a config object.
-    # The ratchet only shrinks — this is it shrinking.
-    "tests/unit/test_delivery_service_behavioral.py": 5,
+    # 6 -> 1, from both merged sides: #1757 turned the queue entry into a frozen
+    # dataclass of primitives (the retry-loop test builds a real QueuedWebhook
+    # instead of mocking a config object), and #1802 dropped the webhook socket
+    # patch in favour of a real local origin. Measured actual is 1; the ratchet
+    # only shrinks, so it is pinned at the lower of the two sides' reality.
+    "tests/unit/test_delivery_service_behavioral.py": 1,
     "tests/unit/test_performance_index_behavioral.py": 33,
     "tests/unit/test_sync_creatives_behavioral.py": 28,
     "tests/unit/test_update_media_buy_behavioral.py": 113,

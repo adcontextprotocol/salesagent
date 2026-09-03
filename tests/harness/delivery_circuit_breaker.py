@@ -1,8 +1,25 @@
 """CircuitBreakerEnv — integration test environment for WebhookDeliveryService.
 
-Patches: the outbound webhook SOCKET, time.sleep, random.uniform (external/timing
-concerns).
-Real: get_db_session for PushNotificationConfig queries (real DB).
+Patches: the SEAM's time.sleep and random.uniform — timing and randomness only.
+Delivery retries are the seam's since GH #1589, so the schedule is
+observed where it is now decided; patching this module's names would silently
+observe nothing.
+Real: a local HTTP origin that actually serves the delivery attempts, and
+      get_db_session for PushNotificationConfig queries (real DB).
+
+Egress policy is NOT mocked here. It used to be — a ``ssrf`` patch pointed at a
+send-side validator production had already stopped calling, so the control
+intercepted nothing and the Given that used it asserted nothing (gh-#1589). The
+gate now lives on the seam and is driven by naming a destination it genuinely
+refuses; the loopback origin these scenarios need is admitted because
+``LocalOriginMixin`` opens both egress hatches for the env's lifetime.
+
+The outbound transport is NOT patched — see ``LocalOriginMixin``. That also
+retires this env's ``install_webhook_wire`` socket stub: a stubbed socket makes
+``delivery_attempts`` / ``last_delivery`` read zero traffic, and the RFC 9421
+signing assertions verify the signature over ``last_delivery.body`` — the bytes
+that really went out. Webhook endpoints must therefore be configured with
+``env.webhook_url``, which is the origin that is really listening.
 
 Requires: integration_db fixture (creates test PostgreSQL DB).
 
@@ -13,23 +30,21 @@ Usage::
         with CircuitBreakerEnv() as env:
             tenant = TenantFactory(tenant_id="t1")
             principal = PrincipalFactory(tenant=tenant)
-            PushNotificationConfigFactory(tenant=tenant, principal=principal)
+            PushNotificationConfigFactory(tenant=tenant, principal=principal, url=env.webhook_url)
 
             env.set_http_response(200)
             service = env.get_service()
             result = service.send_delivery_webhook(...)
+            assert env.delivery_attempts == 1
 
 Available mocks via env.mock:
-    "post"      -- the outbound webhook socket; called (url, headers=, content=)
     "sleep"     -- time.sleep mock
     "random"    -- random.uniform mock
-    "ssrf"      -- send-time outbound SSRF gate (allows fixture hosts by default)
 """
 
 from __future__ import annotations
 
 import logging
-from contextlib import ExitStack
 from typing import Any
 
 from sqlalchemy import select
@@ -37,76 +52,94 @@ from sqlalchemy import select
 from src.core.database.models import PushNotificationConfig
 from src.services.webhook_delivery_service import WebhookDeliveryService
 from tests.harness._base import IntegrationEnv
-from tests.harness._mixins import SSRF_EXTERNAL_PATCH, CircuitBreakerMixin
+from tests.harness._mixins import CircuitBreakerMixin, WebhookOutcomeRowsMixin
 from tests.helpers.log_capture import LogCaptureHandler
 
 
-class CircuitBreakerEnv(CircuitBreakerMixin, IntegrationEnv):
+class CircuitBreakerEnv(WebhookOutcomeRowsMixin, CircuitBreakerMixin, IntegrationEnv):
     """Integration test environment for WebhookDeliveryService and CircuitBreaker.
 
-    Only mocks external HTTP client, timing, and randomness.
-    DB queries for PushNotificationConfig run against real database.
+    Only mocks timing and randomness. Delivery goes over real HTTP to a real
+    local origin; DB queries for PushNotificationConfig run against real database.
 
-    Fluent API (from CircuitBreakerMixin):
+    Fluent API (from CircuitBreakerMixin / LocalOriginMixin):
+        webhook_url                      -- the running origin's URL
+        endpoint_key(tenant_id)          -- production's per-endpoint breaker key
         get_service()                    -- return a WebhookDeliveryService instance
         get_breaker(**kwargs)            -- return a fresh CircuitBreaker instance
-        set_http_response(status_code)   -- answer every outbound webhook with status_code
+        set_http_response(status_code)   -- answer every attempt with one status
         call_send(...)                   -- call service.send_delivery_webhook
         make_webhook_config(...)         -- create a PushNotificationConfig in DB
         set_db_webhooks(configs)         -- replace webhook configs in DB
+        delivery_attempts / last_delivery -- what the endpoint actually received
     """
 
     MODULE = "src.services.webhook_delivery_service"
 
     EXTERNAL_PATCHES = {
-        "sleep": "src.services.webhook_delivery_service.time.sleep",
-        "random": "src.services.webhook_delivery_service.random.uniform",
-        **SSRF_EXTERNAL_PATCH,
+        "sleep": "src.core.security.outbound_http.time.sleep",
+        "random": "src.core.security.egress.attempts.random.uniform",
     }
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._service: WebhookDeliveryService | None = None
         self._log_handler: LogCaptureHandler | None = None
-        self._wire: ExitStack | None = None
         self.captured_logs: list[str] = []
 
-    def __enter__(self) -> CircuitBreakerEnv:
-        result = super().__enter__()
-        # Attach log capture to the webhook delivery service logger
+    def _enter_post(self) -> None:
+        """Attach log capture once the env is otherwise live.
+
+        Post, not pre: nothing in the base's setup logs to this logger, and the
+        handler is a resource — registering its removal with ``_guard`` is what
+        stops a failed enter from leaving a dead handler attached to a
+        process-global logger for every later test.
+
+        The handler itself is :class:`tests.helpers.log_capture.LogCaptureHandler`
+        rather than a private copy of it: the two were byte-identical, and a
+        second copy is the thing the DRY invariant forbids.
+        """
+        super()._enter_post()
         self._log_handler = LogCaptureHandler()
         webhook_logger = logging.getLogger("src.services.webhook_delivery_service")
         webhook_logger.addHandler(self._log_handler)
         self.captured_logs = self._log_handler.records
-        return result  # type: ignore[return-value]
+        self._guard("log_capture", self._remove_log_handler)
 
-    def __exit__(self, *exc: object) -> bool:
-        # Remove log capture handler
+    def _remove_log_handler(self) -> None:
         if self._log_handler is not None:
-            webhook_logger = logging.getLogger("src.services.webhook_delivery_service")
-            webhook_logger.removeHandler(self._log_handler)
+            logging.getLogger("src.services.webhook_delivery_service").removeHandler(self._log_handler)
             self._log_handler = None
-        self.close_webhook_wire()
-        return super().__exit__(*exc)
 
     def _configure_mocks(self) -> None:
         # random.uniform: return 0.0 for deterministic tests
         self.mock["random"].return_value = 0.0
 
-        self._configure_ssrf_default()
-
-        # Installs mock["post"] (the outbound socket) answering 200 by default.
-        self.install_webhook_wire()
+        # The origin answers 200 OK unless a test programs otherwise.
+        self.set_http_response(200)
 
     def make_webhook_config(
         self,
-        url: str = "https://example.com/webhook",
+        url: str | None = None,
         auth_type: str | None = None,
         auth_token: str | None = None,
-        secret: str | None = None,
     ) -> PushNotificationConfig:
-        """Create a PushNotificationConfig via factory and return the ORM instance."""
+        """Create a PushNotificationConfig via factory and return the ORM instance.
+
+        ``url`` defaults to the running origin, so the configured endpoint is one
+        that really answers.
+
+        There is no ``secret=`` parameter (GH #1894). It wrote
+        ``webhook_secret``, a column with zero writers in ``src/``, so every test
+        that used it configured a row no buyer can create -- and graded a signing
+        branch production has now abandoned. An HMAC row is
+        ``auth_type="HMAC-SHA256", auth_token=<secret>``, which is what
+        ``media_buy_create`` and the A2A push-config handler actually persist, and
+        what this branch's signing tests already pass.
+        """
         from tests.factories import PushNotificationConfigFactory
+
+        url = url if url is not None else self.webhook_url
 
         # Reuse existing tenant/principal from setup_default_data
         session = self._session
@@ -117,7 +150,6 @@ class CircuitBreakerEnv(CircuitBreakerMixin, IntegrationEnv):
             select(Principal).filter_by(tenant_id=self._tenant_id, principal_id=self._principal_id)
         ).first()
 
-        auth_type, auth_token = self.webhook_auth_fields(auth_type, auth_token, secret)
         return PushNotificationConfigFactory(
             tenant=tenant,
             principal=principal,

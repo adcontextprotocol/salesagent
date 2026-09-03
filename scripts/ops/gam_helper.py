@@ -63,11 +63,9 @@ def get_ad_manager_client_for_tenant(tenant_id: str) -> ad_manager.AdManagerClie
         try:
             from src.core.config import get_gam_oauth_config
             from src.core.logging_config import oauth_structured_logger
-            from src.core.oauth_retry import create_oauth_client_with_retry
 
             gam_config = get_gam_oauth_config()
             client_id = gam_config.client_id
-            client_secret = gam_config.client_secret
 
             # Log configuration load
             oauth_structured_logger.log_gam_oauth_config_load(
@@ -79,10 +77,12 @@ def get_ad_manager_client_for_tenant(tenant_id: str) -> ad_manager.AdManagerClie
             raise ValueError(f"GAM OAuth configuration error: {str(e)}") from e
 
     try:
-        # Create GoogleAds OAuth2 client with retry logic
-        oauth2_client = create_oauth_client_with_retry(
-            client_id=client_id, client_secret=client_secret, refresh_token=gam_refresh_token
-        )
+        # Create the GoogleAds OAuth2 client the same way every other GAM call
+        # site does — via GAMAuthManager, which owns config load and client
+        # construction. Token problems surface at the first API call.
+        from src.adapters.gam.auth import GAMAuthManager
+
+        oauth2_client = GAMAuthManager({"refresh_token": gam_refresh_token}).get_credentials()
 
         # Log successful client creation
         oauth_structured_logger.log_gam_client_creation(success=True)

@@ -1,46 +1,64 @@
-"""Long-lived webhook-capture compose service (salesagent-mp53.9).
+"""Long-lived webhook-capture compose service (salesagent-amht.3 + salesagent-mp53.9).
 
-Ported from ``feat/secure-outbound-fetch`` @ ``b22ec6f9d`` (salesagent-amht.3),
-EXTENDED here to record the wire — headers and raw body bytes — not just the
-parsed payload. The upstream service stored ``store.append(key, parsed_json)``
-and dropped everything else; this branch's RFC 9421 work cannot use that, because
-``content-digest`` covers the body BYTES and ``Signature``/``Signature-Input``
-are the artifacts under test (see ``tests/e2e/test_webhook_signature_e2e.py``).
-Porting it verbatim would have silently gutted the signing e2e suite.
-
-Turns the old per-test, ephemeral-port, in-process receiver into a real network
-service: fixed name, fixed port, fronted by the shared ``tls-proxy`` at
-``webhooks.adcp-e2e.dev``. That is what a webhook receiver is in production —
-and it is what lets ``check_url_ssrf`` accept the destination on its own terms
-instead of the stack relaxing the gate to reach a plaintext private address.
+Turns ``tests/e2e/_webhook_capture.py``'s old per-test, ephemeral-port, in-process
+TLS receiver into a real network service: fixed name, fixed port, fronted by the
+shared ``tls-proxy`` (salesagent-amht.2). The SNI map routes BOTH
+``webhooks.adcp.test`` and ``webhooks.adcp-e2e.dev`` to this one upstream, and the
+generated leaf certificate covers both names — the two hostnames are two doors onto
+the same receiver, not two receivers. That is what a webhook receiver is in
+production, and it is what lets production's UNPATCHED ``check_url_ssrf`` accept the
+destination on its own terms instead of the stack relaxing the gate to reach a
+plaintext private address.
 
 Two traffic patterns, never conflated:
 
-* DELIVERY — ``adcp-server`` (or any sender) POSTs to ``/webhook/<key>``. This
-  is the path the shared TLS front terminates.
-* READBACK — the test process reads/drains a key's captures over
-  ``GET``/``DELETE /webhook/<key>``. Test control-plane, plain HTTP, never
-  routed through the TLS front.
+* DELIVERY — ``adcp-server`` (or any sender) POSTs to ``/webhook/<key>``. This is
+  the path the shared TLS front terminates.
+* READBACK / CONTROL — the test process reads, drains, or programs a key over
+  ``GET``/``DELETE /webhook/<key>`` and ``POST /control/<key>``, addressed by
+  ``WEBHOOK_CAPTURE_HOST``/``WEBHOOK_CAPTURE_PORT`` (the variables that replaced the
+  retired ``ADCP_WEBHOOK_HOST``). Test control-plane, plain HTTP, never routed
+  through the TLS front — sending it through the front would make a readback failure
+  look like a delivery failure.
+
+This service answers TWO independent needs that both require a REAL receiver, and
+neither may be dropped:
+
+* SIGNED-WIRE READBACK (mp53.9). Every delivery is recorded as the wire carried it —
+  path, headers verbatim, body BYTES — because RFC 9421's ``content-digest`` covers
+  the body bytes and ``Signature``/``Signature-Input`` are the artifacts under test
+  (``tests/e2e/test_webhook_signature_e2e.py``). A receiver that stored only
+  ``store.append(key, parsed_json)`` would silently gut the signing suite: a
+  re-serialized payload has a different digest, and every signature over it fails.
+* PROGRAMMABLE REFUSAL (amht.3 / pldmk.41). ``POST /control/<key>`` arms a per-key
+  rejection run, so a delivery can be made to FAIL against a real server. Nothing
+  else in the compose stack can do that — the capture service answers every delivery
+  200 — so without it the deployed server's circuit breaker and the egress refusal
+  path are never exercised against anything real.
 
 Storage is keyed by an opaque per-test token (never a single global list) — the
 isolation mechanism concurrent e2e modules under xdist depend on.
-``ThreadingHTTPServer`` serves each request on its own thread, so the store
-guards every read/write with an explicit ``threading.Lock`` rather than relying
-on GIL atomicity, and ``DELETE`` drains-and-returns in one atomic round trip
-(never read-then-clear as two calls) so a capture landing between the two can
-never be silently lost.
+``ThreadingHTTPServer`` serves each request on its own thread, so the store guards
+every read/write with an explicit ``threading.Lock`` rather than relying on GIL
+atomicity, and ``DELETE`` drains-and-returns in one atomic round trip (never
+read-then-clear as two calls) so a capture landing between the two can never be
+silently lost.
 
-``GET /health`` reports this instance's own ``COMPOSE_PROJECT_NAME`` so a
-readback client can assert it is talking to its own stack, not a cross-wired
-sibling on the same host port.
+``GET /health`` reports this instance's own ``COMPOSE_PROJECT_NAME`` so a readback
+client can assert it is talking to its own stack, not a cross-wired sibling on the
+same host port (a real risk once the readback port is published per-stack — see
+``docker-compose.e2e.ports.yml``).
 
-Runs on a bare ``python:3.12-slim`` image — no project dependencies, no build
-step. That constraint is why the shared JSON/HTTP scaffolding lives at
+Runs on a bare ``python:3.12-slim`` image — no project dependencies, no build step
+(``Dockerfile.test`` bakes a multi-minute playwright/chromium install this service
+has no use for). That constraint is why the shared JSON/HTTP scaffolding lives at
 ``tests/e2e/_stdlib_json_http`` rather than under ``tests.helpers.``: importing
-anything from that package runs its ``__init__``, which transitively imports
-``tests.factories`` (``factory-boy`` et al.) — dev-only dependencies a bare
-stdlib image does not have. Upstream confirmed this the hard way: the container
-exited on import before ever binding a socket. Keep this module stdlib-only.
+anything from that package runs its ``__init__``, which has transitively imported
+``tests.factories`` (``factory-boy`` et al.) — dev-only dependencies a bare stdlib
+image does not have. Upstream confirmed this the hard way: the container exited on
+import before ever binding a socket. ``tests/__init__.py`` and
+``tests/e2e/__init__.py`` are themselves stdlib-safe, which is what makes a sibling
+module importable where a helper is not. Keep this module stdlib-only.
 """
 
 from __future__ import annotations
@@ -58,6 +76,7 @@ from urllib.parse import parse_qs
 from tests.e2e._stdlib_json_http import JsonRequestHandler, compose_project_name, serve_forever_in_thread
 
 _WEBHOOK_PATH_RE = re.compile(r"^/webhook/(?P<key>[^/]+)/?$")
+_CONTROL_PATH_RE = re.compile(r"^/control/(?P<key>[^/]+)/?$")
 
 #: The query parameter that puts one delivery into ECHO mode (salesagent-mp53.4).
 _ECHO_PARAM = "echo"
@@ -94,29 +113,80 @@ class _CaptureStore:
     arrived and ``received`` is only the subset that was valid JSON. A caller
     verifying a signature reads the raw side; a caller asserting on fields reads
     the parsed side.
+
+    Each key also carries a REJECTION PROGRAMME (salesagent-pldmk.41): how many of
+    the next deliveries to that key answer a non-200 status. Nothing else in the
+    compose stack can make the deployed server's delivery path fail, so without
+    this the server's circuit breaker never records a real failure.
+
+    Programmes live in their own dict, deliberately: ``DELETE`` drains a key's
+    captures as a READBACK of what arrived, and must not double as a reset of how
+    the endpoint answers. A scenario that opens the breaker, drains, then keeps
+    delivering depends on the unspent programme surviving the drain.
     """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._parsed: dict[str, list[dict]] = {}
         self._raw: dict[str, list[dict]] = {}
+        self._programmes: dict[str, tuple[int, int]] = {}
 
-    def append(self, key: str, *, wire: dict, payload: dict | None) -> None:
-        """Record one delivery: always its wire entry, and its payload if it parsed."""
+    def _snapshot(self, key: str) -> dict[str, list[dict]]:
+        """Both sides of *key*, copied. The caller MUST already hold ``self._lock``."""
+        return {
+            "received": list(self._parsed.get(key, [])),
+            "received_raw": list(self._raw.get(key, [])),
+        }
+
+    def program(self, key: str, status: int, count: int) -> None:
+        """Answer ``status`` for ``key``'s next ``count`` deliveries, then 200 again.
+
+        Replaces any programme still unspent on that key — a scenario that lets a
+        failing endpoint recover reprograms the same key rather than a fresh one,
+        and ``count=0`` is how a caller spells "healthy again".
+        """
+        with self._lock:
+            self._programmes[key] = (status, count)
+
+    def append(self, key: str, *, wire: dict, payload: dict | None) -> tuple[int, dict[str, list[dict]]]:
+        """Record one delivery; return the status to answer and a snapshot of both sides.
+
+        Always records the wire entry; records the payload only when the body
+        parsed. Recording and consuming the programme happen under ONE lock hold,
+        so two concurrent deliveries can never both spend the same remaining
+        rejection, and the snapshot handed back always already contains this
+        delivery.
+
+        A rejected delivery is still recorded. The scenarios count what the
+        endpoint received, and a rejection that vanished from the captures would
+        be indistinguishable from a delivery the breaker suppressed — which is
+        the one distinction those scenarios exist to make.
+
+        A body that did not parse (``payload is None``) does NOT spend the
+        programme: the handler already answers it 400, and letting a malformed
+        delivery burn a programmed rejection would silently shorten a
+        circuit-breaker scenario's run.
+        """
         with self._lock:
             self._raw.setdefault(key, []).append(wire)
+            status = 200
             if payload is not None:
                 self._parsed.setdefault(key, []).append(payload)
+                programmed, remaining = self._programmes.get(key, (200, 0))
+                if remaining > 0:
+                    self._programmes[key] = (programmed, remaining - 1)
+                    status = programmed
+            return status, self._snapshot(key)
 
     def get(self, key: str) -> dict[str, list[dict]]:
         with self._lock:
-            return {
-                "received": list(self._parsed.get(key, [])),
-                "received_raw": list(self._raw.get(key, [])),
-            }
+            return self._snapshot(key)
 
     def drain(self, key: str) -> dict[str, list[dict]]:
-        """Atomically read-and-clear both sides of ``key`` in one round trip."""
+        """Atomically read-and-clear both capture sides of ``key`` in one round trip.
+
+        Leaves the rejection programme alone — see the class docstring.
+        """
         with self._lock:
             return {
                 "received": self._parsed.pop(key, []),
@@ -125,7 +195,11 @@ class _CaptureStore:
 
 
 class _CaptureRequestHandler(JsonRequestHandler):
-    """Route ``/health`` and ``/webhook/<key>`` against ``self.server``'s store."""
+    """Route ``/health``, ``/control/<key>`` and ``/webhook/<key>`` against ``self.server``'s store."""
+
+    @property
+    def _store(self) -> _CaptureStore:
+        return self.server.store  # type: ignore[attr-defined]
 
     def _wire_entry(self, raw: bytes) -> dict:
         """The exact request as it arrived: path, headers verbatim, body base64.
@@ -141,29 +215,61 @@ class _CaptureRequestHandler(JsonRequestHandler):
             "body_b64": base64.b64encode(raw).decode("ascii"),
         }
 
+    def _read_json_body(self) -> dict:
+        """The request body parsed as JSON. Raises when the body is not a JSON document."""
+        raw = self._read_raw_body()
+        return json.loads(raw) if raw else {}
+
     def _handle_health(self) -> None:
         self._write_json(200, {"compose_project_name": self.server.compose_project_name})  # type: ignore[attr-defined]
 
-    def _handle_webhook(self, method: str) -> None:
-        # Split the query FIRST: the path regex is anchored, so a delivery in
-        # echo mode (`/webhook/<key>?echo=challenge`) would otherwise 404 as if
-        # the key were malformed.
+    def _route(self, method: str) -> None:
+        """Split the query off ONCE, then dispatch on the bare path.
+
+        The query is split FIRST because both path patterns are anchored: a
+        delivery in echo mode (``/webhook/<key>?echo=challenge``) would otherwise
+        404 as if the key were malformed.
+
+        ``/control/<key>`` is matched BEFORE the webhook fallthrough. Every POST
+        used to route to the capture handler, so an unmatched control POST landed
+        in the store as a delivery and corrupted the very count the
+        circuit-breaker Then steps read.
+        """
         path, _, query = self.path.partition("?")
+
+        if method == "POST":
+            control = _CONTROL_PATH_RE.match(path)
+            if control:
+                self._handle_control(control.group("key"))
+                return
+
         match = _WEBHOOK_PATH_RE.match(path)
         if not match:
             self._write_json(404, {"error": f"no key in path {self.path!r}"})
             return
-        key = match.group("key")
-        store: _CaptureStore = self.server.store  # type: ignore[attr-defined]
+        self._handle_webhook(method, match.group("key"), query)
 
+    def _handle_control(self, key: str) -> None:
+        """Program ``key``'s rejection run: ``{"status": int, "count": int}``."""
+        try:
+            body = self._read_json_body()
+            status = int(body["status"])
+            count = int(body["count"])
+        except (KeyError, TypeError, ValueError):
+            self._write_json(400, {"error": 'expected {"status": <int>, "count": <int>}'})
+            return
+        self._store.program(key, status, count)
+        self._write_json(200, {"programmed": {"status": status, "count": count}})
+
+    def _handle_webhook(self, method: str, key: str, query: str) -> None:
         if method == "POST":
-            self._handle_delivery(key, store, echo_field=parse_qs(query).get(_ECHO_PARAM, [None])[0])
+            self._handle_delivery(key, echo_field=parse_qs(query).get(_ECHO_PARAM, [None])[0])
         elif method == "GET":
-            self._write_json(200, store.get(key))
+            self._write_json(200, self._store.get(key))
         elif method == "DELETE":
-            self._write_json(200, store.drain(key))
+            self._write_json(200, self._store.drain(key))
 
-    def _handle_delivery(self, key: str, store: _CaptureStore, *, echo_field: str | None = None) -> None:
+    def _handle_delivery(self, key: str, *, echo_field: str | None = None) -> None:
         """Capture the wire unconditionally; answer 400 if the body was not JSON.
 
         The capture happens BEFORE the parse decision so an unparseable delivery
@@ -172,6 +278,10 @@ class _CaptureRequestHandler(JsonRequestHandler):
         quiet 200 to a body we could not read would let a sender's corruption
         pass as a successful delivery, which is the failure this service exists
         to make visible.
+
+        A parseable delivery is answered with whatever status the key's rejection
+        programme still owes (200 when nothing is programmed), which is how a real
+        server dialling a real receiver can be made to see a real refusal.
 
         In ECHO mode (salesagent-mp53.4) the answer carries the challenge value
         read back OUT OF THE POSTED BODY — never a value the receiver was
@@ -193,26 +303,26 @@ class _CaptureRequestHandler(JsonRequestHandler):
         try:
             payload = json.loads(raw) if raw else {}
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            store.append(key, wire=wire, payload=None)
-            self._write_json(400, {"error": f"body is not valid JSON: {exc}", **store.get(key)})
+            _, snapshot = self._store.append(key, wire=wire, payload=None)
+            self._write_json(400, {"error": f"body is not valid JSON: {exc}", **snapshot})
             return
-        store.append(key, wire=wire, payload=payload)
+        status, snapshot = self._store.append(key, wire=wire, payload=payload)
         if echo_field is not None:
-            self._write_json(200, {echo_field: payload.get(_CHALLENGE_FIELD)})
+            self._write_json(status, {echo_field: payload.get(_CHALLENGE_FIELD)})
             return
-        self._write_json(200, store.get(key))
+        self._write_json(status, snapshot)
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler name
         if self.path == "/health":
             self._handle_health()
         else:
-            self._handle_webhook("GET")
+            self._route("GET")
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler name
-        self._handle_webhook("POST")
+        self._route("POST")
 
     def do_DELETE(self) -> None:  # noqa: N802 - stdlib handler name
-        self._handle_webhook("DELETE")
+        self._route("DELETE")
 
 
 def decode_body(entry: dict) -> bytes:
@@ -242,8 +352,17 @@ def header_value(entry: dict, name: str) -> str | None:
 
 
 @contextlib.contextmanager
-def run_capture_service(*, host: str = "0.0.0.0", port: int = 8080) -> Iterator[str]:
+def run_capture_service(*, host: str = "0.0.0.0", port: int = 8080) -> Iterator[str]:  # noqa: S104
     """Run the webhook-capture service, yielding its base URL (``http://host:port``).
+
+    The ``0.0.0.0`` default is the CONTAINER's network namespace, not the host's:
+    sibling compose services (``tls-proxy`` forwarding a terminated delivery, and
+    any in-network readback client) reach this receiver by its network alias, so a
+    loopback-only bind inside the container would be unreachable to every one of
+    them. Nothing here publishes a host port — the only host-visible exposure is
+    ``docker-compose.e2e.ports.yml``'s
+    ``127.0.0.1:${WEBHOOK_CAPTURE_PORT:-8090}:8080``, which is loopback-scoped.
+    In-process callers (the contract test) pass ``host="127.0.0.1"`` explicitly.
 
     Reads ``COMPOSE_PROJECT_NAME`` once at start so ``GET /health`` can report
     which compose stack this instance belongs to.
@@ -264,7 +383,7 @@ def run_capture_service(*, host: str = "0.0.0.0", port: int = 8080) -> Iterator[
 def main() -> None:
     """Entry point for ``python -m tests.e2e.webhook_capture_service`` inside the compose service."""
     port = int(os.environ.get("PORT", "8080"))
-    with run_capture_service(host="0.0.0.0", port=port):
+    with run_capture_service(host="0.0.0.0", port=port):  # noqa: S104 - container namespace; see run_capture_service
         threading.Event().wait()
 
 

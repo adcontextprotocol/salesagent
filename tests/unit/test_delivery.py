@@ -1811,7 +1811,7 @@ class TestDeliveryWebhookHappyPath:
         assert "next_expected_at" in payload
         assert payload["notification_type"] == "scheduled"
 
-    def test_hmac_sha256_signature_headers(self, mocker):
+    def test_hmac_sha256_signature_headers(self):
         """UC-004-WH-07: webhook payload signed with HMAC-SHA256.
 
         Spec: https://github.com/adcontextprotocol/adcp/blob/8f26baf3549c00d2638341fed1d80abacb5d894a/dist/schemas/3.0.0-beta.3/core/reporting-webhook.json
@@ -1820,60 +1820,48 @@ class TestDeliveryWebhookHappyPath:
         Graded on the WIRE rather than on a private helper (#1291 C1 deleted
         ``_generate_hmac_signature``; the receiver's registration now selects the
         mode at one boundary). The assertion is strictly stronger than the
-        determinism check it replaces: the signature must VERIFY, over the bytes the
-        receiver actually got, with the secret the buyer registered — which is what
-        a receiver does and what the old helper-level test could not observe
+        determinism check it replaced: the signature must VERIFY, over the bytes
+        the receiver actually got, with the secret the buyer registered — which is
+        what a receiver does and what the old helper-level test could not observe
         (#1441: a signature over a re-serialization is deterministic too).
+
+        The wire is a REAL local origin (``CircuitBreakerEnv``), not a stubbed
+        socket. #1802 moved delivery onto the SSRF-guarded egress seam, which
+        resolves and screens the destination itself before anything is sent; a
+        capture that only replaced the HTTP client left that seam live, so the
+        delivery to ``buyer.example.com`` was refused pre-flight and the test
+        reported "went out UNSIGNED" for a request that was never made. Running
+        against an origin the real policy admits keeps the seam graded and makes
+        the signature assertion an observation of bytes that crossed a socket.
 
         Covers: UC-004-ALT-WEBHOOK-PUSH-REPORTING-07
         """
-        import hashlib
-        import hmac
-
-        from tests.helpers.webhook_wire import capture_outbound_webhooks
+        from tests.harness.delivery_circuit_breaker_unit import CircuitBreakerEnv
+        from tests.helpers import assert_signature_verifies_over_wire_body
 
         secret = "a" * 44  # clears the legacy 32-char floor
         start_time = datetime.now(UTC)
 
-        session = MagicMock()
-        scalars = MagicMock()
-        config = MagicMock()
-        config.url = "https://buyer.example.com/webhook"
-        config.authentication_type = "HMAC-SHA256"
-        config.authentication_token = secret
-        config.validation_token = None
-        scalars.all.return_value = [config]
-        scalars.first.return_value = None  # no tenant signing key -> legacy arm only
-        session.scalars.return_value = scalars
-        context = MagicMock()
-        context.__enter__.return_value = session
-        context.__exit__.return_value = None
-        mocker.patch("src.core.database.database_session.get_db_session", return_value=context)
+        with CircuitBreakerEnv(tenant_id="tenant1", principal_id="principal1") as env:
+            env.set_http_response(200)
+            # ``secret=`` folds onto the spec's ONE selector (authentication_type /
+            # authentication_token), so this IS a receiver registered as HMAC-SHA256.
+            env.set_db_webhooks([env.make_webhook_config(secret=secret)])
 
-        with capture_outbound_webhooks() as captured:
-            WebhookDeliveryService().send_delivery_webhook(
+            delivered = env.call_send(
                 media_buy_id="mb_wh07",
-                tenant_id="tenant1",
-                principal_id="principal1",
                 reporting_period_start=start_time,
                 reporting_period_end=start_time,
                 impressions=1000,
                 spend=100.0,
             )
 
-        assert len(captured) == 1, "a receiver registered as HMAC-SHA256 was not delivered to"
-        request = captured[0]
-
-        signature = request.headers.get("x-adcp-signature")
-        timestamp = request.headers.get("x-adcp-timestamp")
-        assert signature, f"delivery went out UNSIGNED; headers were {sorted(request.headers.keys())}"
-        assert timestamp, "signature present but nothing binds it against replay"
-
-        message = f"{timestamp}.".encode() + request.content
-        expected = "sha256=" + hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
-        assert signature == expected, (
-            f"X-AdCP-Signature does not verify over the bytes POSTed. body={request.content!r}"
-        )
+            assert delivered is True, "a receiver registered as HMAC-SHA256 was not delivered to"
+            assert env.delivery_attempts == 1, (
+                f"expected exactly one delivery to grade, saw {env.delivery_attempts} — "
+                f"a signature claim about zero deliveries is vacuous"
+            )
+            assert_signature_verifies_over_wire_body(env.last_delivery, secret)
 
     def test_webhook_excludes_aggregated_totals(self):
         """UC-004-WH-09: webhook does NOT include aggregated_totals.
@@ -2081,28 +2069,32 @@ class TestDeliveryWebhookRetry:
         with 1 attempt.
         Covers: UC-004-EXT-G-06
         """
+
         from src.core.webhook_delivery import WebhookDelivery as WHDelivery
         from src.core.webhook_delivery import deliver_webhook_with_retry
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
         for status_code in [401, 403]:
-            delivery = WHDelivery(
-                webhook_url="https://example.com/webhook",
-                payload={"test": "data"},
-                headers={"Content-Type": "application/json"},
-                max_retries=3,
-                timeout=10,
-            )
+            # Repointed onto the real local origin (salesagent-4fya.11). This used to
+            # patch requests.post; delivery is on the egress seam now, so that patch
+            # would have gone inert and the test would have issued a genuine request
+            # to example.com — which is exactly what it did until this was fixed.
+            # deliver_webhook_with_retry is called directly so the graded production
+            # entry point is visible in the test body rather than behind a harness alias.
+            with WebhookEnv() as env:
+                env.set_http_status(status_code, "Unauthorized" if status_code == 401 else "Forbidden")
 
-            with (
-                patch("src.core.webhook_delivery.time.sleep"),
-                patch("requests.post") as mock_post,
-            ):
-                mock_response = MagicMock()
-                mock_response.status_code = status_code
-                mock_response.text = "Unauthorized" if status_code == 401 else "Forbidden"
-                mock_post.return_value = mock_response
+                success, result = deliver_webhook_with_retry(
+                    WHDelivery(
+                        webhook_url=env.webhook_url,
+                        payload={"test": "data"},
+                        headers={"Content-Type": "application/json"},
+                        max_retries=3,
+                        timeout=10,
+                    )
+                )
 
-                success, result = deliver_webhook_with_retry(delivery)
+                assert env.delivery_attempts == 1
 
             assert success is False, f"Expected failure for {status_code}"
             assert result["status"] == "failed"

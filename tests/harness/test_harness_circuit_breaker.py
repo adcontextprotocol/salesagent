@@ -33,8 +33,10 @@ class TestCircuitBreakerEnvContract:
             assert breaker.state == CircuitState.OPEN
             assert breaker.can_attempt() is False
 
-    def test_http_mock_affects_delivery(self):
-        """set_http_response configures the httpx mock for service calls."""
+    def test_configured_endpoint_receives_the_delivery(self):
+        """The service delivers to the real local origin the config points at."""
+        from datetime import UTC, datetime
+
         with CircuitBreakerEnv() as env:
             env.set_http_response(200)
             config = env.make_webhook_config()
@@ -43,26 +45,51 @@ class TestCircuitBreakerEnvContract:
             service = env.get_service()
             assert isinstance(service, WebhookDeliveryService)
 
+            delivered = service.send_delivery_webhook(
+                media_buy_id="mb_001",
+                tenant_id=env._tenant_id,
+                principal_id=env._principal_id,
+                reporting_period_start=datetime(2025, 1, 1, tzinfo=UTC),
+                reporting_period_end=datetime(2025, 1, 31, tzinfo=UTC),
+                impressions=1000,
+                spend=50.0,
+            )
+
+            assert delivered is True
+            assert env.delivery_attempts == 1
+            assert env.last_delivery.json()["media_buy_deliveries"][0]["media_buy_id"] == "mb_001"
+
     def test_mock_access(self):
-        """env.mock[name] provides access to all patch targets."""
+        """env.mock[name] provides access to all patch targets — timing only, no transport.
+
+        The set is pinned rather than sampled: a patch target added here is a
+        thing production no longer decides for itself, and that deserves to be
+        noticed. ``ssrf`` was in this set until gh-#1589 — pointed at a send-side
+        validator production had already stopped calling, so it intercepted
+        nothing while making the harness look like it could drive a refusal.
+        Egress policy is now graded by naming a destination the real gate
+        refuses, not by programming a verdict.
+        """
         with CircuitBreakerEnv() as env:
-            # "post" IS the outbound webhook socket after #1291 C1 — there is no
-            # module-level httpx.Client left to patch.
-            assert "post" in env.mock
-            assert "sleep" in env.mock
-            assert "random" in env.mock
-            assert "db" in env.mock
+            # No "post" either: #1291 C1 made the outbound socket the only webhook
+            # transport, and #1802 then replaced that socket with a REAL local
+            # origin. Delivery is read off the origin, never off a patch target.
+            assert set(env.mock) == {"sleep", "random", "db", "logger"}
 
     def test_make_webhook_config(self):
-        """make_webhook_config creates a mock with expected attributes."""
+        """make_webhook_config creates a mock carrying only columns production reads.
+
+        The spec-cased scheme is deliberate: ``AuthenticationScheme =
+        ["Bearer", "HMAC-SHA256"]`` @ pinned AdCP 3.1.1 is what every writer in
+        ``src/`` persists, so it is the row this mock should stand in for.
+        """
         with CircuitBreakerEnv() as env:
             config = env.make_webhook_config(
-                url="https://test.com/hook",
-                auth_type="bearer",
+                auth_type="Bearer",
                 auth_token="tok123",
             )
-            assert config.url == "https://test.com/hook"
-            assert config.authentication_type == "bearer"
+            assert config.url == env.webhook_url
+            assert config.authentication_type == "Bearer"
             assert config.authentication_token == "tok123"
 
     def test_make_webhook_config_puts_the_hmac_secret_on_the_spec_selector(self):
@@ -70,11 +97,18 @@ class TestCircuitBreakerEnvContract:
 
         security.mdx @ v3.1.1 :1424 defines ONE selector for how a webhook is
         authenticated; #1291 C1 collapsed the delivery service's second one
-        (``webhook_secret``, which production never wrote) onto it.
+        (``webhook_secret``, which production never wrote) onto it. The fold lives
+        in :meth:`CircuitBreakerMixin.webhook_auth_fields`, so this also pins the
+        ``secret=`` convenience the mixin still accepts.
+
+        The explicit ``url=`` is the other half: the default is the running local
+        origin (see the test above), so an override is the only thing that proves
+        a caller can still address an endpoint the origin does not serve.
         """
         with CircuitBreakerEnv() as env:
             config = env.make_webhook_config(url="https://test.com/hook", secret="s3cret")
 
+            assert config.url == "https://test.com/hook"
             assert config.authentication_type == "HMAC-SHA256"
             assert config.authentication_token == "s3cret"
 

@@ -265,7 +265,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       # Four of the five groups need no service beyond the job's own Postgres,
-      # so they stay on the host path exactly as before.
+      # so they stay on the host path exactly as before. None of them talks to
+      # the creative agent, so none of them needs the egress seam's private-
+      # address hatch (#1802): CREATIVE_AGENT_URL /
+      # ADCP_OUTBOUND_ALLOW_PRIVATE / SSL_CERT_FILE were all gated on
+      # `matrix.group == 'creative'` and evaluate to '' here. See the creative
+      # group's own step below for where that hatch now lives.
       - uses: ./.github/actions/_pytest
         if: matrix.group != 'creative'
         with:
@@ -283,6 +288,14 @@ jobs:
       # should refuse — 17 failures, none of them a policy defect
       # (salesagent-2xnqw). Nothing is exposed on the runner; run_all_tests.sh
       # publishes no host ports.
+      #
+      # #1802 routed all outbound HTTP through one SSRF-guarded seam and patched
+      # the (now-removed) host path with an inline ADCP_OUTBOUND_ALLOW_PRIVATE /
+      # SSL_CERT_FILE hatch. In-network needs no inline hatch: the seam's
+      # private-address exemption and the private CA are already set for the
+      # containers by docker-compose.e2e.yml (ADCP_OUTBOUND_ALLOW_PRIVATE) and
+      # by run_all_tests_host.sh. Keep it that way — an inline hatch here would
+      # widen the seam on the RUNNER, which is precisely what #1802 closed.
       #
       # This runs the WHOLE integration suite, not just the `creative` marker:
       # run_all_tests.sh's argument contract sends `ci <target> [args]` to the

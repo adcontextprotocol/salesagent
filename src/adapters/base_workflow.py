@@ -18,6 +18,7 @@ from src.core.config_loader import get_tenant_config
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
 from src.core.schemas import MediaPackage
+from src.services.slack_notifier import SlackNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -171,8 +172,13 @@ class BaseWorkflowManager:
             action_details: Details about the workflow step
         """
         try:
-            tenant_config = get_tenant_config(self.tenant_id)
-            slack_webhook_url = tenant_config.get("slack", {}).get("webhook_url")
+            # get_tenant_config takes a config KEY, not a tenant id. Passing
+            # self.tenant_id returned None, and the .get("slack", {}) that followed
+            # raised AttributeError into the broad handler below — so this
+            # notification never fired, for any tenant, including the four GAM
+            # workflow callers that inherit this method. The column is a per-field
+            # tenant column (models.py:68), read by key like every other caller.
+            slack_webhook_url = get_tenant_config("slack_webhook_url")
 
             if not slack_webhook_url:
                 self.log("[yellow]No Slack webhook configured - skipping notification[/yellow]")
@@ -181,43 +187,58 @@ class BaseWorkflowManager:
             # Get notification styling based on action type
             notification = self._get_notification_details(step_id, action_details)
 
-            # Build Slack message
-            slack_payload = {
-                "attachments": [
+            # The attachment is the message; the notifier is the sender. This used
+            # to assemble a payload and dial the raw egress seam itself, which meant
+            # no retry bookkeeping and no delivery record — while slack_notifier
+            # already owned both. The attachment shape is relocated VERBATIM: Slack
+            # renders legacy attachments differently from Block Kit, so converting
+            # would change what an operator sees, which is not a refactor's call.
+            # max_retries=1 preserves the previous single-attempt behaviour.
+            attachment = {
+                "color": notification["color"],
+                "title": notification["title"],
+                "text": notification["description"],
+                "fields": [
+                    {"title": "Step ID", "value": step_id, "short": True},
                     {
-                        "color": notification["color"],
-                        "title": notification["title"],
-                        "text": notification["description"],
-                        "fields": [
-                            {"title": "Step ID", "value": step_id, "short": True},
-                            {
-                                "title": "Platform",
-                                "value": action_details.get("platform", self.platform_name),
-                                "short": True,
-                            },
-                            {
-                                "title": "Automation Mode",
-                                "value": action_details.get("automation_mode", "unknown").replace("_", " ").title(),
-                                "short": True,
-                            },
-                            {
-                                "title": "Action Required",
-                                "value": action_details.get("instructions", ["Check admin dashboard"])[0],
-                                "short": False,
-                            },
-                        ],
-                        "footer": "AdCP Sales Agent",
-                        "ts": int(datetime.now(UTC).timestamp()),
-                    }
-                ]
+                        "title": "Platform",
+                        "value": action_details.get("platform", self.platform_name),
+                        "short": True,
+                    },
+                    {
+                        "title": "Automation Mode",
+                        "value": action_details.get("automation_mode", "unknown").replace("_", " ").title(),
+                        "short": True,
+                    },
+                    {
+                        "title": "Action Required",
+                        "value": action_details.get("instructions", ["Check admin dashboard"])[0],
+                        "short": False,
+                    },
+                ],
+                "footer": "AdCP Sales Agent",
+                "ts": int(datetime.now(UTC).timestamp()),
             }
 
-            # Gated at SEND time: this URL comes out of tenant config, so it was
-            # never judged by anything at the moment it is dialled. Shared sender
-            # so this path cannot drift onto a different policy from the others.
-            from src.core.webhook_validator import deliver_json_to_allowed_destination
+            # This adapter does not dial out itself. SlackNotifier.send_message hands
+            # the payload to webhook_delivery.deliver_webhook_with_retry, which applies
+            # the SEND-time gate (reject_unsafe_outbound_webhook_url) before handing the
+            # single call to the egress seam — the gate this call site used to apply
+            # inline via deliver_json_to_allowed_destination. That gate matters here
+            # because the URL comes out of tenant config and was never judged at dial
+            # time; routing through the notifier keeps it, and adds the retry
+            # bookkeeping and delivery record the inline dial never had.
+            # max_retries=1 preserves the previous single-attempt behaviour.
+            delivered = SlackNotifier(webhook_url=slack_webhook_url).send_message(
+                text=notification["title"],
+                attachments=[attachment],
+                max_retries=1,
+            )
 
-            if deliver_json_to_allowed_destination(slack_webhook_url, slack_payload, kind="WorkflowSlack", timeout=10):
+            # send_message reports delivery as a bool — a refused URL or an exhausted
+            # retry budget returns False without raising. Claiming success (and writing
+            # a success audit record) on that return would be a quiet failure.
+            if delivered:
                 self.log(f"Sent Slack notification for workflow step {step_id}")
                 if self.audit_logger:
                     self.audit_logger.log_success(f"Sent Slack notification for workflow step: {step_id}")

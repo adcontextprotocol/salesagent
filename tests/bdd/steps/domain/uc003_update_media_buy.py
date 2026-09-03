@@ -14,7 +14,7 @@ from typing import Any
 from pytest_bdd import given, parsers, then, when
 
 from tests.bdd.steps._harness_db import db_session
-from tests.bdd.steps._outcome_helpers import wire_dict
+from tests.bdd.steps._outcome_helpers import payload_or_none, require_payload, wire_dict
 from tests.bdd.steps.generic._auth import authenticate_env_as
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.bdd.steps.generic.given_media_buy import _resolve_date_token
@@ -825,7 +825,7 @@ def when_send_update_request(ctx: dict) -> None:
 
 def _promote_update_errors(ctx: dict) -> None:
     """Promote UpdateMediaBuyError responses to ctx['error'] for Then steps."""
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is None:
         return
     from src.core.schemas._base import UpdateMediaBuyError
@@ -833,7 +833,13 @@ def _promote_update_errors(ctx: dict) -> None:
     if isinstance(resp, UpdateMediaBuyError) and resp.errors:
         ctx["error"] = resp.errors[0]
         ctx["error_response"] = resp
-        del ctx["response"]
+        # This promotion makes the error payload INVISIBLE to success-path Thens —
+        # that was the point of the old `del ctx["response"]`, and retiring the key
+        # did not retire the requirement. Clear every source the payload accessors
+        # read, or require_payload/payload_or_none hand the error payload straight
+        # back and a success-path Then grades it as a success.
+        ctx.pop("result", None)
+        ctx.pop("self_dispatched_response", None)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -877,8 +883,7 @@ def then_start_end_time_unchanged(ctx: dict) -> None:
 @then("the response should contain media_buy_id")
 def then_response_has_media_buy_id(ctx: dict) -> None:
     """Assert response contains media_buy_id matching the existing media buy."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     actual = getattr(resp, "media_buy_id", None)
     assert actual is not None, f"Expected media_buy_id in response, got {actual!r}"
     mb = ctx.get("existing_media_buy")
@@ -892,8 +897,7 @@ def then_response_has_media_buy_id(ctx: dict) -> None:
 @then("the response should contain implementation_date that is null")
 def then_implementation_date_null(ctx: dict) -> None:
     """Assert response has a null implementation_date (pending approval)."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     assert resp.implementation_date is None, (
         f"Expected implementation_date to be None (pending approval), got {resp.implementation_date!r}"
     )
@@ -909,8 +913,7 @@ def then_implementation_date_not_null(ctx: dict) -> None:
     """
     from datetime import datetime
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response — no response in ctx"
+    resp = require_payload(ctx)
     # Guard: this step only makes sense on a success response, not an error
     assert "error" not in ctx, f"Response is an error ({ctx.get('error')}) — cannot check implementation_date on error"
     impl_date = resp.implementation_date
@@ -940,8 +943,7 @@ def then_affected_packages_include(ctx: dict, package_id: str) -> None:
     `package_id` is a Gherkin label — resolve it to the real package_id
     produced by the factory before comparing against the production response.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     affected = getattr(resp, "affected_packages", None) or []
     pkg_ids = [
         getattr(p, "package_id", None) or (p.get("package_id") if isinstance(p, dict) else None) for p in affected
@@ -959,8 +961,7 @@ def then_affected_packages_present(ctx: dict) -> None:
     package on the media buy being updated. Presence alone (len > 0) is not
     enough — the specific package_id from ctx["existing_package"] must appear.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response — no response in ctx"
+    resp = require_payload(ctx)
     assert "error" not in ctx, f"Update errored ({ctx.get('error')}) — cannot check affected_packages on error"
     affected = getattr(resp, "affected_packages", None)
     assert affected is not None, (
@@ -994,8 +995,7 @@ def then_affected_package_budget(ctx: dict, budget: int) -> None:
     MUST echo the requested budget. If production doesn't echo budget, that's
     a SPEC-PRODUCTION GAP (xfail the scenario).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response — no response in ctx"
+    resp = require_payload(ctx)
     # Guard: this step only makes sense on a success response
     assert "error" not in ctx, f"Response is an error ({ctx.get('error')}) — cannot check budget on error"
     affected = getattr(resp, "affected_packages", None) or []
@@ -1048,8 +1048,7 @@ def then_response_has_sandbox(ctx: dict) -> None:
     """
     from pydantic import BaseModel
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response — no response in ctx"
+    resp = require_payload(ctx)
     # Guard: this step only makes sense on a success response, not an error
     assert "error" not in ctx, f"Update errored ({ctx.get('error')}) — cannot check sandbox flag on an error response"
     # Guard: response must be a Pydantic model (not a raw dict/string) — the
@@ -1081,8 +1080,7 @@ def then_no_errors_field(ctx: dict) -> None:
     Step text says 'NOT contain' — the field should be absent (None),
     not just empty. An empty list ``[]`` still means the field exists.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     # "NOT contain" means the key must be absent, not just None.
     # Use exclude_none=True (AdCP default) so errors=None is excluded from the dict.
     if hasattr(resp, "model_dump"):
@@ -1201,7 +1199,7 @@ def then_response_not_contain_field(ctx: dict, field_name: str) -> None:
     contract violation. This is the Core Invariant / Design-Refinement Q5.
     """
     # Success-path response — assert against the buyer-facing serialized wire.
-    response = ctx.get("response")
+    response = payload_or_none(ctx)
     if response is not None:
         data = wire_dict(ctx)
         assert data.get(field_name) is None, (

@@ -199,7 +199,7 @@ async def _get_products_impl(
 
     # Enforce policy-based validation
     if brand_manifest_policy == "require_brand" and not offering:
-        raise AdCPAuthorizationError("Brand manifest required by tenant policy", recovery="correctable")
+        raise AdCPAuthorizationError("Brand manifest required by tenant policy")
     elif brand_manifest_policy == "require_auth" and not principal_id:
         # No credential presented at all -> AUTH_MISSING per v3.1.1
         # error-code.json.

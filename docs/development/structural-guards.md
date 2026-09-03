@@ -438,6 +438,43 @@ response attribute access, roundtrip tests. See `.pre-commit-coverage-map.yml`.
 5. Add FIXME comments at each violation site: `# FIXME(#<gh-issue>): description` (GitHub issue/PR number, never a beads id)
 6. Document the guard in this file
 
+## Symbol subjects and shape subjects
+
+A guard's subject is either a **symbol** — a function, class or constant that
+exists in `src/` or the pinned SDK — or a **shape**: a code pattern with no name
+to import, like "a bare `except` placed ahead of a specific one".
+
+The rule:
+
+> **If the subject is a symbol, BIND it — import or resolve it in the guard
+> module, so a rename fails here. If the subject is a shape, prose is correct;
+> there is nothing to import.**
+
+The sorting question is not "does the constant hold an identifier?" It is:
+
+> **If the subject were renamed, does this guard go SILENT or LOUD?**
+
+Bind the silent ones. A string-matching guard whose subject is renamed keeps
+passing over a codebase that no longer contains what it scans for — it reports
+clean because it finds nothing, which is indistinguishable from finding nothing
+wrong. That is the failure mode binding removes: an unresolvable import cannot
+be green.
+
+Two things worth knowing before writing one:
+
+- A **module-level** import buys a collection failure, but it aborts the whole
+  unit run and masks every other result. For a heavy module, use
+  `importlib.import_module` inside the test — a rename still reddens
+  `make quality`, as a failure rather than a collection error.
+- Prefer **containment over derivation**. Asserting the guard's vocabulary is a
+  subset of production's catches production losing a member. Deriving the
+  vocabulary FROM production makes the guard track whatever production says,
+  which is the opposite of a guard.
+
+This page does not list which guards are which kind. Such a list is prose about
+symbols, which is exactly the artifact that goes stale without anything noticing
+— the reason the rule above exists.
+
 ## Running Guards
 
 ```bash

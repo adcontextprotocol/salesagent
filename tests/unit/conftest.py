@@ -8,11 +8,22 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
+
+# Prefixes of a test-owned HTTP origin running in this process. A unit test that
+# stands one up (``tests.harness._mixins.LocalOriginMixin``) has to reach it for
+# real — a canned 200 from the blanket mock below would answer instead of the
+# server, and the test would then grade the mock rather than the delivery.
+_LOOPBACK_PREFIXES = ("http://127.0.0.1:", "http://localhost:", "http://[::1]:")
 
 
 @pytest.fixture(autouse=True)
 def mock_all_external_dependencies():
-    """Automatically mock all external dependencies for unit tests."""
+    """Automatically mock all external dependencies for unit tests.
+
+    "External" means *off this machine*. Requests to a loopback origin the test
+    itself started are passed through untouched.
+    """
     # Mock database connections - create a proper context manager mock
     mock_session = MagicMock()
     mock_session.__enter__ = MagicMock(return_value=mock_session)
@@ -28,15 +39,30 @@ def mock_all_external_dependencies():
     with patch("src.core.database.database_session.get_db_session") as mock_db:
         mock_db.return_value = mock_session
 
-        # NO blanket requests.post stub. It used to live here, returning a 200
-        # MagicMock that captured nothing — no URL, no headers, no bytes — so any
-        # test leaning on it graded against a stub that could not tell a signed
-        # POST from an unsigned one. Measured before removal: the whole unit suite
-        # passes without it (6618/6618, unchanged), i.e. nothing actually depended
-        # on it. Tests that need to control or observe an outbound POST say so at
-        # their own site — capture_outbound_webhooks (tests/helpers/webhook_wire)
-        # records the real wire bytes (salesagent-og9k.6).
-        yield
+        # Mock external services. This is an egress GUARD, not a test double: it
+        # exists so a unit test cannot dial off this machine (the one production
+        # requests.post left, webhook_validator.deliver_json_to_allowed_destination,
+        # sits behind the SSRF gate and so only ever aims at a public https URL).
+        #
+        # Never grade a test against the canned response below. It answers 200 and
+        # captures nothing worth asserting on — no URL, no headers, no bytes — so a
+        # test leaning on it cannot tell a signed POST from an unsigned one
+        # (#1291). A test that needs to control or observe an outbound POST says so
+        # at its own site: capture_outbound_webhooks (tests/helpers/webhook_wire)
+        # patches over this stub for the duration of its block and records the real
+        # wire bytes (salesagent-og9k.6).
+        real_post = requests.post
+
+        def _post(url, *args, **kwargs):
+            if str(url).startswith(_LOOPBACK_PREFIXES):
+                return real_post(url, *args, **kwargs)
+            canned = MagicMock()
+            canned.status_code = 200
+            canned.json.return_value = {}
+            return canned
+
+        with patch("requests.post", side_effect=_post) as mock_post:
+            yield mock_post
 
 
 @pytest.fixture

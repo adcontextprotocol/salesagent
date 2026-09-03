@@ -1,90 +1,116 @@
-"""One URL, one verdict: the send paths must not disagree about a destination.
+"""One URL, one verdict — now enforced by there being one POLICY, not two that agree.
 
-``src/core/webhook_delivery.py`` fired through ``validate_webhook_url`` while the
-three service senders (``protocol_webhook_service``, ``webhook_delivery_service``,
-``order_approval_service``) fired through ``reject_unsafe_outbound_webhook_url`` ->
-``validate_outbound_webhook_url``. Same act, two policies, chosen by which module
-the caller happens to be in.
+HISTORY, and why this file changed shape (GH #1802).
 
-Measured scope of the disagreement, so the severity is not overstated: the two
-gates return the SAME verdict for every input in production. They diverge on
-exactly one case — ``localhost`` while ``ADCP_TESTING`` is set, where the outbound
-gate allows a capture receiver and the strict gate refuses it. So this is a
-test-visible inconsistency, not a reachable production hole. It still matters:
-the suite grades two different policies depending on which sender a scenario
-happens to exercise, and a reader at a call site cannot tell which one applies.
+It used to characterize a real divergence: ``src/core/webhook_delivery.py`` fired
+through ``WebhookURLValidator.validate_webhook_url`` (the REGISTRATION gate) while the
+three service senders fired through ``reject_unsafe_outbound_webhook_url`` ->
+``validate_outbound_webhook_url`` (the SEND gate). Same act, two implementations,
+selected by which module the caller happened to sit in. The old docstring recorded that
+they returned the same verdict for every production input and diverged on exactly one
+case — ``localhost`` under ``ADCP_TESTING`` — and it deferred the real fix:
 
-What is NOT asserted, deliberately: that the two functions return the same
-verdict. They are legitimately different moments — ``validate_webhook_url`` is
-the REGISTRATION-time gate, ``validate_outbound_webhook_url`` the SEND-time one,
-and the send-time allowance for a capture receiver is why they differ at all.
-Demanding they collapse would be a different (and larger) change, and it belongs
-to the ADCP_TESTING ticket, not here. The defect is that a SEND path reached for
-the REGISTRATION gate.
+    "Demanding they collapse would be a different (and larger) change."
 
-So: one test characterizes the divergence (proving that picking the wrong one is
-a real behavioural difference, not a stylistic one), and one pins that no send
-path picks the wrong one.
+    "...it fails loudly if a future change silently collapses them, which would make
+     the guard vacuous and must be rethought."
+
+That larger change landed upstream. #1802 deleted BOTH functions along with the other
+copies of address policy and left a single owner, ``EgressPolicy``, with the two moments
+as two entry points on it:
+
+* ``EgressPolicy.check_registration`` — registration time, DNS-free, ``allow_loopback``
+  for the capture receiver under ``ADCP_TESTING``.
+* ``EgressPolicy.resolve_for_dial`` — dial time, resolves once and PINS the connection
+  to the address it validated.
+
+So the old assertion has no subject: there is no second gate to be interchangeable
+with. Per its own instruction this file is rethought rather than deleted, because the
+OBLIGATION — one URL, one verdict — outlived the mechanism. What can go wrong now is
+not "a sender reached for the wrong gate" but "someone grows a second policy again", so
+that is what is pinned here:
+
+1. The two moments agree on every destination, with the loopback allowance as the ONE
+   deliberate, named exception — so a future divergence reappears as a failure here.
+2. The superseded gates are really gone. Without that, re-adding them would recreate
+   the split while the test above kept passing, because it only ever asks EgressPolicy.
+
+Asserted on BEHAVIOUR, never on an import line: a source-substring check cannot tell an
+import from a call, which is how the first draft of this file died to mutation testing.
+The routing property (that each sender actually CALLS the shared entry point) is pinned
+by AST one file over, in ``tests/unit/test_architecture_counterparty_egress_gated.py``
+and ``tests/unit/test_stored_url_egress_gate.py``, and is deliberately not restated here.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from src.core.webhook_validator import WebhookURLValidator
+from src.core.security.egress.policy import EgressPolicy
 
-#: One representative per class the gate exists to judge, plus the case the two
-#: gates actually disagreed on.
+#: One representative per class the policy exists to judge, plus the case the two
+#: moments deliberately still differ on.
 DESTINATIONS = [
-    pytest.param("http://localhost:9999/webhook", id="localhost-the-divergent-case"),
-    pytest.param("http://127.0.0.1:9999/webhook", id="loopback-literal"),
-    pytest.param("http://169.254.169.254/latest/meta-data", id="cloud-metadata"),
-    pytest.param("http://host.docker.internal:9999/webhook", id="blocked-hostname"),
-    pytest.param("http://10.0.0.5/webhook", id="rfc1918-literal"),
-    pytest.param("http://[::1]/webhook", id="ipv6-loopback-literal"),
+    pytest.param("https://localhost:9999/webhook", id="localhost-the-divergent-case"),
+    pytest.param("https://127.0.0.1:9999/webhook", id="loopback-literal"),
+    pytest.param("https://169.254.169.254/latest/meta-data", id="cloud-metadata"),
+    pytest.param("https://host.docker.internal:9999/webhook", id="blocked-hostname"),
+    pytest.param("https://10.0.0.5/webhook", id="rfc1918-literal"),
+    pytest.param("https://[::1]/webhook", id="ipv6-loopback-literal"),
 ]
 
 
+def _registration_admits(url: str, *, allow_loopback: bool) -> bool:
+    """The registration moment's verdict as a bool. It RAISES rather than returning one."""
+    try:
+        EgressPolicy.check_registration(url, allow_loopback=allow_loopback)
+    except Exception:
+        return False
+    return True
+
+
+def _dial_admits(url: str) -> bool:
+    """The dial moment's verdict as a bool, DNS and all."""
+    try:
+        EgressPolicy.resolve_for_dial(url, field=None, allow_private=False)
+    except Exception:
+        return False
+    return True
+
+
 @pytest.mark.parametrize("url", DESTINATIONS)
-def test_the_registration_and_send_gates_are_not_interchangeable(url: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Characterize WHY the send path must use the send gate.
+def test_both_moments_come_from_the_one_policy(url: str) -> None:
+    """Registration and dial agree, except where the loopback allowance deliberately differs.
 
-    If the two gates always agreed, using the wrong one would be a naming nit.
-    They do not: with ``ADCP_TESTING`` set, the send-time gate admits a local
-    capture receiver that the registration gate refuses. This records that
-    difference so the guard below is understood as protecting behaviour rather
-    than tidiness — and it fails loudly if a future change silently collapses
-    them, which would make the guard vacuous.
+    This is the post-collapse form of the old divergence test. It fails if someone
+    reintroduces a second policy that disagrees with the first — the failure the original
+    file existed to prevent, expressed against the mechanism that now holds it.
     """
-    monkeypatch.setenv("ADCP_TESTING", "true")
-
-    registration, _ = WebhookURLValidator.validate_webhook_url(url)
-    send_time, _ = WebhookURLValidator.validate_outbound_webhook_url(url)
-
     is_local_capture_host = "localhost" in url or "127.0.0.1" in url
+
+    strict_registration = _registration_admits(url, allow_loopback=False)
+    dial = _dial_admits(url)
+
+    assert strict_registration == dial, (
+        f"the one policy must give one verdict for {url!r} at both moments; got "
+        f"registration={strict_registration} dial={dial}. A disagreement here means a "
+        "second address policy has grown back."
+    )
+
     if is_local_capture_host:
-        assert send_time and not registration, (
-            f"under ADCP_TESTING the send-time gate must admit the capture host {url!r} that the "
-            f"registration gate refuses; got send={send_time} registration={registration}. If this "
-            "changed deliberately, the guard below is now vacuous and must be rethought."
-        )
-    else:
-        assert registration == send_time, (
-            f"the gates must differ ONLY on the local capture host; they disagree about {url!r} "
-            f"(registration={registration}, send={send_time})"
+        assert _registration_admits(url, allow_loopback=True), (
+            f"the capture receiver {url!r} must still be admissible at registration under the "
+            "explicit loopback allowance — that allowance is the ONE sanctioned difference, and "
+            "losing it silently breaks every webhook-capture e2e scenario."
         )
 
 
-# NO wiring guard lives here, deliberately.
-#
-# The first draft asserted "reject_unsafe_outbound_webhook_url appears in each
-# sender's source". Mutation-testing killed it: reverting webhook_delivery to the
-# registration-time gate left the IMPORT line in place, so the substring check
-# stayed green while the behaviour regressed. A source-substring test cannot tell
-# an import from a call.
-#
-# The property is already pinned properly, by AST, one file over:
-# tests/unit/test_architecture_counterparty_egress_gated.py asserts
-# deliver_webhook_with_retry actually CALLS the shared entry point — and that
-# guard DOES redden under the same mutation (verified). Restating it weakly here
-# would be duplication that reads as extra safety while providing less.
+def test_the_superseded_gates_are_really_gone() -> None:
+    """The collapse is what makes the test above meaningful — pin that it happened."""
+    from src.core import webhook_validator
+
+    for gone in ("validate_webhook_url", "validate_outbound_webhook_url"):
+        assert not hasattr(webhook_validator.WebhookURLValidator, gone), (
+            f"WebhookURLValidator.{gone} is back. Address policy has ONE owner "
+            "(EgressPolicy); a second gate is the defect this file exists to catch."
+        )

@@ -24,10 +24,6 @@ auto-signing bundle). Ours — :class:`src.core.config.SigningConfig` — is a d
 thing. Alias at any import site that touches both.
 """
 
-from src.core.signing._mcp_client_signing_shim import (
-    signed_agent_call,
-)
-
 # These thirteen were resolved LAZILY (PEP 562) until salesagent-n78j0.3. They are eager
 # now, and the cycle that forced the deferral is GONE — removed at its cause rather than
 # deferred at its symptom.
@@ -76,6 +72,13 @@ from src.core.signing.provider import (
     resolve_signing_material,
     signing_config_from_material,
 )
+
+# The REQUEST-signing profile as a callback an egress seam can hold. Exported because
+# ``src.core.utils.mcp_client`` takes ``sign=`` and its callers must build that callback
+# from the facade: ``RequestSignerStrategy(...).build_signed_headers``. The strategy is
+# the one place ``adcp/request-signing/v1``'s tag and ``cover_content_digest`` are pinned,
+# so a caller reaching past it to ``adcp.signing.sign_request`` would re-decide both.
+from src.core.signing.request_signer import RequestSignerStrategy
 from src.core.signing.request_verifier_middleware import RequestSignatureMiddleware
 from src.core.signing.revocation_list import (
     build_revocation_list,
@@ -87,15 +90,24 @@ from src.core.signing.trust_root import (
     build_brand_json,
     build_jwks,
 )
+
+# ``webhook_delivery_signer`` joins ``delivery_signer_for_tenant`` on the surface because
+# ``src.core.security.webhook_egress`` takes a ``signer=`` and its callers must obtain that
+# strategy from the facade. It is the ONE decision of whether a tenant's webhook is signed
+# — returning ``None`` for a receiver whose capabilities declare no webhook signing — so a
+# caller that reached past it would be re-deciding a downgrade the layer already answered.
 from src.core.signing.webhook_sender_factory import (
+    WebhookAuthConfig,
     adcp_challenge_signer,
     credential_fingerprint,
     declared_auth,
     deliver_adcp_webhook,
     deliver_adcp_webhook_sync,
     delivery_auth_mode,
+    delivery_signer_for_tenant,
     send_signed_challenge,
     signing_repo,
+    webhook_delivery_signer,
 )
 from src.core.signing_contract import (
     CACHE_MAX_AGE_SECONDS,
@@ -127,10 +139,12 @@ __all__ = [
     "REQUEST_TARGET_URI_MALFORMED",
     "REQUEST_TO_WEBHOOK_CODE",
     "RequestSignatureMiddleware",
+    "RequestSignerStrategy",
     "RequestSigningPosture",
     "SIGNING_ALG_VALUES",
     "TargetUriMalformedError",
     "WEBHOOK_TARGET_URI_MALFORMED",
+    "WebhookAuthConfig",
     "WebhookSigningPosture",
     "adcp_challenge_signer",
     "bucket_names",
@@ -146,6 +160,7 @@ __all__ = [
     "deliver_adcp_webhook",
     "deliver_adcp_webhook_sync",
     "delivery_auth_mode",
+    "delivery_signer_for_tenant",
     "emitted_identity",
     "is_adcp_surface",
     "malformed_authority_reason",
@@ -165,10 +180,10 @@ __all__ = [
     "sdk_operation_names",
     "send_signed_challenge",
     "sign_revocation_list",
-    "signed_agent_call",
     "signing_repo",
     "signing_config_from_material",
     "signing_key_backed",
     "unsupported_webhook_signing_posture",
+    "webhook_delivery_signer",
     "webhook_signing_posture",
 ]

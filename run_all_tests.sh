@@ -209,6 +209,86 @@ scripts/creative-agent-stack.sh build
 echo "Building image + bringing up the app stack in-network (project: $COMPOSE_PROJECT_NAME)..."
 dc build postgres adcp-server proxy tests
 
+# Pre-create logs/ group-writable + setgid BEFORE anything else touches the
+# bind mount: adcp-server bind-mounts .:/app and creates logs/audit.log at
+# import time (uid 1001, its own baked umask) -- when that umask strips the
+# group-write bit the tests container (a different uid, 1003 here) can create
+# the dir but not write into it, and every suite dies at collection with
+# `PermissionError: '/app/logs/audit.log'`. Owning it here first means
+# adcp-server writes into an already-correct dir instead of racing to
+# create it (confirmed live: sa-93d37d7c, sa-c9acaf66 both landed
+# drwxr-sr-x -- not group-writable -- and are latent failures until fixed).
+# This must stay ahead of the TLS step below too: that step's fallback runs a
+# `tests` container, which would otherwise be the one to create logs/ first --
+# which is why this block sits ABOVE the TLS/subnet steps rather than beside
+# the `dc up` it used to precede.
+mkdir -p logs
+# Guarded, not silent: chmod on a logs/ that already exists owned by ANOTHER
+# uid fails with EPERM, and a bare `chmod` here would abort the whole script
+# under `set -e` -- so tolerate the failure, but do NOT assume it worked. The
+# verification below is what turns a still-broken state into a diagnosable
+# error instead of a collection-time PermissionError 200 lines later.
+chmod 2775 logs 2>/dev/null || true
+# The setgid bit above fixes the GROUP of files created in here, but NOT their
+# write bit -- that comes from the creating process's umask, and adcp-server's
+# yields 0644. So a FRESH logs/ still ends up with `-rw-r--r-- ci:ci`
+# audit.log, and the tests container (a different uid in the same `ci` group)
+# dies at collection with `PermissionError: '/app/logs/audit.log'`. The
+# `chmod -R g+w .` backstop further down cannot repair it either: it runs as
+# the sync user, which does not OWN a ci-created file, so the chmod fails and
+# is swallowed by its `2>/dev/null || true`. Pre-create the files ourselves so
+# the server APPENDS to an already-group-writable file instead of creating one
+# with its own umask. Runs before every `dc up`/`dc run` for the same reason
+# the mkdir does. (Observed live: sa-067cc4a9 failed exactly this way on a
+# fresh run dir, while sa-858f3b3a passed only because it inherited a stale
+# 0664 logs/ from an earlier run -- i.e. this was always latent, and green
+# runs were green by accident.)
+# rm first, then recreate: on a REUSED run directory the existing files are
+# owned by the server's uid, so `touch` (needs write) and `chmod` (needs
+# ownership) both fail on them -- and under `set -e` that would abort the whole
+# script. Unlinking works regardless of file ownership because it is the
+# DIRECTORY's write bit that governs it, and we own the directory. These are
+# per-run scratch logs, so discarding a previous run's copy costs nothing.
+# The list is exactly what src/core/audit_logger.py opens: audit.log (its
+# FileHandler), error.log (its error FileHandler), and the two append-mode
+# sinks structured.jsonl and security.jsonl. security.jsonl only appears on a
+# security event, so it is the one that hides longest before biting.
+for _log in audit.log error.log structured.jsonl security.jsonl; do
+    rm -f "logs/$_log" 2>/dev/null || true
+    : >"logs/$_log" 2>/dev/null || true
+    # 0666, not 0664. Group-write is NOT enough, and assuming it was is what
+    # kept the e2e stack down: `adcp-server` runs as the image's own non-root
+    # user, and that user shares no group with whoever created these files.
+    # Measured on the box: the container is `app` uid=1001 gid=1001 groups=1001,
+    # while the files land `sacirunner:sacirunner` (or `ci`) — so 0664 leaves the
+    # server with OTHER permissions, r--, and it dies opening audit.log:
+    #   PermissionError: [Errno 13] Permission denied: '/app/logs/audit.log'
+    # The whole stack follows it down — nothing binds :8000, so every e2e test
+    # errors "Server not ready after 60s (port 8000)" and every e2e_rest BDD
+    # scenario errors "the live E2E stack is unreachable", with no hint that a
+    # file mode is the cause. chown to 1001 would need root we do not have here;
+    # 666 is also consistent with the rest of a run directory, which is already
+    # world-writable; these are per-run scratch logs, not durable state.
+    chmod 666 "logs/$_log" 2>/dev/null || true
+    # Verify rather than hope. Every step above is deliberately tolerant (`||
+    # true`) because each can legitimately fail on a file another uid owns; this
+    # check is what keeps that tolerance from becoming the silent skip it would
+    # otherwise be -- the earlier shape relied on an unguarded `: >` aborting
+    # under errexit, and this verifies the PROPERTY that mattered instead of the
+    # exit status of one step that might reach it.
+    # `-w` would test OUR access; what actually matters is the OTHER write bit,
+    # since the server's uid is outside our groups. find -perm is used over
+    # `stat` because stat's flags differ between the GNU coreutils on the CI box
+    # and the BSD one on a macOS host, and this script runs on both.
+    if [ -z "$(find "logs/$_log" -perm -o+w 2>/dev/null)" ]; then
+        echo "ERROR: logs/$_log is not writable by other; adcp-server runs as a" >&2
+        echo "       non-root uid outside our groups and will die at startup with" >&2
+        echo "       PermissionError, taking the whole e2e stack with it. State:" >&2
+        ls -la "logs/$_log" logs/ >&2 || true
+        exit 1
+    fi
+done
+
 # TLS material for the tls-proxy service and the per-worker sidecars below. It
 # must exist before `up`: the service bind-mounts .test-tls/, and an absent
 # directory would materialise empty and nginx would refuse to start. The host
@@ -245,45 +325,11 @@ fi
 # in-process. salesagent-mp53.8's counterparty walk is the first leg that actually
 # needs an origin up, and it failed exactly this way.) The guard
 # tests/unit/test_architecture_e2e_origin_services_start.py pins the pairing.
-# Pre-create logs/ AND the specific files src/core/audit_logger.py opens --
-# audit.log/error.log via FileHandler at IMPORT time (crashes collection
-# immediately on PermissionError), structured.jsonl/security.jsonl lazily via
-# open(path, "a"). setgid + 2775 on the directory only controls the GROUP of
-# NEW files, not their write bit, and it does nothing for files that already
-# exist. Worse: chmod cannot fix a file it doesn't own -- only the owner (or
-# root) may change a file's mode, being in the same group is not enough -- so
-# a stale ci:ci 0644 file left by a prior adcp-server run silently defeats
-# both this and the `chmod -R g+w .` sweep below (EPERM, swallowed by its own
-# `|| true`). Removing and recreating is what actually works: unlink is
-# governed by the DIRECTORY's write bit (which we own), not the file's own
-# owner, so `rm -f` succeeds even on a ci-owned file; the fresh file this
-# process then creates is ours. Verified live: ci:ci 0644 -> sacirunner:ci 0664.
-mkdir -p logs
-chmod 2775 logs
-for f in audit.log error.log structured.jsonl security.jsonl; do
-    rm -f "logs/$f" 2>/dev/null || true
-    # Two statements, not `: > "logs/$f" && chmod ...`. errexit exempts every command
-    # in an AND-OR list except the last, so as an &&-list a failed truncate merely
-    # short-circuits: chmod is skipped, the loop continues, and the script still exits
-    # 0. Verified A/B (with a directory planted at logs/audit.log to force the
-    # failure): &&-list -> "REACHED-END", exit 0; split -> exit 1 at the truncate.
-    : > "logs/$f"
-    # 666, not 664. The point of this block is that the adcp-server container can
-    # WRITE these; 664 only achieves that if the container's user shares the file's
-    # group, and it does not. The server runs as the image's `app` (uid/gid 1001,
-    # no supplementary groups), while these files are owned by whoever ran the
-    # script -- and the bind-mount of this directory onto /app SHADOWS the image's
-    # own `chown -R app:app /app`, so host-side permissions are what decide. Group
-    # never matches, so `app` falls through to the OTHER bits: r-- under 664, and
-    # the server dies on PermissionError while opening audit.log at import time,
-    # taking every per-worker server container unhealthy with it.
-    # The setgid bit set on the directory above does not rescue this either: it
-    # controls the GROUP of new files, not their write bit.
-    # 666 is also consistent with the rest of a run directory, which is already
-    # world-writable; these are ephemeral per-run test logs, not durable state.
-    chmod 666 "logs/$f"
-done
-
+# tls-proxy fronts BOTH https origins in this list (proxy.adcp.test and
+# creative-agent.adcp.test, i.e. E2E_TLS_BASE_URL and CREATIVE_AGENT_URL,
+# salesagent-amht.2) as well as the SNI routes to webhook-capture and
+# counterparty-origin — one missing service here is a green run on the wrong
+# branch in every case.
 dc up -d postgres adcp-server proxy tls-proxy creative-pg creative-agent webhook-capture counterparty-origin
 
 echo "Waiting for Postgres + server health (in-network)..."
@@ -432,9 +478,12 @@ if [ "${E2E_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
     # print "NOT ready (continuing)" and carry on, which is the same vacuity in
     # the other transport — a listener that half-starts and is skipped past means
     # every https scenario silently grades the http branch (salesagent-tgzb), and
-    # every plaintext scenario grades nothing at all. Ordered AFTER the plaintext
-    # abort on purpose: a sidecar proxies its own `-server-gwN` upstream, so a
-    # dead upstream would surface here as a TLS handshake failure and send the
+    # every plaintext scenario grades nothing at all. (Making the plaintext probe
+    # fail too was a separate, deliberate change, landed above; this comment
+    # describes the state AFTER it — do not restore the "NOT ready (continuing)"
+    # wording, the code it described is gone.) Ordered AFTER the plaintext abort
+    # on purpose: a sidecar proxies its own `-server-gwN` upstream, so a dead
+    # upstream would surface here as a TLS handshake failure and send the
     # operator to the wrong layer.
     echo "  waiting for $N per-worker TLS sidecars to complete a verified handshake..."
     for i in $(seq 0 $((N - 1))); do
@@ -607,7 +656,7 @@ if [ -n "$_missing_reports" ]; then
     # the security audit -- exactly on the suites-failed path that needs them.
     if [ "$RC" -eq 0 ]; then RC=1; fi
 fi
-echo "Reports: $RESULTS_DIR/"
+echo "Reports: $RESULTS_DIR/  (suites: $SUITES)"
 ls -1 "$RESULTS_DIR"/*.json 2>/dev/null || echo "  (no JSON reports extracted)"
 
 # A truncated suite is a failed suite, and the whole point is that it must not

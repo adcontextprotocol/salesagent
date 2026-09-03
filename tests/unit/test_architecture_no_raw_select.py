@@ -160,7 +160,9 @@ ALLOWLIST: set[tuple[str, str]] = {
     ("src/admin/blueprints/principals.py", "create_principal"),
     ("src/admin/blueprints/principals.py", "delete_principal"),
     # delete_webhook / register_webhook / toggle_webhook removed — rewired onto
-    # PushNotificationConfigRepository via PushNotificationConfigUoW
+    # PushNotificationConfigRepository via PushNotificationConfigUoW (both sides
+    # removed these independently; manage_webhooks below deliberately KEEPS its
+    # raw select — it must list INACTIVE rows, which list_active_by_principal cannot).
     ("src/admin/blueprints/principals.py", "edit_principal"),
     ("src/admin/blueprints/principals.py", "get_gam_advertisers"),
     ("src/admin/blueprints/principals.py", "get_principal"),
@@ -192,7 +194,6 @@ ALLOWLIST: set[tuple[str, str]] = {
     ("src/admin/blueprints/settings.py", "update_ai"),
     ("src/admin/blueprints/settings.py", "update_business_rules"),
     ("src/admin/blueprints/settings.py", "update_general"),
-    ("src/admin/blueprints/settings.py", "update_slack"),
     ("src/admin/blueprints/signals_agents.py", "add_signals_agent"),
     ("src/admin/blueprints/signals_agents.py", "delete_signals_agent"),
     ("src/admin/blueprints/signals_agents.py", "edit_signals_agent"),
@@ -206,7 +207,6 @@ ALLOWLIST: set[tuple[str, str]] = {
     ("src/admin/blueprints/tenants.py", "test_slack"),
     ("src/admin/blueprints/tenants.py", "update"),
     ("src/admin/blueprints/tenants.py", "update_favicon_url"),
-    ("src/admin/blueprints/tenants.py", "update_slack"),
     ("src/admin/blueprints/tenants.py", "upload_favicon"),
     # add_domain/remove_domain removed — atomic authorized-list mutation via
     # TenantConfigRepository/TenantConfigUoW; ditto the four
@@ -255,7 +255,10 @@ ALLOWLIST: set[tuple[str, str]] = {
     ("src/core/config_loader.py", "get_tenant_by_id"),
     ("src/core/config_loader.py", "get_tenant_by_subdomain"),
     ("src/core/config_loader.py", "get_tenant_by_virtual_host"),
-    ("src/core/context_manager.py", "_send_push_notifications"),
+    # add_message removed — now sa_update + jsonb_list_append, zero selects.
+    # _send_push_notifications removed — config lookup routes through
+    # PushNotificationConfigRepository. Each side removed one; the allowlist is
+    # the intersection, so neither survives.
     ("src/core/context_manager.py", "get_context"),
     ("src/core/context_manager.py", "get_context_status"),
     ("src/core/context_manager.py", "get_contexts_for_principal"),
@@ -347,7 +350,6 @@ ALLOWLIST: set[tuple[str, str]] = {
     ("src/services/setup_checklist_service.py", "_check_optional_tasks"),
     ("src/services/setup_checklist_service.py", "get_bulk_setup_status"),
     ("src/services/setup_checklist_service.py", "get_setup_status"),
-    ("src/services/webhook_delivery_service.py", "_send_webhook_enhanced"),
 }
 
 EXPECTED_VIOLATION_COUNT = len(ALLOWLIST)
