@@ -197,13 +197,22 @@ def _protocol_notification_payload() -> dict[str, Any]:
 def _send_protocol_notification(config: Any, payload: dict[str, Any]) -> CapturedWebhook:
     """Deliver through ``ProtocolWebhookService`` — the already-async AdCP sender."""
     from src.services.protocol_webhook_service import ProtocolWebhookService
+    from tests.factories.webhook import WebhookTaskContextFactory
 
     with capture_outbound_webhooks() as captured:
         asyncio.run(
             ProtocolWebhookService().send_notification(
                 config,
                 payload,
-                {"task_type": "media_buy_status", "tenant_id": _TENANT_ID, "principal_id": _PRINCIPAL_ID},
+                # The TYPED context, not the four-key dict this used to pass.
+                # ``send_notification`` takes ``task: WebhookTaskContext`` and uses it as
+                # given — it used to rebuild one here from a loose dict plus the payload,
+                # and that rebuild was lossy. Through the factory rather than a literal:
+                # the dataclass requires all seven fields and three files had spelled the
+                # same literal, which is what the duplication ratchet refuses.
+                WebhookTaskContextFactory(
+                    task_type="media_buy_status", tenant_id=_TENANT_ID, principal_id=_PRINCIPAL_ID
+                ),
             )
         )
 
