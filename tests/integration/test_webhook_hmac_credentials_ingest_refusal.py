@@ -146,6 +146,36 @@ def _create_kwargs(product, authentication: dict | None) -> dict:
     )
 
 
+def _seed_non_signing_seller(env):
+    """``setup_media_buy_data`` for a seller that does NOT support request signing.
+
+    Every scenario in this module grades the INGEST gate's verdict on a webhook
+    credential's shape. ``RequestSigningPosture.supported`` defaults to True for a tenant
+    that has declared nothing (``posture_from_declarations({}).supported``), and
+    ``_credentials_force_a_signature`` then refuses any unsigned request carrying
+    ``push_notification_config.authentication`` with a bodyless 401 — no body, so no AdCP
+    envelope, so the assertions here fail with "no error envelope captured" instead of on
+    the refusal they exist to grade.
+
+    Declaring the posture is truthful, not a dodge: security.mdx @ v3.1.1 :1465 — quoted by
+    ``_credentials_force_a_signature`` itself — says sellers that do not support request
+    signing "have no way to enforce this rule and fall back to the log-and-alarm posture".
+    The verifier keeps its own grading in tests/integration/
+    test_request_signature_operations.py and the compliance vectors.
+
+    One helper for all seven call sites (DRY): the site that forgets the declaration is
+    exactly how this comes back. See salesagent-t1z7l for the standing question of whether
+    the DEFAULT should be False, which would retire this helper.
+    """
+    seeded = env.setup_media_buy_data()
+    tenant = seeded[0]
+    declarations = dict(getattr(tenant, "capability_declarations", None) or {})
+    declarations["request_signing"] = {"supported": False}
+    tenant.capability_declarations = declarations
+    env._commit_factory_data()
+    return seeded
+
+
 class TestCreateMediaBuyRefusesHmacRegistrationWithoutCredentials:
     """The untyped transports must refuse the document ``_impl`` actually receives."""
 
@@ -154,7 +184,7 @@ class TestCreateMediaBuyRefusesHmacRegistrationWithoutCredentials:
     def test_refused_at_ingest_naming_the_credentials_field(self, integration_db, transport, authentication):
         """VALIDATION_ERROR / correctable / field=...authentication.credentials, nothing persisted."""
         with MediaBuyCreateEnv() as env:
-            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
+            _tenant, _principal, product, _pricing = _seed_non_signing_seller(env)
 
             result = env.call_via(transport, **_create_kwargs(product, authentication))
 
@@ -186,7 +216,7 @@ class TestCreateMediaBuyRefusesHmacRegistrationWithoutCredentials:
         error.field now names the thing the buyer must fix.
         """
         with MediaBuyCreateEnv() as env:
-            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
+            _tenant, _principal, product, _pricing = _seed_non_signing_seller(env)
 
             result = env.call_via(transport, **_create_kwargs(product, _LOWERCASE_SCHEME))
 
@@ -211,7 +241,7 @@ class TestCreateMediaBuyRefusesHmacRegistrationWithoutCredentials:
         assertion that makes the refusal specific rather than merely present.
         """
         with MediaBuyCreateEnv() as env:
-            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
+            _tenant, _principal, product, _pricing = _seed_non_signing_seller(env)
 
             result = env.call_via(
                 Transport.REST,
@@ -282,7 +312,7 @@ class TestShortCredentialReachesOneVerdictOnEverySurface:
         verdicts: dict[str, tuple[str, str, str]] = {}
         for transport in (Transport.MCP, Transport.REST, Transport.A2A):
             with MediaBuyCreateEnv() as env:
-                _tenant, _principal, product, _pricing = env.setup_media_buy_data()
+                _tenant, _principal, product, _pricing = _seed_non_signing_seller(env)
 
                 result = env.call_via(
                     transport,
@@ -328,7 +358,7 @@ class TestShortCredentialReachesOneVerdictOnEverySurface:
         set_flags(monkeypatch, private=True)
 
         with MediaBuyCreateEnv() as env:
-            env.setup_media_buy_data()
+            _seed_non_signing_seller(env)
 
             response = post_register_hmac_webhook(
                 authenticated_admin_client,
@@ -396,7 +426,7 @@ class TestSchemaTypedTransportsRefuseTheSameDocument:
     )
     def test_rest_refuses_at_schema_conformance(self, integration_db, authentication, expected_field_suffix):
         with MediaBuyCreateEnv() as env:
-            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
+            _tenant, _principal, product, _pricing = _seed_non_signing_seller(env)
 
             result = env.call_via(Transport.REST, **_create_kwargs(product, authentication))
 
@@ -434,7 +464,7 @@ class TestMcpTypedParameterRefusesTheSameDocument:
 
     def test_mcp_refuses_and_persists_nothing(self, integration_db):
         with MediaBuyCreateEnv() as env:
-            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
+            _tenant, _principal, product, _pricing = _seed_non_signing_seller(env)
 
             result = env.call_via(Transport.MCP, **_create_kwargs(product, {"schemes": ["HMAC-SHA256"]}))
 
