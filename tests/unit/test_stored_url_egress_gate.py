@@ -76,6 +76,26 @@ def _notifier(url: str):
 
 
 class TestSharedSenderRefusesBlockedDestinations:
+    @pytest.fixture(autouse=True)
+    def _hatch_closed(self, monkeypatch):
+        """Pin ``ADCP_OUTBOUND_ALLOW_PRIVATE`` CLOSED for every test in this class.
+
+        These tests grade the POLICY's refusal of private/reserved destinations, so the
+        hatch that suspends that refusal is a precondition and must be stated, not
+        inherited. It is not hypothetical: the in-network CI stack opens the hatch so its
+        containers can reach each other, and under it ``10.0.0.5`` and ``[::1]`` are
+        legitimately DIALLED — three tests here passed on a laptop and failed on the CI
+        box for that reason alone, grading the ambient environment rather than the gate.
+
+        Written through ``egress_hatch_env``, the one place in the test tree that spells
+        the variable, and written EXPLICITLY in the off case as the literal ``"false"``
+        the repo's ``== "true"`` convention treats as off.
+        """
+        from tests.helpers.egress_hatches import egress_hatch_env
+
+        for name, value in egress_hatch_env(private=False).items():
+            monkeypatch.setenv(name, value)
+
     @pytest.mark.parametrize("blocked_url", BLOCKED_URLS)
     def test_blocked_destination_is_not_dialled(self, blocked_url):
         with patch(_SOCKET_BOUNDARY) as socket:
