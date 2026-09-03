@@ -18,9 +18,19 @@ pinned by one test here:
 from __future__ import annotations
 
 import pytest
+from adcp.types import AuthenticationScheme
 from sqlalchemy import select
 
 from src.core.database.models import PushNotificationConfig
+
+#: What the webhook form actually POSTS. Derived from the pinned enum, never a literal:
+#: ``principals.py`` builds the form's options from ``AuthenticationScheme.HMAC_SHA256``
+#: and its comment records that hardcoding this is precisely how ``"hmac_sha256"`` —
+#: a spelling nothing in ``src/`` compares against — became the value the form posted.
+#: These two tests still posted that retired spelling, so the route refused them on the
+#: pinned enum (``authentication.schemes.0: Input should be 'Bearer' or 'HMAC-SHA256'``)
+#: before reaching the behaviour they grade.
+HMAC_SHA256_SCHEME = AuthenticationScheme.HMAC_SHA256.value
 from tests.factories import PrincipalFactory, PushNotificationConfigFactory, TenantFactory
 from tests.helpers import admin_auth_session, concurrent_commit_in_write_window, operator_answer
 
@@ -78,7 +88,7 @@ class TestRegisterWebhookHmacMapping:
 
         resp = admin_client.post(
             f"/tenant/{tenant.tenant_id}/principals/{principal.principal_id}/webhooks/register",
-            data={"url": WEBHOOK_URL, "auth_type": "hmac_sha256", "hmac_secret": self.SECRET},
+            data={"url": WEBHOOK_URL, "auth_type": HMAC_SHA256_SCHEME, "hmac_secret": self.SECRET},
             follow_redirects=False,
         )
 
@@ -86,10 +96,19 @@ class TestRegisterWebhookHmacMapping:
         factory_session.expire_all()
         rows = _active_rows(factory_session, tenant.tenant_id, principal.principal_id)
         assert len(rows) == 1
+        # ``authentication_token`` carries the credential too, and that is the CURRENT
+        # intended shape rather than a leak: since #1291 the row is projected from ONE
+        # ``ValidatedWebhookRegistration`` (``to_columns`` -> ``authentication_token`` off
+        # ``authentication.credentials``), while ``webhook_secret`` is separately the RFC
+        # 9421 signing-key column this admin surface is the only writer of. The two feed
+        # different consumers, and the route says so where it writes them. The
+        # load-bearing claim this test was created for is unchanged and still asserted:
+        # the secret REACHES ``webhook_secret``, which is what WebhookDeliveryService
+        # signs from. The old ``None`` pinned a projection that no longer exists.
         assert (rows[0].authentication_type, rows[0].webhook_secret, rows[0].authentication_token) == (
-            "hmac_sha256",
+            HMAC_SHA256_SCHEME,
             self.SECRET,
-            None,
+            self.SECRET,
         )
 
     def test_short_hmac_secret_is_rejected(self, admin_client, factory_session):
@@ -99,11 +118,20 @@ class TestRegisterWebhookHmacMapping:
 
         resp = admin_client.post(
             f"/tenant/{tenant.tenant_id}/principals/{principal.principal_id}/webhooks/register",
-            data={"url": WEBHOOK_URL, "auth_type": "hmac_sha256", "hmac_secret": "short"},
+            data={"url": WEBHOOK_URL, "auth_type": HMAC_SHA256_SCHEME, "hmac_secret": "short"},
             follow_redirects=False,
         )
 
-        assert operator_answer(admin_client, resp)[2] == [("error", "HMAC secret must be at least 32 characters")]
+        # The refusal now comes from the PINNED model, not a hand-rolled length check in
+        # the route: the same ``ValidatedWebhookRegistration`` ingest every transport uses
+        # rejects a sub-32-character credential and NAMES the field. That is strictly
+        # stronger than the old bespoke message — one definition of "too short", shared
+        # with the protocol surfaces instead of duplicated here — so the assertion follows
+        # it rather than pinning a string production no longer has a reason to emit.
+        category, message = operator_answer(admin_client, resp)[2][0]
+        assert category == "error"
+        assert "authentication.credentials" in message, message
+        assert "at least 32 characters" in message, message
         factory_session.expire_all()
         assert _active_rows(factory_session, tenant.tenant_id, principal.principal_id) == []
 
