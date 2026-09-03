@@ -2379,6 +2379,28 @@ def given_request_revision(ctx: dict, revision: int) -> None:
     kwargs["revision"] = revision
 
 
+@given(parsers.re(r'the request revision is set to "(?P<revision>[^"]*)"'))
+def given_request_revision_wrong_type(ctx: dict, revision: str) -> None:
+    """Send *revision* as a STRING — the wrong-type partition row.
+
+    A separate step from the ``{revision:d}`` parser above for the same reason
+    ``<not provided>`` needs its own: the Examples row carries a QUOTED value
+    (``"7"``), and an int parser cannot match it. Without this the row failed on
+    StepDefinitionNotFoundError, and the strict-xfail guard correctly refused to
+    let that be recorded as a production/spec gap — it is test wiring, and the
+    guard named it: "MISCLASSIFIED strict-xfail ... this is DORMANCY (test-wiring),
+    not a graded production gap (R1-2 class)".
+
+    The string is passed through UNCONVERTED. That is the whole point of the row:
+    ``revision`` is typed as an integer, so a string must be refused as
+    INVALID_REQUEST by the request model. Coercing it here with ``int(revision)``
+    would send a well-typed 7 and grade the CONFLICT path instead — the row would
+    pass while testing nothing it names.
+    """
+    kwargs = _ensure_update_defaults(ctx)
+    kwargs["revision"] = revision
+
+
 @then(parsers.parse("the response should contain a revision with value {expected:d}"))
 def then_response_revision_value(ctx: dict, expected: int) -> None:
     """Assert the WIRE revision is the post-write value.
