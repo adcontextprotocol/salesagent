@@ -250,9 +250,19 @@ class TestHasWireIsDeclaredAtEveryConstructionSite:
             False,
             "in-process _impl returned — no wire by definition",
         ),
-        ("dispatchers.py", "A2ADispatcher.dispatch", 0): (
+        # A2A's construction MOVED out of ``A2ADispatcher.dispatch`` into the module-level
+        # ``a2a_transport_result``, which both A2A dispatch paths now share — one unwrap
+        # instead of the second copy that let the derived status reach one path and not
+        # the other. Two sites, because that helper has two legs.
+        ("dispatchers.py", "a2a_transport_result", 0): (
             True,
-            "success, downstream of the A2A artifact DataPart capture",
+            "success, downstream of the A2A artifact DataPart capture — the DataPart came back from the handler",
+        ),
+        ("dispatchers.py", "a2a_transport_result", 1): (
+            False,
+            "the credential-registration leg: a bare payload with no success-path wire captured by design "
+            "(_run_a2a_push_config_set — the operation dispatch owns that capture), so it declares no wire "
+            "rather than claiming one whose body it never stashed",
         ),
         ("dispatchers.py", "McpDispatcher.dispatch", 0): (
             True,
@@ -306,6 +316,10 @@ class TestHasWireIsDeclaredAtEveryConstructionSite:
     FIXTURE_CONSTRUCTORS: dict[str, str] = {
         "tests/integration/test_harness_wire_response.py": (
             "this module fabricates results to grade wire_field/wire_dict against a known declaration"
+        ),
+        "tests/harness/test_outcome_helpers_wire_contract.py": (
+            "fabricates results with a KNOWN has_wire to grade the outcome-helper accessors against a "
+            "declaration they did not make — a fixture, not a dispatcher declaring what its delivery did"
         ),
         "tests/unit/test_bdd_uc006_storyboard_dispatch_fault_is_not_xfail.py": (
             "mutation grader: fabricates the ctx an injected REST 500 leaves behind (has_wire=True — that "
