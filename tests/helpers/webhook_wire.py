@@ -144,13 +144,26 @@ def stub_outbound_webhooks(responder: Callable[..., Any]) -> Iterator[None]:
 
     transport = httpx.MockTransport(_handler)
 
-    def _sync_client(*args: Any, **kwargs: Any) -> httpx.Client:
-        kwargs["transport"] = transport
-        return real_client(*args, **kwargs)
+    # SUBCLASSES, not factory functions. ``patch("httpx.AsyncClient", <function>)`` makes
+    # the name a function for as long as the patch is active, and any module IMPORTED in
+    # that window whose class body evaluates ``httpx.AsyncClient | None`` at runtime dies
+    # with "unsupported operand type(s) for |: 'function' and 'NoneType'". That is not
+    # hypothetical: ``a2a.client.client`` is imported lazily inside the delivery path, so
+    # a webhook send under this stub raised before it ever reached the transport — the
+    # send failed and the capture recorded nothing, which read as "the buyer was never
+    # told". A type supports ``|``; a function does not.
+    class _SyncClient(real_client):  # type: ignore[misc,valid-type]
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            kwargs["transport"] = transport
+            super().__init__(*args, **kwargs)
 
-    def _async_client(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        kwargs["transport"] = transport
-        return real_async_client(*args, **kwargs)
+    class _AsyncClient(real_async_client):  # type: ignore[misc,valid-type]
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            kwargs["transport"] = transport
+            super().__init__(*args, **kwargs)
+
+    _sync_client = _SyncClient
+    _async_client = _AsyncClient
 
     def _session_post(_self: requests.Session, url: str, **kwargs: Any) -> requests.Response:
         return _requests_post(url, **kwargs)
