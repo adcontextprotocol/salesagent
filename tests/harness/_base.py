@@ -2408,7 +2408,23 @@ class BaseTestEnv:
         if not self.can_sign:
             if signed:
                 self.signing  # raises, naming enable_request_signing()  # noqa: B018
-            return client.post(endpoint, json=body)
+            # The bearer travels as a HEADER even on the unsigned leg. Auth itself comes
+            # from the FastAPI dep override, so this used to post bare — but a dep runs
+            # INSIDE the app, and ``RequestSignatureMiddleware`` sits at the ASGI boundary
+            # OUTSIDE it. A bare post therefore reached the verifier as an anonymous
+            # request: ``_detect_tenant_for_posture`` answered ``(None, None)``, and with
+            # no tenant the posture falls back to ``supported=True``, so a request
+            # carrying ``push_notification_config.authentication`` was refused with a
+            # bodyless 401 before the ingest gate ran. The in-process MCP and A2A legs
+            # never traverse the ASGI stack, so they did not see it — the four legs were
+            # not running the same scenario.
+            #
+            # Sending it is also what the SIGNED branch below already relies on
+            # (security.mdx :1269 — an unsigned request carrying a valid bearer is a
+            # spec-correct 200), and it is what production would put on the wire.
+            token = getattr(identity, "auth_token", None) if identity is not None else None
+            headers = {"x-adcp-auth": token} if token else None
+            return client.post(endpoint, json=body, headers=headers)
 
         # ``identity=None`` already means "send without a credential" everywhere
         # else in the harness (``_configure_rest_auth`` removes the auth dep for

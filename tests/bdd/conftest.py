@@ -4823,6 +4823,52 @@ def _seed_default_tenant_and_principal(ctx: dict, env: object) -> None:
     ctx["principal"] = principal
 
 
+def _declare_seller_does_not_sign(ctx: dict, env: object) -> None:
+    """Declare the egress seller a NON-signing seller — what these scenarios actually test.
+
+    RequestSigningPosture.supported defaults to TRUE for a tenant that declared nothing
+    (posture_from_declarations({}).supported is True), so an undeclared tenant is treated
+    as signing-capable and _credentials_force_a_signature refuses any request carrying
+    push_notification_config.authentication. A valid bearer does NOT exempt it — that is
+    deliberate ("exempting authenticated callers would defeat it entirely") — so sending
+    the credential is necessary but not sufficient; the posture must say so too.
+
+    Truthful rather than a workaround: security.mdx @ v3.1.1 :1465, quoted by
+    _credentials_force_a_signature itself, says sellers that do not support request
+    signing "have no way to enforce this rule and fall back to the log-and-alarm posture".
+    A seller whose scenario is about SSRF and webhook-credential SHAPE is such a seller,
+    and the verifier keeps its own grading in
+    tests/integration/test_request_signature_operations.py and the compliance vectors.
+
+    Set on the env's OWN tenant and committed with the rest of the factory data: a
+    separate session loses the race with the env's later _commit_factory_data(), which
+    writes back its in-memory tenant and erases an out-of-band declaration.
+    """
+    tenant = ctx["tenant"]
+    declarations = dict(getattr(tenant, "capability_declarations", None) or {})
+    declarations["request_signing"] = {"supported": False}
+    tenant.capability_declarations = declarations
+    env._commit_factory_data()
+
+
+def _seed_egress_sync(ctx: dict, env: object) -> None:
+    """Tenant + principal for the @egress sync legs, as a non-signing seller."""
+    _seed_default_tenant_and_principal(ctx, env)
+    _declare_seller_does_not_sign(ctx, env)
+
+
+def _seed_egress_create(ctx: dict, env: object) -> None:
+    """The create chain for the @egress create leg, as a non-signing seller."""
+    _seed_media_buy_chain(ctx, env)
+    _declare_seller_does_not_sign(ctx, env)
+
+
+def _seed_egress_update(ctx: dict, env: object) -> None:
+    """The update chain for the @egress update leg, as a non-signing seller."""
+    _seed_update_with_existing_buy(ctx, env)
+    _declare_seller_does_not_sign(ctx, env)
+
+
 def _seed_media_buy_chain(ctx: dict, env: object) -> None:
     """Seed the full create dependency chain (tenant/principal/product/pricing)."""
     tenant, principal, product, pricing_option = env.setup_media_buy_data()
@@ -5053,7 +5099,7 @@ ENV_ROUTES: list[EnvRoute] = [
         # registry variant rather than CreativeSyncEnv.
         when=lambda m: "egress_sync" in m,
         env_builder=_env("tests.harness.creative_sync.RealRegistryCreativeSyncEnv"),
-        seed=_seed_default_tenant_and_principal,
+        seed=_seed_egress_sync,
     ),
     EnvRoute(
         tag="egress-sync-creds",
@@ -5062,7 +5108,7 @@ ENV_ROUTES: list[EnvRoute] = [
         # (registry-mocked) sync env, not the real-registry variant above.
         when=lambda m: "egress_sync_creds" in m,
         env_builder=_env("tests.harness.creative_sync.CreativeSyncEnv"),
-        seed=_seed_default_tenant_and_principal,
+        seed=_seed_egress_sync,
     ),
     EnvRoute(
         tag="egress-update",
@@ -5071,7 +5117,7 @@ ENV_ROUTES: list[EnvRoute] = [
         # existing media buy for the update to target.
         when=lambda m: "egress_update" in m,
         env_builder=_env("tests.harness.media_buy_dual.MediaBuyDualEnv"),
-        seed=_seed_update_with_existing_buy,
+        seed=_seed_egress_update,
     ),
     EnvRoute(
         tag="egress-create",
@@ -5080,7 +5126,7 @@ ENV_ROUTES: list[EnvRoute] = [
         # full create dependency chain.
         when=lambda m: "egress_create" in m,
         env_builder=_env("tests.harness.media_buy_create.MediaBuyCreateEnv"),
-        seed=_seed_media_buy_chain,
+        seed=_seed_egress_create,
     ),
     EnvRoute(
         tag="egress-get-products",
