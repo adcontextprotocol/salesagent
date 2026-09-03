@@ -34,6 +34,34 @@ from tests.factories.account import AccountFactory, AgentAccountAccessFactory
 # ═══════════════════════════════════════════════════════════════════════
 
 
+def _self_dispatch_list(ctx: dict, **kwargs: Any) -> None:
+    """Run the TRANSPORT-BYPASS list_accounts and make its response the current one.
+
+    Clearing ``ctx["result"]`` is the load-bearing half, not tidiness. The shared
+    accessors read ``ctx["result"]`` FIRST and only fall back to
+    ``self_dispatched_response`` when no ``TransportResult`` is present
+    (``_outcome_helpers.payload_or_none``), so a self-dispatching When that leaves the
+    PREVIOUS step's dispatch in ctx has its own response shadowed — every later Then
+    silently grades the earlier operation instead. That is not hypothetical: it made
+    the governance-omission scenario read a ``SyncResponseAccount`` (which has no
+    ``governance_agents`` field at all) off the preceding sync and conclude the binding
+    had been wiped, when the binding was intact in the database the whole time.
+
+    One helper for both bypass sites: they are the same operation with different
+    request kwargs, and the site that forgot the pop is exactly how this reappears.
+    FIXME(#1880): both sites go away when list dispatches on the wire.
+    """
+    from src.core.tools.accounts import _list_accounts_impl
+
+    ctx["env"]._commit_factory_data()
+    ctx.pop("result", None)
+    ctx.pop("error", None)
+    try:
+        ctx["self_dispatched_response"] = _list_accounts_impl(identity=ctx["env"].identity, **kwargs)
+    except Exception as exc:
+        ctx["error"] = exc
+
+
 def _setup_tenant_and_principal(ctx: dict) -> tuple[Any, Any]:
     """Set up default tenant + principal, caching in ctx to avoid duplicates."""
     if "tenant" not in ctx:
@@ -419,17 +447,7 @@ def when_list_accounts_unfiltered(ctx: dict) -> None:
     env = ctx["env"]
     if isinstance(env, AccountSyncEnv):
         # TRANSPORT-BYPASS: cross-cutting list under sync env
-        from src.core.tools.accounts import _list_accounts_impl
-
-        env._commit_factory_data()
-        try:
-            # Direct _impl call, not dispatch_request — pinned for the wire-dispatch
-            # migration, FIXME(#1880). Its OWN key: the shared accessors know this
-            # one by name, so a self-dispatched payload is never mistaken for a
-            # dispatched one (and never for a request, which the old shared key held).
-            ctx["self_dispatched_response"] = _list_accounts_impl(identity=env.identity)
-        except Exception as exc:
-            ctx["error"] = exc
+        _self_dispatch_list(ctx)
     else:
         dispatch_request(ctx)
 
@@ -520,14 +538,7 @@ def when_list_sandbox_filter(ctx: dict, value: str) -> None:
     if isinstance(env, AccountSyncEnv):
         # Cross-cutting: sync env can't dispatch list requests
         # TRANSPORT-BYPASS: sandbox list under sync env
-        from src.core.tools.accounts import _list_accounts_impl
-
-        env._commit_factory_data()
-        try:
-            # Direct _impl call — see above, FIXME(#1880).
-            ctx["self_dispatched_response"] = _list_accounts_impl(req=req, identity=env.identity)
-        except Exception as exc:
-            ctx["error"] = exc
+        _self_dispatch_list(ctx, req=req)
     else:
         dispatch_request(ctx, req=req)
 
