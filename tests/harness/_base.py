@@ -2422,9 +2422,27 @@ class BaseTestEnv:
             # Sending it is also what the SIGNED branch below already relies on
             # (security.mdx :1269 — an unsigned request carrying a valid bearer is a
             # spec-correct 200), and it is what production would put on the wire.
+            # ``x-adcp-tenant`` is the load-bearing one, not the bearer. ASGI middleware
+            # runs OUTSIDE the app, so the FastAPI auth-dep override this leg relies on is
+            # invisible to it — and ``resolved_identity._detect_tenant`` resolves a tenant
+            # from Host -> virtual host/subdomain, ``x-adcp-tenant``, ``Apx-Incoming-Host``
+            # or a localhost fallback, NEVER from the auth token. The in-process TestClient
+            # sends ``Host: testserver``, which matches no virtual host, no subdomain and
+            # is not localhost, so the verifier resolved NO tenant and fell back to the
+            # default posture (``supported=True``) — refusing any request carrying
+            # ``push_notification_config.authentication`` with a bodyless 401 before the
+            # ingest gate ran. Strategy 2 is the one an in-process leg can satisfy.
+            #
+            # The bearer rides along because production sends it and the SIGNED branch
+            # below already does (security.mdx :1269 — an unsigned request carrying a
+            # valid bearer is a spec-correct 200).
+            headers: dict[str, str] = {}
             token = getattr(identity, "auth_token", None) if identity is not None else None
-            headers = {"x-adcp-auth": token} if token else None
-            return client.post(endpoint, json=body, headers=headers)
+            if token:
+                headers["x-adcp-auth"] = token
+            if self._tenant_id:
+                headers["x-adcp-tenant"] = self._tenant_id
+            return client.post(endpoint, json=body, headers=headers or None)
 
         # ``identity=None`` already means "send without a credential" everywhere
         # else in the harness (``_configure_rest_auth`` removes the auth dep for
