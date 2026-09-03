@@ -4801,6 +4801,28 @@ def _seed_tenant_principal(ctx: dict, env: object) -> None:
 # the SAME route instead of re-implementing a coarser lookup.
 
 
+def _seed_default_tenant_and_principal(ctx: dict, env: object) -> None:
+    """Tenant + principal only — the precondition an AUTHENTICATED dispatch needs.
+
+    The two @egress sync routes below were the only EnvRoutes with no seed, so no
+    ``Principal`` row was ever written for them. That was invisible while the harness
+    handed identity a principal_id whether or not a row backed it; once
+    ``BaseTestEnv.identity_for`` began nulling principal_id on a failed lookup — mirroring
+    production's ``resolve_identity`` (salesagent-z9e0, pinned by
+    tests/integration/test_harness_identity_for_db_lookup.py) — those dispatches started
+    arriving unauthenticated and were refused with AUTH_MISSING before reaching the egress
+    gate the scenarios exist to grade. The refusal under test is a BUYER's refusal, so the
+    buyer has to exist.
+
+    Deliberately NOT ``_seed_media_buy_chain``: these scenarios sync a creative, so a
+    product and a pricing option would be unused setup implying a dependency that is not
+    there.
+    """
+    tenant, principal = env.setup_default_data()
+    ctx["tenant"] = tenant
+    ctx["principal"] = principal
+
+
 def _seed_media_buy_chain(ctx: dict, env: object) -> None:
     """Seed the full create dependency chain (tenant/principal/product/pricing)."""
     tenant, principal, product, pricing_option = env.setup_media_buy_data()
@@ -5031,6 +5053,7 @@ ENV_ROUTES: list[EnvRoute] = [
         # registry variant rather than CreativeSyncEnv.
         when=lambda m: "egress_sync" in m,
         env_builder=_env("tests.harness.creative_sync.RealRegistryCreativeSyncEnv"),
+        seed=_seed_default_tenant_and_principal,
     ),
     EnvRoute(
         tag="egress-sync-creds",
@@ -5039,6 +5062,7 @@ ENV_ROUTES: list[EnvRoute] = [
         # (registry-mocked) sync env, not the real-registry variant above.
         when=lambda m: "egress_sync_creds" in m,
         env_builder=_env("tests.harness.creative_sync.CreativeSyncEnv"),
+        seed=_seed_default_tenant_and_principal,
     ),
     EnvRoute(
         tag="egress-update",

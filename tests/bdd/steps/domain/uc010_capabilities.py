@@ -26,10 +26,12 @@ from pytest_bdd import given, parsers, then, when
 
 from tests.bdd.steps._outcome_helpers import (
     WIRE_MISSING,
+    error_envelope_or_none,
     payload_or_none,
     require_payload,
     wire_absent,
     wire_dict,
+    wire_error_dict,
     wire_field,
     wire_lookup,
 )
@@ -103,8 +105,7 @@ def _config(ctx: dict) -> dict:
 
 def _error_details(ctx: dict) -> dict:
     """details block of the wire error envelope (errors[0] preferred)."""
-    envelope = ctx.get("wire_error_envelope") or ctx.get("synthesized_error_envelope")
-    assert isinstance(envelope, dict), f"no wire error envelope captured (error={ctx.get('error')!r})"
+    envelope = wire_error_dict(ctx)
     errors = envelope.get("errors") or [{}]
     details = errors[0].get("details") or envelope.get("adcp_error", {}).get("details")
     assert isinstance(details, dict), f"error envelope carries no details block: {envelope}"
@@ -133,8 +134,8 @@ def _assert_capabilities_success(ctx: dict) -> None:
     envelope, and the top-level required blocks (adcp, supported_protocols) on the wire
     (get-adcp-capabilities-response.json#/required = [adcp, supported_protocols])."""
     assert ctx.get("error") is None, f"expected a valid response, got error: {ctx.get('error')!r}"
-    assert ctx.get("wire_error_envelope") is None, (
-        f"expected a valid response, got a wire error envelope: {ctx.get('wire_error_envelope')!r}"
+    assert error_envelope_or_none(ctx) is None, (
+        f"expected a valid response, got a wire error envelope: {error_envelope_or_none(ctx)!r}"
     )
     for path in ("adcp", "supported_protocols"):
         wire_field(ctx, path)
@@ -149,7 +150,7 @@ def _assert_capabilities_config_error(ctx: dict, message_substr: str | None = No
 
     assert ctx.get("error") is not None, "expected a CONFIGURATION_ERROR rejection, got a success response"
     assert_envelope_shape(
-        ctx.get("wire_error_envelope"),
+        wire_error_dict(ctx),
         "CONFIGURATION_ERROR",
         recovery="terminal",
         message_substr=message_substr,
@@ -1200,8 +1201,8 @@ def then_auth_outcome(ctx: dict, outcome: str) -> None:
         # [adcp, supported_protocols]). The fuller section shape is graded by the
         # companion "a success outcome should carry ..." Then.
         assert ctx.get("error") is None, f"expected success, got error: {ctx.get('error')!r}"
-        assert ctx.get("wire_error_envelope") is None, (
-            f"expected success, got a wire error envelope: {ctx.get('wire_error_envelope')!r}"
+        assert error_envelope_or_none(ctx) is None, (
+            f"expected success, got a wire error envelope: {error_envelope_or_none(ctx)!r}"
         )
         for path in ("adcp", "supported_protocols"):
             wire_field(ctx, path)
@@ -1210,7 +1211,7 @@ def then_auth_outcome(ctx: dict, outcome: str) -> None:
 
     assert ctx.get("error") is not None, "expected AUTH_INVALID, got a success response"
     assert_envelope_shape(
-        ctx.get("wire_error_envelope"),
+        wire_error_dict(ctx),
         "AUTH_INVALID",
         recovery="terminal",
     )
@@ -2373,8 +2374,8 @@ def then_success_envelope_no_adcp_error(ctx: dict) -> None:
     failures"). For this status-less payload, "completed" is proven by no recorded
     error and no wire error envelope; the top-level required blocks stay on the wire."""
     assert ctx.get("error") is None, f"expected a completed envelope, got error: {ctx.get('error')!r}"
-    assert ctx.get("wire_error_envelope") is None, (
-        f"expected a completed envelope, got a wire error envelope: {ctx.get('wire_error_envelope')!r}"
+    assert error_envelope_or_none(ctx) is None, (
+        f"expected a completed envelope, got a wire error envelope: {error_envelope_or_none(ctx)!r}"
     )
     wire_absent(ctx, "adcp_error")
     for path in ("adcp", "supported_protocols"):
@@ -2642,7 +2643,7 @@ def then_version_details_supported_versions(ctx: dict) -> None:
     An empty array or omitted field is a conformance violation."""
     from tests.helpers.envelope_assertions import assert_envelope_shape
 
-    envelope = ctx.get("wire_error_envelope") or ctx.get("synthesized_error_envelope")
+    envelope = error_envelope_or_none(ctx)
     assert envelope is not None, (
         "expected a VERSION_UNSUPPORTED error envelope, got a success response "
         "(the capabilities builder runs no version negotiation)"
