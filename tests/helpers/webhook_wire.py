@@ -49,6 +49,7 @@ refused, because that decision is made from the address, not from the lookup.
 from __future__ import annotations
 
 import json
+import socket
 import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
@@ -185,6 +186,22 @@ def stub_outbound_webhooks(responder: Callable[..., Any]) -> Iterator[None]:
         # sender that grows its own fire-time SSRF check is covered without editing this
         # helper again.
         stack.enter_context(patch("socket.gethostbyname", lambda _host: _STUB_RESOLVED_IP))
+        # BOTH resolver calls, because the two senders do not agree on which one they use.
+        # #1802 moved the dial-time SSRF check into ``EgressPolicy.resolve_for_dial``,
+        # which re-resolves through ``adcp.signing`` — and that resolves with
+        # ``socket.getaddrinfo`` (ip_pinned_transport.py, jwks.py), NOT
+        # ``gethostbyname``. With only the latter stubbed, the seam performed a LIVE
+        # lookup of the test's ``buyer.example.com``, failed it, and refused the
+        # destination before any client was constructed, so the capture recorded zero
+        # POSTs and every assertion downstream read an empty list.
+        stack.enter_context(
+            patch(
+                "socket.getaddrinfo",
+                lambda host, port, *a, **k: [
+                    (socket.AF_INET, socket.SOCK_STREAM, 6, "", (_STUB_RESOLVED_IP, port or 0))
+                ],
+            )
+        )
         yield
 
 
