@@ -9,7 +9,29 @@ module's collection. The symbols are unchanged; only their home is.
 
 from __future__ import annotations
 
+from tests.helpers.egress_hatches import egress_hatch_env
+
 BACKOFF_BASE_ENV = "ADCP_OUTBOUND_BACKOFF_BASE_SECONDS"
+
+#: A rate-limited answer, as the origin sends it. The body is asserted against in the
+#: opacity cases, so it carries a marker rather than a plausible payload. It lives HERE
+#: rather than in ``test_outbound_http.py`` because ``rate_limited`` below writes it: a
+#: helper reaching back into the test module for it is the cross-test-module import this
+#: extraction removed (``test_architecture_no_cross_test_module_imports``), and leaving it
+#: behind is how the extraction shipped three NameErrors that only the integration suite
+#: could see — ~357 failures from three missing lines.
+_RATE_LIMITED_BODY = b'{"error": "slow down"}'
+
+
+def _attempts_module():
+    """Import ``egress.attempts`` (the MODULE, not the class) lazily.
+
+    :func:`pin_jitter` needs the module object itself, to patch ``random.uniform``
+    where ``_backoff_seconds`` reads it. Moved here with its only caller.
+    """
+    from src.core.security.egress import attempts
+
+    return attempts
 
 
 def set_flags(monkeypatch, *, private: bool = False) -> None:

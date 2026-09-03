@@ -46,6 +46,7 @@ from src.core.exceptions import AdCPBlockedUrlError, build_two_layer_error_envel
 from src.core.security.outbound_http import CounterpartyUrl
 from tests.helpers import assert_backoff_schedule, assert_envelope_shape
 from tests.helpers.egress_backoff import (
+    _RATE_LIMITED_BODY,
     BACKOFF_BASE_ENV,
     fast_backoff,
     pin_jitter,
@@ -79,9 +80,6 @@ SEAM_LOGGER = "src.core.security.outbound_http"
 # (GH #1802), not from SEAM_LOGGER.
 SCHEDULE_LOGGER = "src.core.security.egress.attempts"
 
-# A rate-limited answer, as the origin sends it. The body is asserted against in
-# the opacity cases, so it carries a marker rather than a plausible payload.
-_RATE_LIMITED_BODY = b'{"error": "slow down"}'
 
 # The spec bound on the value CARRIED to the buyer: ``core/error.json`` @3.1.1
 # declares ``retry_after`` top-level, ``"type": "number"``, ``minimum: 1``,
@@ -1874,19 +1872,6 @@ def _machine():
     from src.core.security.egress.attempts import Attempts
 
     return Attempts
-
-
-def _attempts_module():
-    """Import ``egress.attempts`` (the MODULE, not the class) lazily.
-
-    :func:`pin_jitter` needs the module object itself, to patch
-    ``random.uniform`` where ``_backoff_seconds`` now reads it — the same
-    lazy-import rationale as :func:`_machine`, which returns the ``Attempts``
-    class rather than this module.
-    """
-    from src.core.security.egress import attempts
-
-    return attempts
 
 
 def record_machine_run(monkeypatch, seam_call: str, *, base: str) -> tuple[list[float], list]:
