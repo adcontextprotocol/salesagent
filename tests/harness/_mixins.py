@@ -10,6 +10,7 @@ Mixins may call ``self._commit_factory_data()`` which is a no-op in unit mode.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -57,9 +58,17 @@ def _e2e_capture_url(env: Any) -> str:
     cannot reach that, so under e2e the endpoint is the compose stack's
     long-lived ``webhook-capture`` service, addressed through the shared TLS
     front exactly as a production receiver would be.
+
+    ISSUING the address is what this does, so it records that — see
+    :meth:`~tests.harness._base.BaseTestEnv.record_capture_key_handed_out`, which
+    names both issuing paths and what went wrong while only the other one recorded.
+    :func:`_deliver_via_live_server` reads that fact to decide whether the media buy
+    gets a ``reporting_webhook`` at all, and this is the path every DELIVERY env
+    takes.
     """
     from tests.e2e._webhook_capture import delivery_url_for
 
+    env.record_capture_key_handed_out()
     return delivery_url_for(env._capture_key)
 
 
@@ -136,43 +145,44 @@ def _e2e_set_http_sequence(env: Any, responses: list) -> None:
 class _CapturedDelivery:
     """One delivery the compose stack's capture service received.
 
-    The capture service stores the parsed JSON PAYLOAD and nothing else -- no
-    headers, no raw bytes -- so this exposes ``.json()`` and refuses the rest BY
-    NAME rather than returning an empty dict that a signature assertion would
-    read as "no signature header". An assertion that cannot run over e2e must say
-    so; one that quietly passes on absent evidence is worse than one that errors.
+    Presents a ``received_raw`` capture in the shape the in-process ``OriginRequest``
+    has — ``.headers``, ``.body``, ``.json()`` — so a Then reads a delivery the same
+    way whatever transport produced it, which is what lets the SAME assertion grade
+    both.
+
+    It used to expose ``.json()`` alone and raise BY NAME on the other two, on the
+    stated grounds that "the capture service stores the parsed JSON PAYLOAD and
+    nothing else". That was never true of the service: ``_CaptureStore`` has always
+    kept ``received_raw`` (path, headers verbatim, body bytes) beside ``received``,
+    and ``captured_delivery`` has always known how to read it. Only the READER this
+    class was built on was parsed-only. The refusal was the honest response to that
+    belief — an assertion that cannot run must say so rather than pass on absent
+    evidence — but it made three graduated header-grading e2e_rest legs
+    unobservable, which is the same silence one layer up.
     """
 
-    __slots__ = ("_payload",)
+    __slots__ = ("_wire",)
 
-    def __init__(self, payload: dict) -> None:
-        self._payload = payload
+    def __init__(self, wire: Any) -> None:
+        self._wire = wire
 
     def json(self) -> dict:
-        return self._payload
+        return json.loads(self._wire.content) if self._wire.content else {}
 
     @property
     def headers(self) -> Any:
-        raise AttributeError(
-            "the webhook-capture service records the delivery PAYLOAD only, not its headers, "
-            "so header assertions (signature, auth) cannot run over e2e_rest. Grade them "
-            "in-process, or give the capture service header storage (prebid/salesagent#2098)."
-        )
+        return self._wire.headers
 
     @property
     def body(self) -> bytes:
-        raise AttributeError(
-            "the webhook-capture service records the PARSED payload, not the raw bytes on the "
-            "wire, so byte-equality assertions (HMAC over the exact body) cannot run over "
-            "e2e_rest. Grade them in-process (prebid/salesagent#2098)."
-        )
+        return bytes(self._wire.content)
 
 
 def _e2e_delivered_requests(env: Any) -> list[_CapturedDelivery]:
     """E2E realization of :attr:`LocalOriginMixin.delivered_requests`."""
     from tests.e2e._webhook_capture import ReceivedView
 
-    return [_CapturedDelivery(payload) for payload in ReceivedView(env._capture_key)]
+    return [_CapturedDelivery(wire) for wire in ReceivedView(env._capture_key).raw()]
 
 
 def _e2e_last_delivery(env: Any) -> _CapturedDelivery:
@@ -246,16 +256,52 @@ def _seed_media_buy_for_delivery(env: Any, media_buy_id: str) -> Any:
     return media_buy
 
 
+def _registered_webhook_url(env: Any) -> str:
+    """The destination this scenario actually REGISTERED, as production would read it.
+
+    A real ``create_media_buy`` writes the buyer's registered URL into both places —
+    the ``push_notification_configs`` row and ``raw_request["reporting_webhook"]`` —
+    so the two agree by construction. The harness has to reproduce that agreement
+    rather than assume it: a Given may point the registration somewhere OTHER than
+    this env's own endpoint, and ``the outbound webhook URL is blocked by SSRF
+    validation`` does exactly that (it swaps the active row for one naming a
+    cloud-metadata address).
+
+    Reading the env's own endpoint here instead made the two disagree, and the
+    disagreement was invisible in the direction that mattered: the live server reads
+    ``raw_request``, so it delivered happily to the capture origin while the row said
+    the destination was blocked — and the scenario asserting "skipped without a POST"
+    was left grading a delivery that had in fact been made.
+
+    Falls back to the env's own endpoint when nothing is registered, which is the case
+    for the scenarios whose Given establishes the destination through the env rather
+    than through a config row.
+    """
+    from sqlalchemy import select
+
+    from src.core.database.models import PushNotificationConfig
+
+    registered = env._session.scalars(
+        select(PushNotificationConfig).filter_by(
+            tenant_id=env._tenant_id, principal_id=env._principal_id, is_active=True
+        )
+    ).all()
+    return str(registered[0].url) if registered else str(env.webhook_destination())
+
+
 def _attach_reporting_webhook(env: Any, media_buy: Any) -> None:
-    """Give *media_buy* the callback this env's capture origin answers. CONDITIONAL.
+    """Give *media_buy* the callback the scenario registered. CONDITIONAL.
 
     The delivery path reads ``MediaBuy.raw_request["reporting_webhook"]`` — that is what
     a real ``create_media_buy`` writes — so this is the row-level realization of a Given
     that says "this media buy has a reporting webhook". It is the half that must NOT run
     when no Given established a destination; see :func:`_deliver_via_live_server`.
+
+    The URL comes from :func:`_registered_webhook_url`, so what the media buy says and
+    what the registration says can never diverge.
     """
     raw_request = dict(media_buy.raw_request or {})
-    raw_request["reporting_webhook"] = {"url": env.webhook_destination(), "frequency": "daily"}
+    raw_request["reporting_webhook"] = {"url": _registered_webhook_url(env), "frequency": "daily"}
     media_buy.raw_request = raw_request
     env._commit_factory_data()
 
@@ -817,6 +863,33 @@ class LocalOriginMixin:
         webhook-capture service — the only endpoint the Docker server can reach.
         """
         return f"{self.origin.base_url}/webhook"
+
+    def webhook_destination(self) -> str:
+        """Where this env's outbound deliveries are addressed: its OWN endpoint.
+
+        Overrides :meth:`~tests.harness._base.BaseTestEnv.webhook_destination`, whose
+        answer is right only for an env that merely CARRIES a webhook URL as data. An
+        env that RUNS an endpoint has exactly one honest answer, and it is the endpoint
+        it runs — otherwise "where production was told to deliver" and "where this test
+        reads deliveries back" are two different addresses, and a delivery that
+        genuinely happened is indistinguishable from one that never did.
+
+        That was the live defect. The base answers from ``webhook_capture_key``
+        (``harness-<uuid>``) while this mixin's endpoint is ``_capture_key``
+        (``register_capture_key()``), so over e2e ``_attach_reporting_webhook`` wrote
+        the FORMER into ``MediaBuy.raw_request["reporting_webhook"]`` while every Given
+        registered, and every Then read, the LATTER. The live server dutifully
+        delivered — to a capture bucket no assertion looks at. It also lost the
+        registration on the way: ``_send_report_for_media_buy`` matches
+        ``DBPushNotificationConfig.url`` against the URL it was handed, so the
+        mismatched address missed the stored row carrying the bearer/HMAC credential
+        and fell through to an anonymous, unsigned delivery.
+
+        In process this collapses to the local origin the test already asserts against,
+        which is what the Givens have always written into the config row — so the two
+        transports now name the endpoint the same way, from one place.
+        """
+        return self.webhook_url
 
     # -- Programming the endpoint to FAIL ------------------------------------
 

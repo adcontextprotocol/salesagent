@@ -1054,15 +1054,39 @@ class BaseTestEnv:
         key is this env's alone, which is what lets scenarios share one receiver
         without reading each other's captures.
 
-        This is also the ONE place the key becomes an address something else can be
-        given, so it is where :attr:`webhook_capture_key_was_handed_out` is recorded —
-        see that property for why the recording cannot live on the minting path.
+        One of TWO issuing paths, and both must record — see
+        :meth:`record_capture_key_handed_out`.
         """
         from tests.e2e._webhook_capture import delivery_url
 
         url = delivery_url(self.webhook_capture_key)
-        self.__dict__["_webhook_capture_key_handed_out"] = True
+        self.record_capture_key_handed_out()
         return url
+
+    def record_capture_key_handed_out(self) -> None:
+        """Note that this env's capture address was ISSUED to something.
+
+        THE ONE RECORDER, called by every path that hands the address out, because
+        there is more than one and a gate that reads the fact cannot tell which path
+        produced it:
+
+        * :meth:`_realize_e2e_webhook_destination` — the ``BaseTestEnv`` key
+          (``webhook_capture_key``, minted lazily here);
+        * ``_mixins._e2e_capture_url`` — the ``LocalOriginMixin`` key
+          (``_capture_key``, registered in ``_enter_pre``), which is what every
+          DELIVERY env actually issues, and which is reached through
+          ``LocalOriginMixin.webhook_url``.
+
+        The second path arrived with #1802 and did not record, while the gate that
+        reads this (``_mixins._deliver_via_live_server``, deciding whether to attach
+        ``MediaBuy.raw_request["reporting_webhook"]``) came from the other side of the
+        same merge. Joined, the flag was permanently False for exactly the envs it
+        governs: the live server was asked to report on a media buy carrying no
+        reporting webhook, declined with "No reporting_webhook configured", and three
+        graduated ``@T-UC-004-webhook-*`` e2e_rest legs failed as "No webhook POST was
+        made" — a setup fact reading like a delivery defect.
+        """
+        self.__dict__["_webhook_capture_key_handed_out"] = True
 
     @property
     def webhook_capture_key(self) -> str:
@@ -1090,11 +1114,11 @@ class BaseTestEnv:
         of registration to report — and it is why the distinction has to be made HERE,
         where the fact actually exists.
 
-        Recorded on the HANDING-OUT path (:meth:`_realize_e2e_webhook_destination`),
-        never on the minting path: :attr:`webhook_capture_key` mints on demand, so a
-        flag set there would only ever say "a key exists" — which a vacuous reader
-        makes true by reading. The address being ISSUED is the fact; a key existing is
-        not (salesagent-n78j0.1.4).
+        Recorded on every HANDING-OUT path (:meth:`record_capture_key_handed_out`,
+        which lists them), never on a minting path: :attr:`webhook_capture_key` mints
+        on demand, so a flag set there would only ever say "a key exists" — which a
+        vacuous reader makes true by reading. The address being ISSUED is the fact; a
+        key existing is not (salesagent-n78j0.1.4).
         """
         return bool(self.__dict__.get("_webhook_capture_key_handed_out"))
 

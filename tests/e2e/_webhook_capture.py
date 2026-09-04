@@ -313,17 +313,38 @@ class ReceivedView:
     landing between two calls is never silently lost — the same guarantee the old
     in-process shared list gave for free.
 
-    Iterates the PARSED side. A caller that needs the bytes, the headers, or the
-    path a delivery arrived with wants :func:`captures` /
-    :func:`captured_delivery` instead — the service records both, and only the
-    parsed side is exposed here.
+    Iterates the PARSED side; :meth:`raw` is the same captures WITH their headers
+    and body bytes. Both come off one readback document, so neither can observe a
+    delivery the other cannot.
+
+    :func:`captures` / :func:`captured_deliveries` answer the same questions for
+    the OTHER addressing flavor and are not interchangeable with these — see the
+    module docstring: a key read back through the wrong flavor gets a
+    synthesized empty bucket rather than an error.
     """
 
     def __init__(self, key: str) -> None:
         self._key = key
 
+    def _fetch_doc(self) -> dict:
+        return _readback_json(_readback_base_url(), "GET", f"/webhook/{self._key}")
+
     def _fetch(self) -> list[dict]:
-        return _readback_json(_readback_base_url(), "GET", f"/webhook/{self._key}")["received"]
+        return self._fetch_doc()["received"]
+
+    def raw(self) -> list[CapturedWebhook]:
+        """Every delivery under this key, with headers verbatim and body BYTES.
+
+        The parsed side drops exactly what a signature or an auth-header assertion
+        needs, and the service has always recorded both (``_CaptureStore`` keeps
+        ``received`` and ``received_raw``) — only this reader was parsed-only, which
+        made every header-grading e2e_rest leg unable to observe its own evidence.
+
+        Reuses :func:`captured_delivery` for the per-entry shape, so the
+        ``https://{Host}{path}`` reconstruction an RFC 9421 ``@target-uri`` is
+        verified against is spelled once, not once per flavor.
+        """
+        return [captured_delivery(entry) for entry in self._fetch_doc().get("received_raw") or []]
 
     def __bool__(self) -> bool:
         return bool(self._fetch())
