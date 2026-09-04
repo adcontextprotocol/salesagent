@@ -104,6 +104,39 @@ def _is_injected(parameter: inspect.Parameter) -> bool:
 #: (a bytecode reference is the call itself, not a string that resembles one).
 _BUILDER_NAME = re.compile(r"^(_?build_\w+_request|create_\w+_request)$")
 
+#: Names a step in a tool's DISPATCH chain: the ``*_raw`` pass-through a wrapper may hop
+#: through, and the ``*_impl`` the chain terminates at. Same artifact-not-name rule as
+#: :data:`_BUILDER_NAME` -- ``get_media_buy_delivery`` reaches
+#: ``_get_media_buy_delivery_impl`` only via ``get_media_buy_delivery_raw``, and no name
+#: join could know that.
+_DISPATCH_NAME = re.compile(r"^\w+_raw$|^_\w+_impl$")
+
+
+def _referenced_callables(fn: Callable[..., Any], pattern: re.Pattern[str]) -> list[Callable[..., Any]]:
+    """Every module-level callable ``fn`` names in its BYTECODE whose name matches *pattern*.
+
+    The shared resolver behind :func:`builder_for` and :func:`impl_for`: both read the same
+    ``co_names`` and resolve through the same module lookup, so neither can drift into a
+    different notion of "the function this wrapper calls".
+    """
+    found: list[Callable[..., Any]] = []
+    module = sys.modules.get(fn.__module__)
+    for name in fn.__code__.co_names:
+        if not pattern.match(name):
+            continue
+        candidate = getattr(module, name, None)
+        if candidate is None:
+            # Callees are often imported inside the function body; find the one module
+            # that defines this name among those already imported.
+            for loaded in list(sys.modules.values()):
+                other = getattr(loaded, name, None)
+                if other is not None and getattr(other, "__name__", None) == name:
+                    candidate = other
+                    break
+        if candidate is not None and candidate not in found:
+            found.append(candidate)
+    return found
+
 
 def builder_for(fn: Callable[..., Any]) -> Callable[..., Any] | None:
     """The ONE builder a tool constructs its request through, or None when it has none.
@@ -116,21 +149,43 @@ def builder_for(fn: Callable[..., Any]) -> Callable[..., Any] | None:
     the tool's name. Name-joining would be fooled by the real cases: ``_build_update_request``
     returns ``UpdateMediaBuyRequest``.
     """
-    builder_name = next((n for n in fn.__code__.co_names if _BUILDER_NAME.match(n)), None)
-    if builder_name is None:
-        return None
+    builders = _referenced_callables(fn, _BUILDER_NAME)
+    return builders[0] if builders else None
 
-    module = sys.modules.get(fn.__module__)
-    builder = getattr(module, builder_name, None)
-    if builder is None:
-        # Builders are often imported inside the function body; find the one module that
-        # defines this name among those already imported.
-        for loaded in list(sys.modules.values()):
-            candidate = getattr(loaded, builder_name, None)
-            if candidate is not None and getattr(candidate, "__name__", None) == builder_name:
-                builder = candidate
-                break
-    return builder
+
+def impl_for(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """The callable that IMPLEMENTS the tool ``fn`` registers -- the registry's ``impl`` edge.
+
+    Walks the dispatch chain from the wrapper: through any ``*_raw`` pass-through, stopping
+    at the ``*_impl`` it reaches. A tool whose chain reaches no ``*_impl`` implements itself,
+    which is not a special case for three named tools but the walk terminating -- the three
+    task tools have no separate implementation to reach.
+
+    Stopping AT the first ``_impl`` rather than following the chain to exhaustion is
+    load-bearing: ``_update_media_buy_impl`` calls ``_sync_creatives_impl`` internally, so a
+    walk that kept going would report ``update_media_buy``'s implementation as creative sync.
+
+    Refuses a frame that names more than one dispatch step. Picking one by ``co_names``
+    order would make the answer depend on the order the compiler happened to emit, and the
+    tool's implementation would rebind silently the day a wrapper mentioned a second.
+    """
+    current = fn
+    seen: set[Any] = {fn}
+    while True:
+        steps = [c for c in _referenced_callables(current, _DISPATCH_NAME) if c not in seen]
+        if not steps:
+            return current
+        if len(steps) > 1:
+            raise RuntimeError(
+                f"{getattr(current, '__name__', current)!r} names {len(steps)} dispatch steps "
+                f"({sorted(getattr(c, '__name__', str(c)) for c in steps)}), so which one "
+                f"implements the tool depends on bytecode order. A wrapper must reach its "
+                f"implementation through exactly one ``*_raw``/``*_impl`` step."
+            )
+        current = steps[0]
+        seen.add(current)
+        if current.__name__.endswith("_impl"):
+            return current
 
 
 def request_model_for(fn: Callable[..., Any]) -> type[BaseModel] | None:
