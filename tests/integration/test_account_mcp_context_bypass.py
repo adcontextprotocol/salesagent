@@ -2,7 +2,7 @@
 
 The MCP wrappers in ``accounts.py`` take ``context`` as a separate kwarg, because
 that is how FastMCP dispatches tool parameters:
-``list_accounts(account=..., ctx=..., context=ContextObject(...))``.
+``mcp_tool("list_accounts")(account=..., ctx=..., context=ContextObject(...))``.
 
 Two levels are covered, deliberately:
 
@@ -97,13 +97,13 @@ class TestMCPContextDirectCalls:
         Calls the wrapper directly with context as a separate kwarg,
         exercising lines 226-231 in accounts.py.
         """
-        from src.core.tools.accounts import list_accounts
         from tests.factories import (
             AccountFactory,
             AgentAccountAccessFactory,
             PrincipalFactory,
             TenantFactory,
         )
+        from tests.helpers.capture_wrapper_req import mcp_tool
 
         with AccountListEnv(tenant_id="mcp_ctx_t1", principal_id="mcp_ctx_agent") as env:
             tenant = TenantFactory(tenant_id="mcp_ctx_t1")
@@ -120,7 +120,7 @@ class TestMCPContextDirectCalls:
             mock_ctx = MagicMock(spec=Context)
             mock_ctx.get_state = AsyncMock(return_value=mcp_identity)
 
-            tool_result = asyncio.run(list_accounts(ctx=mock_ctx, context=context_obj))
+            tool_result = asyncio.run(mcp_tool("list_accounts")(ctx=mock_ctx, context=context_obj))
             response = ListAccountsResponse(**tool_result.structured_content)
 
         assert response.context is not None
@@ -131,8 +131,8 @@ class TestMCPContextDirectCalls:
 
         Exercises lines 689-694 in accounts.py.
         """
-        from src.core.tools.accounts import sync_accounts
         from tests.factories.request import fresh_idempotency_key
+        from tests.helpers.capture_wrapper_req import mcp_tool
 
         with AccountSyncEnv(tenant_id="mcp_sync_ctx_t1", principal_id="mcp_sync_ctx_agent") as env:
             env.setup_default_data()
@@ -146,7 +146,7 @@ class TestMCPContextDirectCalls:
             mock_ctx.get_state = AsyncMock(return_value=mcp_identity)
 
             tool_result = asyncio.run(
-                sync_accounts(
+                mcp_tool("sync_accounts")(
                     accounts=[{"brand": {"domain": "ctx-sync.com"}, "operator": "ctx-sync.com", "billing": "operator"}],
                     # Required by sync-accounts-request.json 3.1.1 (prkv.86). This scenario
                     # grades the context ECHO on a SUCCESSFUL sync, so the request has to be

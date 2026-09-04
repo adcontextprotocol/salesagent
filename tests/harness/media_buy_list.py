@@ -78,18 +78,6 @@ class MediaBuyListDispatchMixin:
         """
         return self._run_a2a_handler("get_media_buys", GetMediaBuysResponse, **kwargs)
 
-    @property
-    def _mcp_tool_callable(self):
-        """The MCP tool this env dispatches -- its parameters are the accepted set.
-
-        Read by ``BaseTestEnv._run_mcp_client`` to narrow a ``req`` DTO down to
-        the arguments the tool actually advertises, and by
-        :meth:`_build_list_rest_body` for the same narrowing on the REST body.
-        """
-        from src.core.tools.media_buy_list import get_media_buys
-
-        return get_media_buys
-
     def _deliver_list_mcp(self, **kwargs: Any) -> DeliverResult:
         """Dispatch get_media_buys through the REAL FastMCP ``Client`` pipeline.
 
@@ -169,23 +157,20 @@ class MediaBuyListDispatchMixin:
         if req is not None:
             # Narrowed to what the tool implements, the same "DTO fields INTERSECT
             # parameters" rule the transports use (and the same narrowing
-            # _run_mcp_client performs through _mcp_tool_callable). The DTO is a
-            # SUPERSET of what any one tool accepts -- GetMediaBuysRequest declares
-            # include_history, include_webhook_activity, pagination and more that
-            # get_media_buys does not take -- so dumping it whole sends fields the
-            # route rejects, and dev-mode extra="forbid" turns that into a
-            # VALIDATION_ERROR on a request the scenario never meant to make malformed.
-            import inspect as _inspect
-
-            accepted = set(_inspect.signature(self._mcp_tool_callable).parameters)
-            # exclude_unset, not exclude_none: GetMediaBuysRequest was re-based on the
-            # library type, so it now inherits include_snapshot with a default of False
-            # rather than None -- exclude_none stopped dropping it and the built body grew a
-            # key the caller never set. exclude_unset restores "send only what was set",
-            # which is also what the flat arm below already does.
-            body = {
-                key: value for key, value in req.model_dump(mode="json", exclude_unset=True).items() if key in accepted
-            }
+            # The whole DTO, unfiltered. This used to drop every field the hand-written
+            # wrapper did not declare, because the DTO was then a SUPERSET of what the tool
+            # accepted -- GetMediaBuysRequest declares include_history,
+            # include_webhook_activity, pagination and more that get_media_buys did not take,
+            # so dumping it whole sent fields the route rejected. The REST body model IS the
+            # DTO now, so every field it carries is a field the route accepts and the filter
+            # could only drop one the scenario meant to send.
+            #
+            # exclude_unset, not exclude_none: GetMediaBuysRequest is re-based on the library
+            # type, so it inherits include_snapshot with a default of False rather than None
+            # -- exclude_none stopped dropping it and the built body grew a key the caller
+            # never set. exclude_unset is "send only what was set", which is also what the
+            # flat arm below does.
+            body = req.model_dump(mode="json", exclude_unset=True)
         else:
             body = {}
             # "account" belongs here: the steps dispatch account={"account_id": ...}

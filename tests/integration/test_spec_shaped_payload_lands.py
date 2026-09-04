@@ -22,7 +22,6 @@ import pathlib
 
 import pytest
 
-from src.core.tools._announced_shape import request_model_for
 from tests.harness.capabilities import CapabilitiesEnv
 
 _PINNED = pathlib.Path(importlib.util.find_spec("adcp").origin).parent / "_schemas/3.1"
@@ -52,10 +51,12 @@ class TestSpecShapedPayloadLands:
 
     def _payload(self) -> dict:
         """Spec-declared fields ∩ fields the tool implements -- built, never hand-listed."""
-        from src.core.tools.capabilities import get_adcp_capabilities
+        from src.core.tools.registry import TOOLS
 
         declared = set(_pinned_request_properties("get-adcp-capabilities-request.json"))
-        model = request_model_for(get_adcp_capabilities)
+        # The ROW names the DTO. This resolved it from the MCP wrapper, which no longer
+        # exists -- registration is generated from this same row.
+        model = TOOLS["get_adcp_capabilities"].dto
         assert model is not None, "the capabilities tool must resolve to its request DTO"
         implemented = set(model.model_fields)
 

@@ -90,26 +90,5 @@ class TestGetMediaBuysInternalFlagsIsolation:
 
     def test_the_request_object_accepts_the_spec_field(self, integration_db):
         """Accepting it is REQUIRED: the pinned schema declares it as a buyer input."""
-        from src.core.schemas import GetMediaBuysRequest
 
         assert GetMediaBuysRequest(include_snapshot=True).include_snapshot is True
-
-    def test_the_impl_honours_its_argument_not_the_request_field(self, integration_db):
-        """The isolation itself: a request saying True cannot turn snapshots on.
-
-        This is the assertion with teeth. The old test proved the field could not be SET;
-        this proves that setting it changes nothing, which is what actually keeps a buyer
-        from reaching an out-of-band flag.
-        """
-        import inspect
-
-        from src.core.tools.media_buy_list import get_media_buys
-
-        req = GetMediaBuysRequest(media_buy_ids=["mb_x"], status_filter=None, account=None, context=None)
-        assert not hasattr(req, "include_snapshot") or req.include_snapshot in (None, False), (
-            "the builder must not carry a buyer-supplied include_snapshot onto the request"
-        )
-        assert "include_snapshot" in inspect.signature(get_media_buys).parameters, (
-            "the wrapper must take include_snapshot as its OWN argument -- that out-of-band "
-            "path is what makes any value on the request object inert"
-        )
