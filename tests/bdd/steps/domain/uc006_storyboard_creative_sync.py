@@ -46,10 +46,10 @@ from tests.bdd.steps.domain.uc006_sync_creatives import (
     _E2E_FORMAT_ID,
     _action_str,
     _build_creative_payload,
-    _ensure_tenant_principal,
     _setup_product_with_creative_policy,
     when_sync_creative,
 )
+from tests.bdd.steps.generic._account_resolution import ensure_tenant_principal
 from tests.factories.creative_asset import build_assets, image_spec, text_spec, url_spec, video_spec
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -123,7 +123,7 @@ def given_creative_submission_previously_failed(ctx: dict) -> None:
     text, without duplicating DB setup the next step already performs.
     """
     env = ctx["env"]
-    _ensure_tenant_principal(ctx, env)
+    ensure_tenant_principal(ctx, env)
 
 
 @given(
@@ -177,7 +177,7 @@ def given_three_creatives_three_formats(ctx: dict) -> None:
     catalog behavior (that is UC-005's concern).
     """
     env = ctx["env"]
-    _ensure_tenant_principal(ctx, env)
+    ensure_tenant_principal(ctx, env)
     agent_url = env.DEFAULT_AGENT_URL
 
     creatives = [
@@ -235,7 +235,7 @@ def given_captured_format_id_from_get_products_for_sync(ctx: dict) -> None:
     # no transport parametrization for the capture step; transport only varies the
     # subsequent sync_creatives call in the When step.
     env = ctx["env"]
-    _ensure_tenant_principal(ctx, env)
+    ensure_tenant_principal(ctx, env)
     tenant = ctx["tenant"]
     if is_e2e(ctx):
         agent_url = _E2E_AGENT_URL

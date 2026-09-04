@@ -23,11 +23,11 @@ from tests.bdd.steps._outcome_helpers import error_envelope_or_none, payload_or_
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.bdd.steps.generic.then_error import _get_error_message
 from tests.bdd.steps.generic.then_payload import register_boundary_handler
-from tests.helpers.hmac_assertions import assert_signature_verifies_over_wire_body
 from tests.harness._mixins import LocalOriginMixin
 from tests.helpers import locate_envelope_error
 from tests.helpers.backoff_assertions import assert_backoff_schedule
 from tests.helpers.egress_hatches import UNDIALLED_PUBLIC_HTTPS_ORIGIN
+from tests.helpers.hmac_assertions import assert_signature_verifies_over_wire_body
 
 # ── Helpers ──────────────────────────────────────────────────────────
 

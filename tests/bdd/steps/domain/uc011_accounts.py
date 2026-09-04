@@ -31,7 +31,7 @@ from tests.bdd.steps._outcome_helpers import (
     wire_error_envelope_or_none,
     wire_field,
 )
-from tests.bdd.steps.generic._auth import setup_tenant_and_principal
+from tests.bdd.steps.generic._account_resolution import ensure_tenant_principal
 from tests.bdd.steps.generic._dispatch import dispatch_request, dispatch_via_client
 from tests.bdd.steps.generic.then_error import _wire_code
 from tests.factories.account import AccountFactory, AgentAccountAccessFactory
@@ -184,9 +184,16 @@ def _assert_wire_field_rejection(ctx: dict, field: str, code: str = "INVALID_REQ
     )
 
 
-#: Moved to ``tests.bdd.steps.generic._auth``; this name kept so the module's own
-#: 30 call sites read unchanged. New callers import the generic one.
-_setup_tenant_and_principal = setup_tenant_and_principal
+def _setup_tenant_and_principal(ctx: dict) -> tuple[Any, Any]:
+    """This module's 22 call sites, routed to the canonical owner.
+
+    ``ensure_tenant_principal`` (``steps/generic/_account_resolution.py``) is the
+    one implementation; ``uc002`` and ``uc006`` already delegate to it the same
+    way. The only difference here is the return value, which this module's
+    callers use.
+    """
+    ensure_tenant_principal(ctx, ctx["env"])
+    return ctx["tenant"], ctx["principal"]
 
 
 def _create_accessible_account(ctx: dict, status: str = "active", **kwargs: Any) -> Any:

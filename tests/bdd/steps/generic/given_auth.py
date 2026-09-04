@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pytest_bdd import given, parsers
 
-from tests.bdd.steps.generic._auth import setup_tenant_and_principal
+from tests.bdd.steps.generic._account_resolution import ensure_tenant_principal
 
 # ── Authenticated / tenant-present paths ────────────────────────────
 
@@ -101,4 +101,4 @@ def given_buyer_authenticated(ctx: dict, transport: str | None = None) -> None:
     until the generator stops emitting them, and ignored so they cannot pin.
     """
     ctx["has_auth"] = True
-    setup_tenant_and_principal(ctx)
+    ensure_tenant_principal(ctx, ctx["env"])
