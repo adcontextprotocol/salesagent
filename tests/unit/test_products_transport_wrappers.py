@@ -42,14 +42,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastmcp.exceptions import ToolError
 from fastmcp.server.context import Context
-from pydantic import ValidationError
 
-from src.core.exceptions import AdCPValidationError
-from src.core.schemas import GetProductsResponse
+from src.core.schemas import GetProductsRequest, GetProductsResponse
 from src.core.tool_error_logging import with_error_logging
 from tests.factories import PrincipalFactory
 from tests.helpers import assert_envelope_shape
-from tests.helpers.capture_wrapper_req import capture_req_via_wrapper
+from tests.helpers.capture_wrapper_req import mcp_tool, registry_impl
 
 
 def _mock_response() -> GetProductsResponse:
@@ -57,178 +55,104 @@ def _mock_response() -> GetProductsResponse:
     return GetProductsResponse(products=[])
 
 
-def _capture_req_via_get_products(brand):
-    """Run the real MCP get_products wrapper with `brand`; return the req handed to the impl."""
-    from src.core.tools.products import get_products
-
-    return capture_req_via_wrapper(
-        impl_patch_target="src.core.tools.products._get_products_impl",
-        wrapper=get_products,
-        stub_response=GetProductsResponse(products=[]),
-        wrapper_kwargs={"brand": brand, "brief": "ads"},
-    )
-
-
-def test_mcp_get_products_coerces_string_url_brand_before_impl():
-    """#1324: brand='https://test.example' reaches the impl as BrandReference(domain='test.example')."""
-    req = _capture_req_via_get_products("https://test.example")
-    assert req.brand is not None
-    assert req.brand.domain == "test.example"
-
-
-def test_mcp_get_products_string_and_dict_brand_identical_downstream():
-    """#1324 contract item 3: string shorthand and dict form produce the identical brand at the impl."""
-    from_string = _capture_req_via_get_products("https://test.example")
-    from_dict = _capture_req_via_get_products({"domain": "test.example"})
-    assert from_string.brand is not None and from_dict.brand is not None
-    assert from_string.brand.domain == from_dict.brand.domain == "test.example"
-
-
-def test_mcp_get_products_malformed_brand_raises_validation_error():
-    """Malformed explicit brand must not coerce to None (misleading require_brand policy error)."""
-    mock_ctx = MagicMock(spec=Context)
-    mock_ctx.get_state = AsyncMock(return_value=None)
-    from src.core.tools.products import get_products
-
-    with pytest.raises(AdCPValidationError):
-        asyncio.run(get_products(brand="https://[", brief="ads", ctx=mock_ctx))
-
-
 # ---------------------------------------------------------------------------
-# MCP wrapper: get_products()
+# MCP boundary (generated)
 # ---------------------------------------------------------------------------
+# The brand-shorthand tests that stood here are gone with the builder that applied the
+# coercion; the obligation is recorded on salesagent-pt5rn, against the compatibility
+# middleware that will own it.
+#
+# There is no get_products MCP wrapper to test. One generated callable serves every row, so
+# these grade THAT -- through get_products, which is the vehicle, not the subject.
 
 
 class TestMcpGetProductsWrapper:
-    """Tests for the async MCP wrapper get_products()."""
+    """The generated MCP boundary, driven through the get_products row."""
 
     def test_mcp_wrapper_returns_tool_result(self):
-        """MCP wrapper returns ToolResult with structured_content."""
+        """The boundary answers with a ToolResult carrying structured_content."""
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.get_state = AsyncMock(return_value=PrincipalFactory.make_identity(protocol="mcp"))
 
-        with patch(
-            "src.core.tools.products._get_products_impl",
-            new_callable=AsyncMock,
-            return_value=_mock_response(),
-        ):
-            from src.core.tools.products import get_products
+        async def _impl(req, identity=None, **kwargs):
+            return _mock_response()
 
-            result = asyncio.run(get_products(brief="video ads", ctx=mock_ctx))
+        with registry_impl("get_products", _impl):
+            result = asyncio.run(mcp_tool("get_products")(brief="video ads", ctx=mock_ctx))
 
         assert result.structured_content is not None
         assert "products" in result.structured_content
         assert result.content is not None  # Human-readable text
 
     def test_mcp_boundary_answers_invalid_request_for_a_validation_error(self):
-        """The MCP BOUNDARY answers a bad request with the two-layer envelope.
+        """A pydantic rejection earns INVALID_REQUEST and names the field.
 
-        The wrapper itself translates nothing now. It used to catch ValueError and
-        re-raise AdCPValidationError -- a translation the boundary performs anyway (
-        adcp_error_for maps a plain ValueError to that exact class), and one which, being
-        keyed on ValueError, also swallowed the pydantic ValidationError that IS a
-        ValueError and answered a bare VALIDATION_ERROR where the buyer was owed
-        INVALID_REQUEST with the field and the issues.
-
-        So the grading moved one frame out, to ``with_error_logging`` -- the MCP boundary
-        FastMCP actually registers -- and became an assertion on the envelope rather than
-        on an exception class. A pydantic rejection earns INVALID_REQUEST and names the field.
+        Driven by a request the REAL DTO refuses, rather than by a stubbed model that raises:
+        the boundary builds ``spec.dto(**kwargs)``, so an unknown field is a rejection the
+        buyer can actually provoke, and the field it names is the one they sent.
         """
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.get_state = AsyncMock(return_value=None)
 
-        with patch(
-            "src.core.tools.products.create_get_products_request",
-            side_effect=ValidationError.from_exception_data(
-                title="GetProductsRequest",
-                line_errors=[
-                    {
-                        "type": "missing",
-                        "loc": ("brief",),
-                        "msg": "Field required",
-                        "input": {},
-                    }
-                ],
-            ),
-        ):
-            from src.core.tools.products import get_products
-
-            with pytest.raises(ToolError) as exc_info:
-                asyncio.run(with_error_logging(get_products)(brief="", ctx=mock_ctx))
+        with pytest.raises(ToolError) as exc_info:
+            asyncio.run(with_error_logging(mcp_tool("get_products"))(brief="ads", no_such_field=1, ctx=mock_ctx))
 
         envelope = json.loads(str(exc_info.value))
         assert_envelope_shape(envelope, "INVALID_REQUEST", recovery="correctable")
-        assert envelope["adcp_error"]["field"] == "brief"
+        assert envelope["adcp_error"]["field"] == "no_such_field"
 
     def test_mcp_boundary_answers_validation_error_for_a_plain_value_error(self):
-        """The MCP BOUNDARY answers a bad request with the two-layer envelope.
+        """A plain ValueError -- business logic refusing a schema-valid value -- stays VALIDATION_ERROR.
 
-        The wrapper itself translates nothing now. It used to catch ValueError and
-        re-raise AdCPValidationError -- a translation the boundary performs anyway (
-        adcp_error_for maps a plain ValueError to that exact class), and one which, being
-        keyed on ValueError, also swallowed the pydantic ValidationError that IS a
-        ValueError and answered a bare VALIDATION_ERROR where the buyer was owed
-        INVALID_REQUEST with the field and the issues.
-
-        So the grading moved one frame out, to ``with_error_logging`` -- the MCP boundary
-        FastMCP actually registers -- and became an assertion on the envelope rather than
-        on an exception class. A plain ValueError -- our own business logic refusing a
-        schema-valid value -- stays VALIDATION_ERROR, which is the distinction the wrapper
-        used to erase.
+        The distinction the deleted per-tool wrapper used to erase: it caught ValueError and
+        re-raised AdCPValidationError, which also swallowed the pydantic ValidationError that
+        IS a ValueError, answering a bare VALIDATION_ERROR where INVALID_REQUEST with the
+        field was owed. Both halves are graded: this one and the test above it.
         """
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.get_state = AsyncMock(return_value=None)
 
-        with patch(
-            "src.core.tools.products.create_get_products_request",
-            side_effect=ValueError("Invalid brand format"),
-        ):
-            from src.core.tools.products import get_products
+        async def _impl(req, identity=None, **kwargs):
+            raise ValueError("Invalid brand format")
 
-            with pytest.raises(ToolError) as exc_info:
-                asyncio.run(with_error_logging(get_products)(brief="ads", ctx=mock_ctx))
+        with registry_impl("get_products", _impl), pytest.raises(ToolError) as exc_info:
+            asyncio.run(with_error_logging(mcp_tool("get_products"))(brief="ads", ctx=mock_ctx))
 
         envelope = json.loads(str(exc_info.value))
         assert_envelope_shape(envelope, "VALIDATION_ERROR", recovery="correctable")
 
     def test_mcp_wrapper_no_version_compat(self):
-        """MCP wrapper does NOT apply version compat — that's the handler's job (parity with A2A)."""
+        """MCP does NOT apply version compat -- that is the handler's job (parity with A2A)."""
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.get_state = AsyncMock(return_value=PrincipalFactory.make_identity(protocol="mcp"))
 
+        async def _impl(req, identity=None, **kwargs):
+            return _mock_response()
+
         with (
-            patch(
-                "src.core.tools.products._get_products_impl",
-                new_callable=AsyncMock,
-                return_value=_mock_response(),
-            ),
+            registry_impl("get_products", _impl),
             patch("src.core.version_compat.apply_version_compat") as mock_compat,
         ):
-            from src.core.tools.products import get_products
-
-            asyncio.run(get_products(brief="ads", ctx=mock_ctx))
+            asyncio.run(mcp_tool("get_products")(brief="ads", ctx=mock_ctx))
 
         mock_compat.assert_not_called()
 
     def test_mcp_wrapper_reads_identity_from_ctx_state(self):
-        """MCP wrapper reads identity from ctx.get_state('identity')."""
+        """The boundary reads identity from ctx.get_state('identity') and hands it to the impl."""
         identity = PrincipalFactory.make_identity(protocol="mcp")
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.get_state = AsyncMock(return_value=identity)
+        seen: dict = {}
 
-        with patch(
-            "src.core.tools.products._get_products_impl",
-            new_callable=AsyncMock,
-            return_value=_mock_response(),
-        ) as mock_impl:
-            from src.core.tools.products import get_products
+        async def _impl(req, identity=None, **kwargs):
+            seen["identity"] = identity
+            return _mock_response()
 
-            asyncio.run(get_products(brief="video", ctx=mock_ctx))
+        with registry_impl("get_products", _impl):
+            asyncio.run(mcp_tool("get_products")(brief="video", ctx=mock_ctx))
 
         mock_ctx.get_state.assert_awaited_once_with("identity")
-        mock_impl.assert_awaited_once()
-        _, call_identity = mock_impl.call_args.args
-        assert call_identity is identity
+        assert seen["identity"] is identity
 
 
 # ---------------------------------------------------------------------------
@@ -248,11 +172,9 @@ class TestA2AGetProductsRawWrapper:
             new_callable=AsyncMock,
             return_value=_mock_response(),
         ):
-            from src.core.tools.products import create_get_products_request, get_products_raw
+            from src.core.tools.products import get_products_raw
 
-            result = asyncio.run(
-                get_products_raw(req=create_get_products_request(brief="display ads"), identity=identity)
-            )
+            result = asyncio.run(get_products_raw(req=GetProductsRequest(brief="display ads"), identity=identity))
 
         assert isinstance(result, GetProductsResponse)
         assert result.products == []
@@ -266,9 +188,9 @@ class TestA2AGetProductsRawWrapper:
             new_callable=AsyncMock,
             return_value=_mock_response(),
         ) as mock_impl:
-            from src.core.tools.products import create_get_products_request, get_products_raw
+            from src.core.tools.products import get_products_raw
 
-            asyncio.run(get_products_raw(req=create_get_products_request(brief="video"), identity=identity))
+            asyncio.run(get_products_raw(req=GetProductsRequest(brief="video"), identity=identity))
 
         mock_impl.assert_awaited_once()
         _, call_identity = mock_impl.call_args.args
@@ -283,11 +205,11 @@ class TestA2AGetProductsRawWrapper:
             new_callable=AsyncMock,
             return_value=_mock_response(),
         ) as mock_impl:
-            from src.core.tools.products import create_get_products_request, get_products_raw
+            from src.core.tools.products import get_products_raw
 
             asyncio.run(
                 get_products_raw(
-                    req=create_get_products_request(
+                    req=GetProductsRequest(
                         brief="sports ads",
                         filters={"delivery_types": ["guaranteed"]},
                     ),
@@ -311,9 +233,9 @@ class TestA2AGetProductsRawWrapper:
             ),
             patch("src.core.version_compat.apply_version_compat") as mock_compat,
         ):
-            from src.core.tools.products import create_get_products_request, get_products_raw
+            from src.core.tools.products import get_products_raw
 
-            asyncio.run(get_products_raw(req=create_get_products_request(brief="ads"), identity=identity))
+            asyncio.run(get_products_raw(req=GetProductsRequest(brief="ads"), identity=identity))
 
         mock_compat.assert_not_called()
 
@@ -326,12 +248,12 @@ class TestA2AGetProductsRawWrapper:
             new_callable=AsyncMock,
             return_value=_mock_response(),
         ) as mock_impl:
-            from src.core.tools.products import create_get_products_request, get_products_raw
+            from src.core.tools.products import get_products_raw
 
-            asyncio.run(get_products_raw(req=create_get_products_request(brief=""), identity=identity))
+            asyncio.run(get_products_raw(req=GetProductsRequest(brief=""), identity=identity))
 
         req = mock_impl.call_args.args[0]
-        # brief="" → create_get_products_request normalizes to None
+        # brief="" → GetProductsRequest normalizes to None
         assert req.brief is None or req.brief == ""
 
 
@@ -397,7 +319,9 @@ class TestRestGetProductsWrapper:
                 client = TestClient(app)
                 response = client.post(
                     "/api/v1/products",
-                    json={"brief": "ads", "adcp_version": "2.0.0"},
+                    # MAJOR.MINOR: core/adcp-version.json pins ^\\d+\\.\\d+(-...)?$, so a
+                    # three-part "2.0.0" is INVALID_REQUEST and never reaches compat at all.
+                    json={"brief": "ads", "adcp_version": "2.0"},
                 )
             finally:
                 app.dependency_overrides.clear()
@@ -415,18 +339,17 @@ class TestImplDirectIdentity:
     """Tests that wrappers correctly pass identity to _get_products_impl."""
 
     def test_mcp_passes_none_identity_when_no_ctx(self):
-        """MCP wrapper passes None identity when ctx is not Context type."""
-        with patch(
-            "src.core.tools.products._get_products_impl",
-            new_callable=AsyncMock,
-            return_value=_mock_response(),
-        ) as mock_impl:
-            from src.core.tools.products import get_products
+        """The MCP boundary passes identity=None when ctx is not a Context."""
+        seen: dict = {}
 
-            asyncio.run(get_products(brief="test", ctx=None))
+        async def _impl(req, identity=None, **kwargs):
+            seen["identity"] = identity
+            return _mock_response()
 
-        _, identity = mock_impl.call_args.args
-        assert identity is None
+        with registry_impl("get_products", _impl):
+            asyncio.run(mcp_tool("get_products")(brief="test", ctx=None))
+
+        assert seen["identity"] is None
 
     def test_a2a_passes_none_identity_when_not_provided(self):
         """A2A wrapper passes None identity when not explicitly provided."""
@@ -435,9 +358,9 @@ class TestImplDirectIdentity:
             new_callable=AsyncMock,
             return_value=_mock_response(),
         ) as mock_impl:
-            from src.core.tools.products import create_get_products_request, get_products_raw
+            from src.core.tools.products import get_products_raw
 
-            asyncio.run(get_products_raw(req=create_get_products_request(brief="test")))
+            asyncio.run(get_products_raw(req=GetProductsRequest(brief="test")))
 
         _, identity = mock_impl.call_args.args
         assert identity is None

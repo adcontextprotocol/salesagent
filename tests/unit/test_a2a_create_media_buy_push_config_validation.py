@@ -1,7 +1,7 @@
 """A2A create_media_buy validates push_notification_config AS PART OF the request.
 
 ``push_notification_config`` is a REQUEST FIELD, built through
-``_build_create_media_buy_request`` like every other field.
+``CreateMediaBuyRequest`` like every other field.
 
 THIS REVERSES gh-#1299's ORIGINAL RESOLUTION, deliberately. That issue kept the config out of
 the request because the adcp ``Authentication.credentials`` MinLen(32) constraint would then

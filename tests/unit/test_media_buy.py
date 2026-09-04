@@ -2057,14 +2057,13 @@ class TestUpdateMediaBuyMainFlow:
         Source: UC-003, BR-RULE-022
         Covers: UC-003-MAIN-04
         """
-        from src.core.tools.media_buy_update import _build_update_request
 
         # account and idempotency_key are supplied because UpdateMediaBuyRequest REQUIRES
         # them. Without them the request never validated, so this test used to be graded on
         # a missing-required-field rejection and never reached BR-RULE-022 at all -- it
         # passed on the right exception class for the wrong reason. It now reaches the rule.
         with pytest.raises(AdCPInvalidRequestError) as exc_info:
-            _build_update_request(
+            UpdateMediaBuyRequest(
                 media_buy_id="mb_empty",
                 account={"account_id": "acct_1"},
                 idempotency_key="idem_empty_update",

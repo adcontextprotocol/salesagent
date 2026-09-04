@@ -28,7 +28,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from src.core.schemas import (
-    CompleteTaskRequestLocal,
+    CompleteTaskRequest,
     CreateMediaBuyRequest,
     GetAdcpCapabilitiesRequest,
     GetMediaBuyDeliveryRequest,
@@ -166,7 +166,7 @@ TOOLS: Mapping[str, ToolSpec] = {
         rest=RestBinding("POST", "/tasks/{task_id}", frozenset({"task_id"})),
     ),
     "complete_task": ToolSpec(
-        dto=CompleteTaskRequestLocal,
+        dto=CompleteTaskRequest,
         impl=_complete_task_impl,
         rest=RestBinding("POST", "/tasks/{task_id}/complete", frozenset({"task_id"})),
     ),

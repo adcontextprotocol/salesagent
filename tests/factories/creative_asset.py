@@ -63,9 +63,7 @@ def make_creative_asset_request(**extra: object) -> dict:
     """The same minimal creative, as the WIRE DICT sync_creatives accepts.
 
     Reuses make_creative_asset_minimal rather than restating its defaults. Returns a dict
-    because that is what a transport hands the request DTO -- and because the DTO's item type
-    is CreativeAssetRequest, a subclass, which pydantic will not populate from a parent
-    CreativeAsset instance.
+    because that is what a transport hands the request DTO.
 
     Use this wherever a test feeds SyncCreativesRequest. The per-file ``_make_creative``
     helpers build the RESPONSE model (created_date, updated_date, principal_id); feeding one

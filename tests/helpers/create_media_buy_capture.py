@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from src.core.schemas import CreateMediaBuyRequest
 from tests.helpers.adcp_factories import create_test_media_buy_request_dict
 
 
@@ -89,7 +90,7 @@ async def capture_mcp_forwarded_pnc(pnc: Any) -> Any:
             pass  # ToolResult serialization with mock may raise; only _impl args matter
 
     # READ OFF THE REQUEST. push_notification_config is a request field built through
-    # _build_create_media_buy_request, not a kwarg forwarded beside the request, so parity
+    # CreateMediaBuyRequest, not a kwarg forwarded beside the request, so parity
     # between MCP and A2A now means "both land the same value on req", not "both pass the
     # same kwarg". Returning the model's dict keeps every caller's comparison unchanged.
     req = captured.get("req")
@@ -110,7 +111,7 @@ async def capture_a2a_forwarded_pnc(pnc: Any) -> Any:
         was not called.
     """
     from src.core.schemas import CreateMediaBuyResult
-    from src.core.tools.media_buy_create import _build_create_media_buy_request, create_media_buy_raw
+    from src.core.tools.media_buy_create import create_media_buy_raw
 
     req_dict = create_test_media_buy_request_dict()
     mock_result = MagicMock(spec=CreateMediaBuyResult)
@@ -140,7 +141,7 @@ async def capture_a2a_forwarded_pnc(pnc: Any) -> Any:
         # Everything, push_notification_config included, goes through the shared builder --
         # it is a request FIELD (1f13cca0a), not a kwarg forwarded beside the request.
         await create_media_buy_raw(
-            req=_build_create_media_buy_request(
+            req=CreateMediaBuyRequest(
                 brand=req_dict["brand"],
                 packages=req_dict["packages"],
                 start_time=req_dict["start_time"],
@@ -153,7 +154,7 @@ async def capture_a2a_forwarded_pnc(pnc: Any) -> Any:
         )
 
     # READ OFF THE REQUEST. push_notification_config is a request field built through
-    # _build_create_media_buy_request, not a kwarg forwarded beside the request, so parity
+    # CreateMediaBuyRequest, not a kwarg forwarded beside the request, so parity
     # between MCP and A2A now means "both land the same value on req", not "both pass the
     # same kwarg". Returning the model's dict keeps every caller's comparison unchanged.
     req = captured.get("req")

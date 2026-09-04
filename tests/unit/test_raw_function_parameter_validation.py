@@ -9,7 +9,7 @@ This test validates that:
    - Helper function parameters that are documented
 2. No parameters are silently dropped
 
-This would have caught the get_products_raw + create_get_products_request bug
+This would have caught the get_products_raw + GetProductsRequest bug
 where adcp_version was accepted but not passed through.
 """
 
@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from src.core.schemas import GetProductsRequest
+
 
 class TestRawFunctionParameterValidation:
     """Validate that raw functions properly handle all their parameters."""
@@ -27,7 +29,7 @@ class TestRawFunctionParameterValidation:
         """get_products_raw's only non-transport parameter is the built request.
 
         This used to check that the wrapper's per-field parameters were a SUBSET of
-        create_get_products_request's, with an allowlist for the ones that were not --
+        GetProductsRequest's, with an allowlist for the ones that were not --
         a rule that can only ever be re-audited, because it presumes the wrapper
         re-lists the request's fields at all. It does not any more: the caller builds
         through the shared builder and hands the wrapper the request, so there is no
@@ -103,10 +105,9 @@ class TestRawFunctionParameterValidation:
         assert not issues, "Found unused parameters in raw functions:\n" + "\n".join(issues)
 
     def test_create_get_products_request_signature(self):
-        """Document the exact signature of create_get_products_request for reference."""
-        from src.core.schema_helpers import create_get_products_request
+        """Document the exact signature of GetProductsRequest for reference."""
 
-        sig = inspect.signature(create_get_products_request)
+        sig = inspect.signature(GetProductsRequest)
         params = list(sig.parameters.keys())
 
         # adcp 3.6.0: brand_manifest removed, only brand (BrandReference) remains.
@@ -114,7 +115,7 @@ class TestRawFunctionParameterValidation:
         expected_params = ["brief", "brand", "filters", "property_list", "context"]
 
         assert params == expected_params, (
-            f"create_get_products_request signature changed!\n"
+            f"GetProductsRequest signature changed!\n"
             f"Expected: {expected_params}\n"
             f"Got: {params}\n"
             f"This may require updating get_products_raw()"
@@ -123,7 +124,7 @@ class TestRawFunctionParameterValidation:
     def test_get_products_raw_doesnt_pass_invalid_params_to_helper(self):
         """Ensure get_products_raw doesn't pass params the helper doesn't accept.
 
-        This is the exact bug we fixed - passing adcp_version to create_get_products_request.
+        This is the exact bug we fixed - passing adcp_version to GetProductsRequest.
         """
         tools_path = Path(__file__).parent.parent.parent / "src" / "core" / "tools" / "__init__.py"
         with open(tools_path) as f:
@@ -133,20 +134,20 @@ class TestRawFunctionParameterValidation:
         tree = ast.parse(content)
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "get_products_raw":
-                # Find calls to create_get_products_request
+                # Find calls to GetProductsRequest
                 for child in ast.walk(node):
                     if isinstance(child, ast.Call):
-                        if isinstance(child.func, ast.Name) and child.func.id == "create_get_products_request":
+                        if isinstance(child.func, ast.Name) and child.func.id == "GetProductsRequest":
                             # Check keyword arguments
                             passed_params = {kw.arg for kw in child.keywords}
 
-                            # These are the ONLY valid parameters for create_get_products_request
+                            # These are the ONLY valid parameters for GetProductsRequest
                             # adcp 3.6.0: brand_manifest removed, only 'brand' (BrandReference)
                             valid_params = {"brief", "brand", "filters"}
 
                             invalid = passed_params - valid_params
                             assert not invalid, (
-                                f"get_products_raw passes invalid parameters to create_get_products_request: {invalid}\n"
+                                f"get_products_raw passes invalid parameters to GetProductsRequest: {invalid}\n"
                                 f"Valid parameters: {valid_params}"
                             )
 
@@ -177,13 +178,13 @@ class TestHelperFunctionDocumentation:
         for name, params in sorted(signatures.items()):
             print(f"{name}({', '.join(params)})")
 
-        # Verify create_get_products_request (the one that caused the bug)
-        assert "create_get_products_request" in signatures
+        # Verify GetProductsRequest (the one that caused the bug)
+        assert "GetProductsRequest" in signatures
         # adcp 3.6.0: brand_manifest removed, only brand (BrandReference) remains.
         expected = ["brief", "brand", "filters", "property_list", "context"]
-        actual = signatures["create_get_products_request"]
+        actual = signatures["GetProductsRequest"]
         assert actual == expected, (
-            f"create_get_products_request signature changed!\n"
+            f"GetProductsRequest signature changed!\n"
             f"Expected: {expected}\n"
             f"Got: {actual}\n"
             f"Update get_products_raw if needed"

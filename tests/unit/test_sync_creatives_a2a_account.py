@@ -13,6 +13,7 @@ from adcp.types import AccountReference as LibraryAccountReference
 from src.core.exceptions import AdCPValidationError
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schema_helpers import to_account_reference
+from src.core.schemas import SyncCreativesRequest
 from tests.helpers import assert_construction_rejects
 
 _MOCK_IDENTITY = ResolvedIdentity(
@@ -124,7 +125,7 @@ class TestSyncCreativesAccountCoercion:
         The path is ``account`` -- the field the buyer omitted. It used to be
         ``account.AccountReference1``, a UNION-MEMBER name they never sent: forwarding an
         explicit None made pydantic report the first union member's TYPE failure instead of
-        a missing field. ``build_sync_creatives_request`` omits unsent fields now, so the
+        a missing field. ``SyncCreativesRequest`` omits unsent fields now, so the
         model sees ``account`` as ABSENT and names it.
 
         This test pinned that path "as measured rather than as it ought to read" and called
@@ -251,7 +252,6 @@ class TestSyncCreativesFormatIdStaysWire:
         other transport calls. The divergence (A2A alone constructing our FormatId
         subclass) is closed by construction: both sides here go through one builder.
         """
-        from src.core.tools.creatives.sync_wrappers import build_sync_creatives_request
 
         wire = {
             "creative_id": "c1",
@@ -262,7 +262,7 @@ class TestSyncCreativesFormatIdStaysWire:
         # A2A: through the handler, which upgrades legacy format_ids and then builds.
         from_a2a = self._forwarded_creatives([dict(wire)])[0]
         # Every other transport: the SAME builder, straight from the untouched wire dict.
-        from_other_transports = build_sync_creatives_request(
+        from_other_transports = SyncCreativesRequest(
             creatives=[dict(wire)],
             account=LibraryAccountReference.model_validate({"account_id": "acct-wire"}),
             idempotency_key="idem-a2a-formatid-0001",

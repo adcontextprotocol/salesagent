@@ -152,7 +152,7 @@ def build_adcp_media_buy_request(
     return request
 
 
-def build_sync_creatives_request(
+def build_sync_creatives_payload(
     creatives: list[dict[str, Any]],
     dry_run: bool = False,
     webhook_url: str | None = None,

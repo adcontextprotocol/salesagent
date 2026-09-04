@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.core.schemas import UpdatePerformanceIndexResponse
+from src.core.schemas import UpdatePerformanceIndexRequest, UpdatePerformanceIndexResponse
 from tests.harness._base import IntegrationEnv
 
 
@@ -47,13 +47,13 @@ class PerformanceEnv(IntegrationEnv):
         context) — same shape MCP/A2A/REST all pass — built via the shared
         production helper so IMPL exercises the identical construction path.
         """
-        from src.core.tools.performance import _build_update_performance_index_request, _update_performance_index_impl
+        from src.core.tools.performance import _update_performance_index_impl
 
         self._commit_factory_data()
         identity = kwargs.pop("identity", self.identity)
         req = kwargs.pop("req", None)
         if req is None:
-            req = _build_update_performance_index_request(
+            req = UpdatePerformanceIndexRequest(
                 media_buy_id=kwargs["media_buy_id"],
                 performance_data=kwargs.get("performance_data", []),
                 context=kwargs.get("context"),

@@ -34,6 +34,7 @@ from src.core.exceptions import (
 )
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import (
+    SyncCreativesRequest,
     UpdateMediaBuyRequest,
 )
 from src.core.testing_hooks import AdCPTestContext
@@ -183,10 +184,10 @@ def _sync_creatives(**kwargs):
     sync_creatives_raw takes the BUILT request. Routing this module's call sites through
     one seam keeps them flat and readable without re-listing the request's fields at each.
     """
-    from src.core.tools.creatives.sync_wrappers import build_sync_creatives_request, sync_creatives_raw
+    from src.core.tools.creatives.sync_wrappers import sync_creatives_raw
 
     transport = {k: kwargs.pop(k) for k in ("ctx", "identity") if k in kwargs}
-    return sync_creatives_raw(req=build_sync_creatives_request(**kwargs), **transport)
+    return sync_creatives_raw(req=SyncCreativesRequest(**kwargs), **transport)
 
 
 class TestCreateMediaBuyCurrencyValidation:

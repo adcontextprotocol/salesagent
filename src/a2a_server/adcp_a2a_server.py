@@ -98,9 +98,6 @@ from src.core.tools import (
 
 # Signals tools removed - should come from dedicated signals agents, not sales agent
 from src.core.tools import (
-    list_authorized_properties_raw as core_list_authorized_properties_tool,
-)
-from src.core.tools import (
     list_creative_formats_raw as core_list_creative_formats_tool,
 )
 from src.core.tools import (
@@ -115,10 +112,6 @@ from src.core.tools import (
 from src.core.tools import (
     update_media_buy_raw as core_update_media_buy_tool,
 )
-from src.core.tools import (
-    update_performance_index_raw as core_update_performance_index_tool,
-)
-from src.core.tools._announced_shape import select_request_fields_for
 from src.core.tools.registry import TOOLS
 from src.core.version import get_version
 from src.core.webhook_validator import (
@@ -1006,7 +999,13 @@ class AdCPRequestHandler(RequestHandler):
 
             # Natural language fallback (existing keyword-based routing)
             elif any(word in combined_text for word in ["product", "inventory", "available", "catalog"]):
-                result = await self._get_products(combined_text, identity)
+                # The same handler the explicit-skill path uses, and the same one the
+                # pricing branch below already calls. There used to be a private twin here
+                # (_get_products) that built its own request and hardcoded adcp_version=None
+                # -- a second declaration of one tool on one transport, which is how it kept
+                # a lazy import of a deleted builder alive after every other caller was
+                # rewired: nothing enumerating the registry could see it.
+                result = await self._handle_get_products_skill({"brief": combined_text}, identity)
                 tenant_id = (identity.tenant_id or "unknown") if identity else "unknown"
                 principal_id = (identity.principal_id or "unknown") if identity else "unknown"
 
@@ -1771,15 +1770,11 @@ class AdCPRequestHandler(RequestHandler):
         NOTE: Authentication is OPTIONAL for this endpoint. Access depends on tenant's
         brand_manifest_policy setting (public/require_brand/require_auth).
         """
-        # Builds through the SHARED builder and hands the wrapper the built request -- the
-        # same two steps REST and MCP take. Selected off the TOOL, so the set this transport
-        # forwards is "the DTO's fields INTERSECT the builder's parameters" -- the same set
-        # MCP advertises, read from the same lookup. A hand-listed forward is the shape that
-        # silently drops every field added later, and this one already named five of the
-        # twenty-one fields the DTO declares.
-        from src.core.tools.products import create_get_products_request, get_products
-
-        req = create_get_products_request(**select_request_fields_for(get_products, parameters))
+        # The DTO is the accepted shape, so validating into it IS the selection -- the same
+        # step REST and MCP take, from the same registry row. A hand-listed forward is the
+        # shape that silently drops every field added later, and this one already named five
+        # of the twenty-one fields the DTO declares.
+        req = TOOLS["get_products"].dto.model_validate(parameters)
         response = await core_get_products_tool(req=req, identity=identity)
 
         # Apply v2 compat for pre-3.0 clients at the boundary
@@ -1873,15 +1868,17 @@ class AdCPRequestHandler(RequestHandler):
         # CreateMediaBuyRequest AND accepted by the builder, so both were honoured on MCP and
         # silently discarded on A2A. That is the same defect class as the missing
         # idempotency_key on update_media_buy; the cure is to stop enumerating.
-        from src.core.tools.media_buy_create import _build_create_media_buy_request, create_media_buy
 
-        selected = select_request_fields_for(create_media_buy, params)
         # Wrap for boundary-pattern consistency with delivery/sync_creatives. A crash is
         # structurally impossible here (create_media_buy_raw re-coerces via
         # CreateMediaBuyRequest), and to_account_reference is idempotent on an already
         # typed/dict account — but resolving at the boundary keeps all three handlers uniform.
-        selected["account"] = to_account_reference(params.get("account"))
-        req = _build_create_media_buy_request(**selected)
+        # The DTO is the accepted shape, so validating into it IS the selection.
+        # Boundary-coerced values override the raw bag; everything else validates
+        # straight into the DTO, which is the accepted shape.
+        req = TOOLS["create_media_buy"].dto.model_validate(
+            {**params, "account": to_account_reference(params.get("account"))}
+        )
         response = await core_create_media_buy_tool(
             req=req,
             identity=identity,
@@ -1953,13 +1950,18 @@ class AdCPRequestHandler(RequestHandler):
         # Three fields are set AFTER selection because they need boundary coercion the raw
         # bag cannot carry: `creatives` (legacy format_id upgraded above), `context` (typed
         # ContextObject) and `account` (typed AccountReference).
-        from src.core.tools.creatives.sync_wrappers import build_sync_creatives_request, sync_creatives
 
-        selected = select_request_fields_for(sync_creatives, parameters)
-        selected["creatives"] = creatives
-        selected["context"] = context
-        selected["account"] = to_account_reference(parameters.get("account"))
-        req = build_sync_creatives_request(**selected)
+        # The DTO is the accepted shape, so validating into it IS the selection.
+        # Boundary-coerced values override the raw bag; everything else validates
+        # straight into the DTO, which is the accepted shape.
+        req = TOOLS["sync_creatives"].dto.model_validate(
+            {
+                **parameters,
+                "creatives": creatives,
+                "context": context,
+                "account": to_account_reference(parameters.get("account")),
+            }
+        )
         response = core_sync_creatives_tool(req=req, identity=identity)
 
         return response
@@ -1984,11 +1986,11 @@ class AdCPRequestHandler(RequestHandler):
         # REST's ListCreativesBody now reads the same seam off the same tool.
         # `filters` is set explicitly AFTER selection because it needs typed coercion
         # (invalid filters must raise AdCPValidationError, not reach the impl as a dict).
-        from src.core.tools.creatives.listing import _build_list_creatives_request, list_creatives
 
-        selected = select_request_fields_for(list_creatives, parameters)
-        selected["filters"] = filters
-        req = _build_list_creatives_request(**selected)
+        # The DTO is the accepted shape, so validating into it IS the selection.
+        # Boundary-coerced values override the raw bag; everything else validates
+        # straight into the DTO, which is the accepted shape.
+        req = TOOLS["list_creatives"].dto.model_validate({**parameters, "filters": filters})
         response = core_list_creatives_tool(req=req, identity=identity)
 
         return response
@@ -2002,11 +2004,6 @@ class AdCPRequestHandler(RequestHandler):
         # Identity already resolved at transport boundary (on_message_send)
 
         # Import and call the core implementation
-        from src.core.tools.capabilities import (
-            build_get_adcp_capabilities_request,
-            get_adcp_capabilities,
-            get_adcp_capabilities_raw,
-        )
 
         # Consume the parameter bag wholesale rather than naming each field: a handler
         # that enumerates is the shape that silently drops every field added later --
@@ -2016,11 +2013,12 @@ class AdCPRequestHandler(RequestHandler):
         # "1.0.0", which the envelope pattern rejects), but for THIS tool they are real
         # request data -- they drive version negotiation and the unsupported-version
         # advisory. Selecting alone would silently disable that negotiation.
-        req = build_get_adcp_capabilities_request(
-            **select_request_fields_for(get_adcp_capabilities, parameters),
-            adcp_version=parameters.get("adcp_version"),
-            adcp_major_version=parameters.get("adcp_major_version"),
-        )
+        # The DTO is the accepted shape, so validating into it IS the selection. The version
+        # envelope no longer needs re-adding by hand: it was stripped by the selection, and
+        # every DTO now inherits adcp_version / adcp_major_version from the SDK request model.
+        from src.core.tools.capabilities import get_adcp_capabilities_raw
+
+        req = TOOLS["get_adcp_capabilities"].dto.model_validate(parameters)
         response = await get_adcp_capabilities_raw(req=req, identity=identity)
 
         return response
@@ -2033,12 +2031,12 @@ class AdCPRequestHandler(RequestHandler):
         # Identity already resolved at transport boundary (on_message_send)
 
         # Build request from parameters (all optional).
-        from src.core.tools.creative_formats import build_list_creative_formats_request, list_creative_formats
 
         # Selected off the TOOL rather than hand-listed: the 13-name list this
         # replaces already dropped ext, pagination, property_id and publisher_domain,
         # all of which ListCreativeFormatsRequest declares (a recorded gap Lane D).
-        req = build_list_creative_formats_request(**select_request_fields_for(list_creative_formats, parameters))
+        # The DTO is the accepted shape, so validating into it IS the selection.
+        req = TOOLS["list_creative_formats"].dto.model_validate(parameters)
 
         # Call core function with identity
         response = core_list_creative_formats_tool(req=req, identity=identity)
@@ -2051,9 +2049,9 @@ class AdCPRequestHandler(RequestHandler):
         Authentication is OPTIONAL per BR-RULE-055 — unauthenticated calls
         return an empty account list.
         """
-        from src.core.tools.accounts import build_list_accounts_request, list_accounts
 
-        request = build_list_accounts_request(**select_request_fields_for(list_accounts, parameters))
+        # The DTO is the accepted shape, so validating into it IS the selection.
+        request = TOOLS["list_accounts"].dto.model_validate(parameters)
         return core_list_accounts_tool(req=request, identity=identity)
 
     async def _handle_sync_accounts_skill(self, parameters: dict, identity: ResolvedIdentity | None) -> Any:
@@ -2061,48 +2059,10 @@ class AdCPRequestHandler(RequestHandler):
 
         Authentication is REQUIRED per BR-RULE-055.
         """
-        from src.core.tools.accounts import build_sync_accounts_request, sync_accounts
 
-        request = build_sync_accounts_request(**select_request_fields_for(sync_accounts, parameters))
+        # The DTO is the accepted shape, so validating into it IS the selection.
+        request = TOOLS["sync_accounts"].dto.model_validate(parameters)
         return await core_sync_accounts_tool(req=request, identity=identity)
-
-    async def _handle_list_authorized_properties_skill(
-        self, parameters: dict, identity: ResolvedIdentity | None
-    ) -> Any:
-        """Handle explicit list_authorized_properties skill invocation (CRITICAL AdCP endpoint).
-
-        NOTE: Authentication is OPTIONAL for this endpoint since it returns public discovery data.
-        If no auth token provided, uses headers for tenant detection.
-
-        Per AdCP v2.4 spec, returns publisher_domains (not properties/tags).
-        """
-        # Identity already resolved at transport boundary (on_message_send)
-
-        from src.core.tools.properties import build_list_authorized_properties_request, list_authorized_properties
-
-        # Warn about deprecated 'tags' parameter (removed in AdCP 2.5)
-        if "tags" in parameters:
-            logger.warning(
-                "Deprecated parameter 'tags' passed to list_authorized_properties. "
-                "This parameter was removed in AdCP 2.5 and will be ignored."
-            )
-
-        # Through the SHARED builder, selected off the TOOL -- the same two steps the other
-        # twelve skill handlers take. This site used to build the DTO itself and pass
-        # accepted=None, on the stated ground that "there is no signature to intersect
-        # with". There was one: build_list_authorized_properties_request, which MCP and
-        # REST have always gone through. Opting out of the intersection meant A2A accepted
-        # `ext` -- a field the builder does not take, `_list_authorized_properties_impl`
-        # never reads, and the REST body refuses outright as extra_forbidden. Which answer
-        # a buyer got depended on which transport they picked.
-        request = build_list_authorized_properties_request(
-            **select_request_fields_for(list_authorized_properties, parameters)
-        )
-
-        # Call core function with identity
-        response = core_list_authorized_properties_tool(req=request, identity=identity)
-
-        return response
 
     async def _handle_update_media_buy_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
         """Handle explicit update_media_buy skill invocation (CRITICAL for campaign management)."""
@@ -2146,11 +2106,11 @@ class AdCPRequestHandler(RequestHandler):
         # update-media-buy-request.json /required, so a spec-conformant A2A buyer's
         # at-most-once key was being discarded, the same defect class as .
         # media_buy_id comes from the validated model; the rest of the bag is selected.
-        from src.core.tools.media_buy_update import _build_update_request, update_media_buy
 
-        selected = select_request_fields_for(update_media_buy, params)
-        selected["media_buy_id"] = req.media_buy_id or ""
-        built = _build_update_request(**selected)
+        # The DTO is the accepted shape, so validating into it IS the selection.
+        # Boundary-coerced values override the raw bag; everything else validates
+        # straight into the DTO, which is the accepted shape.
+        built = TOOLS["update_media_buy"].dto.model_validate({**params, "media_buy_id": req.media_buy_id or ""})
         response = core_update_media_buy_tool(req=built, identity=identity)
 
         return response
@@ -2163,10 +2123,10 @@ class AdCPRequestHandler(RequestHandler):
         field, and popping it out here was how this transport came to carry it separately.
         """
         from src.core.schemas import GetMediaBuysRequest
-        from src.core.tools.media_buy_list import _build_get_media_buys_request, get_media_buys
 
         GetMediaBuysRequest.model_validate(parameters)
-        req = _build_get_media_buys_request(**select_request_fields_for(get_media_buys, parameters))
+        # The DTO is the accepted shape, so validating into it IS the selection.
+        req = TOOLS["get_media_buys"].dto.model_validate(parameters)
         return core_get_media_buys_tool(req=req, identity=identity)
 
     async def _handle_get_media_buy_delivery_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
@@ -2207,55 +2167,6 @@ class AdCPRequestHandler(RequestHandler):
         response = core_get_media_buy_delivery_tool(req=req, identity=identity)
 
         return response
-
-    async def _handle_update_performance_index_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
-        """Handle explicit update_performance_index skill invocation.
-
-        Builds through the SHARED builder and hands the wrapper the built request -- the same
-        two steps REST and MCP take. The wire values are selected against the TOOL's own seam,
-        so the field set this transport accepts is the builder's, not a list repeated here
-        that drifts the moment the spec adds a field.
-        """
-        from src.core.schemas import UpdatePerformanceIndexRequest
-        from src.core.tools.performance import _build_update_performance_index_request, update_performance_index
-
-        UpdatePerformanceIndexRequest.model_validate(parameters)
-        req = _build_update_performance_index_request(**select_request_fields_for(update_performance_index, parameters))
-        return core_update_performance_index_tool(req=req, identity=identity)
-
-    async def _get_products(self, query: str, identity: ResolvedIdentity | None) -> dict:
-        """Get available advertising products by calling core functions directly.
-
-        Args:
-            query: User's product query
-            identity: Pre-resolved identity from transport boundary
-
-        Returns:
-            Dictionary containing product information
-        """
-        # Identity already resolved at transport boundary (on_message_send).
-        # Exceptions propagate to the outer ``on_message_send`` handler, which
-        # attaches a spec-compliant two-layer envelope to the failed Task
-        # artifact. The previous ``except Exception → return {"products": []}``
-        # bypass synthesized a fake-success Task DataPart that storyboard
-        # runners parsed as ``MCP_ERROR`` — that violates the envelope contract.
-
-        # Call core function directly using the underlying function. The natural-language
-        # query is the brief, built into a request the same way every other path builds one.
-        from src.core.schemas.product import GetProductsRequest as _GetProductsRequest  # noqa: F401
-        from src.core.tools.products import create_get_products_request
-
-        req = create_get_products_request(brief=query)
-        response = await core_get_products_tool(req=req, identity=identity)
-
-        # Convert to A2A response format with v2.x backward compatibility
-        from src.core.version_compat import apply_version_compat
-
-        # Dump the full response (not just products) so schema-required
-        # envelope fields (cache_scope, status, ...) survive — matching
-        # _handle_get_products_skill's explicit-skill serialization.
-        response_data = self._stamp_a2a_protocol_fields(response)
-        return apply_version_compat("get_products", response_data, None)
 
     def _extract_brand_name_from_query(self, query: str) -> str:
         """Extract or infer brand name from the user query.

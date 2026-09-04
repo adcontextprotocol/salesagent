@@ -10,6 +10,7 @@ Uses the CreativeListEnv harness for real DB integration testing.
 import pytest
 from pydantic import ValidationError
 
+from src.core.schemas import GetMediaBuysRequest
 from tests.harness.creative_list import CreativeListEnv
 
 
@@ -83,7 +84,7 @@ class TestGetMediaBuysInternalFlagsIsolation:
     "the model rejects it" to "the model never feeds it", so the invariant is re-expressed
     rather than dropped. Measured: `.include_snapshot` has exactly ONE read site in src/,
     src/routes/api_v1.py:524, and that reads the REST BODY, not the request object.
-    _build_get_media_buys_request builds from media_buy_ids/status_filter/account/context
+    GetMediaBuysRequest builds from media_buy_ids/status_filter/account/context
     only, and all three wrappers pass the flag out-of-band as an explicit argument.
     """
 
@@ -102,9 +103,9 @@ class TestGetMediaBuysInternalFlagsIsolation:
         """
         import inspect
 
-        from src.core.tools.media_buy_list import _build_get_media_buys_request, get_media_buys
+        from src.core.tools.media_buy_list import get_media_buys
 
-        req = _build_get_media_buys_request(media_buy_ids=["mb_x"], status_filter=None, account=None, context=None)
+        req = GetMediaBuysRequest(media_buy_ids=["mb_x"], status_filter=None, account=None, context=None)
         assert not hasattr(req, "include_snapshot") or req.include_snapshot in (None, False), (
             "the builder must not carry a buyer-supplied include_snapshot onto the request"
         )

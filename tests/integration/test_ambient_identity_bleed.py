@@ -30,7 +30,7 @@ import pytest
 from fastmcp.server.http import set_http_request
 from starlette.requests import Request as StarletteRequest
 
-from src.core.schemas import GetProductsResponse
+from src.core.schemas import GetProductsRequest, GetProductsResponse
 from src.core.schemas.account import ListAccountsResponse, SyncAccountsResponse
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -93,9 +93,9 @@ class TestAmbientContextIdentityBleed:
             ) as mock_impl,
             set_http_request(_localhost_request()),
         ):
-            from src.core.tools.products import create_get_products_request, get_products_raw
+            from src.core.tools.products import get_products_raw
 
-            await get_products_raw(req=create_get_products_request(brief="test"), ctx=None, identity=None)
+            await get_products_raw(req=GetProductsRequest(brief="test"), ctx=None, identity=None)
 
         _, identity_used = mock_impl.call_args.args
         assert identity_used is None, (
@@ -164,9 +164,9 @@ class TestAmbientContextIdentityBleed:
             set_http_request(_localhost_request()),
         ):
             if impl_patch_target.endswith("_get_products_impl"):
-                from src.core.tools.products import create_get_products_request, get_products_raw
+                from src.core.tools.products import get_products_raw
 
-                await get_products_raw(req=create_get_products_request(brief="test"), ctx=None, identity=None)
+                await get_products_raw(req=GetProductsRequest(brief="test"), ctx=None, identity=None)
             elif impl_patch_target.endswith("_list_accounts_impl"):
                 from src.core.tools.accounts import list_accounts_raw
 

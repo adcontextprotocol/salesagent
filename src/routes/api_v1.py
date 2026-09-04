@@ -13,14 +13,12 @@ from importlib import import_module
 from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 
 from src.core.auth_context import require_auth, resolve_auth
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.tools._announced_shape import builder_for
 from src.core.tools.registry import TOOLS
 from src.core.version_compat import apply_version_compat
-from src.routes._derived_body import derived_payload
 
 logger = logging.getLogger(__name__)
 
@@ -43,33 +41,72 @@ router = APIRouter(prefix="/api/v1", tags=["api-v1"])
 # route to invoke. They acquire a route when they acquire a wrapper.
 
 
+def _body_model_for(tool_name: str, spec: Any) -> type[BaseModel]:
+    """The DTO, with any field carried in the URL path made optional.
+
+    Not a second shape: it is the DTO subclassed, relaxing exactly the fields ``path_fields``
+    names, so a buyer who puts the id in the URL -- the only place REST puts it -- is not
+    rejected for omitting it from the body. The handler validates the merged result back into
+    the DTO itself, which stays the accepted shape.
+    """
+    if not spec.rest.path_fields:
+        return spec.dto  # type: ignore[no-any-return]
+    return create_model(
+        f"{spec.dto.__name__}Body",
+        __base__=spec.dto,
+        **{name: (spec.dto.model_fields[name].annotation | None, None) for name in spec.rest.path_fields},
+    )
+
+
 def _rest_handler(tool_name: str, spec: Any, raw: Any, body_model: type[BaseModel]) -> Any:
     """One route handler, built from a registry row.
 
-    The body model is the derived one; the builder is resolved off the wrapper, the same
-    way MCP resolves it to announce a shape. Nothing here re-states the field set: a route
-    that repeated it would be a second place to disagree with the body class beside it.
-    """
-    builder = builder_for(raw) or builder_for(getattr(raw, "__wrapped__", raw))
+    The body model IS the DTO, so FastAPI has already produced the request: there is no
+    payload to extract and nothing to rebuild. This used to run ``derived_payload`` over a
+    separately-derived body class and hand the result to a builder -- two more shapes
+    between the buyer and the implementation, each able to drop a field the other accepted.
 
-    async def handler(body: body_model, identity: ResolvedIdentity | None = None) -> Any:  # type: ignore[valid-type]
-        selected = derived_payload(body)
-        req = builder(**selected) if builder is not None else body
-        response = raw(req=req, identity=identity)
+    PATH FIELDS are the one place the body is not the whole request. A row whose path is
+    templated (``PUT /media-buys/{media_buy_id}``) names those fields in ``path_fields``, and
+    the URL is the resource identity, so the path value WINS over a body that disagrees. The
+    merge happens before validation because the DTO requires the field: validating the body
+    first would reject a request that named the task in the only place REST puts it. The body
+    model for such a row is the DTO with exactly those fields made optional -- derived from
+    the row, so it is a projection of the one declaration, not a second one.
+    """
+
+    async def handler(body: body_model, identity: ResolvedIdentity | None = None, **path_values: Any) -> Any:  # type: ignore[valid-type]
+        if path_values:
+            body = spec.dto.model_validate({**body.model_dump(exclude_unset=True), **path_values})
+        # Resolved per call, not frozen into the closure. Late binding is what every other
+        # Python dispatch does, and a route that froze the callable at import could not be
+        # substituted -- the module attribute and the thing the route invoked were two
+        # different objects. Costs one cached import_module + getattr.
+        response = _raw_wrapper_for(tool_name, spec.impl)(req=body, identity=identity)
         if inspect.isawaitable(response):
             response = await response
         result = response.model_dump(mode="json")
         # Version compat runs where it ran before and nowhere else. Whether it should run
         # on every tool is a RESPONSE-half question and deliberately not this ticket's.
         if tool_name == "get_products":
-            return apply_version_compat("get_products", result, getattr(body, "adcp_version", None))
+            return apply_version_compat("get_products", result, body.adcp_version)
         return result
 
     handler.__name__ = tool_name
     handler.__doc__ = (raw.__doc__ or "").strip().split("\n")[0]
     dep = resolve_auth if spec.auth == "optional" else require_auth
+    path_params = [
+        # Typed from the DTO field, so the path segment is validated as the field it fills.
+        inspect.Parameter(
+            name,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=spec.dto.model_fields[name].annotation,
+        )
+        for name in sorted(spec.rest.path_fields)
+    ]
     handler.__signature__ = inspect.Signature(
         [
+            *path_params,
             inspect.Parameter("body", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=body_model),
             inspect.Parameter(
                 "identity",
@@ -101,8 +138,9 @@ for _name, _spec in TOOLS.items():
     if _raw is None:
         continue
     # The body model IS the DTO. It used to derive from the MCP wrapper parameters, which
-    # made the wrapper the REST accepted shape too; the wrappers are gone.
-    _body_model = _spec.dto
+    # made the wrapper the REST accepted shape too; the wrappers are gone. The one projection
+    # is a templated path: those fields travel in the URL, so the body may omit them.
+    _body_model = _body_model_for(_name, _spec)
     router.add_api_route(
         _spec.rest.path,
         _rest_handler(_name, _spec, _raw, _body_model),

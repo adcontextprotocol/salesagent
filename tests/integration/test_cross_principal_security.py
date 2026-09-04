@@ -20,6 +20,7 @@ from src.core.database.models import MediaBuy, Principal
 from src.core.exceptions import AdCPAuthorizationError
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import ListCreativesResponse, UpdateMediaBuyRequest
+from src.core.schemas.creative import ListCreativesRequest
 from tests.utils.database_helpers import create_tenant_with_timestamps
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -126,7 +127,7 @@ class TestCrossPrincipalSecurity:
 
         SECURITY: Principal B should NOT see Principal A's creatives.
         """
-        from src.core.tools.creatives.listing import _build_list_creatives_request, _list_creatives_impl
+        from src.core.tools.creatives.listing import _list_creatives_impl
 
         identity_b = ResolvedIdentity(
             principal_id="advertiser_b",
@@ -136,7 +137,7 @@ class TestCrossPrincipalSecurity:
             protocol="mcp",
         )
 
-        response = _list_creatives_impl(req=_build_list_creatives_request(), identity=identity_b)
+        response = _list_creatives_impl(req=ListCreativesRequest(), identity=identity_b)
 
         assert isinstance(response, ListCreativesResponse)
 
@@ -255,7 +256,7 @@ class TestCrossPrincipalSecurity:
         scoped.remove()
 
         # Principal A (from first tenant) tries to access creative from second tenant
-        from src.core.tools.creatives.listing import _build_list_creatives_request, _list_creatives_impl
+        from src.core.tools.creatives.listing import _list_creatives_impl
 
         identity_a = ResolvedIdentity(
             principal_id="advertiser_a",
@@ -265,7 +266,7 @@ class TestCrossPrincipalSecurity:
             protocol="mcp",
         )
 
-        response = _list_creatives_impl(req=_build_list_creatives_request(), identity=identity_a)
+        response = _list_creatives_impl(req=ListCreativesRequest(), identity=identity_a)
 
         # Should only see their own creative, not creative_c from other tenant
         creative_ids = [c.creative_id for c in response.creatives]

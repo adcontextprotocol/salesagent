@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from adcp.types import AccountReference
 
+from src.core.schemas import SyncCreativesRequest
 from tests.factories.creative_asset import AssetSpec, assert_assets, build_assets, image_spec
 from tests.helpers.adcp_factories import create_test_format_id
 
@@ -72,9 +73,8 @@ def sync_creatives_request(**fields: Any) -> SyncCreativesRequest:
 
     # Imported at call time: this module is imported by tests that patch objects inside the
     # creatives package, and a module-level import would bind before their patches.
-    from src.core.tools.creatives.sync_wrappers import build_sync_creatives_request
 
-    return build_sync_creatives_request(**fields)
+    return SyncCreativesRequest(**fields)
 
 
 def creative_payload(**overrides: object) -> dict:

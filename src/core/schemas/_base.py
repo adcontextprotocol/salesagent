@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from src.core.schemas.creative import Creative
 
 from adcp import Error as _LibraryError
+from adcp.types import BrandReference as LibraryBrandReference
 from adcp.types import (
-    AccountReference,
     ContextObject,
     # DeliveryStatus / MediaBuyStatus are no longer referenced by a declaration in
     # this module — Snapshot and GetMediaBuysMediaBuy inherit them from their library
@@ -32,12 +32,10 @@ from adcp.types import (
     # caller. Unit tests do not catch that; a collection ImportError in the
     # integration suite is how it surfaced.
     DeliveryStatus,  # noqa: F401 — re-exported via src.core.schemas
-    ExtensionObject,
     MediaBuyStatus,  # noqa: F401 — re-exported via src.core.schemas
     PriceGuidance,  # Replaces local PriceGuidance class
     PricingModel,  # Replaces local PricingModel enum (lowercase members: .cpm, .cpc, etc.)
 )
-from adcp.types import BrandReference as LibraryBrandReference
 from adcp.types import CreateMediaBuyRequest as LibraryCreateMediaBuyRequest
 
 # Import main request/response types from stable API
@@ -77,6 +75,7 @@ from adcp.types.aliases import (
     UpdateMediaBuySuccessResponse as AdCPUpdateMediaBuySuccess,
 )
 from adcp.types.base import AdCPBaseModel as LibraryAdCPBaseModel
+from adcp.types.generated_poc.core.version_envelope import AdcpVersionEnvelope
 from adcp.types.generated_poc.enums.creative_approval_status import (
     # Aliased to OUR name for this concept, not to the library's. Two reasons, both
     # load-bearing: src.core.schemas already exports an unrelated
@@ -102,6 +101,9 @@ from adcp.types.generated_poc.media_buy.get_media_buys_response import (
 )
 from adcp.types.generated_poc.media_buy.get_media_buys_response import (
     Snapshot as LibraryGetMediaBuysSnapshot,
+)
+from adcp.types.generated_poc.protocol.get_task_status_request import (
+    GetTaskStatusRequest as LibraryGetTaskStatusRequest,
 )
 from adcp.types.generated_poc.protocol.list_tasks_response import Task as LibraryTaskSummary
 
@@ -450,6 +452,10 @@ class WireSerializerMixin:
     # emitting schema-invalid nulls (advertiser/rate_card/payment_terms on Account,
     # next_expected_at on the delivery response) — both typed as plain optionals by
     # the pin, neither required, neither nullable.
+    #: A RESPONSE model's pinned schema, for the sub-schema refs a module path cannot name
+    #: (``...#/oneOf/0``, ``...#/properties/media_buys/items``). Request DTOs no longer
+    #: declare it -- their ref is derived from SDK ancestry, so a DTO cannot name the wrong
+    #: schema for itself.
     _PINNED_SCHEMA_REF: ClassVar[str | None] = None
     _SERIALIZE_NESTED_MODELS: ClassVar[bool] = False
 
@@ -2787,15 +2793,6 @@ class AssignTaskRequest(SalesAgentBaseModel):
     assigned_to: str
 
 
-class CompleteTaskRequest(SalesAgentBaseModel):
-    """Request to complete a task."""
-
-    task_id: str
-    resolution: str  # approved, rejected, completed, cannot_complete
-    resolution_detail: str | None = None
-    resolved_by: str
-
-
 class VerifyTaskRequest(SalesAgentBaseModel):
     """Request to verify if a task was completed correctly."""
 
@@ -3347,14 +3344,23 @@ class GetMediaBuysMediaBuy(AlwaysIncludeFieldsMixin, LibraryGetMediaBuysMediaBuy
         return result
 
 
-class CompleteTaskRequestLocal(SalesAgentBaseModel):
-    """Request to complete a task -- OUR vocabulary, which is not the app CompleteTaskRequest.
+class CompleteTaskRequest(AdcpVersionEnvelope):
+    """Request to complete a task.
 
-    ``src.core.schemas.CompleteTaskRequest`` declares resolution / resolution_detail /
-    resolved_by; this tool implements status / response_data / error_message. Registering
-    against that model would advertise ``task_id`` alone. The two vocabularies need
-    reconciling -- filed -- and until then this declares what the tool takes so the tool
-    stays callable and its advertised shape stays honest.
+    There used to be TWO models for this one tool: this one, and a legacy
+    ``CompleteTaskRequest`` declaring resolution / resolution_detail / resolved_by. Neither
+    subclassed the other and neither was SDK-grounded, so the "two vocabularies need
+    reconciling" note this docstring used to carry resolved the only way it could: the
+    legacy one had zero callers and is deleted.
+
+    The base is ``AdcpVersionEnvelope`` because the pin ships no complete-task request
+    schema (the only ``complet*`` file in 3.1 is ``enums/completion-source.json``) and
+    ``adcp.types`` exports no ``CompleteTaskRequest``. When the SDK provides no type, the
+    rule is to subclass the SDK's base envelope so the request still carries
+    ``adcp_version`` / ``adcp_major_version`` -- ``SalesAgentBaseModel`` has no fields, so
+    under it this request could not carry a protocol version at all. Every other request DTO
+    reaches the same envelope through its pinned generated type. Not exported from
+    ``adcp.types``; import the full generated path.
     """
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
@@ -3366,70 +3372,31 @@ class CompleteTaskRequestLocal(SalesAgentBaseModel):
     context: ContextObject | None = Field(default=None, description="Application-level context")
 
 
-class GetTaskRequest(SalesAgentBaseModel):
+class GetTaskRequest(LibraryGetTaskStatusRequest):
     """Request to retrieve one task.
 
-    Defined HERE because the pinned SDK (adcp 6.6.0, AdCP 3.1.1) ships no GetTaskRequest --
-    the "SDK does not provide a type the spec implies" case. OWNER DECISION 2026-08-31:
-    define ours now so get_task can register (a tool without a DTO cannot publish a derived
-    shape and is refused at registration), and when the SDK ships one, make it the BASE
-    CLASS of this model rather than maintaining a parallel definition:
+    Extends the SDK's model rather than restating it. The previous docstring recorded an
+    OWNER DECISION of 2026-08-31 -- "the pinned SDK ships no GetTaskRequest ... define ours
+    now, and when the SDK ships one, make it the BASE CLASS rather than maintaining a
+    parallel definition". That instruction was already satisfiable when it was written: the
+    SDK ships the type under a DIFFERENT NAME, ``GetTaskStatusRequest`` in
+    ``generated_poc.protocol``, because the spec calls the operation ``get-task-status``
+    while the tool is ``get_task``. A search for the type by the TOOL's name found nothing
+    and a hand-written parallel was declared instead.
 
-        class GetTaskRequest(LibraryGetTaskRequest):   # + our additions, if any
+    The hand-written version reproduced the SDK's field set exactly -- same fields, same
+    single required one -- which is itself the answer to whether protocol/
+    get-task-status-request.json and core/tasks-get-request.json are the same operation:
+    someone already decided they were, then wrote the fields out instead of inheriting. What
+    the parallel lost was the version envelope: under ``SalesAgentBaseModel`` this request
+    could not carry ``adcp_version`` / ``adcp_major_version`` at all.
 
-    Fields mirror what get_task implements today; keep them in step with the tool's
-    arguments, since the advertised shape is their intersection.
+    It also narrowed ``include_history`` and ``include_result`` from ``bool | None`` to
+    ``bool``. That narrowing is dropped with the parallel: the SDK's nullability is the
+    spec's, and a DTO does not get to be stricter than the schema it claims to implement.
     """
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
-
-    #: The pinned schema this DTO implements, DECLARED because it cannot be derived.
-    #: Every other request DTO reaches an ``adcp`` generated type whose module path names
-    #: its schema file (``create_media_buy_request`` -> ``media-buy/create-media-buy-request.json``);
-    #: this one has no SDK ancestry to read, and the spec calls the task ``get-task-status``
-    #: while the tool is ``get_task``, so neither name produces the ref. It is read by
-    #: ``tests/helpers/request_schemas.graded_request_schemas``, which has no other way to
-    #: reach this tool's schema -- deleting the line drops the tool out of that grading
-    #: silently. (The coverage test that used to notice lived in the alignment suite and was
-    #: deleted with it; see docs/design/one-tool-registry.md.) Drop it when the SDK ships the
-    #: type and this model inherits it.
-    _PINNED_SCHEMA_REF: ClassVar[str] = "protocol/get-task-status-request.json"
-
-    task_id: str = Field(..., description="The task to retrieve")
-    context: ContextObject | None = Field(default=None, description="Application-level context")
-
-    # The remaining four fields protocol/get-task-status-request.json declares. They were
-    # absent, so a buyer sending any of them had it dropped -- and the gap survived because
-    # get_task sat in the table that graded EXTRA fields and outside the one that grades
-    # MISSING ones (salesagent-prkv.85).
-    #
-    # DECLARED ONLY BECAUSE THEY ARE HONOURED. Two of them are behaviour, not shape, and
-    # declaring a behavioural flag without implementing it is accept-and-ignore: the buyer
-    # asks, gets a 200, and receives nothing. Where each is honoured:
-    #   account         -> get_task scopes the lookup to the caller's principal and answers
-    #                      REFERENCE_NOT_FOUND otherwise
-    #   include_result  -> the terminal payload is returned only when true AND completed
-    #   include_history -> the task's request/response exchanges, per the response schema's
-    #                      history item shape
-    account: AccountReference | None = Field(
-        default=None,
-        description=(
-            "Account scope for the task lookup. A task_id belonging to another account or "
-            "principal answers REFERENCE_NOT_FOUND, which does not reveal that it exists."
-        ),
-    )
-    include_history: bool = Field(
-        default=False,
-        description="Include this task's request/response exchanges (may increase response size)",
-    )
-    include_result: bool = Field(
-        default=False,
-        description=(
-            "Include the task's result payload when status is completed. False by default so "
-            "a status-only poll stays lightweight."
-        ),
-    )
-    ext: ExtensionObject | None = Field(default=None, description="Extension slot (core/ext.json)")
 
 
 class TaskSummary(LibraryTaskSummary):

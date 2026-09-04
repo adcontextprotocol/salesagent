@@ -56,7 +56,7 @@ from uuid import uuid4
 
 from adcp.types import AccountReference
 
-from src.core.schemas import SyncCreativesResponse
+from src.core.schemas import SyncCreativesRequest, SyncCreativesResponse
 from tests.harness._base import IntegrationEnv
 from tests.harness._realize import e2e_unsupported, realize_e2e
 from tests.harness.egress import EgressHatchMixin
@@ -673,7 +673,7 @@ class CreativeSyncEnv(EgressHatchMixin, IntegrationEnv):
         """Call _sync_creatives_impl with real DB.
 
         Takes the same per-field kwargs a scenario always wrote and BUILDS the request from
-        them, through ``build_sync_creatives_request`` — the one seam the three transports
+        them, through ``SyncCreativesRequest`` — the one seam the three transports
         construct through. ``_sync_creatives_impl`` takes ``(req, identity, request_hash)``
         now, so a harness that forwarded loose fields would be the only caller in the tree
         still spreading a request across a call signature, and would grade a shape
@@ -690,7 +690,6 @@ class CreativeSyncEnv(EgressHatchMixin, IntegrationEnv):
         """
         from src.core.idempotency_canonical import canonical_request_hash
         from src.core.tools.creatives._sync import _sync_creatives_impl
-        from src.core.tools.creatives.sync_wrappers import build_sync_creatives_request
 
         self._commit_factory_data()
         kwargs.setdefault("identity", self.identity)
@@ -706,7 +705,7 @@ class CreativeSyncEnv(EgressHatchMixin, IntegrationEnv):
 
             identity = enrich_identity_with_account(identity, account)
 
-        req = build_sync_creatives_request(
+        req = SyncCreativesRequest(
             # The schema REQUIRES account, and this path deliberately does not resolve one
             # (see the docstring), so an unstated account gets a syntactically valid
             # reference that no lookup will ever consult. _sync_creatives_impl reads

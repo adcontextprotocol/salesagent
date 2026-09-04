@@ -450,38 +450,6 @@ class TestA2AResponseShape:
                 "get_media_buy_delivery response must have 'media_buy_deliveries' field"
             )
 
-    @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
-    @patch("src.a2a_server.adcp_a2a_server.core_update_performance_index_tool")
-    def test_update_performance_index_response_shape(self, mock_impl, mock_resolve, client, auth_headers):
-        """update_performance_index response must have acknowledgment fields."""
-        from src.core.schemas import UpdatePerformanceIndexResponse
-
-        mock_impl.return_value = UpdatePerformanceIndexResponse(
-            status="updated",
-            detail="Performance index updated for mb-test-1",
-        )
-
-        payload = _build_jsonrpc(
-            "update_performance_index",
-            {
-                "media_buy_id": "mb-test-1",
-                "performance_data": [{"product_id": "p1", "performance_index": 1.2}],
-            },
-        )
-        response = client.post("/a2a", json=payload, headers=auth_headers)
-        body = response.json()
-
-        if "result" in body:
-            data = _extract_artifact_data(body["result"])
-            assert "media_buy_id" in data or "status" in data, (
-                "update_performance_index response must have 'media_buy_id' or 'status'"
-            )
-
-
-# ---------------------------------------------------------------------------
-# Stub Handlers (approve_creative, get_media_buy_status, optimize_media_buy)
-# ---------------------------------------------------------------------------
-
 
 class TestA2AStubHandlers:
     """Verify stub handlers return JSON-RPC responses (not crashes)."""

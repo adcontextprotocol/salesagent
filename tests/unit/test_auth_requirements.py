@@ -25,6 +25,8 @@ from fastmcp.exceptions import ToolError
 
 from src.core.exceptions import AdCPAuthenticationError, AdCPValidationError
 from src.core.resolved_identity import ResolvedIdentity
+from src.core.schemas import UpdatePerformanceIndexRequest
+from src.core.schemas.creative import ListCreativesRequest
 from tests.factories.creative_asset import build_assets, image_spec
 from tests.helpers.creative_test_helpers import creative_payload, sync_creatives_request
 
@@ -67,11 +69,11 @@ class TestAuthenticationRequirements:
 
     def test_list_creatives_requires_authentication(self):
         """list_creatives must reject requests without authentication."""
-        from src.core.tools.creatives.listing import _build_list_creatives_request, _list_creatives_impl
+        from src.core.tools.creatives.listing import _list_creatives_impl
 
         # Call without identity (no auth) — _impl raises AdCPAuthenticationError (transport-agnostic)
         with pytest.raises(AdCPAuthenticationError) as exc_info:
-            _list_creatives_impl(req=_build_list_creatives_request(), identity=None)
+            _list_creatives_impl(req=ListCreativesRequest(), identity=None)
 
     # =========================================================================
     # Media Buy Tools
@@ -147,10 +149,10 @@ class TestAuthenticationRequirements:
 
     def test_update_performance_index_requires_authentication(self):
         """update_performance_index must reject requests without authentication."""
-        from src.core.tools.performance import _build_update_performance_index_request, _update_performance_index_impl
+        from src.core.tools.performance import _update_performance_index_impl
 
         # Call without identity (no auth) — _impl raises ValueError or AdCPAuthenticationError (transport-agnostic)
-        req = _build_update_performance_index_request(
+        req = UpdatePerformanceIndexRequest(
             media_buy_id="test_buy",
             performance_data=[{"product_id": "prod1", "performance_index": 0.8}],
         )

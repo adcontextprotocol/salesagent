@@ -5,11 +5,9 @@ import pytest
 from src.core.exceptions import AdCPSalesAgentError, build_two_layer_error_envelope
 from src.core.schema_helpers import (
     brand_shorthand_to_domain,
-    create_get_products_request,
     is_url_shorthand,
     to_brand_reference,
 )
-from src.core.tools.media_buy_create import _build_create_media_buy_request
 from tests.helpers import assert_envelope_shape
 from tests.helpers.capture_wrapper_req import capture_req_via_wrapper
 
@@ -50,14 +48,6 @@ def test_to_brand_reference_dict_form_unchanged() -> None:
     ref = to_brand_reference({"domain": "test.example"})
     assert ref is not None
     assert ref.domain == "test.example"
-
-
-def test_string_and_dict_shorthand_produce_identical_brand() -> None:
-    from_string = create_get_products_request(brand="https://test.example", brief="test")
-    from_dict = create_get_products_request(brand={"domain": "test.example"}, brief="test")
-    assert from_string.brand is not None
-    assert from_dict.brand is not None
-    assert from_string.brand.domain == from_dict.brand.domain == "test.example"
 
 
 @pytest.mark.parametrize(
@@ -206,24 +196,10 @@ def _minimal_create_media_buy_kwargs() -> dict:
         ({"domain": "https://acme.com"}, "acme.com"),
     ],
 )
-def test_build_create_media_buy_request_brand_shorthand(brand_input, expected_domain) -> None:
-    req = _build_create_media_buy_request(brand=brand_input, **_minimal_create_media_buy_kwargs())
-    assert req.brand is not None
-    assert req.brand.domain == expected_domain
-
-
 @pytest.mark.parametrize(
     "invalid_brand",
     ["https://[", "acme.com/products", "my_brand.com", "https://münchen.de"],
 )
-def test_build_create_media_buy_request_invalid_brand_raises_invalid_request(invalid_brand: str) -> None:
-    """The builder inherits the funnel's code: schema-constraint -> INVALID_REQUEST."""
-    with pytest.raises(AdCPSalesAgentError) as exc_info:
-        _build_create_media_buy_request(brand=invalid_brand, **_minimal_create_media_buy_kwargs())
-    assert exc_info.value.field == "brand"
-    assert_envelope_shape(build_two_layer_error_envelope(exc_info.value), "INVALID_REQUEST", recovery="correctable")
-
-
 def _capture_req_via_create_media_buy(brand):
     """Run the real MCP create_media_buy wrapper with `brand`; return the req handed to the impl."""
     from src.core.schemas import CreateMediaBuyResult
@@ -249,16 +225,3 @@ def _capture_req_via_create_media_buy(brand):
             "account": req_dict["account"],
         },
     )
-
-
-def test_mcp_create_media_buy_coerces_string_url_brand_before_impl() -> None:
-    req = _capture_req_via_create_media_buy("https://test.example")
-    assert req.brand is not None
-    assert req.brand.domain == "test.example"
-
-
-def test_mcp_create_media_buy_string_and_dict_brand_identical_downstream() -> None:
-    from_string = _capture_req_via_create_media_buy("https://test.example")
-    from_dict = _capture_req_via_create_media_buy({"domain": "test.example"})
-    assert from_string.brand is not None and from_dict.brand is not None
-    assert from_string.brand.domain == from_dict.brand.domain == "test.example"

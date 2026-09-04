@@ -26,7 +26,7 @@ from src.core.exceptions import (
 )
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import (
-    CompleteTaskRequestLocal,
+    CompleteTaskRequest,
     GetTaskRequest,
     GetTaskResponse,
     ListTasksRequest,
@@ -445,7 +445,7 @@ def _task_history(task: Any) -> list[dict[str, Any]]:
 
 
 async def _complete_task_impl(
-    req: CompleteTaskRequestLocal,
+    req: CompleteTaskRequest,
     identity: ResolvedIdentity | None = None,
 ) -> dict[str, Any]:
     """The transport-agnostic implementation of ``complete_task``.
@@ -525,7 +525,7 @@ async def _complete_task_impl(
 
 
 async def complete_task_raw(
-    req: CompleteTaskRequestLocal,
+    req: CompleteTaskRequest,
     identity: ResolvedIdentity | None = None,
 ) -> dict[str, Any]:
     """``complete_task`` for A2A and REST: the implementation without MCP's Context."""

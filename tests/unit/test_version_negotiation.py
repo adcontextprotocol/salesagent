@@ -26,6 +26,8 @@ import re
 
 import pytest
 
+from src.core.schemas import GetAdcpCapabilitiesRequest
+
 
 class TestSupportedAdcpVersionsDerivation:
     """Plan step 1: SUPPORTED_ADCP_VERSIONS must be release-precision, derived."""
@@ -100,11 +102,10 @@ class TestCapabilitiesImplVersionNegotiation:
         from src.core.exceptions import AdCPVersionUnsupportedError
         from src.core.tools.capabilities import (
             _get_adcp_capabilities_impl,
-            build_get_adcp_capabilities_request,
         )
 
         current_tenant.set(None)
-        req = build_get_adcp_capabilities_request(adcp_version="0.1")
+        req = GetAdcpCapabilitiesRequest(adcp_version="0.1")
 
         with pytest.raises(AdCPVersionUnsupportedError):
             _get_adcp_capabilities_impl(req, None)

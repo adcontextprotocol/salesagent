@@ -144,7 +144,7 @@ class TestSchemaMatchesLibrary:
         assert lib_fields == local_fields, f"CreateMediaBuyRequest drift: lib={lib_fields}, local={local_fields}"
 
         # ListCreativesRequest - the buyer shape, matching the library exactly. The
-        # reader's two internal knobs (format, page) are on ListCreativesInternal, which
+        # reader's two internal knobs (format, page) are on ListCreativesRequest, which
         # subclasses this and is what the builder and the _impl are typed to.
         lib_fields = set(LibListCreativesRequest.model_fields.keys())
         local_fields = set(LocalListCreativesRequest.model_fields.keys())

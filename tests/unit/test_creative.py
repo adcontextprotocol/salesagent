@@ -79,6 +79,7 @@ from src.core.schemas import (
     SyncCreativesRequest,
     SyncCreativesResponse,
 )
+from src.core.schemas.creative import ListCreativesRequest
 from tests.factories import PrincipalFactory
 from tests.factories.creative_asset import (
     asset_spec,
@@ -1466,10 +1467,10 @@ class TestListCreativesAuth:
         Spec: UNSPECIFIED (implementation-defined security boundary).
         Covers: UC-006-EXT-A-01
         """
-        from src.core.tools.creatives.listing import _build_list_creatives_request, _list_creatives_impl
+        from src.core.tools.creatives.listing import _list_creatives_impl
 
         with pytest.raises(AdCPAuthenticationError) as _ei:
-            _list_creatives_impl(req=_build_list_creatives_request(), identity=None)
+            _list_creatives_impl(req=ListCreativesRequest(), identity=None)
         # The old pattern matched the AUTHORED sentence; the sentence is the
         # code's table entry now, so assert it exactly.
 
@@ -1478,14 +1479,14 @@ class TestListCreativesAuth:
 
         Covers: UC-006-EXT-A-01
         """
-        from src.core.tools.creatives.listing import _build_list_creatives_request, _list_creatives_impl
+        from src.core.tools.creatives.listing import _list_creatives_impl
 
         identity = PrincipalFactory.make_identity(
             principal_id=None,
             tenant_id="t1",
         )
         with pytest.raises(AdCPAuthenticationError) as _ei:
-            _list_creatives_impl(req=_build_list_creatives_request(), identity=identity)
+            _list_creatives_impl(req=ListCreativesRequest(), identity=identity)
         # The old pattern matched the AUTHORED sentence; the sentence is the
         # code's table entry now, so assert it exactly.
 
@@ -1494,7 +1495,7 @@ class TestListCreativesAuth:
 
         Covers: UC-006-EXT-B-01
         """
-        from src.core.tools.creatives.listing import _build_list_creatives_request, _list_creatives_impl
+        from src.core.tools.creatives.listing import _list_creatives_impl
 
         identity = PrincipalFactory.make_identity(
             principal_id="p1",
@@ -1502,7 +1503,7 @@ class TestListCreativesAuth:
             tenant=None,
         )
         with pytest.raises(AdCPAuthenticationError) as _ei:
-            _list_creatives_impl(req=_build_list_creatives_request(), identity=identity)
+            _list_creatives_impl(req=ListCreativesRequest(), identity=identity)
         # The old pattern matched the AUTHORED sentence; the sentence is the
         # code's table entry now, so assert it exactly.
 
@@ -1521,7 +1522,7 @@ class TestListCreativesValidation:
         type: string, format: date-time.
 
         Graded at ``coerce_creative_filters``, which is where the obligation now lives. It
-        used to be graded on ``_build_list_creatives_request(created_after=...)``: a FLAT
+        used to be graded on ``ListCreativesRequest(created_after=...)``: a FLAT
         alias that AdCP 3.1.1 does not define anywhere, that no transport could send (MCP
         announces DTO fields INTERSECT the wrapper's signature, and ListCreativesRequest
         never declared it), and that is now removed. The spec-shaped path -- the one A2A and
@@ -1558,7 +1559,6 @@ class TestListCreativesRawBoundaryCompleteness:
         from adcp import CreativeFilters
 
         from src.core.tools.creatives.listing import (
-            _build_list_creatives_request,
             list_creatives_raw,
         )
 
@@ -1575,7 +1575,7 @@ class TestListCreativesRawBoundaryCompleteness:
             )
             # filters are a REQUEST field, so they are built into the request the
             # wrapper is handed -- the wrapper takes no per-field parameters.
-            list_creatives_raw(req=_build_list_creatives_request(filters=test_filters), identity=identity)
+            list_creatives_raw(req=ListCreativesRequest(filters=test_filters), identity=identity)
             mock_impl.assert_called_once()
             req = mock_impl.call_args.kwargs["req"]
             assert req.filters is not None
@@ -1587,7 +1587,6 @@ class TestListCreativesRawBoundaryCompleteness:
         Covers: UC-006-MAIN-REST-01
         """
         from src.core.tools.creatives.listing import (
-            _build_list_creatives_request,
             list_creatives_raw,
         )
 
@@ -1601,7 +1600,7 @@ class TestListCreativesRawBoundaryCompleteness:
                 pagination=Pagination(has_more=False),
                 query_summary=QuerySummary(returned=0, total_matching=0),
             )
-            list_creatives_raw(req=_build_list_creatives_request(include_assignments=True), identity=identity)
+            list_creatives_raw(req=ListCreativesRequest(include_assignments=True), identity=identity)
             mock_impl.assert_called_once()
             # include_assignments is an AdCP spec request field, so it now travels
             # on the typed request (req.include_assignments), not as a direct kwarg.
@@ -1668,7 +1667,7 @@ class TestListCreativesRequestRejectsInternalFlags:
         The surviving obligation is the general one, and it is stronger than the two names:
         NOTHING travels beside the request. ``format`` and ``page`` were out-of-band _impl
         arguments too, and they are ListCreativesRequest fields now -- so a parameter list of
-        exactly (req, identity) is what makes ``_build_list_creatives_request`` a subset of
+        exactly (req, identity) is what makes ``ListCreativesRequest`` a subset of
         the DTO, which is the property the announced-shape derivation rests on. Asserting the
         exact list rather than the absence of four names is what makes a fifth out-of-band
         argument fail here instead of being added unnoticed.
@@ -4231,7 +4230,9 @@ class TestExtensionGaps:
                 ]
             )
 
-        assert first_validation_error_field(exc_info.value) == "name"
+        # The whole path, because the whole path is what the buyer receives in the
+        # envelope's ``field``: the item index included, and no SDK class name in it.
+        assert first_validation_error_field(exc_info.value) == "creatives[0].name"
 
     def test_ext_h_media_url_fallback(self):
         """No previews from agent but media_url provided => creative NOT failed.
@@ -4512,7 +4513,6 @@ class TestA2ATransportGaps:
         from adcp.types import AccountReference as LibraryAccountReference
 
         from src.core.tools.creatives.sync_wrappers import (
-            build_sync_creatives_request,
             sync_creatives_raw,
         )
 
@@ -4568,7 +4568,7 @@ class TestA2ATransportGaps:
             # do, so the enrichment is patched above -- what this test grades is the A2A
             # path, not account resolution.
             result = sync_creatives_raw(
-                req=build_sync_creatives_request(
+                req=SyncCreativesRequest(
                     creatives=[_make_creative_asset()],
                     idempotency_key="unit-a2a-sync-key-01",
                     account=LibraryAccountReference.model_validate({"account_id": "acc_unit_a2a"}),
@@ -4642,7 +4642,6 @@ class TestA2ATransportGaps:
         from adcp.types import PaginationRequest
 
         from src.core.tools.creatives.listing import (
-            _build_list_creatives_request,
             list_creatives_raw,
         )
 
@@ -4654,10 +4653,10 @@ class TestA2ATransportGaps:
             mock_impl.return_value = MagicMock()
 
             # ``format`` and ``page`` are NOT builder parameters -- they are
-            # ListCreativesInternal fields, and the builder's signature is what keeps them
+            # ListCreativesRequest fields, and the builder's signature is what keeps them
             # off the REST body and the A2A parameter bag. An internal caller that wants to
             # drive the reader sets them on the model the builder already returns.
-            req = _build_list_creatives_request(
+            req = ListCreativesRequest(
                 filters=CreativeFilters(media_buy_ids=["mb_1"], statuses=["approved"]),
                 pagination=PaginationRequest(max_results=25),
             ).model_copy(update={"format": "display", "page": 2})

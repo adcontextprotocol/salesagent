@@ -54,6 +54,7 @@ from src.core.database.repositories.uow import ProductUoW
 from src.core.exceptions import AdCPAuthenticationError, AdCPAuthorizationError
 from src.core.product_conversion import convert_product_model_to_schema
 from src.core.resolved_identity import ResolvedIdentity
+from src.core.schemas import GetProductsRequest
 from tests.factories import PricingOptionFactory, PrincipalFactory, ProductFactory, TenantFactory
 from tests.harness._base import IntegrationEnv
 
@@ -95,7 +96,7 @@ async def _call_get_products(
     tenant_overrides: dict | None = None,
 ):
     """Convenience wrapper for get_products_raw with identity resolution."""
-    from src.core.tools.products import create_get_products_request, get_products_raw
+    from src.core.tools.products import get_products_raw
 
     tenant_dict: dict[str, Any] = {"tenant_id": tenant_id}
     if tenant_overrides:
@@ -115,7 +116,7 @@ async def _call_get_products(
     # Built through the shared builder, then handed over -- the wrapper takes the request
     # now, the same as every transport. This one helper drives every get_products case in
     # the module, so the build lives here rather than at 77 call sites.
-    req = create_get_products_request(
+    req = GetProductsRequest(
         brief=brief,
         brand=brand,
         filters=filters,

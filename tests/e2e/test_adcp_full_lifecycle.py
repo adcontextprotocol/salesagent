@@ -15,10 +15,10 @@ import uuid
 
 import pytest
 
+from src.core.schemas import SyncCreativesRequest
 from tests.e2e.adcp_request_builder import (
     build_creative,
     build_default_campaign_request,
-    build_sync_creatives_request,
     parse_tool_result,
 )
 from tests.e2e.utils import force_approve_media_buy_in_db, make_mcp_client
@@ -96,7 +96,7 @@ class TestAdCPFullLifecycle:
                 click_through_url="https://example.com/landing",
             )
 
-            sync_request = build_sync_creatives_request(creatives=[creative])
+            sync_request = SyncCreativesRequest(creatives=[creative])
 
             sync_result = await client.call_tool("sync_creatives", sync_request)
             sync_data = parse_tool_result(sync_result)

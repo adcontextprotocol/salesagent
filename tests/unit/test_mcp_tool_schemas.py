@@ -124,7 +124,7 @@ class TestMCPToolTypedSchemas:
         # says so at adcp_a2a_server.py:1788, and every one of its ~229 uses in src/ reads
         # it off a package, never off the request. The top-level parameter survived as dead
         # weight: update_media_buy_raw accepted it and dropped it before
-        # _build_update_request, so it advertised a no-op. Removed (prkv.5 D7).
+        # UpdateMediaBuyRequest, so it advertised a no-op. Removed (prkv.5 D7).
         assert "targeting_overlay" not in params, (
             "targeting_overlay is package-level in AdCP 3.1.1 (media-buy/package-update.json); use packages[].targeting_overlay. "
             "A top-level parameter here is accepted and silently dropped."

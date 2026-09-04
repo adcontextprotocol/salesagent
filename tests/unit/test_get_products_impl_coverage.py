@@ -28,6 +28,7 @@ from adcp.types import FormatId
 
 from src.core.exceptions import AdCPAuthenticationError
 from src.core.resolved_identity import ResolvedIdentity
+from src.core.schemas import GetProductsRequest
 from tests.helpers.adcp_factories import create_test_cpm_pricing_option, create_test_product
 
 
@@ -54,9 +55,8 @@ def _make_tenant(tenant_id="test-tenant"):
 
 def _make_request(brief="test brief", filters=None):
     """Create a GetProductsRequest using the factory."""
-    from src.core.schema_helpers import create_get_products_request
 
-    return create_get_products_request(brief=brief, filters=filters)
+    return GetProductsRequest(brief=brief, filters=filters)
 
 
 def _mock_uow_with_products(products):

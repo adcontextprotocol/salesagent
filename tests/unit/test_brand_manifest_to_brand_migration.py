@@ -13,6 +13,8 @@ callers still passing brand_manifest instead of brand fail in multiple ways:
 import pytest
 from pydantic import ValidationError
 
+from src.core.schemas import GetProductsRequest
+
 
 class TestGetProductsRawRejectsBrandManifest:
     """get_products_raw no longer accepts brand_manifest keyword."""
@@ -23,7 +25,6 @@ class TestGetProductsRawRejectsBrandManifest:
         This reproduces the failure in:
         - tests/integration_v2/test_get_products_filters.py (8+ tests)
         """
-        from src.core.tools.products import create_get_products_request
 
         # Aimed at the BUILDER, not get_products_raw. The wrapper takes the built request
         # now, so every field name is unknown to it and `brand_manifest` would raise there
@@ -31,7 +32,7 @@ class TestGetProductsRawRejectsBrandManifest:
         # nothing. The builder is the one door a buyer field enters through, so it is where
         # "brand_manifest is not a parameter, brand is" is actually enforced.
         with pytest.raises(TypeError, match="brand_manifest"):
-            create_get_products_request(
+            GetProductsRequest(
                 brand_manifest={"name": "Test Brand"},
                 brief="",
             )

@@ -79,7 +79,7 @@ def _extract_request_constructor_kwargs(file_path: Path, wrapper_name: str, requ
     1. Direct construction: ``CreateMediaBuyRequest(brand=..., ...)`` inside
        the wrapper body.
     2. Shared-builder indirection: the wrapper calls a module-local helper
-       (e.g. ``_build_create_media_buy_request(brand=..., ...)``) that itself
+       (e.g. ``CreateMediaBuyRequest(brand=..., ...)``) that itself
        constructs the request class. The wrapper's kwargs to the helper count,
        but ONLY intersected with what the helper actually forwards into the
        constructor — a field dropped at either hop is reported missing.
@@ -217,13 +217,10 @@ class TestCreateMediaBuyFieldForwarding:
         receives one. Construction is the builder's job, so that is where dropping a
         field is a defect worth catching.
         """
-        kwargs = _extract_request_constructor_kwargs(
-            CREATE_FILE, "_build_create_media_buy_request", "CreateMediaBuyRequest"
-        )
+        kwargs = _extract_request_constructor_kwargs(CREATE_FILE, "CreateMediaBuyRequest", "CreateMediaBuyRequest")
         missing = CREATE_SPEC_FIELDS - kwargs
         assert not missing, (
-            f"_build_create_media_buy_request drops AdCP fields when constructing "
-            f"CreateMediaBuyRequest: {sorted(missing)}"
+            f"CreateMediaBuyRequest drops AdCP fields when constructing CreateMediaBuyRequest: {sorted(missing)}"
         )
 
     def test_mcp_wrapper_accepts_all_spec_fields_as_params(self):
@@ -240,7 +237,7 @@ class TestCreateMediaBuyFieldForwarding:
         The inverse of what this asserted, and for the same reason as its update sibling:
         the wrapper re-listed the request's fields, and now takes the request. The
         obligation -- every spec field must be constructible -- is carried by
-        test_builder_accepts_all_spec_fields below, on _build_create_media_buy_request,
+        test_builder_accepts_all_spec_fields below, on CreateMediaBuyRequest,
         which is the one place a buyer field can enter.
         """
         params = _extract_wrapper_params(CREATE_FILE, "create_media_buy_raw")
@@ -252,12 +249,10 @@ class TestCreateMediaBuyFieldForwarding:
         assert "req" in params, "the wrapper must take the built request"
 
     def test_builder_accepts_all_spec_fields(self):
-        """_build_create_media_buy_request must accept every AdCP spec field."""
-        params = _extract_wrapper_params(CREATE_FILE, "_build_create_media_buy_request")
+        """CreateMediaBuyRequest must accept every AdCP spec field."""
+        params = _extract_wrapper_params(CREATE_FILE, "CreateMediaBuyRequest")
         missing = CREATE_SPEC_FIELDS - params
-        assert not missing, (
-            f"_build_create_media_buy_request doesn't accept AdCP fields as parameters: {sorted(missing)}"
-        )
+        assert not missing, f"CreateMediaBuyRequest doesn't accept AdCP fields as parameters: {sorted(missing)}"
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +261,7 @@ class TestCreateMediaBuyFieldForwarding:
 
 UPDATE_FILE = Path("src/core/tools/media_buy_update.py")
 
-# AdCP spec fields that must reach the UpdateMediaBuyRequest via _build_update_request
+# AdCP spec fields that must reach the UpdateMediaBuyRequest via UpdateMediaBuyRequest
 UPDATE_SPEC_FIELDS = {
     "media_buy_id",
     "paused",
@@ -281,7 +276,7 @@ UPDATE_SPEC_FIELDS = {
 
 
 class TestUpdateMediaBuyFieldForwarding:
-    """MCP and A2A update wrappers must forward all AdCP fields through _build_update_request."""
+    """MCP and A2A update wrappers must forward all AdCP fields through UpdateMediaBuyRequest."""
 
     def test_mcp_wrapper_accepts_all_spec_fields(self):
         """MCP update_media_buy must accept all AdCP spec fields as parameters."""
@@ -306,60 +301,60 @@ class TestUpdateMediaBuyFieldForwarding:
         leaked = UPDATE_SPEC_FIELDS & params
         assert not leaked, (
             f"update_media_buy_raw declares spec fields {sorted(leaked)} beside the request. "
-            f"They belong on _build_update_request; a second list here is the drift the "
+            f"They belong on UpdateMediaBuyRequest; a second list here is the drift the "
             f"request shape removed."
         )
         assert "req" in params, "the wrapper must take the built request"
 
     def test_build_update_request_accepts_all_spec_fields(self):
-        """_build_update_request must accept all AdCP spec fields as parameters."""
-        params = _extract_wrapper_params(UPDATE_FILE, "_build_update_request")
+        """UpdateMediaBuyRequest must accept all AdCP spec fields as parameters."""
+        params = _extract_wrapper_params(UPDATE_FILE, "UpdateMediaBuyRequest")
         missing = UPDATE_SPEC_FIELDS - params
-        assert not missing, f"_build_update_request doesn't accept AdCP fields as parameters: {sorted(missing)}"
+        assert not missing, f"UpdateMediaBuyRequest doesn't accept AdCP fields as parameters: {sorted(missing)}"
 
     def test_mcp_wrapper_forwards_all_spec_fields_to_build(self):
-        """MCP wrapper must pass all spec fields to _build_update_request call site."""
-        kwargs = _extract_call_kwargs(UPDATE_FILE, "update_media_buy", "_build_update_request")
+        """MCP wrapper must pass all spec fields to UpdateMediaBuyRequest call site."""
+        kwargs = _extract_call_kwargs(UPDATE_FILE, "update_media_buy", "UpdateMediaBuyRequest")
         missing = UPDATE_SPEC_FIELDS - kwargs
         assert not missing, (
-            f"MCP wrapper 'update_media_buy' doesn't forward AdCP fields to _build_update_request: {sorted(missing)}"
+            f"MCP wrapper 'update_media_buy' doesn't forward AdCP fields to UpdateMediaBuyRequest: {sorted(missing)}"
         )
 
     def test_a2a_wrapper_does_not_build_the_request_itself(self):
         """update_media_buy_raw RECEIVES the request; it must not construct one.
 
         This replaces the assertion that the wrapper forward every spec field INTO
-        _build_update_request. That was the obligation while the wrapper owned
+        UpdateMediaBuyRequest. That was the obligation while the wrapper owned
         construction; it now takes the built request, and its callers (the REST route
         and the A2A skill handler) build. A wrapper that also built would be a second
         construction path -- the exact thing the request shape removes -- so the
         invariant is that it contains no build call at all.
 
         The field-completeness obligation is unchanged and still graded, one test below,
-        where construction actually happens: _build_update_request.
+        where construction actually happens: UpdateMediaBuyRequest.
         """
-        kwargs = _extract_call_kwargs(UPDATE_FILE, "update_media_buy_raw", "_build_update_request")
+        kwargs = _extract_call_kwargs(UPDATE_FILE, "update_media_buy_raw", "UpdateMediaBuyRequest")
         assert not kwargs, (
-            f"update_media_buy_raw calls _build_update_request with {sorted(kwargs)}. "
+            f"update_media_buy_raw calls UpdateMediaBuyRequest with {sorted(kwargs)}. "
             f"It takes the built request; building here would restore the second path."
         )
 
     def test_build_update_request_constructs_with_all_spec_fields(self):
-        """_build_update_request must include all spec fields in UpdateMediaBuyRequest construction."""
-        # _build_update_request uses request_params dict, not direct constructor kwargs.
+        """UpdateMediaBuyRequest must include all spec fields in UpdateMediaBuyRequest construction."""
+        # UpdateMediaBuyRequest uses request_params dict, not direct constructor kwargs.
         # Check that every spec field has a `request_params["field"] = field` assignment.
         source = Path(UPDATE_FILE).read_text()
         tree = ast.parse(source)
 
-        # Find _build_update_request
+        # Find UpdateMediaBuyRequest
         func_node = None
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if node.name == "_build_update_request":
+                if node.name == "UpdateMediaBuyRequest":
                     func_node = node
                     break
 
-        assert func_node is not None, "_build_update_request function not found"
+        assert func_node is not None, "UpdateMediaBuyRequest function not found"
 
         # Find all request_params["key"] = ... assignments
         assigned_keys = set()
@@ -376,7 +371,7 @@ class TestUpdateMediaBuyFieldForwarding:
                         assigned_keys.add(target.slice.value)
 
         missing = UPDATE_SPEC_FIELDS - assigned_keys
-        assert not missing, f"_build_update_request doesn't include AdCP fields in request_params: {sorted(missing)}"
+        assert not missing, f"UpdateMediaBuyRequest doesn't include AdCP fields in request_params: {sorted(missing)}"
 
 
 class TestExtractorModelsBuilderIndirection:

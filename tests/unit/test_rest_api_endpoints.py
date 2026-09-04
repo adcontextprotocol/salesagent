@@ -179,3 +179,43 @@ class TestGetMediaBuyDeliveryEndpoint:
         assert_envelope_shape(response.json(), "INVALID_REQUEST", recovery="correctable")
         mock_enrich.assert_not_called()
         mock_impl.assert_not_called()
+
+
+class TestPathFieldsBindFromTheUrl:
+    """A templated REST path fills the DTO field it names.
+
+    ``RestBinding.path_fields`` used to be read nowhere: the URL template carried the
+    convertor, Starlette parsed the segment, and the handler's signature was ``(body,
+    identity)``, so the value was discarded. A buyer who named the task in the URL -- the
+    only place REST puts it -- got a 422 for omitting it from the body, and a buyer who sent
+    both got the BODY's value while the URL said something else.
+    """
+
+    @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
+    @patch("src.core.tools.task_management._get_task_impl")
+    def test_path_value_reaches_the_impl_without_a_body_field(self, mock_impl, mock_resolve):
+        mock_impl.return_value = MagicMock(model_dump=lambda **kw: {"task": {}})
+
+        response = client.post(
+            "/api/v1/tasks/task_from_url",
+            json={},
+            headers={"Authorization": "Bearer test-token"},
+        )
+
+        assert response.status_code == 200
+        assert mock_impl.call_args.kwargs["req"].task_id == "task_from_url"
+
+    @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
+    @patch("src.core.tools.task_management._get_task_impl")
+    def test_the_url_wins_over_a_body_that_disagrees(self, mock_impl, mock_resolve):
+        """The URL is the resource identity, so it overrides a conflicting body value."""
+        mock_impl.return_value = MagicMock(model_dump=lambda **kw: {"task": {}})
+
+        response = client.post(
+            "/api/v1/tasks/task_from_url",
+            json={"task_id": "task_from_body"},
+            headers={"Authorization": "Bearer test-token"},
+        )
+
+        assert response.status_code == 200
+        assert mock_impl.call_args.kwargs["req"].task_id == "task_from_url"

@@ -66,19 +66,19 @@ def _ref_from_generated_module(module: str) -> str | None:
 def pinned_request_schema_ref(model: type[BaseModel]) -> str | None:
     """The pinned request schema *model* implements, or None when it implements none.
 
-    A ref the DTO declares on ``_PINNED_SCHEMA_REF`` wins over the derivation: the
-    declaration exists for the case the derivation cannot reach (a schema named
-    differently from its type, or a DTO with no SDK ancestry at all), so a derivation
-    that overrode it would make the declaration unreachable.
+    DERIVED, with no declaration to prefer. A request DTO used to be able to name its own
+    ref on ``_PINNED_SCHEMA_REF``, for "a schema named differently from its type, or a DTO
+    with no SDK ancestry at all". GetTaskRequest was the only user and was BOTH of those --
+    the spec calls the operation get-task-status while the tool is get_task, and the model
+    was hand-written. It now extends the SDK's GetTaskStatusRequest, so the module path
+    names the schema and the derivation reaches it unaided.
 
-    Note that a REQUEST DTO declaring ``_PINNED_SCHEMA_REF`` changes no serialization
-    behaviour: the attribute drives ``_always_include_null_fields`` only for classes
-    that inherit :class:`WireSerializerMixin`, and no request DTO does. On a request
-    model it is purely the slot's other half — "the schema I am graded against".
+    The declaration is gone rather than kept unused: a DTO that can name its own grading
+    schema can name the wrong one, and the hand-written parallel it existed to serve is
+    exactly what a derivation-only rule prevents. A request DTO with no SDK ancestry now
+    resolves no ref and is simply not graded here -- the honest answer for complete_task,
+    whose operation the pin does not define at all.
     """
-    declared = getattr(model, "_PINNED_SCHEMA_REF", None)
-    if declared:
-        return str(declared)
     from src.core.tools._announced_shape import sdk_grounding
 
     grounding = sdk_grounding(model)
