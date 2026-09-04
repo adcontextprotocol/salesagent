@@ -163,18 +163,29 @@ ALLOWLIST_DEFERRED: frozenset[tuple[str, str, str]] = frozenset(
         # _GIVEN_STEP_METHOD_RE (name is "setup_", not "set_"-prefixed), so
         # this guard doesn't detect it at all -- tracked only in salesagent-jlug.
         ("tests/harness/creative_sync.py", "set_run_async_result", "salesagent-jlug"),
-        # A REAL instance, opened by #1802 rather than by this method changing.
-        # CircuitBreakerMixin.deliver_webhook is now
-        # @realize_e2e(_deliver_via_live_server), so over e2e the LIVE SERVER
-        # sends -- while set_breaker_state still pokes service._circuit_breakers
-        # in the TEST process (via _breaker_for). Two processes, two breakers:
-        # the seed is inert and the scenario grades an unconfigured breaker.
-        # uc004_delivery.py:849 dispatches it, so this is not hypothetical.
-        # The whole seeding family shares the defect -- seed_breaker_failures,
-        # elapse_breaker_timeout, drive_breaker_transition -- but only this one
-        # matches _GIVEN_STEP_METHOD_RE, so it is the only member this guard can
-        # see. The fix belongs in _breaker_for, for all four at once.
-        ("tests/harness/_mixins.py", "set_breaker_state", "salesagent-h7l0h"),
+        # REMOVED — salesagent-h7l0h is closed. The entry read: "#1802 made
+        # CircuitBreakerMixin.deliver_webhook @realize_e2e, so over e2e the LIVE SERVER
+        # sends -- while set_breaker_state still pokes service._circuit_breakers in the
+        # TEST process. Two processes, two breakers: the seed is inert and the scenario
+        # grades an unconfigured breaker." That was right, and the whole family
+        # (seed_breaker_failures, elapse_breaker_timeout, drive_breaker_transition,
+        # breaker_snapshot) shared it — this one was merely the only member matching
+        # _GIVEN_STEP_METHOD_RE, so it was the only one this guard could see.
+        #
+        # It predicted "the fix belongs in _breaker_for, for all four at once". The fix
+        # is not there, because there is nothing to point _breaker_for AT: the live
+        # server's delivery-report path (ProtocolWebhookService) has no circuit breaker
+        # at all — the breaker belongs to WebhookDeliveryService, which only the
+        # in-process legs drive. So the seam is not merely wired to the wrong process,
+        # it names behaviour the e2e path does not have.
+        #
+        # All five are now @realize_e2e(e2e_unsupported(...)) and pinned in
+        # test_architecture_e2e_rest_escape_hatches.EXPECTED_UNSUPPORTED_DECLARATIONS.
+        # AdCP 3.1.1 mandates no breaker (webhooks.mdx :528 is its only, descriptive
+        # mention; nothing in dist/compliance/3.1.1/ grades it), so this is a scope
+        # correction, not deferred coverage. The scenarios come back when
+        # webhook_activity[] on get_media_buys — the spec's actual observable — is
+        # implemented; see the handoff.
     }
 )
 
