@@ -113,6 +113,14 @@ class MediaBuyCreateEnv(EgressHatchMixin, IntegrationEnv):
         # explicitly via the "tenant requires manual approval" Given (which
         # commits the change to the shared DB).
         tenant, principal = self.setup_default_data(human_review_required=False)
+        # And the ACCOUNT, with this principal's access to it. Both
+        # create-media-buy-request.json and update-media-buy-request.json list ``account``
+        # in /required, and the boundary RESOLVES the reference now rather than accepting
+        # and dropping it -- so a scenario using this chain and sending the default account
+        # got PERMISSION_DENIED out of resolve_account before reaching what it grades.
+        # Here and not in setup_default_data: seeding an account for EVERY tenant made
+        # UC-011's account-listing scenarios wrong ("0 accounts visible" saw one).
+        self.setup_default_account()
         # Satisfy the create_media_buy setup-checklist "Authorized Properties"
         # gate. In-process transports skip it via the testing context, but the
         # live e2e_rest server enforces it (validate_setup_complete), so a

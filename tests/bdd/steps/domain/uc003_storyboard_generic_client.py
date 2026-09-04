@@ -46,7 +46,7 @@ def _dispatch_update(ctx: dict, payload: dict) -> None:
     # came back PERMISSION_DENIED before reaching what it grades. env.default_account_reference
     # is the row the seeder created, with this principal's access to it.
     payload = {
-        "account": ctx["env"].default_account_reference.model_dump(mode="json"),
+        "account": ctx["env"].default_account_reference().model_dump(mode="json"),
         "idempotency_key": f"uc003-storyboard-{uuid4().hex}",
         **payload,
     }
