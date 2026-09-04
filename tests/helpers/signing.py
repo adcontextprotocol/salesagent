@@ -220,6 +220,39 @@ def deployment_kek(monkeypatch: Any, name: str = "SALESAGENT_TEST_SIGNING_KEK") 
     yield
 
 
+@contextmanager
+def inbound_verifier_disabled(monkeypatch: Any) -> Iterator[None]:
+    """Run the agent as one that does NOT verify inbound RFC 9421 signatures.
+
+    For suites whose subject is NOT the verifier but which register webhook
+    credentials: security.mdx @ v3.1.1 :1462-1465 makes an unsigned request carrying
+    ``push_notification_config.authentication`` a bodyless 401 on any seller that CAN
+    verify (``_credentials_force_a_signature``), so the request never reaches the
+    ingest gate those suites exist to grade.
+
+    ``SigningConfig.verifier_enabled`` is the honest lever, and the ONLY one. The
+    rejected alternative — declaring ``request_signing {supported: false}`` on the
+    tenant — under-declares an AGENT-level fact: the pin defines
+    ``request_signing.supported`` as "whether this agent VERIFIES RFC 9421 signatures
+    on incoming requests" and ``RequestSignatureMiddleware`` is mounted process-wide
+    (``src/app.py``), so with the switch left on that declaration is false. Flipping
+    the switch makes it true: ``request_verifier_middleware`` :331 passes every
+    request through untouched, and ``agent_level_posture`` / ``posture_from_declarations``
+    then report ``supported=False`` because the agent really does not verify.
+
+    Nothing stops being graded — the verifier keeps its own suites
+    (``tests/integration/test_request_signature_operations.py``, the compliance
+    vectors) where the switch stays on.
+
+    IN-PROCESS ONLY. This patches THIS process's config, so it does nothing for a
+    transport that talks to a separately-launched server (``e2e_rest``); such a leg
+    must sign instead.
+    """
+    monkeypatch.setenv("ADCP_SIGNING_VERIFIER_ENABLED", "false")
+    monkeypatch.setattr("src.core.config._config", None, raising=False)
+    yield
+
+
 def get_trust_root_document(client: Any, path: str, tenant: Any, *, expect_status: int = 200) -> dict[str, Any]:
     """GET a trust-root document for *tenant*'s host, failing loudly on the wrong status.
 

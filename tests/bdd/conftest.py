@@ -4835,20 +4835,29 @@ def _declare_seller_does_not_sign(ctx: dict, env: object) -> None:
 
     Truthful rather than a workaround: security.mdx @ v3.1.1 :1465, quoted by
     _credentials_force_a_signature itself, says sellers that do not support request
-    signing "have no way to enforce this rule and fall back to the log-and-alarm posture".
-    A seller whose scenario is about SSRF and webhook-credential SHAPE is such a seller,
-    and the verifier keeps its own grading in
-    tests/integration/test_request_signature_operations.py and the compliance vectors.
+    signing "have no way to enforce this rule and fall back to the log-and-alarm posture",
+    and the pinned signed-requests storyboard gates all 28 negative vectors on
+    request_signing.supported: true alone — so a seller advertising false is OUTSIDE the
+    rule rather than evading it (tests.helpers.signing.unsupported). Advertise and enforce
+    remain one object (posture_for_tenant is the single reader), and the verifier keeps its
+    own grading in tests/integration/test_request_signature_operations.py and the
+    compliance vectors.
 
-    Set on the env's OWN tenant and committed with the rest of the factory data: a
-    separate session loses the race with the env's later _commit_factory_data(), which
-    writes back its in-memory tenant and erases an out-of-band declaration.
+    Through env.declare_request_signing — the ONE writer for a declared posture — and NOT
+    a hand-built dict on ctx["tenant"]. That writer attaches the derived
+    identity.brand_json_url the pinned required_when trigger needs, gives the tenant a
+    dotted virtual_host first (ensure_declarable_identity_host: a single-label host derives
+    http:// and the whole declaration is REFUSED, silently, back into the supported bucket),
+    and writes through the env's OWN session — which on the e2e_rest parametrization is
+    bound to the LIVE server's database, the one that server's verifier reads.
+
+    That last property is why the posture, and not SigningConfig.verifier_enabled, is the
+    lever here: these scenarios run on e2e_rest too, and a config patch in the runner
+    process cannot reach the server's verifier. The sibling in-process-only module
+    tests/integration/test_webhook_hmac_credentials_ingest_refusal.py uses the config
+    lever for the same reason inverted.
     """
-    tenant = ctx["tenant"]
-    declarations = dict(getattr(tenant, "capability_declarations", None) or {})
-    declarations["request_signing"] = {"supported": False}
-    tenant.capability_declarations = declarations
-    env._commit_factory_data()
+    env.declare_request_signing(bucket="unsupported")
 
 
 def _seed_egress_sync(ctx: dict, env: object) -> None:
