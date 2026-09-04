@@ -64,6 +64,58 @@ were broken.
 
 ---
 
+## 0.5 CAPABILITY GAP — `webhook_activity[]` is not implemented
+
+Not a test concern; a missing AdCP capability. `get_media_buys` takes
+`include_webhook_activity: true` and returns `webhook_activity[]` per media buy. The
+pinned request schema states the purpose in its own words:
+
+> "Used by **buyer agents** to verify whether a publisher actually fired against the
+> buyer's registered endpoint and what the endpoint returned — **closes the
+> operator-ticket loop** for webhook debugging."
+
+`webhooks.mdx :528` says the same from the buyer's side ("no operator ticket required").
+So this is a buyer self-service surface we owe, and `grep -c webhook_activity src/` is
+**0**.
+
+**Cost is small, because we already persist almost all of it.** `webhook_delivery_log`
+maps nearly 1:1 onto `core/webhook-activity-record.json`: `webhook_url`->`url`,
+`sequence_number`, `notification_type`, `attempt_count`->`attempt`, `status`,
+`http_status_code`, `error_message`, `payload_size_bytes`, `response_time_ms`,
+`completed_at`, `created_at`->`fired_at`. Two real gaps:
+
+* **`idempotency_key`** — REQUIRED by the record schema. We now generate it per delivery
+  (commit `0464a9504`) but do not store it on the log row.
+* **one record per attempt** — the spec says sellers MUST emit one record per attempt;
+  we write one row carrying `attempt_count`.
+
+Plus the normative 30-day retention, and the `propagation_surfaces` opt-out: a seller not
+declaring `webhook` MUST omit the field entirely rather than return a short window.
+
+**Why it matters beyond the capability itself.** It is the ONLY spec-defined observable
+for webhook delivery behaviour, and it is an AdCP READ SURFACE — so a Then can assert on
+it identically over mcp / a2a / rest / e2e_rest, with no cross-process poking and no
+test-only endpoint. It is what the parked circuit-breaker scenarios (§0) should be
+rewritten against, at which point all five `E2EUnsupportedSetup` declarations come out.
+Shape they should take:
+
+```gherkin
+Given a media buy "mb-001" with an active reporting_webhook
+And the webhook endpoint returns 500
+When the seller has attempted delivery 5 times
+Then webhook_activity contains 5 records for that idempotency_key
+And every record has status "failed" with http_status_code 500
+```
+
+Every clause is a spec obligation with a citation, and every one is readable through a
+production API a real buyer calls.
+
+Storyboard: `webhook_activity` appears in `dist/compliance/3.1.1/` only in the creative
+lifecycle scenarios — this delivery-report use is UNGRADED, so the obligation is the
+prose plus the schema.
+
+---
+
 ## 1. Merge status
 
 Five upstream PRs merged in dependency order (#2091, #1941, #1858, #1802, #2141), one
