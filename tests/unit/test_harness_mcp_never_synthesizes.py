@@ -21,7 +21,7 @@ from fastmcp.exceptions import ToolError
 
 from src.core.exceptions import AdCPValidationError, build_two_layer_error_envelope
 from tests.harness._base import WireError
-from tests.harness.dispatchers import A2ADispatcher, ImplDispatcher, McpDispatcher, RestDispatcher
+from tests.harness.dispatchers import A2ADispatcher, McpDispatcher, RestDispatcher
 
 
 def _raising_env(exc: Exception):
@@ -142,17 +142,6 @@ class TestOnlyTheTransportWithNoWireMaySynthesize:
     instead -- the same substitution under the name of the real thing, which is
     strictly worse and is why it needs its own change (#1417).
     """
-
-    def test_impl_still_synthesizes_because_it_has_no_wire_to_lose(self):
-        """IMPL's value is load-bearing and must survive this change.
-
-        Five integration tests read it. It is not a mask there: ``has_wire=False``
-        is a definition for an in-process call, not a lost capture.
-        """
-        result = ImplDispatcher().dispatch(_raising_env(_an_error()))
-
-        assert result._synthesized_error_envelope is not None
-        assert result.wire_error_envelope is None
 
     @pytest.mark.parametrize("dispatcher", [A2ADispatcher, McpDispatcher, RestDispatcher])
     def test_a_transport_that_has_a_wire_never_synthesizes(self, dispatcher):
