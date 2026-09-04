@@ -23,6 +23,7 @@ import asyncio
 
 import pytest
 
+from src.core.tools.registry import TOOLS
 from tests.harness.address_table import (
     PATH_PARAM_RE,
     AddressTable,
@@ -289,24 +290,38 @@ class TestCrossRegistryConsistencyGuard:
         known_names = table.all_tools(Transport.MCP) | table.all_tools(Transport.A2A)
         assert rest_names <= known_names
 
-    def test_day_one_registry_contents_pinned(self):
-        """Pins the day-1 REST tool-name surface so this guard fails on a REAL
-        registry change (a route added/removed, a tool renamed), not only on
-        deletion of the loud-miss raise — strengthens the otherwise-
-        tautological subset check above. Checks cardinality + representative
-        membership rather than the full literal name list, to avoid a second
-        near-copy of the route-name list tests/unit/test_rest_depends_auth.py
-        already carries for a different purpose (this project's DRY
-        invariant, CLAUDE.md)."""
+    def test_every_registry_row_with_a_rest_binding_resolves_on_rest(self):
+        """The REST surface IS the registry's rest bindings — derived, not pinned.
+
+        This replaces two tests that pinned a MOMENT rather than a property:
+
+        ``test_day_one_registry_contents_pinned`` asserted ``len(rest_names) == 13``
+        and existed, by its own docstring, to give the subset check above some
+        teeth. It fails the moment a route is added — which is exactly what the
+        one-tool-registry work does on purpose, so it alarmed on intended change
+        and said nothing about correctness.
+
+        ``test_no_address_for_transport_on_a_single_transport_tool`` asserted
+        ``mcp_only`` was non-empty as a SANITY PRECONDITION: it could only run
+        while some tool was missing from A2A and REST. A test that requires
+        production to be inconsistent in order to execute pins the defect. Its
+        actual invariant — a miss is loud, not silent — is already graded twice
+        without that requirement, by ``test_no_address_for_unknown_tool`` and by
+        the constructed-app case in ``TestRestHandlerNamesAndAbsence``.
+
+        What is left is the thing worth knowing: a row declaring a RestBinding
+        must be reachable over REST. That is not a tautology — it fails if route
+        generation drops a row.
+        """
         table = AddressTable()
         rest_names = table.all_tools(Transport.REST)
-        # 14, not 13: list_authorized_properties and update_performance_index left the
-        # registry (neither is an AdCP task at the pinned version) and the three task
-        # tools gained REST bindings, so every row now declares one.
-        assert len(rest_names) == 14, rest_names
-        assert "get_adcp_capabilities" in rest_names  # POST /api/v1/capabilities
-        assert "get_media_buys" in rest_names  # POST /api/v1/media-buys/query
+        declared = {name for name, spec in TOOLS.items() if spec.rest is not None}
 
+        assert rest_names == declared, (
+            f"the REST surface and the registry disagree: "
+            f"declared-not-reachable={sorted(declared - rest_names)}, "
+            f"reachable-not-declared={sorted(rest_names - declared)}"
+        )
 
 class TestPathParamRegex:
     def test_extracts_single_param(self):
