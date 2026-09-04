@@ -11,12 +11,11 @@ All TODOs are left for you to fill in assertions and any spec-specific checks.
 """
 
 import uuid
-from time import sleep
 from typing import Any
 
 import pytest
 
-from tests.e2e._webhook_capture import WebhookCaptureHandler, run_webhook_capture_server
+from tests.e2e._webhook_capture import run_webhook_capture_server
 from tests.e2e.adcp_request_builder import (
     build_adcp_media_buy_request,
     build_creative,
@@ -28,19 +27,14 @@ from tests.e2e.utils import (
     make_mcp_client,
     set_live_adapter_behavior,
     wait_for_server_readiness,
+    wait_until,
 )
-
-
-class DeliveryWebhookReceiver(WebhookCaptureHandler):
-    """Simple webhook receiver to capture delivery_report notifications."""
-
-    received_webhooks: list[Any] = []
 
 
 @pytest.fixture
 def delivery_webhook_server():
-    """Start a local HTTP server to receive delivery_report webhooks."""
-    with run_webhook_capture_server(DeliveryWebhookReceiver, DeliveryWebhookReceiver.received_webhooks) as info:
+    """Register a fresh capture key against the shared webhook-capture service."""
+    with run_webhook_capture_server() as info:
         yield info
 
 
@@ -192,14 +186,12 @@ class TestDailyDeliveryWebhookFlow:
 
             received = delivery_webhook_server["received"]
 
-            # Wait for webhook
-            timeout_seconds = 30
-            poll_interval = 1
-
-            elapsed = 0
-            while elapsed < timeout_seconds and not received:
-                sleep(poll_interval)
-                elapsed += poll_interval
+            # Wait for webhook. Each `received` access is now a readback HTTP round
+            # trip (salesagent-amht.3), not free like the old in-process shared
+            # list — wait_until's monotonic deadline keeps the actual wait bounded
+            # at timeout_seconds regardless of readback latency, where an
+            # iteration counter would silently drift past it.
+            wait_until(lambda: bool(received), timeout_seconds=30, poll_interval=1)
 
             assert received, (
                 "Expected at least one delivery report webhook. Check connectivity and DELIVERY_WEBHOOK_INTERVAL."

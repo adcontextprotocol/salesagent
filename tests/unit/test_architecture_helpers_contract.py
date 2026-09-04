@@ -15,6 +15,8 @@ from tests.unit._architecture_helpers import (
     iter_git_tracked_files,
     postgres_image_ref,
     postgres_tag_pattern_map,
+    rel,
+    scan_src,
     uv_version_pattern_map,
 )
 
@@ -173,3 +175,100 @@ def test_git_available_never_engages_fallback(tmp_path: Path) -> None:
     assert names == {"tracked.py"}, (
         f"with working git the helper must yield exactly the tracked set (hermetic), got {sorted(names)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# scan_src: the two suppression axes, and why their liveness rules differ.
+#
+# These run over a temporary tree via ``scan_dirs=`` rather than the real
+# ``src/``, so they grade the RULE rather than whatever the repo happens to
+# contain today. Both halves are tested: the exempt raise is exercised
+# incidentally by a caller, but the skip_prefixes raise -- the semantically
+# distinct half, and the one that makes a guard's scope boundary honest -- was
+# graded by nothing until these landed.
+# ---------------------------------------------------------------------------
+
+
+def _flag_marker(tree: ast.Module) -> list[int]:
+    """Trivial detector: every ``MARKER`` name reference is a violation."""
+    return sorted(n.lineno for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == "MARKER")
+
+
+def _tree(tmp_path: Path, **files: str) -> list[Path]:
+    root = tmp_path / "src"
+    for name, body in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    return [root]
+
+
+def test_scan_src_reports_only_files_the_detector_flags(tmp_path):
+    dirs = _tree(tmp_path, **{"dirty.py": "MARKER\n", "clean.py": "x = 1\n"})
+
+    found = scan_src(_flag_marker, scan_dirs=dirs)
+
+    assert set(found) == {rel(dirs[0] / "dirty.py")}, "a file with no findings must be omitted entirely"
+
+
+def test_scan_src_suppresses_an_exempt_file(tmp_path):
+    dirs = _tree(tmp_path, **{"sanctioned.py": "MARKER\n"})
+
+    found = scan_src(_flag_marker, exempt=frozenset({rel(dirs[0] / "sanctioned.py")}), scan_dirs=dirs)
+
+    assert found == {}, "a live exemption must suppress its file"
+
+
+def test_scan_src_raises_on_an_exemption_that_suppresses_nothing(tmp_path):
+    """An exempt entry the detector never flags is worse than no entry.
+
+    It reads as a considered decision while doing nothing, and pre-authorizes
+    the violation if the file ever acquires one.
+    """
+    dirs = _tree(tmp_path, **{"clean.py": "x = 1\n"})
+
+    with pytest.raises(AssertionError, match="dead exemption"):
+        scan_src(_flag_marker, exempt=frozenset({rel(dirs[0] / "clean.py")}), scan_dirs=dirs)
+
+
+def test_scan_src_raises_on_an_exemption_for_a_path_that_does_not_exist(tmp_path):
+    dirs = _tree(tmp_path, **{"dirty.py": "MARKER\n"})
+
+    with pytest.raises(AssertionError, match="dead exemption"):
+        scan_src(_flag_marker, exempt=frozenset({"src/nonexistent.py"}), scan_dirs=dirs)
+
+
+def test_scan_src_suppresses_a_prefix_when_at_least_one_file_under_it_is_flagged(tmp_path):
+    """A scope boundary need only cover ONE violation, unlike an exemption.
+
+    Most files under a legitimately-excluded subtree are clean; requiring each
+    to be flagged would red the build on innocent files, which is why this rule
+    is deliberately weaker than the exempt one.
+    """
+    dirs = _tree(tmp_path, **{"pkg/dirty.py": "MARKER\n", "pkg/clean.py": "x = 1\n", "outside.py": "MARKER\n"})
+
+    found = scan_src(_flag_marker, skip_prefixes=(rel(dirs[0] / "pkg"),), scan_dirs=dirs)
+
+    assert set(found) == {rel(dirs[0] / "outside.py")}, "the whole prefix must be excluded, clean files included"
+
+
+def test_scan_src_raises_on_a_prefix_that_excludes_nothing(tmp_path):
+    """A boundary with no violation behind it would silently permit the first one."""
+    dirs = _tree(tmp_path, **{"pkg/clean.py": "x = 1\n", "outside.py": "MARKER\n"})
+
+    with pytest.raises(AssertionError, match="dead scope boundary"):
+        scan_src(_flag_marker, skip_prefixes=(rel(dirs[0] / "pkg"),), scan_dirs=dirs)
+
+
+def test_scan_src_raises_on_a_prefix_matching_no_file_at_all(tmp_path):
+    dirs = _tree(tmp_path, **{"dirty.py": "MARKER\n"})
+
+    with pytest.raises(AssertionError, match="dead scope boundary"):
+        scan_src(_flag_marker, skip_prefixes=("src/nonexistent/",), scan_dirs=dirs)
+
+
+def test_scan_src_does_not_raise_when_nothing_is_suppressed(tmp_path):
+    """Empty suppression sets have nothing that could be dead."""
+    dirs = _tree(tmp_path, **{"dirty.py": "MARKER\n"})
+
+    assert scan_src(_flag_marker, exempt=frozenset(), skip_prefixes=(), scan_dirs=dirs)

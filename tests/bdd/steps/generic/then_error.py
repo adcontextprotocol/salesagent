@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pytest_bdd import parsers, then
 
-from tests.bdd.steps._outcome_helpers import wire_error_envelope_or_none
+from tests.bdd.steps._outcome_helpers import payload_or_none, wire_error_envelope_or_none
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -198,7 +198,7 @@ def then_operation_fails(ctx: dict) -> None:
     if error is not None:
         _assert_meaningful_error(error)
         return
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is not None and hasattr(resp, "errors") and resp.errors:
         # Promote the first response error to ctx["error"] so downstream
         # Then steps (error_code, error_message) can find it.
@@ -209,7 +209,7 @@ def then_operation_fails(ctx: dict) -> None:
         return
     raise AssertionError(
         "Expected the operation to fail but no error was recorded. "
-        f"ctx keys: {list(ctx.keys())}, response: {ctx.get('response')!r}"
+        f"ctx keys: {list(ctx.keys())}, response: {payload_or_none(ctx)!r}"
     )
 
 
@@ -230,7 +230,7 @@ def then_entire_sync_operation_fails(ctx: dict) -> None:
     """
     # ── Resolve the error object ────────────────────────────────────
     error = ctx.get("error")
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
 
     # Promote response.errors if no top-level error was captured
     if error is None and resp is not None and hasattr(resp, "errors") and resp.errors:
@@ -299,7 +299,8 @@ def then_invalid_token_rejected_no_disclosure(ctx: dict) -> None:
     1. Positive AUTH-rejection pin — the request actually reached the redacted
        ``reject_invalid_token`` raise, per what the transport can carry:
          - a2a / rest build a real two-layer envelope -> assert ``AUTH_REQUIRED`` on
-           the REAL wire (``require_real_wire=True``), refusing a synthesized envelope;
+           the wire. A captured envelope is real by construction: the A2A unwrap
+           hands back the stash or ``None``, never a rebuild;
          - mcp raises a bare ``ToolError`` with no envelope (#1704) -> assert the
            message equals ``INVALID_TOKEN_MESSAGE``.
     2. Non-disclosure — the host-routed tenant UUID appears nowhere the buyer sees,
@@ -315,10 +316,15 @@ def then_invalid_token_rejected_no_disclosure(ctx: dict) -> None:
     assert result is not None, "No TransportResult in ctx — the scenario did not dispatch through a wire transport"
     assert result.is_error, f"Expected an invalid-token rejection, got success: {result.payload!r}"
 
-    if result.wire_error_envelope is not None:
+    # Read through the guarded accessor, never TransportResult.wire_error_envelope
+    # directly: this branch is exactly the case its docstring names — distinguishing
+    # "a real wire envelope was captured" from "only the IMPL-synthesized one exists"
+    # before delegating to assert_wire_error.
+    envelope = wire_error_envelope_or_none(ctx)
+    if envelope is not None:
         # a2a / rest: positive AUTH pin on the real wire, then non-disclosure on the envelope.
-        result.assert_wire_error("AUTH_REQUIRED", require_suggestion=True, require_real_wire=True)
-        assert_no_tenant_disclosure(result.wire_error_envelope, tenant_id)
+        result.assert_wire_error("AUTH_REQUIRED", require_suggestion=True)
+        assert_no_tenant_disclosure(envelope, tenant_id)
     else:
         # mcp: no envelope to grade (#1704). Pin that the error IS the auth rejection
         # (not some earlier failure that happens to omit the id), then non-disclosure
@@ -904,13 +910,24 @@ def then_terminal_failure(ctx: dict) -> None:
     error = ctx.get("error")
     assert error is not None, (
         "Expected a terminal failure but no error was recorded. "
-        f"ctx keys: {list(ctx.keys())}, response: {ctx.get('response')!r}"
+        f"ctx keys: {list(ctx.keys())}, response: {payload_or_none(ctx)!r}"
     )
     _assert_meaningful_error(error)
     from src.core.exceptions import AdCPError
 
     if isinstance(error, AdCPError):
-        assert error.recovery == "terminal", f"Expected terminal recovery, got '{error.recovery}'"
+        # Read the WIRE where there is one. ``error`` is the harness's
+        # RECONSTRUCTION, and its ``.recovery`` is now derived from its own class —
+        # so asserting on it compares the derivation against itself and would pass
+        # under any value the wire actually carried. On IMPL there is no wire by
+        # design, and the reconstruction is the real raised exception, so the
+        # class check is all that level can offer and is kept as the fallback.
+        wire = _wire_error_object(ctx)
+        if wire is not None:
+            actual = wire.get("recovery")
+            assert actual == "terminal", f"Expected terminal recovery on the wire, got {actual!r}: {wire}"
+        else:
+            assert error.recovery == "terminal", f"Expected terminal recovery, got '{error.recovery}'"
     elif hasattr(error, "recovery"):
         recovery = error.recovery.value if hasattr(error.recovery, "value") else str(error.recovery)
         assert recovery == "terminal", f"Expected terminal recovery, got '{recovery}'"
@@ -1082,7 +1099,7 @@ def _assert_no_new_media_buy(ctx: dict) -> None:
     3. Fallback: verify the operation errored (no response = no creation).
     """
     env = ctx["env"]
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
 
     # Strategy 1: if we got a response with media_buy_id, it should not be in DB
     if resp is not None:

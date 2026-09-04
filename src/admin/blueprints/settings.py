@@ -18,9 +18,20 @@ from sqlalchemy import select
 
 from src.admin.utils import require_auth, require_tenant_access
 from src.admin.utils.audit_decorator import log_admin_action
+from src.admin.utils.url_policy import redirect_if_url_blocked
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant
+from src.core.database.repositories.tenant_config import TenantConfigRepository
+from src.core.security.outbound_http import OutboundError
 from src.services.ai.config import uses_legacy_gemini_api_key
+from src.services.approximated_client import (
+    DomainNotOwned,
+    get_dns_token,
+    get_domain_status,
+    register_domain,
+    tenant_owns_domain,
+    unregister_domain,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -485,34 +496,30 @@ def update_adapter(tenant_id):
 def update_slack(tenant_id):
     """Update Slack integration settings."""
     try:
-        from src.core.webhook_validator import WebhookURLValidator
-
         webhook_url = request.form.get("slack_webhook_url", "").strip()
         audit_webhook_url = request.form.get("slack_audit_webhook_url", "").strip()
 
-        # Validate webhook URLs for SSRF protection
-        if webhook_url:
-            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(webhook_url)
-            if not is_valid:
-                flash(f"Invalid Slack webhook URL: {error_msg}", "error")
-                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+        # Both are stored now and posted to later, so both are graded by
+        # ingest-time egress policy. An empty value clears the webhook.
+        integrations_page = url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations")
+        if webhook_url and (blocked := redirect_if_url_blocked(webhook_url, "Slack webhook URL", integrations_page)):
+            return blocked
 
-        if audit_webhook_url:
-            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(audit_webhook_url)
-            if not is_valid:
-                flash(f"Invalid Slack audit webhook URL: {error_msg}", "error")
-                return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id, section="integrations"))
+        if audit_webhook_url and (
+            blocked := redirect_if_url_blocked(audit_webhook_url, "Slack audit webhook URL", integrations_page)
+        ):
+            return blocked
 
         with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-            if not tenant:
+            repository = TenantConfigRepository(db_session, tenant_id)
+            updated = repository.update_tenant(
+                slack_webhook_url=webhook_url or None,
+                slack_audit_webhook_url=audit_webhook_url or None,
+            )
+            if not updated:
                 flash("Tenant not found", "error")
                 return redirect(url_for("core.index"))
 
-            # Update Slack webhooks
-            tenant.slack_webhook_url = webhook_url if webhook_url else None
-            tenant.slack_audit_webhook_url = audit_webhook_url if audit_webhook_url else None
-            tenant.updated_at = datetime.now(UTC)
             db_session.commit()
 
             if webhook_url or audit_webhook_url:
@@ -1252,8 +1259,6 @@ def update_business_rules(tenant_id):
 def check_approximated_domain_status(tenant_id):
     """Check if a domain is registered with Approximated."""
     try:
-        import requests
-
         data = request.get_json()
         domain = data.get("domain")
         if not domain:
@@ -1263,37 +1268,43 @@ def check_approximated_domain_status(tenant_id):
         if not approximated_api_key:
             return jsonify({"success": False, "error": "Approximated not configured"}), 500
 
-        # Check domain registration status using correct Approximated API endpoint
-        response = requests.get(
-            f"https://cloud.approximated.app/api/vhosts/by/incoming/{domain}",
-            headers={
-                "api-key": approximated_api_key,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            timeout=10,
+        # Inside the session block: tenant_owns_domain reads tenant.virtual_host,
+        # and a detached instance would raise here rather than refusing.
+        with get_db_session() as db_session:
+            tenant = TenantConfigRepository(db_session, tenant_id).get_tenant()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
+
+            owned = tenant_owns_domain(tenant, domain)
+
+        # Check domain registration status via the Approximated service. A
+        # not-registered domain is a meaningful result the service already
+        # translated from the vendor's 404 -- not an error this route interprets.
+        try:
+            domain_status = get_domain_status(owned, approximated_api_key)
+        except OutboundError as exc:
+            logger.error("Approximated API error: %s", exc)
+            return jsonify({"success": False, "error": "API error"}), 500
+
+        if not domain_status.registered:
+            return jsonify({"success": True, "registered": False})
+
+        return jsonify(
+            {
+                "success": True,
+                "registered": True,
+                "status": domain_status.status,
+                "tls_enabled": domain_status.tls_enabled,
+                "ssl_active": domain_status.ssl_active,
+                "target_address": domain_status.target_address,
+            }
         )
 
-        if response.status_code == 200:
-            response_data = response.json()
-            # Approximated API wraps data in 'data' key
-            domain_data = response_data.get("data", response_data)
-
-            return jsonify(
-                {
-                    "success": True,
-                    "registered": True,
-                    "status": domain_data.get("status"),
-                    "tls_enabled": domain_data.get("has_ssl", False),
-                    "ssl_active": domain_data.get("status", "").startswith("ACTIVE_SSL"),
-                    "target_address": domain_data.get("target_address"),
-                }
-            )
-        elif response.status_code == 404:
-            return jsonify({"success": True, "registered": False})
-        else:
-            logger.error(f"Approximated API error: {response.status_code} - {response.text}")
-            return jsonify({"success": False, "error": f"API error: {response.status_code}"}), 500
+    except DomainNotOwned as e:
+        # Ahead of the broad handler on purpose: caught below it, an ownership
+        # refusal would answer 500 with exception text instead of the 400 the
+        # three routes agree on.
+        return jsonify({"success": False, "error": str(e)}), 400
 
     except Exception as e:
         logger.error(f"Error checking domain status: {e}", exc_info=True)
@@ -1306,8 +1317,6 @@ def check_approximated_domain_status(tenant_id):
 def register_approximated_domain(tenant_id):
     """Register a domain with Approximated for TLS and routing."""
     try:
-        import requests
-
         data = request.get_json()
         domain = data.get("domain")
         if not domain:
@@ -1322,38 +1331,33 @@ def register_approximated_domain(tenant_id):
             if not tenant:
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
 
-            if tenant.virtual_host != domain:
-                return jsonify({"success": False, "error": "Domain must match tenant's virtual_host"}), 400
+            # The ownership rule used to be written HERE, inside this one handler,
+            # which is precisely why the two sibling routes never had it. It now
+            # lives in front of the operation, and the operation will not accept
+            # anything else.
+            owned = tenant_owns_domain(tenant, domain)
 
         # Get backend target address from environment
         backend_url = os.getenv("APPROXIMATED_BACKEND_URL", "adcp-sales-agent.fly.dev")
 
-        # Register domain with Approximated using correct API endpoint
-        response = requests.post(
-            "https://cloud.approximated.app/api/vhosts",
-            headers={
-                "api-key": approximated_api_key,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            json={
-                "incoming_address": domain,
-                "target_address": backend_url,
-            },
-            timeout=10,
-        )
+        # Register the domain via the Approximated service. Already-registered
+        # is a meaningful result the service already translated from the
+        # vendor's 409 -- not an error this route interprets.
+        try:
+            result = register_domain(owned, backend_url, approximated_api_key)
+        except OutboundError as exc:
+            logger.error("Approximated API error registering %s: %s", domain, exc)
+            return jsonify({"success": False, "error": "Approximated API error"}), 502
 
-        if response.status_code in (200, 201):
-            logger.info(f"✅ Registered domain with Approximated: {domain}")
-            return jsonify({"success": True, "message": f"Domain {domain} registered successfully"})
-        elif response.status_code == 409:
-            # Already exists - that's OK
-            logger.info(f"✅ Domain already registered: {domain}")
+        if result.already_registered:
+            logger.info("✅ Domain already registered: %s", domain)
             return jsonify({"success": True, "message": f"Domain {domain} already registered"})
-        else:
-            error_msg = f"Approximated API error: {response.status_code} - {response.text}"
-            logger.error(error_msg)
-            return jsonify({"success": False, "error": error_msg}), response.status_code
+
+        logger.info("✅ Registered domain with Approximated: %s", domain)
+        return jsonify({"success": True, "message": f"Domain {domain} registered successfully"})
+
+    except DomainNotOwned as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
     except Exception as e:
         logger.error(f"Error registering domain: {e}", exc_info=True)
@@ -1366,8 +1370,6 @@ def register_approximated_domain(tenant_id):
 def unregister_approximated_domain(tenant_id):
     """Unregister a domain from Approximated."""
     try:
-        import requests
-
         data = request.get_json()
         domain = data.get("domain")
         if not domain:
@@ -1377,28 +1379,31 @@ def unregister_approximated_domain(tenant_id):
         if not approximated_api_key:
             return jsonify({"success": False, "error": "Approximated not configured"}), 500
 
-        # Unregister domain from Approximated using correct API endpoint
-        response = requests.delete(
-            f"https://cloud.approximated.app/api/vhosts/by/incoming/{domain}",
-            headers={
-                "api-key": approximated_api_key,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            timeout=10,
-        )
+        with get_db_session() as db_session:
+            tenant = TenantConfigRepository(db_session, tenant_id).get_tenant()
+            if not tenant:
+                return jsonify({"success": False, "error": "Tenant not found"}), 404
 
-        if response.status_code in (200, 204):
-            logger.info(f"✅ Unregistered domain from Approximated: {domain}")
-            return jsonify({"success": True, "message": f"Domain {domain} unregistered successfully"})
-        elif response.status_code == 404:
-            # Already gone - that's OK
-            logger.info(f"✅ Domain already unregistered: {domain}")
+            owned = tenant_owns_domain(tenant, domain)
+
+        # Unregister the domain via the Approximated service.
+        # Already-unregistered is a meaningful result the service already
+        # translated from the vendor's 404 -- not an error this route interprets.
+        try:
+            result = unregister_domain(owned, approximated_api_key)
+        except OutboundError as exc:
+            logger.error("Approximated API error unregistering %s: %s", domain, exc)
+            return jsonify({"success": False, "error": "Approximated API error"}), 502
+
+        if result.already_unregistered:
+            logger.info("✅ Domain already unregistered: %s", domain)
             return jsonify({"success": True, "message": f"Domain {domain} was not registered"})
-        else:
-            error_msg = f"Approximated API error: {response.status_code} - {response.text}"
-            logger.error(error_msg)
-            return jsonify({"success": False, "error": error_msg}), response.status_code
+
+        logger.info("✅ Unregistered domain from Approximated: %s", domain)
+        return jsonify({"success": True, "message": f"Domain {domain} unregistered successfully"})
+
+    except DomainNotOwned as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
     except Exception as e:
         logger.error(f"Error unregistering domain: {e}", exc_info=True)
@@ -1410,8 +1415,6 @@ def unregister_approximated_domain(tenant_id):
 def get_approximated_token(tenant_id):
     """Generate an Approximated DNS widget token and get DNS target."""
     try:
-        import requests
-
         # Get API key from environment
         approximated_api_key = os.getenv("APPROXIMATED_API_KEY")
         if not approximated_api_key:
@@ -1427,20 +1430,18 @@ def get_approximated_token(tenant_id):
             if not tenant:
                 return jsonify({"success": False, "error": "Tenant not found"}), 404
 
-            # Request token from Approximated API
-            response = requests.get(
-                "https://cloud.approximated.app/api/dns/token",
-                headers={"api-key": approximated_api_key},
-                timeout=10,
-            )
+            # Request a token via the Approximated service. Every status this
+            # operation can receive is a genuine failure, so the upstream status
+            # is propagated from the typed error -- an operator with bad
+            # Approximated credentials must still see 401 here, not a blanket 500.
+            try:
+                dns = get_dns_token(approximated_api_key)
+            except OutboundError as exc:
+                logger.error("Approximated API error requesting a DNS token: %s", exc)
+                return jsonify({"success": False, "error": "Approximated API error"}), exc.http_status or 502
 
-            if response.status_code == 200:
-                token_data = response.json()
-                logger.info(f"Approximated API response: {token_data}")
-                return jsonify({"success": True, "token": token_data.get("token"), "proxy_ip": approximated_proxy_ip})
-            else:
-                logger.error(f"Approximated API error: {response.status_code} - {response.text}")
-                return jsonify({"success": False, "error": f"API error: {response.status_code}"}), response.status_code
+            logger.info("Approximated API response: %s", dns)
+            return jsonify({"success": True, "token": dns.token, "proxy_ip": approximated_proxy_ip})
 
     except Exception as e:
         logger.error(f"Error generating Approximated token: {e}", exc_info=True)

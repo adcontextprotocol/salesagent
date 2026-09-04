@@ -157,6 +157,7 @@ def check_file(filepath: Path) -> list[str]:
     errors = []
     builtins = {
         "Exception",
+        "AssertionError",
         "ValueError",
         "TypeError",
         "KeyError",

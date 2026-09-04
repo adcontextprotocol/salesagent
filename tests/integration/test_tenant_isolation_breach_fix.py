@@ -116,7 +116,7 @@ def test_cross_tenant_token_rejected(integration_db):
     is no wire here and the envelope is the one production WOULD build at the
     boundary. The buyer-facing wire is pinned by the collapsed
     @T-UC-002-invalid-token-no-disclosure BDD scenario, swept across
-    a2a/mcp/rest (+e2e_rest) with a require_real_wire AUTH pin on the A2A leg.
+    a2a/mcp/rest (+e2e_rest) with a wire AUTH pin on the A2A leg.
     """
     from src.core.auth import get_principal_from_context
     from src.core.config_loader import current_tenant

@@ -115,7 +115,7 @@ class TestAuthHelperFamilySuggestion:
         caught exception. That is one step removed from what a buyer receives.
         The buyer-facing wire contract is pinned once by the collapsed
         ``@T-UC-002-invalid-token-no-disclosure`` BDD scenario, swept across
-        a2a/mcp/rest (+e2e_rest) with the ``require_real_wire`` AUTH pin on the
+        a2a/mcp/rest (+e2e_rest) with the wire AUTH pin on the
         A2A leg; this covers the second raise site cheaply so a regression in it
         is caught without a transport round trip, and the A2A wire grade lives in
         one place instead of being duplicated here.

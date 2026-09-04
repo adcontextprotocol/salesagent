@@ -40,11 +40,21 @@ stashes a wire. ``then_response_envelope_schema_valid`` therefore falls back to
 which cannot catch an A2A framing regression because no A2A framing was
 exercised.
 
-**CB1 compatibility.** Every mutation below leaves ``ctx["response"]``
-POPULATED, so a C2 implementation that keeps ``_response_or_xfail(ctx, ...)``
-ahead of the wire read — which pass-3 CB1 makes BINDING — passes these graders
-unchanged. Nothing here requires or rewards deleting that guard; deleting it is
-a later step, one commit later.
+**CB1 compatibility.** Every mutation below leaves the dispatch's TYPED PAYLOAD
+populated, so a C2 implementation that keeps a payload guard (today's
+``_require_response(ctx, ...)``) ahead of the wire read — which pass-3 CB1 makes
+BINDING — passes these graders unchanged. Nothing here requires or rewards
+deleting that guard.
+
+**Where the payload lives.** The dispatch seams no longer stash a detached
+``ctx["response"]`` copy: a provenance-stripped payload cannot tell a Then
+whether it is reading a wire fact or an in-process reconstruction, so the
+payload is read off the dispatch's own ``TransportResult`` through the guarded
+accessors in ``tests/bdd/steps/_outcome_helpers.py`` (``payload_or_none``), and
+the mutations below are applied to that result rather than to a ctx key. This
+grader must not reintroduce ``ctx["response"]`` — the ambiguity it removes is
+the same one C2 exists to grade — and ``tests/unit/test_architecture_bdd_wire_discipline.py``
+pins the rule for the step modules these tests drive.
 
 **Out of scope, deliberately.** C6 (the phantom-transport assertion) is graded by
 the transport-set assertion already living in the Lane-D-owned liveness block;
@@ -66,6 +76,7 @@ from typing import Any
 
 import pytest
 
+from tests.bdd.steps._outcome_helpers import payload_or_none
 from tests.bdd.steps.domain import uc006_storyboard_creative_sync as steps
 from tests.bdd.steps.generic._dispatch import _populate_ctx_from_result
 from tests.harness.transport import (
@@ -90,13 +101,16 @@ LIVE_SCENARIO_TAG = "T-UC-006-storyboard-format-id-roundtrip-on-sync"
 
 
 class _NeverSerialized:
-    """Stand-in for ``ctx["response"]`` whose re-serialization is a loud failure.
+    """Stand-in for the dispatch's typed payload whose re-serialization is a loud failure.
 
-    ``_response_or_xfail`` only checks that ``ctx["response"]`` is not None, so
-    this object satisfies the CB1-mandated guard while making any *use* of the
-    in-memory object as an assertion SOURCE observable: ``model_dump`` records
-    the call and returns a payload that is not schema-valid, so a Then that
-    still re-serializes both trips the recorder and fails validation.
+    The payload guard (``_require_response`` -> ``payload_or_none``) only checks
+    that a payload is not None, so this object satisfies the CB1-mandated guard
+    while making any *use* of the in-memory object as an assertion SOURCE
+    observable: ``model_dump`` records the call and returns a payload that is not
+    schema-valid, so a Then that still re-serializes both trips the recorder and
+    fails validation. ``wire_dict``'s no-wire fallback is exactly
+    ``require_payload(ctx).model_dump(mode="json")``, so installing this as
+    ``TransportResult.payload`` is what makes that fallback observable.
     """
 
     def __init__(self) -> None:
@@ -113,6 +127,13 @@ def _live_scenario_ctx(env: Any, transport: Transport) -> dict[str, Any]:
     Uses the production step functions verbatim — no re-derived payload — so a
     change to the scenario's setup moves this grader with it instead of leaving
     it grading a stale payload.
+
+    Returns a ctx guaranteed to hold the dispatch's ``TransportResult`` carrying
+    a typed payload — the two things every mutation below acts on. The payload is
+    read through ``payload_or_none``, the same accessor the step definitions use,
+    so this grader cannot go on measuring a ctx key the dispatch seams have
+    stopped writing (which is precisely how a detached ``ctx["response"]`` copy
+    could look green while grading nothing).
     """
     ctx: dict[str, Any] = {"env": env, "transport": transport}
     steps.given_captured_format_id_from_get_products_for_sync(ctx)
@@ -121,7 +142,11 @@ def _live_scenario_ctx(env: Any, transport: Transport) -> dict[str, Any]:
         f"{transport.value}: the LIVE storyboard scenario's When dispatch errored — "
         f"this grader cannot measure wire discipline against a failed dispatch: {ctx['error']!r}"
     )
-    assert ctx.get("response") is not None, f"{transport.value}: dispatch produced neither response nor error"
+    assert isinstance(ctx.get("result"), TransportResult), (
+        f"{transport.value}: the When step stashed no TransportResult, so there is no "
+        f"dispatch provenance to grade (ctx keys: {sorted(ctx)})"
+    )
+    assert payload_or_none(ctx) is not None, f"{transport.value}: dispatch produced neither response nor error"
     return ctx
 
 
@@ -171,20 +196,25 @@ def test_storyboard_dispatch_captures_a_real_success_path_wire(integration_db, t
 def test_envelope_schema_then_validates_the_wire_not_the_in_memory_object(integration_db, transport: Transport) -> None:
     """``then_response_envelope_schema_valid`` must validate ``wire_dict(ctx)``.
 
-    The mutation: keep the real captured wire, but replace ``ctx["response"]``
-    with an object whose ``model_dump`` is a tripwire returning a payload that is
-    NOT schema-valid. A Then that reads the wire passes and never calls it; the
-    ``model_dump`` fallback both trips the recorder and fails validation.
+    The mutation: keep the real captured wire, but replace the dispatch's TYPED
+    PAYLOAD with an object whose ``model_dump`` is a tripwire returning a payload
+    that is NOT schema-valid. A Then that reads the wire passes and never calls
+    it; the ``model_dump`` fallback both trips the recorder and fails validation.
 
-    ``ctx["response"]`` stays non-None on purpose so a CB1-compliant
-    implementation (``_response_or_xfail`` retained ahead of the wire read) is
-    graded identically to one without it — this grader pins the assertion SOURCE,
-    not the guard order.
+    The tripwire is installed on the ``TransportResult`` rather than under a
+    detached ``ctx["response"]`` key, because that is where the accessors read
+    the payload from: ``wire_dict``'s fallback is
+    ``require_payload(ctx).model_dump(mode="json")``, so a ctx key nothing reads
+    would make this mutation inert and the grader vacuous.
+
+    The payload stays non-None on purpose so a CB1-compliant implementation (a
+    payload guard retained ahead of the wire read) is graded identically to one
+    without it — this grader pins the assertion SOURCE, not the guard order.
     """
     with _sync_env(f"wire-c2-{transport.value}") as env:
         ctx = _live_scenario_ctx(env, transport)
         tripwire = _NeverSerialized()
-        ctx["response"] = tripwire
+        ctx["result"] = dataclasses.replace(ctx["result"], payload=tripwire)
 
         steps.then_response_envelope_schema_valid(ctx)
 
@@ -230,9 +260,8 @@ def test_reverting_the_a2a_wire_capture_makes_the_envelope_schema_then_fail_loud
         # guarded-accessor refactor merged into this branch: auto-merged with
         # no conflict, and only this test failed.)
         ctx["wire_response"] = None
-        if ctx.get("result") is not None:
-            ctx["result"] = dataclasses.replace(ctx["result"], wire_response=None)
-        assert ctx.get("response") is not None, "reversion must leave the typed response intact"
+        ctx["result"] = dataclasses.replace(ctx["result"], wire_response=None)
+        assert payload_or_none(ctx) is not None, "reversion must leave the typed response intact"
 
         with pytest.raises(AssertionError) as excinfo:
             steps.then_response_envelope_schema_valid(ctx)

@@ -45,7 +45,7 @@ Feature: BR-UC-002 Account access scoping
   # reject_invalid_token raise; what it can carry back differs, and the single
   # Then step grades accordingly:
   #   - a2a / rest return a real two-layer envelope -> the Then asserts AUTH_REQUIRED
-  #     on the real wire (require_real_wire) plus non-disclosure on the envelope.
+  #     on the wire plus non-disclosure on the envelope.
   #     (REST authenticates in-process by dependency override, which would skip the
   #     raise; the harness routes the bad token through the REAL dep as headers so
   #     REST reaches it — see _dispatch_full_create / _run_rest_request.)

@@ -1,42 +1,43 @@
-# GCP Service Account Provisioning - Deployment Setup
+# GCP service account provisioning
 
-## Overview
-
-This guide explains how to set up the automatic service account provisioning feature for production deployment on Fly.io (or any cloud platform).
+How to set up the automatic service account provisioning feature for a production deployment. This is the one-time operator setup behind the **Create Service Account** button described in [GAM service account authentication](service-account-setup.md).
 
 ## Architecture
 
-```
-Your Sales Agent (Fly.io)
-    ↓
-Uses "Management Service Account"
-    ↓
-Creates "Partner Service Accounts" in your GCP project
-    ↓
-Partners add these to their GAM
+The deployment runs as a "management" service account, which creates one "partner" service account per tenant. Partners authorize those emails in their own GAM networks — no credentials cross the boundary.
+
+```mermaid
+flowchart TD
+    App["Sales agent deployment\nruns as the management service account"]
+    App -->|"GCP IAM API"| SA["Per-tenant partner service accounts\nadcp-sales-(tenant_id)@project.iam.gserviceaccount.com"]
+    SA -->|"partner authorizes the email\nas an API user"| GAM["Partner's GAM network"]
 ```
 
 ## Prerequisites
 
-1. A Google Cloud Platform (GCP) project
-2. Access to create service accounts in that project
-3. Fly.io CLI installed and authenticated
+1. A Google Cloud Platform (GCP) project.
+2. Access to create service accounts in that project.
+3. A deployment platform where you can set environment variables and secrets. The examples use the Fly.io CLI; any platform works.
 
-## Step-by-Step Setup
+> The `gcloud` and Fly.io commands here drive external consoles and tools whose
+> interfaces change over time. Each step states what it achieves; adapt the
+> exact commands to your tooling.
 
-### Step 1: Create a GCP Project (if needed)
+## Step-by-step setup
+
+### Step 1: Create a GCP project (if needed)
 
 ```bash
-# Create a new GCP project (or use existing)
+# Create a GCP project (or use an existing one)
 gcloud projects create adcp-sales-agent-prod --name="Prebid Sales Agent Production"
 
-# Set as default project
+# Set it as the default project
 gcloud config set project adcp-sales-agent-prod
 ```
 
-### Step 2: Create the "Management" Service Account
+### Step 2: Create the management service account
 
-This is the service account that your application will run as to create other service accounts:
+The application runs as this service account to create the per-tenant service accounts:
 
 ```bash
 # Create the management service account
@@ -44,105 +45,84 @@ gcloud iam service-accounts create adcp-manager \
     --display-name="AdCP Service Account Manager" \
     --description="Service account used by Prebid Sales Agent to create partner service accounts"
 
-# Get the email
+# Capture the email
 export SA_EMAIL="adcp-manager@adcp-sales-agent-prod.iam.gserviceaccount.com"
 echo "Management Service Account: $SA_EMAIL"
 ```
 
-### Step 3: Grant IAM Permissions
+### Step 3: Grant IAM permissions
 
-The management service account needs permission to create other service accounts:
+The management service account needs permission to create other service accounts and their keys:
 
 ```bash
-# Grant Service Account Admin role (to create service accounts)
+# Grant the Service Account Admin role (to create service accounts)
 gcloud projects add-iam-policy-binding adcp-sales-agent-prod \
     --member="serviceAccount:$SA_EMAIL" \
     --role="roles/iam.serviceAccountAdmin"
 
-# Grant Service Account Key Admin role (to create service account keys)
+# Grant the Service Account Key Admin role (to create service account keys)
 gcloud projects add-iam-policy-binding adcp-sales-agent-prod \
     --member="serviceAccount:$SA_EMAIL" \
     --role="roles/iam.serviceAccountKeyAdmin"
 ```
 
-**Why these roles?**
-- `roles/iam.serviceAccountAdmin` - Allows creating and managing service accounts
-- `roles/iam.serviceAccountKeyAdmin` - Allows creating service account keys
+The two roles map directly to what the feature does: `roles/iam.serviceAccountAdmin` lets it create and manage service accounts, and `roles/iam.serviceAccountKeyAdmin` lets it create their keys.
 
-### Step 4: Generate Service Account Key
+### Step 4: Generate the management service account key
 
 ```bash
 # Create a JSON key for the management service account
 gcloud iam service-accounts keys create ~/adcp-manager-key.json \
     --iam-account=$SA_EMAIL
-
-# The key is saved to ~/adcp-manager-key.json
 ```
 
-**⚠️ IMPORTANT:** Keep this key secure! It has permission to create service accounts in your project.
+Keep this key secure — it carries permission to create service accounts in your project.
 
-### Step 5: Configure Fly.io
+### Step 5: Configure the deployment
 
-#### Set the GCP Project ID (in fly.toml)
+The application reads two settings:
 
-Edit `fly.toml` and uncomment/set:
+- `GCP_PROJECT_ID` (environment variable): The project in which partner service accounts are created.
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` (secret): The management key's JSON contents. Alternatively, set `GOOGLE_APPLICATION_CREDENTIALS` to a file path, or rely on Application Default Credentials when running on GCP.
 
-```toml
-[env]
-  # Other env vars...
-  GCP_PROJECT_ID = "adcp-sales-agent-prod"  # Your actual project ID
-```
-
-Commit and push this change.
-
-#### Set the Service Account Key (as Fly secret)
+On Fly.io, for example:
 
 ```bash
-# Read the key file and set as Fly secret
+# Set the project ID in your app's environment (the [env] section of fly.toml)
+#   GCP_PROJECT_ID = "adcp-sales-agent-prod"
+
+# Set the key as a secret
 fly secrets set GOOGLE_APPLICATION_CREDENTIALS_JSON="$(cat ~/adcp-manager-key.json)" \
     --app adcp-sales-agent
 
-# Verify it was set (you won't see the value, just the name)
+# Verify it was set (the name is listed, not the value)
 fly secrets list --app adcp-sales-agent
 ```
 
-### Step 6: Deploy
+### Step 6: Deploy and verify
 
-```bash
-# Deploy the application with the new configuration
-fly deploy --app adcp-sales-agent
-```
+Deploy the application, then check its logs for the credentials being loaded:
 
-### Step 7: Verify Setup
-
-Check the application logs to ensure credentials are loading:
-
-```bash
-fly logs --app adcp-sales-agent
-```
-
-Look for:
-```
+```text
 GCP credentials loaded from GOOGLE_APPLICATION_CREDENTIALS_JSON
 ```
 
-### Step 8: Test the Feature
+### Step 7: Test the feature
 
-1. Log into Admin UI: https://your-sales-agent-domain.com/
-2. Navigate to **Tenant Settings** → **Ad Server**
-3. Select **Google Ad Manager**
-4. Scroll to **Service Account Integration**
-5. Click **🔑 Create Service Account**
-6. You should see a service account email created!
+1. Log in to the Admin UI.
+2. Navigate to **Tenant Settings** → **Ad Server**.
+3. Select **Google Ad Manager**.
+4. In the **Service Account Integration** section, click **Create Service Account**.
+5. A service account email appears — the feature works.
 
-## Verification Checklist
+## Verification checklist
 
-- [ ] GCP project created/identified
+- [ ] GCP project created or identified
 - [ ] Management service account created
-- [ ] IAM roles granted (serviceAccountAdmin + serviceAccountKeyAdmin)
+- [ ] IAM roles granted (`serviceAccountAdmin` and `serviceAccountKeyAdmin`)
 - [ ] Service account key generated
-- [ ] `GCP_PROJECT_ID` set in fly.toml
-- [ ] `GOOGLE_APPLICATION_CREDENTIALS_JSON` set as Fly secret
+- [ ] `GCP_PROJECT_ID` set in the deployment environment
+- [ ] `GOOGLE_APPLICATION_CREDENTIALS_JSON` set as a secret
 - [ ] Application deployed
 - [ ] Logs show credentials loaded
 - [ ] Test service account creation works
@@ -150,20 +130,19 @@ GCP credentials loaded from GOOGLE_APPLICATION_CREDENTIALS_JSON
 ## Troubleshooting
 
 ### Error: "GCP_PROJECT_ID not configured"
-**Cause:** Environment variable not set in fly.toml
 
-**Fix:**
-```toml
-[env]
-  GCP_PROJECT_ID = "your-project-id"
-```
+**Cause:** The environment variable is not set in the deployment.
+
+**Fix:** Set `GCP_PROJECT_ID` to your project ID in the deployment environment and redeploy.
 
 ### Error: "Permission denied" or "IAM API not enabled"
-**Cause:** Missing IAM permissions or API not enabled
+
+**Cause:** Missing IAM permissions, or the IAM API is not enabled.
 
 **Fix:**
+
 ```bash
-# Enable IAM API
+# Enable the IAM API
 gcloud services enable iam.googleapis.com --project=adcp-sales-agent-prod
 
 # Re-grant permissions
@@ -172,73 +151,43 @@ gcloud projects add-iam-policy-binding adcp-sales-agent-prod \
     --role="roles/iam.serviceAccountAdmin"
 ```
 
-### Error: "No explicit GCP credentials provided"
-**Cause:** GOOGLE_APPLICATION_CREDENTIALS_JSON secret not set
+### Warning: "No explicit GCP credentials provided"
 
-**Fix:**
-```bash
-fly secrets set GOOGLE_APPLICATION_CREDENTIALS_JSON="$(cat ~/adcp-manager-key.json)" \
-    --app adcp-sales-agent
-```
+**Cause:** Neither `GOOGLE_APPLICATION_CREDENTIALS_JSON` nor `GOOGLE_APPLICATION_CREDENTIALS` is set, so the application falls back to Application Default Credentials. Outside GCP, that fallback usually has no credentials.
 
-### Verify What Service Account Is Being Used
+**Fix:** Set the `GOOGLE_APPLICATION_CREDENTIALS_JSON` secret to the management key's JSON contents.
 
-```bash
-# In the application, log the credentials
-# The service account email will appear in logs when IAMClient is initialized
+## Security best practices
 
-fly logs --app adcp-sales-agent | grep "service_account"
-```
+1. **Rotate keys regularly**: Create a key every 90 days, update the secret, then delete the old key:
 
-## Security Best Practices
-
-1. **Rotate Keys Regularly**: Create new keys every 90 days
    ```bash
-   # Create new key
+   # Create a key
    gcloud iam service-accounts keys create ~/new-key.json --iam-account=$SA_EMAIL
 
-   # Update Fly secret
-   fly secrets set GOOGLE_APPLICATION_CREDENTIALS_JSON="$(cat ~/new-key.json)"
-
-   # Delete old key (get key ID from console)
+   # Update the deployment secret with the new key's contents, then delete the old key
    gcloud iam service-accounts keys delete KEY_ID --iam-account=$SA_EMAIL
    ```
 
-2. **Least Privilege**: Only grant the minimum required roles
+2. **Least privilege**: Grant only the two roles listed in Step 3.
 
-3. **Monitor Usage**: Check GCP IAM audit logs for service account creation activity
+3. **Monitor usage**: Check GCP IAM audit logs for service account creation activity.
 
-4. **Separate Projects**: Consider using a dedicated GCP project for service account creation
+4. **Separate projects**: Consider a dedicated GCP project for service account creation.
 
-## Cost Considerations
+## Cost considerations
 
-- Service account creation is **free**
-- Service account keys are **free**
-- IAM API calls are **free** (within quota)
-- No ongoing costs for this feature
+Service account creation, service account keys, and IAM API calls (within quota) are free. The feature has no ongoing costs.
 
-## Alternative: Using Workload Identity (Advanced)
+## Alternative: Application Default Credentials on GCP
 
-If you're running on GCP (not Fly.io), you can use Workload Identity instead of service account keys:
+If the application runs on GCP infrastructure, it can pick up credentials from the environment (Application Default Credentials, including Workload Identity) without a management key: leave `GOOGLE_APPLICATION_CREDENTIALS_JSON` unset and ensure the workload's identity carries the two IAM roles from Step 3. This avoids long-lived keys entirely but only works on GCP environments.
 
-```bash
-# This is more secure but only works on GCP environments
-# Not applicable for Fly.io deployments
-```
+## How the flow works once configured
 
-## Support
+1. The application runs as the management service account (credentials from the secret).
+2. A tenant admin clicks **Create Service Account** in the Admin UI.
+3. The application creates a service account named `adcp-sales-<tenant_id>` in your project.
+4. The partner authorizes that email in their GAM network.
 
-If you encounter issues:
-1. Check Fly.io logs: `fly logs --app adcp-sales-agent`
-2. Verify IAM permissions in GCP Console
-3. Ensure IAM API is enabled in your project
-4. Check that the service account key JSON is valid
-
-## Summary
-
-Once configured, the flow is:
-1. Your app runs as the "management" service account (credentials in Fly secret)
-2. When a partner clicks "Create Service Account" in Admin UI
-3. Your app creates a new service account: `adcp-sales-tenant123@project.iam.gserviceaccount.com`
-4. Partner adds that email to their GAM
-5. Done! No credential sharing needed.
+No credential sharing between you and the partner is needed. The partner-side steps are described in [GAM service account authentication](service-account-setup.md).

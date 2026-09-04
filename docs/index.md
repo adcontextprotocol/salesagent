@@ -39,7 +39,7 @@ The Prebid Sales Agent is the Prebid.org reference implementation of an AdCP-com
 
 - **[Overview](development/)** - Contributing to the codebase
 - **[Architecture](development/architecture.md)** - System design
-- **[Contributing](development/contributing.md)** - Development workflows
+- **[Engineering standards](development/engineering-standards.md)** - Standards every change is held to
 - **[Troubleshooting](development/troubleshooting.md)** - Common issues
 
 ## Architecture Decision Records (ADRs)
@@ -80,7 +80,6 @@ docs/
 └── development/
     ├── README.md               # Development overview
     ├── architecture.md         # System design
-    ├── contributing.md         # Development workflows
     └── troubleshooting.md      # Common issues
 ```
 

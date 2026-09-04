@@ -31,7 +31,8 @@ The pure resolution primitives (``schema_root``, ``normalize_ref``, ``load``,
 (``src/core/version_compat.py``) also imports, so there is exactly ONE
 resolution implementation shared by prod and tests, never a test-only copy
 duplicated into src/. This module re-exports every one of those names and
-adds only the jsonschema-validation-specific pieces on top:
+adds on top the jsonschema-validation surfaces plus the pinned-enum readers
+that the test-side oracles grade against:
 
 - ``validator_for(ref)`` — a ready-to-use ``Draft7Validator`` with full
   ``$ref`` resolution wired, for validating a payload against a schema
@@ -43,10 +44,16 @@ adds only the jsonschema-validation-specific pieces on top:
   generator) rather than validating a concrete payload. Callers that want
   to follow the refs they find should use ``load_canonicalized``, which
   rewrites them into the root-relative form ``load`` itself accepts.
+- ``recovery_by_code()`` — the normative ``error-code.json`` ``enumMetadata``
+  ``{code: recovery}`` map, the ONE test-side reader of that block (see its
+  own docstring for why it lives here rather than in each consumer).
+- ``auth_scheme_values()`` — the pinned ``enums/auth-scheme.json`` ``enum``,
+  the ONE test-side reader of that enum, for the same reason.
 """
 
 from __future__ import annotations
 
+from functools import cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -75,13 +82,62 @@ from tests.helpers.adcp_pinned_schema import (
 
 __all__ = [
     "PinnedSchemaError",
+    "auth_scheme_values",
     "load",
     "load_canonicalized",
     "normalize_ref",
+    "recovery_by_code",
     "schema_root",
     "validate_against_pinned_schema",
     "validator_for",
 ]
+
+
+@cache
+def recovery_by_code() -> dict[str, str]:
+    """``{error_code: recovery}`` from the pinned ``error-code.json`` enumMetadata.
+
+    The ONE test-side reader of that block. The block is normative — its own
+    ``$comment`` says "SDKs MUST consume this block ... the recovery
+    classification embedded in that prose is normative and MUST match the value
+    here" — so it is the expectation every test-side recovery oracle grades
+    against, and more than one of them needs it (the recovery-conformance
+    oracle, and ``envelope_assertions.assert_envelope_shape``, which refuses to
+    grade a (code, recovery) pair the pin contradicts). Two independent copies
+    of the same load is the copy-paste shape DRY forbids here, and a second copy
+    can silently drift to a different key filter.
+
+    Reads through this module's own ``load()``, so it stays independent of
+    ``src.core.exceptions.RECOVERY_BY_WIRE_CODE``: a test-side oracle that
+    imported src's table would agree with the thing it grades instead of
+    grading it.
+
+    Cached: the map is a pure function of the installed SDK's pinned tree, and
+    callers hit it once per assertion. Callers share the one dict — read it,
+    never mutate it.
+    """
+    meta = load("error-code.json")["enumMetadata"]
+    return {code: entry["recovery"] for code, entry in meta.items() if isinstance(entry, dict) and "recovery" in entry}
+
+
+@cache
+def auth_scheme_values() -> frozenset[str]:
+    """The pinned ``enums/auth-scheme.json`` ``enum`` — the wire spellings a
+    webhook ``authentication.schemes`` entry may legally carry.
+
+    The ONE test-side reader of that enum, for the same reason
+    ``recovery_by_code`` is the one reader of ``enumMetadata``: the value under
+    test is ``adcp.types.AuthenticationScheme``, and a test that read the
+    spelling off the SDK would agree with the thing it grades instead of
+    grading it. This module reads the SDK's pinned SCHEMA tree, which is
+    generated from the spec rather than hand-maintained alongside the Python
+    enum, so the two can disagree — and that disagreement is exactly what the
+    conformance test in ``tests/unit/test_auth_scheme_pin_conformance.py``
+    exists to catch.
+
+    Cached: a pure function of the installed SDK's pinned tree.
+    """
+    return frozenset(load("enums/auth-scheme.json")["enum"])
 
 
 def _canonicalize_refs(node: Any, *, file_dir: Path, root: Path) -> Any:

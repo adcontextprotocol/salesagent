@@ -484,6 +484,11 @@ Feature: BR-UC-002 Create Media Buy
     When the Buyer Agent sends the create_media_buy request
     Then the operation should fail
     And the error code should be "SERVICE_UNAVAILABLE"
+    # A retryable ad-server failure must reach the buyer as retryable. Several
+    # sibling scenarios encode this same pairing, all of them in feature files
+    # nothing binds, so none of them executes; this is the first place it is
+    # asserted on a wire a buyer actually reads.
+    And the error recovery should be "transient"
     And the error should include "suggestion" field
     # POST-F2: Buyer knows what failed
     # POST-F3: Buyer knows how to fix the issue

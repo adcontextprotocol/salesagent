@@ -31,20 +31,6 @@ MAX_ACTIVE_ATTEMPTS_PER_SCOPE = int(os.getenv("IDEMPOTENCY_MAX_ACTIVE_ATTEMPTS_P
 INSERT_RATE_WINDOW = timedelta(seconds=int(os.getenv("IDEMPOTENCY_INSERT_RATE_WINDOW_SECONDS") or "10"))
 MAX_INSERTS_PER_WINDOW = int(os.getenv("IDEMPOTENCY_MAX_INSERTS_PER_WINDOW") or "300")
 
-# The spec Error model bounds retry_after to [1, 3600] seconds (clients clamp
-# anyway); never emit more even when the oldest row expires further out. A spec
-# constant, not an operational knob — deliberately not env-tunable.
-_RETRY_AFTER_MAX = 3600
-
-
-def _clamp_retry_after(seconds: float) -> int:
-    """Clamp a raw retry_after to the spec Error model's [1, _RETRY_AFTER_MAX] bound.
-
-    The single home for the floor/ceiling both rejection branches share; callers
-    layer any context-specific cap (e.g. the insert-rate window) on top.
-    """
-    return min(max(1, math.ceil(seconds)), _RETRY_AFTER_MAX)
-
 
 def enforce_insert_ceiling(
     attempts: IdempotencyAttemptRepository,
@@ -71,7 +57,7 @@ def enforce_insert_ceiling(
     Replays and conflicts are not rate-limited — they insert nothing.
     ``retry_after`` is clamped to the spec Error model's [1, 3600] bound.
     """
-    from src.core.exceptions import AdCPRateLimitError
+    from src.core.exceptions import AdCPRateLimitError, clamp_retry_after
 
     current = now or datetime.now(UTC)
 
@@ -88,7 +74,7 @@ def enforce_insert_ceiling(
         # also absorbs DB-vs-app clock skew on created_at (server_default).
         raise AdCPRateLimitError(
             "idempotency cache insert rate exceeded for this account — retry shortly",
-            retry_after=min(_clamp_retry_after(raw_wait), window_seconds),
+            retry_after=min(clamp_retry_after(raw_wait), window_seconds),
         )
 
     # Storage bound: ACTIVE (non-expired) rows.
@@ -100,5 +86,5 @@ def enforce_insert_ceiling(
     raw_wait = (oldest_expiry - current).total_seconds() if oldest_expiry else 1
     raise AdCPRateLimitError(
         "too many active idempotency keys for this account — retry after the oldest replay window expires",
-        retry_after=_clamp_retry_after(raw_wait),
+        retry_after=clamp_retry_after(raw_wait),
     )

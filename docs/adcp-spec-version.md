@@ -48,34 +48,31 @@ The SDK **pin** (`adcp==6.6.0`, spec **3.1.1**) fixes the request/response
 *behavior*. One field diverges deliberately: the `media_buy_status` dual-emit
 on create-/update-media-buy responses.
 
-- **beta.3 storyboard** (`dist/compliance/3.1.0-beta.3/.../pending_creatives_to_start.yaml`,
-  ~L131-134) grades the body `status` as `field_value_or_absent` that MUST equal
-  `media_buy_status` — the deprecated "both identical" model (#4908).
-- **Target GA** — graded by the published **3.1.0** compliance
-  (`dist/compliance/3.1.0/.../pending_creatives_to_start.yaml`, ~L146-153;
-  `3.1.1` is byte-identical for this storyboard) — grades `media_buy_status`
-  as `field_value` (the DOMAIN status) and the top-level `status` as
-  `field_value` `'completed'` (the PROTOCOL `TaskStatus`, protocol envelope).
-  The two are DIFFERENT namespaces and are NOT identical.
+- **Then (3.1.0-beta.3):** the storyboard graded the body `status` as
+  `field_value_or_absent` that MUST equal `media_buy_status` — the deprecated
+  "both identical" model (#4908). Our wire deliberately diverged from it.
+- **Now (pinned 3.1.1):** `dist/compliance/3.1.1/domains/media-buy/scenarios/pending_creatives_to_start.yaml`
+  grades `media_buy_status` as `field_value` (the DOMAIN status, L146-148) and
+  separately grades `status` as `field_value` `'completed'` (the PROTOCOL
+  `TaskStatus`, protocol envelope, L150-153). There are ZERO
+  `field_value_or_absent` checks in that file. The two fields are DIFFERENT
+  namespaces and are NOT required to be identical — which is the model our wire
+  already implemented.
 
-Our wire already implements the divergent (target GA) model:
-`TaskResultEnvelope._serialize` sets the top-level `status` to the protocol
-`TaskStatus`, while the domain status survives under `media_buy_status`
+Our wire: `TaskResultEnvelope._serialize` sets the top-level `status` to the
+protocol `TaskStatus`, while the domain status survives under `media_buy_status`
 (`src/core/schemas/_base.py` `_mirror_media_buy_status`). The dual-emit
-validator only backfills the deprecated **body** `status` from the domain
+validator still backfills the deprecated **body** `status` from the domain
 `media_buy_status` for the deprecation window; it does not touch the wire
-top-level `status`.
+top-level `status`. That backfill remains live production code — it is the
+deprecation window, not a divergence from the pin.
 
-**Known SDK type defect (SDK not authoritative):** adcp 5.7 types the response
-`status` as `MediaBuyStatus | None`, but the wire top-level `status` carries a
-protocol `TaskStatus` (`submitted` / `completed`). This is fine because that
-protocol value lives on `TaskResultEnvelope.status` (typed `str`), never on the
-SDK-typed body field. Grounding for the divergent behavior is the value-pinned
-`media_buy_status` assertions in
-`tests/bdd/features/BR-UC-002-media-buy-status-dual-emit.feature` and the
-`then_dual_emit_media_buy_status` step in
+Grounding for the dual-emit behavior is the value-pinned `media_buy_status`
+assertions in `tests/bdd/features/BR-UC-002-media-buy-status-dual-emit.feature`
+and the `then_dual_emit_media_buy_status` step in
 `tests/bdd/steps/domain/uc002_create_media_buy.py` (see PR #1417).
-`tests/unit/test_adcp_spec_version.py` only guards the SDK pin, not this behavior.
+`tests/unit/test_adcp_spec_version.py` guards the SDK pin and the version claims
+in this document — not this behavior.
 
 ## Wire negotiation
 
