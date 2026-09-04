@@ -12,11 +12,11 @@ import uuid
 
 import pytest
 
+from src.core.schemas import SyncCreativesRequest
 from tests.e2e.adcp_request_builder import (
     build_adcp_media_buy_request,
     build_creative,
     build_default_campaign_request,
-    build_sync_creatives_request,
     get_test_date_range,
     parse_tool_result,
 )
@@ -174,7 +174,7 @@ class TestCreativeAssignment:
             )
 
             # Build sync request WITH assignments
-            sync_request = build_sync_creatives_request(
+            sync_request = SyncCreativesRequest(
                 creatives=[creative],
                 patch=False,
                 dry_run=False,
@@ -423,7 +423,7 @@ class TestCreativeAssignment:
             print(f"      • {creative2_id} → {pkg2_ref}")
             print(f"      • {creative3_id} → {pkg1_ref}, {pkg2_ref}")
 
-            sync_request = build_sync_creatives_request(
+            sync_request = SyncCreativesRequest(
                 creatives=creatives,
                 validation_mode="lenient",
                 assignments=assignments,

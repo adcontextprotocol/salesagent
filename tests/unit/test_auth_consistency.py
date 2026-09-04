@@ -17,6 +17,7 @@ from fastmcp.exceptions import ToolError
 
 from src.core.exceptions import AdCPAuthenticationError, AdCPSalesAgentError, AdCPValidationError
 from src.core.resolved_identity import ResolvedIdentity
+from src.core.schemas.creative import ListCreativesRequest
 from src.services.policy_check_service import PolicyStatus
 from tests.helpers.creative_test_helpers import sync_creatives_request
 
@@ -80,13 +81,13 @@ class TestMissingTokenConsistency:
 
     def test_list_creatives_requires_auth(self):
         """list_creatives should fail when no auth token is provided."""
-        from src.core.tools.creatives.listing import _build_list_creatives_request, _list_creatives_impl
+        from src.core.tools.creatives.listing import _list_creatives_impl
 
         # Pass identity with no principal_id
         identity = _make_identity(principal_id=None)
 
         with pytest.raises(AdCPAuthenticationError):
-            _list_creatives_impl(req=_build_list_creatives_request(), identity=identity)
+            _list_creatives_impl(req=ListCreativesRequest(), identity=identity)
 
     def test_get_media_buy_delivery_missing_auth_raises(self):
         """get_media_buy_delivery raises AdCPAuthenticationError when no auth token is provided."""
@@ -165,12 +166,12 @@ class TestInvalidTokenConsistency:
 
     def test_list_creatives_invalid_token(self):
         """list_creatives should fail for identity with no principal."""
-        from src.core.tools.creatives.listing import _build_list_creatives_request, _list_creatives_impl
+        from src.core.tools.creatives.listing import _list_creatives_impl
 
         identity = _make_identity(principal_id=None)
 
         with pytest.raises(AdCPAuthenticationError):
-            _list_creatives_impl(req=_build_list_creatives_request(), identity=identity)
+            _list_creatives_impl(req=ListCreativesRequest(), identity=identity)
 
     def test_get_media_buy_delivery_invalid_token(self):
         """get_media_buy_delivery should raise AdCPAuthenticationError for identity with no principal."""

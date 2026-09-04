@@ -5,6 +5,7 @@ that were added to match the AdCP spec.
 """
 
 from src.core.schemas import FormatId, ListCreativeFormatsRequest
+from tests.helpers.capture_wrapper_req import mcp_tool, registry_impl
 
 DEFAULT_AGENT_URL = "https://creative.adcontextprotocol.org"
 
@@ -114,63 +115,48 @@ class TestListCreativeFormatsNewFilters:
 
 
 class TestListCreativeFormatsMCPToolSignature:
-    """Test that MCP tool accepts AdCP-compliant parameter types.
+    """The MCP surface exposes AdCP types, so tools/list carries a real schema.
 
-    MCP tools receive JSON primitives, not Pydantic objects. These tests verify
-    that the tool function signature accepts the types that clients actually send.
+    There is no hand-written list_creative_formats wrapper to inspect. One generated
+    callable serves every row and its advertised signature is derived from the DTO, so both
+    obligations below are about the DTO reaching the wire -- graded here through this tool.
     """
 
     async def test_mcp_tool_accepts_format_ids_as_typed_objects(self):
-        """Test that list_creative_formats MCP tool accepts format_ids as FormatId objects.
-
-        MCP tools use typed signatures for proper schema exposure in tools/list.
-        MCP validates types from JSON input and coerces to the appropriate Pydantic models.
-        The tool then converts these to dicts internally for the request.
-        """
-        from unittest.mock import patch
-
+        """FormatId objects, as MCP coerces them from JSON, survive to the impl."""
         from adcp import FormatId
 
         from src.core.schemas import ListCreativeFormatsResponse
-        from src.core.tools.creative_formats import list_creative_formats
 
-        # MCP validates and coerces JSON to FormatId objects
         format_ids = [
             FormatId(agent_url="https://creative.adcontextprotocol.org", id="video_15s_hosted"),
             FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
         ]
+        seen: dict = {}
 
-        # Use a real response model instead of MagicMock — tests behavior, not implementation
-        with patch("src.core.tools.creative_formats._list_creative_formats_impl") as mock_impl:
-            mock_impl.return_value = ListCreativeFormatsResponse(formats=[])
+        def _impl(req, identity=None, **kwargs):
+            seen["req"] = req
+            return ListCreativeFormatsResponse(formats=[])
 
-            # This should NOT raise a validation error
-            result = await list_creative_formats(format_ids=format_ids)
+        with registry_impl("list_creative_formats", _impl):
+            await mcp_tool("list_creative_formats")(format_ids=format_ids)
 
-            # Verify the impl was called with FormatId objects
-            call_args = mock_impl.call_args
-            req = call_args[0][0]  # First positional arg is the request
-            assert req.format_ids is not None
-            assert len(req.format_ids) == 2
-            # Verify FormatId objects were passed through correctly
-            assert req.format_ids[0].id == "video_15s_hosted"
-            assert req.format_ids[1].id == "display_300x250"
+        req = seen["req"]
+        assert req.format_ids is not None
+        assert [f.id for f in req.format_ids] == ["video_15s_hosted", "display_300x250"]
 
     def test_mcp_tool_format_ids_parameter_type_is_typed(self):
-        """Verify the MCP tool signature uses proper AdCP types for format_ids.
+        """The ADVERTISED signature types format_ids -- what tools/list publishes.
 
-        This ensures the tool exposes typed schemas in tools/list for MCP clients.
+        Read off the announced signature rather than a Python function's own parameter
+        list: the generated callable takes ``**kwargs``, and what a client sees is the
+        signature derived from the DTO and applied at registration.
         """
-        import inspect
+        from src.core.tools._announced_shape import derived_signature
+        from src.core.tools.registry import TOOLS
 
-        from src.core.tools.creative_formats import list_creative_formats
-
-        sig = inspect.signature(list_creative_formats)
-        format_ids_param = sig.parameters["format_ids"]
-
-        # The annotation should be list[FormatId] | None for proper schema exposure
-        # adcp SDK: FormatId is an alias for FormatReferenceStructuredObject
-        annotation_str = str(format_ids_param.annotation)
+        sig = derived_signature(mcp_tool("list_creative_formats"), TOOLS["list_creative_formats"].dto)
+        annotation_str = str(sig.parameters["format_ids"].annotation)
         assert "FormatId" in annotation_str or "FormatReference" in annotation_str, (
             f"Expected list[FormatId] or list[FormatReferenceStructuredObject], got {annotation_str}"
         )

@@ -23,6 +23,8 @@ from adcp.types.generated_poc.core.publisher_property_selector import (  # TODO:
     PublisherPropertySelector2,
 )
 
+from src.core.schemas import GetProductsRequest
+
 
 def _make_selector_all(domain: str = "example.com") -> PublisherPropertySelector:
     """Create a 'select all' publisher property selector."""
@@ -274,19 +276,17 @@ class TestFilterProductsByPropertyList:
 
 
 class TestCreateGetProductsRequestWithPropertyList:
-    """Test that create_get_products_request forwards property_list."""
+    """Test that GetProductsRequest forwards property_list."""
 
     def test_property_list_forwarded(self):
         from adcp.types import PropertyListReference
-
-        from src.core.schema_helpers import create_get_products_request
 
         ref = PropertyListReference(
             agent_url="https://example.com",
             list_id="list_1",
             auth_token="token_123",
         )
-        req = create_get_products_request(
+        req = GetProductsRequest(
             brief="test",
             property_list=ref,
         )
@@ -294,9 +294,8 @@ class TestCreateGetProductsRequestWithPropertyList:
         assert req.property_list.list_id == "list_1"
 
     def test_property_list_none_by_default(self):
-        from src.core.schema_helpers import create_get_products_request
 
-        req = create_get_products_request(brief="test")
+        req = GetProductsRequest(brief="test")
         assert req.property_list is None
 
 

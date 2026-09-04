@@ -155,16 +155,42 @@ class CreativeAssetRequest(LibraryCreativeAsset):
     The old docstring called the response model "richer". It is -- in RESPONSE fields, while
     missing REQUEST ones, which is the whole defect in one word.
 
-    KNOWN NARROWING, stated rather than left to be found: the pinned schema also admits a
-    creative identified by ``format_kind`` INSTEAD of ``format_id`` (the SDK models the pair
-    as a two-arm union). This takes the format_id arm only, because nothing here implements
-    the other -- a grep of src/ and tests/ finds that AdCP field used nowhere, its four
-    apparent hits being a BDD step whose own parameter is coincidentally named format_kind.
-    Advertising only what we implement is this seam's rule, so the arm is excluded on
-    purpose; implement it here when the feature arrives rather than assuming an oversight.
+    THE ONEOF, FLATTENED ON PURPOSE. core/creative-asset.json identifies a creative by
+    ``format_id`` OR by ``format_kind``. datamodel-codegen renders that as two classes with
+    IDENTICAL field sets differing only in which identifier is required (CreativeAsset1,
+    CreativeAsset2), wrapped in a RootModel union -- and then ``adcp.types`` exports the
+    name ``CreativeAsset`` bound to ARM ONE, not the union. That codegen shape is an SDK
+    defect, reported upstream, not a contract to adopt: a RootModel forces ``.root`` on
+    every reader and puts the arm's class name into buyer-facing error paths
+    (``creatives[0].CreativeAsset1.name``), a name that appears nowhere in AdCP.
+
+    So the oneOf is expressed here instead, on the arm -- which already carries every
+    field of both. ``format_id`` is relaxed to optional and the constraint is stated as
+    what it is: exactly one identifier. One flat model, both arms reachable, field paths
+    that name the buyer's own fields.
     """
 
-    model_config = ConfigDict(extra=get_pydantic_extra_mode())
+    # from_attributes: a subclass of an SDK type must accept INSTANCES of that SDK type.
+    # Without it pydantic's model_type check rejects the parent -- so adcp's own
+    # CreativeAsset could not be handed to a request model that extends it, and every
+    # caller holding a typed SDK object would have to know about our subclass and
+    # round-trip through a dict to get past it.
+    model_config = ConfigDict(extra=get_pydantic_extra_mode(), from_attributes=True)
+
+    # WEAKENED, deliberately: required -> optional. The parent is one arm of the oneOf, where
+    # format_id is the identifier; on the other arm format_kind is, and format_id is absent.
+    # Requiring it here would announce only half the schema.
+    # LibraryFormatId, not the local FormatId subclass: the ONLY axis this redeclaration
+    # changes is nullability. Narrowing to the subclass would repeat the defect above one
+    # level down -- the SDK's own FormatId would stop validating into its own field.
+    format_id: LibraryFormatId | None = None  # type: ignore[assignment]
+
+    @model_validator(mode="after")
+    def _exactly_one_format_identifier(self) -> "CreativeAssetRequest":
+        """core/creative-asset.json is a oneOf: format_id XOR format_kind."""
+        if (self.format_id is None) == (self.format_kind is None):
+            raise ValueError("provide exactly one of format_id or format_kind")
+        return self
 
 
 # --- Creative Lifecycle ---
@@ -651,7 +677,7 @@ class ListCreativesRequest(LibraryListCreativesRequest):
     Enumerate nothing: the parent is the list.
 
     No internal field is declared here. ``format`` and ``page`` were, under
-    ``exclude=True``; they live on :class:`ListCreativesInternal` below. See
+    ``exclude=True``; they live on :class:`ListCreativesRequest` below. See
     docs/design/one-tool-registry.md, "Decisions this forces, and the answers".
     """
 
@@ -664,41 +690,6 @@ class ListCreativesRequest(LibraryListCreativesRequest):
     )
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
-
-
-class ListCreativesInternal(ListCreativesRequest):
-    """What ``list_creatives`` is implemented in terms of: the buyer request plus two
-    internal reader knobs.
-
-    ``_list_creatives_impl`` and ``list_creatives_raw`` are typed to THIS model, and
-    ``_build_list_creatives_request`` constructs it, so every transport reaches the
-    implementation through it. Internal callers that need to drive the reader directly
-    name this class; a buyer names :class:`ListCreativesRequest`, which has no such field
-    to name.
-
-    Neither field carries ``exclude=True``, and that is the point rather than an
-    oversight. The marker used to be what kept them off all three announced shapes; what
-    keeps them off now is that the BUILDER does not accept them, and the announced shape
-    is ``DTO fields INTERSECT the builder's parameters``. One mechanism instead of a
-    serialization marker read as an acceptance rule by three separate derivations. Adding
-    either name back to the builder's signature would publish it on REST and A2A.
-
-    Their spec-shaped successors already exist and are live: ``filters.format_ids`` for
-    format filtering and ``pagination.cursor`` for paging. Neither is a drop-in --
-    format_ids takes FormatId objects (agent_url and all) where this takes a bare id
-    string, and the reader is offset-based underneath -- so migrating is its own task, not
-    a rename. Until then these two carry the DB-query behaviour (``format`` narrows the
-    query, ``page`` drives the offset) that the successors do not yet reach.
-    """
-
-    format: str | None = Field(
-        default=None,
-        description="Internal: filter by a bare creative format id (superseded by filters.format_ids)",
-    )
-    page: int = Field(
-        default=1,
-        description="Internal: 1-based page index driving the reader's offset (superseded by pagination.cursor)",
-    )
 
 
 class QuerySummary(LibraryQuerySummary):

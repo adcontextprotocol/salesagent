@@ -151,7 +151,7 @@ class TestImplNoModelDump:
 
         This used to assert the parameter was dict-only, because the wrapper serialized a
         model and handed it over beside the request. The field is a REQUEST field now --
-        built through _build_create_media_buy_request like every other one -- so a second
+        built through CreateMediaBuyRequest like every other one -- so a second
         parameter would be a second way to supply the same value, which is the duplication
         that let MCP, REST and _impl each carry their own copy.
         """

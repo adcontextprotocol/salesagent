@@ -121,10 +121,10 @@ def test_the_limit_is_where_the_model_declares_nothing():
     this test fails and the rule starts governing it, which is the intended handover.
     """
     from src.core.schemas import GetProductsRequest
-    from src.core.schemas._base import CompleteTaskRequestLocal
+    from src.core.schemas._base import CompleteTaskRequest
 
     assert _declared_default(GetProductsRequest, "brief") is None
-    assert _declared_default(CompleteTaskRequestLocal, "status") is None
+    assert _declared_default(CompleteTaskRequest, "status") is None
 
     registered = _registered_tools()
     products = (registered["get_products"][0].parameters or {})["properties"]

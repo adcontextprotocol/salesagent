@@ -32,7 +32,8 @@ from src.core.database.models import (
     Principal,
 )
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.schemas import ListCreativesResponse, SyncCreativesResponse
+from src.core.schemas import CreateMediaBuyRequest, ListCreativesResponse, SyncCreativesRequest, SyncCreativesResponse
+from src.core.schemas.creative import ListCreativesRequest
 from src.core.testing_hooks import AdCPTestContext
 from tests.factories.creative_asset import asset_spec, build_assets, image_spec
 from tests.utils.database_helpers import create_tenant_with_timestamps, get_utc_now
@@ -61,15 +62,15 @@ def _list_creatives(**kwargs):
     """Build the request from its fields, then call the wrapper.
 
     ``list_creatives_raw`` takes the BUILT request and nothing beside it. ``format`` and
-    ``page`` are not builder parameters -- they are ListCreativesInternal fields, and the
+    ``page`` are not builder parameters -- they are ListCreativesRequest fields, and the
     builder's signature is what keeps them off the REST body and the A2A parameter bag -- so
     they are set on the model the builder returns, the way an internal caller would.
     """
-    from src.core.tools.creatives.listing import _build_list_creatives_request, list_creatives_raw
+    from src.core.tools.creatives.listing import list_creatives_raw
 
     transport = {k: kwargs.pop(k) for k in ("ctx", "identity") if k in kwargs}
     internal = {name: kwargs.pop(name) for name in ("format", "page") if name in kwargs}
-    req = _build_list_creatives_request(**kwargs)
+    req = ListCreativesRequest(**kwargs)
     if internal:
         req = req.model_copy(update=internal)
     return list_creatives_raw(req=req, **transport)
@@ -80,10 +81,10 @@ def _sync_creatives(**kwargs):
 
     sync_creatives_raw takes the BUILT request; this module's call sites stay flat.
     """
-    from src.core.tools.creatives.sync_wrappers import build_sync_creatives_request, sync_creatives_raw
+    from src.core.tools.creatives.sync_wrappers import sync_creatives_raw
 
     transport = {k: kwargs.pop(k) for k in ("ctx", "identity") if k in kwargs}
-    return sync_creatives_raw(req=build_sync_creatives_request(**kwargs), **transport)
+    return sync_creatives_raw(req=SyncCreativesRequest(**kwargs), **transport)
 
 
 class MockContext:
@@ -1097,7 +1098,6 @@ class TestCreativeLifecycleMCP:
 
         # Import create_media_buy tool
         from src.core.tools import create_media_buy_raw
-        from src.core.tools.media_buy_create import _build_create_media_buy_request
 
         # Create media buy with creative_ids in packages
         creative_ids = [c["creative_id"] for c in sample_creatives]
@@ -1209,7 +1209,7 @@ class TestCreativeLifecycleMCP:
             # Call create_media_buy with packages containing creative_ids
             # Through the shared builder, since the wrapper takes the built request.
             response = await create_media_buy_raw(
-                req=_build_create_media_buy_request(
+                req=CreateMediaBuyRequest(
                     # This module seeds ACCOUNT_ID, not the suite default; the wrapper resolves
                     # the reference, so it has to name the row this file created.
                     account={"account_id": ACCOUNT_ID},

@@ -115,7 +115,7 @@ class TestSyncCreativeCreateTransport:
         INVALID_REQUEST. This asserted the opposite until now -- that an empty list "is a
         valid no-op" returning success -- and passed because no transport built
         SyncCreativesRequest on this path: the constraint was declared and never enforced.
-        Every transport builds it through build_sync_creatives_request now, so the same
+        Every transport builds it through SyncCreativesRequest now, so the same
         request gets the same answer on all four.
         """
         with CreativeSyncEnv() as env:

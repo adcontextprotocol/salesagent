@@ -18,6 +18,7 @@ from adcp import PushNotificationConfig
 from adcp.types import CreativeAction, ErrorCode
 from pydantic import BaseModel
 
+from src.core.schemas.creative import ListCreativesRequest
 from tests.factories import PrincipalFactory
 from tests.factories.creative_asset import build_assets, image_spec, make_creative_asset_minimal
 from tests.helpers import assert_construction_rejects
@@ -658,14 +659,12 @@ class TestListingEdgeCases:
         """ValidationError from ListCreativesRequest construction raises AdCPValidationError.
 
         Request construction (and its ValidationError translation) now lives in
-        _build_list_creatives_request, so patch the name the builder resolves.
+        ListCreativesRequest, so patch the name the builder resolves.
         """
         from pydantic import ValidationError
 
-        from src.core.tools.creatives.listing import _build_list_creatives_request
-
         ve = ValidationError.from_exception_data(
-            title="ListCreativesInternal",
+            title="ListCreativesRequest",
             line_errors=[
                 {
                     "type": "missing",
@@ -676,8 +675,8 @@ class TestListingEdgeCases:
             ],
         )
 
-        with patch("src.core.tools.creatives.listing.ListCreativesInternal", side_effect=ve):
-            assert_construction_rejects(_build_list_creatives_request, field="filters")
+        with patch("src.core.tools.creatives.listing.ListCreativesRequest", side_effect=ve):
+            assert_construction_rejects(ListCreativesRequest, field="filters")
 
 
 # ===========================================================================

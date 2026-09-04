@@ -1,3 +1,4 @@
+import inspect
 import logging
 from importlib import import_module
 from typing import Any
@@ -361,9 +362,9 @@ _sdk_tool_defs = {td["name"]: td for td in ADCP_TOOL_DEFINITIONS}
 def _register_tool(fn: Any) -> None:
     """Register an MCP tool with SDK description, annotations and ADVERTISED SHAPE.
 
-    The request DTO is RESOLVED FROM THE BUILDER the wrapper calls. There is no parameter
-    to pass one explicitly: the escape hatch that allowed it is gone, so "registered with a
-    hand-supplied DTO" is not a state this function can produce.
+    The request DTO is RESOLVED FROM THE REGISTRY ROW. There is no parameter to pass one
+    explicitly: the escape hatch that allowed it is gone, so "registered with a hand-supplied
+    DTO" is not a state this function can produce.
 
     It existed for list_tasks, whose pre-3.1.1 vocabulary intersected the SDK model at
     ``context`` alone. Rebasing that tool onto the spec shape left the parameter with zero
@@ -397,11 +398,9 @@ def _register_tool(fn: Any) -> None:
     registered = with_error_logging(fn)
     if not apply_dto_announced_shape(registered, fn):
         raise RuntimeError(
-            f"{tool_name} cannot be registered: no request DTO. Its advertised shape is "
-            f"'DTO fields INTERSECT the implementation's arguments', so without a DTO there "
-            f"is nothing to derive from and the tool would publish a hand-written shape that "
-            f"can drift from the spec. Give it a build_*_request builder that constructs "
-            f"its request -- that is the only way to name a DTO."
+            f"{tool_name} cannot be registered: no request DTO. Its advertised shape IS the "
+            f"DTO, so without one there is nothing to derive from. Name it in the tool's "
+            f"registry row (src/core/tools/registry.py) -- that is the only way to name a DTO."
         )
     model = request_model_for(fn)
     if sdk_def is not None and model is not None and sdk_grounding(model) is None:
@@ -409,8 +408,8 @@ def _register_tool(fn: Any) -> None:
             f"{tool_name} cannot be registered: {model.__name__} does not inherit the SDK's "
             f"request model. The pinned AdCP version defines this tool, so its vocabulary is "
             f"the spec's, not ours -- and a DTO written from the wrapper's own signature "
-            f"makes 'announced = DTO fields INTERSECT the implementation's arguments' "
-            f"tautological, advertising whatever we happened to write. Extend the SDK's "
+            f"makes the announced shape tautological, advertising whatever we happened to "
+            f"write. Extend the SDK's "
             f"request model for this tool -- most likely "
             f"adcp.types.{tool_name.title().replace('_', '')}Request, though the SDK is the "
             f"authority on the spelling -- per the Library* alias convention (critical "
@@ -461,7 +460,12 @@ async def _call_tool(spec: Any, kwargs: dict[str, Any]) -> Any:
             if name in declared:
                 extra[name] = await ctx.get_state(name)
 
-    return await spec.impl(req=req, identity=identity, **extra)
+    # Not every implementation is a coroutine: 8 of the 14 are plain def. The
+    # hand-written wrappers each knew which their own was; one generated call path cannot
+    # assume, and an unconditional await raises TypeError AFTER the implementation has run
+    # to completion -- so the work commits and the buyer is told it failed.
+    result = spec.impl(req=req, identity=identity, **extra)
+    return await result if inspect.isawaitable(result) else result
 
 
 def _tool_callable(tool_name: str, spec: Any) -> Any:

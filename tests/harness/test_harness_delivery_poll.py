@@ -9,7 +9,7 @@ from __future__ import annotations
 import inspect
 from datetime import UTC, date, datetime
 
-from src.core.schemas import GetMediaBuyDeliveryResponse
+from src.core.schemas import GetMediaBuyDeliveryRequest, GetMediaBuyDeliveryResponse
 from tests.harness.delivery_poll_unit import DeliveryPollEnv
 
 #: adcp_version / adcp_major_version / ext are the version-envelope trio every request
@@ -223,9 +223,7 @@ class TestDeliveryPollEnvContract:
         and it is what this grades. Every declared field is passed, so a field the
         builder drops from its signature fails here rather than silently vanishing.
         """
-        from src.core.schemas import GetMediaBuyDeliveryRequest
         from src.core.tools.media_buy_delivery import (
-            _build_get_media_buy_delivery_request,
             get_media_buy_delivery_raw,
         )
 
@@ -233,7 +231,7 @@ class TestDeliveryPollEnvContract:
             env.add_buy(media_buy_id="mb_001")
             env.set_adapter_response("mb_001", impressions=5000)
 
-            req = _build_get_media_buy_delivery_request(
+            req = GetMediaBuyDeliveryRequest(
                 media_buy_ids=["mb_001"],
                 include_package_daily_breakdown=True,
             )
@@ -243,7 +241,7 @@ class TestDeliveryPollEnvContract:
             # Every field the model DECLARES must be a name the builder takes; otherwise
             # a buyer can send it, the model can hold it, and the builder still drops it
             # on the floor (which is exactly how include_snapshot and account were lost).
-            buildable = set(inspect.signature(_build_get_media_buy_delivery_request).parameters)
+            buildable = set(inspect.signature(GetMediaBuyDeliveryRequest).parameters)
             declared = set(GetMediaBuyDeliveryRequest.model_fields) - _VERSION_ENVELOPE_FIELDS
             assert declared <= buildable, f"builder cannot construct declared fields: {declared - buildable}"
 

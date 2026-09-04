@@ -10,11 +10,11 @@ from time import monotonic, sleep
 
 import pytest
 
+from src.core.schemas import SyncCreativesRequest
 from tests.e2e._webhook_capture import run_webhook_capture_server
 from tests.e2e.adcp_request_builder import (
     build_creative,
     build_default_campaign_request,
-    build_sync_creatives_request,
     build_update_media_buy_request,
     parse_tool_result,
 )
@@ -145,7 +145,7 @@ class TestAdCPReferenceImplementation:
                 click_through_url="https://nike.com/air-jordan-2025",
             )
 
-            sync_request = build_sync_creatives_request(creatives=[creative_1, creative_2])
+            sync_request = SyncCreativesRequest(creatives=[creative_1, creative_2])
 
             sync_result = await client.call_tool("sync_creatives", sync_request)
             sync_data = parse_tool_result(sync_result)

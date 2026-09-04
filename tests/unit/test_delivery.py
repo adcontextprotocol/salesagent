@@ -46,9 +46,7 @@ from src.core.schemas import (
 )
 from src.core.testing_hooks import AdCPTestContext
 from src.core.tools.media_buy_delivery import (
-    _build_get_media_buy_delivery_request,
     _get_media_buy_delivery_impl,
-    get_media_buy_delivery,
     get_media_buy_delivery_raw,
 )
 from src.services.webhook_delivery_service import CircuitBreaker, CircuitState, WebhookDeliveryService
@@ -831,47 +829,21 @@ class TestDeliveryStatusFilter:
                 )
                 assert isinstance(response, GetMediaBuyDeliveryResponse)
 
-    async def test_valid_status_enum_values_accepted_mcp(self):
-        """UC-004-FILT-07: valid status values accepted via MCP wrapper.
-
-        Covers: UC-004-ALT-STATUS-FILTERED-DELIVERY-07
-
-        Route: mcp -- MCP wrapper accepts each MediaBuyStatus enum value.
-        """
-        from unittest.mock import AsyncMock
-
-        from fastmcp.server.context import Context
-
-        for status in MediaBuyStatus:
-            with DeliveryPollEnv() as env:
-                env.add_buy(media_buy_id="mb_mcp")
-                env.set_adapter_response("mb_mcp", impressions=100)
-
-                mock_ctx = AsyncMock(spec=Context)
-                mock_ctx.get_state.return_value = env.identity
-
-                result = await get_media_buy_delivery(
-                    media_buy_ids=["mb_mcp"],
-                    status_filter=status,
-                    ctx=mock_ctx,
-                )
-                assert result.structured_content is not None
-
     def test_valid_status_enum_values_accepted_a2a(self):
         """UC-004-FILT-07: valid status values accepted via A2A wrapper.
 
         Covers: UC-004-ALT-STATUS-FILTERED-DELIVERY-07
 
-        Route: a2a -- the A2A path builds through the shared builder and hands the raw
-        function the built request, so each MediaBuyStatus value is exercised where it
-        now travels: on the request.
+        Route: a2a -- the A2A path validates the parameter bag into the registry DTO and
+        hands the raw function the result, so each MediaBuyStatus value is exercised where
+        it now travels: on the request.
         """
         for status in MediaBuyStatus:
             with DeliveryPollEnv() as env:
                 env.add_buy(media_buy_id="mb_a2a")
                 env.set_adapter_response("mb_a2a", impressions=100)
 
-                req = _build_get_media_buy_delivery_request(
+                req = GetMediaBuyDeliveryRequest(
                     media_buy_ids=["mb_a2a"],
                     status_filter=status,
                 )

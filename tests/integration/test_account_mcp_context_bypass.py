@@ -16,7 +16,7 @@ Historical note: this file used to assert, via an instrumented copy of the
 wrapper handed to ``BaseTestEnv._run_mcp_wrapper``, that a
 ``if context is not None`` merge branch fired. That premise expired twice over —
 the branch no longer exists (``list_accounts`` forwards ``context`` straight into
-``build_list_accounts_request``), and ``_run_mcp_wrapper`` itself is deleted
+``ListAccountsRequest``), and ``_run_mcp_wrapper`` itself is deleted
 because it bypassed the FastMCP pipeline.
 """
 
@@ -56,7 +56,7 @@ class TestMCPContextThroughRealPipeline:
           "skips the merge branch entirely", while the assertion asserting the
           branch DID fire passed. And ``list_accounts`` has no merge branch left
           to skip: it forwards ``context=context`` straight into
-          ``build_list_accounts_request`` (accounts.py:318-327).
+          ``ListAccountsRequest`` (accounts.py:318-327).
 
         What matters is the OBSERVABLE outcome through the pipeline a buyer
         actually uses, so that is what this asserts: dispatch by tool name

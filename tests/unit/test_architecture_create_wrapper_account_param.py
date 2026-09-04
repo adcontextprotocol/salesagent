@@ -16,7 +16,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MEDIA_BUY_CREATE = REPO_ROOT / "src" / "core" / "tools" / "media_buy_create.py"
 
-WRAPPER_NAMES = {"create_media_buy", "create_media_buy_raw", "_build_create_media_buy_request"}
+WRAPPER_NAMES = {"create_media_buy", "create_media_buy_raw", "CreateMediaBuyRequest"}
 
 
 def _get_param_names(func_node: ast.AsyncFunctionDef | ast.FunctionDef) -> list[str]:
@@ -56,7 +56,7 @@ class TestCreateWrapperAccountParam:
         stripping this guard was written for.
         """
         wrappers = self._parse_wrappers()
-        name = "_build_create_media_buy_request"
+        name = "CreateMediaBuyRequest"
         assert name in wrappers, f"{name} not found in media_buy_create.py"
         params = _get_param_names(wrappers[name])
         assert "account" in params, (

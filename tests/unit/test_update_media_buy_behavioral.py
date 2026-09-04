@@ -35,12 +35,12 @@ from src.core.exceptions import (
 )
 from src.core.schemas import (
     Error,
+    SyncCreativesRequest,
     UpdateMediaBuyError,
     UpdateMediaBuyRequest,
     UpdateMediaBuySubmitted,
     UpdateMediaBuySuccess,
 )
-from src.core.tools.creatives import build_sync_creatives_request
 from src.core.tools.media_buy_update import _update_media_buy_impl
 from tests.factories.creative_asset import build_assets, image_spec
 from tests.harness.media_buy_update import MediaBuyUpdateEnv
@@ -1306,7 +1306,7 @@ class TestUC003UploadInlineCreatives:
             # Asserting the whole object is what makes "the nested call is a real request"
             # checkable at all; ANY could not tell that account or idempotency_key was lost.
             mock_sync.assert_called_once_with(
-                req=build_sync_creatives_request(
+                req=SyncCreativesRequest(
                     creatives=req.packages[0].creatives,
                     account=req.account,
                     idempotency_key=req.idempotency_key,

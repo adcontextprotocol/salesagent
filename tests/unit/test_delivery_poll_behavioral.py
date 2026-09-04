@@ -32,6 +32,7 @@ from src.core.tools.media_buy_delivery import (
     _get_media_buy_delivery_impl,
     _resolve_delivery_status_filter,
 )
+from tests.helpers.capture_wrapper_req import mcp_tool, registry_impl
 
 # UC-004-ALT-STATUS-FILTERED-DELIVERY-02
 # ---------------------------------------------------------------------------
@@ -444,13 +445,13 @@ class TestMediaBuyIdResolution:
 
 
 class TestMCPToolResultContent:
-    """MCP wrapper returns ToolResult with both content and structured_content.
+    """The MCP boundary returns a ToolResult with both content and structured_content.
 
     Covers: UC-004-MAIN-13
 
-    Note: These test the MCP transport wrapper, not _impl. The harness is used
-    to build a realistic response via call_impl(), then the MCP wrapper is tested
-    with that response as the _impl return value.
+    There is no per-tool MCP wrapper: one generated callable serves every registry row, and
+    this grades it through get_media_buy_delivery. The harness builds a realistic response
+    via call_impl(), which is then the row's implementation for the call.
     """
 
     @staticmethod
@@ -473,27 +474,23 @@ class TestMCPToolResultContent:
         from fastmcp.server.context import Context
         from fastmcp.tools.tool import ToolResult
 
-        from src.core.tools.media_buy_delivery import get_media_buy_delivery
-
         stub_response = self._stub_delivery_response()
 
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.get_state = AsyncMock(return_value=None)
 
-        with patch("src.core.tools.media_buy_delivery._get_media_buy_delivery_impl") as mock_impl:
-            mock_impl.return_value = stub_response
-
-            result = await get_media_buy_delivery(
+        with registry_impl("get_media_buy_delivery", lambda req, identity=None, **kw: stub_response):
+            result = await mcp_tool("get_media_buy_delivery")(
                 media_buy_ids=["mb_001"],
                 ctx=mock_ctx,
             )
 
-            assert isinstance(result, ToolResult)
-            assert result.content is not None
-            assert len(result.content) > 0
-            assert result.structured_content is not None
-            assert isinstance(result.structured_content, dict)
-            assert result.structured_content["currency"] == "USD"
+        assert isinstance(result, ToolResult)
+        assert result.content is not None
+        assert len(result.content) > 0
+        assert result.structured_content is not None
+        assert isinstance(result.structured_content, dict)
+        assert result.structured_content["currency"] == "USD"
 
     async def test_structured_content_contains_response_fields(self):
         """structured_content dict contains all top-level response fields.
@@ -504,26 +501,22 @@ class TestMCPToolResultContent:
 
         from fastmcp.server.context import Context
 
-        from src.core.tools.media_buy_delivery import get_media_buy_delivery
-
         stub_response = self._stub_delivery_response()
 
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.get_state = AsyncMock(return_value=None)
 
-        with patch("src.core.tools.media_buy_delivery._get_media_buy_delivery_impl") as mock_impl:
-            mock_impl.return_value = stub_response
-
-            result = await get_media_buy_delivery(
+        with registry_impl("get_media_buy_delivery", lambda req, identity=None, **kw: stub_response):
+            result = await mcp_tool("get_media_buy_delivery")(
                 media_buy_ids=["mb_001"],
                 ctx=mock_ctx,
             )
 
-            sc = result.structured_content
-            assert "reporting_period" in sc
-            assert "currency" in sc
-            assert "aggregated_totals" in sc
-            assert "media_buy_deliveries" in sc
+        sc = result.structured_content
+        assert "reporting_period" in sc
+        assert "currency" in sc
+        assert "aggregated_totals" in sc
+        assert "media_buy_deliveries" in sc
 
     async def test_content_is_string_representation(self):
         """content field contains a human-readable string form of the response.
@@ -534,24 +527,20 @@ class TestMCPToolResultContent:
 
         from fastmcp.server.context import Context
 
-        from src.core.tools.media_buy_delivery import get_media_buy_delivery
-
         stub_response = self._stub_delivery_response()
 
         mock_ctx = MagicMock(spec=Context)
         mock_ctx.get_state = AsyncMock(return_value=None)
 
-        with patch("src.core.tools.media_buy_delivery._get_media_buy_delivery_impl") as mock_impl:
-            mock_impl.return_value = stub_response
-
-            result = await get_media_buy_delivery(
+        with registry_impl("get_media_buy_delivery", lambda req, identity=None, **kw: stub_response):
+            result = await mcp_tool("get_media_buy_delivery")(
                 media_buy_ids=["mb_001"],
                 ctx=mock_ctx,
             )
 
-            content_text = result.content[0].text if hasattr(result.content[0], "text") else str(result.content[0])
-            assert len(content_text) > 0
-            assert "No delivery data found" in content_text or "delivery" in content_text.lower()
+        content_text = result.content[0].text if hasattr(result.content[0], "text") else str(result.content[0])
+        assert len(content_text) > 0
+        assert "No delivery data found" in content_text or "delivery" in content_text.lower()
 
 
 # ---------------------------------------------------------------------------

@@ -18,7 +18,7 @@ from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import (
     Creative,
     Error,
-    ListCreativesInternal,
+    ListCreativesRequest,
     ListCreativesResponse,
 )
 from src.core.tool_context import ToolContext
@@ -161,7 +161,7 @@ def _blob_log_context(creative_id: str, tenant_id: str, principal_id: str) -> st
 
 
 def _list_creatives_impl(
-    req: "ListCreativesInternal",
+    req: "ListCreativesRequest",
     identity: ResolvedIdentity | None = None,
 ) -> ListCreativesResponse:
     """List and search creative library (AdCP v2.5 spec endpoint).
@@ -172,7 +172,7 @@ def _list_creatives_impl(
     Args:
         req: Typed list-creatives request — EVERY request value, including the two
             internal ``format`` / ``page`` fields, which are why this is typed to
-            ListCreativesInternal and not to the buyer-facing ListCreativesRequest
+            ListCreativesRequest and not to the buyer-facing ListCreativesRequest
         identity: ResolvedIdentity with principal/tenant info (transport-agnostic)
 
     Returns:
@@ -185,7 +185,9 @@ def _list_creatives_impl(
     # Internal fields, read off the request like every other value it carries. They were
     # ``_impl`` PARAMETERS until this was fixed, which meant a caller could hand the reader
     # a page or a format the request it was answering did not describe.
-    page = req.page
+    # Always 1: nothing in src/ ever set the internal knob this replaced. Buyers page
+    # through the spec's ``pagination``.
+    page = 1
     # This status string is matched against the RAW persisted `creatives.status` column
     # (CreativeRepository.get_by_principal), while the value rendered on the wire is
     # derived from it below — and for a row whose stored status is not a CreativeStatus
@@ -246,7 +248,7 @@ def _list_creatives_impl(
         result = uow.creatives.get_by_principal(
             principal_id,
             status=status,
-            format=req.format,
+            format=None,
             tags=tags,
             created_after=created_after_dt,
             created_before=created_before_dt,
@@ -500,7 +502,7 @@ def _list_creatives_impl(
 
 
 def list_creatives_raw(
-    req: "ListCreativesInternal",
+    req: "ListCreativesRequest",
     ctx: Context | ToolContext | None = None,
     identity: IdentityOrNotProvided = NOT_PROVIDED,
 ):
@@ -509,11 +511,11 @@ def list_creatives_raw(
     Delegates to the shared implementation. Every request value travels ON ``req``: the four
     out-of-band arguments this wrapper used to take beside it (``format``, ``page``,
     ``include_performance``, ``include_sub_assets``) are gone -- the first two are
-    ListCreativesInternal fields now, and the last two were removed from the AdCP spec at 3.10
+    ListCreativesRequest fields now, and the last two were removed from the AdCP spec at 3.10
     and read by nothing in this codebase, so forwarding them was a no-op through three layers.
 
     Args:
-        req: The built ListCreativesInternal
+        req: The built ListCreativesRequest
         ctx: FastMCP context (automatically provided)
         identity: ResolvedIdentity (transport-agnostic, preferred over ctx)
 

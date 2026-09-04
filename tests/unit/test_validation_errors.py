@@ -42,10 +42,9 @@ def test_create_media_buy_boundary_validation_names_the_offending_field():
     against itself. This test previously pinned an authored sentence that named the same
     field ``field=`` already carries.
     """
-    from src.core.tools.media_buy_create import _build_create_media_buy_request
 
     assert_construction_rejects(
-        lambda: _build_create_media_buy_request(
+        lambda: CreateMediaBuyRequest(
             brand={"domain": "wiretest.example"},
             packages=None,
             start_time=None,

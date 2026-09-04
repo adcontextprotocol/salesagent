@@ -692,7 +692,7 @@ _XFAIL_TAGS: dict[str, str] = {
     # 3 transports, so a2a/mcp/rest all now pass (removed from both this dict
     # and the _SELECTIVE_XFAIL rest-only entry below).
     # T-UC-010-ext-d-invalid-value / -empty / T-UC-010-ext-e-echo / -nested / -empty
-    # FULLY GRADUATED: build_get_adcp_capabilities_request now
+    # FULLY GRADUATED: GetAdcpCapabilitiesRequest now
     # constructs a real typed GetAdcpCapabilitiesRequest (Pydantic enforces the
     # protocols enum + minItems:1), and _get_adcp_capabilities_impl echoes
     # req.context verbatim onto the response on every transport.
@@ -901,7 +901,7 @@ _SELECTIVE_XFAIL: list[tuple[str, set[str], str]] = [
     # ── #1721 lane D: three UC-018 outlines newly wired ──
     # The lane converts _handle_list_creatives_skill to the shared build_*_request
     # seam and moves the MCP structured->flat sort/pagination coercion into
-    # _build_list_creatives_request. Only the rows whose behavior that conversion can
+    # ListCreativesRequest. Only the rows whose behavior that conversion can
     # silently delete are authored; the siblings below grade production the lane does
     # NOT touch, so they are parked PER ROW rather than the whole outline being left
     # dormant at the harness gate (which is how the merge and coercion rows came to be
@@ -1578,7 +1578,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                             "a2a skill handler discards `revision` before it reaches the tool, so "
                             "this row cannot grade CONFLICT enforcement on a2a at all. NOT #1607: "
                             "enforcing the check would leave this row red. #1885 is the remedy — "
-                            "route the handler through media_buy_update._build_update_request, which "
+                            "route the handler through media_buy_update.UpdateMediaBuyRequest, which "
                             "already forwards every field — so closing it makes this row gradeable. "
                             "#1259 owns the separate question of why no guard sees the drop."
                         ),
@@ -3078,7 +3078,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             "T-UC-019-ext-b",
             "T-UC-019-ext-c",
             # Graduated (6szx): T-UC-019-ext-d — invalid parameter types are rejected at
-            # request construction (_build_get_media_buys_request) and translated at the
+            # request construction (GetMediaBuysRequest) and translated at the
             # transport boundary, with field-level details (field="media_buy_ids"),
             # recovery=correctable and a top-level suggestion, on the A2A wire and via
             # the typed exception on the legacy MCP wrapper. Then steps assert wire-first.

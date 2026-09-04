@@ -547,7 +547,7 @@ def then_none_belong_to(ctx: dict, principal_id: str) -> None:
 # converts _handle_list_creatives_skill (and the other handlers this
 # PR opened) to build the typed request through the shared build_*_request seam, and
 # moves the MCP structured->flat sort/pagination coercion into
-# _build_list_creatives_request. Two families of behavior are silently deletable by
+# ListCreativesRequest. Two families of behavior are silently deletable by
 # that conversion, and both were ungraded — the whole UC-018 partition/boundary set
 # xfailed fast at the conftest harness gate:
 #
