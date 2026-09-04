@@ -15,6 +15,29 @@ from src.core.exceptions import AdCPTaskNotFoundError
 from src.core.resolved_identity import ResolvedIdentity
 
 
+def _impl_caller(tool_name: str):
+    """Call ``tool_name``'s implementation with a request built from loose kwargs.
+
+    These tests grade what the IMPL returns -- the spec flags that decide whether ``result``
+    and ``history`` appear, and the typed shape of each -- so they call it directly and
+    assert on the returned model. Going through the MCP boundary would hand back a
+    ToolResult, whose structured_content is JSON: every ``entry.type.value`` and
+    ``result.root.media_buy_id`` here would become dict indexing, grading serialization
+    instead of the flag logic these tests are about. The tool is still reached through the
+    registry, so the DTO and the impl are the registered ones.
+    """
+    from src.core.tools.registry import TOOLS
+
+    spec = TOOLS[tool_name]
+
+    async def call(identity=None, **kwargs):
+        return await spec.impl(req=spec.dto(**kwargs), identity=identity)
+
+    return call
+
+
+
+
 class TestListTasksTool:
     """Test the list_tasks MCP tool actually works."""
 
@@ -59,12 +82,8 @@ class TestListTasksTool:
         return step
 
     async def _get_list_tasks_fn(self):
-        """Get the list_tasks function from MCP tool registry."""
-        from src.core.main import mcp
-
-        tool = await mcp.get_tool("list_tasks")
-        assert tool is not None, "list_tasks should be registered (unified mode is default)"
-        return tool.fn
+        """The registered implementation for list_tasks, called with a registry-built request."""
+        return _impl_caller("list_tasks")
 
     def _make_identity(self, sample_tenant):
         """Create a ResolvedIdentity for testing."""
@@ -89,9 +108,9 @@ class TestListTasksTool:
             result = await list_tasks_fn(identity=identity)
 
         assert result.tasks != []
-        # ATTRIBUTE access, not subscripting: list_tasks returns the pinned
-        # ListTasksResponse now, and the tenant-wide count lives where the pin puts it
-        # (query_summary.total_matching / pagination.total_count), not at the envelope root.
+        # ATTRIBUTE access, not subscripting: list_tasks returns the pinned ListTasksResponse,
+        # and the tenant-wide count lives where the pin puts it (query_summary.total_matching
+        # / returned), not at the envelope root.
         assert result.query_summary.total_matching == 1
         assert result.query_summary.returned == 1
 
@@ -166,12 +185,8 @@ class TestGetTaskTool:
         return step
 
     async def _get_get_task_fn(self):
-        """Get the get_task function from MCP tool registry."""
-        from src.core.main import mcp
-
-        tool = await mcp.get_tool("get_task")
-        assert tool is not None, "get_task should be registered (unified mode is default)"
-        return tool.fn
+        """The registered implementation for get_task, called with a registry-built request."""
+        return _impl_caller("get_task")
 
     def _make_identity(self, sample_tenant):
         """Create a ResolvedIdentity for testing."""
@@ -204,14 +219,13 @@ class TestGetTaskTool:
         assert result.protocol.value == "media-buy"
 
     async def test_get_task_not_found_raises_error(self, mock_uow, mock_workflow_repo, sample_tenant):
-        """Test that get_task raises ToolError when task not found.
+        """get_task raises the TYPED error when the task is not found.
 
-        The MCP boundary (with_error_logging) translates ValueError to
-        ToolError with VALIDATION_ERROR code. This is correct: business
-        logic raises ValueError, the transport boundary translates it.
+        The typed class, not ToolError: this calls the impl, and translating
+        AdCPTaskNotFoundError into a transport envelope is the boundary's job, graded at the
+        boundary (tests/unit/test_error_boundary_translation.py). Asserting ToolError here
+        would grade the translator through a test about the lookup.
         """
-        from fastmcp.exceptions import ToolError
-
         get_task_fn = await self._get_get_task_fn()
 
         mock_workflow_repo.get_by_step_id_or_raise.side_effect = AdCPTaskNotFoundError()
@@ -219,7 +233,7 @@ class TestGetTaskTool:
         identity = self._make_identity(sample_tenant)
 
         with patch("src.core.tools.task_management.WorkflowUoW", return_value=mock_uow):
-            with pytest.raises(ToolError):
+            with pytest.raises(AdCPTaskNotFoundError):
                 await get_task_fn(task_id="nonexistent", identity=identity)
 
 
@@ -284,11 +298,8 @@ class TestGetTaskSpecFlags:
         return step
 
     async def _call(self, mock_uow, identity, **kwargs):
-        from src.core.main import mcp
-
-        tool = await mcp.get_tool("get_task")
         with patch("src.core.tools.task_management.WorkflowUoW", return_value=mock_uow):
-            return await tool.fn(identity=identity, **kwargs)
+            return await _impl_caller("get_task")(identity=identity, **kwargs)
 
     def _identity(self):
         from tests.factories.principal import PrincipalFactory
@@ -436,12 +447,8 @@ class TestCompleteTaskTool:
         return step
 
     async def _get_complete_task_fn(self):
-        """Get the complete_task function from MCP tool registry."""
-        from src.core.main import mcp
-
-        tool = await mcp.get_tool("complete_task")
-        assert tool is not None, "complete_task should be registered (unified mode is default)"
-        return tool.fn
+        """The registered implementation for complete_task, called with a registry-built request."""
+        return _impl_caller("complete_task")
 
     def _make_identity(self, sample_tenant):
         """Create a ResolvedIdentity for testing."""
@@ -464,8 +471,8 @@ class TestCompleteTaskTool:
         with patch("src.core.tools.task_management.WorkflowUoW", return_value=mock_uow):
             result = await complete_task_fn(task_id="step_123", status="completed", identity=identity)
 
-        assert result["status"] == "completed"
-        assert result["task_id"] == "step_123"
+        assert result.status == "completed"
+        assert result.task_id == "step_123"
         mock_workflow_repo.update_status.assert_called_once_with(
             "step_123",
             status="completed",
@@ -474,16 +481,21 @@ class TestCompleteTaskTool:
         )
 
     async def test_complete_task_rejects_invalid_status(self, mock_uow, mock_workflow_repo, sample_tenant):
-        """Test that complete_task rejects invalid status values.
+        """complete_task rejects an invalid status -- at the MODEL, which is where it is declared.
 
-        The MCP boundary (with_error_logging) translates ValueError to
-        ToolError with VALIDATION_ERROR code.
+        CompleteTaskRequest types status as a required ``Literal["completed", "failed"]``, so
+        the request cannot be built with anything else. The impl used to re-raise
+        AdCPValidationError for the same values while the DTO advertised a free optional
+        string; the rejection now happens where buyers are told about it, and this asserts the
+        field it names.
         """
-        from fastmcp.exceptions import ToolError
+        from pydantic import ValidationError
 
         complete_task_fn = await self._get_complete_task_fn()
 
         identity = self._make_identity(sample_tenant)
 
-        with pytest.raises(ToolError):
+        with pytest.raises(ValidationError) as exc_info:
             await complete_task_fn(task_id="step_123", status="invalid_status", identity=identity)
+
+        assert exc_info.value.errors()[0]["loc"] == ("status",)

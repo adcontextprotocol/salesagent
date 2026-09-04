@@ -3366,10 +3366,33 @@ class CompleteTaskRequest(AdcpVersionEnvelope):
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
     task_id: str = Field(..., description="The task to complete")
-    status: str | None = Field(default=None, description="Completion status")
+    # REQUIRED, and only the two values the tool acts on. The impl used to re-raise
+    # AdCPValidationError(field="status") for anything else while this typed it as an
+    # optional free string -- the accepted shape declared twice, with buyers shown the
+    # loose one on all three transports and the strict one enforced at runtime.
+    status: Literal["completed", "failed"] = Field(..., description="Completion status")
     response_data: dict[str, Any] | None = Field(default=None, description="Structured result payload")
     error_message: str | None = Field(default=None, description="Failure detail, when the task failed")
     context: ContextObject | None = Field(default=None, description="Application-level context")
+
+
+class CompleteTaskResponse(AdcpVersionEnvelope):
+    """Response from completing a task.
+
+    On the SDK's base envelope for the same reason the request is: the pin defines no
+    complete-task schema, and a response that cannot carry ``adcp_version`` is not a response
+    in this protocol. The impl returned a bare ``dict`` while both its siblings returned
+    response models, so the REST boundary's ``response.model_dump(mode="json")`` raised
+    AttributeError on the one tool of the three that had no model.
+    """
+
+    model_config = ConfigDict(extra=get_pydantic_extra_mode())
+
+    task_id: str = Field(..., description="The task that was completed")
+    status: str = Field(..., description="The status it was marked with")
+    message: str = Field(..., description="Human-readable confirmation")
+    completed_at: str = Field(..., description="ISO-8601 completion time")
+    completed_by: str = Field(..., description="Principal that completed it")
 
 
 class GetTaskRequest(LibraryGetTaskStatusRequest):
