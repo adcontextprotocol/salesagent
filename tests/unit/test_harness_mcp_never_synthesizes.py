@@ -88,7 +88,6 @@ class TestMcpDoesNotSynthesize:
         """
         result = McpDispatcher().dispatch(_raising_env(_an_error()))
 
-        assert result._synthesized_error_envelope is None
         assert result.wire_error_envelope is None
 
     def test_a_tool_error_carrying_wire_json_is_read_as_the_wire(self):
@@ -104,7 +103,6 @@ class TestMcpDoesNotSynthesize:
         result = McpDispatcher().dispatch(_raising_env(ToolError(json.dumps(envelope))))
 
         assert result.wire_error_envelope == envelope
-        assert result._synthesized_error_envelope is None
 
     def test_a_wire_error_carrying_the_captured_envelope_is_read_as_the_wire(self):
         """The second capture path: the ``WireError`` production actually raises.
@@ -127,7 +125,6 @@ class TestMcpDoesNotSynthesize:
         result = McpDispatcher().dispatch(_raising_env(WireError(envelope)))
 
         assert result.wire_error_envelope == envelope
-        assert result._synthesized_error_envelope is None
 
 
 class TestOnlyTheTransportWithNoWireMaySynthesize:
@@ -145,10 +142,13 @@ class TestOnlyTheTransportWithNoWireMaySynthesize:
 
     @pytest.mark.parametrize("dispatcher", [A2ADispatcher, McpDispatcher, RestDispatcher])
     def test_a_transport_that_has_a_wire_never_synthesizes(self, dispatcher):
-        """BOTH fields, not just the private one (Chris SF3, #1802 review).
+        """``wire_error_envelope is None`` is the whole assertion now.
 
-        Asserting only ``_synthesized_error_envelope is None`` grades the
-        channel that was already closed and leaves the one that matters open.
+        This once asserted a second, private ``_synthesized_error_envelope``
+        field as well. That field is deleted with ``Transport.IMPL``: nothing
+        synthesizes an envelope any more, so there is no channel to close. The
+        review that added the pair (Chris SF3, #1802) named the private half as
+        the one that did NOT redden, so nothing that graded is lost.
         The deleted fallback (then in ``tests/harness/dispatchers.py``, now one
         unwrap per transport family in ``tests/harness/client.py``) did not put
         a rebuilt envelope in the private field -- it handed it back under
@@ -164,5 +164,4 @@ class TestOnlyTheTransportWithNoWireMaySynthesize:
         """
         result = dispatcher().dispatch(_raising_env(_an_error()))
 
-        assert result._synthesized_error_envelope is None
         assert result.wire_error_envelope is None

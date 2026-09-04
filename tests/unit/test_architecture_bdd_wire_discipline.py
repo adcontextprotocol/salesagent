@@ -357,7 +357,7 @@ def _is_ctx_wire_envelope_get(node: ast.AST) -> bool:
         and fn.value.id == "ctx"
         and bool(node.args)
         and isinstance(node.args[0], ast.Constant)
-        and node.args[0].value in {"wire_error_envelope", "synthesized_error_envelope"}
+        and node.args[0].value == "wire_error_envelope"
     )
 
 
@@ -548,7 +548,7 @@ def test_no_hand_rolled_envelope_parsing() -> None:
         _HAND_ROLLED_PARSING_ALLOWLIST,
         fix_hint=(
             "An error Then-step hand-rolls envelope/error parsing (bare getattr(error, "
-            "'error_code', ...) or ctx.get('wire_error_envelope'/'synthesized_error_envelope')). "
+            "'error_code', ...) or ctx.get('wire_error_envelope')). "
             "Use ctx['result'].assert_wire_error(code, recovery=...) instead "
             "(tests/harness/transport.py) -- the single sanctioned envelope-parsing mechanism. "
             "See then_error_code / then_declaration_rejected for the reference pattern."

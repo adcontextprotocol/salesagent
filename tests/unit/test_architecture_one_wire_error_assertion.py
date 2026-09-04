@@ -56,7 +56,7 @@ def _offending_calls() -> list[str]:
             if name != "assert_envelope_shape":
                 continue
             first = ast.unparse(node.args[0])
-            if "wire_error_envelope" in first or "synthesized_error_envelope" in first:
+            if "wire_error_envelope" in first:
                 bad.append(f"{rel}:{node.lineno}: assert_envelope_shape({first})")
     return bad
 

@@ -395,7 +395,6 @@ class TransportResult:
     raw_response: Any = None
     wire_response: dict[str, Any] | None = None
     wire_error_envelope: dict[str, Any] | None = None
-    _synthesized_error_envelope: dict[str, Any] | None = None
     has_wire: bool = field(kw_only=True)
 
     @property
@@ -537,8 +536,6 @@ class TransportResult:
         """
         if isinstance(self.wire_error_envelope, dict):
             return self.wire_error_envelope
-        if not self.has_wire and isinstance(self._synthesized_error_envelope, dict):
-            return self._synthesized_error_envelope
         return None
 
     def require_wire(self) -> dict[str, Any]:
