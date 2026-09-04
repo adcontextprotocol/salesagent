@@ -214,7 +214,7 @@ cannot show that:
 | `sync_creatives` | the largest domain step module, 300 steps |
 | `update_media_buy` | the heaviest payload-table user, 259 lines of `a valid update_media_buy request with:` |
 | `get_media_buys` | a query shape rather than a mutation |
-| `complete_task` | a task tool, `rest=None` today, so its REST binding appears during the boundary work |
+| `complete_task` | a task tool with a path parameter — `POST /tasks/{task_id}/complete` |
 
 Each pilot scenario is migrated, run, and compared against its own pre-migration
 outcome using the fallout differ (`scripts/compare_test_runs.py`). **A migrated
