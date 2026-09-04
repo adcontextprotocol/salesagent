@@ -177,24 +177,76 @@ a test asserting the vocabulary is used correctly; the vocabulary is the enforce
 
 Each step leaves the tree green and is independently revertible.
 
-1. **Decide the 20 never-loaded feature files.** Wire them or delete them. Migrating 2297
-   lines of vocabulary that no test module loads is the largest available waste, and the
-   answer changes the size of every step below. This is the first question, not a cleanup.
-2. **Delete `Transport.IMPL`**, and fix the generator rule that emits transport-pinned
-   sentences. Both are deletions with no vocabulary dependency.
-3. **Add request factories** to `tests/factories/`, absorbing the three fallback baseline
-   vocabularies and the `cpm-standard` label that leaks as an id at ~20 sites.
-4. **Build the ~32 Given primitives and the one When primitive**, with the two modifiers
-   and three events. Give each of the five duplication clusters its single owner as part
-   of this — they are the same work seen from the implementation side.
-5. **Make response grading automatic**, resolved from the tool rather than named by the
-   scenario.
-6. **Migrate**, once. Per scenario the question is "which states does this need, with which
-   parameters" — not "how do I reword this sentence". Split by shape: the 671
-   validation-shaped scenarios are candidates for generated properties rather than hand
-   migration; the rest are logic and get thinner, because payload and grading are both
-   derived by then.
+1. **Keep the 20 never-loaded feature files.** They are not deleted and not wired
+   yet. The method for handling them comes out of migrating the connected ones —
+   until a scenario has been migrated by hand it is not known what a never-loaded
+   scenario costs to wire, or whether wiring it is worth more than deleting it.
+   Deciding that now would be deciding it uninformed.
+2. **Delete `Transport.IMPL`, and fix the generator rule that emits
+   transport-pinned sentences.** Both are deletions with no vocabulary dependency
+   and no scenario to migrate. The generator half is the durable one: patching the
+   73 pinned sentences in the feature files regresses on the next generation pass.
+3. **Add request factories** to `tests/factories/`, absorbing the three fallback
+   baseline vocabularies and the `cpm-standard` label that leaks as an id at ~20
+   sites.
+4. **Build the ~32 Given primitives and the one When primitive**, with the two
+   modifiers and three events. Give each of the five duplication clusters its
+   single owner as part of this — they are the same work seen from the
+   implementation side.
+5. **Make response grading automatic**, resolved from the tool rather than named
+   by the scenario.
 
-Steps 1–2 can start immediately and depend on nothing. Steps 3–5 depend on the boundary
-work landing. Step 6 depends on all of them, and doing it earlier means opening every
-scenario twice.
+## The migration itself is phased, not a pass
+
+Step 6 is not "migrate 2772 scenarios". A single pass over a corpus this size,
+with a vocabulary that has never been used in anger, produces a method invented
+halfway through and applied inconsistently to everything before it.
+
+### Phase A — a pilot, across deliberately different tools
+
+Migrate a small number of scenarios by hand. Pick them so the shapes differ,
+because the point is to find where the vocabulary does not fit, and one tool
+cannot show that:
+
+| candidate | why this one |
+|---|---|
+| `get_products` | the widest DTO — 21 declared fields against 5 the implementation reads |
+| `sync_creatives` | the largest domain step module, 300 steps |
+| `update_media_buy` | the heaviest payload-table user, 259 lines of `a valid update_media_buy request with:` |
+| `get_media_buys` | a query shape rather than a mutation |
+| `complete_task` | a task tool, `rest=None` today, so its REST binding appears during the boundary work |
+
+Each pilot scenario is migrated, run, and compared against its own pre-migration
+outcome using the fallout differ (`scripts/compare_test_runs.py`). **A migrated
+scenario must fail for the same reason it failed before, or pass for the same
+reason it passed.** A scenario that starts passing during migration has two
+possible causes and only one of them is progress — see
+[xpass-graduation](../../.claude/rules/workflows/xpass-graduation.md).
+
+### Phase B — extract the method from what the pilot taught
+
+The pilot's output is not migrated scenarios; it is the **method**: which
+primitive covers which sentence, what a translator does when none fits, how a
+payload table becomes a baseline plus overrides, and what evidence closes one
+scenario. Write it down as a procedure a fresh agent can follow without having
+seen the pilot.
+
+This is also where the 20 never-loaded files get decided, informed by what a
+migration actually cost.
+
+### Phase C — parallelize and batch
+
+With the method written and proven on five different tools, the remaining work is
+batchable: scenarios are independent, the vocabulary is fixed, and the verdict per
+scenario is mechanical (the outcome transition). That is the shape cloud workflows
+handle well — many small independent units against a fixed procedure, each with
+its own pass/fail evidence.
+
+Batch by **tool**, not by feature file, so a batch shares one request factory, one
+set of Given primitives, and one response schema. Split the 671 validation-shaped
+scenarios out of the batches entirely: after step 5 they are assertions about the
+schema, and the question for each is whether it should be a hand-written scenario
+at all rather than a generated property.
+
+Phases A and B are sequential and small. Only Phase C is large, and it does not
+start until the method exists.
