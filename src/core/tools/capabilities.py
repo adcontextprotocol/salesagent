@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Annotated
 
-from adcp.types import ContextObject, GetAdcpCapabilitiesRequest, GetAdcpCapabilitiesResponse
+from adcp.types import ContextObject, GetAdcpCapabilitiesResponse
 from adcp.types.generated_poc.core.media_buy_features import MediaBuyFeatures
 from adcp.types.generated_poc.core.postal_area_support import (
     PostalAreaSupport,  # adcp 6.6: standalone GeoPostalAreas removed; capabilities use PostalAreaSupport
@@ -63,7 +63,7 @@ from src.core.helpers.adapter_helpers import (
     get_targeting_capabilities_override,
 )
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.schemas import Error
+from src.core.schemas import Error, GetAdcpCapabilitiesRequest
 from src.core.schemas.capability_declarations import (
     DEFAULT_SPECIALISMS,
     DEFAULT_SUPPORTED_PROTOCOLS,

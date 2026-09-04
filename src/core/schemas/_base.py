@@ -45,9 +45,11 @@ from adcp.types import Format as LibraryFormat
 
 # Import types from stable API (per adcp 2.7.0+)
 from adcp.types import FormatId as LibraryFormatId
+from adcp.types import GetAdcpCapabilitiesRequest as LibraryGetAdcpCapabilitiesRequest
 from adcp.types import GetMediaBuysRequest as LibraryGetMediaBuysRequest
 from adcp.types import GetMediaBuysResponse as LibraryGetMediaBuysResponse
 from adcp.types import GetTaskStatusResponse as LibraryGetTaskStatusResponse
+from adcp.types import ListTasksRequest as LibraryListTasksRequest
 from adcp.types import ListTasksResponse as LibraryListTasksResponse
 from adcp.types import PackageRequest as LibraryPackageRequest
 
@@ -3418,6 +3420,24 @@ class TaskSummary(LibraryTaskSummary):
     )
     error_message: str | None = Field(default=None, description="Non-spec: failure detail when the task failed")
     summary: dict[str, Any] | None = Field(default=None, description="Non-spec: request highlights")
+
+
+class GetAdcpCapabilitiesRequest(LibraryGetAdcpCapabilitiesRequest):
+    """Extends the pinned GetAdcpCapabilitiesRequest.
+
+    Adds nothing, and that is the point. The tool registry names the class WE own, never
+    the library model: a row pointing at the SDK class could never be narrowed, because
+    ``@omit_declared`` would pop fields off a model shared with every other consumer of
+    ``adcp.types``. An empty subclass is the correct starting shape -- the statement is
+    ownership, not content.
+    """
+
+
+class ListTasksRequest(LibraryListTasksRequest):
+    """Extends the pinned ListTasksRequest.
+
+    Adds nothing, for the same reason as :class:`GetAdcpCapabilitiesRequest` above.
+    """
 
 
 class ListTasksResponse(LibraryListTasksResponse):
