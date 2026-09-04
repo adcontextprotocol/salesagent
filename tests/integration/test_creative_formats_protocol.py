@@ -202,7 +202,7 @@ class TestMcpToolResultWrapping:
         structured_content is the ListCreativeFormatsResponse data,
         parseable as JSON.
         """
-        from src.core.tools.creative_formats import list_creative_formats
+        from tests.helpers.capture_wrapper_req import mcp_tool
 
         formats = [
             _make_format("display_300", "Medium Rectangle"),
@@ -219,7 +219,7 @@ class TestMcpToolResultWrapping:
             mock_ctx = MagicMock(spec=Context)
             mock_ctx.get_state = AsyncMock(return_value=env.identity_for(Transport.MCP))
 
-            tool_result = asyncio.run(list_creative_formats(ctx=mock_ctx))
+            tool_result = asyncio.run(mcp_tool("list_creative_formats")(ctx=mock_ctx))
 
         # Verify it is a ToolResult
         assert isinstance(tool_result, ToolResult)
@@ -234,7 +234,7 @@ class TestMcpToolResultWrapping:
 
     def test_mcp_tool_result_content_is_text(self, integration_db):
         """UC-005-MAIN-MCP-17: ToolResult.content contains displayable text."""
-        from src.core.tools.creative_formats import list_creative_formats
+        from tests.helpers.capture_wrapper_req import mcp_tool
 
         formats = [_make_format("test_fmt", "Test Format")]
 
@@ -248,7 +248,7 @@ class TestMcpToolResultWrapping:
             mock_ctx = MagicMock(spec=Context)
             mock_ctx.get_state = AsyncMock(return_value=env.identity_for(Transport.MCP))
 
-            tool_result = asyncio.run(list_creative_formats(ctx=mock_ctx))
+            tool_result = asyncio.run(mcp_tool("list_creative_formats")(ctx=mock_ctx))
 
         # content is a list of TextContent objects with displayable text
         assert tool_result.content is not None
@@ -259,7 +259,7 @@ class TestMcpToolResultWrapping:
 
     def test_mcp_structured_content_includes_formats_array(self, integration_db):
         """UC-005-MAIN-MCP-17: structured_content contains 'formats' key."""
-        from src.core.tools.creative_formats import list_creative_formats
+        from tests.helpers.capture_wrapper_req import mcp_tool
 
         formats = [
             _make_format("fmt_a", "Format A"),
@@ -276,7 +276,7 @@ class TestMcpToolResultWrapping:
             mock_ctx = MagicMock(spec=Context)
             mock_ctx.get_state = AsyncMock(return_value=env.identity_for(Transport.MCP))
 
-            tool_result = asyncio.run(list_creative_formats(ctx=mock_ctx))
+            tool_result = asyncio.run(mcp_tool("list_creative_formats")(ctx=mock_ctx))
 
         sc = tool_result.structured_content
         assert "formats" in sc

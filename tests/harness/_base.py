@@ -969,13 +969,13 @@ class BaseTestEnv:
             # into a VALIDATION_ERROR and the scenario fails for a reason it never intended
             # to test; in production it would be silently ignored, which is worse -- the
             # harness would be grading a request the buyer could not actually make.
-            import inspect as _inspect
 
             req_fields = req.model_dump(exclude_none=True)
-            tool_fn = getattr(self, "_mcp_tool_callable", None)
-            if tool_fn is not None:
-                accepted = set(_inspect.signature(tool_fn).parameters)
-                req_fields = {k: v for k, v in req_fields.items() if k in accepted}
+            # No narrowing. This filtered req fields down to a hand-written wrapper's
+            # parameter list -- "accepted = DTO fields INTERSECT wrapper parameters" -- which
+            # is exactly the intersection the registry removed. The DTO IS the accepted shape
+            # on every transport now, so a field the request carries is a field the tool
+            # takes, and filtering could only drop one.
             # kwargs override req fields (explicit > implicit)
             arguments = {**req_fields, **kwargs}
         else:
