@@ -2219,6 +2219,17 @@ Feature: BR-UC-003 Update Media Buy
     Then the operation should fail
     And the error code should be "VALIDATION_ERROR"
     And the error should include "suggestion" field
+    And the suggestion should contain "authorized"
+    # LOCAL DIVERGENCE from the generated scenario — mirror upstream in adcp-req.
+    # The three Thens above are satisfied by ANY VALIDATION_ERROR carrying a
+    # suggestion, and on [mcp] one arrives for an unrelated reason: update_media_buy
+    # types its parameters, so the spec-defined `invoice_recipient` field (present in
+    # update-media-buy-request.json @ v3.1.1) is refused as an "Unexpected keyword
+    # argument" before any authorization check runs. That made this strict-xfail
+    # XPASS on [mcp] alone while the production gap it ledgers — BR-RULE-214 is not
+    # implemented on any transport — was untouched. The suggestion is what tells the
+    # two refusals apart: POST-F3 below requires it to offer an AUTHORIZED recipient,
+    # which a schema-shape rejection cannot say.
     # BR-RULE-214 INV-8: invoice_recipient override must be authorized for the account before the operation proceeds
     # POST-F1: System state unchanged (no billing redirected); POST-F3: omit override or supply an authorized recipient
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json
