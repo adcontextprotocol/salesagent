@@ -1,23 +1,66 @@
 # Handoff — merging `main` into `feat/rfc9421-request-signing`
 
 **Branch:** `merge/main-into-rfc9421` (worktree `/srv/ws/salesagent/a3-merge-main`)
-**Not** fast-forwarded onto `feat/rfc9421-request-signing` — the suite is not yet green.
-**State:** 18 commits, tree clean. **3 failures left, all `[e2e_rest]`, all in one scenario file.**
+**Not** fast-forwarded onto `feat/rfc9421-request-signing`.
+**State:** 21 commits, tree clean. The 3 `[e2e_rest]` failures are FIXED and
+mutation-verified. **A different blocker took their place: the 8-worker in-network gate
+now WEDGES.** See §0.
 
-Last full in-network run: `sa-e80d3f9d` → `test-results/innet_040926_1206/`.
-
-| suite | result |
+| suite | last known result |
 |---|---|
-| unit | 7735 passed, 0 failed |
-| integration | 3510 passed, 0 failed |
-| bdd_inprocess | 2444 passed, 0 failed, 5930 xfailed |
-| bdd_e2e | 586 passed, **3 failed**, 2023 xfailed |
-| e2e | 161 passed, 0 failed |
-| admin | 138 passed, 0 failed |
-| ui | 5 passed, 0 failed |
-| security-audit gate | OK |
+| unit | 7490 passed, 0 failed (local) |
+| integration | 0 failed (local, in the combined 5935-passed run) |
+| bdd_inprocess | 0 failed (local) |
+| **bdd_e2e** | **589 passed, 0 failed** — in-network, single-server, local (was 586 / 3) |
+| e2e / admin / ui | last green at `sa-e80d3f9d` / `test-results/innet_040926_1206/` |
 
-Down from ~21. Everything below §2 is done and verified; §2 is all that is left.
+---
+
+## 0. THE BLOCKER — the full gate wedges, reproducibly
+
+`cassini run` no longer completes. Twice in a row, on a DIFFERENT per-worker server
+each time (`server-gw7`, then `server-gw4`), one of the eight servers goes UNHEALTHY
+and the run sits quiet until killed. Both wedged at the identical point — the server's
+last line is a failed delivery to a capture endpoint programmed to answer 500:
+
+```
+httpx  POST https://webhooks.adcp.test:8443/webhook/<key> "HTTP/1.1 500 Internal Server Error"
+protocol_webhook_service  ERROR  Webhook for task mb_001 delivery did not succeed within the attempt budget
+<silence; healthcheck fails from here on>
+```
+
+**This is a latent hang that §3's fix EXPOSED, not one it introduced.** Before the fix
+no delivery ever left the server over e2e_rest (that was the bug), so the retry-ladder
+and circuit-breaker paths were never entered in the per-worker stack at all. They are
+entered now, and one of them does not return. The same fix exposed a second latent
+vacuity the same way (`T-UC-004-webhook-ssrf-blocked`, §3) — that one is fixed; this
+one is not.
+
+It did NOT reproduce locally: a full single-server in-network `bdd_e2e` ran clean in
+5m41s (589 passed). It needs the 8-worker `E2E_PER_WORKER` shape.
+
+Leads, in the order worth trying:
+
+1. **Which scenario.** The suspects are the retry/breaker family, which are exactly the
+   scenarios that moved from xfail to XPASS once deliveries became real (16 -> 17
+   xpassed): `test_persistent_webhook_failures_open_circuit_breaker`,
+   `test_successful_retry_records_delivery`,
+   `test_circuit_breaker_closes_after_successful_recovery_probes`. Run that family alone
+   under `E2E_PER_WORKER=1` and watch `docker ps` for an unhealthy server.
+2. **Is the event loop blocked?** The healthcheck stops answering, which is the
+   signature of a SYNC sleep on the loop rather than of a crash (a crash restarts, a
+   loop keeps logging). `WebhookDeliveryService._deliver_with_backoff` sleeps with
+   `time.sleep`; establish whether the admin trigger route reaches it on a thread or on
+   the loop.
+3. **Not the intervals.** Both were checked and are innocent: the server's
+   `DELIVERY_WEBHOOK_INTERVAL` is unset and defaults to 3600s (the batch seen in the log
+   is the STARTUP one, not a 5s loop — the `"5"` at docker-compose.e2e.yml :613 belongs
+   to the `tests` runner, not the server), and
+   `ADCP_WEBHOOK_BREAKER_TIMEOUT_SECONDS` is 5.
+
+Do not "fix" this by reverting §3. The three legs it repairs are graded, mutation-
+verified behaviour; the hang is a real defect that was simply unreachable while they
+were broken.
 
 ---
 
@@ -41,72 +84,16 @@ a `sign:` hook that had zero callers; that hook is what signing now uses.
 
 ---
 
-## 2. THE ONLY REMAINING WORK — 3 uc004 `[e2e_rest]` failures
+## 2. The three `[e2e_rest]` failures — SOLVED
 
-```
-tests/bdd/test_uc004_deliver_media_buy_metrics.py::test_bearer_token_webhook_authentication[e2e_rest]
-tests/bdd/test_uc004_deliver_media_buy_metrics.py::test_hmacsha256_signed_webhook_payload[e2e_rest]
-tests/bdd/test_uc004_deliver_media_buy_metrics.py::test_rfc_9421_signed_webhook_payload_when_no_authentication_block_is_registered[e2e_rest]
-```
-
-All three fail identically: `AssertionError: No webhook POST was made` — the capture
-service received nothing. All three pass on a2a/mcp/rest in-process.
-
-**These are a MERGE REGRESSION, not an uncharted gap.** All three carry
-`# Graduated e2e_rest (salesagent-n78j0.13 / .1.4)` comments in `tests/bdd/conftest.py`
-— they were passing on e2e_rest before this merge and #1802's egress seam broke them.
-
-### What is measured (do not re-derive)
-
-* The three that fail all seed AUTH MATERIAL: bearer credential, HMAC credential, or a
-  provisioned 9421 signing key. The sibling `@T-UC-004-webhook-notification-type`
-  registers no auth block and no key, delivers UNSIGNED, and **passes** on e2e_rest.
-  Auth material is the only axis that separates pass from fail.
-* Schemes are CANONICAL (`"HMAC-SHA256"`, `"Bearer"` — `_canonical_scheme` refuses
-  anything not in the pinned enum), so this is **not** the `scheme_not_in_spec` refusal
-  that explained the `test_webhook_signing_boundary` failures (§4 below). Credentials are
-  32 chars, so it is not `credentials_too_short` either.
-
-### One hypothesis KILLED — do not spend time on it
-
-`_persist_webhook_config_if_needed` is called behind
-`if getattr(env, "_session", None) is not None:` at four Given sites, which looks exactly
-like the silent-env skip the BDD guard forbids. **It is not the cause.** `_set_active_webhook`'s
-own docstring records that `BaseTestEnv` binds `_session` to the LIVE server's database
-when `e2e_config` is present (`_base.py` :1198-1212), and the PASSING notification-type
-scenario goes through the same guarded call. The row is written where the server reads it.
-
-### The live candidate, and how to settle it
-
-`protocol_webhook_service._deliver`'s own docstring names the mechanism: a tenant that CAN
-sign but whose material cannot be honestly resolved **raises out of
-`delivery_signer_for_tenant` before `adeliver_webhook` is called at all** — "there is no
-plain body to fall back to because none was ever serialized" — and the caller books it as
-an `unexpected` outcome with zero attempts. Zero attempts is exactly zero POSTs.
-
-`given_tenant_publishes_signing_key` mints through `env.provision_webhook_signing_key(monkeypatch)`,
-and a monkeypatched KEK in the RUNNER process is not the KEK the server container holds
-(`docker-compose.e2e.yml`'s `ADCP_SIGNING_DEV_KEK`) — see `tests/e2e/test_signing_key_kek_mismatch_e2e.py`,
-which exists because that mismatch is real. That covers the 9421 row directly. Whether it
-also covers the bearer/HMAC rows (which provision no key) is the open question — the seam
-is handed `signer=delivery_signer_for_tenant(tenant_id)` UNCONDITIONALLY on every arm, so a
-raise there kills a legacy delivery too.
-
-**Settle it by reading the SERVER's log, not by reasoning.** The refusal/raise is logged by
-the container, not by the runner, so the pytest output cannot show it:
-
-```bash
-cassini run ci tests/bdd/test_uc004_deliver_media_buy_metrics.py -k "webhook_bearer or webhook_hmac or webhook_9421"
-# then, on the box, the app container's stderr for that run:
-#   "Unexpected error sending webhook for task ..."   -> the signer raised (KEK mismatch)
-#   "Refusing to send webhook ... [<reason>]"          -> refused_auth, and <reason> names which
-```
-
-If it is the signer raise, the fix is in the Given (provision through a path the server can
-resolve, as `tests/e2e/_signing_e2e.py` does) — **not** in production, which is behaving as
-designed and fail-closed.
-
----
+Root-caused by driving the in-network stack locally and reading the SERVER's log (the
+runner cannot see why a delivery did not happen). It said
+`Cannot trigger report: No reporting_webhook configured for mb-001` — the delivery never
+started. Three defects in a chain, each hidden by the one before it; see commit
+`868f9c06b` for the full account. Verified by mutation on all three legs (wrong-but-
+present bearer token, dropped 9421 signing arm, wrong legacy HMAC secret — each turns
+its leg RED). Note the server holds the module in memory: a mutation needs a container
+restart, and the first attempt without one survived and proved only that.
 
 ## 3. What was done this session
 
@@ -248,9 +235,13 @@ Shell state does not persist between tool calls; sourcing a file is what makes i
 
 ## 5. Recommended order
 
-1. §2 — the three `[e2e_rest]` rows. Read the SERVER's log; do not reason from the runner's.
+1. §0 — the wedge. It is the only thing between this branch and a green gate.
 2. `cassini run`, confirm green.
-3. Decide on the 5 new `origin/main` commits (§1).
-4. **Only then** fast-forward `feat/rfc9421-request-signing` to this branch.
+3. Consider graduating the e2e_rest scenarios that now xpass (16 -> 17), ONE AT A TIME
+   under `.claude/rules/workflows/xpass-graduation.md`. Deliberately not done in §3's
+   change; several of them only xpass because deliveries became observable, which is
+   exactly the situation that protocol exists to inspect rather than rubber-stamp.
+4. Decide on the 5 new `origin/main` commits (§1).
+5. **Only then** fast-forward `feat/rfc9421-request-signing` to this branch.
 
 Do not fast-forward while red — it buries the remaining work in a branch that looks finished.
