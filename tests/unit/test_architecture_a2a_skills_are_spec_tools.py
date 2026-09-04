@@ -10,13 +10,10 @@ must be renamed onto their spec operation. Adding a row is not an option -- a ne
 skill either names a spec tool or does not ship.
 """
 
-import ast
-from pathlib import Path
-
 import pytest
 from adcp.server.mcp_tools import ADCP_TOOL_DEFINITIONS
 
-A2A_SERVER = Path("src/a2a_server/adcp_a2a_server.py")
+from tests.helpers.a2a_skill_map import registered_skill_names
 
 #: skill name -> the spec operation it must be renamed onto. Entries may only be REMOVED.
 _PENDING_SPEC_RENAMES = {
@@ -35,29 +32,15 @@ def _spec_tool_names() -> set[str]:
     return {t["name"] for t in ADCP_TOOL_DEFINITIONS}
 
 
-def _registered_skill_names() -> set[str]:
-    """The keys of the skill_handlers map, read out of the source.
-
-    Parsed rather than imported: constructing AdCPRequestHandler pulls in the whole
-    server, and the obligation is about what the map DECLARES.
-    """
-    tree = ast.parse(A2A_SERVER.read_text(), filename=str(A2A_SERVER))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            if node.target.id == "skill_handlers" and isinstance(node.value, ast.Dict):
-                return {k.value for k in node.value.keys if isinstance(k, ast.Constant)}
-    raise AssertionError("skill_handlers map not found — this guard is reading the wrong shape")
-
-
 def test_the_map_was_actually_found():
     """Guard the guard: an empty read would make every assertion below vacuous."""
-    skills = _registered_skill_names()
+    skills = registered_skill_names()
     assert len(skills) >= 10, f"only found {sorted(skills)} — the AST read is not seeing the map"
 
 
 def test_every_skill_names_a_spec_tool():
     """No skill may exist that the pinned spec does not define."""
-    off_spec = _registered_skill_names() - _spec_tool_names() - set(_PENDING_SPEC_RENAMES)
+    off_spec = registered_skill_names() - _spec_tool_names() - set(_PENDING_SPEC_RENAMES)
     assert not off_spec, (
         f"A2A skills not defined by the pinned AdCP version: {sorted(off_spec)}. "
         f"tool === skill === REST RPC route — a skill outside the spec is a private surface. "
@@ -70,7 +53,7 @@ def test_pending_rename_entries_are_not_stale(skill):
     """An allowlisted rename must still be off-spec, and its target must be a real tool."""
     spec = _spec_tool_names()
     assert skill not in spec, f"{skill!r} IS defined by the pinned spec now — remove it from _PENDING_SPEC_RENAMES."
-    assert skill in _registered_skill_names(), (
+    assert skill in registered_skill_names(), (
         f"{skill!r} is no longer a registered skill — remove it from _PENDING_SPEC_RENAMES."
     )
 
