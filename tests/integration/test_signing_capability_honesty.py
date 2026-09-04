@@ -336,6 +336,7 @@ class TestDeclaredAlgorithmsEqualTheEmittedOne:
         set.
         """
         from src.services.protocol_webhook_service import ProtocolWebhookService
+        from tests.factories.webhook import WebhookTaskContextFactory
 
         seeded = _seed(honesty_env, virtual_host="seller-algs.example.com", keyed=True)
         config = _register_receiver(seeded)
@@ -349,11 +350,20 @@ class TestDeclaredAlgorithmsEqualTheEmittedOne:
                 ProtocolWebhookService().send_notification(
                     config,
                     {"event": "media_buy_status", "adcp_version": "3.1.1"},
-                    {
-                        "task_type": "media_buy_status",
-                        "tenant_id": seeded.tenant_id,
-                        "principal_id": seeded.principal.principal_id,
-                    },
+                    # The TYPED context. ``send_notification`` takes
+                    # ``task: WebhookTaskContext`` and reads it as an object
+                    # (``ctx.tenant_id``), so the retired three-key dict reached
+                    # ``_send_with_retry_and_logging`` and died on an AttributeError
+                    # before any webhook was emitted — the delivery this test compares
+                    # the declared algorithms against never happened. Through the
+                    # factory rather than a literal: the dataclass requires all seven
+                    # fields, and the literal is what three modules had already spelled
+                    # separately.
+                    WebhookTaskContextFactory(
+                        task_type="media_buy_status",
+                        tenant_id=seeded.tenant_id,
+                        principal_id=seeded.principal.principal_id,
+                    ),
                 )
             )
 

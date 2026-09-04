@@ -450,7 +450,24 @@ class TestSendWebhookEnhancedHappyPath:
             assert result is True
             assert env.delivery_attempts == 1
             assert env.last_delivery.path == "/webhook"
-            assert env.last_delivery.json() == payload
+            # The caller's payload PLUS the one field the sender owns. AdCP 3.1.1
+            # docs/building/by-layer/L3/webhooks.mdx :195 — "Every webhook payload
+            # carries a required ``idempotency_key``" — and :253 names delivery-report
+            # events specifically, since they have no ``notification_id`` to dedupe on.
+            # Graded by dist/compliance/3.1.1/universal/webhook-emission.yaml step
+            # ``idempotency_key_presence``.
+            #
+            # Popped and asserted SEPARATELY rather than folded into the expected dict:
+            # the key is minted per event, so an equality against a literal is
+            # impossible, and the point of the remaining equality is that the sender
+            # adds nothing ELSE to the buyer's document.
+            delivered = env.last_delivery.json()
+            minted = delivered.pop("idempotency_key", None)
+            assert isinstance(minted, str) and minted, (
+                "the delivery-report body carried no idempotency_key, so a receiver cannot dedupe a "
+                f"retry of this event from a new one; body was {delivered!r}"
+            )
+            assert delivered == payload
 
     def test_no_configs_returns_false(self, integration_db):
         """When no PushNotificationConfig exists, _send_webhook_enhanced returns False.

@@ -176,6 +176,13 @@ class TestConfigForCarriesTheWholeRow:
             auth={"type": STORED_AUTH_TYPE, "credentials": STORED_CREDENTIALS},
             auth_header=STORED_AUTH_HEADER,
             timeout=STORED_TIMEOUT,
+            # NAMED, not left to its ``None`` default, and this is the field the
+            # exact-equality style above exists for: ``config_for`` reads tenant_id
+            # because it SELECTS THE SIGNING KEY, so a probe config built without it
+            # dials UNSIGNED while production's config for the same row dials signed
+            # (``signals_agent_registry.config_for`` states exactly this). Defaulting
+            # it here would assert the divergence away.
+            tenant_id=TENANT_ID,
         )
 
     def test_creative_config_for_leaves_auth_absent_when_the_row_stores_none(self, tenant):

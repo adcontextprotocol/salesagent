@@ -853,10 +853,37 @@ class WebhookDeliveryService:
         # we should be making; its owner re-registers. Do NOT re-add a local
         # tolerance here -- that reinstates the divergence this seam removed.
         #
-        # ``payload`` is passed UNTOUCHED. ``tenant_id`` and ``idempotency_key`` stay
-        # on the queue entry and are NOT merged into it: a dispatch-level value folded
-        # into a request body is a defect this merge has already paid for once, and
-        # here it would additionally change the bytes the signature covers.
+        # ``idempotency_key`` IS merged into the body, and ``tenant_id`` is not. The
+        # two are not the same kind of value, which is what an earlier "no
+        # dispatch-level value belongs in a request body" rule here got wrong:
+        # ``tenant_id`` is routing, while ``idempotency_key`` is a REQUIRED PAYLOAD
+        # FIELD of the AdCP webhook document.
+        #
+        # Spec grounding, AdCP 3.1.1 (the pinned version):
+        # docs/building/by-layer/L3/webhooks.mdx :195 -- "Every webhook payload
+        # carries a required ``idempotency_key`` -- a sender-generated key that is
+        # stable across retries of the same event. This is the canonical dedup
+        # field"; and :253 names THIS sender's events specifically -- "For
+        # delivery-report data events such as ``scheduled``, ``final``, ``delayed``,
+        # and ``adjusted``, ``notification_id`` is absent by design; dedupe the
+        # transport event with ``idempotency_key``". Graded by
+        # dist/compliance/3.1.1/universal/webhook-emission.yaml step
+        # ``idempotency_key_presence`` ("Absence of the field or a pattern mismatch
+        # fails the phase").
+        #
+        # Withholding it is therefore not a conservative choice: this sender's whole
+        # reason to exist is retrying ONE event (refuse/refuse/accept), and without
+        # the key a conformant receiver treats all three attempts as three distinct
+        # events and applies the side effects three times.
+        #
+        # It DOES change the bytes the signature covers, which is correct: the key is
+        # part of the document, so it must be inside the digest, and it is merged HERE
+        # -- before the seam serializes -- rather than at the receiver's edge. The
+        # signature stays fresh per attempt while the key stays constant across them;
+        # those are different fields and only the key is stable by contract.
+        #
+        # Merged kwarg-last, the same spelling ``ProtocolWebhookService._deliver``
+        # uses, so the two senders cannot disagree about which value wins.
         #
         # No ``field=``: this URL is read back out of storage, not off a request
         # document. Every log names ``safe_url`` (scheme://host/path), never the raw
@@ -872,7 +899,7 @@ class WebhookDeliveryService:
         try:
             outcome = deliver_webhook(
                 webhook_data.url,
-                payload,
+                {**payload, "idempotency_key": webhook_data.idempotency_key},
                 scheme=webhook_data.authentication_type,
                 credentials=webhook_data.authentication_token,
                 headers=headers,

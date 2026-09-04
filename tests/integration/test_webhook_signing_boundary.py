@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -194,13 +195,18 @@ def _protocol_notification_payload() -> dict[str, Any]:
     }
 
 
-def _send_protocol_notification(config: Any, payload: dict[str, Any]) -> CapturedWebhook:
-    """Deliver through ``ProtocolWebhookService`` — the already-async AdCP sender."""
+def _attempt_protocol_notification(config: Any, payload: dict[str, Any]) -> tuple[bool, list[CapturedWebhook]]:
+    """Drive ``ProtocolWebhookService`` and report what became of the delivery.
+
+    Returns the sender's own verdict alongside the captured POSTs, because a
+    refusal is graded on BOTH: zero bytes on the wire, and a sender that says so.
+    :func:`_send_protocol_notification` is the delivered-path narrowing of this.
+    """
     from src.services.protocol_webhook_service import ProtocolWebhookService
     from tests.factories.webhook import WebhookTaskContextFactory
 
     with capture_outbound_webhooks() as captured:
-        asyncio.run(
+        delivered = asyncio.run(
             ProtocolWebhookService().send_notification(
                 config,
                 payload,
@@ -216,6 +222,12 @@ def _send_protocol_notification(config: Any, payload: dict[str, Any]) -> Capture
             )
         )
 
+    return delivered, captured
+
+
+def _send_protocol_notification(config: Any, payload: dict[str, Any]) -> CapturedWebhook:
+    """Deliver through ``ProtocolWebhookService`` — the already-async AdCP sender."""
+    _delivered, captured = _attempt_protocol_notification(config, payload)
     return _exactly_one(captured, "media_buy_status push notification")
 
 
@@ -549,12 +561,9 @@ class TestSignedBytesAreTheBytesSent:
         ("authentication_type", "credential_header"),
         [
             ("HMAC-SHA256", "x-adcp-signature"),
-            ("hmac-sha256", "x-adcp-signature"),
             ("Bearer", "authorization"),
-            ("bearer", "authorization"),
-            ("basic", "authorization"),
         ],
-        ids=["hmac-canonical", "hmac-lower", "bearer-title", "bearer-lower", "basic-lower"],
+        ids=["hmac-canonical", "bearer-title"],
     )
     def test_legacy_registration_is_authenticated_and_unsigned_on_the_wire(
         self, integration_db, signing_env, authentication_type, credential_header
@@ -565,10 +574,8 @@ class TestSignedBytesAreTheBytesSent:
         for the receiver, which is what the buyer actually experiences. Two claims,
         and each one has failed in production:
 
-        * the registered credential is ON the delivery — lowercase ``bearer`` is the
-          shape ``order_approval_service`` and ``webhook_delivery_service`` write,
-          while ``protocol_webhook_service`` matches only ``"Bearer"``, so today
-          that buyer gets no credential at all;
+        * the registered credential is ON the delivery — a registration this seller
+          accepted must not be silently ignored at delivery time;
         * and NO RFC 9421 headers ride along — security.mdx @ v3.1.1 :1425 forbids
           signing one webhook both ways, and :1466 has the receiver answer
           ``webhook_mode_mismatch``.
@@ -576,6 +583,16 @@ class TestSignedBytesAreTheBytesSent:
         Only the PRESENCE of the credential header is pinned, not its exact value:
         which legacy header a scheme maps onto is the boundary's to decide, whereas
         "the buyer's registration was honoured at all" is the contract.
+
+        THE TWO SPELLINGS PINNED HERE ARE THE PINNED ENUM'S OWN
+        (``AuthenticationScheme`` @ v3.1.1 = ``["Bearer", "HMAC-SHA256"]``). This
+        parametrization used to carry ``hmac-sha256``, ``bearer`` and ``basic``
+        rows asserting the SAME delivered outcome; they moved to
+        :meth:`test_a_scheme_outside_the_pinned_enum_is_refused_not_downgraded`
+        when #1802's egress seam made an out-of-spec stored scheme a refusal
+        rather than a delivery. Do not re-add them here — the obligation they
+        carried ("the registration was not silently ignored") is stronger on the
+        refusal, which says so out loud.
         """
         seeded = _seed_tenant_with_key(signing_env)
         _key_is_live(seeded.repo, just_after_provisioning())
@@ -592,6 +609,63 @@ class TestSignedBytesAreTheBytesSent:
             f"a {authentication_type!r} receiver was ALSO sent an RFC 9421 signature; security.mdx @ v3.1.1 "
             ":1425 forbids signing the same webhook both ways and :1466 makes the receiver answer "
             "webhook_mode_mismatch"
+        )
+
+    @pytest.mark.parametrize(
+        "authentication_type",
+        ["hmac-sha256", "bearer", "basic"],
+        ids=["hmac-lower", "bearer-lower", "basic"],
+    )
+    def test_a_scheme_outside_the_pinned_enum_is_refused_not_downgraded(
+        self, integration_db, signing_env, authentication_type, caplog
+    ):
+        """A stored scheme the pin does not name yields NO delivery, and says so.
+
+        ``AuthenticationScheme`` @ v3.1.1 is exactly ``["Bearer", "HMAC-SHA256"]``
+        (``core/push-notification-config.json``, read off the pinned SDK), so a row
+        holding ``hmac-sha256``, ``bearer`` or ``basic`` names an authentication this
+        seller cannot conformantly produce. #1802's egress seam answers that with
+        ``refused_auth``/``scheme_not_in_spec`` before anything is serialized —
+        Epic D owner ruling #2, restated at the call site in
+        ``protocol_webhook_service._deliver``: "a buyer who asked for an
+        authentication this seller cannot conformantly produce gets no delivery,
+        rather than an unauthenticated POST it can neither verify nor attribute."
+
+        These three rows are UNREACHABLE through any write path today — every one
+        normalizes through the pinned model (``ValidatedWebhookRegistration
+        .authentication_type`` reads ``schemes[0]`` off it), and the ingest gate
+        refuses the lowercase spelling outright
+        (``test_webhook_hmac_credentials_ingest_refusal.py``). They are seeded
+        directly by the factory because the state they represent is a row written
+        BEFORE that gate existed, and what happens to those rows is the thing worth
+        pinning.
+
+        THE ASSERTION IS THE ABSENCE PLUS THE ANNOUNCEMENT, and both halves are
+        load-bearing. Zero captures alone is equally true of a sender that crashed;
+        ``delivered is False`` alone is equally true of one that POSTed and got a
+        500. The failure mode this rules out is the third option — a silent
+        downgrade to an unauthenticated POST, which would show one capture with no
+        credential header.
+        """
+        seeded = _seed_tenant_with_key(signing_env)
+        _key_is_live(seeded.repo, just_after_provisioning())
+        config = _register_receiver(seeded, authentication_type=authentication_type, authentication_token=_SECRET)
+
+        with caplog.at_level(logging.ERROR, logger="src.core.security.webhook_egress"):
+            delivered, captured = _attempt_protocol_notification(config, _protocol_notification_payload())
+
+        assert captured == [], (
+            f"a receiver stored with the out-of-spec scheme {authentication_type!r} was POSTed to anyway: "
+            f"{[sorted(sent.headers.keys()) for sent in captured]}. The seam must refuse before serializing, "
+            "not downgrade to an unauthenticated delivery the buyer can neither verify nor attribute"
+        )
+        assert delivered is False, (
+            f"send_notification reported success for a {authentication_type!r} registration it refused to "
+            "deliver — a caller reading the bool would record a webhook the buyer never received"
+        )
+        assert "scheme_not_in_spec" in caplog.text and authentication_type in caplog.text, (
+            f"the refusal of scheme {authentication_type!r} was not announced as scheme_not_in_spec naming the "
+            f"scheme, so the registration's owner has nothing to act on; log was:\n{caplog.text}"
         )
 
 
