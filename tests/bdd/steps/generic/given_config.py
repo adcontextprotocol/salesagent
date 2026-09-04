@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from pytest_bdd import given, parsers, when
 
 from tests.bdd.steps.generic._registry import sync_registry as _sync_registry
+from tests.bdd.steps.generic._table import rows as table_rows
 from tests.factories.format import (
     CATEGORY_MAP,
     FormatFactory,
@@ -47,8 +48,7 @@ def _datatable_to_dicts(datatable: Sequence[Sequence[object]]) -> list[dict[str,
     The first row is treated as column headers. Remaining rows become dicts
     keyed by those headers.
     """
-    headers = [str(cell) for cell in datatable[0]]
-    return [{headers[i]: str(cell) for i, cell in enumerate(row)} for row in datatable[1:]]
+    return table_rows(datatable)
 
 
 # ── Format by type + asset type ──────────────────────────────────────

@@ -33,6 +33,8 @@ from tests.bdd.steps._outcome_helpers import (
 )
 from tests.bdd.steps.generic._account_resolution import ensure_tenant_principal
 from tests.bdd.steps.generic._dispatch import dispatch_request, dispatch_via_client
+from tests.bdd.steps.generic._table import as_bool
+from tests.bdd.steps.generic._table import rows as table_rows
 from tests.bdd.steps.generic.then_error import _wire_code
 from tests.factories.account import AccountFactory, AgentAccountAccessFactory
 from tests.factories.request import fresh_idempotency_key
@@ -658,7 +660,7 @@ def when_list_sandbox_filter(ctx: dict, value: str) -> None:
     """
     from src.core.schemas.account import ListAccountsRequest
 
-    dispatch_request(ctx, req=ListAccountsRequest(sandbox=value.lower() == "true"))
+    dispatch_request(ctx, req=ListAccountsRequest(sandbox=as_bool(value)))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -801,7 +803,7 @@ def then_pagination_has_more_with_cursor(ctx: dict, has_more: str) -> None:
     """Assert pagination metadata with has_more and cursor."""
     resp = require_payload(ctx)
     assert resp.pagination is not None, "Expected pagination metadata"
-    expected = has_more.lower() == "true"
+    expected = as_bool(has_more)
     assert resp.pagination.has_more == expected, f"Expected has_more={expected}, got {resp.pagination.has_more}"
     if expected:
         assert resp.pagination.cursor is not None, "Expected cursor when has_more is true"
@@ -812,7 +814,7 @@ def then_pagination_has_more(ctx: dict, has_more: str) -> None:
     """Assert pagination metadata with has_more."""
     resp = require_payload(ctx)
     assert resp.pagination is not None, "Expected pagination metadata"
-    expected = has_more.lower() == "true"
+    expected = as_bool(has_more)
     assert resp.pagination.has_more == expected, f"Expected has_more={expected}, got {resp.pagination.has_more}"
 
 
@@ -1199,7 +1201,7 @@ def _parse_sync_table(datatable: Any) -> list[dict[str, Any]]:
             elif key == "brand.brand_id":
                 brand["brand_id"] = value
             elif key == "sandbox":
-                entry[key] = value.lower() == "true"
+                entry[key] = as_bool(value)
             else:
                 entry[key] = value
         if brand:
@@ -1223,8 +1225,7 @@ def _dispatch_sync_table(ctx: dict, datatable: Any, *, idempotency_key: str | No
     the behavior these scenarios grade.
     """
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     ctx["sync_request_brand_pairs"] = _extract_brand_pairs(accounts)
@@ -2598,15 +2599,14 @@ def when_sync_with_dry_run(ctx: dict, value: str, datatable: Any) -> None:
     """Send sync_accounts with dry_run flag and accounts table."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     try:
         req = SyncAccountsRequest(
             idempotency_key=fresh_idempotency_key(),
             accounts=accounts,
-            dry_run=value.lower() == "true",
+            dry_run=as_bool(value),
         )
         dispatch_request(ctx, req=req)
     except Exception as exc:
@@ -2618,8 +2618,7 @@ def when_sync_with_delete_missing(ctx: dict, value: str, datatable: Any) -> None
     """Send sync_accounts with delete_missing flag and accounts table."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     ctx["sync_request_domains"] = {a["brand"]["domain"] for a in accounts if a.get("brand", {}).get("domain")}
@@ -2627,7 +2626,7 @@ def when_sync_with_delete_missing(ctx: dict, value: str, datatable: Any) -> None
         req = SyncAccountsRequest(
             idempotency_key=fresh_idempotency_key(),
             accounts=accounts,
-            delete_missing=value.lower() == "true",
+            delete_missing=as_bool(value),
         )
         dispatch_request(ctx, req=req)
     except Exception as exc:
@@ -2639,8 +2638,7 @@ def when_sync_without_delete_missing(ctx: dict, datatable: Any) -> None:
     """Send sync_accounts without delete_missing (uses default=False)."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     ctx["sync_request_domains"] = {a["brand"]["domain"] for a in accounts if a.get("brand", {}).get("domain")}
@@ -2656,8 +2654,7 @@ def when_agent_a_sync_delete_missing(ctx: dict, datatable: Any) -> None:
     """Send sync_accounts under agent A's identity with delete_missing=True."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     identity_a = _make_identity_for_agent(ctx, "A")
@@ -4043,8 +4040,7 @@ def when_sync_no_principal(ctx: dict, datatable: Any) -> None:
         principal_id=None,
         protocol="mcp",
     )
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
     req = SyncAccountsRequest(idempotency_key=fresh_idempotency_key(), accounts=accounts)
     dispatch_request(ctx, req=req, identity=broken_identity)
@@ -4171,8 +4167,7 @@ def when_sync_dryrun_and_delete_missing(ctx: dict, datatable: Any) -> None:
     """Send sync_accounts with both dry_run=True and delete_missing=True."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
     req = SyncAccountsRequest(
         idempotency_key=fresh_idempotency_key(), accounts=accounts, dry_run=True, delete_missing=True
@@ -4186,8 +4181,7 @@ def when_named_agent_sync_delete_missing(ctx: dict, name: str, datatable: Any) -
     from src.core.schemas.account import SyncAccountsRequest
 
     identity = _make_identity_for_agent(ctx, name)
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
     req = SyncAccountsRequest(idempotency_key=fresh_idempotency_key(), accounts=accounts, delete_missing=True)
     dispatch_request(ctx, req=req, identity=identity)

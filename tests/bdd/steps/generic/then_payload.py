@@ -17,6 +17,7 @@ from typing import Any
 from pytest_bdd import parsers, then
 
 from tests.bdd.steps._outcome_helpers import payload_or_none, require_payload, wire_field
+from tests.bdd.steps.generic._table import rows as table_rows
 
 # -- Helpers -------------------------------------------------------------------
 
@@ -269,8 +270,7 @@ def then_sorted_type_name(ctx: dict) -> None:
 @then("the results should be ordered:")
 def then_results_ordered(ctx: dict, datatable: Sequence[Sequence[object]]) -> None:
     formats = _get_formats(ctx)
-    headers = [str(cell) for cell in datatable[0]]
-    expected = [{headers[i]: str(cell) for i, cell in enumerate(row)} for row in datatable[1:]]
+    expected = table_rows(datatable)
     actual = [{"name": _fmt_name(f), "type": _fmt_type_str(f)} for f in formats]
     assert actual == expected, f"Expected order {expected}, got {actual}"
 

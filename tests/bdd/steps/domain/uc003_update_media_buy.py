@@ -17,6 +17,7 @@ from tests.bdd.steps._harness_db import db_session
 from tests.bdd.steps._outcome_helpers import payload_or_none, require_payload, wire_absent, wire_dict
 from tests.bdd.steps.generic._auth import authenticate_env_as
 from tests.bdd.steps.generic._dispatch import dispatch_request
+from tests.bdd.steps.generic._table import as_bool, drop_header_if
 from tests.bdd.steps.generic.given_media_buy import _resolve_date_token
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -254,7 +255,7 @@ def given_update_request_with_table(ctx: dict, datatable: list[list[str]]) -> No
     kwargs = _ensure_update_defaults(ctx)
     clock = ctx["env"].clock
     # Skip header row (pytest-bdd datatables include the header as first row)
-    rows = datatable[1:] if datatable and datatable[0][0].strip() == "field" else datatable
+    rows = drop_header_if(datatable, "field")
     # Track which fields the table explicitly sets
     table_fields = {row[0].strip() for row in rows}
     for row in rows:
@@ -268,9 +269,9 @@ def given_update_request_with_table(ctx: dict, datatable: list[list[str]]) -> No
             # Resolve Gherkin label (e.g. "mb_existing") to real factory ID
             kwargs["media_buy_id"] = _resolve_media_buy_id(ctx, value)
         elif field == "paused":
-            kwargs["paused"] = value.lower() == "true"
+            kwargs["paused"] = as_bool(value)
         elif field == "canceled":
-            kwargs["canceled"] = value.lower() == "true"
+            kwargs["canceled"] = as_bool(value)
         elif field == "start_time":
             kwargs["start_time"] = _resolve_date_token(value, clock)
         elif field == "end_time":
@@ -352,7 +353,7 @@ def given_package_update_with_table(ctx: dict, datatable: list[list[str]]) -> No
     kwargs = _ensure_update_defaults(ctx)
     pkg_update: dict[str, Any] = {}
     # Skip header row if present (pytest-bdd datatables include header as first row)
-    rows = datatable[1:] if datatable and datatable[0][0].strip().lower() == "field" else datatable
+    rows = drop_header_if(datatable, "field")
     for row in rows:
         field, value = row[0].strip(), row[1].strip()
         assert field in _supported_pkg_fields, (
@@ -365,7 +366,7 @@ def given_package_update_with_table(ctx: dict, datatable: list[list[str]]) -> No
         elif field == "budget":
             pkg_update["budget"] = float(value)
         elif field == "paused":
-            pkg_update["paused"] = value.lower() == "true"
+            pkg_update["paused"] = as_bool(value)
         elif field == "targeting_overlay":
             pkg_update["targeting_overlay"] = json.loads(value)
         elif field == "product_id":

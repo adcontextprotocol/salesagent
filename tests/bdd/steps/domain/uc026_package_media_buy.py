@@ -13,6 +13,7 @@ from typing import Any
 from pytest_bdd import given, parsers, then, when
 
 from tests.bdd.steps._outcome_helpers import payload_or_none, require_payload
+from tests.bdd.steps.generic._table import as_bool
 from tests.bdd.steps.generic.given_media_buy import _ensure_request_defaults
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -455,7 +456,7 @@ def _apply_package_table(kwargs: dict, datatable: list[list[str]], ctx: dict | N
             # Convert bare strings to FormatId dicts
             pkg["format_ids"] = _to_format_id_dicts(raw)
         elif field == "paused":
-            pkg["paused"] = value.lower() == "true"
+            pkg["paused"] = as_bool(value)
         elif field == "bid_price":
             pkg["bid_price"] = float(value)
         elif field == "pacing":
@@ -676,7 +677,7 @@ def given_pricing_option_max_bid(ctx: dict, product_id: str, option: str, max_bi
     actual_options = getattr(product, "pricing_options", None)
     assert actual_options and len(actual_options) > 0, f"Product '{product_id}' has no pricing_options"
     # Record max_bid semantics for downstream assertions
-    ctx.setdefault("pricing_option_max_bid", {})[option] = max_bid.lower() == "true"
+    ctx.setdefault("pricing_option_max_bid", {})[option] = as_bool(max_bid)
 
 
 # --- Dedup / cross-buy Given steps ---
@@ -882,7 +883,7 @@ def given_update_with_package_table(ctx: dict, datatable: list[list[str]]) -> No
         elif field == "budget":
             pkg_update["budget"] = float(value)
         elif field == "paused":
-            pkg_update["paused"] = value.lower() == "true"
+            pkg_update["paused"] = as_bool(value)
         elif field == "pacing":
             pkg_update["pacing"] = value
         elif field == "product_id":
@@ -2000,7 +2001,7 @@ def then_pkg_paused_value(ctx: dict, paused: str) -> None:
     packages = _get_packages(ctx)
     pkg = packages[0]
     actual = _pkg_field(pkg, "paused")
-    expected = paused.lower() == "true"
+    expected = as_bool(paused)
     assert actual == expected, f"Expected paused={expected}, got {actual}"
 
 
@@ -2503,7 +2504,7 @@ def then_created_with_formats(ctx: dict, fmt_ids: str) -> None:
 def then_created_with_paused(ctx: dict, paused: str) -> None:
     """Assert package was created with specific paused value."""
     pkgs = _assert_has_packages(ctx)
-    expected = paused.lower() == "true"
+    expected = as_bool(paused)
     actual = _pkg_field(pkgs[0], "paused")
     assert actual is not None, f"paused not echoed in response; expected {expected}"
     assert actual == expected, f"Expected paused={expected}, got {actual!r}"
