@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
-from pytest_bdd import given, parsers
+from pytest_bdd import given, parsers, when
 
 from tests.bdd.steps.generic._registry import sync_registry as _sync_registry
 from tests.factories.format import (
@@ -263,3 +263,26 @@ def given_registry_two_formats_inline(ctx: dict, name_a: str, type_a: str, name_
     for name, fmt_type in [(name_a, type_a), (name_b, type_b)]:
         _add_format(ctx, FormatFactory.build(name=name, type=CATEGORY_MAP.get(fmt_type)))
     _sync_registry(ctx)
+
+
+@given(parsers.parse('the request includes a push_notification_config with url "{url}"'))
+@when(parsers.parse('the request includes a push_notification_config with url "{url}"'))
+def push_notification_config_with_url(ctx: dict, url: str) -> None:
+    """Attach a push_notification_config to the upcoming dispatch.
+
+    REGISTERED UNDER BOTH KEYWORDS, on purpose. Both feature lines that use this
+    sentence write it as ``And``, which inherits whichever keyword came before --
+    and that is how it ended up defined as ``@given`` in
+    ``steps/domain/uc006_sync_creatives.py`` and ``@when`` in
+    ``steps/domain/uc011_accounts.py``. A sentence whose keyword depends on its
+    neighbour cannot be owned by one keyword.
+
+    The two copies were not equivalent, and the difference was a live defect: the
+    @given one set ``push_notification_config`` (which the dispatch reads) AND the
+    url; the @when one set only ``push_notification_url``. Scenarios routed to the
+    @when copy therefore dispatched with NO webhook config, while the Then step
+    that checks "the system registered the webhook" fell back to the url key and
+    passed anyway.
+    """
+    ctx["push_notification_config"] = {"url": url}
+    ctx["push_notification_url"] = url

@@ -2360,12 +2360,6 @@ def then_no_setup(ctx: dict) -> None:
 # ── Push notification steps (registration only) ──────────────────────
 
 
-@when(parsers.parse('the request includes a push_notification_config with url "{url}"'))
-def when_push_config(ctx: dict, url: str) -> None:
-    """Record push notification config for the sync request."""
-    ctx["push_notification_url"] = url
-
-
 @then("the system registers the webhook for async account status notifications")
 def then_webhook_registered(ctx: dict) -> None:
     """Assert the system acknowledged webhook registration for status notifications.
@@ -2398,9 +2392,12 @@ def then_webhook_registered(ctx: dict) -> None:
         )
     # Verify the request actually carried push_notification_config (distinguishes
     # this step from a plain "sync succeeded" check)
-    push_config = (
-        ctx.get("push_notification_config") or ctx.get("request_push_config") or ctx.get("push_notification_url")
-    )
+    # ONE key. This read used to fall back across push_notification_config /
+    # request_push_config / push_notification_url, and the fallback was hiding a
+    # real gap: the @when copy of the step set only the url, never the config the
+    # dispatch reads, so its scenarios sent no webhook config at all and this
+    # assertion passed off the leftover url.
+    push_config = ctx.get("push_notification_config")
     assert push_config is not None, (
         "Then 'webhook registered' but the When step did not set push_notification_config/url in ctx — "
         "cannot verify webhook registration without a configured webhook"

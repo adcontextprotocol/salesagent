@@ -123,14 +123,6 @@ def _assignments_for_the_wire(assignments: dict[str, list[str]]) -> list[dict[st
     ]
 
 
-@given(parsers.parse('the request includes a push_notification_config with url "{url}"'))
-def given_push_notification_config_url(ctx: dict, url: str) -> None:
-    """Attach push_notification_config to the upcoming sync_creatives dispatch."""
-    push_config = {"url": url}
-    ctx["push_notification_config"] = push_config
-    ctx["push_notification_url"] = url
-
-
 @given("a creative with a known format_id")
 def given_creative_with_format(ctx: dict) -> None:
     """Set up a creative payload with a known format_id for sync_creatives dispatch.
