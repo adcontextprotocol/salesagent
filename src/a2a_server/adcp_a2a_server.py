@@ -1774,7 +1774,7 @@ class AdCPRequestHandler(RequestHandler):
         # step REST and MCP take, from the same registry row. A hand-listed forward is the
         # shape that silently drops every field added later, and this one already named five
         # of the twenty-one fields the DTO declares.
-        req = TOOLS["get_products"].dto.model_validate(parameters)
+        req = TOOLS["get_products"].validate(parameters)
         response = await core_get_products_tool(req=req, identity=identity)
 
         # Apply v2 compat for pre-3.0 clients at the boundary
@@ -1876,9 +1876,7 @@ class AdCPRequestHandler(RequestHandler):
         # The DTO is the accepted shape, so validating into it IS the selection.
         # Boundary-coerced values override the raw bag; everything else validates
         # straight into the DTO, which is the accepted shape.
-        req = TOOLS["create_media_buy"].dto.model_validate(
-            {**params, "account": to_account_reference(params.get("account"))}
-        )
+        req = TOOLS["create_media_buy"].validate({**params, "account": to_account_reference(params.get("account"))})
         response = await core_create_media_buy_tool(
             req=req,
             identity=identity,
@@ -1954,7 +1952,7 @@ class AdCPRequestHandler(RequestHandler):
         # The DTO is the accepted shape, so validating into it IS the selection.
         # Boundary-coerced values override the raw bag; everything else validates
         # straight into the DTO, which is the accepted shape.
-        req = TOOLS["sync_creatives"].dto.model_validate(
+        req = TOOLS["sync_creatives"].validate(
             {
                 **parameters,
                 "creatives": creatives,
@@ -1990,7 +1988,7 @@ class AdCPRequestHandler(RequestHandler):
         # The DTO is the accepted shape, so validating into it IS the selection.
         # Boundary-coerced values override the raw bag; everything else validates
         # straight into the DTO, which is the accepted shape.
-        req = TOOLS["list_creatives"].dto.model_validate({**parameters, "filters": filters})
+        req = TOOLS["list_creatives"].validate({**parameters, "filters": filters})
         response = core_list_creatives_tool(req=req, identity=identity)
 
         return response
@@ -2018,7 +2016,7 @@ class AdCPRequestHandler(RequestHandler):
         # every DTO now inherits adcp_version / adcp_major_version from the SDK request model.
         from src.core.tools.capabilities import get_adcp_capabilities_raw
 
-        req = TOOLS["get_adcp_capabilities"].dto.model_validate(parameters)
+        req = TOOLS["get_adcp_capabilities"].validate(parameters)
         response = await get_adcp_capabilities_raw(req=req, identity=identity)
 
         return response
@@ -2036,7 +2034,7 @@ class AdCPRequestHandler(RequestHandler):
         # replaces already dropped ext, pagination, property_id and publisher_domain,
         # all of which ListCreativeFormatsRequest declares (a recorded gap Lane D).
         # The DTO is the accepted shape, so validating into it IS the selection.
-        req = TOOLS["list_creative_formats"].dto.model_validate(parameters)
+        req = TOOLS["list_creative_formats"].validate(parameters)
 
         # Call core function with identity
         response = core_list_creative_formats_tool(req=req, identity=identity)
@@ -2051,7 +2049,7 @@ class AdCPRequestHandler(RequestHandler):
         """
 
         # The DTO is the accepted shape, so validating into it IS the selection.
-        request = TOOLS["list_accounts"].dto.model_validate(parameters)
+        request = TOOLS["list_accounts"].validate(parameters)
         return core_list_accounts_tool(req=request, identity=identity)
 
     async def _handle_sync_accounts_skill(self, parameters: dict, identity: ResolvedIdentity | None) -> Any:
@@ -2061,7 +2059,7 @@ class AdCPRequestHandler(RequestHandler):
         """
 
         # The DTO is the accepted shape, so validating into it IS the selection.
-        request = TOOLS["sync_accounts"].dto.model_validate(parameters)
+        request = TOOLS["sync_accounts"].validate(parameters)
         return await core_sync_accounts_tool(req=request, identity=identity)
 
     async def _handle_update_media_buy_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
@@ -2110,7 +2108,7 @@ class AdCPRequestHandler(RequestHandler):
         # The DTO is the accepted shape, so validating into it IS the selection.
         # Boundary-coerced values override the raw bag; everything else validates
         # straight into the DTO, which is the accepted shape.
-        built = TOOLS["update_media_buy"].dto.model_validate({**params, "media_buy_id": req.media_buy_id or ""})
+        built = TOOLS["update_media_buy"].validate({**params, "media_buy_id": req.media_buy_id or ""})
         response = core_update_media_buy_tool(req=built, identity=identity)
 
         return response
@@ -2126,7 +2124,7 @@ class AdCPRequestHandler(RequestHandler):
 
         GetMediaBuysRequest.model_validate(parameters)
         # The DTO is the accepted shape, so validating into it IS the selection.
-        req = TOOLS["get_media_buys"].dto.model_validate(parameters)
+        req = TOOLS["get_media_buys"].validate(parameters)
         return core_get_media_buys_tool(req=req, identity=identity)
 
     async def _handle_get_media_buy_delivery_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:

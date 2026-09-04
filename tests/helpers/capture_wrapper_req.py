@@ -19,7 +19,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastmcp.server.context import Context
 
-from src.core.tools.registry import TOOLS
+# _TOOLS, not TOOLS: the public registry is a read-only MappingProxyType, and the proxy
+# reads through to this dict -- so patching it substitutes the row everywhere TOOLS is
+# consulted, without the public surface being mutable.
+from src.core.tools.registry import _TOOLS as TOOLS
 
 
 @contextmanager

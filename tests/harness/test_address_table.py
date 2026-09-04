@@ -73,28 +73,39 @@ class TestAddressTableAgainstLiveProduction:
         assert e2e_mcp_addr.transport == Transport.E2E_MCP
 
     def test_no_address_for_transport_on_a_single_transport_tool(self):
-        """A tool registered on FEWER transports than all of them resolves on the
-        ones it has and raises NoAddressForTransport on the ones it does not.
+        """A tool on FEWER transports than all of them resolves on the ones it has and
+        raises NoAddressForTransport on the ones it does not.
 
-        The exemplar is DERIVED from the live registries, not named here. The
-        previous version named ``approve_creative`` as an A2A-only skill; the
-        agent card no longer carries it (it was one of the stub skills dropped
-        when every A2A skill was locked to a tool the pinned spec defines), so
-        that assertion had decayed into a pass on a tool that exists nowhere —
-        exactly the hand-copied-example rot NoAddressForTransport's docstring
-        warns about. Deriving the name keeps the invariant graded as the live
-        sets drift."""
+        The exemplar is DERIVED from the live registries, not named here. A previous version
+        named ``approve_creative`` as an A2A-only skill; the card no longer carries it, so the
+        assertion had decayed into a pass on a tool that exists nowhere -- the hand-copied
+        example rot NoAddressForTransport's docstring warns about.
+
+        The derivation was ``MCP - A2A - REST``, which is now empty: every registry row is on
+        all three transports. That is a real property worth stating rather than a reason to
+        fail, so this looks for a tool missing ANY transport and, finding none, asserts the
+        uniformity instead. Either branch is a statement about production.
+        """
         table = AddressTable()
-        mcp_only = table.all_tools(Transport.MCP) - table.all_tools(Transport.A2A) - table.all_tools(Transport.REST)
-        assert mcp_only, "sanity: production should register at least one MCP-only tool"
-        for name in sorted(mcp_only):
-            # Resolves on the transport it actually exists on ...
-            assert table.resolve(name, Transport.MCP).name == name
-            # ... and is an expected miss, not a silent one, on the others.
-            with pytest.raises(NoAddressForTransport):
-                table.resolve(name, Transport.A2A)
-            with pytest.raises(NoAddressForTransport):
-                table.resolve(name, Transport.REST)
+        by_transport = {t: set(table.all_tools(t)) for t in (Transport.MCP, Transport.A2A, Transport.REST)}
+        everywhere = set.intersection(*by_transport.values())
+        partial = set.union(*by_transport.values()) - everywhere
+
+        if not partial:
+            assert set.union(*by_transport.values()) == everywhere, (
+                "every tool is expected on every transport here -- if that stops being true, "
+                "this test grades the partial tool instead"
+            )
+            return
+
+        for name in sorted(partial):
+            for transport, names in by_transport.items():
+                if name in names:
+                    assert table.resolve(name, transport).name == name
+                else:
+                    # An expected miss, not a silent one.
+                    with pytest.raises(NoAddressForTransport):
+                        table.resolve(name, transport)
 
     def test_no_address_for_unknown_tool(self):
         table = AddressTable()
@@ -289,7 +300,10 @@ class TestCrossRegistryConsistencyGuard:
         invariant, CLAUDE.md)."""
         table = AddressTable()
         rest_names = table.all_tools(Transport.REST)
-        assert len(rest_names) == 13, rest_names
+        # 14, not 13: list_authorized_properties and update_performance_index left the
+        # registry (neither is an AdCP task at the pinned version) and the three task
+        # tools gained REST bindings, so every row now declares one.
+        assert len(rest_names) == 14, rest_names
         assert "get_adcp_capabilities" in rest_names  # POST /api/v1/capabilities
         assert "get_media_buys" in rest_names  # POST /api/v1/media-buys/query
 

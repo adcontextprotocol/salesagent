@@ -17,6 +17,7 @@ from pydantic import BaseModel, create_model
 
 from src.core.auth_context import require_auth, resolve_auth
 from src.core.resolved_identity import ResolvedIdentity
+from src.core.tools._announced_shape import apply_signature
 from src.core.tools.registry import TOOLS
 from src.core.version_compat import apply_version_compat
 
@@ -51,11 +52,10 @@ def _body_model_for(spec: Any) -> Any:
     """
     if not spec.rest.path_fields:
         return spec.dto
-    return create_model(
-        f"{spec.dto.__name__}Body",
-        __base__=spec.dto,
-        **{name: (spec.dto.model_fields[name].annotation | None, None) for name in spec.rest.path_fields},
-    )
+    relaxed: dict[str, Any] = {
+        name: (spec.dto.model_fields[name].annotation | None, None) for name in spec.rest.path_fields
+    }
+    return create_model(f"{spec.dto.__name__}Body", __base__=spec.dto, **relaxed)
 
 
 def _rest_handler(tool_name: str, spec: Any, raw: Any, body_model: type[BaseModel]) -> Any:
@@ -108,17 +108,20 @@ def _rest_handler(tool_name: str, spec: Any, raw: Any, body_model: type[BaseMode
         )
         for name in sorted(spec.rest.path_fields)
     ]
-    handler.__signature__ = inspect.Signature(
-        [
-            *path_params,
-            inspect.Parameter("body", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=body_model),
-            inspect.Parameter(
-                "identity",
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                default=dep,
-                annotation=ResolvedIdentity if spec.auth != "optional" else (ResolvedIdentity | None),
-            ),
-        ]
+    apply_signature(
+        handler,
+        inspect.Signature(
+            [
+                *path_params,
+                inspect.Parameter("body", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=body_model),
+                inspect.Parameter(
+                    "identity",
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    default=dep,
+                    annotation=ResolvedIdentity if spec.auth != "optional" else (ResolvedIdentity | None),
+                ),
+            ]
+        ),
     )
     return handler
 

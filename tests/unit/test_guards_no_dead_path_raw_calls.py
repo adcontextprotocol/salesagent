@@ -76,9 +76,17 @@ def raw_calls(tree: ast.AST) -> dict[str, list[int]]:
     return calls
 
 
+def _rest_bound_raw_names() -> set[str]:
+    """``{tool}_raw`` for every registry row that declares a REST binding."""
+    from src.core.tools.registry import TOOLS
+
+    return {f"{name}_raw" for name, spec in TOOLS.items() if spec.rest is not None}
+
+
 def find_dead_path_raw_calls(
     src_files: dict[str, ast.AST],
     test_files: dict[str, ast.AST],
+    extra_src_called: set[str] | None = None,
 ) -> list[str]:
     """``file:line: name`` for every test call of a src-defined, src-uncalled ``*_raw``."""
     defined: set[str] = set()
@@ -86,6 +94,9 @@ def find_dead_path_raw_calls(
     for tree in src_files.values():
         defined |= raw_functions_defined(tree)
         src_called |= set(raw_calls(tree))
+    # Call sites a static scan cannot see, passed in rather than read here so the detector
+    # stays a pure function of its inputs (its own tests feed it synthetic snippets).
+    src_called |= extra_src_called or set()
     dead = defined - src_called
     offenders: list[str] = []
     for path, tree in sorted(test_files.items()):
@@ -98,7 +109,7 @@ def find_dead_path_raw_calls(
 def test_no_test_calls_dead_path_raw_wrappers():
     src_files = {str(p.relative_to(REPO_ROOT)): t for p in sorted(SRC_ROOT.rglob("*.py")) if (t := _parse(p))}
     test_files = {str(p.relative_to(REPO_ROOT)): t for p in sorted(TESTS_ROOT.rglob("*.py")) if (t := _parse(p))}
-    violations = find_dead_path_raw_calls(src_files, test_files)
+    violations = find_dead_path_raw_calls(src_files, test_files, extra_src_called=_rest_bound_raw_names())
     assert not violations, (
         "Test code calls a src-defined *_raw wrapper that has ZERO production call "
         "sites — the test drives a dead path while the live transport path goes "

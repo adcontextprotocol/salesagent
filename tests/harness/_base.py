@@ -1663,6 +1663,34 @@ class IntegrationEnv(BaseTestEnv):
 
         return AccountReference(root={"account_id": self.setup_default_account().account_id})
 
+    # Seeding a NAMED account reference lives here rather than on one env: any env whose
+    # tool carries an ``account`` needs it, and update_media_buy needed it the moment the
+    # boundary started RESOLVING the reference instead of accepting and dropping it.
+    def _seed_named_account_ref(self, account: Any) -> None:
+        """Seed the row behind an account reference, when it is the suite's default.
+
+        Takes the reference in either spelling -- the wire dict a per-field caller passes,
+        or the typed AccountReference on a built request -- because both paths reach the
+        same boundary lookup.
+        """
+        root = getattr(account, "root", account)
+        account_id = root.get("account_id") if isinstance(root, dict) else getattr(root, "account_id", None)
+        if account_id == DEFAULT_TEST_ACCOUNT_ID:
+            self.setup_default_account()
+
+    def _seed_named_account(self, req: Any) -> None:
+        """Seed the account a caller-BUILT request names, when it is the suite's default.
+
+        A test that hands ``req=`` built its request outside this env, so
+        ``_ensure_required_request_fields`` never ran and nothing created the row the
+        transport boundary is about to resolve. Only DEFAULT_TEST_ACCOUNT_ID is seeded: a
+        test naming its own account is describing a specific account state (missing,
+        suspended, foreign) and manufacturing a row for it would erase the case.
+        """
+        account = getattr(req, "account", None)
+        if account is not None:
+            self._seed_named_account_ref(account)
+
     def configure_tenant_field(self, field: str, value: Any) -> None:
         """Write a tenant-level config field for both auth paths.
 

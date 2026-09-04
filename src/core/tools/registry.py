@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -94,9 +95,19 @@ class ToolSpec:
     #: disagree; see the divergence pin in the agreement test.
     auth: Literal["required", "optional"] = "required"
 
+    def validate(self, parameters: Any) -> Any:
+        """Validate a parameter bag into this row's DTO.
+
+        Returns ``Any`` deliberately: which model ``dto`` holds is a per-row fact, unknown
+        statically, so ``dto.model_validate(...)`` is typed ``BaseModel`` and every caller
+        handing the result to a typed ``*_raw`` was an arg-type error. One seam says it once
+        instead of a cast at each of the ten A2A handlers.
+        """
+        return self.dto.model_validate(parameters)
+
 
 #: Every tool this seller implements, keyed by its AdCP tool name.
-TOOLS: Mapping[str, ToolSpec] = {
+_TOOLS: dict[str, ToolSpec] = {
     "get_adcp_capabilities": ToolSpec(
         dto=GetAdcpCapabilitiesRequest,
         impl=_get_adcp_capabilities_impl,
@@ -171,3 +182,15 @@ TOOLS: Mapping[str, ToolSpec] = {
         rest=RestBinding("POST", "/tasks/{task_id}/complete", frozenset({"task_id"})),
     ),
 }
+
+#: The registry, READ-ONLY. ``ToolSpec`` is already frozen, so this makes the whole
+#: declaration immutable: nothing may add, drop or repoint a row at runtime. Every transport
+#: reads this per call rather than snapshotting it -- MCP registration and the REST router
+#: each used to freeze a row into a closure, which made the registry and the thing that
+#: actually ran two different objects, silently divergent and impossible to substitute.
+#:
+#: The underlying dict is module-private. A test that must stand a fixture row in for a real
+#: one patches ``_TOOLS`` (tests/helpers/capture_wrapper_req.py) -- reaching past the public
+#: surface deliberately and greppably, rather than the public surface being mutable so that
+#: it can.
+TOOLS: Mapping[str, ToolSpec] = MappingProxyType(_TOOLS)

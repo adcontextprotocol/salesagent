@@ -418,6 +418,17 @@ def _advertised_default(parameter: inspect.Parameter, field: Any) -> Any:
     return parameter.default if declared is None else declared
 
 
+def apply_signature(fn: Any, signature: inspect.Signature) -> None:
+    """Give ``fn`` an advertised signature.
+
+    A one-line helper because the parameter is typed ``Any``: a function object has no
+    declared ``__signature__``, so writing it directly is an ``attr-defined`` error and every
+    caller paid a type-checker suppression to say "I know". One typed seam says it once, and both
+    the MCP derivation and the REST route factory use it.
+    """
+    fn.__signature__ = signature
+
+
 def apply_dto_announced_shape(target: Callable[..., Any], source_fn: Callable[..., Any]) -> bool:
     """Point ``target``'s advertised signature at the DTO. True when one was applied.
 
@@ -442,7 +453,7 @@ def apply_dto_announced_shape(target: Callable[..., Any], source_fn: Callable[..
     # fixture invented to reach it. Deleted with those tests rather than kept as a
     # hypothetical guarded by a hypothetical.
 
-    target.__signature__ = signature  # type: ignore[attr-defined]
+    apply_signature(target, signature)
     # __annotations__ too, and not merely for symmetry: FastMCP resolves parameter types
     # with typing.get_type_hints(), which reads __annotations__ and ignores __signature__.
     # Setting only the signature leaves the ADVERTISED types untouched while everything
