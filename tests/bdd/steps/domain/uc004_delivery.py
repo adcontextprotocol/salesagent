@@ -23,6 +23,7 @@ from tests.bdd.steps._outcome_helpers import error_envelope_or_none, payload_or_
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.bdd.steps.generic.then_error import _get_error_message
 from tests.bdd.steps.generic.then_payload import register_boundary_handler
+from tests.helpers.hmac_assertions import assert_signature_verifies_over_wire_body
 from tests.harness._mixins import LocalOriginMixin
 from tests.helpers import locate_envelope_error
 from tests.helpers.backoff_assertions import assert_backoff_schedule
@@ -2257,32 +2258,30 @@ def then_timestamp_header(ctx: dict, header: str) -> None:
 def then_hmac_computation(ctx: dict) -> None:
     """Assert the HMAC verifies against the RAW bytes the origin actually received.
 
-    Recomputes over the wire body (``deliveries[-1].body``), not a fresh
-    ``json.dumps`` of the parsed payload — a recompute from the dict can
-    silently agree with a sender that signed one serialization and
-    transmitted another, which is exactly the defect PR #1802 fixed.
-    """
-    import hashlib
-    import hmac as hmac_lib
+    Delegates to ``tests.helpers.hmac_assertions``, which 13 non-BDD callers
+    already use. This step used to recompute the HMAC inline, and the copy had
+    drifted in three ways that all favour a false pass:
 
+    * it read ``X-ADCP-Signature``/``X-ADCP-Timestamp`` while the helper and the
+      senders use ``X-AdCP-``, which is the exact regression the helper's own
+      docstring names;
+    * it stripped ``sha256=`` and compared bare hex, so a signature sent WITHOUT
+      the prefix verified anyway;
+    * it read the headers with ``.get(..., "")``, so a delivery that went out
+      entirely unsigned failed on 'header present' rather than reporting that
+      nothing can attribute the request to us (salesagent-47n9.24).
+
+    The recompute-over-wire-bytes property this step exists for is the helper's
+    property too: it signs ``f"{timestamp}." + request.body``, never a fresh dump
+    of the parsed payload, which is the defect PR #1802 fixed.
+    """
     deliveries = _webhook_deliveries(ctx)
     assert deliveries, "No webhook POST was made"
-    request = deliveries[-1]
 
-    headers = request.headers
-    timestamp = headers.get("X-ADCP-Timestamp", "")
-    raw_sig = headers.get("X-ADCP-Signature", "")
-    signature = raw_sig.removeprefix("sha256=")
-    assert signature, "Expected HMAC signature header to be present and non-empty"
     signing_secret: str = ctx.get("webhook_secret", "")
     assert signing_secret, "Test setup must store webhook_secret in ctx['webhook_secret']"
-    message = f"{timestamp}.".encode() + request.body
-    expected = hmac_lib.new(signing_secret.encode(), message, hashlib.sha256).hexdigest()
-    assert signature == expected, (
-        f"the buyer's endpoint could not verify this webhook: X-ADCP-Signature was computed over "
-        f"bytes other than the {len(request.body)} that crossed the socket (got {signature!r}, "
-        f"expected {expected!r})"
-    )
+
+    assert_signature_verifies_over_wire_body(deliveries[-1], signing_secret)
 
 
 @then(parsers.parse('the request should include header "{header}" with the bearer token'))
