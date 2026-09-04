@@ -27,6 +27,7 @@ from src.core.exceptions import (
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import (
     CompleteTaskRequest,
+    CompleteTaskResponse,
     GetTaskRequest,
     GetTaskResponse,
     ListTasksRequest,
@@ -447,7 +448,7 @@ def _task_history(task: Any) -> list[dict[str, Any]]:
 async def _complete_task_impl(
     req: CompleteTaskRequest,
     identity: ResolvedIdentity | None = None,
-) -> dict[str, Any]:
+) -> CompleteTaskResponse:
     """The transport-agnostic implementation of ``complete_task``.
 
     Split out of the MCP wrapper, which used to be both. Without a ``req``-shaped
@@ -462,12 +463,6 @@ async def _complete_task_impl(
     identity = require_identity(identity)
     tenant = require_tenant(identity)
     principal_id = require_principal_id(identity)  # F-03: an authenticated principal is required
-
-    if status not in ["completed", "failed"]:
-        raise AdCPValidationError(
-            details=ValidationDetails(rejected_value=str(status)),
-            field="status",
-        )
 
     with WorkflowUoW(tenant["tenant_id"]) as uow:
         assert uow.workflows is not None
@@ -515,13 +510,13 @@ async def _complete_task_impl(
             },
         )
 
-        return {
-            "task_id": task_id,
-            "status": status,
-            "message": f"Task {task_id} marked as {status}",
-            "completed_at": completed_time.isoformat(),
-            "completed_by": principal_id,
-        }
+        return CompleteTaskResponse(
+            task_id=task_id,
+            status=status,
+            message=f"Task {task_id} marked as {status}",
+            completed_at=completed_time.isoformat(),
+            completed_by=principal_id,
+        )
 
 
 async def complete_task_raw(

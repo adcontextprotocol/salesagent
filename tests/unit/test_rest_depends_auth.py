@@ -62,84 +62,35 @@ class TestApiV1NoManualAuthCalls:
 
 
 class TestRouteSignaturesUseDependsForIdentity:
-    """Route handlers should declare identity in their function signature."""
+    """Every generated REST route declares identity via Depends, and takes no raw Request.
 
-    def _get_identity_param(self, func_name: str):
-        """Get the 'identity' parameter from a route handler."""
-        import src.routes.api_v1 as api_v1_mod
+    Over the LIVE routes, not a hand-written list of nine names -- two of which named tools
+    that no longer exist, and none of which would have covered a tool added tomorrow. The
+    routes are generated from TOOLS by one handler factory, so iterating what the app
+    actually registered is both shorter and stronger than repeating one assertion per row.
+    """
 
-        func = getattr(api_v1_mod, func_name)
-        sig = inspect.signature(func)
-        return sig.parameters.get("identity")
+    @staticmethod
+    def _rest_routes():
+        from src.app import app
+        from src.core.tools.registry import TOOLS
 
-    def test_get_products_has_identity_param(self):
-        param = self._get_identity_param("get_products")
-        assert param is not None, "get_products should have an 'identity' parameter"
-        assert isinstance(param.default, Depends), "identity should use Depends"
+        rest_tools = {name for name, spec in TOOLS.items() if spec.rest is not None}
+        routes = [r for r in app.routes if getattr(r, "name", None) in rest_tools]
+        assert routes, "no REST routes registered -- the derivation produced nothing"
+        return routes
 
-    def test_list_creative_formats_has_identity_param(self):
-        param = self._get_identity_param("list_creative_formats")
-        assert param is not None, "list_creative_formats should have an 'identity' parameter"
-        assert isinstance(param.default, Depends), "identity should use Depends"
+    def test_every_rest_route_resolves_identity_through_depends(self):
+        for route in self._rest_routes():
+            param = inspect.signature(route.endpoint).parameters.get("identity")
+            assert param is not None, f"{route.name} should have an 'identity' parameter"
+            assert isinstance(param.default, Depends), f"{route.name} identity should use Depends"
 
-    def test_list_authorized_properties_has_identity_param(self):
-        param = self._get_identity_param("list_authorized_properties")
-        assert param is not None, "list_authorized_properties should have an 'identity' parameter"
-        assert isinstance(param.default, Depends), "identity should use Depends"
-
-    def test_create_media_buy_has_identity_param(self):
-        param = self._get_identity_param("create_media_buy")
-        assert param is not None, "create_media_buy should have an 'identity' parameter"
-        assert isinstance(param.default, Depends), "identity should use Depends"
-
-    def test_update_media_buy_has_identity_param(self):
-        param = self._get_identity_param("update_media_buy")
-        assert param is not None, "update_media_buy should have an 'identity' parameter"
-        assert isinstance(param.default, Depends), "identity should use Depends"
-
-    def test_get_media_buy_delivery_has_identity_param(self):
-        param = self._get_identity_param("get_media_buy_delivery")
-        assert param is not None, "get_media_buy_delivery should have an 'identity' parameter"
-        assert isinstance(param.default, Depends), "identity should use Depends"
-
-    def test_sync_creatives_has_identity_param(self):
-        param = self._get_identity_param("sync_creatives")
-        assert param is not None, "sync_creatives should have an 'identity' parameter"
-        assert isinstance(param.default, Depends), "identity should use Depends"
-
-    def test_list_creatives_has_identity_param(self):
-        param = self._get_identity_param("list_creatives")
-        assert param is not None, "list_creatives should have an 'identity' parameter"
-        assert isinstance(param.default, Depends), "identity should use Depends"
-
-    def test_update_performance_index_has_identity_param(self):
-        param = self._get_identity_param("update_performance_index")
-        assert param is not None, "update_performance_index should have an 'identity' parameter"
-        assert isinstance(param.default, Depends), "identity should use Depends"
-
-    def test_no_route_has_request_parameter(self):
-        """No route handler should take a raw Request parameter anymore."""
-        import src.routes.api_v1 as api_v1_mod
-
-        route_names = [
-            "get_products",
-            "list_creative_formats",
-            "list_authorized_properties",
-            "create_media_buy",
-            "update_media_buy",
-            "get_media_buy_delivery",
-            "sync_creatives",
-            "list_creatives",
-            "update_performance_index",
-        ]
-        for name in route_names:
-            func = getattr(api_v1_mod, name)
-            sig = inspect.signature(func)
-            assert "request" not in sig.parameters, (
-                f"{name} still takes 'request' parameter — should use Depends for auth"
-            )
-
-
+    def test_no_route_takes_a_raw_request(self):
+        """A handler reading Request itself would be resolving auth by hand again."""
+        for route in self._rest_routes():
+            params = inspect.signature(route.endpoint).parameters
+            assert "request" not in params, f"{route.name} should not take a raw Request"
 class TestResolveAuthDepBehavior:
     """Test the resolve_auth dependency function behavior directly."""
 

@@ -422,37 +422,25 @@ def apply_dto_announced_shape(target: Callable[..., Any], source_fn: Callable[..
     """Point ``target``'s advertised signature at the DTO. True when one was applied.
 
     ``target`` is what gets registered (the error-logging wrapper); ``source_fn`` is the
-    undecorated tool, whose body names the builder.
+    undecorated tool, whose NAME resolves its registry row.
 
-    The model is resolved from the builder, full stop. The ``dto`` override this used to
-    accept is gone with its last caller (list_tasks, rebased onto the SDK vocabulary): an
-    unused override is one refactor away from being used again, and its whole effect was to
-    let a tool advertise a shape no builder constructs.
+    The model comes from the row, full stop. The ``dto`` override this used to accept is gone
+    with its last caller (list_tasks, rebased onto the SDK vocabulary): an unused override is
+    one refactor away from being used again, and its whole effect was to let a tool advertise
+    a shape the registry does not name for it.
     """
     model = request_model_for(source_fn)
     if model is None:
         return False
     signature = derived_signature(source_fn, model)
 
-    # A REQUIRED DTO field the wrapper does not declare can never be populated: the builder
-    # never receives it, so every call raises ValidationError. That is a loud failure, but it
-    # arrives at CALL time, on a buyer's request, for a defect fixed in one line at author
-    # time. Measured across all 16 tools when this was added, no tool was in that state --
-    # which is exactly when to nail it down, since the refusal costs nothing today and the
-    # next tool cannot introduce it.
-    #
-    # Refusing rather than allowlisting, for the same reason _register_tool refuses an
-    # unresolvable DTO: a list of known-broken tools records the violation, whereas refusing
-    # makes the broken state unreachable.
-    missing_required = {
-        name for name, field in model.model_fields.items() if field.is_required() and name not in signature.parameters
-    }
-    if missing_required:
-        raise RuntimeError(
-            f"{source_fn.__name__} cannot announce {model.__name__}: it does not declare the "
-            f"REQUIRED field(s) {sorted(missing_required)}, so no call could ever construct a "
-            f"valid request. Add the parameter(s) to the wrapper and forward them to the builder."
-        )
+    # There is no "a required field went unannounced" check here any more. It existed while
+    # the announced set was "DTO fields INTERSECT wrapper parameters", where forgetting a
+    # parameter on a wrapper silently made a required field unsendable and every call 422'd.
+    # The announcement is the DTO now, so the only state it could still refuse is a REQUIRED
+    # field marked exclude=True -- a contradiction nobody writes, reachable only through a
+    # fixture invented to reach it. Deleted with those tests rather than kept as a
+    # hypothetical guarded by a hypothetical.
 
     target.__signature__ = signature  # type: ignore[attr-defined]
     # __annotations__ too, and not merely for symmetry: FastMCP resolves parameter types
