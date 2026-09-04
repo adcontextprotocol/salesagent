@@ -41,8 +41,12 @@ def _dispatch_update(ctx: dict, payload: dict) -> None:
     two scenarios sharing one key would be asking the seller to treat them as the
     same request.
     """
+    # The SEEDED account, not a literal. ``acct_test`` was a fabricated id: the boundary
+    # RESOLVES the reference now (it used to accept and drop it), so every scenario here
+    # came back PERMISSION_DENIED before reaching what it grades. env.default_account_reference
+    # is the row the seeder created, with this principal's access to it.
     payload = {
-        "account": {"account_id": "acct_test"},
+        "account": ctx["env"].default_account_reference.model_dump(mode="json"),
         "idempotency_key": f"uc003-storyboard-{uuid4().hex}",
         **payload,
     }

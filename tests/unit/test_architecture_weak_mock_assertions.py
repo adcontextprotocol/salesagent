@@ -40,8 +40,6 @@ SCAN_DIRS = (ROOT / "tests",)
 # are upgraded to assert_called_once_with().
 # FIXME(#1370): each entry below should be upgraded to assert_called_once_with()
 WEAK_ASSERTION_ALLOWLIST: set[tuple[str, str]] = {
-    ("tests/unit/test_a2a_brand_manifest_parameter.py", "test_handle_get_products_skill_brand_manifest_not_converted"),
-    ("tests/unit/test_a2a_brand_manifest_parameter.py", "test_handle_get_products_skill_extracts_all_parameters"),
     ("tests/unit/test_a2a_brand_manifest_parameter.py", "test_handle_get_products_skill_forwards_property_list"),
     ("tests/unit/test_a2a_brand_manifest_parameter.py", "test_handle_get_products_skill_passes_brand"),
     ("tests/unit/test_a2a_parameter_mapping.py", "test_update_media_buy_backward_compatibility_with_updates"),
@@ -207,8 +205,6 @@ class TestNoWeakMockAssertions:
 BARE_ASSERTION_ALLOWLIST: set[tuple[str, str]] = {
     ("tests/unit/test_a2a_auth_optional.py", "test_get_products_with_auth"),
     ("tests/unit/test_a2a_auth_optional.py", "test_get_products_without_auth"),
-    ("tests/unit/test_a2a_auth_optional.py", "test_list_authorized_properties_with_auth"),
-    ("tests/unit/test_a2a_auth_optional.py", "test_list_authorized_properties_without_auth"),
     ("tests/unit/test_a2a_auth_optional.py", "test_list_creative_formats_with_auth"),
     ("tests/unit/test_a2a_auth_optional.py", "test_list_creative_formats_without_auth"),
     ("tests/unit/test_auth_setup_mode.py", "test_disable_setup_mode_succeeds_when_sso_enabled"),

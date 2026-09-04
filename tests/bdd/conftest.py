@@ -4673,6 +4673,11 @@ def _seed_uc003_storyboard_generic_client(ctx: dict, env: object) -> None:
     from tests.factories import ProductFactory
 
     tenant, principal = env.setup_default_data()
+    # And the ACCOUNT, with this principal's access to it. update-media-buy-request.json
+    # lists ``account`` in /required, and the boundary now RESOLVES the reference rather
+    # than accepting and dropping it, so an unseeded account comes back as
+    # PERMISSION_DENIED before the scenario reaches what it grades.
+    env.setup_default_account()
     product = ProductFactory(tenant=tenant)
     # ctx["client"] is built once by _run_env_route for every row (B8).
     ctx["tenant"] = tenant

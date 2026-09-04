@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from enum import Enum, StrEnum
 from typing import Any, ClassVar, Literal
 
-from adcp.types import CreativeAsset as LibraryCreativeAsset
 from adcp.types import CreativeStatus
 from adcp.types import Error as LibraryError
 from adcp.types import FormatId as LibraryFormatId
@@ -35,6 +34,11 @@ from adcp.types import (
 from adcp.types import (
     SyncCreativesRequest as LibrarySyncCreativesRequest,
 )
+
+# The ARM, named at its generated path. ``adcp.types.CreativeAsset`` is bound to this same
+# class at RUNTIME but resolves to the RootModel UNION under mypy, so the public alias made
+# static and runtime disagree about what this model extends (salesagent-tr9xa).
+from adcp.types.generated_poc.core.creative_asset import CreativeAsset1 as LibraryCreativeAsset
 from adcp.types.generated_poc.core.provenance import AiTool  # TODO: no stable alias in adcp.types
 from adcp.types.generated_poc.creative.list_creatives_response import (
     Creative as LibraryCreative,
