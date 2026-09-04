@@ -16,51 +16,45 @@ now WEDGES.** See §0.
 
 ---
 
-## 0. THE BLOCKER — the full gate wedges, reproducibly
+## 0. THE "BLOCKER" WAS THE BOX, NOT THIS BRANCH — retracted
 
-`cassini run` no longer completes. Twice in a row, on a DIFFERENT per-worker server
-each time (`server-gw7`, then `server-gw4`), one of the eight servers goes UNHEALTHY
-and the run sits quiet until killed. Both wedged at the identical point — the server's
-last line is a failed delivery to a capture endpoint programmed to answer 500:
+Three `cassini run`s went quiet with `⚠ UNHEALTHY adcp-server`. I attributed that to this
+branch's changes on n=2 without checking for a co-tenant. **That attribution was wrong.**
+What the third run's own evidence says:
 
+* `bdd_inprocess: exit -9` — SIGKILL, i.e. the **OOM killer**, not a test failure;
+* the box was running **two concurrent 26-container cassini runs**
+  (`sa-e80d3f9d` + `sa-0c74d963`) at **load average 72**, with **85 of 86 GB used and
+  zero swap**;
+* `run_all_tests.sh`'s own note measures ONE full 7-suite parallel run at ~35 GB peak.
+  Two do not fit.
+
+Under that pressure the run still got `e2e`, `admin`, `ui` and `integration` to OK. The
+only genuine failures were two unit rows (below). **Check for a co-tenant before
+diagnosing a wedge:**
+
+```bash
+ssh hetzner2-vm "docker ps --format '{{.Names}}' | sed -E 's/^(sa-[a-z0-9]+).*/\1/' | sort -u; free -g | sed -n 2p; uptime"
 ```
-httpx  POST https://webhooks.adcp.test:8443/webhook/<key> "HTTP/1.1 500 Internal Server Error"
-protocol_webhook_service  ERROR  Webhook for task mb_001 delivery did not succeed within the attempt budget
-<silence; healthcheck fails from here on>
-```
 
-**This is a latent hang that §3's fix EXPOSED, not one it introduced.** Before the fix
-no delivery ever left the server over e2e_rest (that was the bug), so the retry-ladder
-and circuit-breaker paths were never entered in the per-worker stack at all. They are
-entered now, and one of them does not return. The same fix exposed a second latent
-vacuity the same way (`T-UC-004-webhook-ssrf-blocked`, §3) — that one is fixed; this
-one is not.
+### What still needs a clean run
 
-It did NOT reproduce locally: a full single-server in-network `bdd_e2e` ran clean in
-5m41s (589 passed). It needs the 8-worker `E2E_PER_WORKER` shape.
+Everything below is verified locally; what is missing is one uncontended full gate.
 
-Leads, in the order worth trying:
+| suite | status |
+|---|---|
+| unit | 2 failures on the box, see below |
+| integration / e2e / admin / ui | OK on the box even under pressure |
+| bdd_inprocess | OOM-killed; 547 passed / 0 failed locally for the touched module |
+| bdd_e2e | **588 passed / 0 failed** in-network locally, totals reconciling at 2630 |
 
-1. **Which scenario.** The suspects are the retry/breaker family, which are exactly the
-   scenarios that moved from xfail to XPASS once deliveries became real (16 -> 17
-   xpassed): `test_persistent_webhook_failures_open_circuit_breaker`,
-   `test_successful_retry_records_delivery`,
-   `test_circuit_breaker_closes_after_successful_recovery_probes`. Run that family alone
-   under `E2E_PER_WORKER=1` and watch `docker ps` for an unhealthy server.
-2. **Is the event loop blocked?** The healthcheck stops answering, which is the
-   signature of a SYNC sleep on the loop rather than of a crash (a crash restarts, a
-   loop keeps logging). `WebhookDeliveryService._deliver_with_backoff` sleeps with
-   `time.sleep`; establish whether the admin trigger route reaches it on a thread or on
-   the loop.
-3. **Not the intervals.** Both were checked and are innocent: the server's
-   `DELIVERY_WEBHOOK_INTERVAL` is unset and defaults to 3600s (the batch seen in the log
-   is the STARTUP one, not a 5s loop — the `"5"` at docker-compose.e2e.yml :613 belongs
-   to the `tests` runner, not the server), and
-   `ADCP_WEBHOOK_BREAKER_TIMEOUT_SECONDS` is 5.
-
-Do not "fix" this by reverting §3. The three legs it repairs are graded, mutation-
-verified behaviour; the hang is a real defect that was simply unreachable while they
-were broken.
+1. `test_architecture_harness_realize_e2e_coverage::test_unwrapped_given_step_methods_are_pinned`
+   — MINE, and the ratchet working correctly (a stale allowlist row once the method got
+   wrapped). Fixed in `f365415d6`; the run predates it.
+2. `test_guards_a2a_integer_restoration::test_dict_to_value_is_the_only_struct_value_construction_site`
+   — **passes clean locally**, and nothing on this branch touches A2A struct-value
+   construction. Unattributed: re-check it on an uncontended run before treating it as
+   real.
 
 ---
 
