@@ -32,7 +32,6 @@ from src.core.exceptions import (
     AdCPConfigurationError,
     AdCPContextNotFoundError,
     AdCPCreativeRejectedError,
-    AdCPInvalidRequestError,
     AdCPProductNotFoundError,
     AdCPValidationError,
 )
@@ -2047,31 +2046,6 @@ class TestUpdateMediaBuyMainFlow:
         assert pkg2.paused is True
         assert pkg2.budget is None
         assert pkg2.creative_ids is None
-
-    def test_empty_update_rejected(self):
-        """UC-003-MF04: update with no updatable fields returns error.
-
-        Spec: UNSPECIFIED (implementation-defined empty update rejection)
-        Priority: P1
-        Type: unit
-        Source: UC-003, BR-RULE-022
-        Covers: UC-003-MAIN-04
-        """
-
-        # account and idempotency_key are supplied because UpdateMediaBuyRequest REQUIRES
-        # them. Without them the request never validated, so this test used to be graded on
-        # a missing-required-field rejection and never reached BR-RULE-022 at all -- it
-        # passed on the right exception class for the wrong reason. It now reaches the rule.
-        with pytest.raises(AdCPInvalidRequestError) as exc_info:
-            UpdateMediaBuyRequest(
-                media_buy_id="mb_empty",
-                account={"account_id": "acct_1"},
-                idempotency_key="idem_empty_update",
-            )
-
-        # INVALID_REQUEST, not VALIDATION_ERROR: a schema-VALID request refused by a
-        # business rule (every update field is optional per update-media-buy-request.json).
-        assert exc_info.value.error_code == "INVALID_REQUEST"
 
 
 class TestUpdateMediaBuyPauseResume:

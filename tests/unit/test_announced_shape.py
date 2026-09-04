@@ -81,6 +81,7 @@ class TestNarrowingIsGraded:
     it needs a grader that fails when it stops happening.
     """
 
+
 class TestDerivationIsAPureFunction:
     """The derivation is ``(signature, DTO) -> signature``: no I/O, no registry, no DB.
 
@@ -147,6 +148,7 @@ class TestAdvertisedSchemaIsPublished:
     can only assert what a buyer would really receive. Expectations are LITERAL for one tool,
     not recomputed from the model.
     """
+
 
 class TestAdvertisedTypesAreAccepted:
     """Every TYPE we advertise must be one the implementation actually takes.
@@ -361,9 +363,9 @@ class TestRestDropsInternalFieldsToo:
     it in the payload.
     """
 
+
 class _FixtureWithAnInternalField(_LibraryListAccountsRequest):
     local_only_flag: bool | None = Field(default=None, exclude=True)
-
 
 
 def _fixture_impl_taking_everything(status=None, local_only_flag=None, **kwargs): ...

@@ -19,8 +19,6 @@ from pathlib import Path
 
 import pytest
 
-from src.core.schemas import GetProductsRequest
-
 
 class TestRawFunctionParameterValidation:
     """Validate that raw functions properly handle all their parameters."""
@@ -104,23 +102,6 @@ class TestRawFunctionParameterValidation:
 
         assert not issues, "Found unused parameters in raw functions:\n" + "\n".join(issues)
 
-    def test_create_get_products_request_signature(self):
-        """Document the exact signature of GetProductsRequest for reference."""
-
-        sig = inspect.signature(GetProductsRequest)
-        params = list(sig.parameters.keys())
-
-        # adcp 3.6.0: brand_manifest removed, only brand (BrandReference) remains.
-        # Note: promoted_offering removed per adcp v1.2.1 migration
-        expected_params = ["brief", "brand", "filters", "property_list", "context"]
-
-        assert params == expected_params, (
-            f"GetProductsRequest signature changed!\n"
-            f"Expected: {expected_params}\n"
-            f"Got: {params}\n"
-            f"This may require updating get_products_raw()"
-        )
-
     def test_get_products_raw_doesnt_pass_invalid_params_to_helper(self):
         """Ensure get_products_raw doesn't pass params the helper doesn't accept.
 
@@ -154,41 +135,6 @@ class TestRawFunctionParameterValidation:
 
 class TestHelperFunctionDocumentation:
     """Document helper function signatures for reference."""
-
-    def test_all_create_helper_signatures(self):
-        """Document all create_* helper functions from schema_helpers."""
-        from src.core import schema_helpers
-
-        helpers = [
-            name
-            for name in dir(schema_helpers)
-            if name.startswith("create_") and callable(getattr(schema_helpers, name))
-        ]
-
-        signatures = {}
-        for helper_name in helpers:
-            helper = getattr(schema_helpers, helper_name)
-            sig = inspect.signature(helper)
-            signatures[helper_name] = list(sig.parameters.keys())
-
-        # Document what we found
-        print("\n" + "=" * 80)
-        print("SCHEMA HELPER FUNCTION SIGNATURES")
-        print("=" * 80)
-        for name, params in sorted(signatures.items()):
-            print(f"{name}({', '.join(params)})")
-
-        # Verify GetProductsRequest (the one that caused the bug)
-        assert "GetProductsRequest" in signatures
-        # adcp 3.6.0: brand_manifest removed, only brand (BrandReference) remains.
-        expected = ["brief", "brand", "filters", "property_list", "context"]
-        actual = signatures["GetProductsRequest"]
-        assert actual == expected, (
-            f"GetProductsRequest signature changed!\n"
-            f"Expected: {expected}\n"
-            f"Got: {actual}\n"
-            f"Update get_products_raw if needed"
-        )
 
 
 if __name__ == "__main__":

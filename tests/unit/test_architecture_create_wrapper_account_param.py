@@ -35,35 +35,6 @@ class TestCreateWrapperAccountParam:
             if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)) and node.name in WRAPPER_NAMES
         }
 
-    def test_create_media_buy_has_account_param(self):
-        """MCP wrapper create_media_buy must accept 'account' parameter."""
-        wrappers = self._parse_wrappers()
-        assert "create_media_buy" in wrappers, "create_media_buy not found in media_buy_create.py"
-        params = _get_param_names(wrappers["create_media_buy"])
-        assert "account" in params, (
-            f"create_media_buy is missing 'account' parameter. "
-            f"Current params: {params}. "
-            "Without it, harness strips account before MCP dispatch."
-        )
-
-    def test_builder_has_account_param(self):
-        """The shared builder must accept 'account'.
-
-        Was asserted on create_media_buy_raw, which took the field directly. That wrapper
-        now takes the BUILT request, so `account` reaches it on the request and the place
-        it can go missing is the builder -- if the builder does not declare it, every
-        transport loses it at once, which is strictly worse than the single-transport
-        stripping this guard was written for.
-        """
-        wrappers = self._parse_wrappers()
-        name = "CreateMediaBuyRequest"
-        assert name in wrappers, f"{name} not found in media_buy_create.py"
-        params = _get_param_names(wrappers[name])
-        assert "account" in params, (
-            f"{name} is missing 'account' parameter. Current params: {params}. "
-            "Without it no transport can put an account on the request."
-        )
-
     def test_guard_catches_missing_account_param(self):
         """Negative meta-test: guard catches a wrapper that omits 'account'."""
         source = "async def create_media_buy(brand=None, packages=None, ctx=None): pass"

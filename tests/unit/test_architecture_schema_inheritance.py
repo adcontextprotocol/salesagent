@@ -389,6 +389,18 @@ class TestSchemaInheritance:
             # library's type and neither redeclaration is a reshape any more.
             # Nested serialization overrides (Critical Pattern #4) —
             # Parent models re-declare list fields to use local subclass types
+            # WEAKENED AXIS: nullability. core/creative-asset.json is a oneOf -- a creative is
+            # identified by format_id OR by format_kind -- and codegen renders it as two
+            # classes with identical field sets differing only in which identifier is
+            # required, wrapped in a RootModel union. adcp.types exports the name
+            # CreativeAsset bound to ARM ONE, where format_id is required.
+            #
+            # This subclasses that arm and relaxes format_id to optional, stating the oneOf
+            # as what it is (an XOR validator) on one flat model. Keeping the parent's
+            # requiredness would announce only half the schema: the format_kind arm would be
+            # unsendable on all three transports at once. Rowed rather than admitted, because
+            # a weakening a derived rule lets through is invisible and permanent.
+            ("CreativeAssetRequest", "format_id"),
             ("GetMediaBuyDeliveryResponse", "media_buy_deliveries"),
             ("GetSignalsResponse", "signals"),
             ("ListCreativesResponse", "query_summary"),

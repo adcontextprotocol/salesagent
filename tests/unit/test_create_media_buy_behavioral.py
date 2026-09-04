@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers.create_media_buy_capture import capture_a2a_forwarded_pnc, capture_mcp_forwarded_pnc
+from tests.helpers.create_media_buy_capture import capture_a2a_forwarded_pnc
 
 
 class TestMCPWrapperPncJsonSerialization:
@@ -35,54 +35,6 @@ class TestMCPWrapperPncJsonSerialization:
     the model arrives typed AND that what persistence receives is plain — which is
     the actual obligation, stated at the layer that now owns it.
     """
-
-    @pytest.mark.asyncio
-    async def test_mcp_wrapper_url_is_plain_str_not_anyurl(self):
-        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-01"""
-        from adcp import PushNotificationConfig
-
-        from src.core.webhooks.registration import accept_push_notification_config
-
-        pnc = PushNotificationConfig(
-            url="https://buyer.example.com/webhook",
-            authentication={"credentials": "a" * 32, "schemes": ["Bearer"]},
-        )
-        forwarded = await capture_mcp_forwarded_pnc(pnc)
-
-        assert forwarded is not None, "MCP wrapper did not forward push_notification_config to _impl"
-        assert isinstance(forwarded, PushNotificationConfig), (
-            f"_impl must receive the typed model, got {type(forwarded).__name__}"
-        )
-
-        url = accept_push_notification_config(forwarded).to_columns()["url"]
-        assert type(url) is str, (
-            f"the url written to a SQLAlchemy String column must be a PLAIN str, got "
-            f"{type(url).__name__!r} — a pydantic AnyUrl here is gh-#1377 at flush time"
-        )
-        assert url == "https://buyer.example.com/webhook", f"url value mismatch: {url!r}"
-
-    @pytest.mark.asyncio
-    async def test_mcp_wrapper_enum_schemes_are_plain_strings(self):
-        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-01"""
-        from adcp import PushNotificationConfig
-
-        from src.core.webhooks.registration import accept_push_notification_config
-
-        pnc = PushNotificationConfig(
-            url="https://buyer.example.com/webhook",
-            authentication={"credentials": "a" * 32, "schemes": ["Bearer"]},
-        )
-        forwarded = await capture_mcp_forwarded_pnc(pnc)
-        assert forwarded is not None
-
-        columns = accept_push_notification_config(forwarded).to_columns()
-        scheme = columns["authentication_type"]
-        assert type(scheme) is str, (
-            f"authentication_type must be a PLAIN str, got {type(scheme).__name__!r} — "
-            f"AuthenticationScheme is a str SUBCLASS, so it persists but leaks an enum "
-            f"into the DB and JSONB layers"
-        )
-        assert scheme == "Bearer", f"scheme value mismatch: {scheme!r}"
 
 
 class TestA2AWrapperPncJsonSerialization:

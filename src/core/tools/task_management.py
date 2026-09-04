@@ -15,6 +15,7 @@ from adcp.types.generated_poc.core.async_response_data import AdcpAsyncResponseD
 from adcp.types.generated_poc.core.pagination_response import PaginationResponse
 from adcp.types.generated_poc.protocol.get_task_status_response import HistoryItem
 from adcp.types.generated_poc.protocol.list_tasks_response import QuerySummary
+from fastmcp.server.context import Context
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import require_identity, require_principal_id, require_tenant
@@ -34,6 +35,12 @@ from src.core.schemas import (
     ListTasksResponse,
     TaskSummary,
     enum_value,
+)
+from src.core.tool_context import ToolContext
+from src.core.transport_helpers import (
+    NOT_PROVIDED,
+    IdentityOrNotProvided,
+    resolve_identity_if_not_provided,
 )
 
 logger = logging.getLogger(__name__)
@@ -315,9 +322,14 @@ async def _list_tasks_impl(
 
 async def list_tasks_raw(
     req: ListTasksRequest,
-    identity: ResolvedIdentity | None = None,
+    ctx: Context | ToolContext | None = None,
+    identity: IdentityOrNotProvided = NOT_PROVIDED,
 ) -> ListTasksResponse:
     """``list_tasks`` for A2A and REST: the implementation without MCP's Context."""
+    # NOT_PROVIDED, not None: None is a VALUE a caller can pass to mean anonymous, so a
+    # None default cannot tell 'no identity supplied' from 'explicitly anonymous' and the
+    # wrapper silently reaches for ambient context in both cases.
+    identity = resolve_identity_if_not_provided(identity, ctx)
     return await _list_tasks_impl(req=req, identity=identity)
 
 
@@ -333,9 +345,10 @@ async def _get_task_impl(
     """
     task_id = req.task_id
 
-    identity = require_identity(identity)
-    tenant = require_tenant(identity)
-    principal_id = require_principal_id(identity)  # F-03: an authenticated (non-anonymous) principal is required
+    identity = require_identity(identity, context=req.context)
+    tenant = require_tenant(identity, context=req.context)
+    # F-03: an authenticated (non-anonymous) principal is required
+    principal_id = require_principal_id(identity, context=req.context)
 
     with WorkflowUoW(tenant["tenant_id"]) as uow:
         assert uow.workflows is not None
@@ -415,9 +428,14 @@ async def _get_task_impl(
 
 async def get_task_raw(
     req: GetTaskRequest,
-    identity: ResolvedIdentity | None = None,
+    ctx: Context | ToolContext | None = None,
+    identity: IdentityOrNotProvided = NOT_PROVIDED,
 ) -> GetTaskResponse:
     """``get_task`` for A2A and REST: the implementation without MCP's Context."""
+    # NOT_PROVIDED, not None: None is a VALUE a caller can pass to mean anonymous, so a
+    # None default cannot tell 'no identity supplied' from 'explicitly anonymous' and the
+    # wrapper silently reaches for ambient context in both cases.
+    identity = resolve_identity_if_not_provided(identity, ctx)
     return await _get_task_impl(req=req, identity=identity)
 
 
@@ -460,9 +478,9 @@ async def _complete_task_impl(
     response_data = req.response_data
     error_message = req.error_message
 
-    identity = require_identity(identity)
-    tenant = require_tenant(identity)
-    principal_id = require_principal_id(identity)  # F-03: an authenticated principal is required
+    identity = require_identity(identity, context=req.context)
+    tenant = require_tenant(identity, context=req.context)
+    principal_id = require_principal_id(identity, context=req.context)  # F-03: an authenticated principal is required
 
     with WorkflowUoW(tenant["tenant_id"]) as uow:
         assert uow.workflows is not None
@@ -521,7 +539,12 @@ async def _complete_task_impl(
 
 async def complete_task_raw(
     req: CompleteTaskRequest,
-    identity: ResolvedIdentity | None = None,
-) -> dict[str, Any]:
+    ctx: Context | ToolContext | None = None,
+    identity: IdentityOrNotProvided = NOT_PROVIDED,
+) -> CompleteTaskResponse:
     """``complete_task`` for A2A and REST: the implementation without MCP's Context."""
+    # NOT_PROVIDED, not None: None is a VALUE a caller can pass to mean anonymous, so a
+    # None default cannot tell "no identity supplied" from "explicitly anonymous" and the
+    # wrapper silently reaches for ambient context in both cases.
+    identity = resolve_identity_if_not_provided(identity, ctx)
     return await _complete_task_impl(req=req, identity=identity)

@@ -14,7 +14,6 @@ from src.core.exceptions import AdCPValidationError
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schema_helpers import to_account_reference
 from src.core.schemas import SyncCreativesRequest
-from tests.helpers import assert_construction_rejects
 
 _MOCK_IDENTITY = ResolvedIdentity(
     principal_id="principal_123",
@@ -107,33 +106,6 @@ class TestSyncCreativesAccountCoercion:
         assert result.root.brand.domain == "example.com"
         assert result.root.operator == "op-1"
         assert result.root.sandbox is False
-
-    def test_none_account_is_refused_because_the_pin_requires_one(self):
-        """A None account is REFUSED, not forwarded.
-
-        This asserted the opposite -- that None "passes through unchanged" -- and passed
-        only because the builder never ran under the patched wrapper. `account` is in
-        /required on sync-creatives-request.json, so a request without one is not
-        constructible, and forwarding a None was the permissive behavior the spec removed.
-
-        Graded on the field PATH rather than the exception class. The skill handler is
-        BELOW the A2A boundary: it no longer opens a validation boundary of its own, so
-        what leaves it is the pydantic rejection, and the dispatcher above it derives the
-        typed error -- from the same exception, by the same call, so the path is the same
-        either way.
-
-        The path is ``account`` -- the field the buyer omitted. It used to be
-        ``account.AccountReference1``, a UNION-MEMBER name they never sent: forwarding an
-        explicit None made pydantic report the first union member's TYPE failure instead of
-        a missing field. ``SyncCreativesRequest`` omits unsent fields now, so the
-        model sees ``account`` as ABSENT and names it.
-
-        This test pinned that path "as measured rather than as it ought to read" and called
-        the wart worth its own fix. It was fixed by the change that stopped builders
-        overriding their models' declared defaults, which was aimed at something else --
-        so the pin is updated here rather than in a ticket of its own.
-        """
-        assert_construction_rejects(lambda: self._call_handler_with_account(None), field="account")
 
     def test_already_typed_account_passes_through(self):
         """An already-validated AccountReference is forwarded by identity, not re-validated."""

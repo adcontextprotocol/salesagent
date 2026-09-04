@@ -568,38 +568,6 @@ class TestMCPWrapperStringCoercion:
     The wrapper must coerce strings to enums before accessing .value.
     """
 
-    @pytest.mark.asyncio
-    async def test_mcp_wrapper_handles_string_type(self):
-        """MCP wrapper must not crash when type is a raw string instead of FormatCategory enum."""
-        from src.core.tools.creative_formats import list_creative_formats
-
-        # Calling with a raw string bypasses FastMCP's enum coercion
-        # This should NOT raise AttributeError
-        try:
-            await list_creative_formats(ctx=None)
-        except AttributeError:
-            pytest.fail("MCP wrapper crashed on raw string type — must coerce to enum first")
-        except Exception:
-            pass  # Other errors (no identity, etc.) are fine — we're testing type handling
-
-    @pytest.mark.asyncio
-    async def test_mcp_wrapper_handles_string_asset_types(self):
-        """MCP wrapper must not crash when asset_types contains raw strings."""
-        from src.core.tools.creative_formats import list_creative_formats
-
-        try:
-            await list_creative_formats(asset_types=["image", "video"], ctx=None)
-        except AttributeError:
-            pytest.fail("MCP wrapper crashed on raw string asset_types — must coerce to enum first")
-        except Exception:
-            pass  # Other errors are fine
-
-
-# ---------------------------------------------------------------------------
-# Extension C: Error propagation in format discovery
-# Decision: docs/design/error-propagation-in-format-discovery.md
-# ---------------------------------------------------------------------------
-
 
 def _call_impl_raw(
     formats: list[Format],

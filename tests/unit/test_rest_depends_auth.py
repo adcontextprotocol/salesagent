@@ -77,7 +77,14 @@ class TestRouteSignaturesUseDependsForIdentity:
 
         rest_tools = {name for name, spec in TOOLS.items() if spec.rest is not None}
         routes = [r for r in app.routes if getattr(r, "name", None) in rest_tools]
-        assert routes, "no REST routes registered -- the derivation produced nothing"
+        # EQUALITY, not "non-empty": registration skips a row whose *_raw it cannot resolve
+        # (api_v1.py: `if _raw is None: continue`), with no error and no log. A tool declaring
+        # rest= and getting no route is simply unreachable over REST, and this is the only
+        # place that would notice.
+        assert {r.name for r in routes} == rest_tools, (
+            f"registry declares REST for {sorted(rest_tools)} but only {sorted(r.name for r in routes)} "
+            "registered -- a row whose *_raw could not be resolved is skipped silently"
+        )
         return routes
 
     def test_every_rest_route_resolves_identity_through_depends(self):
@@ -91,6 +98,8 @@ class TestRouteSignaturesUseDependsForIdentity:
         for route in self._rest_routes():
             params = inspect.signature(route.endpoint).parameters
             assert "request" not in params, f"{route.name} should not take a raw Request"
+
+
 class TestResolveAuthDepBehavior:
     """Test the resolve_auth dependency function behavior directly."""
 

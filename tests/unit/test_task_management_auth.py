@@ -84,7 +84,9 @@ async def test_get_task_no_identity_raises_auth_error() -> None:
 async def test_complete_task_no_principal_raises_auth_error() -> None:
     """complete_task must reject identity that has tenant but no principal_id."""
     with pytest.raises(AdCPAuthenticationError) as exc_info:
-        await complete_task_raw(req=CompleteTaskRequest(task_id="step-123", status="completed"), identity=_identity_no_principal())
+        await complete_task_raw(
+            req=CompleteTaskRequest(task_id="step-123", status="completed"), identity=_identity_no_principal()
+        )
 
 
 @pytest.mark.asyncio
