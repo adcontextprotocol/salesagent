@@ -36,8 +36,6 @@ def _impl_caller(tool_name: str):
     return call
 
 
-
-
 class TestListTasksTool:
     """Test the list_tasks MCP tool actually works."""
 

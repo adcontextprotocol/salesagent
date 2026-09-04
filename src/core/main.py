@@ -475,6 +475,9 @@ def _tool_callable(tool_name: str, spec: Any) -> Any:
     is applied by ``_register_tool`` from the DTO itself, and FastMCP calls this with those
     names, so the parameter list cannot fall behind the shape it announces -- which is what
     a wrapper's own parameter list used to do, silently narrowing what a buyer could send.
+
+    ``spec`` is used for REGISTRATION only (the advertised shape, the description). What runs
+    is read from ``TOOLS`` per call -- see the note inside.
     """
 
     async def tool(ctx: Context | None = None, **kwargs: Any) -> Any:
@@ -483,7 +486,12 @@ def _tool_callable(tool_name: str, spec: Any) -> Any:
         # ctx is declared, not swept into kwargs: _is_injected detects it by ANNOTATION,
         # and it must survive into the advertised signature for FastMCP to inject it.
         kwargs["ctx"] = ctx
-        return mcp_result(await _call_tool(spec, kwargs))
+        # The ROW is read per call, not frozen into this closure at registration. TOOLS is
+        # the declaration; a registration holding a snapshot of it is a second one, and it
+        # diverges the moment the registry changes -- which also made a registered tool
+        # impossible to substitute, since the row and the thing the server invoked were two
+        # different objects. Costs one dict lookup.
+        return mcp_result(await _call_tool(TOOLS[tool_name], kwargs))
 
     tool.__name__ = tool_name
     return tool

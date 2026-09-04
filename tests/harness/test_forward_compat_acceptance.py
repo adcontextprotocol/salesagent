@@ -732,10 +732,15 @@ class TestDataPreservationE2E:
                 for p in patches:
                     p.start()
                 # Capture the impl
-                import src.core.tools.products as products_mod
+                # Substituted at the REGISTRY ROW, which is what the MCP boundary invokes.
+                # Patching src.core.tools.products._get_products_impl captured nothing: the
+                # row holds the function object, so the module attribute and the thing the
+                # transport calls are two different names for what used to be one.
+                from src.core.tools.registry import TOOLS
+                from tests.helpers.capture_wrapper_req import registry_impl
 
-                original_impl = products_mod._get_products_impl
-                with patch.object(products_mod, "_get_products_impl", side_effect=capturing_impl):
+                original_impl = TOOLS["get_products"].impl
+                with registry_impl("get_products", capturing_impl):
                     try:
                         async with Client(mcp) as client:
                             result = await client.call_tool(
@@ -781,10 +786,15 @@ class TestDataPreservationE2E:
             with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
                 for p in patches:
                     p.start()
-                import src.core.tools.products as products_mod
+                # Substituted at the REGISTRY ROW, which is what the MCP boundary invokes.
+                # Patching src.core.tools.products._get_products_impl captured nothing: the
+                # row holds the function object, so the module attribute and the thing the
+                # transport calls are two different names for what used to be one.
+                from src.core.tools.registry import TOOLS
+                from tests.helpers.capture_wrapper_req import registry_impl
 
-                original_impl = products_mod._get_products_impl
-                with patch.object(products_mod, "_get_products_impl", side_effect=capturing_impl):
+                original_impl = TOOLS["get_products"].impl
+                with registry_impl("get_products", capturing_impl):
                     try:
                         async with Client(mcp) as client:
                             result = await client.call_tool(
@@ -832,10 +842,15 @@ class TestDataPreservationE2E:
             with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
                 for p in patches:
                     p.start()
-                import src.core.tools.products as products_mod
+                # Substituted at the REGISTRY ROW, which is what the MCP boundary invokes.
+                # Patching src.core.tools.products._get_products_impl captured nothing: the
+                # row holds the function object, so the module attribute and the thing the
+                # transport calls are two different names for what used to be one.
+                from src.core.tools.registry import TOOLS
+                from tests.helpers.capture_wrapper_req import registry_impl
 
-                original_impl = products_mod._get_products_impl
-                with patch.object(products_mod, "_get_products_impl", side_effect=capturing_impl):
+                original_impl = TOOLS["get_products"].impl
+                with registry_impl("get_products", capturing_impl):
                     try:
                         async with Client(mcp) as client:
                             result = await client.call_tool(

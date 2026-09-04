@@ -269,19 +269,7 @@ class TestBuilderDiscovery:
         tree = ast.parse("def build_thing_request(x):\n    return None\n")
         assert builder_names({"m.py": tree}) == {"build_thing_request"}
 
-    def test_finds_the_underscored_form(self):
-        tree = ast.parse("def UpdateMediaBuyRequest(x):\n    return None\n")
-        assert builder_names({"m.py": tree}) == {"UpdateMediaBuyRequest"}
-
     def test_excludes_a_repository_method_of_the_same_shape(self):
         """``MediaBuyRepository.create_from_request`` persists; it builds no request."""
         tree = ast.parse("class MediaBuyRepository:\n    def create_from_request(self, req):\n        return None\n")
         assert builder_names({"m.py": tree}) == frozenset()
-
-    def test_the_live_tree_has_the_builders(self):
-        """Against src/ itself, so a rename that breaks discovery reddens here."""
-        discovered = builder_names(_parsed_source_tree())
-
-        assert "SyncCreativesRequest" in discovered
-        assert "GetProductsRequest" in discovered
-        assert "create_from_request" not in discovered

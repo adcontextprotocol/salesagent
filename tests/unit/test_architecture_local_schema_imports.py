@@ -96,9 +96,7 @@ ALLOWLIST: set[tuple[str, str]] = {
     ("src/core/schema_helpers.py", "Product"),
     ("src/core/schema_helpers.py", "ProductFilters"),
     # FIXME(#1388): tools import SDK types directly
-    ("src/core/tools/creative_formats.py", "FormatId"),
     ("src/core/tools/products.py", "FormatId"),
-    ("src/core/tools/products.py", "ProductFilters"),
     # FIXME(#1388): services import SDK types directly
     ("src/services/dynamic_pricing_service.py", "FormatId"),
 }

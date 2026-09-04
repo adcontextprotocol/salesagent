@@ -133,12 +133,6 @@ class TestGetAdcpCapabilitiesImports:
 
         assert callable(_get_adcp_capabilities_impl)
 
-    def test_mcp_wrapper_exists(self):
-        """Test that the MCP wrapper function exists."""
-        from src.core.tools.capabilities import get_adcp_capabilities
-
-        assert callable(get_adcp_capabilities)
-
     def test_raw_function_exists(self):
         """Test that the raw function exists."""
         from src.core.tools.capabilities import get_adcp_capabilities_raw

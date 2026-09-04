@@ -83,7 +83,6 @@ RESOLVED_IDENTITY_PER_FILE_CAP: dict[str, int] = {
     "tests/unit/test_impl_resolved_identity.py": 2,
     "tests/unit/test_media_buy.py": 9,
     "tests/unit/test_no_contextvar_in_a2a.py": 2,
-    "tests/unit/test_performance_index_behavioral.py": 3,
     "tests/unit/test_pr1071_review_fixes.py": 3,
     "tests/unit/test_property_list_schema.py": 1,
     "tests/unit/test_quiet_failure_propagation.py": 2,

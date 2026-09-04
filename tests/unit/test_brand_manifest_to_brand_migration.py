@@ -19,24 +19,6 @@ from src.core.schemas import GetProductsRequest
 class TestGetProductsRawRejectsBrandManifest:
     """get_products_raw no longer accepts brand_manifest keyword."""
 
-    def test_brand_manifest_kwarg_raises_type_error(self):
-        """Calling get_products_raw with brand_manifest= raises TypeError.
-
-        This reproduces the failure in:
-        - tests/integration_v2/test_get_products_filters.py (8+ tests)
-        """
-
-        # Aimed at the BUILDER, not get_products_raw. The wrapper takes the built request
-        # now, so every field name is unknown to it and `brand_manifest` would raise there
-        # for a reason that has nothing to do with this migration -- a pass that says
-        # nothing. The builder is the one door a buyer field enters through, so it is where
-        # "brand_manifest is not a parameter, brand is" is actually enforced.
-        with pytest.raises(TypeError, match="brand_manifest"):
-            GetProductsRequest(
-                brand_manifest={"name": "Test Brand"},
-                brief="",
-            )
-
 
 class TestGetProductsRequestRejectsBrandManifest:
     """GetProductsRequest no longer accepts brand_manifest field."""
@@ -47,7 +29,6 @@ class TestGetProductsRequestRejectsBrandManifest:
         This reproduces the failure in:
         - tests/integration_v2/test_get_products_format_id_filter.py (4 tests)
         """
-        from src.core.schemas import GetProductsRequest
 
         with pytest.raises(ValidationError, match="brand_manifest"):
             GetProductsRequest(

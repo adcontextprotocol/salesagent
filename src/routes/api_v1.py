@@ -41,7 +41,7 @@ router = APIRouter(prefix="/api/v1", tags=["api-v1"])
 # route to invoke. They acquire a route when they acquire a wrapper.
 
 
-def _body_model_for(tool_name: str, spec: Any) -> type[BaseModel]:
+def _body_model_for(spec: Any) -> Any:
     """The DTO, with any field carried in the URL path made optional.
 
     Not a second shape: it is the DTO subclassed, relaxing exactly the fields ``path_fields``
@@ -50,7 +50,7 @@ def _body_model_for(tool_name: str, spec: Any) -> type[BaseModel]:
     the DTO itself, which stays the accepted shape.
     """
     if not spec.rest.path_fields:
-        return spec.dto  # type: ignore[no-any-return]
+        return spec.dto
     return create_model(
         f"{spec.dto.__name__}Body",
         __base__=spec.dto,
@@ -75,7 +75,11 @@ def _rest_handler(tool_name: str, spec: Any, raw: Any, body_model: type[BaseMode
     the row, so it is a projection of the one declaration, not a second one.
     """
 
-    async def handler(body: body_model, identity: ResolvedIdentity | None = None, **path_values: Any) -> Any:  # type: ignore[valid-type]
+    # body is annotated Any HERE and typed for real below: handler.__signature__ is
+    # replaced wholesale with one carrying body_model, which is what FastAPI reads. The
+    # inline annotation was a runtime variable in a type position -- decorative, and it
+    # cost a type: ignore to say so.
+    async def handler(body: Any, identity: ResolvedIdentity | None = None, **path_values: Any) -> Any:
         if path_values:
             body = spec.dto.model_validate({**body.model_dump(exclude_unset=True), **path_values})
         # Resolved per call, not frozen into the closure. Late binding is what every other
@@ -140,7 +144,7 @@ for _name, _spec in TOOLS.items():
     # The body model IS the DTO. It used to derive from the MCP wrapper parameters, which
     # made the wrapper the REST accepted shape too; the wrappers are gone. The one projection
     # is a templated path: those fields travel in the URL, so the body may omit them.
-    _body_model = _body_model_for(_name, _spec)
+    _body_model = _body_model_for(_spec)
     router.add_api_route(
         _spec.rest.path,
         _rest_handler(_name, _spec, _raw, _body_model),

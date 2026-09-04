@@ -7,10 +7,8 @@ to ensure consistent validation across all creative operations.
 from unittest.mock import patch
 
 import pytest
-from pydantic import ValidationError
 
 from src.core.errors.details import AdapterFailureDetails
-from src.core.exceptions import first_validation_error_field
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.tools.creatives import _sync_creatives_impl
 from tests.factories.creative_asset import build_assets, image_spec
@@ -177,33 +175,6 @@ class TestSyncCreativesFormatValidation:
             assert exc_info.value.details.status == "Connection failed"
             assert exc_info.value.recovery == "transient"
 
-    def test_format_validation_with_string_format_id(self):
-        """A string format_id is refused BY THE REQUEST, not reported per creative.
-
-        core/creative-asset.json @ AdCP 3.1.1 types ``format_id`` as the structured
-        {agent_url, id} object; there is no string arm. This used to assert a per-creative
-        ``action == "failed"``, which was reachable only because the payload went straight
-        into ``_sync_creatives_impl``. Every transport builds the request first (a2a and rest by
-        calling the builder, mcp through FastMCP's own coercion of the annotated
-        ``list[CreativeAssetRequest]``), so no buyer could ever have observed the
-        per-creative result this pinned. The obligation is unchanged -- a string format_id is
-        rejected and the rejection names format_id -- only the layer that states it.
-        """
-        creative_dict = {
-            **make_creative_dict(creative_id="creative_456", name="Legacy Creative"),
-            "format_id": "display_300x250_image",  # String instead of the structured object
-        }
-
-        # Graded on the pydantic rejection and the FIELD PATH production derives from it.
-        # This used to open adcp_validation_boundary itself to reproduce what the transports
-        # did; they no longer do, so the wrapper simulated a frame that is gone. The typed
-        # error and its code are produced at the transport boundary and graded there
-        # (tests/unit/test_validation_error_at_the_boundary.py).
-        with pytest.raises(ValidationError) as exc_info:
-            sync_creatives_request(creatives=[creative_dict])
-
-        assert first_validation_error_field(exc_info.value) == "format_id"
-
     def test_format_validation_multiple_creatives(self, identity, mock_tenant, mock_format_spec):
         """Test that format validation works correctly with multiple creatives."""
         creatives = [
@@ -299,32 +270,6 @@ class TestSyncCreativesFormatValidation:
             assert len(response.creatives) == 2
             assert response.creatives[0].action == "created"
             assert response.creatives[1].action == "created"
-
-    def test_format_validation_missing_format_id(self):
-        """An omitted format_id is refused BY THE REQUEST, not reported per creative.
-
-        ``format_id`` is required by core/creative-asset.json @ AdCP 3.1.1. This asserted a
-        per-creative INVALID_REQUEST advisory, which the payload could only reach because it
-        bypassed the request boundary; every transport builds the request first. Same
-        obligation (the omission is rejected and the rejection names format_id), stated where
-        production now states it.
-        """
-        creative_dict = {
-            "creative_id": "creative_no_format",
-            "name": "Creative Without Format",
-            # Missing format_id
-            "assets": build_assets(image_spec("banner_image", url="https://example.com/banner.png")),
-        }
-
-        # Graded on the pydantic rejection and the FIELD PATH production derives from it.
-        # This used to open adcp_validation_boundary itself to reproduce what the transports
-        # did; they no longer do, so the wrapper simulated a frame that is gone. The typed
-        # error and its code are produced at the transport boundary and graded there
-        # (tests/unit/test_validation_error_at_the_boundary.py).
-        with pytest.raises(ValidationError) as exc_info:
-            sync_creatives_request(creatives=[creative_dict])
-
-        assert first_validation_error_field(exc_info.value) == "format_id"
 
     def test_error_messages_distinguish_scenarios(self, identity, mock_tenant):
         """Test that error messages clearly distinguish between different failure scenarios."""

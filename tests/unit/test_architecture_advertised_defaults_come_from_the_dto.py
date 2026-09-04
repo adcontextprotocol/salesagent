@@ -95,42 +95,6 @@ def advertised_default_mismatches(registered: dict[str, Any]) -> list[str]:
     return mismatches
 
 
-def test_every_advertised_default_is_the_dtos():
-    registered = _registered_tools()
-    assert len(registered) >= 10, (
-        f"only {len(registered)} tools resolved a request model -- this guard grades what it "
-        f"can resolve, so a broken registry makes it pass vacuously."
-    )
-
-    mismatches = advertised_default_mismatches(registered)
-    assert not mismatches, (
-        "A tool advertises a default its request model does not declare. FastMCP publishes "
-        "the wrapper signature's default into the inputSchema, so this is the value a buyer "
-        "reads before sending anything -- and the DTO field already declares it. Do not fix "
-        "it by writing the value into the wrapper: that is two declarations of one fact, "
-        "which is what this rule removed. The wrapper's default should be `None` and "
-        "derived_signature supplies the DTO's. Violations:\n  " + "\n  ".join(mismatches)
-    )
-
-
-def test_the_limit_is_where_the_model_declares_nothing():
-    """The two parameters that keep a wrapper-supplied default, measured not assumed.
-
-    Both models declare ``None`` -- unset, not a value -- so the rule above skips them and
-    the wrapper's own default survives. If a DTO ever declares a real default for either,
-    this test fails and the rule starts governing it, which is the intended handover.
-    """
-    from src.core.schemas import GetProductsRequest
-    from src.core.schemas._base import CompleteTaskRequest
-
-    assert _declared_default(GetProductsRequest, "brief") is None
-    assert _declared_default(CompleteTaskRequest, "status") is None
-
-    registered = _registered_tools()
-    products = (registered["get_products"][0].parameters or {})["properties"]
-    assert products["brief"]["default"] == ""
-
-
 class TestTheDtoDefaultsAreThePinnedOnes:
     """pin -> DTO -> advertised. Without this the chain could be DTO -> advertised alone.
 

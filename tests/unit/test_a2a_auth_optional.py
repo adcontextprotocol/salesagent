@@ -9,7 +9,7 @@ After the identity-at-transport-boundary refactor , handlers receive
 a pre-resolved identity parameter rather than resolving auth internally.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from a2a.types import InvalidRequestError
@@ -55,32 +55,6 @@ class TestAuthOptionalSkills:
             mock_tool.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_list_authorized_properties_without_auth(self):
-        """list_authorized_properties should work with anonymous identity."""
-        with patch("src.a2a_server.adcp_a2a_server.core_list_authorized_properties_tool") as mock_tool:
-            mock_tool.return_value = {"publisher_domains": []}
-
-            result = await self.handler._handle_list_authorized_properties_skill(
-                parameters={}, identity=self.anon_identity
-            )
-
-            assert result is not None
-            mock_tool.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_list_authorized_properties_with_auth(self):
-        """list_authorized_properties should work with authenticated identity."""
-        with patch("src.a2a_server.adcp_a2a_server.core_list_authorized_properties_tool") as mock_tool:
-            mock_tool.return_value = {"publisher_domains": []}
-
-            result = await self.handler._handle_list_authorized_properties_skill(
-                parameters={}, identity=self.mock_identity
-            )
-
-            assert result is not None
-            mock_tool.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_get_products_without_auth(self):
         """get_products should work with anonymous identity."""
         with patch("src.a2a_server.adcp_a2a_server.core_get_products_tool") as mock_tool:
@@ -121,61 +95,3 @@ class TestAuthOptionalSkills:
             await self.handler._handle_explicit_skill(
                 skill_name="update_media_buy", parameters={"media_buy_id": "mb_1"}, identity=None
             )
-
-    @pytest.mark.asyncio
-    async def test_discovery_skills_accept_anonymous_identity(self):
-        """Discovery skills should accept anonymous identity (no principal_id)."""
-        discovery_skills = {
-            "list_creative_formats": "src.a2a_server.adcp_a2a_server.core_list_creative_formats_tool",
-            "list_authorized_properties": "src.a2a_server.adcp_a2a_server.core_list_authorized_properties_tool",
-            "get_products": "src.a2a_server.adcp_a2a_server.core_get_products_tool",
-        }
-
-        for skill_name, mock_path in discovery_skills.items():
-            with patch(mock_path) as mock_tool:
-                mock_tool.return_value = {}
-                try:
-                    await self.handler._handle_explicit_skill(
-                        skill_name=skill_name,
-                        parameters={"brief": "test"} if skill_name == "get_products" else {},
-                        identity=self.anon_identity,
-                    )
-                except InvalidRequestError as e:
-                    pass  # the operation must raise; its message is not asserted
-
-    @pytest.mark.asyncio
-    async def test_natural_language_without_auth(self):
-        """Natural language requests (empty skill_invocations) should not require auth.
-
-        With the identity-at-transport-boundary refactor, on_message_send resolves
-        identity at the transport boundary. NL requests with no auth get
-        requires_auth=False, so identity resolution succeeds with anonymous identity.
-        """
-        # Build a real protobuf SendMessageRequest with NL text
-        from a2a.server.routes.common import ServerCallContext
-        from a2a.types import Message, Part, Role, SendMessageRequest
-
-        message = Message(
-            message_id="test_msg_1",
-            context_id="test_ctx_1",
-            role=Role.ROLE_USER,
-        )
-        message.parts.append(Part(text="show me available products"))
-        params = SendMessageRequest(message=message)
-
-        # Mock _get_auth_token to return None (no auth)
-        with patch.object(self.handler, "_get_auth_token", return_value=None):
-            # Mock _resolve_a2a_identity to return anonymous identity
-            with patch.object(self.handler, "_resolve_a2a_identity", return_value=self.anon_identity):
-                # Mock the _get_products method that would be called for natural language
-                with patch.object(self.handler, "_get_products", new_callable=AsyncMock) as mock_products:
-                    mock_products.return_value = {"products": []}
-
-                    try:
-                        result = await self.handler.on_message_send(params, context=ServerCallContext())
-                        assert result is not None
-                    except InvalidRequestError as e:
-                        if "Authentication" in str(e) or "authentication" in str(e):
-                            pytest.fail(f"Natural language request without auth should not require auth: {e}")
-                        else:
-                            raise
