@@ -218,9 +218,9 @@ async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse
     function for the same exception, so there is one mapping and three routes to
     it, not three translations. This docstring used to say the other two wrapped
     raw ``ValueError`` in a "synthetic ``AdCPValidationError`` envelope", which
-    read as though each transport built its own answer; measured, all three emit a
-    byte-identical envelope, and ``tests/unit/test_validation_error_at_the_boundary.py``
-    grades that on the wire.
+    read as though each transport built its own answer. All three emit a
+    byte-identical envelope because all three call one
+    ``build_two_layer_error_envelope`` on one typed exception.
 
     The mapping is type-keyed, and the order inside ``adcp_error_for`` is what makes
     a pydantic ``ValidationError`` (a ``ValueError`` SUBCLASS, so it arrives at this

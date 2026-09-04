@@ -560,7 +560,8 @@ def process_and_upload_package_creatives(
 
     # Lazy import to avoid circular dependency
     from src.core.exceptions import AdCPAdapterError, AdCPCreativeRejectedError, AdCPSalesAgentError
-    from src.core.tools.creatives import _sync_creatives_impl, build_sync_creatives_request
+    from src.core.schemas import SyncCreativesRequest
+    from src.core.tools.creatives import _sync_creatives_impl
 
     logger = logging.getLogger(__name__)
     uploaded_by_product: dict[str, list[str]] = {}
@@ -591,7 +592,7 @@ def process_and_upload_package_creatives(
             # "Service temporarily unavailable" -- telling a buyer who sent a malformed
             # inline creative that the SERVER is broken and to retry, instead of which of
             # their fields to fix. That is why the handler list below re-raises it.
-            sync_req = build_sync_creatives_request(
+            sync_req = SyncCreativesRequest(
                 creatives=pkg.creatives,
                 account=account,
                 idempotency_key=idempotency_key,

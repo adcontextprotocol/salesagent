@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.DEBUG)
 async def test_direct_get_products():
     """Test the get_products function directly."""
     # Lazy imports to avoid triggering load_config() at module import time
-    from src.core.main import get_products
     from src.core.tool_context import ToolContext
+    from src.core.tools.products import get_products
 
     print("Testing direct get_products call...")
 

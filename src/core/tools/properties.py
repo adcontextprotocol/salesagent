@@ -216,7 +216,6 @@ def build_list_authorized_properties_request(
     prose is one a later call site can contradict without noticing; that handler now goes
     through ``select_request_fields_for``, which makes this paragraph true by construction
     rather than by assertion, and
-    ``tests/unit/test_architecture_a2a_handlers_select_off_the_tool.py`` keeps it so.
 
     The pinned spec has nothing to say here either way: AdCP 3.1.1 defines no
     ``list-authorized-properties-request.json`` at all -- the operation is absent from the

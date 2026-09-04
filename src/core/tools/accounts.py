@@ -18,14 +18,10 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC
-from typing import TYPE_CHECKING, Annotated, Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, TypedDict, cast
 
-from adcp.types import AccountReference as LibraryAccountReference
 from adcp.types import BrandReference as LibraryBrandReference
-from adcp.types import ContextObject, NotificationConfig, PaginationRequest, PaginationResponse
-from adcp.types.generated_poc.account.list_accounts_request import (
-    Status as AccountStatus,
-)
+from adcp.types import NotificationConfig, PaginationRequest, PaginationResponse
 from adcp.types.generated_poc.account.sync_accounts_request import (
     Accounts as SyncAccountInput,  # SDK 5.7: Account → Accounts
 )
@@ -35,8 +31,7 @@ from adcp.types.generated_poc.account.sync_accounts_request import (
 from adcp.types.generated_poc.core.account_ref import AccountReference1, AccountReference2
 from adcp.types.generated_poc.core.business_entity import BusinessEntity
 from fastmcp.server.context import Context
-from fastmcp.tools.tool import ToolResult
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import require_identity, require_principal_id, require_tenant
@@ -59,8 +54,6 @@ from src.core.schemas.account import (
     SyncResponseAccount,
 )
 from src.core.tool_context import ToolContext
-from src.core.tools._mcp import mcp_result
-from src.core.tools._request_defaults import omit_unset
 from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 from src.core.webhooks.registration import accept_push_notification_config
 from src.services.notification_proof_service import NotificationProofService, get_notification_proof_service
@@ -245,104 +238,9 @@ def _list_accounts_impl(
 # ---------------------------------------------------------------------------
 
 
-def build_list_accounts_request(
-    *,
-    account: LibraryAccountReference | None = None,
-    status: AccountStatus | None = None,
-    pagination: PaginationRequest | None = None,
-    sandbox: bool | None = None,
-    ext: dict | None = None,
-    context: ContextObject | None = None,
-    adcp_version: str | None = None,
-    adcp_major_version: int | None = None,
-    # TEMPORARY, paired with ListAccountsRequest.idempotency_key -- see the full rationale
-    # there. Threading it here is what PUBLISHES it on MCP, because the advertised shape is
-    # "DTO fields INTERSECT this builder's parameters". That is a real cost and it is accepted
-    # knowingly: without it the UC-011 tolerance scenario cannot construct its request under
-    # dev-mode extra="forbid" and grades nothing at all. Remove both together once the harness
-    # can dispatch a raw payload (salesagent-prkv.65).
-    idempotency_key: str | None = None,
-) -> ListAccountsRequest:
-    """Build the shared list_accounts request for transport wrappers.
-
-    Mirrors build_get_adcp_capabilities_request (capabilities.py:160) -- the single
-    seam every transport constructs the typed request through, so a future request
-    field lands here once instead of in wrapper lockstep.
-
-    ``idempotency_key`` is threaded TEMPORARILY. list-accounts-request.json declares no
-    such property, and because the advertised shape is "DTO fields INTERSECT this builder's
-    parameters", threading it here is exactly what publishes it on MCP as though the spec
-    defined it. Tolerance is properly the boundary's job (critical pattern #7), not a
-    parameter's -- and production already does it without this. The parameter exists only so
-    the UC-011 tolerance scenario can construct its request while its When step still builds
-    the model in-process. Remove it with the field once the harness dispatches raw payloads
-    (salesagent-prkv.65). See ListAccountsRequest in schemas/account.py for the full rationale.
-    """
-    return ListAccountsRequest(
-        account=account,
-        status=status,
-        pagination=pagination,
-        sandbox=sandbox,
-        ext=ext,
-        context=context,
-        adcp_version=adcp_version,
-        adcp_major_version=adcp_major_version,
-        idempotency_key=idempotency_key,
-    )
-
-
 # ---------------------------------------------------------------------------
 # MCP wrapper
 # ---------------------------------------------------------------------------
-
-
-async def list_accounts(
-    account: LibraryAccountReference | None = None,
-    status: AccountStatus | None = None,
-    pagination: PaginationRequest | None = None,
-    sandbox: Annotated[bool | None, Field(description="When true, return only sandbox/test accounts")] = None,
-    ext: Annotated[dict | None, Field(description="AdCP extension object -- accepted, has no effect")] = None,
-    context: ContextObject | None = None,
-    # TEMPORARY, paired with ListAccountsRequest.idempotency_key and the builder parameter.
-    # Declaring it here is what makes FastMCP ACCEPT it, which the UC-011 tolerance scenario
-    # needs while its When step constructs the model in-process. Delete all three together
-    # once the harness dispatches raw payloads (salesagent-prkv.65).
-    idempotency_key: Annotated[
-        str | None, Field(description="Read-tool idempotency tolerance per v3.1.1 -- accepted, has no effect")
-    ] = None,
-    ctx: Context | ToolContext | None = None,
-) -> ToolResult:
-    """List accounts accessible to the authenticated agent (MCP tool).
-
-    MCP wrapper that delegates to the shared implementation.
-    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
-
-    Args:
-        account: Exact account filter (account_id, or natural key brand+operator[+sandbox]).
-        status: Filter accounts by status (active, closed, etc.).
-        pagination: Pagination parameters (max_results, cursor).
-        sandbox: Filter by sandbox flag.
-        ext: AdCP extension object (accepted, no effect).
-        context: Application-level context per AdCP spec.
-        ctx: FastMCP context for authentication.
-
-    Returns:
-        ToolResult with human-readable text and structured data.
-    """
-    req = build_list_accounts_request(
-        account=account,
-        status=status,
-        pagination=pagination,
-        sandbox=sandbox,
-        ext=ext,
-        context=context,
-        idempotency_key=idempotency_key,  # TEMPORARY -- see the builder parameter's comment
-    )
-
-    identity = (await ctx.get_state("identity")) if isinstance(ctx, Context) else None
-    response = _list_accounts_impl(req, identity)
-
-    return mcp_result(response)
 
 
 # ---------------------------------------------------------------------------
@@ -1846,98 +1744,9 @@ async def _sync_accounts_impl(
 # ---------------------------------------------------------------------------
 
 
-def build_sync_accounts_request(
-    *,
-    accounts: list[SyncAccountInput | SettingsUpdateAccountInput] | None = None,
-    delete_missing: bool | None = None,
-    dry_run: bool | None = None,
-    idempotency_key: str | None = None,
-    push_notification_config: dict | None = None,
-    ext: dict | None = None,
-    context: ContextObject | None = None,
-    adcp_version: str | None = None,
-    adcp_major_version: int | None = None,
-) -> SyncAccountsRequest:
-    """Build the shared sync_accounts request for transport wrappers.
-
-    Mirrors build_list_accounts_request and build_get_adcp_capabilities_request.
-
-    ``idempotency_key`` is threaded VERBATIM and is never generated here. Per
-    sync-accounts-request.json 3.1.1 the field is client-generated ("MUST be unique per
-    (seller, request) pair. Use a fresh UUID v4 for each request") -- a seller that mints
-    its own key on every call can never recognise a retry, which defeats the only thing
-    the field exists for. Its shape is validated once, on the model
-    (SyncAccountsRequest._check_idempotency_key), so every transport rejects a malformed
-    key identically.
-    """
-    return SyncAccountsRequest(
-        accounts=accounts or [],
-        **omit_unset(
-            delete_missing=delete_missing,
-            dry_run=dry_run,
-            idempotency_key=idempotency_key,
-            push_notification_config=push_notification_config,
-            ext=ext,
-            context=context,
-            adcp_version=adcp_version,
-            adcp_major_version=adcp_major_version,
-        ),
-    )
-
-
 # ---------------------------------------------------------------------------
 # sync_accounts MCP wrapper
 # ---------------------------------------------------------------------------
-
-
-async def sync_accounts(
-    accounts: list[SyncAccountInput | SettingsUpdateAccountInput] | None = None,
-    delete_missing: Annotated[
-        bool | None, Field(description="Deactivate accounts not present in the sync list")
-    ] = None,
-    dry_run: Annotated[bool | None, Field(description="Preview sync results without making changes")] = None,
-    idempotency_key: Annotated[
-        str | None,
-        Field(description="Client-generated key for at-most-once execution (16-255 chars, [A-Za-z0-9_.:-])"),
-    ] = None,
-    push_notification_config: Annotated[
-        dict | None, Field(description="Webhook configuration for asynchronous sync notifications")
-    ] = None,
-    ext: Annotated[dict | None, Field(description="AdCP extension object")] = None,
-    context: ContextObject | None = None,
-    ctx: Context | ToolContext | None = None,
-) -> ToolResult:
-    """Sync accounts by natural key (MCP tool).
-
-    MCP wrapper that accepts individual parameters per AdCP spec and
-    constructs a SyncAccountsRequest for the shared implementation.
-
-    Args:
-        accounts: List of accounts to upsert.
-        delete_missing: Deactivate accounts not in the list.
-        dry_run: Preview changes without persisting.
-        idempotency_key: Client-generated at-most-once key (sync-accounts-request.json 3.1.1).
-        push_notification_config: Webhook configuration for async sync notifications.
-        ext: AdCP extension object.
-        context: Application-level context per AdCP spec.
-        ctx: FastMCP context for authentication.
-
-    Returns:
-        ToolResult with human-readable text and structured data.
-    """
-    req = build_sync_accounts_request(
-        accounts=accounts,
-        delete_missing=delete_missing,
-        dry_run=dry_run,
-        idempotency_key=idempotency_key,
-        push_notification_config=push_notification_config,
-        ext=ext,
-        context=context,
-    )
-    identity = (await ctx.get_state("identity")) if isinstance(ctx, Context) else None
-    response = await _sync_accounts_impl(req, identity)
-
-    return mcp_result(response)
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import logging
+from importlib import import_module
 from typing import Any
 
 from fastmcp import FastMCP
@@ -337,18 +338,7 @@ from mcp.types import ToolAnnotations
 
 from src.core.tool_error_logging import with_error_logging
 from src.core.tools._announced_shape import apply_dto_announced_shape, request_model_for, sdk_grounding
-from src.core.tools.accounts import list_accounts, sync_accounts
-from src.core.tools.capabilities import get_adcp_capabilities
-from src.core.tools.creative_formats import list_creative_formats
-from src.core.tools.creatives import list_creatives, sync_creatives
-from src.core.tools.media_buy_create import create_media_buy
-from src.core.tools.media_buy_delivery import get_media_buy_delivery
-from src.core.tools.media_buy_list import get_media_buys
-from src.core.tools.media_buy_update import update_media_buy
-from src.core.tools.performance import update_performance_index
-from src.core.tools.products import get_products
-from src.core.tools.properties import list_authorized_properties
-from src.core.tools.task_management import complete_task, get_task, list_tasks
+from src.core.tools.registry import TOOLS
 
 _sdk_tool_defs = {td["name"]: td for td in ADCP_TOOL_DEFINITIONS}
 
@@ -394,8 +384,8 @@ def _register_tool(fn: Any) -> None:
     derived, not a list: ``sdk_def`` is the same lookup that supplies the description above,
     so a tool the SDK does not define carries no obligation it cannot meet, and gains one
     automatically the day it is renamed onto its spec operation. The four tools in that
-    state today are recorded in tests/unit/test_architecture_dto_sdk_grounded.py, which
-    grades the tree; this refusal keeps a new one from joining them.
+    state today cannot be registered at all: this refusal runs at import, so the tree
+    cannot start carrying an ungrounded spec tool.
     """
     tool_name = fn.__name__
     sdk_def = _sdk_tool_defs.get(tool_name)
@@ -429,24 +419,92 @@ def _register_tool(fn: Any) -> None:
     mcp.tool(**kwargs)(registered)
 
 
-_register_tool(list_accounts)
-_register_tool(sync_accounts)
-_register_tool(get_adcp_capabilities)
-_register_tool(get_products)
-_register_tool(list_creative_formats)
-# No explicit DTO: both wrappers now call build_sync_creatives_request, so the model
-# resolves from the builder like every other template-following tool.
-_register_tool(sync_creatives)
-_register_tool(list_creatives)
-# No explicit DTO: the wrapper now calls build_list_authorized_properties_request, so the
-# model resolves from the builder like every other template-following tool. One fewer user of
-# the escape hatch exists to delete.
-_register_tool(list_authorized_properties)
-_register_tool(create_media_buy)
-_register_tool(update_media_buy)
-_register_tool(get_media_buy_delivery)
-_register_tool(get_media_buys)
-_register_tool(update_performance_index)
-_register_tool(list_tasks)
-_register_tool(get_task)
-_register_tool(complete_task)
+# MCP registration is DERIVED from the registry: TOOLS decides which tools exist, and this
+# module only registers them. There is no list here to keep in step -- adding a row is
+# sufficient to register a tool, which is what makes TOOLS the single declaration rather than
+# a fourth one.
+#
+# The wrapper is resolved from the row rather than imported by name: it lives in the same
+# module as the row's ``impl``, so ``TOOLS`` supplies the address and this file needs no
+# sixteen imports whose only purpose was to be passed to the call below. A name that does not
+# resolve is a defect in the row, not an optional registration.
+async def _call_tool(spec: Any, kwargs: dict[str, Any]) -> Any:
+    """The one call path: build the request, resolve identity, call the implementation.
+
+    Every hand-written MCP wrapper did exactly this. They differed only in WHICH
+    transport-derived values they forwarded, and that is derivable -- ``accepted_kwargs``
+    reports what the implementation declares, so the generic call passes only that. An open
+    ``**kwargs`` at this seam would let a transport hand an implementation anything at all,
+    which is the accept-and-ignore hazard one layer below the one this design removes.
+    """
+    from src.core.schema_helpers import accepted_kwargs
+    from src.core.transport_helpers import enrich_identity_with_account
+
+    ctx = kwargs.pop("ctx", None)
+    identity = kwargs.pop("identity", None)
+
+    # Populate the DTO and let it throw: the boundary names the error from the exception
+    # CLASS, so a ValidationError keeps its ``field`` and its ``issues``.
+    req = spec.dto(**kwargs)
+
+    if identity is None and isinstance(ctx, Context):
+        identity = await ctx.get_state("identity")
+    account = getattr(req, "account", None)
+    if account is not None:
+        identity = enrich_identity_with_account(identity, account)
+
+    # The closed set of three the boundary supplies and a buyer never can.
+    declared = accepted_kwargs(spec.impl)
+    extra: dict[str, Any] = {}
+    if declared and isinstance(ctx, Context):
+        for name in ("context_id", "raw_wire_payload", "request_hash"):
+            if name in declared:
+                extra[name] = await ctx.get_state(name)
+
+    return await spec.impl(req=req, identity=identity, **extra)
+
+
+def _tool_callable(tool_name: str, spec: Any) -> Any:
+    """The registered MCP callable for one registry row.
+
+    There is no hand-written wrapper to keep in step with the DTO. The advertised signature
+    is applied by ``_register_tool`` from the DTO itself, and FastMCP calls this with those
+    names, so the parameter list cannot fall behind the shape it announces -- which is what
+    a wrapper's own parameter list used to do, silently narrowing what a buyer could send.
+    """
+
+    async def tool(ctx: Context | None = None, **kwargs: Any) -> Any:
+        from src.core.tools._mcp import mcp_result
+
+        # ctx is declared, not swept into kwargs: _is_injected detects it by ANNOTATION,
+        # and it must survive into the advertised signature for FastMCP to inject it.
+        kwargs["ctx"] = ctx
+        return mcp_result(await _call_tool(spec, kwargs))
+
+    tool.__name__ = tool_name
+    return tool
+
+
+def _mcp_wrapper_for(tool_name: str, impl: Any) -> Any:
+    """The MCP wrapper for a registry row, resolved from the row itself.
+
+    Looked up beside the row's ``impl`` and then in that module's package: fifteen tools
+    define the wrapper next to the implementation, and ``sync_creatives`` exports it from
+    ``src.core.tools.creatives`` while the implementation lives in the private ``._sync``.
+    Both are searched so the layout is derived rather than enumerated -- a per-tool table of
+    where to look would be the fourth declaration this registry exists to delete.
+    """
+    module_name = impl.__module__
+    for candidate in (module_name, module_name.rpartition(".")[0]):
+        wrapper = getattr(import_module(candidate), tool_name, None) if candidate else None
+        if wrapper is not None:
+            return wrapper
+    raise RuntimeError(
+        f"{tool_name} is declared in TOOLS but neither {module_name} nor its package defines "
+        f"an MCP wrapper of that name. The registry says which tools exist; a row whose "
+        f"wrapper cannot be found is a wrong row, not a tool that opts out of MCP."
+    )
+
+
+for _tool_name, _spec in TOOLS.items():
+    _register_tool(_tool_callable(_tool_name, _spec))

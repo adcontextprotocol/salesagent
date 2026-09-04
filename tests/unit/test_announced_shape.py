@@ -495,7 +495,7 @@ class TestAnInternalFieldIsNeverAnnounced:
     publish the field as a request parameter. The four live DTO fields that used to be in
     this state are gone: the marker is no longer how an internal field is kept off a buyer
     surface (docs/design/one-tool-registry.md), and no registered request DTO declares one
-    any more -- tests/unit/test_architecture_request_dto_has_no_internal_fields.py grades
+    any more --
     that. This test therefore fires against a fixture, which is what keeps it honest: the
     derivation must honour the marker whether or not the tree currently uses it.
 

@@ -11,16 +11,10 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from adcp.types import AccountReference as LibraryAccountReference
-from adcp.types import ExtensionObject, PaginationRequest
-from adcp.types import ListTasksRequest as LibraryListTasksRequest
 from adcp.types.generated_poc.core.async_response_data import AdcpAsyncResponseData
 from adcp.types.generated_poc.core.pagination_response import PaginationResponse
 from adcp.types.generated_poc.protocol.get_task_status_response import HistoryItem
-from adcp.types.generated_poc.protocol.list_tasks_request import Filters as ListTasksFilters
-from adcp.types.generated_poc.protocol.list_tasks_request import Sort as ListTasksSort
 from adcp.types.generated_poc.protocol.list_tasks_response import QuerySummary
-from fastmcp.server.context import Context
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import require_identity, require_principal_id, require_tenant
@@ -33,14 +27,13 @@ from src.core.exceptions import (
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import (
     CompleteTaskRequestLocal,
-    ContextObject,
     GetTaskRequest,
     GetTaskResponse,
+    ListTasksRequest,
     ListTasksResponse,
     TaskSummary,
     enum_value,
 )
-from src.core.tools._request_defaults import omit_unset
 
 logger = logging.getLogger(__name__)
 
@@ -220,81 +213,16 @@ def _list_tasks_response(tasks: list[TaskSummary], *, total: int | None, limit: 
     )
 
 
-def _build_list_tasks_request(
-    filters: ListTasksFilters | None = None,
-    sort: ListTasksSort | None = None,
-    pagination: PaginationRequest | None = None,
-    include_history: bool | None = None,
-    account: LibraryAccountReference | None = None,
-    context: ContextObject | None = None,
-) -> LibraryListTasksRequest:
-    """Build a ListTasksRequest from individual wire params.
-
-    The one seam every transport constructs this request through, matching the other
-    tools. Its existence is what lets ``_register_tool(list_tasks)`` resolve the DTO
-    from the builder instead of being handed one via the ``dto=`` escape hatch.
-    """
-    fields = {
-        "filters": filters,
-        "sort": sort,
-        "pagination": pagination,
-        "include_history": include_history,
-        "account": account,
-        "context": context,
-    }
-    # A None argument means the buyer did not send that field, so it is omitted and the
-    # model's own default applies rather than being overwritten with an explicit None.
-    return LibraryListTasksRequest(**{k: v for k, v in fields.items() if v is not None})
-
-
-async def list_tasks(
-    filters: ListTasksFilters | None = None,
-    sort: ListTasksSort | None = None,
-    pagination: PaginationRequest | None = None,
-    include_history: bool | None = None,
-    account: LibraryAccountReference | None = None,
-    context: ContextObject | None = None,
-    ctx: Context | None = None,
+async def _list_tasks_impl(
+    req: ListTasksRequest,
     identity: ResolvedIdentity | None = None,
 ) -> ListTasksResponse:
-    """List workflow tasks (AdCP 3.1.1 list-tasks-request.json).
+    """The transport-agnostic implementation of ``list_tasks``.
 
-    REBASED onto the SDK vocabulary. This tool used to take object_id, object_type,
-    status, limit and offset -- a pre-3.1.1 flat shape whose intersection with
-    ListTasksRequest was ``{context}`` alone, so it could only register through
-    ``_register_tool``'s ``dto=`` escape hatch, and it was the last tool doing so.
-
-    ``object_type`` and ``object_id`` are GONE from the wire surface: they are our
-    internal workflow-object concepts and list-tasks-request.json declares no equivalent
-    (its Filters carry protocol, status, task_type, dates, task_ids, context_contains,
-    has_webhook). The repository still supports them for internal callers; they are simply
-    not something a buyer can ask for any more, per the rule that pre-3.x payloads do not
-    belong at tool-definition level.
-
-    Args:
-        filters: Task filters per the spec (status/statuses, task_type, dates, ...)
-        sort: Sort field and direction
-        pagination: Cursor pagination (max_results, cursor)
-        include_history: Include task history
-        account: Account reference
-        context: Application-level context per AdCP spec
-        ctx: MCP context (automatically provided)
-        identity: Pre-resolved identity (preferred over ctx)
-
-    Returns:
-        Dict containing tasks list and pagination info
+    Split out of the MCP wrapper, which used to be both. Without a ``req``-shaped
+    callable this tool could not be dispatched over A2A or routed over REST -- one
+    missing boundary showing up as two absent transports.
     """
-    if identity is None and ctx is not None:
-        identity = await ctx.get_state("identity")
-
-    req = _build_list_tasks_request(
-        filters=filters,
-        sort=sort,
-        pagination=pagination,
-        include_history=include_history,
-        account=account,
-        context=context,
-    )
 
     # Map the spec shape onto the repository's own vocabulary. `statuses` is the plural
     # arm; a single `status` is the singular one, and the repository takes one string.
@@ -384,97 +312,25 @@ async def list_tasks(
         return _list_tasks_response(formatted_tasks, total=total, limit=limit, offset=offset)
 
 
-def build_get_task_request(
-    task_id: str,
-    context: Any = None,
-    account: LibraryAccountReference | None = None,
-    # ``= None`` states NOTHING. GetTaskRequest declares False for both, and restating it
-    # here made one fact two declarations; omit_unset below lets the model's own value
-    # apply for a field the buyer did not send.
-    include_history: bool | None = None,
-    include_result: bool | None = None,
-    ext: ExtensionObject | None = None,
-) -> GetTaskRequest:
-    """Build the request get_task accepts.
-
-    The DTO is local because the pinned SDK ships no GetTaskRequest, but the TOOL is not
-    local: protocol/get-task-status-request.json defines it, and GetTaskRequest declares
-    that ref. This docstring used to say get_task "appears in neither the pinned 3.1 schema
-    tree nor ADCP_TOOL_DEFINITIONS" -- half right, and the wrong half is why four of its
-    six spec fields went missing (salesagent-prkv.85). The spec names the task
-    get-task-status while the tool is get_task, which is the only reason the schema path
-    cannot be derived from the SDK module name the way the other twelve are.
-
-    What the builder buys is that the tool follows the same wrapper -> builder -> DTO ->
-    impl template as every other tool, which is what lets _register_tool resolve its model
-    without the explicit `dto=` escape hatch (salesagent-prkv.29).
-    """
-    return GetTaskRequest(
-        task_id=task_id,
-        **omit_unset(
-            context=context,
-            account=account,
-            include_history=include_history,
-            include_result=include_result,
-            ext=ext,
-        ),
-    )
-
-
-def build_complete_task_request(
-    task_id: str,
-    status: str | None = None,
-    response_data: Any = None,
-    error_message: str | None = None,
-    context: Any = None,
-) -> CompleteTaskRequestLocal:
-    """Build the request complete_task accepts. Local tool; see build_get_task_request."""
-    return CompleteTaskRequestLocal(
-        task_id=task_id,
-        status=status,
-        response_data=response_data,
-        error_message=error_message,
-        context=context,
-    )
-
-
-async def get_task(
-    task_id: str,
-    context: Context | None = None,
+async def list_tasks_raw(
+    req: ListTasksRequest,
     identity: ResolvedIdentity | None = None,
-    account: LibraryAccountReference | None = None,
-    # ``= None`` states NOTHING: the advertised default comes from the DTO field
-    # (derived_signature), and an omitted value reaches the builder as None, which
-    # omit_unset drops so the model's own default applies.
-    include_history: bool | None = None,
-    include_result: bool | None = None,
-    ext: ExtensionObject | None = None,
+) -> ListTasksResponse:
+    """``list_tasks`` for A2A and REST: the implementation without MCP's Context."""
+    return await _list_tasks_impl(req=req, identity=identity)
+
+
+async def _get_task_impl(
+    req: GetTaskRequest,
+    identity: ResolvedIdentity | None = None,
 ) -> GetTaskResponse:
-    """Get detailed information about a specific task.
+    """The transport-agnostic implementation of ``get_task``.
 
-    Args:
-        task_id: The unique task/workflow step ID
-        context: MCP context (automatically provided)
-        identity: Pre-resolved identity (preferred over context)
-        account: Account scope for the lookup (see the request DTO)
-        include_history: Return this task's request/response exchanges
-        include_result: Return the terminal payload when the task is completed
-        ext: Extension slot (core/ext.json)
-
-    Returns:
-        Dict containing complete task details
+    Split out of the MCP wrapper, which used to be both. Without a ``req``-shaped
+    callable this tool could not be dispatched over A2A or routed over REST -- one
+    missing boundary showing up as two absent transports.
     """
-    if identity is None and context is not None:
-        identity = await context.get_state("identity")
-
-    req = build_get_task_request(
-        task_id=task_id,
-        context=context if not isinstance(context, Context) else None,
-        account=account,
-        include_history=include_history,
-        include_result=include_result,
-        ext=ext,
-    )
+    task_id = req.task_id
 
     identity = require_identity(identity)
     tenant = require_tenant(identity)
@@ -556,6 +412,14 @@ async def get_task(
         return task_detail
 
 
+async def get_task_raw(
+    req: GetTaskRequest,
+    identity: ResolvedIdentity | None = None,
+) -> GetTaskResponse:
+    """``get_task`` for A2A and REST: the implementation without MCP's Context."""
+    return await _get_task_impl(req=req, identity=identity)
+
+
 def _task_history(task: Any) -> list[dict[str, Any]]:
     """The task's exchanges, in the shape get-task-status-response.json gives history items.
 
@@ -580,37 +444,20 @@ def _task_history(task: Any) -> list[dict[str, Any]]:
     ]
 
 
-async def complete_task(
-    task_id: str,
-    status: str = "completed",
-    response_data: dict[str, Any] | None = None,
-    error_message: str | None = None,
-    context: Context | None = None,
+async def _complete_task_impl(
+    req: CompleteTaskRequestLocal,
     identity: ResolvedIdentity | None = None,
 ) -> dict[str, Any]:
-    """Complete a pending task (simulates human approval or async completion).
+    """The transport-agnostic implementation of ``complete_task``.
 
-    Args:
-        task_id: The unique task/workflow step ID
-        status: New status ("completed" or "failed")
-        response_data: Optional response data for completed tasks
-        error_message: Error message if status is "failed"
-        context: MCP context (automatically provided)
-        identity: Pre-resolved identity (preferred over context)
-
-    Returns:
-        Dict containing task completion status
+    Split out of the MCP wrapper, which used to be both. Without a ``req``-shaped
+    callable this tool could not be dispatched over A2A or routed over REST -- one
+    missing boundary showing up as two absent transports.
     """
-    if identity is None and context is not None:
-        identity = await context.get_state("identity")
-
-    req = build_complete_task_request(
-        task_id=task_id,
-        status=status,
-        response_data=response_data,
-        error_message=error_message,
-        context=context if not isinstance(context, Context) else None,
-    )
+    task_id = req.task_id
+    status = req.status
+    response_data = req.response_data
+    error_message = req.error_message
 
     identity = require_identity(identity)
     tenant = require_tenant(identity)
@@ -675,3 +522,11 @@ async def complete_task(
             "completed_at": completed_time.isoformat(),
             "completed_by": principal_id,
         }
+
+
+async def complete_task_raw(
+    req: CompleteTaskRequestLocal,
+    identity: ResolvedIdentity | None = None,
+) -> dict[str, Any]:
+    """``complete_task`` for A2A and REST: the implementation without MCP's Context."""
+    return await _complete_task_impl(req=req, identity=identity)

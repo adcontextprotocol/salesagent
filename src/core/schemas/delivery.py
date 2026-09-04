@@ -78,6 +78,14 @@ class GetMediaBuyDeliveryRequest(LibraryGetMediaBuyDeliveryRequest):
     Use ext field for extensions until spec is updated.
     """
 
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "delivery",
+        "metrics",
+        "performance",
+        "monitoring",
+        "adcp",
+    )
+
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
     # account, reporting_dimensions, attribution_window, time_granularity,

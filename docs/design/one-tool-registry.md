@@ -68,7 +68,6 @@ what we validate against, and what we pass around internally.
 ```python
 # src/core/schemas/product.py
 
-@omit("catalog", "fields", "if_pricing_version", "pagination", ...)
 class GetProductsRequest(LibraryGetProductsRequest):
     """What this seller implements of get_products.
 
@@ -76,10 +75,6 @@ class GetProductsRequest(LibraryGetProductsRequest):
     """
     TAGS: ClassVar[tuple[str, ...]] = ("products", "inventory", "catalog", "adcp")
 ```
-
-`@omit` exists only because pydantic inherits fields — a subclass cannot
-un-declare one by leaving it out. It removes them after class construction and
-rebuilds:
 
 ```python
 def omit(*fields: str):
@@ -106,37 +101,6 @@ That is the same three-sets-out-of-step failure this design exists to remove,
 occurring inside pydantic. The rebuild is what makes `model_fields`, the
 published schema, and the validator one thing.
 
-**Verified against the real SDK model, not a synthetic one.** Applying `@omit`
-to the 16 fields no transport accepts today:
-
-```
-spec fields before : 21
-spec fields after  : 21        <- untouched
-ours               : brand, brief, context, filters, property_list
-json_schema props  : brand, brief, context, filters, property_list
-catalog            : ValidationError
-hasattr(catalog)   : False
-isinstance of spec : True
-```
-
-Forward references in the SDK model resolve; `model_rebuild(force=True)` handles
-them. The narrowed set is exactly the five fields all three transports accept
-today, which is the measurement this design started from.
-
-Announced, accepted, and implemented are **the same class** — not three sets kept
-in step, and not a runtime narrowing applied at three call sites.
-
-### Why a subclass, and what it costs
-
-Pydantic inheritance is additive: subclass and you get all 21 fields. There is no
-"inherit these five", so removing them is the only way to narrow while inheriting.
-
-**The narrowing may be permanent.** An earlier version of this document defended
-`@omit` on the grounds that the list converges to zero as fields are implemented.
-That defence is withdrawn: this agent may be permanently behind a fast-moving
-spec, and may deliberately diverge — retiring a field the spec keeps, or keeping
-one the spec retires. Nothing operational here depends on the list reaching zero.
-A permanent `@omit` list is one line per tool naming the gap.
 
 **This is a Liskov violation, stated rather than discovered later.** The subtype
 strengthens a precondition: it accepts a strict subset of what the parent accepts.
@@ -323,149 +287,37 @@ in particular is the request as sent, captured before normalisation, and exists
 because RFC 8785 idempotency hashing needs the payload the buyer actually sent —
 not the model built from it.
 
-## Decisions this forces, and the answers
+## The DTO is the SDK's model, extended
 
-**Internal fields do not belong on a request DTO.** `product_selectors`,
-`format`, `page` and `today` are marked `exclude=True` on buyer-facing request
-models. They are not buyer input; they are values internal callers set. They move
-to an extended model:
+A tool's request DTO subclasses the SDK's request model and adds nothing the spec does not
+declare. That is the whole rule.
 
-```python
-class GetProductsInternal(GetProductsRequest):
-    product_selectors: list[ProductSelector] | None = None
-```
+An earlier version of this design NARROWED the DTO: an `@omit` list per tool naming the spec
+fields this seller does not implement, applied by a decorator that popped them off
+`model_fields`, with the lists gathered in `src/core/schemas/conformance.py` as a machine-
+readable PICS. All of it is removed. The reasoning is kept so it is not reinvented.
 
-The buyer DTO then declares only buyer fields, `exclude=True` disappears from
-requests entirely, and internal callers name the model that has what they need.
-Measured: `product_selectors` is read **nowhere** in `src/`; `today` is read once,
-by `media_buy_update.py:503`.
+**It bought nothing a buyer can observe.** Production runs `extra="ignore"`, so a field we do
+not process is ignored whether it was popped or simply unused. The announced MCP shape is
+`DTO fields INTERSECT the implementation's arguments` — already narrow, and popping did not
+change it. The only behavioural difference was rejection in dev/CI.
 
-This also removes a bug class. `exclude=True` survived a nested `model_dump` and
-deleted a buyer's `creative_ids` from a request, producing a cross-principal
-acceptance. The marker means "do not send this back"; it silently also meant "do
-not accept this". With internal fields on a separate model there is no marker on
-the request path to misread.
+**It cost correctness.** Popping mutates `model_fields`, a DERIVED structure, while the
+annotation lives on the SDK parent. Any subclass re-collects from that annotation, so the
+popped fields come back — and come back REQUIRED, because the pop destroyed the `FieldInfo`
+carrying their defaults. Measured on `ListCreativesInternal`: 8 fields became 19, nine newly
+required, and the model stopped being constructible. `model_rebuild(force=True)` does not
+help; the hole is in what re-collection reads, not in when the validator is compiled.
 
-**Tags belong to the DTO, not to the registry.** The SDK supplies `description`
-and per-field descriptions; it carries no tags, so tags are ours — but they
-describe the *tool's shape*, like the descriptions beside them, not its wiring.
-`DTO.TAGS` sits with them. The agent card reads it.
+**And it pointed at the wrong problem.** Measured at adcp 6.6.0 the SDK marks almost nothing
+required — `ListCreativesRequest` has zero required fields, `GetProductsRequest` one. A spec
+field we do not implement is not something to hide from the buyer: if the spec requires it and
+we do not implement it we are not compliant, and a table asserting so does not change that.
 
-**Auth is a property of the tool, not of a transport.** It cannot be true that a
-route needs a caller over REST and not over MCP. Today it is declared twice —
-`resolve_auth` on five REST routes, `require_valid_token=False` in the matching
-raw wrappers — and they happen to agree; nothing makes them. `ToolSpec.auth`
-declares it once and every transport reads it.
-
-It is resolved **above** `_impl`, in three steps, and a request reaches the
-implementation only if all three hold: the route is one that requires a caller;
-the credential is valid; the caller is authorized to invoke this tool. `_impl`
-receives a `ResolvedIdentity` and makes no auth decision — which is already the
-rule (critical pattern \#5) and is unchanged by this design.
-
-**Path fields.** `media_buy_id` comes from the URL. `RestBinding.path_fields`
-declares it; the REST generator merges it into the payload before validation.
-
-**`GET /capabilities` is deleted.** It is a second shape for a tool that already
-has one: it takes no body, so a buyer cannot send `protocols`, `context`, `ext`
-or the version envelope, while the same tool over `POST`, MCP and A2A accepts all
-five. One tool, one shape.
-
-**The version envelope.** `core/version-envelope.json` declares `adcp_version`
-and `adcp_major_version`, referenced by 68 of 115 pinned request schemas.
-**Neither is required.** They are ordinary DTO fields needing no special
-handling — which removes the `_VERSION_ENVELOPE_FIELDS` stripping that currently
-binds `adcp_version` on 11 REST routes and drops it before the builder. For
-`list_accounts` and `sync_accounts` that is a live defect today: the builders
-take both parameters and never receive them.
-
-## The known gap, deliberately not closed here
-
-After this lands there is exactly one problem left, and it is the one worth
-having:
-
-> the set of fields an implementation honours is smaller than the set its DTO declares.
-
-**68 fields**, listed per tool in the measurement. This design does not fix that.
-It converts them from invisible to declared.
-It makes it **visible in one place** — the `@omit` list on each DTO — where today it
-is invisible, spread across sixteen builder signatures, and reproduced three
-times per tool.
-
-Populating each `@omit` list is mechanical: it is the spec model's fields minus
-what the implementation reads. Deciding what to do about each field — implement
-it, or keep announcing it as unsupported — is the next piece of work and needs
-the spec, not this document.
-
-## One divergence table, one column
-
-Divergence from the spec has two directions, and only one of them can be
-declared in Python:
-
-| | meaning | how it is stated |
-|---|---|---|
-| added | the spec does not declare it; we carry it anyway | `account_id: str \| None = None` on the subclass |
-| omitted | the spec declares it; we do not implement it | nothing — absence has no syntax |
-
-**An added field needs no table, because declaring it IS the statement.** You
-write the field on the subclass, typed, greppable, in the file the reader is
-already looking at. Listing it a second time creates a second place to drift and
-records nothing the class does not already say. It is also derivable exactly:
-
-```python
-added = set(cls.model_fields) - library_declared_fields(cls)
-```
-
-Measured against both live cases, that expression returns `{"account_id"}` and
-`{"idempotency_key"}` — precisely the two hand-written `_NON_SCHEMA_FIELDS`
-entries. So `_NON_SCHEMA_FIELDS` is a hand copy of a computed set, and it goes
-away with nothing to replace it. The conformance statement derives its added half
-the same way, from the classes, at the moment it is rendered.
-
-**A removed field is the only thing that needs naming**, because Python has no
-syntax for "this inherited field does not exist here". That is the whole table:
-
-```python
-# src/core/schemas/conformance.py  — pure data, imports nothing
-
-OMITTED: Mapping[str, Mapping[str, str]] = {
-    "GetProductsRequest": {"catalog": "not implemented",
-                           "fields": "not implemented", ...},
-    "GetMediaBuysRequest": {...},
-}
-```
-
-`@omit_declared` takes no field names. It looks itself up by class name, so no
-list at the class can drift from the list in the table — there is only the table.
-The table is a leaf module holding strings, so nothing it declares can create an
-import cycle with the schemas that consult it.
-
-**A stale row fails at import, so nothing needs to check the table.**
-`model_fields.pop` already reports whether the key was there; a name that omitted
-nothing is a name the spec model does not declare:
-
-```python
-def omit_declared(cls):
-    stale = {f for f in OMITTED[cls.__name__] if cls.model_fields.pop(f, None) is None}
-    if stale:
-        raise ValueError(f"{cls.__name__}: cannot omit {sorted(stale)} — "
-                         "the spec model does not declare them")
-    cls.model_rebuild(force=True)
-    return cls
-```
-
-A typo, and a field an SDK bump removed, are the same failure and raise the same
-error at decoration time. The application does not start with a wrong table.
-
-That is strictly better than a test asserting the same property, because a test
-permits the incorrect construction and then reports it; this makes the incorrect
-construction impossible. The rebuild is the last statement on the same path, so
-there is no second step to forget and no footgun to guard.
-
-**This table is the conformance statement.** Standards practice for implementing
-a subset of a protocol is a PICS — *"a structured document which asserts which
-specific requirements are met by a given implementation"*. That is what this is,
-in the repo, machine-readable, and publishable to buyers if we choose.
+Extending the SDK model gives free, correct validation of everything the spec defines. The
+cost is implementing what we declare, which was always the job. A seller MAY widen a field, or
+redefine its type where it has reason to; it may not quietly declare a shape narrower than the
+protocol's.
 
 ## The alignment tests are deleted, not renegotiated
 
@@ -514,7 +366,6 @@ Each step leaves the tree green and is independently revertible.
    them already. This must precede step 5, because after it the DTO is the
    accepted shape without qualification.
 4. **Delete the alignment suite and `_NON_SCHEMA_FIELDS`.** This comes BEFORE any
-   narrowing, because the first `@omit` fails the current suite immediately. No
    guards replace it — the decorator refuses a wrong table at import, and the
    added half is derived rather than declared.
 5. **Narrow the DTO and swap its builder, in one change, per tool.**
@@ -534,7 +385,6 @@ Each step leaves the tree green and is independently revertible.
    DTO declares the shape, the `_impl` is typed to it. Differences a buyer can
    observe are expected, recorded in the ledger, and reconciled afterwards.
 
-   After this, every field is added by **shortening an `@omit` list**,
    deliberately, with its blast radius measured over **payload producers, not
    constructions of the class**. A type-name grep found 76 of 89 sites when that
    was measured.

@@ -21,6 +21,7 @@ from a2a.types import (
     AgentCard,
     AgentExtension,
     AgentInterface,
+    AgentSkill,
     Artifact,
     AuthenticationInfo,
     CancelTaskRequest,
@@ -48,6 +49,7 @@ from a2a.types import (
     UnsupportedOperationError,
 )
 from a2a.utils.errors import A2AError
+from adcp.server.mcp_tools import ADCP_TOOL_DEFINITIONS
 from adcp.types import ContextObject, GeneratedTaskStatus
 from adcp.types.base import AdCPBaseModel
 from google.protobuf import json_format, struct_pb2
@@ -117,10 +119,7 @@ from src.core.tools import (
     update_performance_index_raw as core_update_performance_index_tool,
 )
 from src.core.tools._announced_shape import select_request_fields_for
-from src.core.tools.media_buy_delivery import (
-    _build_get_media_buy_delivery_request,
-    get_media_buy_delivery,
-)
+from src.core.tools.registry import TOOLS
 from src.core.version import get_version
 from src.core.webhook_validator import (
     webhook_url_for_log,
@@ -1712,28 +1711,14 @@ class AdCPRequestHandler(RequestHandler):
         # (discovery skills accept ``identity: ResolvedIdentity | None``; the rest
         # require non-None), so the dispatch is typed dynamically — the non-discovery
         # guard above enforces a non-None identity before the call.
+        # Dispatch is DERIVED: TOOLS says which tools exist on A2A, and the handler for a
+        # tool is ``_handle_{name}_skill`` on this class. There is no dict to keep in step --
+        # a row with a2a=True is dispatchable, which is what makes TOOLS the single
+        # declaration rather than a second one that can disagree with the card beside it.
         skill_handlers: dict[str, Callable[..., Awaitable[Any]]] = {
-            # Core AdCP Discovery Skills
-            "get_adcp_capabilities": self._handle_get_adcp_capabilities_skill,
-            # Core AdCP Media Buy Skills
-            "get_products": self._handle_get_products_skill,
-            "create_media_buy": self._handle_create_media_buy_skill,
-            # ✅ NEW: Missing AdCP Discovery Skills (CRITICAL for protocol compliance)
-            "list_creative_formats": self._handle_list_creative_formats_skill,
-            "list_accounts": self._handle_list_accounts_skill,
-            "sync_accounts": self._handle_sync_accounts_skill,
-            "list_authorized_properties": self._handle_list_authorized_properties_skill,
-            # ✅ NEW: Missing Media Buy Management Skills (CRITICAL for campaign lifecycle)
-            "update_media_buy": self._handle_update_media_buy_skill,
-            "get_media_buys": self._handle_get_media_buys_skill,
-            "get_media_buy_delivery": self._handle_get_media_buy_delivery_skill,
-            "update_performance_index": self._handle_update_performance_index_skill,
-            # AdCP Spec Creative Management (centralized library approach)
-            "sync_creatives": self._handle_sync_creatives_skill,
-            "list_creatives": self._handle_list_creatives_skill,
-            # Creative Management & Approval
-            # Note: signals skills removed - should come from dedicated signals agents
-            # Note: legacy get_pricing/get_targeting removed - use get_products and get_adcp_capabilities instead
+            name: getattr(self, f"_handle_{name}_skill")
+            for name, spec in TOOLS.items()
+            if spec.a2a and hasattr(self, f"_handle_{name}_skill")
         }
 
         if skill_name not in skill_handlers:
@@ -2214,13 +2199,11 @@ class AdCPRequestHandler(RequestHandler):
         # Deriving the field set makes that class of omission structurally impossible.
         # Raw values are forwarded for everything the builder coerces itself
         # (status_filter str→MediaBuyStatus, dates, the dimension/window objects).
+        # The DTO is the accepted shape, so validating into it IS the selection. This used
+        # to validate, then re-narrow through select_request_fields_for against the MCP
+        # wrapper's parameter list, then rebuild -- three steps whose only effect was to
+        # drop whatever that hand-written list happened to omit.
         req = GetMediaBuyDeliveryRequest.model_validate(params)
-        selected = select_request_fields_for(get_media_buy_delivery, params)
-        # account is a typed AccountReference on GetMediaBuyDeliveryRequest (adcp SDK
-        # 5.7); forward the VALIDATED model field rather than the raw dict, because it
-        # reaches enrich_identity_with_account uncoerced (#1438).
-        selected["account"] = req.account
-        req = _build_get_media_buy_delivery_request(**selected)
         response = core_get_media_buy_delivery_tool(req=req, identity=identity)
 
         return response
@@ -2326,6 +2309,33 @@ class AdCPRequestHandler(RequestHandler):
         raise AdCPCapabilityNotSupportedError()
 
 
+def _derived_skills() -> list[AgentSkill]:
+    """The agent card's skills, generated from :data:`TOOLS`.
+
+    ``id`` and ``name`` are the tool name -- a REST route, an MCP tool and an A2A skill for
+    one tool carry one name, so there is nothing here that could diverge from the other two
+    transports. ``description`` comes from the pinned SDK, the same source MCP registration
+    reads. ``tags`` come off the DTO (``DTO.TAGS``): the SDK carries none, so they are ours,
+    but they describe the tool's shape like the field descriptions beside them rather than
+    its wiring -- so they sit with the shape, not in the registry.
+
+    A tool whose DTO declares no TAGS contributes none. That is not an omission to fix: the
+    three task tools have never been on A2A, so nobody has written tags for them, and
+    inventing some here would be a declaration this file is not entitled to make.
+    """
+    descriptions = {d["name"]: d["description"] for d in ADCP_TOOL_DEFINITIONS}
+    return [
+        AgentSkill(
+            id=name,
+            name=name,
+            description=descriptions.get(name, (spec.impl.__doc__ or "").strip().split("\n")[0]),
+            tags=list(getattr(spec.dto, "TAGS", ())),
+        )
+        for name, spec in TOOLS.items()
+        if spec.a2a
+    ]
+
+
 def create_agent_card() -> AgentCard:
     """Create the agent card describing capabilities.
 
@@ -2337,7 +2347,7 @@ def create_agent_card() -> AgentCard:
     # Fallback to localhost if SALES_AGENT_DOMAIN not configured
     server_url = get_a2a_server_url() or "http://localhost:8091/a2a"
 
-    from a2a.types import AgentCapabilities, AgentSkill
+    from a2a.types import AgentCapabilities
     from adcp import get_adcp_spec_version
 
     # Get sales agent version from package metadata or pyproject.toml
@@ -2372,94 +2382,7 @@ def create_agent_card() -> AgentCard:
         ),
         default_input_modes=["message"],
         default_output_modes=["message"],
-        skills=[
-            # Core AdCP Discovery Skills
-            AgentSkill(
-                id="get_adcp_capabilities",
-                name="get_adcp_capabilities",
-                description="Get the capabilities of this AdCP sales agent including supported protocols and targeting",
-                tags=["capabilities", "discovery", "adcp"],
-            ),
-            # Core AdCP Media Buy Skills
-            AgentSkill(
-                id="get_products",
-                name="get_products",
-                description="Browse available advertising products and inventory",
-                tags=["products", "inventory", "catalog", "adcp"],
-            ),
-            AgentSkill(
-                id="create_media_buy",
-                name="create_media_buy",
-                description="Create advertising campaigns with products, targeting, and budget",
-                tags=["campaign", "media", "buy", "adcp"],
-            ),
-            # ✅ NEW: Critical AdCP Discovery Endpoints (REQUIRED for protocol compliance)
-            AgentSkill(
-                id="list_creative_formats",
-                name="list_creative_formats",
-                description="List all available creative formats and specifications",
-                tags=["creative", "formats", "specs", "discovery", "adcp"],
-            ),
-            AgentSkill(
-                id="list_authorized_properties",
-                name="list_authorized_properties",
-                description="List authorized properties this agent can sell advertising for",
-                tags=["properties", "authorization", "publisher", "adcp"],
-            ),
-            AgentSkill(
-                id="list_accounts",
-                name="list_accounts",
-                description="List billing accounts accessible to this agent",
-                tags=["accounts", "billing", "discovery", "adcp"],
-            ),
-            AgentSkill(
-                id="sync_accounts",
-                name="sync_accounts",
-                description="Sync billing accounts by natural key (upsert, delete_missing, dry_run)",
-                tags=["accounts", "billing", "sync", "upsert", "adcp"],
-            ),
-            # ✅ NEW: Media Buy Management Skills (CRITICAL for campaign lifecycle)
-            AgentSkill(
-                id="update_media_buy",
-                name="update_media_buy",
-                description="Update existing media buy configuration and settings",
-                tags=["campaign", "update", "management", "adcp"],
-            ),
-            AgentSkill(
-                id="get_media_buys",
-                name="get_media_buys",
-                description="Get media buy status, creative approval state, and optional near-real-time delivery snapshots",
-                tags=["media_buy", "status", "creative", "snapshot", "monitoring", "adcp"],
-            ),
-            AgentSkill(
-                id="get_media_buy_delivery",
-                name="get_media_buy_delivery",
-                description="Get delivery metrics and performance data for media buys",
-                tags=["delivery", "metrics", "performance", "monitoring", "adcp"],
-            ),
-            AgentSkill(
-                id="update_performance_index",
-                name="update_performance_index",
-                description="Update performance data and optimization metrics",
-                tags=["performance", "optimization", "metrics", "adcp"],
-            ),
-            # AdCP Spec Creative Management (centralized library approach)
-            AgentSkill(
-                id="sync_creatives",
-                name="sync_creatives",
-                description="Upload and manage creative assets to centralized library (AdCP spec)",
-                tags=["creative", "sync", "library", "adcp", "spec"],
-            ),
-            AgentSkill(
-                id="list_creatives",
-                name="list_creatives",
-                description="Search and query creative library with advanced filtering (AdCP spec)",
-                tags=["creative", "library", "search", "adcp", "spec"],
-            ),
-            # Creative Management & Approval
-            # Note: signals skills removed - should come from dedicated signals agents
-            # Note: legacy get_pricing/get_targeting removed - use get_products and get_adcp_capabilities instead
-        ],
+        skills=_derived_skills(),
         documentation_url="https://github.com/your-org/adcp-sales-agent",
     )
 

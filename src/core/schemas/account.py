@@ -85,6 +85,13 @@ class ListAccountsRequest(LibraryListAccountsRequest):
     IT IS DECLARED AGAIN BELOW, DELIBERATELY AND TEMPORARILY. See the field comment.
     """
 
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "accounts",
+        "billing",
+        "discovery",
+        "adcp",
+    )
+
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
     # TEMPORARY -- restored on purpose, and it must go. Tracked by salesagent-prkv.65.
@@ -119,6 +126,14 @@ class SyncAccountsRequest(LibrarySyncAccountsRequest):
     Library provides: idempotency_key, accounts, delete_missing, dry_run,
     push_notification_config, context, ext.
     """
+
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "accounts",
+        "billing",
+        "sync",
+        "upsert",
+        "adcp",
+    )
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 

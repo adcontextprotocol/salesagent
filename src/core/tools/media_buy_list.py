@@ -46,10 +46,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Annotated, Any, cast
+from typing import Any
 
 from fastmcp.server.context import Context
-from pydantic import BaseModel, Field, RootModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, RootModel, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -58,7 +58,6 @@ from src.core.errors.details import ConfigurationDetails, ValidationDetails
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.tool_context import ToolContext
 from src.core.tools._media_buy_status import resolve_canonical_status
-from src.core.tools._request_defaults import omit_unset
 from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 
 logger = logging.getLogger(__name__)
@@ -121,9 +120,7 @@ class _PackageData:
 
 
 from adcp.server.helpers import valid_actions_for_status
-from adcp.types import AccountReference as LibraryAccountReference
-from adcp.types import ContextObject, MediaBuyStatus
-from adcp.types.generated_poc.media_buy.get_media_buys_request import StatusFilter
+from adcp.types import MediaBuyStatus
 
 from src.core.auth import (
     require_identity,
@@ -153,7 +150,6 @@ from src.core.schemas import (
     Targeting,
 )
 from src.core.schemas._pinned_fields import revision_minimum
-from src.core.tools._mcp import mcp_result
 
 
 def _get_media_buys_impl(
@@ -410,74 +406,6 @@ def _get_media_buys_impl(
         context=req.context,
         errors=row_advisories or None,
     )
-
-
-def _build_get_media_buys_request(
-    media_buy_ids: list[str] | None = None,
-    # The DTO's OWN annotation, not a narrower guess. Declaring list[MediaBuyStatus]
-    # while GetMediaBuysRequest declares StatusFilter is one tool answering to two
-    # shapes -- mypy could not see it until the wrappers funnelled through here.
-    status_filter: MediaBuyStatus | StatusFilter | list[MediaBuyStatus] | None = None,
-    account: LibraryAccountReference | None = None,
-    context: ContextObject | None = None,
-    include_snapshot: bool | None = None,
-) -> GetMediaBuysRequest:
-    """Build a GetMediaBuysRequest from individual wire params.
-
-    Shared by the MCP wrapper and the A2A/REST raw wrapper so every transport
-    constructs the same request from the same payload. A ``ValidationError`` raised
-    here is not caught: each transport boundary converts it through the one
-    ``adcp_error_for`` mapping, which is what attaches the code, the field and the
-    top-level suggestion (#1417).
-    """
-    return GetMediaBuysRequest(
-        **omit_unset(
-            media_buy_ids=media_buy_ids,
-            status_filter=cast(MediaBuyStatus | list[MediaBuyStatus] | None, status_filter),
-            account=account,
-            context=cast(ContextObject | None, context),
-            # A GetMediaBuysRequest field, so the BUILT request carries it. Omitted when
-            # unsent so the model's declared False applies -- forwarding None overwrote it,
-            # and _get_media_buys_impl read the result for truthiness three times to
-            # compensate.
-            include_snapshot=include_snapshot,
-        )
-    )
-
-
-async def get_media_buys(
-    media_buy_ids: list[str] | None = None,
-    status_filter: MediaBuyStatus | list[MediaBuyStatus] | None = None,
-    # ``= None`` states NOTHING: the advertised default comes from the DTO field
-    # (derived_signature), and an omitted value reaches the builder as None, which
-    # omit_unset drops so the model's own default applies. Restating the DTO's value
-    # here made it two declarations of one fact.
-    include_snapshot: Annotated[
-        bool | None, Field(description="When true, include near-real-time delivery stats per package")
-    ] = None,
-    account: LibraryAccountReference | None = None,
-    context: ContextObject | None = None,
-    ctx: Context | ToolContext | None = None,
-):
-    """Get media buys with status, creative approval state, and optional delivery snapshots.
-
-    MCP tool wrapper that resolves identity and delegates to the shared implementation.
-
-    Args:
-        req: The built GetMediaBuysRequest -- filters, account and include_snapshot all
-            travel on it, so this wrapper has no per-field parameters to document.
-        account: Account reference per AdCP 3.x (optional). Legacy account_id is normalized by middleware.
-        context: Application level context object (optional)
-        ctx: FastMCP context (automatically provided)
-
-    Returns:
-        ToolResult with GetMediaBuysResponse data
-    """
-    req = _build_get_media_buys_request(media_buy_ids, status_filter, account, context, include_snapshot)
-    # Read identity pre-resolved by MCPAuthMiddleware
-    identity = (await ctx.get_state("identity")) if isinstance(ctx, Context) else None
-    response = _get_media_buys_impl(req, identity=identity)
-    return mcp_result(response)
 
 
 def get_media_buys_raw(

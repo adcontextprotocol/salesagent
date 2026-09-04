@@ -3,18 +3,9 @@
 import logging
 import time
 from datetime import UTC, datetime
-from typing import Annotated, Any, cast
+from typing import Any, cast
 
-from adcp import CreativeFilters
-from adcp.types import ContextObject, PaginationRequest
-from adcp.types.generated_poc.creative.list_creatives_request import (
-    Field1 as FieldModel,
-)
-from adcp.types.generated_poc.creative.list_creatives_request import (
-    Sort,
-)
 from fastmcp.server.context import Context
-from pydantic import Field as PydanticField
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import require_identity, require_principal_id, require_tenant
@@ -31,8 +22,6 @@ from src.core.schemas import (
     ListCreativesResponse,
 )
 from src.core.tool_context import ToolContext
-from src.core.tools._mcp import mcp_result
-from src.core.tools._request_defaults import omit_unset
 from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 
 logger = logging.getLogger(__name__)
@@ -168,97 +157,6 @@ def _blob_log_context(creative_id: str, tenant_id: str, principal_id: str) -> st
     """
     return (
         f" (creative_id={log_safe(creative_id)} tenant_id={log_safe(tenant_id)} principal_id={log_safe(principal_id)})"
-    )
-
-
-def _build_list_creatives_request(
-    filters: "CreativeFilters | None" = None,
-    fields: list[str] | None = None,
-    # None, not False. ListCreativesRequest declares True and
-    # 3.1/creative/list-creatives-request.json says "default": true, so a False here was a
-    # SECOND default that INVERTED the spec's -- worse than a None defeating one, because a
-    # None at least fails to arrive rather than arriving wrong. Unsent now means unsent.
-    include_assignments: bool | None = None,
-    sort: "Sort | None" = None,
-    pagination: "PaginationRequest | None" = None,
-    context: ContextObject | None = None,
-) -> "ListCreativesInternal":
-    """Build a ListCreativesInternal from the wire's request parameters.
-
-    Every parameter here is a ListCreativesInternal FIELD -- the builder is a superset of
-    nothing and a subset of the model, which is the property the announced-shape derivation
-    ("announced = DTO fields INTERSECT the implementation's arguments") needs in order to
-    mean anything.
-
-    ``format`` and ``page`` are NOT parameters, and must not become ones. They are the
-    model's two internal fields, and with ``exclude=True`` gone from them the builder's
-    signature is the only thing keeping them off the REST body and the A2A parameter bag
-    (both derive from DTO fields INTERSECT these parameters). An internal caller that needs
-    to drive the reader constructs ListCreativesInternal itself.
-
-    The TEN pre-3.1.1 flat aliases this used to accept -- media_buy_id, media_buy_ids,
-    status, tags, search, created_after, created_before, limit, sort_by, sort_order -- are
-    gone. None of them is a field of any 3.1.1 request: list-creatives-request.json declares
-    the filters/sort/pagination OBJECTS, and core/creative-filters.json declares only the
-    plural media_buy_ids. They were announced NOWHERE (MCP publishes DTO INTERSECT signature,
-    so a name the DTO does not declare is never advertised; REST derives its body from the
-    same pair; A2A selects through select_request_fields), and nothing in the compat
-    middleware mapped onto them -- so no buyer could send one and removing them is not a
-    surface change. Their spec-shaped replacements are already the graded path in
-    BR-UC-018: filters.media_buy_ids, filters.statuses, filters.tags, filters.name_contains,
-    filters.created_after/before, sort.field/direction and pagination.max_results.
-
-    Two coercions the flat path carried are deliberately NOT reproduced. sort_by outside the
-    field map used to fall back to created_date and sort_order outside {asc, desc} to desc;
-    under the spec's closed enums (enums/creative-sort-field.json, enums/sort-direction.json)
-    an out-of-enum value is a VALIDATION_ERROR instead, which is what BR-UC-018's
-    sort.direction='random' and sort.field='unknown_field' rows now assert on all three
-    transports. Silently answering a different question than the buyer asked was the defect,
-    not the tolerance.
-    """
-    # Coerce the wire's JSON objects into the typed models before reading attributes.
-    # A2A and REST hand these through as plain dicts; only MCP's own validation builds
-    # the models for us. Without this the builder raised
-    # AttributeError: 'dict' object has no attribute 'field' -- an untyped 500 -- and
-    # constructing the model here also makes an out-of-enum value a proper
-    # ValidationError, which is what the spec's closed enums call for.
-    from adcp.types import CreativeFilters as LibraryCreativeFilters
-    from adcp.types import PaginationRequest as _LibPagination
-    from adcp.types.generated_poc.creative.list_creatives_request import Sort as _LibSort
-
-    if isinstance(sort, dict):
-        sort = _LibSort(**sort)
-    if isinstance(pagination, dict):
-        pagination = _LibPagination(**pagination)
-
-    # Enforce the reader's max page size. min() rather than a rejection because
-    # pagination.max_results already carries the spec's own 1..100 bound (the model refuses
-    # anything outside it), so this only ever caps a value a direct in-process caller chose.
-    effective_limit = min(pagination.max_results, 1000) if pagination and pagination.max_results else 50
-    structured_pagination = _LibPagination(max_results=effective_limit)
-
-    # sort defaults to the reader's documented ordering (created_date desc) when the buyer
-    # sends none. Rebuilt rather than passed through so the request always carries an
-    # explicit Sort -- _list_creatives_impl reports it back as query_summary.sort_applied,
-    # and "the default ordering" is an answer the buyer is entitled to see.
-    sort_field = enum_value(sort.field) if sort and sort.field else "created_date"
-    sort_direction = enum_value(sort.direction) if sort and sort.direction else "desc"
-    structured_sort = _LibSort(field=sort_field, direction=sort_direction)
-
-    # Normalize to the LIBRARY type so the request carries one shape regardless of which
-    # transport built the filters (MCP hands over the local subclass, A2A/REST a coerced
-    # model). exclude_none keeps an unset filter from becoming an explicit null.
-    structured_filters = LibraryCreativeFilters(**filters.model_dump(exclude_none=True)) if filters else None
-
-    return ListCreativesInternal(
-        filters=structured_filters,
-        pagination=structured_pagination,
-        sort=structured_sort,
-        **omit_unset(
-            fields=fields,
-            include_assignments=include_assignments,
-            context=context,
-        ),
     )
 
 
@@ -599,62 +497,6 @@ def _list_creatives_impl(
         errors=unreadable_status_advisories or None,
         context=req.context,
     )
-
-
-async def list_creatives(
-    filters: CreativeFilters | None = None,
-    sort: Sort | None = None,
-    pagination: PaginationRequest | None = None,
-    fields: list[FieldModel | str] | None = None,
-    # True, matching ListCreativesRequest and 3.1/creative/list-creatives-request.json's
-    # "default": true. FastMCP publishes THIS signature's default into the advertised
-    # inputSchema, so a False here told every MCP buyer the spec's default was the opposite
-    # of what it is. It cannot be None: a None publishes as "default": null, which is a
-    # different way of not matching the pin.
-    # ``= None`` states NOTHING: the advertised default comes from the DTO field
-    # (derived_signature), and an omitted value reaches the builder as None, which
-    # omit_unset drops so the model's own default applies. Restating the DTO's value
-    # here made it two declarations of one fact.
-    include_assignments: Annotated[
-        bool | None, PydanticField(description="Include package assignment details for each creative")
-    ] = None,
-    context: ContextObject | None = None,  # Application level context per adcp spec
-    ctx: Context | ToolContext | None = None,
-):
-    """List and filter creative assets from the centralized library (AdCP v2.5).
-
-    MCP tool wrapper that delegates to the shared implementation.
-    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
-
-    The FOURTEEN parameters this used to declare beyond the ones above are gone, and none
-    of the removals is buyer-visible. Ten were pre-3.1.1 FLAT ALIASES (media_buy_id,
-    media_buy_ids, status, tags, search, created_after, created_before, limit, sort_by,
-    sort_order) that _build_list_creatives_request folded into the structured request;
-    ``format``, ``page``, ``include_performance`` and ``include_sub_assets`` were routed
-    around the builder entirely. MCP advertises DTO fields INTERSECT this signature, so a
-    name ListCreativesRequest does not declare was never advertised and FastMCP therefore
-    never passed one -- all fourteen took their default on every real call. Measured before
-    the removal, the advertised property set was exactly context/fields/filters/
-    include_assignments/pagination/sort; it is unchanged after it.
-
-    Returns:
-        ToolResult with ListCreativesResponse data
-    """
-    identity = (await ctx.get_state("identity")) if isinstance(ctx, Context) else None
-
-    # Pass typed Pydantic models directly (no model_dump conversion needed)
-    fields_list = [enum_value(f) for f in fields] if fields else None
-
-    req = _build_list_creatives_request(
-        sort=sort,
-        pagination=pagination,
-        filters=filters,
-        fields=fields_list,
-        include_assignments=include_assignments,
-        context=context,
-    )
-    response = _list_creatives_impl(req=req, identity=identity)
-    return mcp_result(response)
 
 
 def list_creatives_raw(

@@ -15,7 +15,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Annotated, Any, Literal, NoReturn, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, TypedDict, cast
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -28,14 +28,13 @@ if TYPE_CHECKING:
     from src.core.database.repositories.media_buy import MediaBuyRepository
     from src.core.database.repositories.uow import MediaBuyUoW as _MediaBuyUoWType
 
-from adcp import PushNotificationConfig
 from adcp.server.helpers import valid_actions_for_status
-from adcp.types import AccountReference, BrandReference, ContextObject, MediaBuyStatus, ReportingWebhook
 from adcp.types import GeneratedTaskStatus as AdcpTaskStatus
+from adcp.types import MediaBuyStatus
 from adcp.types import PackageRequest as AdcpPackageRequest
 from adcp.types.aliases import Package as ResponsePackage
 from fastmcp.server.context import Context
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 from rich.console import Console
 
 from src.core.database.integrity import is_constraint_violation
@@ -111,9 +110,6 @@ def validate_agent_url(url: str | None) -> bool:
 from dataclasses import dataclass
 from enum import StrEnum
 
-from adcp.types.generated_poc.core.ext import ExtensionObject
-from adcp.types.generated_poc.core.start_timing import StartTiming
-from pydantic import AwareDatetime
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.core import schemas
@@ -143,7 +139,6 @@ from src.core.helpers.creative_helpers import (
 )
 from src.core.logging_config import log_safe
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.schema_helpers import to_brand_reference
 from src.core.schemas import (
     AssetStatus,
     CreateMediaBuyError,
@@ -167,9 +162,7 @@ from src.core.schemas import (
 from src.core.security.outbound_http import CounterpartyUrl, UrlProvenance
 from src.core.testing_hooks import AdCPTestContext, TestingContext, apply_testing_hooks
 from src.core.tool_context import ToolContext
-from src.core.tools._mcp import mcp_result
 from src.core.tools._media_buy_transitions import resolve_flight_window_status
-from src.core.tools._request_defaults import omit_unset
 from src.core.tools.financial_validation import (
     raise_if_validation_failed,
     validate_budget_positive,
@@ -4531,195 +4524,6 @@ async def _create_media_buy_impl(
             logger.warning(f"Failed to log failed media buy creation to audit: {audit_error}")
 
         raise AdCPAdapterError()
-
-
-def _build_create_media_buy_request(
-    *,
-    # A REQUEST FIELD, built through here like every other. It used to be routed around this
-    # builder and handed to _impl as its own argument (gh-#1299), on the grounds that folding
-    # it in makes the adcp Authentication.credentials MinLen(32) constraint apply to the whole
-    # create_media_buy. That is true and is now the intended behaviour: a payload that does not
-    # conform to the schema is refused at the schema, not carried past it. The bypass cost more
-    # than it bought -- one field ended up announced by three different mechanisms (the MCP
-    # wrapper declaring it, a REST extra_fields patch, and a duplicate _impl parameter).
-    push_notification_config: PushNotificationConfig | dict[str, Any] | None = None,
-    brand: BrandReference | dict[str, Any] | str | None = None,
-    # The MCP wrapper receives the internal PackageRequest subtype; the raw
-    # wrapper the library type or wire dicts (A2A/REST) — CreateMediaBuyRequest
-    # validates any of them.
-    packages: list[AdcpPackageRequest] | list[PackageRequest] | list[dict[str, Any]] | None = None,
-    # The DTO's OWN annotations. Declaring str here while CreateMediaBuyRequest declares
-    # StartTiming/AwareDatetime is the same tool answering to two shapes depending on the
-    # transport -- invisible to mypy until every route funnelled through this builder.
-    # str stays accepted because the wire sends ISO strings and the model coerces them.
-    start_time: StartTiming | str | None = None,
-    end_time: AwareDatetime | str | None = None,
-    po_number: str | None = None,
-    reporting_webhook: ReportingWebhook | None = None,
-    context: ContextObject | None = None,
-    ext: ExtensionObject | dict[str, Any] | None = None,
-    account: AccountReference | None = None,
-    idempotency_key: str | None = None,
-    paused: bool | None = None,
-) -> CreateMediaBuyRequest:
-    """Shared boundary request construction for the MCP and A2A/REST wrappers.
-
-    One home for the field list, the brand string-shorthand coercion, the
-    idempotency omit-when-absent splat, and the ValidationError translation —
-    a future request field lands here once instead of in wrapper lockstep.
-    Transport-specific input coercions (A2A's ``to_reporting_webhook`` /
-    ``to_context_object``) happen at the call site. ``brand`` is the exception:
-    string/dict shorthand is normalized here via ``to_brand_reference`` so MCP,
-    A2A, and REST share one funnel.
-    """
-    # brand string/dict/URL shorthand is normalized via ``to_brand_reference``
-    # (#1537). Everything else is left to raise: ``adcp_error_for`` at the transport
-    # boundary is the SINGLE translation point (#1417), turning a Pydantic
-    # ValidationError into a typed error carrying the field path + suggestion.
-    # Omit-when-absent, for every field rather than for idempotency_key alone. Two things
-    # follow from it, and the second is why the special case became the rule: a missing
-    # REQUIRED key rejects as "Field required" instead of as a None type error, and an
-    # unsent OPTIONAL key takes CreateMediaBuyRequest's own declared default instead of
-    # overwriting it with null -- which is what forwarding None did to ``paused``, declared
-    # False by the model and by 3.1/media-buy/create-media-buy-request.json.
-    return CreateMediaBuyRequest(
-        **omit_unset(
-            push_notification_config=push_notification_config,
-            brand=to_brand_reference(brand),
-            packages=packages,
-            start_time=start_time,
-            end_time=end_time,
-            po_number=po_number,
-            reporting_webhook=reporting_webhook,
-            context=context,
-            ext=ext,
-            account=account,
-            paused=paused,
-            idempotency_key=idempotency_key,
-        )
-    )
-
-
-async def create_media_buy(
-    brand: Annotated[
-        BrandReference | dict[str, Any] | str | None,
-        Field(
-            description=(
-                "Brand reference (object with domain), domain/URL string shorthand "
-                "(e.g. 'acme.com' / 'https://acme.com'), or equivalent dict"
-            )
-        ),
-    ] = None,
-    packages: list[PackageRequest] | None = None,
-    start_time: Annotated[
-        str | None, Field(description="Campaign start time in ISO 8601 format, or 'asap' for immediate start")
-    ] = None,
-    end_time: Annotated[str | None, Field(description="Campaign end time in ISO 8601 format")] = None,
-    po_number: Annotated[str | None, Field(description="Purchase order number for billing reference")] = None,
-    reporting_webhook: ReportingWebhook | None = None,
-    push_notification_config: PushNotificationConfig | None = None,
-    context: ContextObject | None = None,
-    ext: dict[str, Any] | None = None,
-    account: Annotated[
-        AccountReference | None,
-        Field(
-            description=(
-                "Optional account reference (by id or natural key) scoping this buy to a sub-account "
-                "the authenticated agent manages. Resolved against the tenant's accounts at the boundary."
-            ),
-        ),
-    ] = None,
-    idempotency_key: Annotated[
-        str | None,
-        Field(
-            description=(
-                "Client-supplied key for idempotent retries — REQUIRED per AdCP 3.0.1 "
-                "(16-255 chars). Retrying with the same key returns the original media buy "
-                "without creating a duplicate booking; omitting it rejects with VALIDATION_ERROR."
-            ),
-        ),
-    ] = None,
-    paused: Annotated[
-        bool | None,
-        Field(
-            description=(
-                "Accepted for AdCP 3.1.1 compatibility; pause-on-create is NOT yet honored — "
-                "the buy delivers as if paused=false. Tracked in #1619."
-            )
-        ),
-    ] = None,
-    ctx: Context | ToolContext | None = None,
-):
-    """Create a media buy with the specified parameters.
-
-    MCP tool wrapper that delegates to the shared implementation.
-    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
-
-    Per AdCP 3.1.1 (media-buy/package-request.json) targeting_overlay and creatives live on each
-    PackageRequest (packages[].targeting_overlay, packages[].creatives), not at
-    request level.
-
-    Args:
-        brand: Brand reference with domain field per AdCP v3 spec.
-            String or dict shorthand accepted and normalized via ``to_brand_reference``.
-        packages: Array of packages with products, budgets, targeting_overlay, and
-            creatives (REQUIRED per AdCP spec)
-        start_time: Campaign start time ISO 8601 or 'asap' (REQUIRED)
-        end_time: Campaign end time ISO 8601 (REQUIRED)
-        po_number: Purchase order number (optional)
-        reporting_webhook: Webhook configuration for automated reporting delivery
-        push_notification_config: Push notification config for async notifications (AdCP spec)
-        context: Application level context per AdCP spec
-        ext: Extension object for custom fields (optional, per AdCP spec)
-        account: Account reference scoping the buy to a sub-account the agent manages (optional)
-        idempotency_key: Client-supplied idempotency key (REQUIRED per AdCP 3.0.1) —
-            the same key replays the original success; a missing key rejects as
-            VALIDATION_ERROR
-        ctx: FastMCP context (automatically provided)
-
-    Returns:
-        ToolResult with CreateMediaBuyResponse data
-    """
-    # FastMCP already coerced JSON inputs to typed Pydantic models
-    req = _build_create_media_buy_request(
-        push_notification_config=push_notification_config,
-        brand=brand,
-        packages=packages,
-        start_time=start_time,
-        end_time=end_time,
-        po_number=po_number,
-        reporting_webhook=reporting_webhook,
-        context=context,
-        ext=ext,
-        account=account,
-        idempotency_key=idempotency_key,
-        paused=paused,
-    )
-
-    # Read identity, context_id, and the raw wire arguments pre-stashed by
-    # MCPAuthMiddleware. The raw arguments (pre compat-normalization) are the
-    # idempotency payload-hash input — the request as the buyer sent it.
-    identity = (await ctx.get_state("identity")) if isinstance(ctx, Context) else None
-    _ctx_id = (await ctx.get_state("context_id")) if isinstance(ctx, Context) else None
-    raw_wire_payload = (await ctx.get_state("raw_wire_payload")) if isinstance(ctx, Context) else None
-
-    # Resolve account at transport boundary (before _impl)
-    from src.core.transport_helpers import enrich_identity_with_account
-
-    identity = enrich_identity_with_account(identity, req.account)
-
-    # The typed model goes through untouched.
-    # model carries no id: an MCP registration has never been able to name a row,
-    # and this preserves that rather than changing it. Passed EXPLICITLY because
-    # test_architecture_boundary_completeness requires every wrapper to forward
-    # every _impl parameter.
-    result = await _create_media_buy_impl(
-        req=req,
-        identity=identity,
-        context_id=_ctx_id,
-        raw_wire_payload=raw_wire_payload,
-    )
-    return mcp_result(result)
 
 
 async def create_media_buy_raw(

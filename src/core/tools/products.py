@@ -7,15 +7,13 @@ shared implementation pattern from CLAUDE.md.
 import logging
 import os
 import time
-from typing import Annotated, Any, cast
+from typing import Any, cast
 
 # FIXME(#1388): FormatId, ProductFilters have local subclasses; import from src.core.schemas (Pattern #7/#4).
-from adcp import FormatId, ProductFilters
-from adcp import GetProductsRequest as GetProductsRequestGenerated
+from adcp import FormatId
 from adcp import Product as LibraryProduct
-from adcp.types import BrandReference, ContextObject, PropertyListReference
+from adcp.types import PropertyListReference
 from fastmcp.server.context import Context
-from pydantic import Field
 
 from src.adapters import get_adapter_default_channels
 from src.core.audit_logger import get_audit_logger
@@ -32,14 +30,13 @@ from src.core.exceptions import (
 )
 from src.core.helpers import enum_value
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.schema_helpers import create_get_products_request
 from src.core.schemas import (
+    GetProductsRequest,  # OURS, extending the SDK's — the accepted shape
     GetProductsResponse,
     Product,  # Extends library Product
 )
 from src.core.testing_hooks import AdCPTestContext
 from src.core.tool_context import ToolContext
-from src.core.tools._mcp import mcp_result
 from src.core.transport_helpers import (
     NOT_PROVIDED,
     IdentityOrNotProvided,
@@ -156,9 +153,7 @@ def filter_products_by_property_list(
     return [p for p in products if should_include_product_for_property_list(p, allowed_properties)]
 
 
-async def _get_products_impl(
-    req: GetProductsRequestGenerated, identity: ResolvedIdentity | None
-) -> GetProductsResponse:
+async def _get_products_impl(req: GetProductsRequest, identity: ResolvedIdentity | None) -> GetProductsResponse:
     """Shared implementation for get_products.
 
     Contains all business logic for product discovery including policy checks,
@@ -830,69 +825,8 @@ async def _get_products_impl(
     return resp
 
 
-async def get_products(
-    brand: Annotated[
-        BrandReference | dict[str, Any] | str | None,
-        Field(
-            description=(
-                "Brand reference (object with domain), domain/URL string shorthand "
-                "(e.g. 'acme.com' / 'https://acme.com'), or equivalent dict"
-            )
-        ),
-    ] = None,
-    brief: Annotated[str, Field(description="Natural language description of campaign goals and requirements")] = "",
-    filters: ProductFilters | None = None,
-    property_list: PropertyListReference | None = None,
-    context: ContextObject | None = None,  # payload-level context
-    ctx: Context | ToolContext | None = None,
-):
-    """Get available products matching the brief.
-
-    MCP tool wrapper aligned with adcp v3.6.0 spec.
-
-    Args:
-        brand: Brand reference per adcp 3.6.0. Example: BrandReference(domain="acme.com")
-        brief: Brief description of the advertising campaign or requirements (optional)
-        filters: Structured filters for product discovery (optional)
-        property_list: Property list reference for filtering by buyer's property list (optional)
-        context: Application level context per adcp spec
-        ctx: FastMCP context (automatically provided)
-
-    Returns:
-        ToolResult with human-readable text and structured data
-    """
-    # create_get_products_request coerces string/dict brand via to_brand_reference.
-    #
-    # NOT wrapped. This used to catch ValueError and re-raise AdCPValidationError,
-    # which was a translation the boundary performs anyway -- ``adcp_error_for`` maps a
-    # plain ValueError to exactly that class -- and which, once the request DTO stopped
-    # being constructed inside adcp_validation_boundary, started catching the pydantic
-    # ValidationError too. A ValidationError IS a ValueError, so it matched the handler
-    # and came out as a bare VALIDATION_ERROR: the ``field`` and the ``issues`` the
-    # buyer needs were discarded one frame before the boundary would have derived them.
-    # Populate the DTO, let it throw, and let the boundary name the error from the
-    # exception CLASS -- graded on the wire by
-    # tests/unit/test_validation_error_at_the_boundary.py.
-    req = create_get_products_request(
-        brief=brief,
-        brand=brand,
-        filters=filters,
-        property_list=property_list,
-        context=context,
-    )
-
-    # Read identity pre-resolved by MCPAuthMiddleware
-    identity = (await ctx.get_state("identity")) if isinstance(ctx, Context) else None
-
-    # Call shared implementation
-    # Note: GetProductsRequest is now a flat class (not RootModel), so pass req directly
-    response = await _get_products_impl(req, identity)
-
-    return mcp_result(response)
-
-
 async def get_products_raw(
-    req: GetProductsRequestGenerated,
+    req: GetProductsRequest,
     ctx: Context | ToolContext | None = None,
     identity: IdentityOrNotProvided = NOT_PROVIDED,
 ) -> GetProductsResponse:

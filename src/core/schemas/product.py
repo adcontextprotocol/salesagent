@@ -4,7 +4,7 @@ Extracted from src/core/schemas/__init__.py to reduce file size.
 All classes are re-exported from src.core.schemas for backward compatibility.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from adcp.types import BrandReference as LibraryBrandReference
 from adcp.types import GetProductsResponse as LibraryGetProductsResponse
@@ -285,6 +285,13 @@ class GetProductsRequest(LibraryGetProductsRequest):
     push_notification_config is inherited from the adcp library parent (added in the
     6.6 SDK / spec 3.1.1); no local redeclaration.
     """
+
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "products",
+        "inventory",
+        "catalog",
+        "adcp",
+    )
 
     # The spec's type, matching the library parent. This field used to be declared WIDER
     # (``| dict | str``) so the announced shape would admit the brand shorthand -- a bare

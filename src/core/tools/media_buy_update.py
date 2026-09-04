@@ -12,14 +12,11 @@ import logging
 import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from adcp import PushNotificationConfig
 from adcp.server.helpers import MEDIA_BUY_STATE_MACHINE, is_terminal_status, valid_actions_for_status
-from adcp.types import AccountReference as LibraryAccountReference
 from adcp.types import GeneratedTaskStatus as AdcpTaskStatus
 from adcp.types import MediaBuyStatus
-from pydantic import Field
 
 from src.core.tools.media_buy_list import _compute_status
 
@@ -34,8 +31,7 @@ if TYPE_CHECKING:
 #: Configurable via MAX_CAMPAIGN_BUDGET_USD env var; default 10,000,000.
 MAX_CAMPAIGN_BUDGET: Decimal = Decimal(os.environ.get("MAX_CAMPAIGN_BUDGET_USD", "10000000"))
 
-from adcp.types import ContextObject, ReportingWebhook
-from adcp.types import PackageUpdate as UpdatePackage
+from adcp.types import ContextObject
 from fastmcp.server.context import Context
 from sqlalchemy import select
 
@@ -92,6 +88,7 @@ from src.core.helpers.adapter_helpers import get_adapter
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import (
     AffectedPackage,
+    SyncCreativesRequest,
     UpdateMediaBuyError,
     UpdateMediaBuyRequest,
     UpdateMediaBuyResult,
@@ -99,8 +96,7 @@ from src.core.schemas import (
     UpdateMediaBuySuccess,
 )
 from src.core.testing_hooks import AdCPTestContext
-from src.core.tools._mcp import mcp_result
-from src.core.tools.creatives import _sync_creatives_impl, build_sync_creatives_request
+from src.core.tools.creatives import _sync_creatives_impl
 from src.core.tools.financial_validation import (
     raise_if_validation_failed,
     validate_budget_positive,
@@ -1040,7 +1036,7 @@ def _update_media_buy_impl(
                         # A buyer's malformed inline creative raises here and travels
                         # untouched to the transport boundary, which names their field --
                         # nothing between this frame and that one may reclassify it.
-                        sync_req = build_sync_creatives_request(
+                        sync_req = SyncCreativesRequest(
                             creatives=pkg_update.creatives,
                             account=req.account,
                             idempotency_key=req.idempotency_key,
@@ -1432,153 +1428,6 @@ def _normalize_pacing(pacing: str | None) -> Literal["even", "asap", "daily_budg
     if pacing == "daily_budget":
         return "daily_budget"
     return "even"
-
-
-def _build_update_request(
-    media_buy_id: str | None = None,
-    account: Any = None,
-    paused: bool | None = None,
-    # The DTO's OWN annotations. str stays accepted because the wire sends ISO strings and
-    # the model coerces them; declaring ONLY str while UpdateMediaBuyRequest declares
-    # datetime is the same tool answering to two shapes across transports.
-    # flight_* are the deprecated aliases this builder maps onto start_time/end_time, so
-    # they take the `date` the REST body derives for them.
-    flight_start_date: date | str | None = None,
-    flight_end_date: date | str | None = None,
-    start_time: datetime | Literal["asap"] | str | None = None,
-    end_time: datetime | str | None = None,
-    packages: list | None = None,
-    push_notification_config: Any = None,
-    context: Any = None,
-    reporting_webhook: Any = None,
-    ext: Any = None,
-    idempotency_key: Annotated[str | None, Field(description="Idempotency key for retry safety")] = None,
-    revision: Annotated[int | None, Field(description="Expected current revision (optimistic concurrency)")] = None,
-) -> UpdateMediaBuyRequest:
-    """Build UpdateMediaBuyRequest from flat parameters.
-
-    Handles deprecated field mapping and budget object construction.
-    Used by both MCP wrapper and A2A raw function.
-    """
-    # Handle deprecated field names
-    effective_start = start_time or flight_start_date
-    effective_end = end_time or flight_end_date
-
-    # No budget assembly. AdCP 3.1.1 has no top-level budget on update_media_buy, so the
-    # currency/pacing/daily_budget trio that existed only to fold into a campaign Budget
-    # object is gone with it -- keeping them would have left three parameters the tool
-    # accepts and silently ignores, which is the same defect in the other direction.
-    # Package budgets carry their own denomination via the pricing option.
-    # Build request with only non-None values (strict validation in dev mode)
-    request_params: dict[str, Any] = {}
-    if account is not None:
-        request_params["account"] = account
-    if media_buy_id is not None:
-        request_params["media_buy_id"] = media_buy_id
-    if paused is not None:
-        request_params["paused"] = paused
-    if effective_start is not None:
-        request_params["start_time"] = effective_start
-    if effective_end is not None:
-        request_params["end_time"] = effective_end
-    if packages is not None:
-        request_params["packages"] = packages
-    if push_notification_config is not None:
-        request_params["push_notification_config"] = push_notification_config
-    if context is not None:
-        request_params["context"] = context
-    if reporting_webhook is not None:
-        request_params["reporting_webhook"] = reporting_webhook
-    if ext is not None:
-        request_params["ext"] = ext
-    if idempotency_key is not None:
-        request_params["idempotency_key"] = idempotency_key
-    if revision is not None:
-        request_params["revision"] = revision
-
-    req = UpdateMediaBuyRequest(**request_params)
-
-    # BR-RULE-022: reject empty updates (no updatable fields beyond identifier).
-    # This is a SEMANTIC rejection of a schema-valid request (update fields are all
-    # optional per AdCP 3.1 GA update-media-buy-request.json), so the canonical code
-    # is INVALID_REQUEST — NOT VALIDATION_ERROR (which GA L3 error-handling reserves
-    # for schema-validation failures: missing required fields / bad types / range).
-    if not req.has_updatable_fields():
-        raise AdCPInvalidRequestError()
-
-    return req
-
-
-async def update_media_buy(
-    media_buy_id: Annotated[str | None, Field(description="Publisher media buy ID to update")] = None,
-    account: LibraryAccountReference | None = None,
-    paused: Annotated[bool | None, Field(description="True to pause campaign delivery, False to resume")] = None,
-    flight_start_date: Annotated[str | None, Field(description="New campaign start date in YYYY-MM-DD format")] = None,
-    flight_end_date: Annotated[str | None, Field(description="New campaign end date in YYYY-MM-DD format")] = None,
-    start_time: Annotated[str | None, Field(description="New campaign start time in ISO 8601 format")] = None,
-    end_time: Annotated[str | None, Field(description="New campaign end time in ISO 8601 format")] = None,
-    packages: list[UpdatePackage] | None = None,
-    push_notification_config: PushNotificationConfig | None = None,
-    context: ContextObject | None = None,  # payload-level context
-    reporting_webhook: ReportingWebhook | None = None,  # AdCP ReportingWebhook
-    ext: dict[str, Any] | None = None,  # AdCP ExtensionObject for custom fields
-    idempotency_key: Annotated[str | None, Field(description="Idempotency key for retry safety")] = None,
-    revision: Annotated[int | None, Field(description="Expected current revision (optimistic concurrency)")] = None,
-    ctx: Context | ToolContext | None = None,
-):
-    """Update a media buy with campaign-level and/or package-level changes.
-
-    MCP tool wrapper that delegates to the shared implementation.
-    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
-
-    Args:
-        media_buy_id: Media buy ID to update (required)
-        paused: True to pause campaign, False to resume (adcp 2.12.0+)
-        flight_start_date: Change start date (if not started)
-        flight_end_date: Extend or shorten campaign
-        currency: Update currency (ISO 4217)
-        start_time: Update start datetime
-        end_time: Update end datetime
-        pacing: Pacing strategy (even, asap, daily_budget)
-        daily_budget: Daily spend cap across all packages
-        packages: Package-specific updates
-        creatives: Add new creatives
-        push_notification_config: Push notification config for async notifications (AdCP spec, optional)
-        context: Application-level context per adcp spec
-        reporting_webhook: Webhook configuration for automated reporting delivery (optional, per AdCP spec)
-        ext: Extension object for custom fields (optional, per AdCP spec)
-        idempotency_key: Idempotency key for retry safety (optional, per AdCP spec)
-        revision: Buyer's expected-current revision (optional, per AdCP spec). Declared
-            on every transport so the token a buyer read off a response can be handed
-            back on any of them.
-        ctx: FastMCP context (automatically provided)
-
-    Returns:
-        ToolResult with UpdateMediaBuyResponse data
-    """
-    # Construct spec-compliant request at the boundary — no model_dump needed
-    # FastMCP already coerced JSON inputs to typed Pydantic models
-    req = _build_update_request(
-        media_buy_id=media_buy_id,
-        account=account,
-        paused=paused,
-        flight_start_date=flight_start_date,
-        flight_end_date=flight_end_date,
-        start_time=start_time,
-        end_time=end_time,
-        packages=packages,
-        push_notification_config=push_notification_config,
-        context=context,
-        reporting_webhook=reporting_webhook,
-        ext=ext,
-        idempotency_key=idempotency_key,
-        revision=revision,
-    )
-    # Read identity and context_id pre-resolved by MCPAuthMiddleware
-    identity = (await ctx.get_state("identity")) if isinstance(ctx, Context) else None
-    _ctx_id = (await ctx.get_state("context_id")) if isinstance(ctx, Context) else None
-    response = _update_media_buy_impl(req=req, identity=identity, context_id=_ctx_id)
-    return mcp_result(response)
 
 
 def update_media_buy_raw(

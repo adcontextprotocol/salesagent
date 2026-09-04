@@ -319,7 +319,6 @@ class TestSchemaConstructionValidation:
         # for its presence and for its absence from model_dump(); it is deleted, so the
         # question the assertions answered no longer has a subject. The rule that keeps it
         # that way is graded in
-        # tests/unit/test_architecture_request_dto_has_no_internal_fields.py.
         assert not [f for f, info in req.model_fields.items() if info.exclude]
 
     def test_all_request_schemas_have_optional_or_default_fields(self):

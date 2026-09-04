@@ -13,36 +13,27 @@ import asyncio
 import concurrent.futures
 import logging
 import time
-from collections.abc import Sequence
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
 # FIXME(#1388): FormatId has a local subclass; import from src.core.schemas (Pattern #7/#4).
-from adcp import FormatId
 from adcp.types import (
-    AssetContentType,
     AudioFormatAsset,
-    ContextObject,
     CreativeAgentCapability,
     HtmlFormatAsset,
     ImageFormatAsset,
     TextFormatAsset,
     UrlFormatAsset,
     VideoFormatAsset,
-    WcagLevel,
 )
 from adcp.types import Format as AdcpFormat
-from adcp.types.generated_poc.enums.disclosure_persistence import DisclosurePersistence
-from adcp.types.generated_poc.enums.disclosure_position import DisclosurePosition
 from adcp.utils.format_assets import get_format_assets
 
 # Format subclass preserved through backward-compatibility helper (PEP 695 type param below).
 from fastmcp.server.context import Context
-from pydantic import Field
 
 from src.core.exceptions import AdCPSalesAgentError, AdCPServiceUnavailableError
 from src.core.helpers import enum_value
 from src.core.tool_context import ToolContext
-from src.core.tools._mcp import mcp_result
 
 logger = logging.getLogger(__name__)
 
@@ -145,57 +136,6 @@ def _make_asset(
         asset_id=asset_id,
         asset_type=asset_type,
         required=required,
-    )
-
-
-def build_list_creative_formats_request(
-    *,
-    format_ids: list[FormatId] | None = None,
-    output_format_ids: list[FormatId] | None = None,
-    input_format_ids: list[FormatId] | None = None,
-    is_responsive: bool | None = None,
-    name_search: str | None = None,
-    asset_types: Sequence[AssetContentType | str] | None = None,
-    min_width: int | None = None,
-    max_width: int | None = None,
-    min_height: int | None = None,
-    max_height: int | None = None,
-    wcag_level: WcagLevel | str | None = None,
-    disclosure_positions: list[DisclosurePosition] | None = None,
-    disclosure_persistence: list[DisclosurePersistence] | None = None,
-    context: ContextObject | None = None,
-) -> ListCreativeFormatsRequest:
-    """Build the shared list_creative_formats request for transport wrappers."""
-    # ``is not None``, NOT truthiness. An EMPTY list is a filter the buyer sent, and
-    # the pinned schema declares minItems=1 on asset_types
-    # (adcp 6.6.0 / spec 3.1.1, list-creative-formats-request), so `[]` violates a
-    # schema constraint and MUST come back as INVALID_REQUEST ("Request is malformed,
-    # missing required fields, or violates schema constraints" —
-    # tests/fixtures/adcp_schemas_pinned/enums/error-code.json).
-    #
-    # Truthiness collapsed `[]` into None, i.e. into "no asset_types filter at all", so
-    # the constraint never fired and the buyer got the FULL CATALOG back for a payload
-    # the spec says is invalid. asset_types was the only list filter with this
-    # coercion — every sibling (format_ids, disclosure_positions, output/input_format_ids)
-    # is forwarded as-is and rejects `[]` correctly, which is why only this one silently
-    # succeeded. Found by salesagent-prkv.65: invisible until BDD stopped building the
-    # request in the test process, because the model would have rejected `[]` there.
-    asset_types_strs = [enum_value(at) for at in asset_types] if asset_types is not None else None
-    return ListCreativeFormatsRequest(
-        format_ids=format_ids,
-        output_format_ids=output_format_ids,
-        input_format_ids=input_format_ids,
-        is_responsive=is_responsive,
-        name_search=name_search,
-        asset_types=asset_types_strs,
-        min_width=min_width,
-        max_width=max_width,
-        min_height=min_height,
-        max_height=max_height,
-        wcag_level=wcag_level,
-        disclosure_positions=disclosure_positions,
-        disclosure_persistence=disclosure_persistence,
-        context=context,
     )
 
 
@@ -594,74 +534,6 @@ def _route_agent_failures(
         else:
             routed.append(advisory)
     return routed
-
-
-async def list_creative_formats(
-    format_ids: list[FormatId] | None = None,
-    output_format_ids: list[FormatId] | None = None,
-    input_format_ids: list[FormatId] | None = None,
-    is_responsive: Annotated[bool | None, Field(description="Filter for responsive formats only")] = None,
-    name_search: Annotated[str | None, Field(description="Search formats by name substring")] = None,
-    asset_types: list[AssetContentType] | None = None,
-    wcag_level: Annotated[WcagLevel | None, Field(description="Minimum WCAG conformance level")] = None,
-    min_width: Annotated[int | None, Field(description="Minimum format width in pixels")] = None,
-    max_width: Annotated[int | None, Field(description="Maximum format width in pixels")] = None,
-    min_height: Annotated[int | None, Field(description="Minimum format height in pixels")] = None,
-    max_height: Annotated[int | None, Field(description="Maximum format height in pixels")] = None,
-    disclosure_positions: Annotated[
-        list[DisclosurePosition] | None, Field(description="Filter by supported disclosure positions")
-    ] = None,
-    disclosure_persistence: Annotated[
-        list[DisclosurePersistence] | None, Field(description="Filter by supported disclosure persistence modes")
-    ] = None,
-    context: ContextObject | None = None,  # Application level context per adcp spec
-    ctx: Context | ToolContext | None = None,
-):
-    """List all available creative formats (AdCP spec endpoint).
-
-    MCP tool wrapper that delegates to the shared implementation.
-    FastMCP automatically validates and coerces JSON inputs to Pydantic models.
-
-    Args:
-        format_ids: Filter by FormatId objects
-        output_format_ids: Filter by formats that can generate any of these output format IDs
-        input_format_ids: Filter by formats that can consume any of these input format IDs
-        is_responsive: Filter for responsive formats (True/False)
-        name_search: Search formats by name (case-insensitive partial match)
-        asset_types: Filter by asset content types (e.g., ["image", "video"])
-        wcag_level: Minimum WCAG conformance level
-        min_width: Minimum format width in pixels
-        max_width: Maximum format width in pixels
-        min_height: Minimum format height in pixels
-        max_height: Maximum format height in pixels
-        disclosure_positions: Filter by supported disclosure positions
-        disclosure_persistence: Filter by supported disclosure persistence modes
-        context: Application-level context per AdCP spec
-        ctx: FastMCP context (automatically provided)
-
-    Returns:
-        ToolResult with ListCreativeFormatsResponse data
-    """
-    req = build_list_creative_formats_request(
-        format_ids=format_ids,
-        output_format_ids=output_format_ids,
-        input_format_ids=input_format_ids,
-        is_responsive=is_responsive,
-        name_search=name_search,
-        asset_types=asset_types,
-        wcag_level=wcag_level,
-        min_width=min_width,
-        max_width=max_width,
-        min_height=min_height,
-        max_height=max_height,
-        disclosure_positions=disclosure_positions,
-        disclosure_persistence=disclosure_persistence,
-        context=context,
-    )
-
-    identity = (await ctx.get_state("identity")) if isinstance(ctx, Context) else None
-    response = _list_creative_formats_impl(req, identity)
-    return mcp_result(response)
 
 
 def list_creative_formats_raw(

@@ -343,15 +343,6 @@ def create_get_products_request(
 # Re-export commonly used generated types for convenience
 
 
-#: Version-envelope fields every request model inherits from version-envelope.json. They are
-#: negotiated at the transport boundary (``apply_version_compat``), not buyer request data, and
-#: the transports carry them in incompatible spellings -- the REST bodies default
-#: ``adcp_version`` to "1.0.0", which the envelope's own ``^\d+\.\d+(-...)?$`` pattern rejects.
-#: Forwarding them into the request model turns every REST call into a VALIDATION_ERROR, which
-#: is why the routes excluded ``adcp_version`` by hand before this helper existed.
-_VERSION_ENVELOPE_FIELDS = frozenset({"adcp_version", "adcp_major_version"})
-
-
 def accepted_kwargs(callee: Any) -> frozenset[str] | None:
     """The keyword names ``callee`` accepts, or ``None`` when it accepts any.
 
@@ -415,13 +406,13 @@ def select_request_fields(
     must now be DERIVED rather than defaulted into. This mirrors ``_register_tool``, which
     refuses to register a tool whose DTO cannot be resolved instead of falling back quietly.
 
-    Version-envelope fields are excluded (see ``_VERSION_ENVELOPE_FIELDS``): the transports
-    spell them incompatibly and they are negotiated at the boundary, not carried as request
-    data. A tool that genuinely negotiates on them forwards them explicitly.
+    The version envelope flows like any other field. Every DTO inherits it from the SDK
+    request model, so ``adcp_version`` and ``adcp_major_version`` are ordinary declared
+    fields rather than something the boundary negotiates away.
     ``None`` values are dropped so the model's own defaults apply.
     """
     values = source.model_dump(exclude_none=True) if isinstance(source, BaseModel) else source
-    names = set(model.model_fields) - _VERSION_ENVELOPE_FIELDS
+    names = set(model.model_fields)
     # INTERNAL fields are not buyer input. ``exclude=True`` is how this codebase says "never
     # reaches a buyer", and the other two derivations of the same rule already honour it:
     # ``derived_signature`` drops such a field from the MCP announcement and
@@ -444,7 +435,7 @@ def select_request_fields(
     # This does not close the transport divergence itself (MCP's refusal is structural --
     # FastMCP cannot accept a keyword the tool never advertised), only the silence on the
     # other two. See salesagent-prkv.26.
-    dropped = sorted(k for k in values if k not in names and k not in _VERSION_ENVELOPE_FIELDS)
+    dropped = sorted(k for k in values if k not in names)
     if dropped:
         logger.info(
             "%s: ignoring %d field(s) it does not define: %s",

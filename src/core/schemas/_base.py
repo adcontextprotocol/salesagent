@@ -1914,6 +1914,13 @@ class ProductPerformance(SalesAgentBaseModel):
 
 
 class UpdatePerformanceIndexRequest(SalesAgentBaseModel):
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "performance",
+        "optimization",
+        "metrics",
+        "adcp",
+    )
+
     media_buy_id: str
     performance_data: list[ProductPerformance]
     context: ContextObject | None = Field(
@@ -2184,6 +2191,13 @@ class CreateMediaBuyRequest(LibraryCreateMediaBuyRequest):
     - po_number: str (purchase order number)
     - reporting_webhook: dict (webhook configuration)
     """
+
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "campaign",
+        "media",
+        "buy",
+        "adcp",
+    )
 
     # The spec's type, matching the library parent -- see GetProductsRequest.brand for why
     # the widened union is gone and where the shorthand lives now (``_normalize_brand`` in
@@ -2539,6 +2553,13 @@ class UpdateMediaBuyRequest(LibraryUpdateMediaBuyRequest):
     is separate and live. See docs/design/one-tool-registry.md, "Decisions this forces,
     and the answers".
     """
+
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "campaign",
+        "update",
+        "management",
+        "adcp",
+    )
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
@@ -3148,6 +3169,13 @@ class ListAuthorizedPropertiesRequest(SalesAgentBaseModel):
     - publisher_domains: Filter to specific publisher domains (optional)
     """
 
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "properties",
+        "authorization",
+        "publisher",
+        "adcp",
+    )
+
     context: ContextObject | None = Field(default=None, description="Application-level context")
     ext: dict[str, Any] | None = Field(default=None, description="Extension object for custom fields")
     property_tags: list[str] | None = Field(default=None, description="Filter to specific property tags")
@@ -3438,6 +3466,12 @@ class GetAdcpCapabilitiesRequest(LibraryGetAdcpCapabilitiesRequest):
     ownership, not content.
     """
 
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "capabilities",
+        "discovery",
+        "adcp",
+    )
+
 
 class ListTasksRequest(LibraryListTasksRequest):
     """Extends the pinned ListTasksRequest.
@@ -3517,6 +3551,15 @@ class GetMediaBuysRequest(LibraryGetMediaBuysRequest):
     it as ``Any`` only WEAKENED the constraint, which is what the schema-inheritance guard
     exists to stop.
     """
+
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "media_buy",
+        "status",
+        "creative",
+        "snapshot",
+        "monitoring",
+        "adcp",
+    )
 
     # The library sets extra="allow"; this agent uses the ENVIRONMENT-based mode (critical
     # pattern #7): "ignore" in production for forward compatibility, "forbid" elsewhere so a

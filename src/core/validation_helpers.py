@@ -44,8 +44,8 @@ def adcp_validation_boundary(
     dispatcher, REST through ``@app.exception_handler(ValueError)`` (a pydantic
     ``ValidationError`` IS a ``ValueError``). A ``ValidationError`` raised anywhere
     inside a handler therefore reaches the buyer as INVALID_REQUEST with ``field``
-    and ``issues`` with no wrapper involved — measured on all three transports,
-    graded by ``tests/unit/test_validation_error_at_the_boundary.py``.
+    and ``issues`` with no wrapper involved, on all three transports: each boundary
+    calls the one ``build_two_layer_error_envelope`` on the one typed exception.
 
     Which is why this used to wrap 48 sites and now wraps 2. Forty-six of them passed
     NO arguments, and a bare block is exactly ``raise adcp_error_for(e, field=None)``

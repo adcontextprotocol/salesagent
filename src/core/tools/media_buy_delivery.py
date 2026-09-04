@@ -11,10 +11,10 @@ Handles delivery metrics reporting including:
 import logging
 from datetime import UTC, date, datetime, timedelta
 from math import floor
-from typing import Annotated, Any, cast
+from typing import Any, cast
 
 from fastmcp.server.context import Context
-from pydantic import Field, RootModel
+from pydantic import RootModel
 from rich.console import Console
 
 from src.core.errors.codes import AppErrorCode, ErrorCode
@@ -56,8 +56,7 @@ def _validate_attribution_window(attribution_window: "AttributionWindow | None")
 logger = logging.getLogger(__name__)
 console = Console()
 
-from adcp.types import AccountReference as LibraryAccountReference
-from adcp.types import ContextObject, Duration, MediaBuyStatus
+from adcp.types import Duration, MediaBuyStatus
 from adcp.types.generated_poc.core.attribution_window import (
     AttributionWindow as ResponseAttributionWindow,  # TODO: no stable alias in adcp.types
 )
@@ -67,7 +66,6 @@ from adcp.types.generated_poc.core.duration import (
 from adcp.types.generated_poc.enums.attribution_model import AttributionModel  # TODO: no stable alias in adcp.types
 from adcp.types.generated_poc.media_buy.get_media_buy_delivery_request import (
     AttributionWindow,
-    ReportingDimensions,
 )
 
 from src.core.schemas import Error
@@ -82,9 +80,6 @@ PLATFORM_DEFAULT_ATTRIBUTION_MODEL = AttributionModel.last_touch
 # adcp 3.6.0: Use schemas.ReportingPeriod (extends creative ReportingPeriod) for adapter compat.
 # The media-buy-specific ReportingPeriod has identical fields (start, end) but different identity.
 # Adapters are typed to accept schemas.ReportingPeriod, so we use that here.
-from adcp.types.generated_poc.media_buy.get_media_buy_delivery_request import (
-    StatusFilter as DeliveryStatusFilter,
-)
 
 from src.core.auth import require_identity, require_principal_id, require_tenant, resolve_principal_or_raise
 from src.core.database.models import MediaBuy, PricingOption
@@ -110,7 +105,6 @@ from src.core.schemas import (
     ReportingPeriod as MediaBuyReportingPeriod,
 )
 from src.core.testing_hooks import AdCPTestContext, DeliverySimulator, TimeSimulator, apply_testing_hooks
-from src.core.tools._mcp import mcp_result
 from src.core.tools._media_buy_status import (
     CANONICAL_STATUSES,
     NO_MORE_DATA_STATUSES,
@@ -709,118 +703,6 @@ def _get_media_buy_delivery_impl(
             )
 
     return response
-
-
-def _build_get_media_buy_delivery_request(
-    media_buy_ids: list[str] | None = None,
-    # The DTO's OWN annotation. See the note on the get_media_buys builder: a narrower
-    # guess here is the same tool answering to two shapes across transports.
-    status_filter: MediaBuyStatus | DeliveryStatusFilter | list[MediaBuyStatus] | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    reporting_dimensions: ReportingDimensions | None = None,
-    attribution_window: AttributionWindow | None = None,
-    include_package_daily_breakdown: bool | None = None,
-    account: LibraryAccountReference | None = None,
-    include_window_breakdown: bool | None = None,
-    time_granularity: Any | None = None,
-    context: ContextObject | None = None,
-) -> GetMediaBuyDeliveryRequest:
-    """Build a GetMediaBuyDeliveryRequest from individual wire params.
-
-    Shared by the MCP wrapper and the A2A/REST raw wrapper so every transport
-    constructs the same request from the same payload. A ``ValidationError`` raised
-    here is not caught: each transport boundary converts it through the one
-    ``adcp_error_for`` mapping, which is what attaches the code, the field and the
-    top-level suggestion (#1417).
-    """
-    # account / include_window_breakdown / time_granularity are DECLARED
-    # GetMediaBuyDeliveryRequest fields this builder used to drop, so the request it
-    # returned did not hold what its own model announced. `account` is the one that
-    # mattered: the raw wrapper took it as a SEPARATE parameter beside the request purely
-    # to enrich identity, which is how this tool ended up with two carriers for one field.
-    fields = {
-        "media_buy_ids": media_buy_ids,
-        "status_filter": cast(MediaBuyStatus | list[MediaBuyStatus] | None, status_filter),
-        "start_date": start_date,
-        "end_date": end_date,
-        "reporting_dimensions": reporting_dimensions,
-        "attribution_window": attribution_window,
-        "include_package_daily_breakdown": include_package_daily_breakdown,
-        "account": account,
-        "include_window_breakdown": include_window_breakdown,
-        "time_granularity": time_granularity,
-        "context": cast(ContextObject | None, context),
-    }
-    # A None parameter means the buyer did not send that field, so it is OMITTED and the
-    # model's own default applies. Passing it through as an explicit None instead would
-    # OVERWRITE a non-None default: include_package_daily_breakdown and
-    # include_window_breakdown both default to False, and forwarding None turned a
-    # documented False into a null on every request that left them out.
-    return GetMediaBuyDeliveryRequest(**{k: v for k, v in fields.items() if v is not None})
-
-
-async def get_media_buy_delivery(
-    media_buy_ids: list[str] | None = None,
-    status_filter: MediaBuyStatus | list[MediaBuyStatus] | None = None,
-    start_date: Annotated[str | None, Field(description="Start date for reporting period in YYYY-MM-DD format")] = None,
-    end_date: Annotated[str | None, Field(description="End date for reporting period in YYYY-MM-DD format")] = None,
-    reporting_dimensions: ReportingDimensions | None = None,
-    attribution_window: AttributionWindow | None = None,
-    include_package_daily_breakdown: Annotated[
-        bool | None, Field(description="When true, include daily breakdown metrics per package")
-    ] = None,
-    # Declared GetMediaBuyDeliveryRequest fields. The builder now carries them, so REST and
-    # A2A accept them; MCP must advertise them too or the same tool takes different fields
-    # depending on the transport a buyer reaches it through.
-    include_window_breakdown: Annotated[
-        bool | None, Field(description="When true, include per-attribution-window breakdown")
-    ] = None,
-    time_granularity: Annotated[Any | None, Field(description="Requested reporting time granularity")] = None,
-    account: LibraryAccountReference | None = None,
-    context: ContextObject | None = None,
-    ctx: Context | ToolContext | None = None,
-):
-    """Get delivery data for media buys.
-
-    AdCP-compliant implementation of get_media_buy_delivery tool.
-
-    Args:
-        media_buy_ids: Array of publisher media buy IDs to get delivery data for (optional)
-        status_filter: Filter by status - single status or array of MediaBuyStatus enums (optional)
-        start_date: Start date for reporting period in YYYY-MM-DD format (optional)
-        end_date: End date for reporting period in YYYY-MM-DD format (optional)
-        reporting_dimensions: Request dimensional breakdowns (optional)
-        attribution_window: Attribution window configuration (optional)
-        include_package_daily_breakdown: Include daily breakdown per package (optional)
-        account: Account reference for multi-account scenarios (optional)
-        context: Application level context object (ContextObject)
-        ctx: FastMCP context (automatically provided)
-
-    Returns:
-        ToolResult with GetMediaBuyDeliveryResponse data
-    """
-    identity = (await ctx.get_state("identity")) if isinstance(ctx, Context) else None
-
-    # Builds, then hands the request over -- account travels ON it, and the account
-    # enrichment lives in get_media_buy_delivery_raw. This wrapper used to carry its own
-    # copy of that enrichment, as did the REST route: three transports, three copies of
-    # one rule. An explicit identity=None is passed through unchanged by
-    # resolve_identity_if_not_provided, so the anonymous path is preserved.
-    req = _build_get_media_buy_delivery_request(
-        media_buy_ids=media_buy_ids,
-        status_filter=status_filter,
-        start_date=start_date,
-        end_date=end_date,
-        reporting_dimensions=reporting_dimensions,
-        attribution_window=attribution_window,
-        include_package_daily_breakdown=include_package_daily_breakdown,
-        include_window_breakdown=include_window_breakdown,
-        time_granularity=time_granularity,
-        account=account,
-        context=context,
-    )
-    return mcp_result(get_media_buy_delivery_raw(req=req, identity=identity))
 
 
 def get_media_buy_delivery_raw(

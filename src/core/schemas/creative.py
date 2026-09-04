@@ -7,7 +7,7 @@ assignments, and admin approval workflows.
 
 from datetime import UTC, datetime
 from enum import Enum, StrEnum
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from adcp.types import CreativeAsset as LibraryCreativeAsset
 from adcp.types import CreativeStatus
@@ -373,6 +373,14 @@ class SyncCreativesRequest(LibrarySyncCreativesRequest):
       in response fields while missing seven request ones. See CreativeAssetRequest.
     """
 
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "creative",
+        "sync",
+        "library",
+        "adcp",
+        "spec",
+    )
+
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
     # account and idempotency_key are REQUIRED by AdCP 3.1.1
@@ -584,6 +592,14 @@ class ListCreativeFormatsRequest(LibraryListCreativeFormatsRequest):
     ensuring we stay in sync with spec updates.
     """
 
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "creative",
+        "formats",
+        "specs",
+        "discovery",
+        "adcp",
+    )
+
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
     @model_validator(mode="before")
@@ -638,6 +654,14 @@ class ListCreativesRequest(LibraryListCreativesRequest):
     ``exclude=True``; they live on :class:`ListCreativesInternal` below. See
     docs/design/one-tool-registry.md, "Decisions this forces, and the answers".
     """
+
+    TAGS: ClassVar[tuple[str, ...]] = (
+        "creative",
+        "library",
+        "search",
+        "adcp",
+        "spec",
+    )
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 

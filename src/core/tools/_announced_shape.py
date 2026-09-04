@@ -194,15 +194,18 @@ def request_model_for(fn: Callable[..., Any]) -> type[BaseModel] | None:
     Derived from ``builder_for`` so the DTO and the builder can never disagree about which
     seam a tool uses -- they are the same lookup, read once.
     """
-    builder = builder_for(fn)
-    if builder is None:
-        return None
-    try:
-        hints = typing.get_type_hints(builder)
-    except Exception:
-        return None
-    model = hints.get("return")
-    return model if isinstance(model, type) and issubclass(model, BaseModel) else None
+    # Read from the registry, which STATES which DTO a tool uses. This used to derive it from
+    # the builder's return annotation, on the reasoning that "the DTO and the builder can
+    # never disagree about which seam a tool uses -- they are the same lookup". That held
+    # while the builder was the only machine-readable statement of the DTO. TOOLS says it
+    # directly now, so the derivation is obsolete and the builders it read are deleted.
+    #
+    # Imported inside the function: registry imports the tool modules, which import this one,
+    # so a module-level import would cycle.
+    from src.core.tools.registry import TOOLS
+
+    spec = TOOLS.get(fn.__name__)
+    return spec.dto if spec is not None else None
 
 
 def request_seam_for(fn: Callable[..., Any]) -> tuple[type[BaseModel], Callable[..., Any]]:
@@ -306,9 +309,9 @@ def library_declared_fields(model: type[BaseModel]) -> set[str]:
     This is the half of the divergence statement that is DERIVED rather than written down:
     the fields a DTO adds on top of the spec are ``set(model.model_fields) -
     library_declared_fields(model)``, so declaring the field on the subclass IS the statement
-    that we carry it and there is no citation list to drift from the class. The omitted half
-    has no such expression -- Pydantic inheritance is additive -- and is the one thing
-    ``src.core.schemas.conformance.OMITTED`` names. See docs/design/one-tool-registry.md.
+    that we carry it and there is no citation list to drift from the class. There is no
+    omitted half: the DTO extends the SDK model and declares the spec shape entire. See
+    docs/design/one-tool-registry.md.
 
     KNOWN LIMIT, and it is the SDK-vs-spec one. This project's rule is that the PINNED JSON
     SCHEMA is authoritative and the SDK is only a cross-check (CLAUDE.md), and this reads the
@@ -331,47 +334,50 @@ def library_declared_fields(model: type[BaseModel]) -> set[str]:
 
 
 def derived_signature(fn: Callable[..., Any], model: type[BaseModel]) -> inspect.Signature:
-    """``fn``'s own parameters, retyped from ``model`` wherever it declares the field.
+    """The DTO's fields, plus whatever ``fn`` has injected (ctx, identity).
 
-    The advertised type is the DTO's, always. Where this agent accepts MORE than the library
-    (the brand shorthand), the widening is declared ON THE MODEL, so advertised == accepted
-    without the derivation needing a narrowing rule. An earlier version guarded the narrow
-    direction here instead; that put the exception in the wrong place and the model went on
-    claiming a shape the tool did not implement.
+    This used to be ``fn``'s own parameters retyped from ``model`` -- announced = DTO fields
+    INTERSECT wrapper parameters. That intersection was the last hand-written statement of
+    what a buyer may send: a spec field the wrapper did not happen to declare was a field no
+    buyer could send, with nothing recording the omission. Measured across the tools at the
+    time: 121 of 187 spec fields reached the wire.
+
+    The DTO is the accepted shape now, entire. It subclasses the SDK's request model, so what
+    it declares is the spec's vocabulary rather than ours, and a tool that does not implement
+    a field it advertises is a gap to close rather than a shape to hide.
+
+    ``exclude=True`` fields are still dropped: that marker means "never reaches a buyer", and
+    honouring it here is what makes it mean the same thing in both directions.
     """
     signature = inspect.signature(fn)
-    parameters = []
-    for name, parameter in signature.parameters.items():
-        if _is_injected(parameter):
-            parameters.append(parameter)
-            continue
-        field = model.model_fields.get(name)
-        if field is None:
-            # Declared by the tool but NOT by the DTO -- a non-spec parameter. Dropped from
-            # the advertised shape, which is what retires it: FastMCP never passes what it
-            # does not advertise. No allowlist of legacy names to maintain; absence from
-            # the DTO is the whole statement.
-            continue
+    # Keyword-only, because the DTO fields below are: a POSITIONAL_OR_KEYWORD parameter
+    # cannot follow a keyword-only one.
+    injected = [
+        p.replace(kind=inspect.Parameter.KEYWORD_ONLY) for p in signature.parameters.values() if _is_injected(p)
+    ]
+
+    parameters: list[inspect.Parameter] = []
+    for name, field in model.model_fields.items():
         if field.exclude:
-            # INTERNAL. ``exclude=True`` is how this codebase says "never reaches a buyer",
-            # and until now it said that about serialization ONLY -- the announcement read
-            # right past it, so an internal field the wrapper happened to declare would have
-            # been published as a request parameter. Honouring it here is what makes the
-            # marker mean the same thing in both directions, and it is the escape the
-            # non-spec refusal below leans on: a field we need locally is marked internal
-            # rather than advertised as though the spec defined it.
             continue
-        declared = parameter.annotation
-        description = field.description or _declared_description(declared)
-        # Typed Any because the two arms are genuinely different kinds: `field.annotation`
-        # is a runtime type, while `Annotated[...]` is a typing special form. mypy inferred
-        # the variable from the first assignment and then rejected the second; the value is
-        # handed straight to Parameter.replace, which takes either.
         annotation: Any = field.annotation
+        description = field.description
         if description:
             annotation = Annotated[annotation, PydanticField(description=description)]
-        parameters.append(parameter.replace(annotation=annotation, default=_advertised_default(parameter, field)))
-    return signature.replace(parameters=parameters)
+        default = inspect.Parameter.empty if field.is_required() else field.get_default(call_default_factory=False)
+        parameters.append(
+            inspect.Parameter(
+                name,
+                inspect.Parameter.KEYWORD_ONLY,
+                annotation=annotation,
+                default=default,
+            )
+        )
+
+    # A name the DTO already declares wins: "context" is both a spec field and a wrapper
+    # parameter on several tools, and the DTO is the authority on what a buyer sends.
+    declared = {p.name for p in parameters}
+    return signature.replace(parameters=parameters + [p for p in injected if p.name not in declared])
 
 
 def _advertised_default(parameter: inspect.Parameter, field: Any) -> Any:
