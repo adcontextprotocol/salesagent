@@ -31,6 +31,7 @@ from tests.bdd.steps._outcome_helpers import (
     wire_error_envelope_or_none,
     wire_field,
 )
+from tests.bdd.steps.generic._auth import setup_tenant_and_principal
 from tests.bdd.steps.generic._dispatch import dispatch_request, dispatch_via_client
 from tests.bdd.steps.generic.then_error import _wire_code
 from tests.factories.account import AccountFactory, AgentAccountAccessFactory
@@ -183,14 +184,9 @@ def _assert_wire_field_rejection(ctx: dict, field: str, code: str = "INVALID_REQ
     )
 
 
-def _setup_tenant_and_principal(ctx: dict) -> tuple[Any, Any]:
-    """Set up default tenant + principal, caching in ctx to avoid duplicates."""
-    if "tenant" not in ctx:
-        env = ctx["env"]
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    return ctx["tenant"], ctx["principal"]
+#: Moved to ``tests.bdd.steps.generic._auth``; this name kept so the module's own
+#: 30 call sites read unchanged. New callers import the generic one.
+_setup_tenant_and_principal = setup_tenant_and_principal
 
 
 def _create_accessible_account(ctx: dict, status: str = "active", **kwargs: Any) -> Any:
@@ -308,18 +304,6 @@ def _sync_pre_create(ctx: dict, brand_domain: str, operator: str, billing: str, 
 # ═══════════════════════════════════════════════════════════════════════
 # GIVEN steps — authentication and account setup
 # ═══════════════════════════════════════════════════════════════════════
-
-
-@given("the Buyer Agent has an authenticated connection")
-@given(parsers.parse("the Buyer Agent has an authenticated connection via {transport}"))
-def given_authenticated_connection(ctx: dict, transport: str | None = None) -> None:
-    """Set up authenticated connection.
-
-    The transport arg is accepted but ignored — pytest_generate_tests
-    controls which transport is used for dispatch.
-    """
-    ctx["has_auth"] = True
-    _setup_tenant_and_principal(ctx)
 
 
 @given("the Buyer Agent has an unauthenticated connection")
@@ -442,13 +426,6 @@ def given_seller_legal_review(ctx: dict) -> None:
 def given_seller_auto_approve(ctx: dict) -> None:
     """Configure seller to auto-approve (status=active, no setup)."""
     _set_approval_mode(ctx, "auto")
-
-
-@given("the Buyer is authenticated with a valid principal_id")
-def given_buyer_authenticated(ctx: dict) -> None:
-    """Buyer has authenticated identity with valid principal_id."""
-    ctx["has_auth"] = True
-    _setup_tenant_and_principal(ctx)
 
 
 @given(parsers.parse('the agent has {count:d} accessible accounts with statuses "{s1}", "{s2}", "{s3}"'))

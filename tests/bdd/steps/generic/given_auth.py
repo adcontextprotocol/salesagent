@@ -7,7 +7,9 @@ an authenticated buyer, a missing tenant, or a sandbox account can reuse them.
 
 from __future__ import annotations
 
-from pytest_bdd import given
+from pytest_bdd import given, parsers
+
+from tests.bdd.steps.generic._auth import setup_tenant_and_principal
 
 # ── Authenticated / tenant-present paths ────────────────────────────
 
@@ -77,3 +79,26 @@ def given_production_account(ctx: dict) -> None:
     ctx["sandbox"] = False
     ctx["has_tenant"] = True
     ctx.setdefault("tenant_id", "prod_tenant")
+
+
+@given("the Buyer is authenticated with a valid principal_id")
+@given("the Buyer Agent has an authenticated connection")
+@given(parsers.parse("the Buyer Agent has an authenticated connection via {transport}"))
+def given_buyer_authenticated(ctx: dict, transport: str | None = None) -> None:
+    """A buyer with a valid identity. THE authentication setup, 383 feature lines.
+
+    Three sentences, one function. They were two functions in
+    ``steps/domain/uc011_accounts.py`` with BYTE-IDENTICAL bodies -- both
+    ``ctx["has_auth"] = True`` followed by the tenant/principal setup -- reached by
+    236 and 118 feature lines respectively, saying the same thing in different
+    words because nothing forced them to meet.
+
+    ``transport`` is parsed and DISCARDED, and that is not an oversight in this
+    function: ``pytest_generate_tests`` parametrizes every scenario over
+    a2a/mcp/rest, so a sentence naming one either lies or defeats the
+    parametrization. The 29 feature lines that say "via <transport>" are a
+    Gherkin-generation defect; the parameter is accepted so they keep resolving
+    until the generator stops emitting them, and ignored so they cannot pin.
+    """
+    ctx["has_auth"] = True
+    setup_tenant_and_principal(ctx)

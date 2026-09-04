@@ -46,3 +46,18 @@ def authenticate_env_as(ctx: dict, principal_id: str) -> Any:
     env.switch_principal(principal_id)
     ctx["principal_id"] = principal_id
     return env
+
+
+def setup_tenant_and_principal(ctx: dict) -> tuple[Any, Any]:
+    """The default tenant + principal, created once per scenario and cached in ctx.
+
+    Lives HERE, in the generic auth layer, because establishing "a buyer with a
+    valid identity" is the single most reused setup in the suite -- 383 feature
+    lines across three sentences reach it. It used to live inside
+    ``steps/domain/uc011_accounts.py``, which is why every other domain module
+    re-implemented it: a helper in a domain module is not importable vocabulary,
+    it is that module's private business.
+    """
+    if "tenant" not in ctx:
+        ctx["tenant"], ctx["principal"] = ctx["env"].setup_default_data()
+    return ctx["tenant"], ctx["principal"]
