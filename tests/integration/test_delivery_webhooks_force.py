@@ -1,7 +1,7 @@
 """Integration tests for manual/forced delivery webhook triggering."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -191,7 +191,14 @@ async def test_trigger_report_propagates_a_refused_delivery_as_false(integration
             "the trigger reported success for a delivery its own sender declined to make; "
             "an operator reading this cannot tell a sent webhook from a blocked one"
         )
-        mock_send_internal.assert_called_once()
+        # Load-bearing, not a formality: the wrapper's OTHER way to answer False is the
+        # "no reporting_webhook configured" early return, which never reaches the sender.
+        # Pinning that the sender WAS called (once, forced) is what makes this test grade
+        # propagation rather than that early return. ANY on the three positionals — the
+        # media buy, its reporting_webhook dict and the session are all fetched by the
+        # wrapper itself, so the test holds no handle to them; `force` is the argument
+        # this call is about.
+        mock_send_internal.assert_called_once_with(ANY, ANY, ANY, force=True)
 
 
 @pytest.mark.requires_db
