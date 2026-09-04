@@ -1309,6 +1309,44 @@ class CircuitBreakerMixin(LocalOriginMixin):
             service._circuit_breakers[endpoint_key] = CircuitBreaker()
         return service._circuit_breakers[endpoint_key]
 
+    #: Why every breaker seam below is declared unrealizable over e2e_rest, once.
+    #:
+    #: TWO independent reasons, and either alone is disqualifying:
+    #:
+    #: 1. WRONG PROCESS. ``_breaker_for`` reaches ``get_service()._circuit_breakers``
+    #:    on the RUNNER's in-process ``WebhookDeliveryService``. The breaker that could
+    #:    matter lives in the server container, so a Given that seeds here arranges
+    #:    nothing the server will consult, and ``breaker_snapshot`` reads back the very
+    #:    object the test just poked. The Then that reads it was already declared
+    #:    unsupported (``assert_circuit_breaker_failure_recorded``); the GIVENS were not,
+    #:    so the scenarios kept running and driving real deliveries against an endpoint
+    #:    programmed to fail.
+    #:
+    #: 2. WRONG SENDER. The e2e delivery path is
+    #:    ``DeliveryWebhookScheduler -> ProtocolWebhookService``, which contains ZERO
+    #:    circuit-breaker references; the breaker belongs to ``WebhookDeliveryService``,
+    #:    the sender the in-process legs drive. So "subsequent scheduled deliveries
+    #:    should be suppressed" is not merely unobservable over e2e — it is not true of
+    #:    the path e2e exercises.
+    #:
+    #: NOT A COVERAGE LOSS BEING HIDDEN: AdCP 3.1.1 does not require a circuit breaker
+    #: at all. ``docs/building/by-layer/L3/webhooks.mdx`` :528 is its ONLY mention and is
+    #: descriptive ("suppressed fires under a tripped circuit breaker" as one thing a
+    #: buyer might be diagnosing); nothing in ``dist/compliance/3.1.1/`` grades it. The
+    #: spec's buyer-visible observable is ``webhook_activity[]`` on ``get_media_buys``
+    #: (``include_webhook_activity``, ``core/webhook-activity-record.json``), which this
+    #: repo does not implement — see the handoff. When it lands, these Thens should be
+    #: rewritten against it and these declarations removed, because that surface IS
+    #: readable on every transport.
+    _BREAKER_IS_PROCESS_LOCAL = (
+        "the circuit breaker is process-local to the runner's own WebhookDeliveryService "
+        "(get_service()._circuit_breakers), and the live server's delivery-report path "
+        "(ProtocolWebhookService) has no breaker at all — so this seeds and reads state no "
+        "server behaviour depends on. AdCP 3.1.1 mandates no breaker; the spec's observable "
+        "is webhook_activity[] on get_media_buys, which is not implemented here"
+    )
+
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def seed_breaker_failures(self, endpoint_key: str, n: int) -> None:
         """Record *n* consecutive failures, as production's own arithmetic would.
 
@@ -1321,6 +1359,7 @@ class CircuitBreakerMixin(LocalOriginMixin):
         for _ in range(n):
             breaker.record_failure()
 
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def set_breaker_state(self, endpoint_key: str, state: str) -> None:
         """Force the breaker into *state* ('OPEN' | 'HALF_OPEN' | 'CLOSED').
 
@@ -1330,6 +1369,7 @@ class CircuitBreakerMixin(LocalOriginMixin):
         """
         self._breaker_for(endpoint_key).state = CircuitState[state.upper()]
 
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def elapse_breaker_timeout(self, endpoint_key: str, seconds: int = 61) -> None:
         """Age the last failure past the breaker's recovery timeout.
 
@@ -1340,6 +1380,7 @@ class CircuitBreakerMixin(LocalOriginMixin):
         """
         self._breaker_for(endpoint_key).last_failure_time = datetime.now(UTC) - timedelta(seconds=seconds)
 
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def drive_breaker_transition(self, endpoint_key: str) -> None:
         """Drive the breaker's OPEN -> HALF_OPEN transition. Returns nothing.
 
@@ -1362,6 +1403,7 @@ class CircuitBreakerMixin(LocalOriginMixin):
         """
         self._breaker_for(endpoint_key).can_attempt()
 
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def breaker_snapshot(self, endpoint_url: str | None = None) -> tuple[CircuitState, int]:
         """(state, failure_count) for *endpoint_url*, via the PRODUCTION public API.
 

@@ -435,6 +435,33 @@ EXPECTED_UNSUPPORTED_DECLARATIONS: frozenset[tuple[str, str, str]] = frozenset(
             "get_service() constructs a fresh in-process WebhookDeliveryService under e2e_rest, "
             "disconnected from the live server's real circuit-breaker state — no wire surface",
         ),
+        # The circuit-breaker SEEDS, added alongside the reader above rather than
+        # after it. Declaring only the Then was the hole: the Givens still ran, so the
+        # scenarios arranged a breaker in the runner's own process and then drove REAL
+        # deliveries against an endpoint programmed to fail — which is how they passed
+        # while production did the opposite, and how one per-worker server was driven
+        # unhealthy. Two independent disqualifiers, spelled out at
+        # ``_mixins._BREAKER_IS_PROCESS_LOCAL``: wrong process (the runner's
+        # WebhookDeliveryService, not the server's) and wrong sender (the e2e delivery
+        # path is ProtocolWebhookService, which has no breaker at all).
+        #
+        # Parking is honest rather than lossy: AdCP 3.1.1 mandates no circuit breaker —
+        # webhooks.mdx :528 is its only, descriptive mention and nothing in
+        # dist/compliance/3.1.1/ grades it. The spec's buyer-visible observable is
+        # webhook_activity[] on get_media_buys (include_webhook_activity;
+        # core/webhook-activity-record.json), which this repo does not implement. These
+        # five come OUT when it lands and the Thens are rewritten against it.
+        # "<dynamic>" because all five share ONE reason constant
+        # (``_mixins._BREAKER_IS_PROCESS_LOCAL``) rather than five copies of a long
+        # string, and the detector can only read a literal. Same precedent as
+        # _validate_registry_formats below. What the pin still locks is the SET of
+        # parked method names, which is the tracking property that matters; the reason
+        # itself is reviewable at the source, where it is stated once.
+        ("tests/harness/_mixins.py", "seed_breaker_failures", "<dynamic>"),
+        ("tests/harness/_mixins.py", "set_breaker_state", "<dynamic>"),
+        ("tests/harness/_mixins.py", "elapse_breaker_timeout", "<dynamic>"),
+        ("tests/harness/_mixins.py", "drive_breaker_transition", "<dynamic>"),
+        ("tests/harness/_mixins.py", "breaker_snapshot", "<dynamic>"),
         (
             "tests/harness/creative_formats.py",
             "_validate_registry_formats",
