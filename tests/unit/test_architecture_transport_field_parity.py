@@ -82,14 +82,14 @@ ALLOWLIST: dict[tuple[str, str], str] = {}
 #: REMOVAL from the MCP wrapper and the builder, not an entry here." All fourteen names are
 #: gone from ``list_creatives`` and ``_build_list_creatives_request`` (salesagent-prkv.69,
 #: closing salesagent-prkv.46) -- the ten flat filter/sort/pagination aliases outright, and
-#: ``format``/``page`` by becoming internal ``exclude=True`` fields on ListCreativesRequest,
-#: which every derivation already drops. ``include_performance``/``include_sub_assets`` were
+#: ``format``/``page`` by moving onto ListCreativesInternal, the model the builder returns
+#: and the _impl is typed to, which the builder's own signature keeps off every derivation. ``include_performance``/``include_sub_assets`` were
 #: deleted: adcp 3.10 removed both from the spec and nothing in ``src/`` read either.
 #:
 #: The removal was not buyer-visible. MCP publishes DTO fields INTERSECT the wrapper's
 #: signature, so a name ListCreativesRequest never declared was never advertised and FastMCP
 #: never passed one; REST derives its body from the same pair; A2A selects through
-#: select_request_fields, which drops what the DTO does not declare.
+#: select_request_fields, which drops what the builder does not accept.
 #:
 #: This set may only SHRINK, and it has nowhere left to shrink to. A new entry means a
 #: transport has grown a name the spec does not define -- fix the seam, do not record it.

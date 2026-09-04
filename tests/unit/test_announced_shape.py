@@ -492,10 +492,12 @@ class TestAnInternalFieldIsNeverAnnounced:
 
     Until the announcement honoured it, ``exclude=`` said "never reaches a buyer" about
     SERIALIZATION only, so "mark it internal" was advice a reader could follow and still
-    publish the field as a request parameter. Four live DTO fields are in this state --
-    ``get_products.product_selectors``, ``list_creatives.format`` and ``page``,
-    ``update_media_buy.today`` -- every one of them a field the subclass adds on top of the
-    spec shape, and none of them advertised.
+    publish the field as a request parameter. The four live DTO fields that used to be in
+    this state are gone: the marker is no longer how an internal field is kept off a buyer
+    surface (docs/design/one-tool-registry.md), and no registered request DTO declares one
+    any more -- tests/unit/test_architecture_request_dto_has_no_internal_fields.py grades
+    that. This test therefore fires against a fixture, which is what keeps it honest: the
+    derivation must honour the marker whether or not the tree currently uses it.
 
     There is deliberately no companion test refusing an ADDED field that IS advertised. The
     added set is derived (``set(model_fields) - library_declared_fields(model)``), so

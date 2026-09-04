@@ -17,7 +17,7 @@ CONFIRMED (57 tests) — Schema fields, required/optional, types, XOR constraint
     min_exposures, budget_range, start_date, end_date, countries, regions, metros,
     channels, required_axe_integrations, required_features, required_geo_targeting,
     signal_targeting, standard_formats_only)
-  GetProductsRequest (all fields optional, product_selectors→brand dependency)
+  GetProductsRequest (all fields optional, catalog selector→brand dependency)
   GetProductsResponse (products required; proposals, property_list_applied optional)
   PricingOption XOR (fixed_price XOR floor_price, CPA always fixed)
   Proposal (proposal_id, name, allocations required; allocations sum to 100%)
@@ -116,23 +116,25 @@ def _make_response_with_products(products: list[Product]) -> GetProductsResponse
 class TestPrecondSchemaObligations:
     """Schema-layer precondition tests."""
 
-    async def test_product_selectors_without_brand_rejected(self):
-        """Product selectors require brand reference to be present.
+    async def test_catalog_selector_with_brand_is_accepted(self):
+        """A catalog selector alongside a brand reference is accepted.
 
         Covers: UC-001-PRECOND-04
         """
         with ProductEnv() as env:
             env.add_product(product_id="prod_001")
 
-            # product_selectors without brand should still work through impl
-            # (impl requires at least one of brief/brand/filters)
+            # The selector travels as the SPEC's ``catalog`` field. It used to travel as a
+            # local ``product_selectors`` alias with an identical annotation, declared
+            # alongside the inherited spec field it duplicated; the alias is gone (see
+            # docs/design/one-tool-registry.md) and the spec's name is the one to use.
             response = await env.call_impl(
                 brief="test",
                 brand={"domain": "test.com"},
-                product_selectors={"type": "product", "ids": ["prod_001"]},
+                catalog={"type": "product", "ids": ["prod_001"]},
             )
 
-            # Verify request with both brand and product_selectors is accepted
+            # Verify request with both brand and a catalog selector is accepted
             assert len(response.products) >= 1
 
 

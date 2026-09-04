@@ -634,36 +634,46 @@ class ListCreativesRequest(LibraryListCreativesRequest):
     against the docstring got the wrong answer for two years' worth of SDK bumps.
     Enumerate nothing: the parent is the list.
 
-    ``format`` and ``page`` below are the two INTERNAL fields, and they are here
-    rather than beside the request because a parameter routed AROUND the builder
-    makes the builder a non-superset of what the tool accepts — the exact shape
-    that forced the announced-shape derivation to be reverted once already.
+    No internal field is declared here. ``format`` and ``page`` were, under
+    ``exclude=True``; they live on :class:`ListCreativesInternal` below. See
+    docs/design/one-tool-registry.md, "Decisions this forces, and the answers".
     """
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
-    # INTERNAL (exclude=True), not AdCP 3.1.1 fields — and exclude=True is what keeps
-    # them off every buyer-facing surface at once: derived_signature drops them from the
-    # MCP announcement, derived_body_model drops them from the REST body, and
-    # select_request_fields drops them from the A2A parameter bag. So this is exactly the
-    # reach they had as out-of-band _impl arguments (no transport could set either), with
-    # the builder now a superset of the request instead of a sibling of it.
-    #
-    # Their spec-shaped successors already exist and are live: `filters.format_ids` for
-    # format filtering and `pagination.cursor` for paging. Neither is a drop-in — format_ids
-    # takes FormatId objects (agent_url and all) where this takes a bare id string, and the
-    # reader is offset-based underneath — so migrating is its own task, not a rename. Until
-    # then these two carry the DB-query behaviour (`format` narrows the query,
-    # `page` drives the offset) that the successors do not yet reach.
+
+class ListCreativesInternal(ListCreativesRequest):
+    """What ``list_creatives`` is implemented in terms of: the buyer request plus two
+    internal reader knobs.
+
+    ``_list_creatives_impl`` and ``list_creatives_raw`` are typed to THIS model, and
+    ``_build_list_creatives_request`` constructs it, so every transport reaches the
+    implementation through it. Internal callers that need to drive the reader directly
+    name this class; a buyer names :class:`ListCreativesRequest`, which has no such field
+    to name.
+
+    Neither field carries ``exclude=True``, and that is the point rather than an
+    oversight. The marker used to be what kept them off all three announced shapes; what
+    keeps them off now is that the BUILDER does not accept them, and the announced shape
+    is ``DTO fields INTERSECT the builder's parameters``. One mechanism instead of a
+    serialization marker read as an acceptance rule by three separate derivations. Adding
+    either name back to the builder's signature would publish it on REST and A2A.
+
+    Their spec-shaped successors already exist and are live: ``filters.format_ids`` for
+    format filtering and ``pagination.cursor`` for paging. Neither is a drop-in --
+    format_ids takes FormatId objects (agent_url and all) where this takes a bare id
+    string, and the reader is offset-based underneath -- so migrating is its own task, not
+    a rename. Until then these two carry the DB-query behaviour (``format`` narrows the
+    query, ``page`` drives the offset) that the successors do not yet reach.
+    """
+
     format: str | None = Field(
         default=None,
         description="Internal: filter by a bare creative format id (superseded by filters.format_ids)",
-        exclude=True,
     )
     page: int = Field(
         default=1,
         description="Internal: 1-based page index driving the reader's offset (superseded by pagination.cursor)",
-        exclude=True,
     )
 
 

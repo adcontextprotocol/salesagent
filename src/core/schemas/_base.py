@@ -2527,7 +2527,15 @@ class UpdateMediaBuyRequest(LibraryUpdateMediaBuyRequest):
     - start_time: accept Literal["asap"] (backward compat with A2A path)
     - packages: use our AdCPPackageUpdate (adds creative_ids)
     - budget: campaign-level budget (not in library — convenience field)
-    - today: internal testing field
+
+    No internal field is declared here. ``today`` used to be, under ``exclude=True``,
+    and ``_update_media_buy_impl`` read it as ``req.today or date.today()``. Nothing set
+    it -- no transport could (the marker kept it off all three announced shapes) and no
+    caller in src or tests passed it -- so that read already always yielded
+    ``date.today()``, which is now what it says. The simulation clock that field looked
+    like it provided is ``TestingContext.mock_time`` (src/core/testing_hooks.py), which
+    is separate and live. See docs/design/one-tool-registry.md, "Decisions this forces,
+    and the answers".
     """
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
@@ -2564,8 +2572,6 @@ class UpdateMediaBuyRequest(LibraryUpdateMediaBuyRequest):
     # scenario (BR-UC-003 @T-UC-003-alt-budget). That does not license a field the schema does
     # not define: we do not support anything the schema rejects. The disagreement is upstream
     # and is filed for reconciliation there, not accommodated here.
-    # Internal testing field
-    today: date | None = Field(None, exclude=True, description="For testing/simulation only - not part of AdCP spec")
 
     @model_validator(mode="before")
     @classmethod

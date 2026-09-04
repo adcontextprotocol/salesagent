@@ -118,18 +118,14 @@ class TestSchemaMatchesLibrary:
             SyncCreativesRequest as LocalSyncCreativesRequest,
         )
 
-        # GetProductsRequest - local extends library with internal-only fields
+        # GetProductsRequest - local declares no field the library does not
+        # push_notification_config — a real library field on GetProductsWholesaleRequest
+        #   (adcp 6.6 / spec 3.1.1); inherited, present in both sets
+        # buying_mode and account are in the library (adcp 3.9) but overridden locally
+        # (buying_mode widened to str|None, account made optional)
         lib_fields = set(LibGetProductsRequest.model_fields.keys())
         local_fields = set(GetProductsRequest.model_fields.keys())
-        # product_selectors — internal-only field (not in AdCP spec)
-        # push_notification_config — now a real library field on GetProductsWholesaleRequest
-        #   (adcp 6.6 / spec 3.1.1); inherited, present in both sets, no longer a local extension
-        # buying_mode and account are now in the library (adcp 3.9) but overridden locally
-        # (buying_mode widened to str|None, account made optional)
-        local_extensions = {"product_selectors"}
-        assert lib_fields == local_fields - local_extensions, (
-            f"GetProductsRequest drift: lib={lib_fields}, local={local_fields}"
-        )
+        assert lib_fields == local_fields, f"GetProductsRequest drift: lib={lib_fields}, local={local_fields}"
 
         # GetMediaBuyDeliveryRequest - local now matches library exactly
         # (SDK 5.7 provides time_granularity, include_window_breakdown,
@@ -147,20 +143,12 @@ class TestSchemaMatchesLibrary:
         local_fields = set(LocalCreateMediaBuyRequest.model_fields.keys())
         assert lib_fields == local_fields, f"CreateMediaBuyRequest drift: lib={lib_fields}, local={local_fields}"
 
-        # ListCreativesRequest - extends library with two internal-only fields
-        # format, page — internal-only (exclude=True), not in AdCP 3.1.1. They carry the
-        #   reader's bare-format-id filter and its offset paging, whose spec-shaped
-        #   successors (filters.format_ids, pagination.cursor) are not drop-in replacements.
-        #   Declared on the model rather than passed beside the request so
-        #   _build_list_creatives_request stays a SUBSET of the DTO — the property the
-        #   announced-shape derivation needs. exclude=True keeps them off all three buyer
-        #   surfaces (MCP announcement, REST body, A2A selection).
+        # ListCreativesRequest - the buyer shape, matching the library exactly. The
+        # reader's two internal knobs (format, page) are on ListCreativesInternal, which
+        # subclasses this and is what the builder and the _impl are typed to.
         lib_fields = set(LibListCreativesRequest.model_fields.keys())
         local_fields = set(LocalListCreativesRequest.model_fields.keys())
-        local_extensions = {"format", "page"}
-        assert lib_fields == local_fields - local_extensions, (
-            f"ListCreativesRequest drift: lib={lib_fields}, local={local_fields}"
-        )
+        assert lib_fields == local_fields, f"ListCreativesRequest drift: lib={lib_fields}, local={local_fields}"
 
         # ListCreativeFormatsRequest - now extends library, should match
         lib_fields = set(LibListCreativeFormatsRequest.model_fields.keys())

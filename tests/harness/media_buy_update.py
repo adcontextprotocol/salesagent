@@ -59,7 +59,11 @@ _WRAPPER_UNSUPPORTED_FIELDS = (
     # REST body), so stripping it would put the a2a/mcp legs back to passing without
     # ever sending the field — which is how the revision scenarios read as graded on
     # three transports while only REST actually carried the token.
-    "today",
+    #
+    # "today" is NOT stripped either, and for a stronger reason: the field no longer
+    # exists. UpdateMediaBuyRequest declared it internal (exclude=True) and nothing ever
+    # set it, so its one read already always fell through to date.today(); it was deleted
+    # rather than moved to an extended model (docs/design/one-tool-registry.md).
     "total_budget",
 )
 

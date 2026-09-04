@@ -7,7 +7,6 @@ All classes are re-exported from src.core.schemas for backward compatibility.
 from typing import Any
 
 from adcp.types import BrandReference as LibraryBrandReference
-from adcp.types import Catalog as LibraryCatalog
 from adcp.types import GetProductsResponse as LibraryGetProductsResponse
 from adcp.types import GetProductsWholesaleRequest as LibraryGetProductsRequest
 from adcp.types import Placement as LibraryPlacement
@@ -275,7 +274,13 @@ class GetProductsRequest(LibraryGetProductsRequest):
     Library provides: account, brand, brief, buyer_campaign_ref, catalog,
     context, ext, fields, filters, pagination, property_list, refine.
 
-    Internal-only: product_selectors (excluded from external serialization).
+    No internal-only field is declared here. ``product_selectors`` used to be, under
+    ``exclude=True``; it was a non-spec ALIAS of the inherited spec field ``catalog``
+    (identical annotation), it was read nowhere, no builder accepted it, and
+    ``_get_products_impl`` is typed to the SDK's own request model, which never declared
+    it -- so nothing could set it and nothing could read it. Deleted rather than moved to
+    an extended model, because there is no caller for such a model to serve. See
+    docs/design/one-tool-registry.md, "Decisions this forces, and the answers".
 
     push_notification_config is inherited from the adcp library parent (added in the
     6.6 SDK / spec 3.1.1); no local redeclaration.
@@ -303,13 +308,6 @@ class GetProductsRequest(LibraryGetProductsRequest):
     buying_mode: str | None = Field(  # type: ignore[assignment]
         None,
         description="Buyer intent: 'brief' (publisher curates) or 'wholesale' (buyer applies own audiences)",
-    )
-
-    # Internal-only fields (not in AdCP spec)
-    product_selectors: LibraryCatalog | None = Field(
-        None,
-        description="Selectors to filter the brand manifest product catalog for product discovery",
-        exclude=True,
     )
 
 

@@ -101,19 +101,28 @@ def _builder_node(builder) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     return None
 
 
-def forwarded_unconditionally(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Field names the builder passes to its model as a bare parameter reference.
+def forwarded_unconditionally(node: ast.FunctionDef | ast.AsyncFunctionDef, model: type) -> set[str]:
+    """Field names the builder passes to ITS MODEL as a bare parameter reference.
 
     ``Model(x=x)`` counts; ``Model(**omit_unset(x=x))`` does not, because the helper drops
     an unsent value before it reaches the model. A computed or coerced argument
     (``brand=to_brand_reference(brand)``) is not a bare reference and is not a default
     question -- it is a value the builder means to supply.
+
+    WHICH call is the model's is decided by ``model.__name__`` -- the model this builder's
+    return annotation already names, which is how the transports find it too. It used to be
+    decided by ``name.endswith(("Request", "RequestLocal"))``, and that is a spelling list:
+    the day a builder returned a model spelled some third way, this function returned the
+    empty set and the guard kept PASSING while grading nothing. It cost nothing to be wrong
+    that way, which is the failure mode worth removing. Verified equivalent at the swap:
+    across all sixteen registered builders the derived rule returned the identical set the
+    suffix rule did, ``CompleteTaskRequestLocal`` included.
     """
     forwarded: set[str] = set()
     for call in iter_call_expressions(node):
         func = call.func
         name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
-        if not name or name == "omit_unset" or not name.endswith(("Request", "RequestLocal")):
+        if name != model.__name__:
             continue
         forwarded |= {kw.arg for kw in call.keywords if kw.arg and isinstance(kw.value, ast.Name)}
     return forwarded
@@ -143,7 +152,7 @@ def overridden_defaults(builder, model: type) -> list[tuple[str, str, object, ob
     node = _builder_node(builder)
     if node is None:
         return []
-    for field in sorted(forwarded_unconditionally(node)):
+    for field in sorted(forwarded_unconditionally(node, model)):
         model_default = _model_default(model, field)
         if model_default is NO_DEFAULT or model_default is None:
             continue  # the model declares nothing to defeat
@@ -277,9 +286,9 @@ class TestGuardDetector:
     """Fired against synthetic builders, parsed the same way the live ones are."""
 
     @staticmethod
-    def _forwarded(source: str) -> set[str]:
+    def _forwarded(source: str, model_name: str = "FakeRequest") -> set[str]:
         node = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef))
-        return forwarded_unconditionally(node)
+        return forwarded_unconditionally(node, type(model_name, (), {}))
 
     def test_sees_a_bare_parameter_forwarded_to_the_model(self):
         assert self._forwarded("def b(flag=None):\n    return FakeRequest(flag=flag)\n") == {"flag"}
@@ -291,6 +300,22 @@ class TestGuardDetector:
     def test_does_not_see_a_coerced_argument(self):
         """``brand=to_brand_reference(brand)`` is a value the builder MEANS to supply."""
         assert self._forwarded("def b(brand=None):\n    return FakeRequest(brand=to_ref(brand))\n") == set()
+
+    def test_sees_a_model_whose_name_no_suffix_list_would_predict(self):
+        """The reason membership is the model's OWN name and not a spelling.
+
+        ``ListCreativesInternal`` ends in neither "Request" nor "RequestLocal"; under the
+        suffix rule this builder forwarded nothing and the guard passed vacuously.
+        """
+        source = "def b(flag=None):\n    return ListCreativesInternal(flag=flag)\n"
+
+        assert self._forwarded(source, model_name="ListCreativesInternal") == {"flag"}
+
+    def test_does_not_see_a_call_to_some_other_model(self):
+        """A builder that constructs a helper model on the way is not forwarding to ITS model."""
+        source = "def b(flag=None):\n    return FakeRequest(inner=OtherRequest(flag=flag))\n"
+
+        assert self._forwarded(source) == set()
 
 
 class TestDefaultComparison:

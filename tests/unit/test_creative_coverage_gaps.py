@@ -665,7 +665,7 @@ class TestListingEdgeCases:
         from src.core.tools.creatives.listing import _build_list_creatives_request
 
         ve = ValidationError.from_exception_data(
-            title="ListCreativesRequest",
+            title="ListCreativesInternal",
             line_errors=[
                 {
                     "type": "missing",
@@ -676,7 +676,7 @@ class TestListingEdgeCases:
             ],
         )
 
-        with patch("src.core.tools.creatives.listing.ListCreativesRequest", side_effect=ve):
+        with patch("src.core.tools.creatives.listing.ListCreativesInternal", side_effect=ve):
             assert_construction_rejects(_build_list_creatives_request, field="filters")
 
 
