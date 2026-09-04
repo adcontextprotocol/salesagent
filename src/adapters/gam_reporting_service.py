@@ -18,7 +18,9 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 
 import pytz
-import requests
+
+from src.core.exceptions import AdCPError
+from src.core.security.outbound_http import OperatorEndpoint, OutboundError, send
 
 logger = logging.getLogger(__name__)
 
@@ -360,17 +362,29 @@ class GAMReportingService:
 
             # Download the report using requests with proper timeout and error handling
             try:
-                response = requests.get(
+                # The ALLOWED_DOMAINS provenance check above stays: it asserts the URL
+                # came from GAM, which is a different question from whether the address
+                # is safe to dial. max_attempts=1 — this download did not retry.
+                # The seam caps the body, which is what `stream=True` was reaching for.
+                response = send(
                     download_url,
-                    timeout=(ReportingConfig.HTTP_CONNECT_TIMEOUT, ReportingConfig.HTTP_READ_TIMEOUT),
+                    method="GET",
                     headers={"User-Agent": ReportingConfig.USER_AGENT},
-                    stream=True,  # For better memory handling of large files
+                    timeout=float(ReportingConfig.HTTP_READ_TIMEOUT),
+                    max_attempts=1,
                 )
-                response.raise_for_status()
-            except requests.exceptions.Timeout as e:
-                raise Exception(f"GAM report download timed out: {str(e)}") from e
-            except requests.exceptions.RequestException as e:
-                raise Exception(f"Failed to download GAM report: {str(e)}") from e
+            except OutboundError as e:
+                # Delegates instead of rewrapping, the same way kevel.py:782 and
+                # triton_digital.py:707 did at this migration. The bare Exception
+                # here was this branch's one holdout from its own mapping rule: it
+                # lost `attempts`/`last_status` and the operator-endpoint terminal
+                # classification, and interpolated the seam's fixed message into a
+                # message of its own. Imported locally for the same reason the two
+                # siblings do: src.core.helpers.__init__ pulls in adapter_helpers,
+                # which imports the adapters.
+                from src.core.helpers.outbound_error_mapping import raise_mapped_outbound_error
+
+                raise_mapped_outbound_error(e, provenance=OperatorEndpoint("Google Ad Manager"), logger=logger)
 
             # Parse the CSV data directly from the response with memory limits
             try:
@@ -397,6 +411,15 @@ class GAMReportingService:
                 logger.warning("GAM report returned no data rows")
 
             return data
+
+        except AdCPError:
+            # The typed error IS the answer. Without this arm the catch-all below
+            # re-wraps whatever `raise_mapped_outbound_error` just classified back
+            # into a bare Exception, and the download branch's migration off
+            # `raise Exception(...)` buys nothing observable -- the buyer sees the
+            # same relabelled string either way, minus `attempts`, `last_status`
+            # and the operator-endpoint terminal classification.
+            raise
 
         except Exception as e:
             raise Exception(f"Error running GAM report: {str(e)}")

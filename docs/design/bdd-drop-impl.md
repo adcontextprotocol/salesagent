@@ -29,7 +29,7 @@ impl-only coverage.
 
 **Non-goals (explicitly out of scope)**
 - **Do NOT delete the impl machinery.** `env.call_impl`, `Transport.IMPL`,
-  `ImplDispatcher`, `synthesized_error_envelope` STAY — unit/integration tests
+  `ImplDispatcher`, the private `_synthesized_error_envelope` STAY — unit/integration tests
   call `call_impl` directly, and `call_via(IMPL)` remains a valid non-BDD path.
   Removing them is a separate later cleanup, not this ticket.
 - **Do NOT create unit tests to "re-home" impl coverage.** Coverage lives in BDD,
@@ -74,7 +74,7 @@ it in a unit test.
   `tests/bdd/steps/generic/_dispatch.py` (~57-61), `…/when_request.py` (~27-36, ~45).
 - **Impl machinery (KEEP):** `Transport.IMPL` (`tests/harness/transport.py:26`),
   `ImplDispatcher` + `DISPATCHERS[IMPL]` (`tests/harness/dispatchers.py:87-108,188`),
-  `synthesized_error_envelope` (impl-only error view).
+  the private `_synthesized_error_envelope`, read through `result.error_envelope()` (impl-only error view).
 
 (Phase 2 re-pins exact line numbers; conftest shifts.)
 
@@ -145,7 +145,7 @@ Per row:
 - The 375 impl-exclusive-xfailed: lose the impl variant; already no coverage.
 
 **E. Harness (KEEP, do not delete).** `Transport.IMPL`, `ImplDispatcher`,
-`call_impl`, `synthesized_error_envelope` remain for unit/integration use. Only
+`call_impl`, the private `_synthesized_error_envelope` remain for unit/integration use. Only
 their use *in the BDD default path* goes away.
 
 ## Why proceed (and why `l9wn` is orthogonal)

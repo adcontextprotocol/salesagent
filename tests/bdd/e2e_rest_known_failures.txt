@@ -119,12 +119,25 @@ tests/bdd/test_uc011_manage_accounts.py::test_push_notification_for_async_status
 # failed with 'asyncio.run() cannot be called from a running event loop').
 # Verified in-network: all 4 transports pass incl. e2e_rest.
 
-# --- parallel e2e_rest mock-injection artifacts (10) ---
+# --- parallel e2e_rest mock-injection artifacts (7) ---
 # Added 2026-07-09: surfaced when perf/parallelize-test-suite enabled parallel
 # e2e_rest (E2E_PER_WORKER). Mock-injection-incompatible artifacts, not regressions:
-# UC-004 set_adapter_response (delivery), UC-005 set_registry_formats, UC-018
-# injected cross-principal creatives — none visible to the separate HTTP server.
+# UC-004 set_adapter_response (delivery) and UC-005 set_registry_formats are not
+# visible to the separate HTTP server.
 # Ledger: salesagent-5p68 / e2e_rest retirement epic salesagent-rlgl.
+#
+# Graduated 2026-08-31 — the 3 UC-018 rows, one at a time, each inspected against
+# .claude/rules/workflows/xpass-graduation.md. The block's UC-018 clause ("injected
+# cross-principal creatives") went stale: given_principal_has_n_creatives seeds
+# through TenantFactory/PrincipalFactory/CreativeFactory into the database the live
+# server reads, re-pointing the env with switch_tenant — no mock injection remains
+# to be invisible. Each scenario states its own counts (3 and 5 creatives, one
+# tenant) and its Thens read the real HTTP body through wire_dict, with
+# falsifiability anchors rather than presence checks: "all creatives belong to"
+# asserts returned == owned (an unscoped query returns MORE and fails), and both
+# counter steps refuse to pass on an empty array. All three pass on a2a, mcp and
+# rest in-process, and XPASSED in three consecutive in-network runs spanning two
+# merges from main: innet_270826_0338, innet_270826_1824, innet_310826_1248.
 tests/bdd/test_uc004_deliver_media_buy_metrics.py::test_breakdown_complete_not_truncated__truncation_flag_set_false[e2e_rest]
 tests/bdd/test_uc004_deliver_media_buy_metrics.py::test_breakdown_truncated_by_limit__truncation_flag_set_true[e2e_rest]
 tests/bdd/test_uc004_deliver_media_buy_metrics.py::test_buyer_requests_supported_dimension__seller_returns_breakdown[e2e_rest]
@@ -132,6 +145,3 @@ tests/bdd/test_uc004_deliver_media_buy_metrics.py::test_multiple_dimensions_requ
 tests/bdd/test_uc005_discover_creative_formats.py::test_baseline_list_creative_formats_response_carries_format_id_objects_with_agent_url_and_id[e2e_rest]
 tests/bdd/test_uc005_discover_creative_formats.py::test_format_id_roundtrip__list_creative_formats_returns_the_same_format_object_that_get_products_advertised[e2e_rest]
 tests/bdd/test_uc005_discover_creative_formats.py::test_format_id_with_agent_url_pointing_at_a_thirdparty_creative_agent_is_reported_as_observation_not_failure[e2e_rest]
-tests/bdd/test_uc018_list_creatives.py::test_brrule034_inv1_counter__crossprincipal_creatives_never_visible[e2e_rest]
-tests/bdd/test_uc018_list_creatives.py::test_brrule034_inv1_holds__query_always_scoped_by_principal[e2e_rest]
-tests/bdd/test_uc018_list_creatives.py::test_list_creatives_filtered_by_concept_ids_returns_only_creatives_in_that_concept_carrying_concept_id_and_concept_name[e2e_rest]

@@ -38,6 +38,19 @@ if TYPE_CHECKING:
 # this module delegates to client.py's unwrap_mcp_error / unwrap_a2a_error /
 # unwrap_rest_error, so there is one error unwrap per transport family for both
 # dispatch paths (CLAUDE.md DRY invariant; remediation finding 1).
+#
+# Two invariants this module used to hold in its own helpers travel WITH those
+# unwraps and must keep holding at their new home:
+#   - ``wire_error_envelope`` carries REAL wire bytes or None — NEVER an
+#     envelope the harness rebuilt from the exception it just caught. A
+#     scenario asserting on that field would otherwise grade the rebuild, which
+#     passes whether or not production emitted anything at all. A transport
+#     that genuinely has no wire says so through ``has_wire=False`` and offers
+#     ``_synthesized_error_envelope`` under its own name, as ImplDispatcher
+#     does below.
+#   - ``has_wire`` is declared PER CONSTRUCTION SITE (required and keyword-only
+#     on TransportResult), True only downstream of an actual send/receive; a
+#     catch-all arm that may fire before anything was sent declares False.
 
 
 class ImplDispatcher:
@@ -46,7 +59,7 @@ class ImplDispatcher:
     IMPL is the in-process direct call — there is no wire by definition.
     ``wire_error_envelope`` is left ``None`` on this transport; the envelope
     that production WOULD emit at the boundary is exposed on the separate
-    ``synthesized_error_envelope`` field so tests cannot accidentally lean
+    private ``_synthesized_error_envelope`` field so tests cannot accidentally lean
     on IMPL to catch real-wire regressions (a regression in the production
     boundary translator would not change what this dispatcher computes,
     because both call ``build_two_layer_error_envelope`` on the same
@@ -58,10 +71,13 @@ class ImplDispatcher:
             payload = env.call_impl(**kwargs)
         except Exception as exc:
             return TransportResult(
+                has_wire=False,  # in-process call, no wire exists
                 error=exc,
-                synthesized_error_envelope=_envelope_from_adcp_error(exc),
+                _synthesized_error_envelope=_envelope_from_adcp_error(exc),
             )
-        return TransportResult(payload=payload, envelope={"transport": "impl"})
+        return TransportResult(
+            payload=payload, envelope={"transport": "impl"}, has_wire=False
+        )  # in-process call, no wire exists
 
 
 class A2ADispatcher:
@@ -84,13 +100,17 @@ class A2ADispatcher:
             # ONE A2A error unwrap for both dispatch paths (client.py). This
             # used to be a second copy of that body, which is how the derived
             # status ended up on this path and not on AdCPTestClient.call — the
-            # path the graded storyboard scenarios actually take.
+            # path the graded storyboard scenarios actually take. It reads the
+            # REAL envelope off the exception and must never hand back a
+            # synthesized stand-in under ``wire_error_envelope`` — see the
+            # module note above.
             return unwrap_a2a_error(exc, Transport.A2A)
         # Real A2A wire: the artifact DataPart dict, carried back on the SAME
         # return value as the payload. It used to be read off env._last_wire_response
         # — one object reaching into another's private attribute, which is what
         # allowed a second writer and a stale wire.
         return TransportResult(
+            has_wire=True,  # the artifact DataPart came back from the handler
             payload=delivered.payload,
             envelope={"transport": "a2a"},
             wire_response=delivered.wire_response,
@@ -115,11 +135,14 @@ class RestDispatcher:
             response = env._run_rest_request(endpoint, **kwargs)
         except Exception as exc:
             # ONE REST DELIVER-exception unwrap for both dispatch paths — it
-            # derives status=transport_fault, because an exception here means no
-            # HTTP body, hence no AdCP envelope, ever existed.
+            # derives status=transport_fault and declares has_wire=False,
+            # because an exception here means no HTTP body, hence no AdCP
+            # envelope, ever existed.
             return unwrap_rest_error(exc, Transport.REST)
         # unwrap_rest_response owns the status-code
-        # branching, envelope tag, and the #1417 pristine-wire deepcopy rule —
+        # branching, envelope tag, the #1417 pristine-wire deepcopy rule, and the
+        # per-site has_wire declaration (True on every branch it returns: a
+        # response — 2xx or >=400 — means bytes came back over HTTP) —
         # the same function RestE2EDispatcher and the generic client's
         # _unwrap_rest delegate to below.
         return unwrap_rest_response(env, response, Transport.REST, env.parse_rest_response)
@@ -140,12 +163,14 @@ class McpDispatcher:
 
             # ONE MCP error unwrap for both dispatch paths (client.py) — it owns
             # the raw-ToolError unwrap, the REAL-wire-only envelope rule (never
-            # the synthesized fallback), and the derived status. See the A2A
-            # sibling above for why this is a delegation and not a copy.
+            # the synthesized fallback), the per-site has_wire declaration, and
+            # the derived status. See the A2A sibling above for why this is a
+            # delegation and not a copy.
             return unwrap_mcp_error(exc, Transport.MCP)
         # Real MCP wire: the structured_content dict, carried back on the SAME
         # return value as the payload — see the A2A sibling above.
         return TransportResult(
+            has_wire=True,  # structured_content came back from the MCP client
             payload=delivered.payload,
             envelope={"transport": "mcp"},
             wire_response=delivered.wire_response,
@@ -188,7 +213,9 @@ class RestE2EDispatcher:
         from tests.harness.transport import NO_IDENTITY_OVERRIDE
 
         if not env.e2e_config:
-            return TransportResult(error=RuntimeError("E2E dispatch requires env.e2e_config (pass e2e_config= to env)"))
+            return TransportResult(
+                error=RuntimeError("E2E dispatch requires env.e2e_config (pass e2e_config= to env)"), has_wire=False
+            )  # no e2e_config: refused before any httpx call
 
         # NO_IDENTITY_OVERRIDE default (not None): omitted identity must fall
         # back to env.identity_for(transport) inside _deliver_e2e_rest, the

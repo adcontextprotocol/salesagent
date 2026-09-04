@@ -93,7 +93,15 @@ class TestGetConfig:
 class TestSaveConfig:
     """POST /auth/oidc/tenant/<id>/config — persist OIDC provider settings."""
 
-    def test_saves_config_encrypts_secret(self, client, factory_session):
+    def test_saves_config_encrypts_secret(self, client, factory_session, monkeypatch):
+        from tests.integration.test_outbound_http import set_flags
+
+        # A loopback URL, private-range hatch open: this exercises the
+        # ingest-time egress check added for discovery_url without depending
+        # on real DNS to an actual internet host (the check now resolves the
+        # hostname). https, not http — the seam requires it unconditionally
+        # now (salesagent-e6h0); no network dial happens here regardless.
+        set_flags(monkeypatch, private=True)
         tenant = TenantFactory()
         _auth_session(client, tenant.tenant_id)
 
@@ -103,7 +111,7 @@ class TestSaveConfig:
                 "provider": "google",
                 "client_id": "new-client-id.apps.googleusercontent.com",
                 "client_secret": "brand-new-secret-value",
-                "discovery_url": "https://accounts.google.com/.well-known/openid-configuration",
+                "discovery_url": "https://127.0.0.1:9999/.well-known/openid-configuration",
                 "scopes": "openid email profile",
             },
         )
@@ -120,6 +128,60 @@ class TestSaveConfig:
         assert "brand-new-secret-value" not in cfg.oidc_client_secret_encrypted
         # But the property decryptor must round-trip.
         assert cfg.oidc_client_secret == "brand-new-secret-value"
+
+    def test_rejects_blocked_discovery_url_and_stores_nothing(self, client, factory_session, monkeypatch):
+        """discovery_url is stored and later dereferenced by authlib's own
+        ``server_metadata_url=`` — outside the seam entirely — so the refusal
+        has to happen here, at ingest, same as every other stored-then-fetched
+        admin URL (see src/admin/utils/url_policy.py).
+        """
+        from tests.integration.test_outbound_http import set_flags
+
+        set_flags(monkeypatch)
+        tenant = TenantFactory()
+        _auth_session(client, tenant.tenant_id)
+
+        response = client.post(
+            f"/auth/oidc/tenant/{tenant.tenant_id}/config",
+            json={
+                "provider": "custom",
+                "client_id": "custom-client-id",
+                "client_secret": "s",
+                "discovery_url": "https://169.254.169.254/.well-known/openid-configuration",
+            },
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "OIDC discovery URL is not allowed by outbound egress policy."
+
+        factory_session.expire_all()
+        cfg = factory_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant.tenant_id)).first()
+        assert cfg is None
+
+    def test_rejects_blocked_logout_url_and_stores_nothing(self, client, factory_session, monkeypatch):
+        """logout_url is stored and later used as a browser redirect target at
+        logout — also stored-then-dereferenced, so it is graded the same way.
+        """
+        from tests.integration.test_outbound_http import set_flags
+
+        set_flags(monkeypatch)
+        tenant = TenantFactory()
+        _auth_session(client, tenant.tenant_id)
+
+        response = client.post(
+            f"/auth/oidc/tenant/{tenant.tenant_id}/config",
+            json={
+                "provider": "google",
+                "client_id": "x.apps.googleusercontent.com",
+                "client_secret": "s",
+                "logout_url": "https://169.254.169.254/logout",
+            },
+        )
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "OIDC logout URL is not allowed by outbound egress policy."
+
+        factory_session.expire_all()
+        cfg = factory_session.scalars(select(TenantAuthConfig).filter_by(tenant_id=tenant.tenant_id)).first()
+        assert cfg is None
 
     def test_rejects_missing_provider(self, client, factory_session):
         tenant = TenantFactory()

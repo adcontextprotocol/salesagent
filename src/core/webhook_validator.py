@@ -3,20 +3,52 @@
 This module provides security validation for webhook URLs to prevent
 Server-Side Request Forgery (SSRF) attacks where malicious users could
 trick the server into making requests to internal services.
+
+Relationship to ``src/core/security/outbound_http.py``: that module is the seam
+every outbound *request* goes through, and it owns SEND-time policy outright —
+address, TLS, redirect and retry, delegated to the adcp SDK. This module keeps
+exactly ONE gate, and only because the seam cannot yet express it: registration.
+
+Both of the seam's pre-connection entry points (``send``/``asend`` and
+``validate_url``) go through ``adcp.signing.resolve_and_validate_host``, which
+ALWAYS resolves DNS. Registration is deliberately a no-DNS verdict — an
+unresolvable but public hostname must be ACCEPTED at registration and re-checked
+with DNS when the callback is actually dialled. ``WebhookURLValidator.
+validate_webhook_url_registration`` below is now a thin ``(bool, str)`` wrapper
+over :meth:`~src.core.security.egress.policy.EgressPolicy.check_registration` —
+the shared address predicate both verdicts read now lives in
+``src/core/security/egress/policy.py``, and ``src/core/security/
+url_validator.py`` (this module's former SSRF-computation dependency) has been
+deleted; nothing under ``src/`` computes address policy outside the egress
+package.
+
+There is no send-side gate here any more. There used to be
+(``validate_outbound_webhook_url`` and friends); it had no production callers and
+survived only as a patch target that made test controls look live while
+intercepting nothing, so it was deleted. Any new outbound send goes through the
+seam — never a second copy of address policy here.
+
+The one thing this gate MUST NOT decide for itself is the scheme. That decision
+belongs to :class:`~src.core.security.egress.policy.EgressPolicy`, which
+requires https unconditionally on both verdicts (salesagent-e6h0 deleted the
+send-side escape hatch). An ingest gate that admitted a scheme the seam refuses
+would accept a buyer's webhook URL with a success envelope and then never
+deliver to it, which is the one failure mode the buyer cannot see or correct.
+
+``validate_webhook_task_type`` below is an unrelated concern (SDK payload enum
+coercion) that happens to live in this file.
 """
 
 from __future__ import annotations
 
-import logging
 import os
 from typing import Any
 from urllib.parse import urlparse
 
 from adcp.types import ContextObject, TaskType
 
-from src.core.config import is_production
-from src.core.exceptions import AdCPValidationError
-from src.core.security.url_validator import check_url_ssrf
+from src.core.exceptions import AdCPBlockedUrlError
+from src.core.security.egress.policy import EgressPolicy
 
 # Fallback used when an action label is not a member of the SDK's closed
 # TaskType enum. create_mcp_webhook_payload() restricts task_type to that
@@ -25,10 +57,6 @@ WEBHOOK_TASK_TYPE_FALLBACK = "update_media_buy"
 
 WEBHOOK_SSRF_SUGGESTION = (
     "Provide a public https webhook URL that does not target private, loopback, "
-    "link-local, CGNAT, multicast, or cloud-metadata hosts."
-)
-WEBHOOK_SSRF_SUGGESTION_DEV = (
-    "Provide a public http(s) webhook URL that does not target private, loopback, "
     "link-local, CGNAT, multicast, or cloud-metadata hosts."
 )
 
@@ -40,11 +68,6 @@ UNPARSEABLE_WEBHOOK_URL_FOR_LOG = "<unparseable-url>"
 def _adcp_testing() -> bool:
     """True when ADCP_TESTING allows localhost/HTTP for capture servers."""
     return os.environ.get("ADCP_TESTING") == "true"
-
-
-def _strict_mode() -> bool:
-    """Production SSRF policy: HTTPS required and no testing localhost bypass."""
-    return is_production() and not _adcp_testing()
 
 
 def validate_webhook_task_type(task_type: str, fallback: str = WEBHOOK_TASK_TYPE_FALLBACK) -> str:
@@ -76,19 +99,46 @@ def validate_webhook_task_type(task_type: str, fallback: str = WEBHOOK_TASK_TYPE
 
 
 def webhook_ssrf_suggestion() -> str:
-    """Buyer-facing suggestion for registration/outbound SSRF rejections."""
-    if _strict_mode():
-        return WEBHOOK_SSRF_SUGGESTION
-    return WEBHOOK_SSRF_SUGGESTION_DEV
+    """Buyer-facing suggestion for registration/outbound SSRF rejections.
+
+    Always the strict https wording (salesagent-e6h0): there is no posture
+    left in which a plain-http webhook URL is ever admissible, so there is no
+    second wording to select between. It used to key on
+    :meth:`WebhookURLValidator._require_https`, which selected between this and
+    a now-deleted "http(s)" wording depending on the (now also deleted)
+    outbound scheme hatch.
+    """
+    return WEBHOOK_SSRF_SUGGESTION
+
+
+# Every character ``str.splitlines()`` treats as a line boundary. ``urlsplit``
+# strips only \t \r \n (``parse._UNSAFE_URL_BYTES_TO_REMOVE``); VT, FF, the file/
+# group/record separators, NEL, U+2028 and U+2029 all survive it — and the PATH is
+# carried through verbatim below, so without this a buyer-supplied path forges a
+# second log line at every caller. Escaped rather than deleted: a dropped
+# character would silently change the URL an operator is reading.
+_LINE_BREAKING = "\n\r\v\f\x1c\x1d\x1e\x85  "
+_LOG_SAFE = str.maketrans({c: c.encode("unicode_escape").decode("ascii") for c in _LINE_BREAKING})
 
 
 def sanitize_webhook_url_for_log(url: str | None) -> str | None:
-    """Return ``scheme://host/path`` for logs — never credentials or query."""
+    """Return ``scheme://host/path`` for logs — never credentials or query.
+
+    Returns ``None`` rather than raising on a URL ``urlparse`` cannot read (an
+    unterminated IPv6 bracket raises ``ValueError``). :func:`webhook_url_for_log`
+    documents itself as TOTAL, and a stored row written before the ingest gate
+    can still carry such a URL — so a caller rendering one for a log line, or
+    inside a ``__repr__``, must get the placeholder rather than an exception
+    thrown from a debugger frame or a pytest diff.
+    """
     if not url:
         return None
-    parsed = urlparse(str(url))
+    try:
+        parsed = urlparse(str(url))
+    except ValueError:
+        return None
     if parsed.scheme and parsed.hostname:
-        return f"{parsed.scheme}://{parsed.hostname}{parsed.path or ''}"
+        return f"{parsed.scheme}://{parsed.hostname}{parsed.path or ''}".translate(_LOG_SAFE)
     return None
 
 
@@ -103,138 +153,60 @@ def reject_unsafe_webhook_registration_url(
     field: str,
     context: ContextObject | dict[str, Any] | None = None,
 ) -> None:
-    """Raise AdCPValidationError when ``url`` fails the registration SSRF gate.
+    """Raise AdCPBlockedUrlError when ``url`` fails the registration SSRF gate.
+
+    The same class the dial-time egress seam raises (``OutboundRequestBlocked``):
+    a refused buyer URL gets one wire answer regardless of which gate noticed it.
 
     Blank / whitespace-only / ``None`` URLs are a no-op (not a rejection) so
     callers can extract-then-call unconditionally.
     """
     if url is None or not str(url).strip():
         return
-    is_valid, error_msg = WebhookURLValidator.validate_webhook_url_registration(str(url))
+    # The cause is logged by EgressPolicy.check_registration, which computes it.
+    # Logging it a second time here would double every refusal in the operator's
+    # log for no added fact — this frame only adds ``field``, which the buyer
+    # already receives on the error.
+    is_valid, _ = WebhookURLValidator.validate_webhook_url_registration(str(url))
     if not is_valid:
-        raise AdCPValidationError(
-            f"Invalid {field}: {error_msg}",
+        raise AdCPBlockedUrlError(
             field=field,
             suggestion=webhook_ssrf_suggestion(),
-            recovery="correctable",
             context=context,
         )
 
 
-def reject_unsafe_outbound_webhook_url(
-    url: str,
-    *,
-    log: logging.Logger,
-    kind: str,
-) -> tuple[bool, str]:
-    """Send-time SSRF gate with standardized error logging.
-
-    Returns ``(rejected, error_msg)``. On rejection, logs once with a shared
-    message shape so protocol and application delivery paths cannot drift.
-    Callers that maintain a circuit breaker should record failure locally.
-    """
-    is_valid, error_msg = WebhookURLValidator.validate_outbound_webhook_url(url)
-    if is_valid:
-        return False, ""
-    log.error(
-        "%s webhook URL failed SSRF validation (url=%s): %s",
-        kind,
-        webhook_url_for_log(url),
-        error_msg,
-    )
-    return True, error_msg
-
-
 class WebhookURLValidator:
-    """Validates webhook URLs to prevent SSRF attacks."""
+    """Validates webhook URLs to prevent SSRF attacks.
 
-    @staticmethod
-    def _is_trusted_test_host(url: str) -> bool:
-        """True when ``url``'s hostname is an operator-configured test target.
-
-        Covers literal localhost/loopback (the common single-process case)
-        and the exact hostname set in ``ADCP_WEBHOOK_HOST`` -- the operator-
-        configured webhook receiver for multi-container test topologies
-        (e.g. the e2e Docker Compose stack, where the capture server is a
-        separate service reachable only by its compose service name, which
-        resolves to a private IP at send time; see docker-compose.e2e.yml's
-        ``ADCP_WEBHOOK_HOST: tests``). Never derived from request/buyer-
-        supplied data -- ``ADCP_WEBHOOK_HOST`` is CI/ops-set environment
-        config, not attacker-controllable. Any other private/internal
-        target (e.g. an arbitrary 192.168.x.x) is still rejected even
-        under testing -- see test_validate_for_testing_blocks_private_networks.
-        """
-        hostname = (urlparse(url).hostname or "").lower()
-        if hostname in {"localhost", "127.0.0.1"}:
-            return True
-        configured_host = os.environ.get("ADCP_WEBHOOK_HOST", "").lower()
-        return bool(configured_host) and hostname == configured_host
-
-    @staticmethod
-    def _maybe_allow_localhost(url: str, is_valid: bool, error: str, *, allow_localhost: bool) -> tuple[bool, str]:
-        """Override SSRF failures for a trusted test host when testing allows them."""
-        if not is_valid and allow_localhost and WebhookURLValidator._is_trusted_test_host(url):
-            return True, ""
-        return is_valid, error
-
-    @staticmethod
-    def _require_https() -> bool:
-        """Production requires HTTPS; ADCP_TESTING keeps HTTP for capture servers."""
-        return _strict_mode()
-
-    @classmethod
-    def validate_webhook_url(cls, url: str) -> tuple[bool, str]:
-        """
-        Validate webhook URL for SSRF protection.
-
-        Args:
-            url: The webhook URL to validate
-
-        Returns:
-            (is_valid, error_message) - is_valid is True if safe, error_message explains failures
-        """
-        return check_url_ssrf(url, require_https=cls._require_https())
+    ``_maybe_allow_localhost`` and ``_require_https`` (the localhost/loopback
+    rescue and the unconditional-https rule) deleted from this class —
+    :class:`~src.core.security.egress.policy.EgressPolicy` owns both now, so
+    this class no longer computes SSRF policy itself. It survives as a thin
+    ``(bool, str)`` wrapper because its call sites (this module's own
+    ``reject_unsafe_webhook_registration_url`` and one direct caller,
+    ``src/core/database/repositories/push_notification_config.py``) both
+    depend on that return shape.
+    """
 
     @classmethod
     def validate_webhook_url_registration(cls, url: str) -> tuple[bool, str]:
         """Registration-time SSRF gate (no DNS required).
 
-        Blocks known-bad hostnames and literal private IPs. Unresolvable
-        public hostnames are allowed here; send-time re-checks with DNS
-        (``validate_outbound_webhook_url``). When ``ADCP_TESTING=true``,
-        localhost/loopback are allowed for capture servers. Production
-        requires HTTPS.
+        Delegates entirely to
+        :meth:`~src.core.security.egress.policy.EgressPolicy.check_registration`.
+        ``AdCPBlockedUrlError`` defines no ``__str__`` override — it calls
+        ``Exception.__init__(message)`` — so ``str(exc)`` here is exactly the
+        bare message :meth:`EgressPolicy.check_registration` raised, and the
+        ``(bool, str)`` contract this method's own callers depend on survives
+        byte-identically.
+
+        When ``ADCP_TESTING=true``, localhost/loopback are allowed for
+        capture servers — graded on both arms in
+        ``tests/unit/test_webhook_security.py::TestLocalhostAllowanceUnderTestingMode``.
         """
-        allow_localhost = _adcp_testing()
-        is_valid, error = check_url_ssrf(
-            url,
-            resolve_dns=False,
-            require_https=cls._require_https(),
-        )
-        return cls._maybe_allow_localhost(url, is_valid, error, allow_localhost=allow_localhost)
-
-    @classmethod
-    def validate_outbound_webhook_url(cls, url: str) -> tuple[bool, str]:
-        """Send-time SSRF gate (full DNS), with localhost allowance under ADCP_TESTING."""
-        if _adcp_testing():
-            return cls.validate_for_testing(url, allow_localhost=True)
-        return cls.validate_webhook_url(url)
-
-    @classmethod
-    def validate_for_testing(cls, url: str, allow_localhost: bool = False) -> tuple[bool, str]:
-        """
-        Validate webhook URL with optional localhost allowance for testing.
-
-        This is useful for development/testing scenarios where webhooks need to
-        point to localhost services. Production should use validate_webhook_url().
-
-        Args:
-            url: The webhook URL to validate
-            allow_localhost: If True, allows localhost and 127.0.0.1
-
-        Returns:
-            (is_valid, error_message)
-        """
-        # Testing path always allows HTTP (capture servers, local harnesses).
-        is_valid, error = check_url_ssrf(url, require_https=False)
-        return cls._maybe_allow_localhost(url, is_valid, error, allow_localhost=allow_localhost)
+        try:
+            EgressPolicy.check_registration(url, allow_loopback=_adcp_testing())
+        except AdCPBlockedUrlError as exc:
+            return False, str(exc)
+        return True, ""

@@ -25,17 +25,19 @@ from tests.bdd.steps.generic.then_payload import then_boundary_handling_result
 DELIVERY_FIELD = "reporting_dimensions"  # a delivery-domain boundary field
 
 
+# ctx key for a payload produced WITHOUT dispatching, which is what these
+# unit tests do: they drive a Then directly to exercise its assertion logic.
 def _delivery_response(deliveries):
     return SimpleNamespace(media_buy_deliveries=deliveries)
 
 
 def test_valid_delivery_boundary_with_deliveries_passes():
-    ctx = {"response": _delivery_response([SimpleNamespace(media_buy_id="mb1")])}
+    ctx = {"self_dispatched_response": _delivery_response([SimpleNamespace(media_buy_id="mb1")])}
     then_boundary_handling_result(ctx, DELIVERY_FIELD, "valid")  # no raise
 
 
 def test_valid_delivery_boundary_empty_deliveries_raises():
-    ctx = {"response": _delivery_response([])}
+    ctx = {"self_dispatched_response": _delivery_response([])}
     with pytest.raises(AssertionError):
         then_boundary_handling_result(ctx, DELIVERY_FIELD, "valid")
 
@@ -46,6 +48,6 @@ def test_invalid_delivery_boundary_with_error_passes():
 
 
 def test_invalid_delivery_boundary_without_error_raises():
-    ctx = {"response": _delivery_response([SimpleNamespace(media_buy_id="mb1")])}
+    ctx = {"self_dispatched_response": _delivery_response([SimpleNamespace(media_buy_id="mb1")])}
     with pytest.raises(AssertionError):
         then_boundary_handling_result(ctx, DELIVERY_FIELD, "invalid")

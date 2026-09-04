@@ -2093,7 +2093,7 @@ Feature: BR-UC-003 Update Media Buy
     # first; a budget error against a package that does not exist is not actionable.
     # The ordering lives in the shared _impl, so this grades it on EVERY transport
     # rather than on the A2A wire alone.
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/compliance/source/protocols/media-buy/scenarios/invalid_transitions.yaml
+    # @source repo=adcp ref=v3.1.1 path=static/compliance/source/protocols/media-buy/scenarios/invalid_transitions.yaml phase=unknown_package step=update_unknown_package
 
   @T-UC-003-storyboard-not-cancellable-on-recancel @storyboard-v3.1 @v3-1 @structured-errors @not-cancellable @terminal-state
   Scenario: Re-cancel of a canceled media buy returns NOT_CANCELLABLE, not silent success

@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from src.admin.utils import require_tenant_access
 from src.admin.utils.audit_decorator import log_admin_action
+from src.admin.utils.url_policy import redirect_if_url_blocked
 from src.core.database.database_session import get_db_session
 from src.core.database.models import CreativeAgent, Tenant
 
@@ -98,6 +99,16 @@ def add_creative_agent(tenant_id):
             auth_type = request.form.get("auth_type", "").strip() or None
             auth_credentials = request.form.get("auth_credentials", "").strip() or None
 
+            # The agent URL is stored now and fetched later, so egress policy is
+            # applied at ingest — see src.admin.utils.url_policy. Without it the
+            # operator learns of a refusal at dial time instead of at the form.
+            if blocked := redirect_if_url_blocked(
+                agent_url,
+                "Agent URL",
+                url_for("creative_agents.add_creative_agent", tenant_id=tenant_id),
+            ):
+                return blocked
+
             if not agent_url:
                 flash("Agent URL is required", "error")
                 return redirect(url_for("creative_agents.add_creative_agent", tenant_id=tenant_id))
@@ -174,7 +185,15 @@ def edit_creative_agent(tenant_id, agent_id):
                 flash("Creative agent not found", "error")
                 return redirect(url_for("creative_agents.list_creative_agents", tenant_id=tenant_id))
 
-            agent.agent_url = request.form.get("agent_url", "").strip()
+            new_agent_url = request.form.get("agent_url", "").strip()
+            if blocked := redirect_if_url_blocked(
+                new_agent_url,
+                "Agent URL",
+                url_for("creative_agents.edit_creative_agent", tenant_id=tenant_id, agent_id=agent_id),
+            ):
+                return blocked
+
+            agent.agent_url = new_agent_url
             agent.name = request.form.get("name", "").strip()
             agent.enabled = request.form.get("enabled") == "on"
             agent.priority = int(request.form.get("priority", "10"))
@@ -238,57 +257,31 @@ def test_creative_agent(tenant_id, agent_id):
             if not agent:
                 return jsonify({"error": "Creative agent not found"}), 404
 
-            # Test connection by fetching formats
             import asyncio
 
-            from src.core.creative_agent_registry import CreativeAgent as AgentConfig
             from src.core.creative_agent_registry import CreativeAgentRegistry
 
-            registry = CreativeAgentRegistry()
+            # The registry owns everything between the stored row and the dial:
+            # the config mapping, the operator provenance and both error
+            # vocabularies. Rebuilding any of that here is what previously let the
+            # probe drop auth_header and timeout and so dial differently from
+            # production. The JSON keys below are templates/creative_agents.html's
+            # contract and stay as they are; only what they are projected FROM
+            # changed.
+            result = asyncio.run(CreativeAgentRegistry().probe_agent(agent))
 
-            # Build agent config
-            auth = None
-            if agent.auth_type and agent.auth_credentials:
-                auth = {
-                    "type": agent.auth_type,
-                    "credentials": agent.auth_credentials,
-                }
-
-            agent_config = AgentConfig(
-                agent_url=agent.agent_url,
-                name=agent.name,
-                enabled=agent.enabled,
-                priority=agent.priority,
-                auth=auth,
-            )
-
-            # Fetch formats
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                formats = loop.run_until_complete(registry._fetch_formats_from_agent(agent_config))
-
-                if formats:
-                    return jsonify(
-                        {
-                            "success": True,
-                            "message": f"Successfully connected to '{agent.name}'",
-                            "format_count": len(formats),
-                            "sample_formats": [f.name for f in formats[:5]],
-                        }
-                    )
-                else:
-                    return (
-                        jsonify(
-                            {
-                                "success": False,
-                                "error": "Agent returned no formats",
-                            }
-                        ),
-                        400,
-                    )
-            finally:
-                loop.close()
+            if result.ok:
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": result.message,
+                        "format_count": result.count,
+                        "sample_formats": list(result.samples),
+                    }
+                )
+            # ProbeResult.message is a required field, not an AdCP response
+            # attribute -- the hook regex cannot tell the two apart.
+            return jsonify({"success": False, "error": result.message}), 400  # noqa: response-attribute
 
     except Exception as e:
         logger.error(f"Error testing creative agent: {e}", exc_info=True)

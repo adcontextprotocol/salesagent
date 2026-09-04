@@ -15,12 +15,14 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from adcp.types import CreativeAsset
-from adcp.types import Error as AdCPErrorDetail
 from pydantic import BaseModel
 
-from src.core.exceptions import AdCPConfigurationError
+from src.core.exceptions import AdCPConfigurationError, wire_advisory
+from src.core.format_resolver import find_format, is_agent_backed, is_generative
 from src.core.helpers import _extract_format_info, _validate_creative_assets
+from src.core.helpers.outbound_error_mapping import raise_mapped_outbound_error
 from src.core.schemas import CreativeStatusEnum, SyncCreativeResult
+from src.core.security.outbound_http import OperatorEndpoint, OutboundError
 from src.core.validation_helpers import run_async_in_sync_context
 
 from ._assets import _build_creative_data, _extract_message_from_assets, _extract_url_from_assets
@@ -32,28 +34,30 @@ logger = logging.getLogger(__name__)
 
 
 def _failed_sync_result(
-    creative_id: str, error_msg: str, *, recovery: str | None = None, code: str = "SERVICE_UNAVAILABLE"
+    creative_id: str,
+    error_msg: str,
+    *,
+    code: str = "SERVICE_UNAVAILABLE",
+    field: str | None = None,
 ) -> SyncCreativeResult:
     """Build a SyncCreativeResult for a failed creative sync operation.
 
-    ``recovery`` distinguishes a transient failure (creative agent down — a retry
-    may help) from a terminal one (server misconfiguration — retrying cannot fix
-    it). The wire code defaults to the standard ``SERVICE_UNAVAILABLE``
-    (``CONFIGURATION_ERROR`` is internal-only and would leak verbatim in an
-    advisory); ``recovery`` is the structured retry signal. Buyer-correctable
-    per-item failures pass the condition-specific code: ``CREATIVE_NOT_FOUND``
-    for an assignment referencing an unknown creative_id (matching the
-    strict-mode ``AdCPCreativeNotFoundError`` raise since 287c93099),
-    ``VALIDATION_ERROR`` for other correctable causes.
+    The CODE is the choice; the recovery follows from it. ``wire_advisory``
+    derives the buyer-facing retry classification from the pinned enumMetadata,
+    so a call site says what happened and the retry signal follows — for EVERY
+    call site now: the last hand-forwarded recovery went with the constructor
+    kwarg. Pass the condition-specific code: ``CONFIGURATION_ERROR`` for a
+    seller-side misconfiguration (pinned terminal — the buyer must not retry),
+    ``CREATIVE_NOT_FOUND`` for an assignment referencing an unknown creative_id
+    (matching the strict-mode ``AdCPCreativeNotFoundError`` raise since
+    287c93099), ``VALIDATION_ERROR`` for other buyer-correctable causes. The
+    default ``SERVICE_UNAVAILABLE`` (pinned transient) covers a creative agent
+    that is simply down.
     """
     return SyncCreativeResult(
         creative_id=creative_id,
         action="failed",
-        errors=[
-            AdCPErrorDetail(  # structural-guard: advisory per-creative result in SyncCreativeResult.errors[]
-                code=code, message=error_msg, recovery=recovery
-            )
-        ],
+        errors=[wire_advisory(code, error_msg, field=field)],
         review_feedback=None,
         assigned_to=None,
         assignment_errors=None,
@@ -189,18 +193,13 @@ def _update_existing_creative(
             # Use pre-fetched formats (fetched outside transaction at function start)
             # This avoids async HTTP calls inside savepoint
 
-            # Find matching format
-            format_obj = None
-            for fmt in all_formats:
-                if fmt.format_id == creative_format:
-                    format_obj = fmt
-                    break
+            # ONE answer to "same format?", from format_resolver — not a local
+            # `==` over the model, which compares Python CLASSES as well as
+            # values and so missed every format the A2A path pre-upgraded.
+            format_obj = find_format(creative_format, all_formats)
 
-            if format_obj and format_obj.agent_url:
-                # Check if format is generative (has output_format_ids)
-                is_generative = bool(getattr(format_obj, "output_format_ids", None))
-
-                if is_generative:
+            if format_obj and is_agent_backed(format_obj):
+                if is_generative(format_obj):
                     # Generative creative update - rebuild using AI
                     logger.info(
                         f"[sync_creatives] Detected generative format update: {creative_format}, "
@@ -432,7 +431,19 @@ def _update_existing_creative(
             logger.error(
                 "[sync_creatives] %s for update of %s", error_msg, existing_creative.creative_id, exc_info=True
             )
-            return (_failed_sync_result(existing_creative.creative_id, error_msg, recovery="terminal"), False)
+            return (_failed_sync_result(existing_creative.creative_id, error_msg, code="CONFIGURATION_ERROR"), False)
+        except OutboundError as outbound_error:
+            # A refused/undeliverable egress request is already correctly classified
+            # by the seam — delegate rather than laundering it into the generic
+            # "Retry recommended" transient message below. raise_mapped_outbound_error
+            # always raises; the mapped AdCPError propagates out of this function to
+            # _sync.py's per-creative `except AdCPError as e:` handler, which already
+            # forwards a typed error's own code/recovery onto the per-item result.
+            raise_mapped_outbound_error(
+                outbound_error,
+                provenance=OperatorEndpoint("the creative agent"),
+                logger=logger,
+            )
         except Exception as validation_error:
             # Creative agent validation failed for update (network error, agent down, etc.)
             # Do NOT update the creative - it needs validation before acceptance
@@ -444,7 +455,7 @@ def _update_existing_creative(
                 f"[sync_creatives] {error_msg} for update of {existing_creative.creative_id}",
                 exc_info=True,
             )
-            return (_failed_sync_result(existing_creative.creative_id, error_msg, recovery="transient"), False)
+            return (_failed_sync_result(existing_creative.creative_id, error_msg), False)
 
     # In full upsert, consider all fields as changed
     changes.extend(["url", "click_url", "width", "height", "duration"])
@@ -507,18 +518,13 @@ def _create_new_creative(
             # Use pre-fetched formats (fetched outside transaction at function start)
             # This avoids async HTTP calls inside savepoint
 
-            # Find matching format
-            format_obj = None
-            for fmt in all_formats:
-                if fmt.format_id == creative_format:
-                    format_obj = fmt
-                    break
+            # ONE answer to "same format?", from format_resolver — not a local
+            # `==` over the model, which compares Python CLASSES as well as
+            # values and so missed every format the A2A path pre-upgraded.
+            format_obj = find_format(creative_format, all_formats)
 
-            if format_obj and format_obj.agent_url:
-                # Check if format is generative (has output_format_ids)
-                is_generative = bool(getattr(format_obj, "output_format_ids", None))
-
-                if is_generative:
+            if format_obj and is_agent_backed(format_obj):
+                if is_generative(format_obj):
                     # Generative creative - call build_creative
                     logger.info(
                         f"[sync_creatives] Detected generative format: {creative_format}, checking for Gemini API key"
@@ -713,7 +719,19 @@ def _create_new_creative(
             # honestly so the buyer does not retry a misconfiguration.
             error_msg = str(config_error)
             logger.error("[sync_creatives] %s - rejecting creative %s", error_msg, creative_id, exc_info=True)
-            return (_failed_sync_result(creative_id, error_msg, recovery="terminal"), False)
+            return (_failed_sync_result(creative_id, error_msg, code="CONFIGURATION_ERROR"), False)
+        except OutboundError as outbound_error:
+            # A refused/undeliverable egress request is already correctly classified
+            # by the seam — delegate rather than laundering it into the generic
+            # "Retry recommended" transient message below. raise_mapped_outbound_error
+            # always raises; the mapped AdCPError propagates out of this function to
+            # _sync.py's per-creative `except AdCPError as e:` handler, which already
+            # forwards a typed error's own code/recovery onto the per-item result.
+            raise_mapped_outbound_error(
+                outbound_error,
+                provenance=OperatorEndpoint("the creative agent"),
+                logger=logger,
+            )
         except Exception as validation_error:
             # Creative agent validation failed (network error, agent down, etc.)
             # Do NOT store the creative - it needs validation before acceptance
@@ -725,7 +743,7 @@ def _create_new_creative(
                 f"[sync_creatives] {error_msg} - rejecting creative {creative_id}",
                 exc_info=True,
             )
-            return (_failed_sync_result(creative_id, error_msg, recovery="transient"), False)
+            return (_failed_sync_result(creative_id, error_msg), False)
 
     # Determine creative status based on approval mode
 

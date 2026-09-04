@@ -1,7 +1,7 @@
 # Contributing to Prebid Sales Agent
 
-Thanks for your interest in contributing! Full contributor workflow lives at:
-**[`docs/development/contributing.md`](docs/development/contributing.md)** (canonical).
+Thanks for your interest in contributing! Full contributor documentation lives at:
+**[`docs/development/README.md`](docs/development/README.md)** (canonical).
 
 ## Quick start
 
@@ -11,7 +11,7 @@ Thanks for your interest in contributing! Full contributor workflow lives at:
    ```bash
    pre-commit install --hook-type pre-commit --hook-type pre-push
    ```
-4. See `docs/development/contributing.md` for branch naming, testing, PR review process.
+4. See [Getting started](docs/development/GETTING_STARTED.md) for setup and testing, and [Engineering standards](docs/development/engineering-standards.md) for the standards every change is reviewed against.
 
 ## PR title format (Conventional Commits)
 

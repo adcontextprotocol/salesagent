@@ -12,31 +12,53 @@ Application-level webhooks are configured via:
 - AdCP: CreateMediaBuyRequest.reporting_webhook
 """
 
-import asyncio
-import json
 import logging
 import time
 from collections.abc import Mapping
-from datetime import UTC, datetime
-from typing import Any, cast
-from urllib.parse import urlparse, urlunparse
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
-import requests
 from a2a.types import Task, TaskStatusUpdateEvent
-from adcp import extract_webhook_result_data, get_adcp_signed_headers_for_webhook
+from adcp import create_a2a_webhook_payload, create_mcp_webhook_payload
 from adcp.types import McpWebhookPayload
+from adcp.webhooks import GeneratedTaskStatus
 from google.protobuf.json_format import MessageToDict
+from pydantic import BaseModel as PydanticBaseModel
 
 from src.core.audit_logger import get_audit_logger
 from src.core.database.database_session import get_db_session
-from src.core.database.models import PushNotificationConfig
-from src.core.database.repositories.delivery import DeliveryRepository
-from src.core.lifecycle import register_shutdown
-from src.core.webhook_validator import (
-    reject_unsafe_outbound_webhook_url,
-    webhook_url_for_log,
-)
+from src.core.security.webhook_egress import adeliver_webhook
+from src.core.webhook_validator import validate_webhook_task_type, webhook_url_for_log
+from src.core.webhooks.delivery import WebhookDeliveryOutcome, WebhookTaskContext
+from src.services.webhook_conclusion import record_conclusion
+
+
+class DeliverableWebhookTarget(Protocol):
+    """What this sender actually needs off a push-notification config: three fields.
+
+    Structural, and READ-ONLY on purpose. Two kinds of object arrive here — the
+    stored ORM ``PushNotificationConfig`` row, and the
+    ``ValidatedWebhookRegistration`` value handed straight from the A2A protocol
+    stash — and both satisfy this without either knowing about the other. Before
+    this, the annotation named the ORM class, so the A2A path fabricated a
+    detached row with ``tenant_id=""`` / ``principal_id=""`` purely to type-check:
+    a config-shaped object with empty scope ids, which is exactly how an
+    unreceipted config reached a sender.
+
+    Declared as properties rather than plain attributes because a Protocol with
+    mutable attributes is invariant, and would then REFUSE a frozen(slots)
+    dataclass — the read-only form admits both.
+    """
+
+    @property
+    def url(self) -> str: ...
+
+    @property
+    def authentication_type(self) -> str | None: ...
+
+    @property
+    def authentication_token(self) -> str | None: ...
+
 
 logger = logging.getLogger(__name__)
 
@@ -107,25 +129,6 @@ def _to_wire_dict(payload: Any) -> dict[str, Any]:
     )
 
 
-def _normalize_localhost_for_docker(url: str) -> str:
-    """Replace localhost host with host.docker.internal while preserving userinfo and port."""
-    try:
-        parsed = urlparse(url)
-        if parsed.hostname and parsed.hostname.lower() == "localhost":
-            userinfo = ""
-            if parsed.username:
-                userinfo = parsed.username
-                if parsed.password:
-                    userinfo += f":{parsed.password}"
-                userinfo += "@"
-            port = f":{parsed.port}" if parsed.port else ""
-            new_netloc = f"{userinfo}host.docker.internal{port}"
-            return urlunparse(parsed._replace(netloc=new_netloc))
-    except Exception:
-        logger.debug("Docker URL rewrite failed, using original URL", exc_info=True)
-    return url
-
-
 class ProtocolWebhookService:
     """
     Service for sending protocol-level push notifications to clients.
@@ -136,14 +139,64 @@ class ProtocolWebhookService:
     - None: No authentication
     """
 
-    def __init__(self):
-        self._session = requests.Session()
+    async def notify(
+        self,
+        push_notification_config: DeliverableWebhookTarget,
+        *,
+        task: WebhookTaskContext,
+        status: GeneratedTaskStatus,
+        result: PydanticBaseModel | dict[str, Any],
+        protocol: str,
+        context_id: str = "",
+    ) -> bool:
+        """Deliver one protocol notification from VALUES, choosing the dialect here.
+
+        THE delivery entry point. Every sender used to re-derive the same two
+        decisions at its own call site: which payload builder to call
+        (``create_a2a_webhook_payload`` vs ``create_mcp_webhook_payload``, forked
+        on ``protocol``), and what to put in a free-form ``metadata`` dict. Seven
+        files forked the dialect and six built the dict, which is how
+        ``delivery_webhook_scheduler`` came to import only the MCP builder — a
+        buyer registered over A2A receives an MCP-shaped delivery report from it.
+
+        Taking a typed :class:`WebhookTaskContext` instead of ``metadata:
+        dict[str, Any]`` is what closes the other half. ``records_delivery_log``
+        needs ``tenant_id`` and ``principal_id``; the admin sender passed
+        ``{"task_type": ...}`` alone, so admin-originated deliveries wrote no
+        ``webhook_delivery_log`` row and said nothing about it. A caller now has
+        to name those fields to construct the context, so omitting one is a
+        visible decision at the call site rather than an absence in a dict.
+
+        The dialect is selected ONCE, here, from ``protocol``. A caller passes
+        values and cannot choose a builder.
+        """
+        payload: Task | TaskStatusUpdateEvent | McpWebhookPayload
+        if protocol == "a2a":
+            payload = create_a2a_webhook_payload(
+                task_id=task.task_id,
+                status=status,
+                result=result,
+                context_id=context_id,
+            )
+        else:
+            payload = create_mcp_webhook_payload(
+                task_id=task.task_id,
+                status=status,
+                task_type=validate_webhook_task_type(task.task_type or ""),
+                result=result,
+            )
+
+        return await self.send_notification(
+            push_notification_config=push_notification_config,
+            payload=payload,
+            task=task,
+        )
 
     async def send_notification(
         self,
-        push_notification_config: PushNotificationConfig,
+        push_notification_config: DeliverableWebhookTarget,
         payload: Task | TaskStatusUpdateEvent | McpWebhookPayload,
-        metadata: dict[str, Any],
+        task: WebhookTaskContext,
     ) -> bool:
         """
         Send a protocol-level push notification to the configured webhook.
@@ -152,7 +205,11 @@ class ProtocolWebhookService:
             push_notification_config: Push notification configuration from protocol layer
             payload: For A2A it can be Task or TaskStatusUpdateEvent types for MCP it wil be McpWebhookPayload.
                 Use create_a2a_webhook_payload or create_mcp_webhook_payload from adcp's official python client to get the payload for particular task and status
-            metadata: Contains app specific metadata's such as task_type, tenant_id, principal_id
+            task: The delivery's task identity, typed. Threaded through to the
+                logger unchanged -- it used to be flattened to a loose dict here
+                and rebuilt from the PAYLOAD downstream, which silently reset
+                sequence_number to 1 and notification_type to None on every row
+                the payload did not happen to carry them in.
 
         Returns:
             True if notification sent successfully, False otherwise
@@ -164,18 +221,22 @@ class ProtocolWebhookService:
             )
             return False
 
-        # SSRF gate on the configured URL *before* docker localhost rewrite.
-        # Under ADCP_TESTING, localhost/loopback is allowed for capture servers;
-        # production uses the full DNS-backed check (HTTPS required).
-        rejected, _error_msg = reject_unsafe_outbound_webhook_url(
-            push_notification_config.url,
-            log=logger,
-            kind="Protocol",
-        )
-        if rejected:
-            return False
-
-        url = _normalize_localhost_for_docker(push_notification_config.url)
+        # The buyer's URL is delivered verbatim: the egress seam (asend) is the only
+        # place allowed to decide anything about the destination. Test stacks that
+        # need a reachable callback register a reachable hostname instead — the e2e
+        # stack runs a long-lived webhook-capture service behind the shared TLS front
+        # (see tests/e2e/webhook_capture_service.py).
+        #
+        # No separate send-time SSRF gate here (#1697 added one in front of the old
+        # requests.Session POST): the seam's pre-connection check IS that gate and
+        # strictly more — same HTTPS requirement and same reserved/private-address
+        # refusal over a real DNS resolution, but it then PINS the connection to the
+        # address it validated, so the resolve-then-connect rebinding window a
+        # separate validator leaves open does not exist. Re-validating here would be
+        # a second copy of address policy, which is what deleting the hand-rolled
+        # validator (formerly src/core/security/url_validator.py, deleted; the shared
+        # predicate now lives in src/core/security/egress/policy.py) was for.
+        url = push_notification_config.url
 
         # Prepare headers
         headers = {"Content-Type": "application/json", "User-Agent": "AdCP-Sales-Agent/1.0"}
@@ -197,101 +258,116 @@ class ProtocolWebhookService:
         # lowercase enum values; Pydantic -> model_dump; Mapping -> dict.
         payload_dict: dict[str, Any] = _to_wire_dict(payload)
 
-        # Apply authentication based on schemes
-        if (
-            push_notification_config.authentication_type == "HMAC-SHA256"
-            and push_notification_config.authentication_token
-        ):
-            # Sign payload with HMAC-SHA256
-            timestamp = str(int(time.time()))
-            get_adcp_signed_headers_for_webhook(
-                headers, push_notification_config.authentication_token, timestamp, payload_dict
-            )
-
-        elif push_notification_config.authentication_type == "Bearer" and push_notification_config.authentication_token:
-            # Use Bearer token authentication
-            headers["Authorization"] = f"Bearer {push_notification_config.authentication_token}"
-
+        # No authentication decision here. The seam validates the stored pair against
+        # the pinned type and applies whatever that scheme requires — the same
+        # decision, made the same way, for every sender. This function used to
+        # resolve it, project it into a secret-or-header and call
+        # prepare_signed_request itself, which is how it became the only sender that
+        # silently dropped a stored Basic row.
         # Send notification with retry logic and logging
         return await self._send_with_retry_and_logging(
-            url=url, payload=payload_dict, headers=headers, metadata=metadata
+            url=url,
+            payload=payload_dict,
+            headers=headers,
+            task=task,
+            scheme=push_notification_config.authentication_type,
+            credentials=push_notification_config.authentication_token,
         )
 
-    @staticmethod
-    def _write_delivery_log(
+    def _conclude(
+        self,
         *,
+        ctx: WebhookTaskContext,
         log_id: str,
-        tenant_id: str,
-        principal_id: str,
-        media_buy_id: str,
-        webhook_url: str,
-        task_type: str,
-        status: str,
-        sequence_number: int = 1,
-        notification_type: str | None = None,
-        attempt_count: int = 1,
-        http_status_code: int | None = None,
-        error_message: str | None = None,
-        payload_size_bytes: int | None = None,
-        response_time_ms: int | None = None,
-        completed_at: datetime | None = None,
-        next_retry_at: datetime | None = None,
-    ) -> None:
-        """Write a webhook delivery log entry via the DeliveryRepository."""
-        try:
-            with get_db_session() as session:
-                repo = DeliveryRepository(session, tenant_id)
-                repo.create_log(
-                    log_id=log_id,
-                    principal_id=principal_id,
-                    media_buy_id=media_buy_id,
-                    webhook_url=webhook_url,
-                    task_type=task_type,
-                    status=status,
-                    sequence_number=sequence_number,
-                    notification_type=notification_type,
-                    attempt_count=attempt_count,
-                    http_status_code=http_status_code,
-                    error_message=error_message,
-                    payload_size_bytes=payload_size_bytes,
-                    response_time_ms=response_time_ms,
-                    completed_at=completed_at,
-                    next_retry_at=next_retry_at,
+        url: str,
+        outcome: WebhookDeliveryOutcome,
+        start_time: float,
+        audit_logger: Any,
+    ) -> bool:
+        """Book one delivery: the row, the audit entry, and the bool the caller gets.
+
+        THE single conclusion for this sender. Every arm — refused destination,
+        client error, exhausted retries, an unexpected exception, and success —
+        ends here, because a refusal, a failure and a delivery differ only in
+        what they KNOW (attempts, status, wording), not in what they must record.
+        An arm that concludes on its own is an arm that can be written without
+        recording anything, which for a refusal means a misconfigured destination
+        leaving no trace at all — the absence lane salesagent-gra7.1 closes.
+
+        The outcome IS the conclusion: the returned bool is derived from it, not
+        decided here, and the row is written from it rather than from arguments
+        each arm re-derived.
+        """
+        response_time_ms = int((time.time() - start_time) * 1000)
+
+        # Persistence is observability; it does not get a vote on delivery. A DB
+        # error must not propagate out of a function contracted ``-> bool`` and
+        # turn a webhook that WAS delivered into a failure (and, upstream, into a
+        # retry). The swallow used to live at the write helper; it lives at the
+        # one conclusion now, which is the only place it is needed.
+        # Gated on the ELIGIBILITY property, not merely on tenant_id: record_outcome
+        # is a no-op for an ineligible ctx, so gating any wider would check out a
+        # session and commit an empty transaction for every task status update this
+        # sender fires — a per-webhook round trip that did not exist before.
+        if ctx.records_delivery_log:
+            # records_delivery_log already requires tenant_id truthy; the assert
+            # only narrows mypy's view from str | None to str and can never fire.
+            assert ctx.tenant_id
+            try:
+                with get_db_session() as session:
+                    record_conclusion(
+                        session,
+                        tenant_id=ctx.tenant_id,
+                        ctx=ctx,
+                        log_id=log_id,
+                        webhook_url=url,
+                        outcome=outcome,
+                        response_time_ms=response_time_ms,
+                    )
+            except Exception as e:
+                logger.error(f"Failed to write webhook delivery log: {e}")
+
+        if audit_logger:
+            if outcome.kind == "delivered":
+                audit_logger.log_success(
+                    f"{ctx.task_type} webhook delivered successfully (sequence #{ctx.sequence_number}, "
+                    f"{response_time_ms}ms, {outcome.payload_size_bytes or 0} bytes)"
                 )
-                session.commit()
-        except Exception as e:
-            logger.error(f"Failed to write webhook delivery log: {e}")
+            else:
+                audit_logger.log_warning(
+                    f"{ctx.task_type} webhook failed for task {ctx.task_id}: {outcome.detail or outcome.kind}"
+                )
+
+        return outcome.kind == "delivered"
 
     async def _send_with_retry_and_logging(
         self,
         url: str,
         payload: dict[str, Any],
         headers: dict,
-        metadata: dict[str, Any],
+        task: WebhookTaskContext,
+        scheme: str | None = None,
+        credentials: str | None = None,
         max_attempts: int = 3,
     ) -> bool:
-        """Send webhook with exponential backoff retry logic, logging, and audit trail."""
-        # Calculate payload size for metrics
-        payload_size_bytes = len(json.dumps(payload).encode("utf-8"))
+        """Deliver one webhook through the egress seam, with logging and audit trail.
 
-        task_type = metadata["task_type"] if "task_type" in metadata else None
-        tenant_id = metadata["tenant_id"] if "tenant_id" in metadata else None
-        principal_id = metadata["principal_id"] if "principal_id" in metadata else None
-        media_buy_id = metadata["media_buy_id"] if "media_buy_id" in metadata else None
-
-        # TODO: Fix type annotation discrepancy in adcp library - extract_webhook_result_data
-        # returns dict at runtime but is typed as AdcpAsyncResponseData | None
-        result = cast(dict[str, Any] | None, extract_webhook_result_data(payload))
-        # After serialization, payload is always a dict - extract task_id accordingly.
-        # A2A Task uses 'id'; A2A TaskStatusUpdateEvent uses camelCase 'taskId' (proto
-        # json_name wire contract); MCP uses snake_case 'task_id'.
-        task_id = payload.get("id") or payload.get("taskId") or payload.get("task_id") or ""
-
-        # If we are delivering media buy delivery report
-        notification_type_from_result = result.get("notification_type") if result is not None else None
-        sequence_number_from_result = result.get("sequence_number") if result is not None else None
-        notification_type = notification_type_from_result
-        sequence_number = sequence_number_from_result if isinstance(sequence_number_from_result, int) else 1
+        ``body_bytes`` are the exact bytes ``prepare_signed_request`` produced —
+        signed over them when the destination is signed, always the sole
+        serialization of ``payload`` otherwise. They go on the wire unchanged;
+        this function does not call ``json.dumps`` on ``payload`` itself, so
+        there is no second serialization that could disagree with the first.
+        """
+        # The caller's typed context, used as given. It used to be rebuilt here
+        # from a four-key dict plus the payload, and the rebuild was lossy in both
+        # directions that mattered: as_metadata never emitted sequence_number or
+        # notification_type, and from_metadata recovered them from the PAYLOAD's
+        # result -- so a payload that did not carry them yielded 1 and None, and
+        # those were the values PERSISTED to webhook_delivery_log. A buyer reading
+        # the log saw a webhook claiming to be first in its sequence and carrying
+        # no notification type, when the server had sent the seventh and marked it
+        # final.
+        ctx = task
 
         # Create webhook delivery log entry
         log_id = str(uuid4())
@@ -299,258 +375,109 @@ class ProtocolWebhookService:
 
         # Log to audit system (start)
         audit_logger = None
-        if tenant_id:
-            audit_logger = get_audit_logger("webhook", tenant_id)
-            audit_logger.log_info(f"Sending {task_type} webhook for task {task_id} (sequence #{sequence_number})")
+        if ctx.tenant_id:
+            audit_logger = get_audit_logger("webhook", ctx.tenant_id)
+            audit_logger.log_info(
+                f"Sending {ctx.task_type} webhook for task {ctx.task_id} (sequence #{ctx.sequence_number})"
+            )
 
-        for attempt in range(max_attempts):
-            try:
-                safe_url = webhook_url_for_log(url)
-                logger.info(
-                    "Sending webhook for task %s to %s (attempt %s/%s)",
-                    task_id,
-                    safe_url,
-                    attempt + 1,
-                    max_attempts,
-                )
+        # One call through the egress seam. It owns address and TLS policy, the
+        # refusal to follow redirects, the retry schedule and which statuses are
+        # worth another attempt — and it builds a transport pinned to THIS
+        # destination, which is why no client or session may outlive the call.
+        #
+        # The seam's redirect refusal is what #1697 reached for with
+        # ``allow_redirects=False``: httpx defaults to ``follow_redirects=False``
+        # and the seam never overrides it, so a 302 toward metadata or a private
+        # address cannot carry us past the validated destination.
+        #
+        # No ``field=``: the URL is read back out of a stored PushNotificationConfig,
+        # not off a request document a buyer just sent — the buyer-actionable
+        # refusal already happened at ingest (src/core/webhook_validator.py, reject_unsafe_webhook_registration_url).
+        #
+        # The URL is logged sanitized (scheme://host/path): a buyer's webhook URL
+        # may carry credentials in userinfo or a token in the query string, and a
+        # log line is the one place they would sit in cleartext (#1697).
+        logger.info("Sending webhook for task %s to %s", ctx.task_id, webhook_url_for_log(url))
+        try:
+            outcome = await adeliver_webhook(
+                url,
+                payload,
+                scheme=scheme,
+                credentials=credentials,
+                headers=headers,
+                timeout=10.0,
+                max_attempts=max_attempts,
+            )
+        except Exception as e:
+            # Deliberately kept. The seam maps its OWN failure taxonomy onto the
+            # outcome, but relying on that alone would let anything else escape a
+            # function contracted ``-> bool``, and the delivery scheduler re-raises
+            # what it catches. The pinned transport's own wrong-host guard raises a
+            # bare RuntimeError, which belongs here.
+            logger.error(f"Unexpected error sending webhook for task {ctx.task_id}: {e}", exc_info=True)
+            # Nothing reached the wire, and no outcome kind covers a NON-transport
+            # failure — so this arm builds the one it means: exhausted with zero
+            # attempts. The arm no longer decides what gets recorded; it only says
+            # what became of the delivery, and the epilogue books it.
+            return self._conclude(
+                ctx=ctx,
+                log_id=log_id,
+                url=url,
+                outcome=WebhookDeliveryOutcome.unexpected(type(e).__name__),
+                start_time=start_time,
+                audit_logger=audit_logger,
+            )
 
-                def _post() -> requests.Response:
-                    # Never follow redirects: a 302 to metadata/private IPs would
-                    # bypass the pre-POST SSRF check (open-redirect SSRF).
-                    return self._session.post(url, json=payload, headers=headers, timeout=10.0, allow_redirects=False)
+        if outcome.kind == "refused_auth":
+            # FAIL-CLOSED. This used to fall through to an unsigned delivery: the
+            # buyer asked for authentication and received none, with no error on any
+            # surface. log-and-return, and NO delivery-log row and no audit entry —
+            # nothing was attempted, so a row claiming an attempt would misreport a
+            # refusal as a delivery that failed on the wire. The refusal a buyer can
+            # act on already happened at ingest.
+            #
+            # It still concludes through the epilogue, so this arm cannot be the one
+            # that forgets to. Both absences survive the move and are the RULING,
+            # not an oversight: record_outcome maps no status for ``refused_auth``
+            # (so no row), and _conclude is passed no audit_logger (so no entry).
+            logger.error(
+                "Refusing to send webhook for task %s to %s: %s",
+                ctx.task_id,
+                webhook_url_for_log(url),
+                outcome.detail or outcome.reason,
+            )
+            return self._conclude(
+                ctx=ctx,
+                log_id=log_id,
+                url=url,
+                outcome=outcome,
+                start_time=start_time,
+                audit_logger=None,
+            )
 
-                response = await asyncio.to_thread(_post)
-                response.raise_for_status()
+        if outcome.kind == "refused_destination":
+            # Refused before a connection was opened. It still writes a row and an
+            # audit entry — a misconfigured destination that leaves no trace is
+            # indistinguishable from one nobody configured. The honest attempt count
+            # (0) and the ``refused`` spelling are the recorder's, not this arm's.
+            # Severity carried on the outcome, not chosen here (salesagent-pldmk.39).
+            logger.log(outcome.log_level, f"Webhook for task {ctx.task_id} was refused by egress policy")
+        elif outcome.kind != "delivered":
+            logger.error(
+                f"Webhook for task {ctx.task_id} {outcome.detail or f'failed after {outcome.attempts} attempts'}"
+            )
+        else:
+            logger.info(f"Successfully sent webhook for task {ctx.task_id} (status: {outcome.http_status})")
 
-                # Calculate response time
-                response_time_ms = int((time.time() - start_time) * 1000)
-
-                logger.info(f"Successfully sent webhook for task {task_id} (status: {response.status_code})")
-
-                # Write to webhook_delivery_log (success)
-                if (
-                    task_type in ("delivery_report", "media_buy_delivery")
-                    and media_buy_id
-                    and tenant_id
-                    and principal_id
-                ):
-                    self._write_delivery_log(
-                        log_id=log_id,
-                        tenant_id=tenant_id,
-                        principal_id=principal_id,
-                        media_buy_id=media_buy_id,
-                        webhook_url=url,
-                        task_type=task_type,
-                        status="success",
-                        sequence_number=sequence_number,
-                        notification_type=notification_type,
-                        attempt_count=attempt + 1,
-                        http_status_code=response.status_code,
-                        payload_size_bytes=payload_size_bytes,
-                        response_time_ms=response_time_ms,
-                        completed_at=datetime.now(UTC),
-                    )
-
-                # Log to audit system (success)
-                if audit_logger:
-                    audit_logger.log_success(
-                        f"{task_type} webhook delivered successfully (sequence #{sequence_number}, "
-                        f"{response_time_ms}ms, {payload_size_bytes} bytes)"
-                    )
-
-                return True
-
-            except requests.HTTPError as e:
-                status_code = e.response.status_code if e.response else None
-                response_time_ms = int((time.time() - start_time) * 1000)
-                error_message = f"HTTP {status_code}: {str(e)}"
-
-                # Don't retry on 4xx errors (client errors - permanent failures)
-                if status_code and 400 <= status_code < 500:
-                    logger.error(f"Webhook failed for task {task_id} with client error {status_code} - not retrying")
-
-                    # Write to webhook_delivery_log (failed)
-                    if (
-                        task_type in ("delivery_report", "media_buy_delivery")
-                        and media_buy_id
-                        and tenant_id
-                        and principal_id
-                    ):
-                        self._write_delivery_log(
-                            log_id=log_id,
-                            tenant_id=tenant_id,
-                            principal_id=principal_id,
-                            media_buy_id=media_buy_id,
-                            webhook_url=url,
-                            task_type=task_type,
-                            status="failed",
-                            sequence_number=sequence_number,
-                            notification_type=notification_type,
-                            attempt_count=attempt + 1,
-                            http_status_code=status_code,
-                            error_message=error_message,
-                            payload_size_bytes=payload_size_bytes,
-                            response_time_ms=response_time_ms,
-                            completed_at=datetime.now(UTC),
-                        )
-
-                    # Log to audit system (failure)
-                    if audit_logger:
-                        audit_logger.log_warning(f"{task_type} webhook failed with client error {status_code}")
-
-                    return False
-
-                # Retry on 5xx errors (server errors - transient)
-                if attempt < max_attempts - 1:
-                    wait_seconds = min(2**attempt, 60)  # Exponential backoff, max 60 seconds
-                    logger.warning(
-                        f"Webhook failed for task {task_id}: HTTP {status_code}. "
-                        f"Retrying in {wait_seconds}s (attempt {attempt + 1}/{max_attempts})"
-                    )
-
-                    # Write to webhook_delivery_log (retrying)
-                    if (
-                        task_type in ("delivery_report", "media_buy_delivery")
-                        and media_buy_id
-                        and tenant_id
-                        and principal_id
-                    ):
-                        next_retry = datetime.now(UTC).replace(microsecond=0)
-                        next_retry = next_retry.replace(second=next_retry.second + int(wait_seconds))
-                        self._write_delivery_log(
-                            log_id=log_id,
-                            tenant_id=tenant_id,
-                            principal_id=principal_id,
-                            media_buy_id=media_buy_id,
-                            webhook_url=url,
-                            task_type=task_type,
-                            status="retrying",
-                            sequence_number=sequence_number,
-                            notification_type=notification_type,
-                            attempt_count=attempt + 1,
-                            http_status_code=status_code,
-                            error_message=error_message,
-                            payload_size_bytes=payload_size_bytes,
-                            response_time_ms=response_time_ms,
-                            next_retry_at=next_retry,
-                        )
-
-                    await asyncio.sleep(wait_seconds)
-                else:
-                    logger.error(f"Webhook failed for task {task_id} after {max_attempts} attempts: HTTP {status_code}")
-
-                    # Write to webhook_delivery_log (failed after all retries)
-                    if (
-                        task_type in ("delivery_report", "media_buy_delivery")
-                        and media_buy_id
-                        and tenant_id
-                        and principal_id
-                    ):
-                        self._write_delivery_log(
-                            log_id=log_id,
-                            tenant_id=tenant_id,
-                            principal_id=principal_id,
-                            media_buy_id=media_buy_id,
-                            webhook_url=url,
-                            task_type=task_type,
-                            status="failed",
-                            sequence_number=sequence_number,
-                            notification_type=notification_type,
-                            attempt_count=max_attempts,
-                            http_status_code=status_code,
-                            error_message=error_message,
-                            payload_size_bytes=payload_size_bytes,
-                            response_time_ms=response_time_ms,
-                            completed_at=datetime.now(UTC),
-                        )
-
-                    # Log to audit system (failure after all retries)
-                    if audit_logger:
-                        audit_logger.log_warning(f"{task_type} webhook failed after {max_attempts} attempts")
-
-                    return False
-
-            except requests.RequestException as e:
-                response_time_ms = int((time.time() - start_time) * 1000)
-                error_message = f"{type(e).__name__}: {str(e)}"
-
-                # Network errors - retry
-                if attempt < max_attempts - 1:
-                    wait_seconds = min(2**attempt, 60)
-                    logger.warning(
-                        f"Webhook network error for task {task_id}: {type(e).__name__}. "
-                        f"Retrying in {wait_seconds}s (attempt {attempt + 1}/{max_attempts})"
-                    )
-                    await asyncio.sleep(wait_seconds)
-                else:
-                    logger.error(
-                        f"Webhook failed for task {task_id} after {max_attempts} attempts: {type(e).__name__} - {e}"
-                    )
-
-                    # Write to webhook_delivery_log (failed)
-                    if (
-                        task_type in ("delivery_report", "media_buy_delivery")
-                        and media_buy_id
-                        and tenant_id
-                        and principal_id
-                    ):
-                        self._write_delivery_log(
-                            log_id=log_id,
-                            tenant_id=tenant_id,
-                            principal_id=principal_id,
-                            media_buy_id=media_buy_id,
-                            webhook_url=url,
-                            task_type=task_type,
-                            status="failed",
-                            sequence_number=sequence_number,
-                            notification_type=notification_type,
-                            attempt_count=max_attempts,
-                            error_message=error_message,
-                            payload_size_bytes=payload_size_bytes,
-                            response_time_ms=response_time_ms,
-                            completed_at=datetime.now(UTC),
-                        )
-
-                    # Log to audit system (network failure)
-                    if audit_logger:
-                        audit_logger.log_warning(f"{task_type} webhook failed with network error: {type(e).__name__}")
-
-                    return False
-
-            except Exception as e:
-                logger.error(f"Unexpected error sending webhook for task {task_id}: {e}")
-
-                # Write to webhook_delivery_log (unexpected failure)
-                if (
-                    task_type in ("delivery_report", "media_buy_delivery")
-                    and media_buy_id
-                    and tenant_id
-                    and principal_id
-                ):
-                    self._write_delivery_log(
-                        log_id=log_id,
-                        tenant_id=tenant_id,
-                        principal_id=principal_id,
-                        media_buy_id=media_buy_id,
-                        webhook_url=url,
-                        task_type=task_type,
-                        status="failed",
-                        sequence_number=sequence_number,
-                        notification_type=notification_type,
-                        attempt_count=attempt + 1,
-                        error_message=f"Unexpected error: {str(e)}",
-                        payload_size_bytes=payload_size_bytes,
-                        completed_at=datetime.now(UTC),
-                    )
-
-                return False
-
-        # Should never reach here
-        return False
-
-    async def close(self):
-        """Close HTTP client."""
-        self._session.close()
+        return self._conclude(
+            ctx=ctx,
+            log_id=log_id,
+            url=url,
+            outcome=outcome,
+            start_time=start_time,
+            audit_logger=audit_logger,
+        )
 
 
 # Global service instance
@@ -560,15 +487,15 @@ _webhook_service: ProtocolWebhookService | None = None
 def get_protocol_webhook_service() -> ProtocolWebhookService:
     """Get or create global webhook service instance.
 
-    On first construction, self-registers ``close`` with the shutdown
-    registry so the long-lived ``requests.Session`` connection pool is
-    released on FastAPI lifespan shutdown — the service owns its own
-    lifecycle.
+    The service owns no connection state, so there is nothing to close and no
+    shutdown callback to register. Each delivery builds a transport pinned to its
+    own destination and discards it: a pooled client shared across destinations
+    would resolve once and then serve a hostname it was never validated for,
+    which is the whole reason the pin exists.
     """
     global _webhook_service
     if _webhook_service is None:
         _webhook_service = ProtocolWebhookService()
-        register_shutdown(_webhook_service.close)
     return _webhook_service
 
 
@@ -577,8 +504,7 @@ def get_webhook_service_or_none() -> ProtocolWebhookService | None:
 
     Distinct from :func:`get_protocol_webhook_service`: this does NOT trigger
     construction. Use it from shutdown hooks where you only want to close an
-    *existing* instance, not create one (and its long-lived ``requests.Session``
-    connection pool) just to immediately close it.
+    *existing* instance, not create one just to inspect it.
 
     Resolving the singleton through this function call is location-independent:
     it reads the live module global at call time, so callers may import it at

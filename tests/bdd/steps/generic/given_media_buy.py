@@ -26,6 +26,7 @@ from tests.factories import (
     ProductFactory,
 )
 from tests.helpers.adcp_factories import valid_reporting_webhook
+from tests.helpers.egress_hatches import UNDIALLED_PUBLIC_HTTPS_ORIGIN
 
 # Gherkin date token resolver — single source for all BDD step files.
 # Matches {now}, {N days from now}, {N days ago}.
@@ -93,6 +94,26 @@ def _ensure_request_defaults(ctx: dict) -> dict[str, Any]:
     # every scenario replay or stop the replay scenarios replaying.
     ctx["request_kwargs"].setdefault("idempotency_key", f"bdd-key-{uuid.uuid4().hex}")
     return ctx["request_kwargs"]
+
+
+def harness_create_request_kwargs(ctx: dict) -> dict[str, Any]:
+    """Request kwargs for a create dispatched from a harness-seeded scenario.
+
+    ``_ensure_request_defaults`` only reads ``default_product`` /
+    ``default_pricing_option`` when it FIRST builds ``request_kwargs``; a
+    scenario whose Given steps created ``request_kwargs`` earlier (before the
+    UC-004 create arm seeded the harness data) would dispatch against the
+    placeholder ids. Re-pinning the package to the harness product here is what
+    both create-dispatching When steps share instead of each carrying a copy.
+    """
+    kwargs = _ensure_request_defaults(ctx)
+    product = ctx.get("default_product")
+    pricing_option = ctx.get("default_pricing_option")
+    if product is not None:
+        kwargs["packages"][0]["product_id"] = product.product_id
+    if pricing_option is not None:
+        kwargs["packages"][0]["pricing_option_id"] = pricing_option_id(pricing_option)
+    return kwargs
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -2357,7 +2378,7 @@ def given_ad_server_rejects_creative_upload(ctx: dict) -> None:
     # position. Burying it in details={"suggestion": ...} yields a non-conformant wire
     # error (empty top-level suggestion). The e2e sibling below keeps error_details;
     # mock_ad_server pops it back to first-class.
-    mock_adapter.add_creative_assets.side_effect = AdCPAdapterError(message, recovery=recovery, suggestion=suggestion)
+    mock_adapter.add_creative_assets.side_effect = AdCPAdapterError(message, suggestion=suggestion)
     # E2E path: write the failure to the adapter test-behavior config so the
     # Docker-hosted adapter raises the same error on creative upload
     # (MockAdServer.add_creative_assets reads the fail_on_upload flag).
@@ -2845,9 +2866,10 @@ def given_adapter_error(ctx: dict) -> None:
 
     env = ctx["env"]
     mock_adapter = env.mock["adapter"].return_value
+    # See the sibling above on "retryable": not a pinned classification.
+    # SERVICE_UNAVAILABLE derives transient, which is the intent here.
     error = AdCPAdapterError(
         "Ad server unavailable",
-        recovery="retryable",
         details={"suggestion": "Retry the operation or contact ad server support"},
     )
     mock_adapter.create_media_buy.side_effect = error
@@ -2862,7 +2884,11 @@ def given_adapter_error(ctx: dict) -> None:
         fail_on_update=True,
         error_message="Ad server unavailable",
         error_details={"suggestion": "Retry the operation or contact ad server support"},
-        recovery="retryable",
+        # The DB-injected value reaches the DOCKER-hosted MockAdServer, which now maps
+        # it to an exception class; "retryable" is not a pinned classification and
+        # would trip the loud-raise branch, handing e2e a CONFIGURATION_ERROR/terminal
+        # for what this scenario means as a transient adapter outage.
+        recovery="transient",
     )
     # Ensure tenant is auto-approval so production code doesn't short-circuit
     _seed_auto_approval(ctx, sync_adapter=False)
@@ -3250,7 +3276,10 @@ def given_webhook_configured(ctx: dict) -> None:
     Stores both the config in ctx (Given→Then contract) and wires it into
     request_kwargs so production receives it when the media buy is created.
     """
-    webhook_url = "https://buyer.example.com/webhooks/adcp-notifications"
+    # Must pass ingest egress policy under every hatch posture (validate_url
+    # runs inside _create_media_buy_impl): https public-unicast IP literal, no
+    # DNS dependency. Never fetched by these scenarios.
+    webhook_url = f"{UNDIALLED_PUBLIC_HTTPS_ORIGIN}/webhooks/adcp-notifications"
     push_config = {"url": webhook_url, "events": ["status_change"]}
     ctx["push_notification_config"] = push_config
     # Also wire into request_kwargs if they exist (for create requests)

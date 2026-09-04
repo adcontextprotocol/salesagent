@@ -184,9 +184,13 @@ mkdir -p "$RESULTS_DIR"
 dc() { docker compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" --profile runner "$@"; }
 
 cleanup() {
-    # Per-worker e2e servers are `docker compose run` containers (not `up`), so
-    # `dc down` won't remove them — do it explicitly.
-    docker ps -aq --filter "name=${COMPOSE_PROJECT_NAME}-server-gw" | xargs -r docker rm -f >/dev/null 2>&1 || true
+    # Per-worker e2e servers AND their TLS sidecars are `docker compose run`
+    # containers (not `up`), so `dc down` won't remove them — do it explicitly.
+    # The sidecars MUST be matched too: a leaked `-tls-gwN.adcp.test` container
+    # keeps its dotted DNS name registered and poisons the next run's lookups.
+    for _stray in server-gw tls-gw; do
+        docker ps -aq --filter "name=${COMPOSE_PROJECT_NAME}-${_stray}" | xargs -r docker rm -f >/dev/null 2>&1 || true
+    done
     dc down -v >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -200,47 +204,95 @@ scripts/creative-agent-stack.sh build
 echo "Building image + bringing up the app stack in-network (project: $COMPOSE_PROJECT_NAME)..."
 dc build postgres adcp-server proxy tests
 
-# Bring up Postgres + the app server + proxy + the pinned creative-agent (and its
-# own registry Postgres). None publish host ports — all reached by service name.
-# Pre-create logs/ AND the specific files src/core/audit_logger.py opens --
-# audit.log/error.log via FileHandler at IMPORT time (crashes collection
-# immediately on PermissionError), structured.jsonl/security.jsonl lazily via
-# open(path, "a"). setgid + 2775 on the directory only controls the GROUP of
-# NEW files, not their write bit, and it does nothing for files that already
-# exist. Worse: chmod cannot fix a file it doesn't own -- only the owner (or
-# root) may change a file's mode, being in the same group is not enough -- so
-# a stale ci:ci 0644 file left by a prior adcp-server run silently defeats
-# both this and the `chmod -R g+w .` sweep below (EPERM, swallowed by its own
-# `|| true`). Removing and recreating is what actually works: unlink is
-# governed by the DIRECTORY's write bit (which we own), not the file's own
-# owner, so `rm -f` succeeds even on a ci-owned file; the fresh file this
-# process then creates is ours. Verified live: ci:ci 0644 -> sacirunner:ci 0664.
+# Pre-create logs/ group-writable + setgid BEFORE anything else touches the
+# bind mount: adcp-server bind-mounts .:/app and creates logs/audit.log at
+# import time (uid 1001, its own baked umask) -- when that umask strips the
+# group-write bit the tests container (a different uid, 1003 here) can create
+# the dir but not write into it, and every suite dies at collection with
+# `PermissionError: '/app/logs/audit.log'`. Owning it here first means
+# adcp-server writes into an already-correct dir instead of racing to
+# create it (confirmed live: sa-93d37d7c, sa-c9acaf66 both landed
+# drwxr-sr-x -- not group-writable -- and are latent failures until fixed).
+# This must stay ahead of the TLS step below too: that step's fallback runs a
+# `tests` container, which would otherwise be the one to create logs/ first.
 mkdir -p logs
-chmod 2775 logs
-for f in audit.log error.log structured.jsonl security.jsonl; do
-    rm -f "logs/$f" 2>/dev/null || true
-    # Two statements, not `: > "logs/$f" && chmod ...`. errexit exempts every command
-    # in an AND-OR list except the last, so as an &&-list a failed truncate merely
-    # short-circuits: chmod is skipped, the loop continues, and the script still exits
-    # 0. Verified A/B (with a directory planted at logs/audit.log to force the
-    # failure): &&-list -> "REACHED-END", exit 0; split -> exit 1 at the truncate.
-    : > "logs/$f"
-    # 666, not 664. The point of this block is that the adcp-server container can
-    # WRITE these; 664 only achieves that if the container's user shares the file's
-    # group, and it does not. The server runs as the image's `app` (uid/gid 1001,
-    # no supplementary groups), while these files are owned by whoever ran the
-    # script -- and the bind-mount of this directory onto /app SHADOWS the image's
-    # own `chown -R app:app /app`, so host-side permissions are what decide. Group
-    # never matches, so `app` falls through to the OTHER bits: r-- under 664, and
-    # the server dies on PermissionError while opening audit.log at import time,
-    # taking every per-worker server container unhealthy with it.
-    # The setgid bit set on the directory above does not rescue this either: it
-    # controls the GROUP of new files, not their write bit.
-    # These are ephemeral per-run test logs, not durable state.
-    chmod 666 "logs/$f"
+# Guarded, not silent: chmod on a logs/ that already exists owned by ANOTHER
+# uid fails with EPERM, and a bare `chmod` here would abort the whole script
+# under `set -e` -- so tolerate the failure, but do NOT assume it worked. The
+# verification below is what turns a still-broken state into a diagnosable
+# error instead of a collection-time PermissionError 200 lines later.
+chmod 2775 logs 2>/dev/null || true
+# The setgid bit above fixes the GROUP of files created in here, but NOT their
+# write bit -- that comes from the creating process's umask, and adcp-server's
+# yields 0644. So a FRESH logs/ still ends up with `-rw-r--r-- ci:ci`
+# audit.log, and the tests container (a different uid in the same `ci` group)
+# dies at collection with `PermissionError: '/app/logs/audit.log'`. The
+# `chmod -R g+w .` backstop further down cannot repair it either: it runs as
+# the sync user, which does not OWN a ci-created file, so the chmod fails and
+# is swallowed by its `2>/dev/null || true`. Pre-create the files ourselves so
+# the server APPENDS to an already-group-writable file instead of creating one
+# with its own umask. Runs before every `dc up`/`dc run` for the same reason
+# the mkdir does. (Observed live: sa-067cc4a9 failed exactly this way on a
+# fresh run dir, while sa-858f3b3a passed only because it inherited a stale
+# 0664 logs/ from an earlier run -- i.e. this was always latent, and green
+# runs were green by accident.)
+# rm first, then recreate: on a REUSED run directory the existing files are
+# owned by the server's uid, so `touch` (needs write) and `chmod` (needs
+# ownership) both fail on them -- and under `set -e` that would abort the whole
+# script. Unlinking works regardless of file ownership because it is the
+# DIRECTORY's write bit that governs it, and we own the directory. These are
+# per-run scratch logs, so discarding a previous run's copy costs nothing.
+# The list is exactly what src/core/audit_logger.py opens: audit.log (its
+# FileHandler), error.log (its error FileHandler), and the two append-mode
+# sinks structured.jsonl and security.jsonl. security.jsonl only appears on a
+# security event, so it is the one that hides longest before biting.
+for _log in audit.log error.log structured.jsonl security.jsonl; do
+    rm -f "logs/$_log" 2>/dev/null || true
+    : >"logs/$_log" 2>/dev/null || true
+    # 0666, not 0664. Group-write is NOT enough, and assuming it was is what
+    # kept the e2e stack down: `adcp-server` runs as the image's own non-root
+    # user, and that user shares no group with whoever created these files.
+    # Measured on the box: the container is `app` uid=1001 gid=1001 groups=1001,
+    # while the files land `sacirunner:sacirunner` (or `ci`) — so 0664 leaves the
+    # server with OTHER permissions, r--, and it dies opening audit.log:
+    #   PermissionError: [Errno 13] Permission denied: '/app/logs/audit.log'
+    # The whole stack follows it down — nothing binds :8000, so every e2e test
+    # errors "Server not ready after 60s (port 8000)" and every e2e_rest BDD
+    # scenario errors "the live E2E stack is unreachable", with no hint that a
+    # file mode is the cause. chown to 1001 would need root we do not have here;
+    # these are per-run scratch logs, so world-writable is the honest fix.
+    chmod 666 "logs/$_log" 2>/dev/null || true
+    # Verify rather than hope. `-w` would test OUR access; what actually matters
+    # is the OTHER write bit, since the server's uid is outside our groups. find
+    # -perm is used over `stat` because stat's flags differ between the GNU
+    # coreutils on the CI box and the BSD one on a macOS host, and this script
+    # runs on both.
+    if [ -z "$(find "logs/$_log" -perm -o+w 2>/dev/null)" ]; then
+        echo "ERROR: logs/$_log is not writable by other; adcp-server runs as a" >&2
+        echo "       non-root uid outside our groups and will die at startup with" >&2
+        echo "       PermissionError, taking the whole e2e stack with it. State:" >&2
+        ls -la "logs/$_log" logs/ >&2 || true
+        exit 1
+    fi
 done
 
-dc up -d postgres adcp-server proxy creative-pg creative-agent
+# TLS material for the tls-proxy service and the per-worker sidecars below. It
+# must exist before `up`: the service bind-mounts .test-tls/, and an absent
+# directory would materialise empty and nginx would refuse to start. The host
+# wrapper needs a Python with `cryptography`; the in-network CI job has neither
+# uv nor the project venv on the host, so fall back to the runner image (which
+# writes through the same `.:/app` bind mount).
+echo "Ensuring the test stack's TLS material..."
+scripts/dev/ensure-test-tls.sh || dc run --rm --no-deps -T tests python scripts/dev/gen_test_tls.py
+
+# Bring up Postgres + the app server + proxy + the TLS listener + the pinned
+# creative-agent (and its own registry Postgres). None publish host ports —
+# all reached by service name. tls-proxy is in this explicit list
+# deliberately: it is a normal `up` service, and omitting it would leave both
+# https origins it fronts (proxy.adcp.test, creative-agent.adcp.test) pointing
+# at nothing while every scenario that depends on either reported green on the
+# http branch instead (E2E_TLS_BASE_URL / CREATIVE_AGENT_URL, salesagent-amht.2).
+dc up -d postgres adcp-server proxy tls-proxy creative-pg creative-agent
 
 echo "Waiting for Postgres + server health (in-network)..."
 deadline=$(( $(date +%s) + 360 ))
@@ -340,6 +392,16 @@ if [ "${E2E_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
         psql_admin "CREATE DATABASE adcp_gw$i TEMPLATE adcp_e2e_template"
         dc run -d --no-deps --name "${COMPOSE_PROJECT_NAME}-server-gw$i" \
             -e DATABASE_URL="$_admin/adcp_gw$i?sslmode=disable" adcp-server >/dev/null
+        # Per-worker TLS sidecar (salesagent-tgzb). The DOTTED CONTAINER NAME is
+        # the entire mechanism: `docker compose run` has no --network-alias, so
+        # the container's own name is the only DNS label we control. Docker's
+        # embedded DNS resolving a dotted container name is OBSERVED behaviour,
+        # not a documented contract — if a future Docker release breaks it, the
+        # handshake probe below is what turns it into a diagnosable failure
+        # instead of a mystery. COMPOSE_PROJECT_NAME never contains a dot, so the
+        # name is exactly one label under the leaf's `*.adcp.test` SAN.
+        dc run -d --no-deps --name "${COMPOSE_PROJECT_NAME}-tls-gw$i.adcp.test" \
+            -e TLS_UPSTREAM="${COMPOSE_PROJECT_NAME}-server-gw$i:8080" tls-proxy >/dev/null
     done
     echo "  waiting for $N per-worker servers to become healthy..."
     # Same fail-fast reasoning as the template-migration check above: a worker
@@ -372,6 +434,28 @@ if [ "${E2E_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
         done
         exit 1
     fi
+    # TLS readiness — a REAL handshake at the dotted name, verified against the
+    # generated CA, and a HARD FAILURE on timeout. Deliberately NOT the shape of
+    # the plaintext probe above, which prints "NOT ready (continuing)" and carries
+    # on: a TLS listener that half-starts and is skipped past is precisely the
+    # vacuity salesagent-tgzb exists to remove — every https scenario would then
+    # silently grade the http branch. (Making the plaintext probe fail too is a
+    # separate, deliberate change, not a side effect of this one.)
+    echo "  waiting for $N per-worker TLS sidecars to complete a verified handshake..."
+    for i in $(seq 0 $((N - 1))); do
+        name="${COMPOSE_PROJECT_NAME}-tls-gw$i.adcp.test"
+        wd=$(( $(date +%s) + 120 )); ok=false
+        while [ "$(date +%s)" -lt "$wd" ]; do
+            docker exec "$name" curl -sf --cacert /app/.test-tls/ca.pem "https://$name:8443/health" >/dev/null 2>&1 && ok=true && break
+            sleep 2
+        done
+        if [ "$ok" != true ]; then
+            echo "ERROR: TLS sidecar $name never completed a verified handshake at https://$name:8443/health" >&2
+            docker logs "$name" 2>&1 | tail -30 >&2 || true
+            exit 1
+        fi
+        echo "    tls-gw$i ready ($name)"
+    done
     # COMPOSE_PROJECT_NAME must reach pytest so conftest e2e_stack builds the FULL
     # server name "<project>-server-gwN" (short "server-gwN" doesn't resolve).
     E2E_ENV_ARGS="-e E2E_PER_WORKER=1 -e BDD_E2E_XDIST_N=$N -e COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME"
@@ -491,7 +575,7 @@ if [ -n "$_missing_reports" ]; then
     # with its own docstring.
     [ "$RC" -eq 0 ] && RC=1
 fi
-echo "Reports: $RESULTS_DIR/"
+echo "Reports: $RESULTS_DIR/  (suites: $SUITES)"
 ls -1 "$RESULTS_DIR"/*.json 2>/dev/null || echo "  (no JSON reports extracted)"
 
 # A truncated suite is a failed suite, and the whole point is that it must not

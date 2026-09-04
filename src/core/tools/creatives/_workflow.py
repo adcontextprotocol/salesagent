@@ -20,7 +20,7 @@ def _create_sync_workflow_steps(
     principal_id: str,
     tenant: dict[str, Any],
     approval_mode: str,
-    push_notification_config: PushNotificationConfig | dict | None,
+    push_notification_config: PushNotificationConfig | None,
     context: ContextObject | dict | None,
     identity: ResolvedIdentity | None = None,
 ) -> None:

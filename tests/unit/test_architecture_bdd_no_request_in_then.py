@@ -76,11 +76,11 @@ _DISPATCH_IN_THEN_ALLOWLIST: set[str] = {
     # was migrated from env.call_impl to the shared wire dispatcher
     # (dispatch_request) so that, when these scenarios are wired, they exercise
     # the parametrized transport on the wire (#1417). Rate limiting and
-    # payload size remain spec-production gaps (FIXME ).
-    "bdd/steps/domain/uc002_nfr.py:125 then_auth_before_business_logic",
-    "bdd/steps/domain/uc002_nfr.py:189 then_rate_limiting_enforced",
+    # payload size remain spec-production gaps (FIXME: no GitHub issue filed).
+    "bdd/steps/domain/uc002_nfr.py:126 then_auth_before_business_logic",
+    "bdd/steps/domain/uc002_nfr.py:190 then_rate_limiting_enforced",
     "bdd/steps/domain/uc002_nfr.py:236 then_payload_size_limits",
-    "bdd/steps/domain/uc002_nfr.py:412 then_budget_validated_against_min_order",
+    "bdd/steps/domain/uc002_nfr.py:411 then_budget_validated_against_min_order",
 }
 
 _ASSERT_ON_REQUEST_ALLOWLIST: set[str] = set()

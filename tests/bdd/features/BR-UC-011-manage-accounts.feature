@@ -160,7 +160,7 @@ Feature: BR-UC-011 Manage Accounts
     # rather than by being spelled out on it. That is how it went missing in a
     # real implementation: the response type declared no status at all, and no
     # transport noticed, because nothing graded the composed arm.
-    # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/account/list-accounts-request.json
+    # @source repo=adcp ref=v3.1.1 path=static/schemas/source/account/list-accounts-request.json
 
   @T-UC-011-sync-multi-brand @sync @brand-identity @partition @boundary
   Scenario: Sync multi_brand_domain with brand_id and operator (brand with domain + brand_id)

@@ -253,8 +253,15 @@ class TestRecoveryFieldInErrorResponses:
             assert response.status_code == expected_status
             assert_envelope_shape(response.json(), expected_code, recovery=expected_recovery)
 
-    def test_rest_custom_recovery_override_preserved(self):
-        """Custom recovery= override is preserved through REST boundary (both layers)."""
+    def test_rest_derived_recovery_reaches_both_envelope_layers(self):
+        """The DERIVED recovery reaches both REST envelope layers unchanged.
+
+        REPLACES test_rest_custom_recovery_override_preserved, which pinned a
+        raise-site ``recovery=`` override reaching the wire. That kwarg is deleted:
+        recovery is derived from the wire code. The surviving obligation — that the
+        REST boundary puts the correct classification on BOTH layers rather than
+        dropping or defaulting one — is what this asserts.
+        """
         from unittest.mock import patch
 
         from starlette.testclient import TestClient
@@ -264,15 +271,15 @@ class TestRecoveryFieldInErrorResponses:
 
         with patch(
             "src.core.tools.capabilities.get_adcp_capabilities_raw",
-            side_effect=AdCPNotFoundError("temporarily gone", recovery="transient"),
+            side_effect=AdCPNotFoundError("temporarily gone"),
         ):
             client = TestClient(app, raise_server_exceptions=False)
             response = client.get("/api/v1/capabilities")
             assert response.status_code == 404
             body = response.json()
-            recovery_msg = "Custom recovery='transient' must be preserved at envelope level, not default 'terminal'"
-            assert body["adcp_error"]["recovery"] == "transient", recovery_msg
-            assert body["errors"][0]["recovery"] == "transient"
+            # NOT_FOUND -> wire INVALID_REQUEST, pinned correctable.
+            assert body["adcp_error"]["recovery"] == "correctable"
+            assert body["errors"][0]["recovery"] == "correctable"
 
     def test_to_dict_serialization_roundtrip(self):
         """AdCPError.to_dict() -> JSON -> verify recovery is present and correct."""

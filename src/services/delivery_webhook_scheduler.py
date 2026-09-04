@@ -11,7 +11,6 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from adcp import create_mcp_webhook_payload
 from adcp.types import GeneratedTaskStatus as AdcpTaskStatus
 from adcp.types.generated_poc.media_buy.get_media_buy_delivery_response import (
     NotificationType,
@@ -22,9 +21,12 @@ from src.core.database.database_session import get_db_session
 from src.core.database.models import PersistedMediaBuyStatus, WebhookDeliveryLog
 from src.core.database.models import PushNotificationConfig as DBPushNotificationConfig
 from src.core.database.repositories import MediaBuyRepository
+from src.core.exceptions import AdCPValidationError
 from src.core.schemas import GetMediaBuyDeliveryRequest, GetMediaBuyDeliveryResponse
 from src.core.tools.media_buy_delivery import _get_media_buy_delivery_impl
 from src.core.utils import utc_flight_start
+from src.core.webhooks.delivery import WebhookTaskContext
+from src.core.webhooks.registration import accept_push_notification_config
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 logger = logging.getLogger(__name__)
@@ -277,17 +279,8 @@ class DeliveryWebhookScheduler:
                 logger.warning(f"No webhook URL configured for media buy {media_buy.media_buy_id}")
                 return
 
-            # Try to find existing push notification config or create a temporary one
-            auth_config = reporting_webhook.get("authentication", {})
-            auth_type = None
-            auth_token = None
-
-            if auth_config:
-                schemes = auth_config.get("schemes", [])
-                auth_type = schemes[0] if schemes else None
-                auth_token = auth_config.get("credentials")
-
-            # Query for existing push notification config for this media buy
+            # A stored row still wins: a real registration outranks whatever the
+            # request carried inline.
             config_stmt = select(DBPushNotificationConfig).where(
                 DBPushNotificationConfig.principal_id == media_buy.principal_id,
                 DBPushNotificationConfig.tenant_id == media_buy.tenant_id,
@@ -296,21 +289,44 @@ class DeliveryWebhookScheduler:
             )
             push_notification_config = session.scalars(config_stmt).first()
 
-            # Extract webhook config data before session closes
             if push_notification_config:
                 # Detach from session and extract data
                 session.expunge(push_notification_config)
             else:
-                # Create a detached temporary config (not attached to session)
-                push_notification_config = DBPushNotificationConfig(
-                    id=f"temp_{media_buy.media_buy_id}",
-                    tenant_id=media_buy.tenant_id,
-                    principal_id=media_buy.principal_id,
-                    url=webhook_url,
-                    authentication_type=auth_type,
-                    authentication_token=auth_token,
-                    is_active=True,
-                )
+                # No stored row: the sender is handed the GATE'S VALUE, not a
+                # config-shaped object built here. send_notification takes
+                # DeliverableWebhookTarget, which ValidatedWebhookRegistration
+                # satisfies — the same migration made on the A2A path (#1802) when it
+                # deleted the detached row fabricated "purely to type-check".
+                #
+                # This also retires a schemes[0] read. The pinned AuthenticationScheme
+                # permits AT MOST ONE scheme, so a two-scheme document must be REFUSED;
+                # picking the first silently delivered under a scheme the buyer did not
+                # solely request. The gate owns that rule — re-checking len(schemes)
+                # here would be a second vocabulary for it.
+                #
+                # The authentication block is forwarded only when TRUTHY, preserving
+                # the previous `if auth_config:` exactly: an empty dict keeps meaning
+                # "no authentication" and keeps delivering unsigned. The gate refuses
+                # an empty block, and turning today's unsigned delivery into a refusal
+                # is a delivered -> never-delivered change that needs an owner sign-off
+                # (#1802 made one for a legacy scheme); it is not a refactor's to make.
+                registration_config = {"url": webhook_url}
+                if reporting_webhook.get("authentication"):
+                    registration_config["authentication"] = reporting_webhook["authentication"]
+
+                try:
+                    push_notification_config = accept_push_notification_config(
+                        registration_config, field_prefix="reporting_webhook"
+                    )
+                except AdCPValidationError as exc:
+                    # Outside any request context: a refusal is a logged non-delivery,
+                    # never an exception that kills the scheduler loop.
+                    logger.warning(
+                        f"Refusing to send delivery report for media buy {media_buy.media_buy_id}: "
+                        f"its reporting_webhook registration is invalid ({exc})"
+                    )
+                    return
 
             # Wire vs internal task_type distinction:
             # - metadata["task_type"] = "media_buy_delivery" -- internal logging/dedup label
@@ -321,27 +337,50 @@ class DeliveryWebhookScheduler:
             # and is used for DB filtering, while the wire value must be spec-compliant.
             # Renaming the metadata key is not safe without migrating DB records and
             # updating all 6 protocol_webhook_service guard checks.
-            metadata = {
-                "task_type": "media_buy_delivery",
-                "tenant_id": media_buy.tenant_id,
-                "principal_id": media_buy.principal_id,
-                "media_buy_id": media_buy.media_buy_id,
-            }
-
-            # SDK 5.7: returns McpWebhookPayload directly; 3rd arg is task_type.
-            # Delivery reports are status updates on existing media buys,
-            # so we use update_media_buy as the canonical task type.
-            media_buy_delivery_payload = create_mcp_webhook_payload(
+            # sequence_number and notification_type are NAMED here, from the values
+            # this function computed above (:251-259 and :269), not left at 1/None.
+            # They used to be hardcoded, and it did not show: the sender flattened
+            # this context to a four-key dict and then re-derived both from the
+            # PAYLOAD, which carries the same two values. Now that the typed context
+            # travels the whole way to `webhook_delivery_log`, a hardcoded value here
+            # would BE the persisted value -- so the caller that knows them states
+            # them, which is the point of taking a typed context at all.
+            webhook_task = WebhookTaskContext(
                 task_id=media_buy.media_buy_id,
-                task_type="update_media_buy",
-                result=delivery_response,
-                status=AdcpTaskStatus.completed,
+                task_type="media_buy_delivery",
+                tenant_id=media_buy.tenant_id,
+                principal_id=media_buy.principal_id,
+                media_buy_id=media_buy.media_buy_id,
+                sequence_number=sequence_number,
+                notification_type=delivery_response.notification_type.value
+                if delivery_response.notification_type is not None
+                else None,
             )
+
+            # The dialect comes from the REGISTRATION, not from a hardcoded builder.
+            # This job used to call create_mcp_webhook_payload unconditionally, so a
+            # buyer that registered over A2A received an MCP-shaped delivery report.
+            # It had no way to do better until push_notification_configs recorded the
+            # protocol: this job fires long after the request and carries no identity
+            # (salesagent-pldmk.39).
+            #
+            # NULL means a row written before that column existed. Falling back to
+            # "mcp" reproduces exactly the previous behaviour for those rows rather
+            # than guessing a dialect the data never stated.
+            protocol = getattr(push_notification_config, "protocol", None) or "mcp"
 
             # Send webhook notification OUTSIDE the session context
             # This ensures the session is closed before async webhook call
-            await self.webhook_service.send_notification(
-                push_notification_config=push_notification_config, payload=media_buy_delivery_payload, metadata=metadata
+            await self.webhook_service.notify(
+                push_notification_config,
+                task=webhook_task,
+                # Delivery reports are status updates on existing media buys, so the
+                # wire task_type resolves to update_media_buy; the internal label on
+                # the context stays "media_buy_delivery" for the guards and the
+                # delivery-log column.
+                status=AdcpTaskStatus.completed,
+                result=delivery_response,
+                protocol=protocol,
             )
 
             logger.info(f"Sent delivery report webhook for media buy {media_buy.media_buy_id}")

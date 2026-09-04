@@ -127,6 +127,55 @@ class TestDegradedReplayFailsClosed:
         assert exc.retry_after >= 1
 
 
+class TestDegradedReplayImpossibleState:
+    """No same-key buy at all ⇒ terminal, and distinguishably so.
+
+    This is the guard the sibling class does NOT cover: there, a same-key buy
+    exists and only its cache row is missing, which is genuinely transient (the
+    winner's write is in flight). Here there is no such buy, so the race
+    "resolved" into a state that cannot resolve itself, and a retry re-runs the
+    same impossible lookup forever.
+
+    The two outcomes must therefore not collapse onto one wire answer. That is
+    what pins the CLASS: the verdict is expressed by choosing
+    ``CONFIGURATION_ERROR``, whose pinned enumMetadata recovery IS ``terminal``
+    ("surface to a human at the seller ... MUST NOT auto-retry"), rather than by
+    hand-typing ``recovery="terminal"`` onto a code the pin calls correctable —
+    which is what this site used to do.
+    """
+
+    def test_no_same_key_buy_rejects_terminal(self, integration_db):
+        """No buy carries the key ⇒ CONFIGURATION_ERROR + terminal, not the transient sibling."""
+        from src.core.exceptions import AdCPError
+        from src.core.tools.media_buy_create import _raise_degraded_replay_outcome
+        from tests.factories import PrincipalFactory, TenantFactory
+
+        idem_key = f"missing-{uuid.uuid4().hex}"
+        tenant_id = f"miss_t_{uuid.uuid4().hex[:6]}"
+
+        with BareIntegrationEnv() as env:
+            tenant = TenantFactory(tenant_id=tenant_id)
+            principal = PrincipalFactory(tenant=tenant)
+            principal_id = principal.principal_id
+            # Deliberately NO MediaBuy carrying idem_key.
+            env.get_session()  # commit factory data
+
+        with pytest.raises(AdCPError) as exc_info:
+            _raise_degraded_replay_outcome(
+                tenant_id,
+                idem_key,
+                principal_id,
+            )
+
+        exc = exc_info.value
+        assert exc.error_code == "CONFIGURATION_ERROR", (
+            f"an impossible post-race state is terminal, but got {exc.error_code!r} — if this is now "
+            "SERVICE_UNAVAILABLE the guard has collapsed onto its transient sibling and the buyer is "
+            "being told to retry a state that cannot resolve"
+        )
+        assert exc.recovery == "terminal"
+
+
 class TestIdempotencyRaceRecovery:
     """Integration test: IntegrityError catch + fail-closed degraded outcome.
 

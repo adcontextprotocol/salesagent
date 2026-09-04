@@ -43,7 +43,15 @@ In multi-tenant mode, each tenant can have their own adapter configuration:
 
 See [Multi-Tenant Setup](../deployment/multi-tenant.md) for configuration details.
 
+## Building Your Own Adapter
+
+To connect an ad server that has no adapter yet, implement the
+`AdServerAdapter` base class and register it. See
+[Creating an ad server adapter](creating-an-adapter.md) for the base-class
+contract, registration, and targeting translation.
+
 ## Related Documentation
 
 - [Adapter Architecture](../development/architecture.md#adapter-pattern) - How adapters work internally
+- [Creating an ad server adapter](creating-an-adapter.md) - The base-class contract and registration
 - [Security](../security.md) - Adapter security boundaries
