@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from tests.harness.transport import Transport, TransportResult
+from tests.harness.transport import TransportResult
 
 
 def error_envelope_or_none(ctx: dict) -> dict | None:
@@ -94,64 +94,51 @@ WIRE_MISSING = _WireMissing()
 def _wire_body(ctx: dict) -> dict:
     """The serialized success-path wire body, behind the loud guard.
 
-    REST/A2A/MCP expose the real success-path wire dict via ``ctx["wire_response"]``.
-    IMPL has no wire, so serialize the typed payload through the production
-    serializer — the same path that produces wire bytes for the other transports.
-
-    Loud guard: a real-wire transport (REST/A2A/MCP) that didn't stash
-    ``wire_response`` would otherwise fall through to the ``model_dump`` path and
-    assert nothing on the wire — a silent tautology. A sibling wired against a
-    non-stashing env trips this instead of passing green. Only an EXPLICIT
-    ``Transport.IMPL`` legitimately has no wire; an unset transport (``None`` —
-    any non-parametrized caller, e.g. a @rest/@mcp/@a2a-tagged scenario's empty
-    ctx) raises too, naming the fix, because silently serializing there turns
-    the wire assertion into a serializer round-trip (GH #1744).
-
     Sole guard implementation for :func:`wire_field`, :func:`wire_dict` and
     :func:`wire_absent` — three copies of it would be exactly the duplication the
     canonical-helper rule exists to prevent.
 
-    A success-path helper reached on a scenario that actually ERRORED says so, and
-    names the error. Without this the transport guard below would fire first and
-    report "env does not stash success-path wire" — blaming the harness for what is
-    really a failed request, which is the single most misleading diagnostic these
-    helpers can emit.
+    Three reads, in this order, and the order is the contract:
 
-    The unset-vs-IMPL distinction is the reason this success-path guard reads
-    ``ctx["transport"]`` rather than the dispatcher's ``has_wire`` declaration the
-    way :func:`_wire_or_none` and ``TransportResult.error_envelope`` do: a
-    non-parametrized caller has no ``TransportResult`` at all, and "no declaration"
-    must be reported as the harness bug it is (GH #1744) instead of being answered
-    from a serializer round-trip. A stashed ``ctx["wire_response"]`` still wins over
-    both, because ``when_request._call_via`` writes it WITHOUT ``ctx["result"]``.
+    1. **A stashed ``ctx["wire_response"]`` wins outright**, even over a stale
+       ``ctx["error"]``: it is a real wire that was really captured. It is read
+       before the declaration because ``when_request._call_via`` writes it
+       without necessarily rewriting ``ctx["result"]``, so a caller that
+       re-dispatched would otherwise be graded against the STALE result.
+    2. **A scenario that actually ERRORED says so, and names the error.**
+       Without this the wire guard below fires first and reports a missing wire
+       — blaming the harness for what is really a failed request, the single
+       most misleading diagnostic these helpers can emit.
+    3. **Otherwise the DISPATCHER'S DECLARATION decides** (:func:`_wire_or_none`
+       -> ``TransportResult.has_wire``). ``has_wire`` and nothing stashed is a
+       harness bug and raises there; no ``TransportResult`` at all means the When
+       step never dispatched through ``dispatch_request``/``_call_via``, so there
+       is no declaration and any answer here would be a guess — that raises too,
+       which is what keeps GH #1744 closed. Only a dispatcher that DECLARED there
+       is no wire reaches the serializer.
+
+    That third read used to compare ``ctx["transport"]`` against the in-process
+    transport member and fall back to ``model_dump`` for it. Two defects in one
+    expression: it inferred wire-presence from transport IDENTITY (the enum
+    member is being deleted, and a lookup miss would have silently reclassified
+    every result), and a ctx carrying that member but no ``TransportResult``
+    reached the serializer with no dispatcher having declared anything — a wire
+    assertion that graded a serializer round-trip. The declaration cannot be
+    spoofed by a ctx key, so both close together.
     """
     wire = ctx.get("wire_response")
-    error = ctx.get("error")
-    if wire is None and error is not None and ctx.get("response") is None:
-        raise AssertionError(f"expected a success response, got error: {error!r}")
-    transport = ctx.get("transport")
-    if wire is None and transport is None:
-        raise AssertionError(
-            "wire assertion with transport unset — a non-parametrized caller reached the "
-            "wire helpers without a stashed wire. Set ctx['transport'] (or pass "
-            "Transport.IMPL explicitly) to declare whether a real wire must exist."
-        )
-    if wire is None and transport is not Transport.IMPL:
-        # No wire on ctx for a real-wire transport. Defer to the guarded read on
-        # TransportResult — the object that HOLDS the wire — so a step definition and
-        # an integration test asserting the same thing share ONE implementation and
-        # cannot drift (#1941). It also tells the two failures apart: an errored call
-        # never had a success body, versus a dispatch that bypassed the real pipeline.
-        # A stashed ctx["wire_response"] still wins above, because a caller that
-        # re-dispatches without rewriting ctx["result"] would otherwise be graded
-        # against the STALE result.
-        result = ctx.get("result")
-        if result is not None:
-            return result.require_wire()
-        raise AssertionError(f"{transport}: wire_response missing — env does not stash success-path wire")
     if wire is not None:
         return wire
-    # Explicit IMPL has no wire — serialize the typed payload through the production
+    error = ctx.get("error")
+    if error is not None and ctx.get("response") is None:
+        raise AssertionError(f"expected a success response, got error: {error!r}")
+    # The guarded read itself lives on TransportResult (#1941): one implementation,
+    # shared with the integration tests asserting the same thing, so a step
+    # definition cannot drift from them.
+    body = _wire_or_none(ctx)
+    if body is not None:
+        return body
+    # DECLARED no wire — serialize the typed payload through the production
     # serializer. _require_response preserves the diagnostic if a (reused) sibling
     # scenario hit an error path, instead of a bare ctx["response"] KeyError.
     return _require_response(ctx).model_dump(mode="json")
@@ -347,8 +334,8 @@ def _require_response(ctx: dict) -> object:
 
     Kept for the modules still on the detached ``ctx["response"]`` copy
     (``uc011_accounts``, ``test_uc018_list_creatives``) and for
-    :func:`_wire_body`'s explicit-IMPL fallback, whose contract test hands it a
-    ctx carrying only ``response``. Everything reached by ``dispatch_request``
+    :func:`_wire_body`'s declared-no-wire fallback, whose contract test hands it
+    a ctx carrying only ``response``. Everything reached by ``dispatch_request``
     reads :func:`require_payload` instead, which gets the payload WITH its
     provenance; this one disappears when those modules migrate.
     """

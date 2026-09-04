@@ -30,6 +30,31 @@ def _ctx(wire: dict, transport: Transport = Transport.REST) -> dict:
     return {"wire_response": wire, "transport": transport}
 
 
+def _undeclared_wire_ctx() -> dict:
+    """A ctx whose dispatcher DECLARED a wire and stashed none — the harness bug.
+
+    The wire helpers no longer read ``ctx["transport"]`` at all, so "a real-wire
+    transport that captured nothing" is expressed the only way it is now
+    observable: a ``TransportResult`` carrying ``has_wire=True`` with
+    ``wire_response is None``. That is a strictly stronger fixture than the
+    transport key it replaces — the key was a label any caller could set, while
+    the declaration is made by the dispatcher that ran.
+    """
+    return {"transport": Transport.MCP, "result": TransportResult(payload=_TypedPayload(), has_wire=True)}
+
+
+def _no_dispatch_ctx() -> dict:
+    """A ctx that never went through a dispatch seam, so nothing declared anything.
+
+    The GH #1744 case, restated on the declaration: a non-parametrized caller (a
+    @rest/@mcp/@a2a-tagged scenario's empty ctx) reaching the wire helpers. It
+    carries a typed ``response`` precisely so that a regression which resumed
+    serializing would PASS rather than error — the silent round-trip these
+    guards exist to catch.
+    """
+    return {"response": _TypedPayload()}
+
+
 _WIRE = {
     "adcp_version": "3.1.1",
     "media_buy": {"features": {"sandbox": True, "targeting": None}, "pricing": {}},
@@ -123,8 +148,8 @@ class TestWireLookup:
         assert repr(WIRE_MISSING) == "<absent from wire>"
 
     def test_inherits_the_loud_guard(self):
-        with pytest.raises(AssertionError, match="does not stash success-path wire"):
-            wire_lookup({"transport": Transport.REST}, "adcp_version")
+        with pytest.raises(AssertionError, match="bypassed the real pipeline"):
+            wire_lookup(_undeclared_wire_ctx(), "adcp_version")
 
 
 class TestWireDict:
@@ -153,12 +178,12 @@ class TestLoudGuardSurvivesTheExtension:
 
     @pytest.mark.parametrize("helper", [wire_field, wire_absent])
     def test_missing_wire_on_real_transport_raises(self, helper):
-        with pytest.raises(AssertionError, match="does not stash success-path wire"):
-            helper({"transport": Transport.MCP}, "adcp_version")
+        with pytest.raises(AssertionError, match="bypassed the real pipeline"):
+            helper(_undeclared_wire_ctx(), "adcp_version")
 
     def test_wire_dict_missing_wire_on_real_transport_raises(self):
-        with pytest.raises(AssertionError, match="does not stash success-path wire"):
-            wire_dict({"transport": Transport.A2A})
+        with pytest.raises(AssertionError, match="bypassed the real pipeline"):
+            wire_dict(_undeclared_wire_ctx())
 
     def test_an_errored_scenario_reports_the_error_not_a_missing_wire(self):
         """Preserves ``uc010._wire``'s error-first diagnostic through the migration.
@@ -181,33 +206,48 @@ class _TypedPayload(BaseModel):
     adcp_version: str = "3.1.1"
 
 
-class TestUnsetTransportIsNotImpl:
-    """``transport=None`` (unset) must raise loudly, never silently serialize.
+class TestNoDeclarationIsNotADeclaredAbsence:
+    """A ctx that declared nothing must raise loudly, never silently serialize.
 
-    The model_dump fallback is legitimate ONLY for an EXPLICIT ``Transport.IMPL``
-    — the caller declaring "there is no wire here, grade the serializer". An
-    unset transport is a non-parametrized caller (transport-tagged BDD scenarios
-    get an empty ctx) that never told the helper whether a real wire must exist;
-    falling back silently turns its wire assertion into a serializer round-trip
-    (GH #1744).
+    GH #1744, restated on the declaration. The ``model_dump`` fallback is
+    legitimate ONLY where a DISPATCHER declared ``has_wire=False`` — "there is no
+    wire here, grade the serializer". A ctx that never went through a dispatch
+    seam has said nothing about whether a real wire must exist, and answering it
+    from the serializer turns its wire assertion into a round-trip.
+
+    This class used to key on ``ctx["transport"]``: unset raised, an explicit
+    in-process member serialized. Both halves moved onto ``TransportResult
+    .has_wire`` when that enum member's removal began (the ``Transport.IMPL``
+    deletion). The property is unchanged and the fixture is stronger — a
+    transport key is a label the caller writes, while ``has_wire`` is declared by
+    the dispatcher that actually ran, so it cannot be spoofed into granting the
+    fallback.
     """
 
-    @pytest.mark.parametrize("base_ctx", [{}, {"transport": None}], ids=["key-absent", "explicit-none"])
     @pytest.mark.parametrize("helper", [wire_field, wire_absent])
-    def test_unset_transport_raises_and_names_the_fix(self, base_ctx, helper):
-        ctx = {**base_ctx, "response": _TypedPayload()}
-        with pytest.raises(AssertionError, match=r"transport unset.*ctx\['transport'\].*Transport\.IMPL"):
-            helper(ctx, "adcp_version")
+    def test_undispatched_ctx_raises_and_names_the_fix(self, helper):
+        with pytest.raises(AssertionError, match=r"no TransportResult in ctx.*dispatch_request/_call_via"):
+            helper(_no_dispatch_ctx(), "adcp_version")
 
-    @pytest.mark.parametrize("base_ctx", [{}, {"transport": None}], ids=["key-absent", "explicit-none"])
-    def test_wire_dict_unset_transport_raises(self, base_ctx):
-        ctx = {**base_ctx, "response": _TypedPayload()}
-        with pytest.raises(AssertionError, match=r"transport unset.*ctx\['transport'\].*Transport\.IMPL"):
-            wire_dict(ctx)
+    def test_wire_dict_undispatched_ctx_raises(self):
+        with pytest.raises(AssertionError, match=r"no TransportResult in ctx.*dispatch_request/_call_via"):
+            wire_dict(_no_dispatch_ctx())
 
-    def test_explicit_impl_still_serializes_the_typed_payload(self):
-        """The sanctioned no-wire path: IMPL declared explicitly grades the serializer."""
+    def test_a_transport_key_alone_does_not_buy_the_fallback(self):
+        """The regression the migration must not reintroduce, from the other side.
+
+        Under the old contract this exact ctx — the in-process transport member
+        plus a typed response, no dispatch — was the SANCTIONED serializer path.
+        It is now a harness bug, because no dispatcher declared anything.
+        """
         ctx = {"transport": Transport.IMPL, "response": _TypedPayload()}
+        with pytest.raises(AssertionError, match=r"no TransportResult in ctx.*dispatch_request/_call_via"):
+            wire_field(ctx, "adcp_version")
+
+    def test_a_declared_absence_still_serializes_the_typed_payload(self):
+        """The sanctioned no-wire path: a dispatcher declaring has_wire=False."""
+        payload = _TypedPayload()
+        ctx = {"result": TransportResult(payload=payload, has_wire=False), "response": payload}
         assert wire_field(ctx, "adcp_version") == "3.1.1"
 
     def test_a_captured_wire_wins_regardless_of_unset_transport(self):
