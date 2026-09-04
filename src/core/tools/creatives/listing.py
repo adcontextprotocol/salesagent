@@ -27,7 +27,7 @@ from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import (
     Creative,
     Error,
-    ListCreativesRequest,
+    ListCreativesInternal,
     ListCreativesResponse,
 )
 from src.core.tool_context import ToolContext
@@ -182,20 +182,19 @@ def _build_list_creatives_request(
     sort: "Sort | None" = None,
     pagination: "PaginationRequest | None" = None,
     context: ContextObject | None = None,
-    # INTERNAL, and ListCreativesRequest FIELDS -- see the two exclude=True declarations on
-    # that model. They used to be routed AROUND this builder and handed to
-    # _list_creatives_impl as its own arguments, which made the builder a non-superset of
-    # what the tool accepts; deriving the announced shape from a non-superset is what forced
-    # that derivation to be reverted once already. Threaded like every other field now.
-    format: str | None = None,
-    page: int = 1,
-) -> "ListCreativesRequest":
-    """Build a ListCreativesRequest from the wire's request parameters.
+) -> "ListCreativesInternal":
+    """Build a ListCreativesInternal from the wire's request parameters.
 
-    Every parameter here is a ListCreativesRequest FIELD -- the builder is a superset of
+    Every parameter here is a ListCreativesInternal FIELD -- the builder is a superset of
     nothing and a subset of the model, which is the property the announced-shape derivation
     ("announced = DTO fields INTERSECT the implementation's arguments") needs in order to
     mean anything.
+
+    ``format`` and ``page`` are NOT parameters, and must not become ones. They are the
+    model's two internal fields, and with ``exclude=True`` gone from them the builder's
+    signature is the only thing keeping them off the REST body and the A2A parameter bag
+    (both derive from DTO fields INTERSECT these parameters). An internal caller that needs
+    to drive the reader constructs ListCreativesInternal itself.
 
     The TEN pre-3.1.1 flat aliases this used to accept -- media_buy_id, media_buy_ids,
     status, tags, search, created_after, created_before, limit, sort_by, sort_order -- are
@@ -251,7 +250,7 @@ def _build_list_creatives_request(
     # model). exclude_none keeps an unset filter from becoming an explicit null.
     structured_filters = LibraryCreativeFilters(**filters.model_dump(exclude_none=True)) if filters else None
 
-    return ListCreativesRequest(
+    return ListCreativesInternal(
         filters=structured_filters,
         pagination=structured_pagination,
         sort=structured_sort,
@@ -259,14 +258,12 @@ def _build_list_creatives_request(
             fields=fields,
             include_assignments=include_assignments,
             context=context,
-            format=format,
-            page=page,
         ),
     )
 
 
 def _list_creatives_impl(
-    req: "ListCreativesRequest",
+    req: "ListCreativesInternal",
     identity: ResolvedIdentity | None = None,
 ) -> ListCreativesResponse:
     """List and search creative library (AdCP v2.5 spec endpoint).
@@ -276,8 +273,8 @@ def _list_creatives_impl(
 
     Args:
         req: Typed list-creatives request — EVERY request value, including the two
-            internal ``format`` / ``page`` fields that used to arrive as separate
-            arguments beside it
+            internal ``format`` / ``page`` fields, which are why this is typed to
+            ListCreativesInternal and not to the buyer-facing ListCreativesRequest
         identity: ResolvedIdentity with principal/tenant info (transport-agnostic)
 
     Returns:
@@ -661,7 +658,7 @@ async def list_creatives(
 
 
 def list_creatives_raw(
-    req: "ListCreativesRequest",
+    req: "ListCreativesInternal",
     ctx: Context | ToolContext | None = None,
     identity: IdentityOrNotProvided = NOT_PROVIDED,
 ):
@@ -669,12 +666,12 @@ def list_creatives_raw(
 
     Delegates to the shared implementation. Every request value travels ON ``req``: the four
     out-of-band arguments this wrapper used to take beside it (``format``, ``page``,
-    ``include_performance``, ``include_sub_assets``) are gone -- the first two are internal
-    ListCreativesRequest fields now, and the last two were removed from the AdCP spec at 3.10
+    ``include_performance``, ``include_sub_assets``) are gone -- the first two are
+    ListCreativesInternal fields now, and the last two were removed from the AdCP spec at 3.10
     and read by nothing in this codebase, so forwarding them was a no-op through three layers.
 
     Args:
-        req: The built ListCreativesRequest
+        req: The built ListCreativesInternal
         ctx: FastMCP context (automatically provided)
         identity: ResolvedIdentity (transport-agnostic, preferred over ctx)
 

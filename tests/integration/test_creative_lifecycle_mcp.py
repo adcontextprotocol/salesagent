@@ -58,17 +58,21 @@ def _seed_account(tenant_id: str, principal_ids: tuple[str, ...]) -> None:
 
 
 def _list_creatives(**kwargs):
-    """Build a ListCreativesRequest from its fields, then call the wrapper.
+    """Build the request from its fields, then call the wrapper.
 
     ``list_creatives_raw`` takes the BUILT request and nothing beside it. ``format`` and
-    ``page`` used to be split out here as out-of-band kwargs; they are internal
-    ListCreativesRequest fields now, so they go through the builder with everything else and
-    this helper has only the transport arguments left to separate.
+    ``page`` are not builder parameters -- they are ListCreativesInternal fields, and the
+    builder's signature is what keeps them off the REST body and the A2A parameter bag -- so
+    they are set on the model the builder returns, the way an internal caller would.
     """
     from src.core.tools.creatives.listing import _build_list_creatives_request, list_creatives_raw
 
     transport = {k: kwargs.pop(k) for k in ("ctx", "identity") if k in kwargs}
-    return list_creatives_raw(req=_build_list_creatives_request(**kwargs), **transport)
+    internal = {name: kwargs.pop(name) for name in ("format", "page") if name in kwargs}
+    req = _build_list_creatives_request(**kwargs)
+    if internal:
+        req = req.model_copy(update=internal)
+    return list_creatives_raw(req=req, **transport)
 
 
 def _sync_creatives(**kwargs):

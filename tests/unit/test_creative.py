@@ -4653,12 +4653,14 @@ class TestA2ATransportGaps:
         with patch("src.core.tools.creatives.listing._list_creatives_impl") as mock_impl:
             mock_impl.return_value = MagicMock()
 
+            # ``format`` and ``page`` are NOT builder parameters -- they are
+            # ListCreativesInternal fields, and the builder's signature is what keeps them
+            # off the REST body and the A2A parameter bag. An internal caller that wants to
+            # drive the reader sets them on the model the builder already returns.
             req = _build_list_creatives_request(
                 filters=CreativeFilters(media_buy_ids=["mb_1"], statuses=["approved"]),
                 pagination=PaginationRequest(max_results=25),
-                format="display",
-                page=2,
-            )
+            ).model_copy(update={"format": "display", "page": 2})
             list_creatives_raw(req=req, identity=identity)
 
             mock_impl.assert_called_once_with(req=req, identity=identity)

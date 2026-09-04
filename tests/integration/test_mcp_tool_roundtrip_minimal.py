@@ -93,10 +93,13 @@ class TestMCPToolRoundtripMinimal:
             assert "media_buy_id" in content or "status" in content
 
     async def test_update_media_buy_minimal(self, sample_account, mcp_client):
-        """Test update_media_buy with minimal parameters (no today field).
+        """Test update_media_buy with minimal parameters.
 
-        This specifically tests the datetime.combine() bug fix where req.today
-        was accessed but didn't exist in the schema.
+        This started as the regression for a datetime.combine() bug where ``req.today``
+        was accessed and did not exist on the schema. The field was later declared, and is
+        now deleted again -- nothing ever set it, so the read always fell through to
+        ``date.today()``, which is what the impl says (docs/design/one-tool-registry.md).
+        The roundtrip is still worth grading: a minimal update must survive the wire.
         """
         # Create a media buy first
         products_result = await mcp_client.call_tool(
@@ -311,11 +314,13 @@ class TestSchemaConstructionValidation:
 
         assert req.media_buy_id == "test_buy_123"
         assert req.paused is None  # adcp 2.12.0+: replaced 'active' with 'paused'
-        assert req.today is None  # Should exist and be None, not raise AttributeError
 
-        # Test that today field is accessible even though it's excluded from serialization
-        assert hasattr(req, "today")
-        assert "today" not in req.model_dump()  # Excluded from output
+        # No internal field survives on this DTO. ``today`` used to be asserted here, both
+        # for its presence and for its absence from model_dump(); it is deleted, so the
+        # question the assertions answered no longer has a subject. The rule that keeps it
+        # that way is graded in
+        # tests/unit/test_architecture_request_dto_has_no_internal_fields.py.
+        assert not [f for f, info in req.model_fields.items() if info.exclude]
 
     def test_all_request_schemas_have_optional_or_default_fields(self):
         """Every request schema constructs from its REQUIRED fields alone.

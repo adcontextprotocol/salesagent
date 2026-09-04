@@ -58,11 +58,11 @@ class CreativeListEnv(IntegrationEnv):
         """Call _list_creatives_impl with real DB.
 
         ``_list_creatives_impl`` takes ``(req, identity)`` and nothing else, so this method
-        has no out-of-band bag to keep any more: ``format`` and ``page`` are internal
-        ListCreativesRequest fields that ``_build_list_creatives_request`` threads on like
-        every other, and ``include_performance`` / ``include_sub_assets`` are gone (adcp 3.10
-        removed both from the spec and nothing read them). Accepts either a pre-built ``req=``
-        or the request fields to build one from (matching MediaBuyCreateEnv).
+        has no out-of-band bag to keep: ``include_performance`` / ``include_sub_assets`` are
+        gone (adcp 3.10 removed both from the spec and nothing read them), and ``format`` /
+        ``page`` are ListCreativesInternal fields set on the built model below. Accepts
+        either a pre-built ``req=`` or the request fields to build one from (matching
+        MediaBuyCreateEnv).
         """
         from src.core.tools.creatives.listing import _build_list_creatives_request, _list_creatives_impl
 
@@ -71,7 +71,16 @@ class CreativeListEnv(IntegrationEnv):
 
         req = kwargs.pop("req", None)
         if req is None:
+            # ``format`` and ``page`` are NOT builder parameters. They are
+            # ListCreativesInternal fields, and the builder's signature is the only thing
+            # keeping them off the REST body and the A2A parameter bag (both derive from
+            # DTO fields INTERSECT those parameters). A caller that drives the reader sets
+            # them on the model the builder returns, which is what this does -- so the
+            # harness exercises the same seam an internal caller in ``src/`` would.
+            internal = {name: kwargs.pop(name) for name in ("format", "page") if name in kwargs}
             req = _build_list_creatives_request(**kwargs)
+            if internal:
+                req = req.model_copy(update=internal)
 
         return _list_creatives_impl(req=req, identity=identity)
 
