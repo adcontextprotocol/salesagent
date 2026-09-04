@@ -534,7 +534,7 @@ class TestSyncCreativesRefusedPushNotificationConfigUrl:
     # IMPL included alongside the wire transports: the laundering hazard lives
     # in _impl/_processing, observable on every dispatch path. Same transport
     # matrix as the sibling sync error tests (test_creative_sync_transport.py).
-    _ALL_TRANSPORTS = [Transport.IMPL, Transport.A2A, Transport.REST, Transport.MCP]
+    _ALL_TRANSPORTS = [Transport.A2A, Transport.REST, Transport.MCP]
 
     @pytest.mark.parametrize("transport", _ALL_TRANSPORTS, ids=lambda t: t.value)
     def test_refused_url_fails_sync_naming_the_field(self, integration_db, transport, monkeypatch):

@@ -1,6 +1,6 @@
 """Transport enum and TransportResult for multi-transport behavioral tests.
 
-Defines the seven dispatch transports (IMPL, A2A, REST, MCP + E2E variants)
+Defines the six dispatch transports (A2A, REST, MCP + E2E variants)
 and a frozen result container that separates transport-specific envelope from
 shared payload.
 
@@ -176,7 +176,6 @@ def _envelope_from_mcp_error(exc: Exception) -> dict[str, Any] | None:
 class Transport(StrEnum):
     """Dispatch transports for behavioral tests."""
 
-    IMPL = "impl"  # Direct _impl() call
     A2A = "a2a"  # _raw() A2A wrapper
     REST = "rest"  # FastAPI TestClient → route → _raw() → _impl()
     MCP = "mcp"  # Mock Context → MCP wrapper → _impl()
@@ -187,7 +186,6 @@ class Transport(StrEnum):
 
 # Maps Transport → ResolvedIdentity.protocol value
 TRANSPORT_PROTOCOL: dict[Transport, str] = {
-    Transport.IMPL: "mcp",  # _impl doesn't inspect protocol; keep default
     Transport.A2A: "a2a",
     Transport.REST: "rest",
     Transport.MCP: "mcp",

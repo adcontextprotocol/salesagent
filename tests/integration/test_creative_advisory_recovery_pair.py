@@ -122,7 +122,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 # IMPL alongside the three wire transports, matching the sibling sync-advisory
 # suites: the advisory is built inside ``_impl`` and must reach the buyer
 # identically on every dispatch path.
-_ALL_TRANSPORTS = [Transport.IMPL, Transport.A2A, Transport.REST, Transport.MCP]
+_ALL_TRANSPORTS = [Transport.A2A, Transport.REST, Transport.MCP]
 
 # A generative format id (``output_format_ids`` non-empty via
 # ``CreativeSyncEnv.setup_generative_build``) — the branch whose

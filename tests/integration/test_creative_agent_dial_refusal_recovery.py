@@ -58,7 +58,7 @@ from tests.harness.transport import Transport
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
-_ALL_TRANSPORTS = [Transport.IMPL, Transport.A2A, Transport.REST, Transport.MCP]
+_ALL_TRANSPORTS = [Transport.A2A, Transport.REST, Transport.MCP]
 
 _FORMAT_ID = "display_300x250_image"
 
