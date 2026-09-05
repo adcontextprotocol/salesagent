@@ -56,6 +56,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic_core import PydanticCustomError
 
 from src.core.config import get_pydantic_extra_mode
 from src.core.enum_helpers import enum_value
@@ -191,9 +192,27 @@ class CreativeAssetRequest(LibraryCreativeAsset):
 
     @model_validator(mode="after")
     def _exactly_one_format_identifier(self) -> "CreativeAssetRequest":
-        """core/creative-asset.json is a oneOf: format_id XOR format_kind."""
+        """core/creative-asset.json is a oneOf: format_id XOR format_kind.
+
+        Raised at the ITEM, which is where a oneOf failure belongs. core/error.json requires
+        each entry in ``issues[]`` to carry an RFC 6901 ``pointer`` to the offending field
+        and a ``keyword`` "drawn from the JSON Schema vocabulary" -- and for a oneOf, no
+        single field is at fault, so the pointer is the object (``/creatives/0``) and the
+        keyword is ``oneOf``. The schema even provides ``issues[].discriminator`` for naming
+        the variant.
+
+        So this deliberately does NOT attach a loc pointing at ``format_id``. Doing that
+        reports a field the buyer may not have been required to send at all -- the
+        format_kind arm is equally legal.
+
+        The error TYPE is the keyword. A plain ``ValueError`` becomes pydantic's
+        ``value_error``, which ``PYDANTIC_KEYWORD_MAP`` classifies as ``None`` -- "no honest
+        JSON Schema keyword" -- so the issue was dropped from ``issues[]`` and the buyer got
+        an envelope with no structured reason. This rejection CAN be substantiated as
+        ``oneOf``, so it says so (see ``SELLER_RAISED_KEYWORDS``).
+        """
         if (self.format_id is None) == (self.format_kind is None):
-            raise ValueError("provide exactly one of format_id or format_kind")
+            raise PydanticCustomError("oneOf", "provide exactly one of format_id or format_kind")
         return self
 
 

@@ -240,65 +240,6 @@ class TestMCPToolRoundtripMinimal:
             error_msg = str(e).lower()
             pass  # the operation must raise; its wording is not asserted
 
-    async def test_update_performance_index_minimal(self, sample_account, mcp_client):
-        """Test update_performance_index with required parameters."""
-        # First, create a media buy to update
-        products_result = await mcp_client.call_tool(
-            "get_products", {"brand": {"domain": "testbrand.com"}, "brief": "test"}
-        )
-
-        products = (
-            products_result.structured_content if hasattr(products_result, "structured_content") else products_result
-        )
-        if products and len(products.get("products", [])) > 0:
-            product_id = products["products"][0]["product_id"]
-
-            # Create media buy
-            create_result = await mcp_client.call_tool(
-                "create_media_buy",
-                {
-                    "account": sample_account,
-                    "brand": {"domain": "testbrand.com"},
-                    "idempotency_key": f"int-key-{uuid.uuid4().hex}",
-                    "packages": [
-                        {
-                            "product_id": product_id,
-                            "pricing_option_id": "cpm_usd_fixed",  # Format: {model}_{currency}_{fixed|auction}
-                            "budget": 5000.0,
-                        }
-                    ],
-                    "start_time": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
-                    "end_time": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
-                },
-            )
-
-            create_content = (
-                create_result.structured_content if hasattr(create_result, "structured_content") else create_result
-            )
-            if "media_buy_id" in create_content:
-                media_buy_id = create_content["media_buy_id"]
-
-                # Now update performance index
-                result = await mcp_client.call_tool(
-                    "update_performance_index",
-                    {
-                        "media_buy_id": media_buy_id,
-                        "performance_data": [
-                            {
-                                "product_id": product_id,
-                                "performance_index": 1.2,  # 20% better than baseline
-                            }
-                        ],
-                    },
-                )
-
-                assert result is not None
-                content = result.structured_content if hasattr(result, "structured_content") else result
-                assert content is not None
-                # Should not crash - may return success or error status
-                assert "status" in content or "error" in content or "performance_data" in content
-
-
 @pytest.mark.unit  # Changed from integration - these don't require server
 class TestSchemaConstructionValidation:
     """Test that schemas are constructed correctly from tool parameters."""

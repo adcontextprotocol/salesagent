@@ -410,6 +410,28 @@ none rather than an invented one.
 """
 
 
+SELLER_RAISED_KEYWORDS: typing.Final[dict[str, str]] = {
+    "oneOf": "oneOf",
+}
+"""Keywords a SELLER-RAISED ``PydanticCustomError`` names for itself.
+
+Separate from ``PYDANTIC_KEYWORD_MAP`` because that map is closed in both
+directions against ``pydantic_core.ErrorType`` -- it refuses to classify a type
+pydantic does not define, which is what keeps it honest about pydantic's own
+vocabulary. A constraint WE express in a validator has no pydantic ErrorType to
+be classified under, and a plain ``ValueError`` maps to ``None``, so the issue
+was silently dropped from ``issues[]`` and the buyer got no structured reason at
+all.
+
+The bar is the module's own: a keyword is a CLAIM, and one we cannot substantiate
+is worse than none. These we can. A oneOf expressed as a model validator (see
+``CreativeAssetRequest``, where core/creative-asset.json's format_id-XOR-
+format_kind is flattened onto one model) rejects for exactly the reason JSON
+Schema spells ``oneOf``. The error type IS the keyword, so a raise site cannot
+name one this table does not carry.
+"""
+
+
 def issue_from_pydantic_error(error: typing.Mapping[str, Any]) -> ErrorIssue | None:
     """Convert one ``ValidationError.errors()`` entry, or None if unattributable.
 
@@ -417,7 +439,8 @@ def issue_from_pydantic_error(error: typing.Mapping[str, Any]) -> ErrorIssue | N
     is the pin-consistent outcome: ``issues`` itself is optional, so a partial
     map degrades to a shorter array, never to a wrong ``keyword``.
     """
-    keyword = PYDANTIC_KEYWORD_MAP.get(str(error.get("type")))
+    error_type = str(error.get("type"))
+    keyword = PYDANTIC_KEYWORD_MAP.get(error_type) or SELLER_RAISED_KEYWORDS.get(error_type)
     if keyword is None:
         return None
     ctx = error.get("ctx") or {}
