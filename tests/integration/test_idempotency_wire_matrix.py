@@ -252,6 +252,45 @@ class TestMissingKeyWireMatrix:
         assert envelope["errors"][0].get("field") == "idempotency_key"
 
 
+class TestCaptureUniformity:
+    """The hash input is the payload AS SENT, captured the same way on every transport.
+
+    Seller-side machinery (compat-field translation, body rewriting) must never participate
+    in the hash: a buyer retrying byte-identical content replays, on the same transport or
+    across transports.
+    """
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "salesagent-ehr18: the expectation is right and unmet. The impl hashes "
+            "raw_wire_payload when a transport threads it and the model dump when none "
+            "does, so REST and MCP disagree about what 'the same request' is. Belongs in "
+            "BDD once the capture point is uniform -- a cross-transport claim is the one "
+            "thing a per-transport-parametrized scenario cannot state today."
+        ),
+    )
+    def test_cross_transport_identical_retry_replays(self, integration_db):
+        """The same payload dict created via REST replays when retried via MCP."""
+        key = f"wire-xport-{uuid.uuid4().hex}"
+
+        with MediaBuyCreateEnv() as env:
+            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
+            kwargs = _create_kwargs(product, idempotency_key=key)
+
+            first = env.call_via(Transport.REST, **dict(kwargs))
+            assert first.is_success, f"fresh REST create failed: {first.error}"
+
+            second = env.call_via(Transport.MCP, **dict(kwargs))
+            assert second.is_success, f"MCP retry failed: {second.error}"
+
+        assert second.payload.replayed is True, (
+            "identical payload dicts must hash equal across transports -- "
+            "a transport-specific capture point (normalized vs raw) breaks this"
+        )
+        assert second.payload.response.media_buy_id == first.payload.response.media_buy_id
+
+
 class TestWireLevelHashInput:
     """MCP ONLY: the payload hash is computed over the WIRE payload, not the model dump.
 
