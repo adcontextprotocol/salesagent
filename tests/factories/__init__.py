@@ -44,7 +44,6 @@ from tests.factories.request import (
     ListCreativeFormatsRequestFactory,
     SyncAccountsRequestFactory,
     SyncCreativesRequestFactory,
-    request_factories_by_tool,
 )
 from tests.factories.targeting import (
     CollectionListReferenceFactory,
@@ -84,7 +83,6 @@ ALL_FACTORIES = [
 __all__ = [
     "ALL_FACTORIES",
     "OMIT",
-    "request_factories_by_tool",
     "AccountFactory",
     "AdapterConfigFactory",
     "AuthorizedPropertyFactory",

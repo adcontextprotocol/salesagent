@@ -330,8 +330,8 @@ def get_strategy_manager(context: Context | None) -> StrategyManager:
 # registration time. Our tools are a subset of the SDK's 57 — matching tools
 # get agent-facing descriptions and annotations (readOnlyHint, destructiveHint,
 # idempotentHint). Non-matching tools keep their existing docstrings.
-from adcp.types.generated_poc.core.version_envelope import AdcpVersionEnvelope
 from adcp.server.mcp_tools import ADCP_TOOL_DEFINITIONS
+from adcp.types.generated_poc.core.version_envelope import AdcpVersionEnvelope
 
 # Request DTOs named explicitly for tools that do not reach one through a builder. The
 # advertised shape is "DTO fields INTERSECT the implementation's arguments", so the DTO is
