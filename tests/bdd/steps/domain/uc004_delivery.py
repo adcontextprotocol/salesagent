@@ -23,6 +23,7 @@ from tests.bdd.steps._outcome_helpers import error_envelope_or_none, payload_or_
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.bdd.steps.generic.then_error import _get_error_message
 from tests.bdd.steps.generic.then_payload import register_boundary_handler
+from tests.factories.webhook import ReportingWebhookRequestFactory
 from tests.harness._mixins import LocalOriginMixin
 from tests.helpers import locate_envelope_error
 from tests.helpers.backoff_assertions import assert_backoff_schedule
@@ -1085,11 +1086,7 @@ def when_validate_webhook_config(ctx: dict) -> None:
 
     secret = ctx.get("webhook_secret", "")
     kwargs = harness_create_request_kwargs(ctx)
-    kwargs["reporting_webhook"] = {
-        "url": _DECLARED_WEBHOOK_URL,
-        "reporting_frequency": "daily",
-        "authentication": {"schemes": ["Bearer"], "credentials": secret},
-    }
+    kwargs['reporting_webhook'] = ReportingWebhookRequestFactory.payload(url=_DECLARED_WEBHOOK_URL, reporting_frequency='daily', authentication={'schemes': ['Bearer'], 'credentials': secret})
     # Dispatch the flat body (no typed construction) so a short credential reaches
     # the production transport boundary instead of being rejected in test code.
     dispatch_request(ctx, **kwargs)
@@ -3419,11 +3416,7 @@ def _validate_reporting_webhook_credentials(ctx: dict, auth_scheme: str, credent
 
     from src.core.schemas import CreateMediaBuyRequest
 
-    reporting_webhook = {
-        "url": "https://buyer.example.com/reporting",
-        "authentication": {"schemes": [auth_scheme], "credentials": credentials},
-        "reporting_frequency": "daily",
-    }
+    reporting_webhook = ReportingWebhookRequestFactory.payload(url='https://buyer.example.com/reporting', authentication={'schemes': [auth_scheme], 'credentials': credentials}, reporting_frequency='daily')
     ctx.pop("error", None)
     try:
         # NOT ctx["response"]: this is the constructed REQUEST, not a response.

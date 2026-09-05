@@ -16,6 +16,7 @@ from starlette.testclient import TestClient
 
 from src.app import app
 from src.core.resolved_identity import ResolvedIdentity
+from tests.factories.webhook import ReportingWebhookRequestFactory
 from tests.helpers import assert_envelope_shape
 
 client = TestClient(app)
@@ -66,11 +67,7 @@ class TestCreateMediaBuyEndpoint:
 # push_notification_config coerces to the PINNED type: ingest is spec-exact, so a
 # non-spec scheme or casing is refused here. The widened LibraryAuthentication
 # applies only when REHYDRATING an already-stored row (see registration.from_stash).
-_CREATE_WEBHOOK_WIRE = {
-    "url": "https://example.com/hook",
-    "authentication": {"schemes": ["Bearer"], "credentials": "e9kw-credential-value-of-32-chars"},
-    "reporting_frequency": "daily",
-}
+_CREATE_WEBHOOK_WIRE = ReportingWebhookRequestFactory.payload(url='https://example.com/hook', authentication={'schemes': ['Bearer'], 'credentials': 'e9kw-credential-value-of-32-chars'}, reporting_frequency='daily')
 _CREATE_PNC_WIRE = {"url": "https://example.com/push"}
 _CREATE_CONTEXT_WIRE = {"conversation_id": "conv-e9kw"}
 _CREATE_FORWARDED_SCALARS = {

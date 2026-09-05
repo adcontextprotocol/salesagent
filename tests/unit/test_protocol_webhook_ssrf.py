@@ -45,6 +45,7 @@ from src.core.webhook_validator import reject_unsafe_webhook_registration_url
 from src.services.protocol_webhook_service import ProtocolWebhookService
 from tests.factories import WebhookTaskContextFactory
 from tests.factories.principal import PrincipalFactory
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 from tests.helpers import assert_envelope_shape
 from tests.helpers.adcp_factories import create_test_media_buy_request_dict, valid_reporting_webhook
 from tests.helpers.creative_test_helpers import sync_creatives_request
@@ -401,7 +402,7 @@ async def test_create_media_buy_rejects_push_config_before_workflow() -> None:
         # ON THE REQUEST: push_notification_config is a request field, so the SSRF check
         # reads it off req rather than from a parameter beside it. The ordering this test
         # pins -- refuse the URL BEFORE any workflow metadata is written -- is unchanged.
-        req.push_notification_config = {"url": _METADATA_URL}
+        req.push_notification_config = PushNotificationConfigRequestFactory.payload(url=_METADATA_URL)
         await _create_media_buy_impl(
             req,
             identity=_identity(),

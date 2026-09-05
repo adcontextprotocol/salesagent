@@ -27,6 +27,7 @@ from tests.factories.format import (
     make_renders,
     make_responsive_renders,
 )
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 
 
 def _add_format(ctx: dict, fmt: object) -> None:
@@ -284,5 +285,5 @@ def push_notification_config_with_url(ctx: dict, url: str) -> None:
     that checks "the system registered the webhook" fell back to the url key and
     passed anyway.
     """
-    ctx["push_notification_config"] = {"url": url}
+    ctx['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url=url)
     ctx["push_notification_url"] = url

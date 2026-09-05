@@ -25,6 +25,7 @@ from tests.factories import (
     PricingOptionFactory,
     ProductFactory,
 )
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 from tests.helpers.adcp_factories import valid_reporting_webhook
 from tests.helpers.egress_hatches import UNDIALLED_PUBLIC_HTTPS_ORIGIN
 
@@ -3288,7 +3289,7 @@ def given_webhook_configured(ctx: dict) -> None:
     # ``notification-config`` (subscriber_id + event_types) is for. The
     # ``events: ["status_change"]`` this used to carry was accepted by the model and
     # dropped on the way out, so it selected nothing and nothing asserted on it.
-    push_config = {"url": webhook_url}
+    push_config = PushNotificationConfigRequestFactory.payload(url=webhook_url)
     ctx["push_notification_config"] = push_config
     # Also wire into request_kwargs if they exist (for create requests)
     if "request_kwargs" in ctx:

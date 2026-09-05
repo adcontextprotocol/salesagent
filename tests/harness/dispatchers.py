@@ -39,7 +39,6 @@ from typing import TYPE_CHECKING, Any
 from tests.harness.transport import (
     Transport,
     TransportResult,
-    _envelope_from_adcp_error,
 )
 
 if TYPE_CHECKING:

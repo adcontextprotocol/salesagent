@@ -19,6 +19,7 @@ from tests.e2e.adcp_request_builder import (
     parse_tool_result,
 )
 from tests.e2e.utils import make_mcp_client, wait_until
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 
 
 @pytest.fixture
@@ -96,7 +97,7 @@ class TestAdCPReferenceImplementation:
                 context={"e2e": "create_media_buy"},
             )
             # Registering a config here exercises the AnyUrl/Enum serialization path end-to-end.
-            media_buy_request["push_notification_config"] = {"url": webhook_server["url"]}
+            media_buy_request['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url=webhook_server['url'])
 
             media_buy_result = await client.call_tool("create_media_buy", media_buy_request)
             media_buy_data = parse_tool_result(media_buy_result)
@@ -266,7 +267,7 @@ class TestAdCPReferenceImplementation:
 
                 # create is the only op that persists the PushNotificationConfig row delivery needs.
                 create_request = build_default_campaign_request(product["product_id"], pricing_option_id)
-                create_request["push_notification_config"] = {"url": webhook["url"]}
+                create_request['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url=webhook['url'])
                 create_data = parse_tool_result(await client.call_tool("create_media_buy", create_request))
                 media_buy_id = create_data.get("media_buy_id")
                 assert media_buy_id, f"create_media_buy must return media_buy_id; got: {create_data}"

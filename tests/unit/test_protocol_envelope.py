@@ -10,6 +10,7 @@ import pytest
 
 from src.core.protocol_envelope import ProtocolEnvelope
 from src.core.schemas import CreateMediaBuySuccess, GetProductsResponse
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 
 
 class TestProtocolEnvelope:
@@ -42,10 +43,7 @@ class TestProtocolEnvelope:
         )
 
         # Create push notification config
-        push_config = {
-            "url": "https://example.com/webhook",
-            "authentication": {"schemes": ["HMAC-SHA256"], "credentials": "secret"},
-        }
+        push_config = PushNotificationConfigRequestFactory.payload(url='https://example.com/webhook', authentication={'schemes': ['HMAC-SHA256'], 'credentials': 'secret'})
 
         # Wrap with all fields
         envelope = ProtocolEnvelope.wrap(

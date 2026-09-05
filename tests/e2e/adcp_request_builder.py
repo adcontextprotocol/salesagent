@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from tests.factories.creative_asset import build_assets, image_spec, url_spec
+from tests.factories.webhook import PushNotificationConfigRequestFactory, ReportingWebhookRequestFactory
 
 
 def generate_buyer_ref(prefix: str = "test") -> str:
@@ -137,14 +138,7 @@ def build_adcp_media_buy_request(
         # AdCP-compliant ReportingWebhook authentication requires:
         # - credentials: string with minLength 32 (shared secret or bearer token)
         # - schemes: array of authentication schemes ["Bearer" or "HMAC-SHA256"]
-        request["reporting_webhook"] = {
-            "url": webhook_url,
-            "reporting_frequency": reporting_frequency,
-            "authentication": {
-                "credentials": "test-webhook-bearer-token-at-least-32-chars-long",
-                "schemes": ["Bearer"],
-            },
-        }
+        request['reporting_webhook'] = ReportingWebhookRequestFactory.payload(url=webhook_url, reporting_frequency=reporting_frequency, authentication={'credentials': 'test-webhook-bearer-token-at-least-32-chars-long', 'schemes': ['Bearer']})
 
     if context:
         request["context"] = context
@@ -209,7 +203,7 @@ def build_sync_creatives_payload(
         # AdCP push_notification_config: omitting `authentication` selects the
         # default RFC 9421 webhook-signing profile. The legacy {schemes,
         # credentials} block is only needed when opting into Bearer/HMAC.
-        request["push_notification_config"] = {"url": webhook_url}
+        request['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url=webhook_url)
 
     return request
 
@@ -296,7 +290,7 @@ def build_update_media_buy_request(
         # AdCP push_notification_config: omitting `authentication` selects the
         # default RFC 9421 webhook-signing profile. The legacy {schemes,
         # credentials} block is only needed when opting into Bearer/HMAC.
-        request["push_notification_config"] = {"url": webhook_url}
+        request['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url=webhook_url)
     if context is not None:
         request["context"] = context
 

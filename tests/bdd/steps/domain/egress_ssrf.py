@@ -64,6 +64,7 @@ from tests.bdd.steps._outcome_helpers import (
     wire_entry_errors,
 )
 from tests.bdd.steps.generic._dispatch import dispatch_request
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 from tests.helpers.webhook_credential_refusal import SHORT_CREDENTIAL
 
 # The list_id is irrelevant to a refusal — the seam refuses before a connection
@@ -228,7 +229,7 @@ def when_create_media_buy_with_push_url(ctx: dict, webhook_url: str) -> None:
 
     ctx["supplied_agent_url"] = webhook_url
     kwargs = harness_create_request_kwargs(ctx)
-    kwargs["push_notification_config"] = {"url": webhook_url}
+    kwargs['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url=webhook_url)
     dispatch_request(ctx, **kwargs)
 
 
@@ -258,10 +259,7 @@ def _dispatch_create_registering(ctx: dict, authentication: dict) -> None:
     from tests.bdd.steps.generic.given_media_buy import harness_create_request_kwargs
 
     kwargs = harness_create_request_kwargs(ctx)
-    kwargs["push_notification_config"] = {
-        "url": _SAFE_WEBHOOK_URL,
-        "authentication": authentication,
-    }
+    kwargs['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url=_SAFE_WEBHOOK_URL, authentication=authentication)
     dispatch_request(ctx, **kwargs)
 
 

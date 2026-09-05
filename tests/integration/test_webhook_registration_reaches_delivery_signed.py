@@ -41,6 +41,7 @@ from typing import Any
 
 import pytest
 
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 from tests.harness import A2APushRegistrationEnv, MediaBuyPushRegistrationEnv, Transport
 from tests.helpers import assert_delivered_unsigned, assert_signature_verifies_over_wire_body
 
@@ -96,10 +97,7 @@ def _register_via_create(env: MediaBuyPushRegistrationEnv, *, with_push_config: 
     tenant, _principal, product, pricing_option = env.setup_media_buy_data()
     kwargs = env.minimal_create_kwargs(product, pricing_option)
     if with_push_config:
-        kwargs["push_notification_config"] = {
-            "url": env.webhook_url,
-            "authentication": _tool_auth_block(),
-        }
+        kwargs['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url=env.webhook_url, authentication=_tool_auth_block())
     return env.call_mcp(**kwargs)
 
 
@@ -349,10 +347,7 @@ class TestBlankUrlRegistrationIsNotPersisted:
         with MediaBuyPushRegistrationEnv() as env:
             _, _principal, product, pricing_option = env.setup_media_buy_data()
             kwargs = env.minimal_create_kwargs(product, pricing_option)
-            kwargs["push_notification_config"] = {
-                "url": "   ",
-                "authentication": _tool_auth_block(),
-            }
+            kwargs['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url='   ', authentication=_tool_auth_block())
 
             result = env.call_via(Transport.A2A, **kwargs)
 

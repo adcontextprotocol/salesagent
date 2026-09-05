@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.core.schemas import CreateMediaBuyResult
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 
 
 def _valid_packages_params() -> dict:
@@ -60,7 +61,7 @@ async def test_no_auth_push_config_still_works():
     )
 
     params = _valid_packages_params()
-    params["push_notification_config"] = {"url": "http://localhost:9999/webhook"}
+    params['push_notification_config'] = PushNotificationConfigRequestFactory.payload(url='http://localhost:9999/webhook')
 
     submitted_result = CreateMediaBuyResult(
         # confirmed_at/revision are schema-required and carry no model default:
