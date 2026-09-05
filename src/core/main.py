@@ -330,6 +330,7 @@ def get_strategy_manager(context: Context | None) -> StrategyManager:
 # registration time. Our tools are a subset of the SDK's 57 — matching tools
 # get agent-facing descriptions and annotations (readOnlyHint, destructiveHint,
 # idempotentHint). Non-matching tools keep their existing docstrings.
+from adcp.types.generated_poc.core.version_envelope import AdcpVersionEnvelope
 from adcp.server.mcp_tools import ADCP_TOOL_DEFINITIONS
 
 # Request DTOs named explicitly for tools that do not reach one through a builder. The
@@ -403,6 +404,21 @@ def _register_tool(fn: Any) -> None:
             f"registry row (src/core/tools/registry.py) -- that is the only way to name a DTO."
         )
     model = request_model_for(fn)
+    if model is not None and not issubclass(model, AdcpVersionEnvelope):
+        raise RuntimeError(
+            f"{tool_name} cannot be registered: {model.__name__} does not descend from "
+            f"adcp's AdcpVersionEnvelope. Every request DTO reaches adcp_version and "
+            f"adcp_major_version through it, so a model that does not is not a request in "
+            f"this protocol -- and in practice it means the DTO came from a PARALLEL "
+            f"HIERARCHY rather than from the SDK. That has happened: complete_task once had "
+            f"two hand-written models, CompleteTaskRequest and CompleteTaskRequestLocal, "
+            f"neither a subclass of the other, both descending from SalesAgentBaseModel, "
+            f"differing by three required fields (salesagent-fdkub). Extend the SDK type for "
+            f"this tool, or -- where the SDK ships none -- AdcpVersionEnvelope itself.\n\n"
+            f"This check is UNGATED on purpose. The SDK-grounding refusal below fires only "
+            f"when the SDK defines the tool, which exempts precisely the tools most likely "
+            f"to grow a parallel model."
+        )
     if sdk_def is not None and model is not None and sdk_grounding(model) is None:
         raise RuntimeError(
             f"{tool_name} cannot be registered: {model.__name__} does not inherit the SDK's "

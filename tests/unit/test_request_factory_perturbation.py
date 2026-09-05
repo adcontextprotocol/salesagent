@@ -7,8 +7,22 @@ quietly undo — at which point every test grading a REJECTED value would start
 raising in its own setup instead of at the boundary under test, and the failure
 would look like a broken test rather than a broken helper.
 
-These grade the helper's contract. Whether the baseline is spec-conformant is a
-different question, graded in ``test_request_factory_schema_conformance.py``.
+These grade the HELPER's contract, which is ours and can only be checked here.
+
+Whether the baseline is spec-conformant is a different question and is no longer
+asked statically. The suite that asked it argued that our DTOs were the weaker of
+the two contracts — that the pin required ``account`` and ``idempotency_key``
+where our models did not, and that ``idempotency_key`` was a bare ``str`` so
+``"test-key-1"`` constructed fine. All three were measured false: the DTOs are
+SDK-generated from the schema, they carry the identical required sets, and
+``"test-key-1"`` is rejected for being under 16 characters. What remained was a
+static hunt for a local subclass that widens its SDK parent, and BDD grades that
+on the wire.
+
+The one structural property worth keeping became a REFUSAL rather than a test:
+``_register_tool`` will not register a tool whose DTO does not descend from
+``AdcpVersionEnvelope``, because a DTO that does not is a DTO from a parallel
+hierarchy (salesagent-fdkub).
 """
 
 from __future__ import annotations

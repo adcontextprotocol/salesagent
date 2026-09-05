@@ -7,14 +7,19 @@ every scenario re-derived its own idea of "a valid request", and each copy was
 graded only by "the Pydantic constructor accepted it".
 
 That grade is the weaker of the two contracts in play. Our DTOs and the pinned
-AdCP schemas do not agree field for field (``CreateMediaBuyRequest`` does not
-require ``account``; ``SyncAccountsRequest`` does not require
-``idempotency_key``; the pin requires both), so a payload our constructor accepts
-can still be one the spec rejects. Every baseline here is therefore graded
-against the PINNED SCHEMA by
-``tests/unit/test_request_factory_schema_conformance.py``, with a divergence
-allowlist whose rows each carry a spec citation. Adding a factory without a
-conformant baseline fails that suite.
+the DTOs are GENERATED FROM the pinned schemas, so a payload the constructor
+accepts is a payload the schema accepts. Measured on this tree:
+``CreateMediaBuyRequest`` and ``SyncAccountsRequest`` require exactly the sets
+their pinned schemas require, and ``idempotency_key`` carries the schema's
+``MinLen(16)``, ``MaxLen(255)`` and ``^[A-Za-z0-9_.:-]{16,255}$`` — a
+hand-written ``"test-key-1"`` is REJECTED by the constructor.
+
+This module's docstring used to claim the opposite, and a whole suite existed to
+police the gap it described. The gap had closed and nobody re-measured. What is
+left is a REFUSAL rather than a suite: ``_register_tool`` will not register a
+tool whose DTO does not descend from ``AdcpVersionEnvelope``, because a DTO that
+does not is one from a parallel hierarchy (salesagent-fdkub). Everything a
+payload does on the wire is graded by BDD.
 
 Usage — the perturbation this module exists for::
 
