@@ -408,28 +408,44 @@ class GetAdcpCapabilitiesRequestFactory(_RequestFactory):
         model = dto("get_adcp_capabilities")
 
 
-class GetTaskRequestFactory(_RequestFactory):
-    """A get_task request. ``task_id`` is required by the DTO.
+class GetTaskStatusRequestFactory(_RequestFactory):
+    """A get_task_status request. ``task_id`` is required by the DTO.
+
+    Named for the TOOL, which is named for its spec task: the pin calls the
+    operation ``get-task-status`` and the SDK type is ``GetTaskStatusRequest``,
+    so ``get_task`` was the odd name out and was renamed on main (f562b60df).
+
+    This factory broke loudly on that rename -- ``dto("get_task")`` raised
+    ``KeyError`` at import -- which is the intended failure mode. A factory that
+    named its model by import would have kept building the old class silently.
 
     Placeholder id, same as ``UpdateMediaBuyRequestFactory.media_buy_id``: a
     scenario overrides it with the task its Given step created.
     """
 
     class Meta:
-        model = dto("get_task")
+        model = dto("get_task_status")
 
     task_id = "task-baseline"
 
 
 class CompleteTaskRequestFactory(_RequestFactory):
-    """A complete_task request. ``task_id`` is required by the DTO.
+    """A complete_task request. ``task_id`` and ``status`` are both required.
 
-    ``status`` is left unset rather than defaulted to a success value: which
-    terminal status a completion carries is the thing most scenarios grade, and
-    a factory that picks one makes the other arm look like the override.
+    ``status`` used to be left unset here, on the reasoning that which terminal
+    status a completion carries is what most scenarios grade, so picking one
+    would make the other arm read as the override. That reasoning held while the
+    DTO typed it ``str | None``. It no longer can: main narrowed it to a required
+    ``Literal["completed", "failed"]`` (f562b60df), so a baseline that omits it
+    does not build at all.
+
+    ``completed`` is therefore the baseline and ``payload(status="failed")`` the
+    other arm -- the ordinary case as the default, which is the same rule every
+    other factory here follows.
     """
 
     class Meta:
         model = dto("complete_task")
 
     task_id = "task-baseline"
+    status = "completed"
