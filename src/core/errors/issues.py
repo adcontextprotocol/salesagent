@@ -410,7 +410,7 @@ none rather than an invented one.
 """
 
 
-SELLER_RAISED_KEYWORDS: typing.Final[dict[str, str]] = {
+SELLER_RAISED_KEYWORDS: typing.Final[dict[str, JsonSchemaKeyword]] = {
     "oneOf": "oneOf",
 }
 """Keywords a SELLER-RAISED ``PydanticCustomError`` names for itself.

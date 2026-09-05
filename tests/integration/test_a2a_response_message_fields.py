@@ -14,17 +14,12 @@ If these services are unavailable (HTTP 5xx, connection errors), tests will skip
 rather than fail, since external service availability is outside our control.
 """
 
-import uuid
-from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
-from tests.factories.creative_asset import build_assets, image_spec
 from tests.factories.principal import PrincipalFactory
-from tests.helpers.a2a_response_validator import assert_valid_skill_response
-from tests.helpers.external_service import is_external_service_exception
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -49,176 +44,30 @@ class TestA2AMessageFieldValidation:
         """Create A2A request handler."""
         return AdCPRequestHandler()
 
-    @pytest.fixture
-    def mock_auth_context(self, sample_tenant, sample_principal):
-        """Set up authentication context and return a ResolvedIdentity for handler calls.
+    def test_the_a2a_stamp_adds_message_to_any_response(self):
+        """``message`` reaches the wire for every skill, graded once on the step that adds it.
 
-        Returns a context manager + identity tuple. The identity is passed directly
-        to handler methods (identity parameter), matching the refactored A2A pattern
-        where on_message_send resolves identity at the transport boundary.
+        Five per-tool copies of this stood here -- create_media_buy, sync_creatives,
+        get_products, list_creatives, list_creative_formats -- each driving a real skill
+        through full setup to ask whether its reply carried a ``message``. They could not
+        disagree: ``message`` and ``success`` are stamped by ONE static method,
+        ``_stamp_a2a_protocol_fields``, which takes any AdCPBaseModel and is the only place
+        either field is added (they are not spec fields on any response). Five tools cannot
+        answer that question differently, so asking five times graded the same method five
+        times at five times the cost -- the per-tool enumeration the registry replaced
+        everywhere else.
+
+        That the stamped value then reaches the artifact is pinned separately, by
+        test_a2a_skill_invocation.py::test_artifact_text_part_is_the_data_part_message.
         """
-        from src.core.tenant_context import LazyTenantContext
+        from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
+        from src.core.schemas import GetProductsResponse
 
-        identity = PrincipalFactory.make_identity(
-            principal_id=sample_principal["principal_id"],
-            tenant_id=sample_tenant["tenant_id"],
-            tenant=LazyTenantContext(sample_tenant["tenant_id"]),
-            protocol="a2a",
-        )
+        stamped = AdCPRequestHandler._stamp_a2a_protocol_fields(GetProductsResponse(products=[]))
 
-        def _mock_context(handler):
-            handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-            handler._identity = identity  # Store for test access
-            return patch(
-                "src.core.auth_utils.get_principal_from_token",
-                return_value=(sample_principal["principal_id"], None),
-            )
-
-        return _mock_context
-
-    @pytest.mark.asyncio
-    async def test_create_media_buy_message_field_exists(
-        self, handler, mock_auth_context, sample_tenant, sample_principal, sample_products, sample_account
-    ):
-        """Test create_media_buy returns a valid message field.
-
-        Prevents: 'CreateMediaBuyResponse' object has no attribute 'message'
-        """
-        with mock_auth_context(handler):
-            # Create parameters for create_media_buy skill
-            start_date = datetime.now(UTC) + timedelta(days=1)
-            end_date = start_date + timedelta(days=30)
-
-            # Per AdCP v2.2.0 spec, budget is at the PACKAGE level, not top level.
-            # The previous top-level ``budget`` field was tolerated by an older code
-            # path that swallowed Pydantic ValidationError into a dict-return; now
-            # CreateMediaBuyRequest validates strictly.
-            params = {
-                "brand": {"domain": "testbrand.com"},
-                "idempotency_key": f"int-key-{uuid.uuid4().hex}",
-                "packages": [
-                    {
-                        "product_id": sample_products[0],
-                        "pricing_option_id": "cpm_usd_fixed",
-                        "budget": 10000.0,
-                    }
-                ],
-                "start_time": start_date.isoformat(),
-                "end_time": end_date.isoformat(),
-                # The SEEDED account, not a literal: the A2A skill resolves the reference at
-                # the boundary, so an id with no row answers ACCOUNT_NOT_FOUND before the
-                # message field this test is about is ever built.
-                "account": sample_account,
-            }
-
-            # Call the handler method directly - this is where the bug occurred
-            raw_result = await handler._handle_create_media_buy_skill(params, identity=handler._identity)
-            result = handler._serialize_for_a2a(raw_result)
-
-            # ✅ CRITICAL: Use comprehensive validator to check all fields
-            assert_valid_skill_response(result, "create_media_buy")
-
-    @pytest.mark.asyncio
-    async def test_sync_creatives_message_field_exists(
-        self, handler, mock_auth_context, sample_principal, sample_account
-    ):
-        """Test sync_creatives returns a valid message field.
-
-        SyncCreativesResponse also doesn't have a .message field, uses __str__
-
-        NOTE: This test connects to external creative agents for format validation.
-        If the external service is unavailable, the test will be skipped.
-        """
-        with mock_auth_context(handler):
-            params = {
-                "creatives": [
-                    {
-                        "creative_id": "creative_test_001",
-                        "format_id": "display_300x250",
-                        "name": "Test Creative",
-                        "assets": build_assets(image_spec("main_image", url="https://example.com/image.jpg")),
-                    }
-                ],
-                "validation_mode": "strict",
-                # sync-creatives-request.json /required.
-                "idempotency_key": "a2a-fields-key-000001",
-                # The SEEDED account: production resolves the reference against the DB, so a
-                # fabricated id constructs fine and then earns ACCOUNT_NOT_FOUND at the wire.
-                "account": sample_account,
-            }
-
-            # Call handler directly - may fail if external creative agent is unavailable
-            try:
-                raw_result = await handler._handle_sync_creatives_skill(params, identity=handler._identity)
-            except Exception as e:
-                if is_external_service_exception(e):
-                    pytest.skip(f"External creative agent unavailable: {e}")
-                raise
-
-            result = handler._serialize_for_a2a(raw_result)
-
-            # ✅ Use validator
-            assert_valid_skill_response(result, "sync_creatives")
-
-    @pytest.mark.asyncio
-    async def test_get_products_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test get_products returns a valid message field.
-
-        GetProductsResponse DOES have a .message field, but we should use str() consistently
-        """
-        with mock_auth_context(handler):
-            params = {
-                "brand": {"domain": "testbrand.com"},
-                "brief": "Looking for display ads",
-                "adcp_version": "3.0",
-            }
-
-            raw_result = await handler._handle_get_products_skill(params, identity=handler._identity)
-            result = handler._serialize_for_a2a(raw_result)
-
-            # ✅ Validate message field
-            assert "message" in result, "get_products response must include 'message' field"
-            assert isinstance(result["message"], str), "message must be a string"
-
-    @pytest.mark.asyncio
-    async def test_list_creatives_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test list_creatives returns a valid message field."""
-        with mock_auth_context(handler):
-            params = {
-                "page": 1,
-                "limit": 10,
-            }
-
-            raw_result = await handler._handle_list_creatives_skill(params, identity=handler._identity)
-            result = handler._serialize_for_a2a(raw_result)
-
-            # ✅ Validate message field
-            assert "message" in result, "list_creatives response must include 'message' field"
-            assert isinstance(result["message"], str), "message must be a string"
-
-    @pytest.mark.asyncio
-    async def test_list_creative_formats_message_field_exists(self, handler, mock_auth_context, sample_principal):
-        """Test list_creative_formats returns a valid message field.
-
-        NOTE: This test connects to external creative agents to list formats.
-        If the external service is unavailable, the test will be skipped.
-        """
-        with mock_auth_context(handler):
-            params = {}
-
-            # Call handler directly - may fail if external creative agent is unavailable
-            try:
-                raw_result = await handler._handle_list_creative_formats_skill(params, identity=handler._identity)
-            except Exception as e:
-                if is_external_service_exception(e):
-                    pytest.skip(f"External creative agent unavailable: {e}")
-                raise
-
-            result = handler._serialize_for_a2a(raw_result)
-
-            # ✅ Validate message field
-            assert "message" in result, "list_creative_formats response must include 'message' field"
-            assert isinstance(result["message"], str), "message must be a string"
+        assert "message" in stamped, "the A2A stamp must add a message field"
+        assert isinstance(stamped["message"], str) and stamped["message"], "message must be a non-empty string"
+        assert stamped["success"] is True
 
 
 @pytest.mark.integration

@@ -1140,11 +1140,16 @@ class TestMissingFormatFails:
 
     @pytest.mark.parametrize("transport", ALL_TRANSPORTS, ids=lambda t: t.value)
     def test_no_format_action_failed(self, integration_db, transport):
-        """Creative without format_id is rejected.
+        """Creative without format_id is rejected, on EVERY transport, at the request.
 
-        On impl/a2a: reaches _impl which returns action=failed (missing format).
-        On MCP: TypeAdapter rejects because CreativeAsset requires format_id.
-        Both paths correctly reject the creative.
+        This used to branch: MCP rejected at the boundary while impl/a2a/rest reached _impl
+        and came back with a per-creative ``action="failed"``. There is one accepted shape
+        now -- the DTO -- so the rejection happens in the same place on all of them and the
+        per-creative arm is unreachable for this payload.
+
+        The rejection is a oneOf, not a missing field: core/creative-asset.json identifies a
+        creative by format_id OR format_kind, so no single field is at fault and
+        core/error.json puts the pointer at the item.
         """
         from tests.harness.assertions import assert_rejected
 
@@ -1163,15 +1168,8 @@ class TestMissingFormatFails:
                 validation_mode="lenient",
             )
 
-        if result.is_error:
-            # MCP: TypeAdapter rejected missing format_id — correct behavior
-            assert_rejected(result, field="format_id", keyword="required")
-        else:
-            # impl/a2a/rest: _impl handled it, returned action=failed
-            assert_envelope(result, transport)
-            creative_result = result.payload.creatives[0]
-            assert creative_result.action == "failed"
-            assert creative_result.errors
+        assert result.is_error, f"{transport.value}: the request boundary must refuse this payload"
+        assert_rejected(result, field="creatives[0]", keyword="oneOf")
 
 
 @pytest.mark.requires_db

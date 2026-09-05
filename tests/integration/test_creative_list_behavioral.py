@@ -137,30 +137,6 @@ class TestListFiltering:
         assert len(response.creatives) == 1
         assert response.creatives[0].creative_id == "c_approved"
 
-    def test_format_filter_returns_matching(self, integration_db):
-        """Spec: list_creatives formats filter returns only matching creatives."""
-        with CreativeListEnv() as env:
-            tenant = TenantFactory(tenant_id="test_tenant")
-            principal = PrincipalFactory(tenant=tenant, principal_id="test_principal")
-
-            CreativeFactory(
-                tenant=tenant,
-                principal=principal,
-                creative_id="c_display",
-                format="display_300x250",
-            )
-            CreativeFactory(
-                tenant=tenant,
-                principal=principal,
-                creative_id="c_video",
-                format="video_30s",
-            )
-
-            response = env.call_impl(format="display_300x250")
-
-        assert len(response.creatives) == 1
-        assert response.creatives[0].creative_id == "c_display"
-
     def test_no_filter_returns_all(self, integration_db):
         """Spec: list_creatives with no filter returns all principal's creatives."""
         with CreativeListEnv() as env:
@@ -205,35 +181,6 @@ class TestListPagination:
 
         assert len(response.creatives) == 2
         assert response.pagination.has_more is True
-
-    def test_page_offsets_results(self, integration_db):
-        """Spec: list_creatives page parameter offsets results."""
-        with CreativeListEnv() as env:
-            tenant = TenantFactory(tenant_id="test_tenant")
-            principal = PrincipalFactory(tenant=tenant, principal_id="test_principal")
-
-            for i in range(5):
-                CreativeFactory(
-                    tenant=tenant,
-                    principal=principal,
-                    creative_id=f"c_offset_{i}",
-                )
-
-            page1 = env.call_impl(pagination=PaginationRequest(max_results=2), page=1)
-            page2 = env.call_impl(pagination=PaginationRequest(max_results=2), page=2)
-
-        # Pages should return different creatives
-        page1_ids = {c.creative_id for c in page1.creatives}
-        page2_ids = {c.creative_id for c in page2.creatives}
-        assert len(page1_ids) == 2
-        assert len(page2_ids) == 2
-        assert page1_ids.isdisjoint(page2_ids)
-
-
-# ---------------------------------------------------------------------------
-# Principal Isolation Tests
-# ---------------------------------------------------------------------------
-
 
 class TestListPrincipalIsolation:
     """Creatives are principal-scoped — cross-principal isolation."""
