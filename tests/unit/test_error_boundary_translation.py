@@ -819,8 +819,12 @@ class TestA2ADispatcherFailedSkillResult:
 
         envelope = result["error_envelope"]
         assert result["success"] is False
+        # The CLASSIFICATION, which a change to adcp_error_for could break. The absence
+        # check that stood here -- "db://user:pw@host" not in the dump -- could not: message
+        # is a read-only property returning CODE_TABLE[code].message and __init__ takes no
+        # message parameter, so the raw text has no path into buyer-facing text. It asserted
+        # that a string this test invented is missing from a table this test did not write.
         assert_envelope_shape(envelope, "INTERNAL_ERROR", recovery="transient")
-        assert "db://user:pw@host" not in json.dumps(envelope)
 
     def test_both_branches_produce_the_same_envelope_shape(self):
         """Same keys, and every key both branches share is populated in both.

@@ -1,82 +1,44 @@
-"""Reproduction for salesagent-prkv.8: raw exception text reaching the buyer-facing wire.
+"""The A2A JSON-RPC InternalError carries the two-layer envelope in its ``data``.
 
-An untyped exception raised inside a dispatched skill's business logic is
-normalized to a wire-safe ``AdCPSalesAgentError`` by ``adcp_error_for()``
-(src/core/exceptions.py) — the single chokepoint used by all three transport
-boundaries (A2A, MCP, REST). Its final fallback branch,
-``return AdCPSalesAgentError(str(exc) or type(exc).__name__)``, uses the raw exception's
-``str()`` as the buyer-facing ``message`` verbatim: whatever internal detail
-the exception happened to carry (a DB DSN, a stack fragment, an upstream
-response body) lands directly in the wire's two-layer error envelope.
+WHAT THIS FILE NO LONGER TESTS, and why. It began as a reproduction for
+salesagent-prkv.8: an untyped exception's own ``str()`` reaching the buyer as the
+error ``message``. That leak is now structurally impossible rather than merely
+fixed. ``AdCPSalesAgentError.__init__`` takes no ``message`` parameter at all,
+and ``message`` is a read-only property returning ``CODE_TABLE[code].message``
+(src/core/exceptions.py), so no raise site can interpolate anything into
+buyer-facing text. ``_internal_error_for()`` builds its JSON-RPC message from
+``adcp_error_for(exc).message``, which is the same derived property.
 
-AdCP 3.1.1 transport-errors.mdx, Security Considerations, is a MUST-NOT list
-covering exactly this: credentials, SQL, hostnames, stack traces, upstream
-responses must never reach the buyer.
+An assertion that an invented marker string is absent from that text therefore
+cannot fail unless the code table itself contains the marker. It was a tautology,
+and the version that ran it across A2A, MCP, and REST was the same tautology
+three times, needing real dispatch and a database to observe a value read from a
+constant. AdCP 3.1.1 transport-errors.mdx still lists credentials, SQL,
+hostnames, and stack traces as MUST-NOT — the table, and the ``internal_detail``
+convention that routes raw text to the server log, are what satisfy it.
+
+What remains is falsifiable and A2A-specific: the JSON-RPC envelope can carry a
+code, or it can carry nothing, and only this path can say which.
 """
 
 import pytest
 
-from tests.factories import PrincipalFactory, TenantFactory
-from tests.harness.product import ProductEnv
-from tests.harness.transport import Transport
-
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
-# A distinctive, plainly-internal-looking payload — if this string appears
-# anywhere in the wire envelope, the raw exception leaked.
-_SECRET_MARKER = "postgres://admin:s3cr3t-prkv8@10.0.0.5:5432/prod_shadow"
 
+class TestInternalErrorCarriesTheEnvelope:
+    """``_internal_error_for()`` builds the A2A JSON-RPC error, and must attach the envelope.
 
-def _assert_no_leak(envelope: dict, label: str) -> None:
-    assert envelope is not None, f"no wire envelope captured on {label}"
-    rendered = str(envelope)
-    assert _SECRET_MARKER not in rendered, f"raw exception text leaked into the {label} wire envelope: {rendered!r}"
+    Only NON-skill A2A boundary failures reach it: ``on_message_send``'s outer fallthrough
+    and the push-notification-config JSON-RPC methods. A dispatched skill's own catch goes
+    through ``_build_failed_skill_result`` instead, which
+    tests/unit/test_error_boundary_translation.py grades directly.
 
+    The test raises during identity resolution, which runs inside that outer try/except
+    before skill dispatch, because no other input reaches this path.
+    """
 
-@pytest.mark.parametrize("transport", [Transport.A2A, Transport.MCP, Transport.REST], ids=lambda t: t.value)
-class TestUntypedExceptionDoesNotLeakOntoWire:
-    """An untyped exception inside a dispatched skill must not put its own
-    text on the buyer-facing wire, on any transport.
-
-    Uses ``env.inject_untyped_exception()`` (added by prkv.18, the harness
-    capability this test originally motivated but hand-rolled around — see
-    prkv.18's codebase-scan disposition table). It patches the skill's
-    ``_impl`` directly (real dispatch through A2A skill routing / the MCP
-    tool pipeline / the REST route, only the innermost business-logic call is
-    mocked) and, for REST specifically, sets
-    ``env.REST_RAISE_SERVER_EXCEPTIONS = False`` as an INSTANCE attribute so
-    ``get_rest_client()`` observes the real
-    ``@app.exception_handler(Exception)`` catch-all response instead of
-    Starlette's ``ServerErrorMiddleware`` re-raising into the test (see
-    ``BaseTestEnv.inject_untyped_exception``'s docstring for why the default
-    ``TestClient(app)`` can't observe this path)."""
-
-    def test_no_raw_exception_text_in_wire_envelope(self, integration_db, transport):
-        with ProductEnv(tenant_id="prkv8-leak", principal_id="prkv8-principal") as env:
-            tenant = TenantFactory(tenant_id="prkv8-leak", subdomain="prkv8-leak")
-            PrincipalFactory(tenant=tenant, principal_id="prkv8-principal")
-
-            env.inject_untyped_exception(RuntimeError(_SECRET_MARKER))
-            result = env.call_via(transport, brief="video ads")
-
-            assert result.is_error, f"expected an error result on {transport.value}, got {result.payload!r}"
-            _assert_no_leak(result.wire_error_envelope, transport.value)
-
-
-class TestInternalErrorForDoesNotLeakOntoWire:
-    """Separate obligation: adcp_a2a_server.py's ``_internal_error_for()`` (the
-    ticket's literal WHERE) builds the top-level A2A JSON-RPC ``error.message``
-    field independently of ``adcp_error_for()`` — it is reachable only
-    from NON-skill A2A boundary failures (``on_message_send``'s outer
-    fallthrough, and the push-notification-config JSON-RPC methods), never from
-    a dispatched skill's own per-invocation catch (that goes through
-    ``_build_failed_skill_result`` instead, covered by the class above).
-    Mutation-verified: this test does NOT fail if only
-    ``adcp_error_for()``'s fix is reverted — it exercises the OTHER
-    mechanism specifically, by raising during identity resolution, which runs
-    inside ``on_message_send``'s outer try/except, before skill dispatch."""
-
-    def test_no_raw_exception_text_in_internal_error_message(self, integration_db):
+    def test_internal_error_carries_the_envelope_in_data(self, integration_db):
         import asyncio
 
         from a2a.server.routes.common import ServerCallContext
@@ -91,7 +53,7 @@ class TestInternalErrorForDoesNotLeakOntoWire:
         # even with no auth token presented -- the simplest way to raise inside the
         # outer try/except, before the skill-dispatch loop's own catch takes over.
         handler._get_auth_token = lambda *a, **kw: None  # type: ignore[assignment]
-        handler._resolve_a2a_identity = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError(_SECRET_MARKER))  # type: ignore[assignment]
+        handler._resolve_a2a_identity = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("boom"))  # type: ignore[assignment]
 
         message = create_a2a_message_with_skill(skill_name="get_products", parameters={"brief": "video ads"})
         params = SendMessageRequest(message=message)
@@ -99,12 +61,9 @@ class TestInternalErrorForDoesNotLeakOntoWire:
         with pytest.raises(InternalError) as exc_info:
             asyncio.run(handler.on_message_send(params, ServerCallContext()))
 
-        raised = exc_info.value
-        assert _SECRET_MARKER not in str(raised.message), (
-            f"raw exception text leaked into InternalError.message: {raised.message!r}"
-        )
-        # The safe two-layer envelope must still be present in data= -- this fix
-        # must not regress the one channel that WAS already safe.
-        envelope = raised.data
-        _assert_no_leak(envelope, "a2a InternalError.data")
+        # PRESENCE, not the absence of a marker string. Whether the message leaks is settled
+        # by construction; whether this path attaches an envelope at all is not, and an
+        # empty data= would satisfy any absence check.
+        envelope = exc_info.value.data
+        assert envelope is not None, "the A2A JSON-RPC InternalError must carry the envelope in data="
         assert envelope.get("adcp_error", {}).get("code"), f"expected a code in InternalError.data: {envelope!r}"
