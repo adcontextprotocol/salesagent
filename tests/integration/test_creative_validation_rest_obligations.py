@@ -38,16 +38,19 @@ class TestMissingFormatIdRejectedAtTheRequestBoundary:
     """Missing format_id is refused when the sync request is BUILT."""
 
     def test_missing_format_id_is_refused_naming_format_id(self, integration_db):
-        """Covers: UC-006-EXT-E-01 — a creative without format_id is rejected, naming it.
+        """Covers: UC-006-EXT-E-01 — a creative that identifies no format is rejected.
 
         This asserted a per-creative ``action="failed"`` coming out of
-        ``_sync_creatives_impl``. ``format_id`` is required by core/creative-asset.json @
-        AdCP 3.1.1, and every caller -- all three transports and both in-process media-buy
-        uploads -- now builds a SyncCreativesRequest before _impl runs, so the omission is
-        refused at the request boundary and the per-creative arm is never reached. The
-        obligation is unchanged: the rejection happens and it names format_id. Only the
-        layer that states it moved, and it moved to the layer a real buyer actually hits --
-        no transport could ever have delivered the payload the old assertion described.
+        ``_sync_creatives_impl``. Every caller -- all three transports and both in-process
+        media-buy uploads -- builds a SyncCreativesRequest before ``_impl`` runs, so the
+        request boundary refuses the omission and the per-creative branch never runs. No
+        transport could deliver the payload the old assertion described.
+
+        The obligation reads "naming it", meaning format_id. That over-specifies the pin:
+        core/creative-asset.json identifies a creative by format_id OR by format_kind, so
+        omitting format_id breaks the oneOf rather than a required-field rule, and neither
+        field is individually at fault. The buyer is owed the item and the keyword, which
+        is what the assertion below grades.
         """
         # Graded on the pydantic rejection and the FIELD PATH production derives from it.
         # This used to open adcp_validation_boundary itself to reproduce what the transports
@@ -75,7 +78,7 @@ class TestMissingFormatIdRejectedAtTheRequestBoundary:
         # THE ITEM, not "format_id". core/creative-asset.json identifies a creative by
         # format_id OR format_kind, so omitting format_id is a oneOf failure, and
         # core/error.json puts a oneOf's RFC 6901 pointer at the object -- no single field is
-        # at fault when both arms are legal. Asserting "format_id" demanded that the seller
+        # at fault when both branches are legal. Asserting "format_id" demands that the seller
         # name a field the buyer was never required to send. The obligation's "naming it" is
         # over-specified against the pin; what the buyer is owed, and gets, is the item plus
         # the keyword that says which rule it broke.

@@ -393,11 +393,11 @@ class TestSchemaInheritance:
             # identified by format_id OR by format_kind -- and codegen renders it as two
             # classes with identical field sets differing only in which identifier is
             # required, wrapped in a RootModel union. adcp.types exports the name
-            # CreativeAsset bound to ARM ONE, where format_id is required.
+            # CreativeAsset bound to the FIRST BRANCH, where format_id is required.
             #
-            # This subclasses that arm and relaxes format_id to optional, stating the oneOf
+            # This subclasses that branch and relaxes format_id to optional, stating the oneOf
             # as what it is (an XOR validator) on one flat model. Keeping the parent's
-            # requiredness would announce only half the schema: the format_kind arm would be
+            # requiredness announces half the schema, because the format_kind branch becomes
             # unsendable on all three transports at once. Rowed rather than admitted, because
             # a weakening a derived rule lets through is invisible and permanent.
             ("CreativeAssetRequest", "format_id"),
