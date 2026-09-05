@@ -56,16 +56,25 @@ class TestA2AProtocolCompliance:
     # the pinned adcp library version. See PR #1186 notes.
 
     # Skills this agent ships for which the pinned index has no task at all.
-    # Shrink-only: when the spec adds a schema for one of these, remove it
-    # here — never add an entry. A newly-added skill with no schema is a real
-    # failure, not something to allowlist.
-    # EMPTY, and measured empty: not one of the five entries this held
-    # (approve_creative, get_media_buy_status, optimize_media_buy,
-    # list_authorized_properties, update_performance_index) is in TOOLS, so not one is
-    # advertised, so the allowlist was protecting nothing. Skills are derived from the
-    # registry now, which is also why it cannot silently refill: "advertised but not in the
-    # roster" is no longer a state that exists.
-    _KNOWN_MISSING_SCHEMA_SKILLS: frozenset[str] = frozenset()
+    #
+    # The five entries this held — approve_creative, get_media_buy_status,
+    # optimize_media_buy, list_authorized_properties, update_performance_index — were all
+    # stale: not one is in TOOLS, so not one is advertised, so the list protected nothing.
+    # Skills derive from the registry now, which is why it cannot silently refill:
+    # "advertised but absent from the roster" is no longer a state that exists.
+    #
+    # complete_task is the one real entry, and it is an OWNER DECISION rather than a
+    # discovery. AdCP defines no complete-task task at any pinned version: 3.1's only
+    # "complet*" file is enums/completion-source.json, and the tool is not in
+    # _sdk_tool_defs, so registration never asks it to be SDK-grounded. The agent
+    # advertises it anyway, deliberately, until someone decides whether completing a task
+    # belongs to a sales agent at all. Listing it says that out loud; the alternative was
+    # a2a=False on its registry row, which would have hidden the same question.
+    #
+    # This entry therefore GROWS a list documented as shrink-only, which is worth seeing
+    # rather than quietly reclassifying: the rule exists so a newly-added skill with no
+    # schema is a failure and not a shrug, and the exception is a decision with an owner.
+    _KNOWN_MISSING_SCHEMA_SKILLS: frozenset[str] = frozenset({"complete_task"})
 
     @pytest.mark.asyncio
     async def test_all_adcp_skills_have_schemas(self):
