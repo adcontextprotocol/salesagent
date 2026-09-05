@@ -8,7 +8,7 @@ a leak. Until salesagent-prkv.88 this module enforced the tenant join only, was 
 its own docstring held up ``get_by_step_id()`` as "a correct tenant-scoped" reference
 implementation others should copy -- while that method filtered tenant_id and NOTHING else.
 Any method written by imitating the blessed pattern inherited the omission, and three
-buyer-facing surfaces did: get_task and complete_task (via get_by_step_id_or_raise) and
+buyer-facing surfaces did: get_task_status and complete_task (via get_by_step_id_or_raise) and
 list_tasks (via list_by_tenant/count_by_tenant). Within one tenant, any authenticated
 principal could read and complete another principal's task, and list every one of them.
 
@@ -157,7 +157,7 @@ class TestWorkflowRepositoryTenantIsolation:
 #: scoped upstream; say where.
 WORKFLOW_PRINCIPAL_SCOPE_EXEMPT: dict[str, str] = {
     "get_mappings_for_step": (
-        "Takes a step_id the caller already resolved. get_task passes the id of a step "
+        "Takes a step_id the caller already resolved. get_task_status passes the id of a step "
         "returned by the principal-scoped get_by_step_id_or_raise, so the scoping happened "
         "upstream; the admin blueprints act as the publisher."
     ),

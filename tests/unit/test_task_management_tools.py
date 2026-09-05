@@ -1,4 +1,4 @@
-"""Tests for task management MCP tools (list_tasks, get_task, complete_task).
+"""Tests for task management MCP tools (list_tasks, get_task_status, complete_task).
 
 These tests verify that the task management tools work correctly.
 Issue #816 revealed that list_tasks was broken but had no test coverage.
@@ -142,7 +142,7 @@ class TestListTasksTool:
 
 
 class TestGetTaskTool:
-    """Test the get_task MCP tool actually works."""
+    """Test the get_task_status MCP tool actually works."""
 
     @pytest.fixture
     def mock_workflow_repo(self):
@@ -183,8 +183,8 @@ class TestGetTaskTool:
         return step
 
     async def _get_get_task_fn(self):
-        """The registered implementation for get_task, called with a registry-built request."""
-        return _impl_caller("get_task")
+        """The registered implementation for get_task_status, called with a registry-built request."""
+        return _impl_caller("get_task_status")
 
     def _make_identity(self, sample_tenant):
         """Create a ResolvedIdentity for testing."""
@@ -198,7 +198,7 @@ class TestGetTaskTool:
     async def test_get_task_returns_task_details(
         self, mock_uow, mock_workflow_repo, sample_tenant, sample_workflow_step
     ):
-        """Test that get_task returns task details correctly."""
+        """Test that get_task_status returns task details correctly."""
         get_task_fn = await self._get_get_task_fn()
 
         mock_workflow_repo.get_by_step_id_or_raise.return_value = sample_workflow_step
@@ -217,7 +217,7 @@ class TestGetTaskTool:
         assert result.protocol.value == "media-buy"
 
     async def test_get_task_not_found_raises_error(self, mock_uow, mock_workflow_repo, sample_tenant):
-        """get_task raises the TYPED error when the task is not found.
+        """get_task_status raises the TYPED error when the task is not found.
 
         The typed class, not ToolError: this calls the impl, and translating
         AdCPTaskNotFoundError into a transport envelope is the boundary's job, graded at the
@@ -236,7 +236,7 @@ class TestGetTaskTool:
 
 
 class TestGetTaskSpecFlags:
-    """get_task honours the four fields protocol/get-task-status-request.json declares.
+    """get_task_status honours the four fields protocol/get-task-status-status-request.json declares.
 
     Grounded at the PIN (AdCP 3.1.1 via adcp 6.6.0):
       * ``include_result`` is GRADED — domains/media-buy/scenarios/get_products_async.yaml,
@@ -297,7 +297,7 @@ class TestGetTaskSpecFlags:
 
     async def _call(self, mock_uow, identity, **kwargs):
         with patch("src.core.tools.task_management.WorkflowUoW", return_value=mock_uow):
-            return await _impl_caller("get_task")(identity=identity, **kwargs)
+            return await _impl_caller("get_task_status")(identity=identity, **kwargs)
 
     def _identity(self):
         from tests.factories.principal import PrincipalFactory
@@ -313,7 +313,7 @@ class TestGetTaskSpecFlags:
         """A status-only poll carries no terminal payload, which is what the default buys.
 
         The pin defaults include_result to false "for lightweight status-only polls". Before
-        this, the terminal payload rode on EVERY get_task response, so the flag had nothing
+        this, the terminal payload rode on EVERY get_task_status response, so the flag had nothing
         to switch and a status poll shipped the whole result.
         """
         mock_workflow_repo.get_by_step_id_or_raise.return_value = completed_step
@@ -363,7 +363,7 @@ class TestGetTaskSpecFlags:
     ):
         """include_history=true returns the exchanges in the response schema's item shape.
 
-        {timestamp, type: request|response, data} per get-task-status-response.json. The
+        {timestamp, type: request|response, data} per get-task-status-status-response.json. The
         request entry is stamped with the step's created_at and the response entry with its
         completed_at, because those ARE when each exchange happened.
         """

@@ -252,7 +252,7 @@ async def test_find_schema_ref_searches_every_index_section():
 
     #1843: _find_schema_ref_for_task only checked the media-buy and
     signals sections. The pinned 3.1.1 index carries tasks in 10 sections;
-    sync-creatives and list-creatives live under "creative", get-task-status
+    sync-creatives and list-creatives live under "creative", get-task-status-status
     lives under "protocol" — none of them resolvable before this fix, so any
     validate_request/validate_response call for them silently no-op'd.
     """

@@ -35,7 +35,7 @@ from src.core.schemas import (
     GetMediaBuyDeliveryRequest,
     GetMediaBuysRequest,
     GetProductsRequest,
-    GetTaskRequest,
+    GetTaskStatusRequest,
     ListAccountsRequest,
     ListCreativeFormatsRequest,
     ListCreativesRequest,
@@ -54,7 +54,7 @@ from src.core.tools.media_buy_delivery import _get_media_buy_delivery_impl
 from src.core.tools.media_buy_list import _get_media_buys_impl
 from src.core.tools.media_buy_update import _update_media_buy_impl
 from src.core.tools.products import _get_products_impl
-from src.core.tools.task_management import _complete_task_impl, _get_task_impl, _list_tasks_impl
+from src.core.tools.task_management import _complete_task_impl, _get_task_status_impl, _list_tasks_impl
 
 
 @dataclass(frozen=True)
@@ -171,9 +171,9 @@ _TOOLS: dict[str, ToolSpec] = {
         impl=_list_tasks_impl,
         rest=RestBinding("POST", "/tasks/query"),
     ),
-    "get_task": ToolSpec(
-        dto=GetTaskRequest,
-        impl=_get_task_impl,
+    "get_task_status": ToolSpec(
+        dto=GetTaskStatusRequest,
+        impl=_get_task_status_impl,
         rest=RestBinding("POST", "/tasks/{task_id}", frozenset({"task_id"})),
     ),
     "complete_task": ToolSpec(

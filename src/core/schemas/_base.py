@@ -3395,21 +3395,21 @@ class CompleteTaskResponse(AdcpVersionEnvelope):
     completed_by: str = Field(..., description="Principal that completed it")
 
 
-class GetTaskRequest(LibraryGetTaskStatusRequest):
+class GetTaskStatusRequest(LibraryGetTaskStatusRequest):
     """Request to retrieve one task.
 
     Extends the SDK's model rather than restating it. The previous docstring recorded an
-    OWNER DECISION of 2026-08-31 -- "the pinned SDK ships no GetTaskRequest ... define ours
+    OWNER DECISION of 2026-08-31 -- "the pinned SDK ships no GetTaskStatusRequest ... define ours
     now, and when the SDK ships one, make it the BASE CLASS rather than maintaining a
     parallel definition". That instruction was already satisfiable when it was written: the
     SDK ships the type under a DIFFERENT NAME, ``GetTaskStatusRequest`` in
-    ``generated_poc.protocol``, because the spec calls the operation ``get-task-status``
-    while the tool is ``get_task``. A search for the type by the TOOL's name found nothing
+    ``generated_poc.protocol``, because the spec calls the operation ``get-task-status-status``
+    while the tool is ``get_task_status``. A search for the type by the TOOL's name found nothing
     and a hand-written parallel was declared instead.
 
     The hand-written version reproduced the SDK's field set exactly -- same fields, same
     single required one -- which is itself the answer to whether protocol/
-    get-task-status-request.json and core/tasks-get-request.json are the same operation:
+    get-task-status-status-request.json and core/tasks-get-request.json are the same operation:
     someone already decided they were, then wrote the fields out instead of inheriting. What
     the parallel lost was the version envelope: under ``SalesAgentBaseModel`` this request
     could not carry ``adcp_version`` / ``adcp_major_version`` at all.
@@ -3425,7 +3425,7 @@ class GetTaskRequest(LibraryGetTaskStatusRequest):
 class TaskSummary(LibraryTaskSummary):
     """One row of ``list_tasks``, extending the pinned ``tasks[]`` item.
 
-    The pinned item and ``get-task-status-response.json`` share a byte-identical seven-field
+    The pinned item and ``get-task-status-status-response.json`` share a byte-identical seven-field
     core -- task_id, task_type, status, created_at, updated_at, completed_at, has_webhook --
     and differ only in ``domain`` vs ``protocol``, which are the same axis under two names
     (``Domain`` is media-buy/signals/creative; ``AdcpProtocol`` adds four more). So the two
@@ -3501,8 +3501,8 @@ class ListTasksResponse(LibraryListTasksResponse):
         return result
 
 
-class GetTaskResponse(LibraryGetTaskStatusResponse):
-    """Extends the pinned GetTaskStatusResponse (the spec names the task ``get-task-status``).
+class GetTaskStatusResponse(LibraryGetTaskStatusResponse):
+    """Extends the pinned GetTaskStatusResponse (the spec names the task ``get-task-status-status``).
 
     Was a raw dict (GH #2202): ``protocol`` and ``task_type`` absent, and ``type`` emitted in
     task_type's place carrying ``step_type``. Same root cause and same fix as
