@@ -55,25 +55,9 @@ class TestA2AProtocolCompliance:
     # Real schema conformance is covered by tests/unit/test_adcp_contract.py against
     # the pinned adcp library version. See PR #1186 notes.
 
-    # Skills this agent ships for which the pinned index has no task at all.
-    #
-    # The five entries this held — approve_creative, get_media_buy_status,
-    # optimize_media_buy, list_authorized_properties, update_performance_index — were all
-    # stale: not one is in TOOLS, so not one is advertised, so the list protected nothing.
-    # Skills derive from the registry now, which is why it cannot silently refill:
-    # "advertised but absent from the roster" is no longer a state that exists.
-    #
-    # complete_task is the one real entry, and it is an OWNER DECISION rather than a
-    # discovery. AdCP defines no complete-task task at any pinned version: 3.1's only
-    # "complet*" file is enums/completion-source.json, and the tool is not in
-    # _sdk_tool_defs, so registration never asks it to be SDK-grounded. The agent
-    # advertises it anyway, deliberately, until someone decides whether completing a task
-    # belongs to a sales agent at all. Listing it says that out loud; the alternative was
-    # a2a=False on its registry row, which would have hidden the same question.
-    #
-    # This entry therefore GROWS a list documented as shrink-only, which is worth seeing
-    # rather than quietly reclassifying: the rule exists so a newly-added skill with no
-    # schema is a failure and not a shrug, and the exception is a decision with an owner.
+    # Advertised skills with no task in the pinned index. Shrink-only, except by decision:
+    # AdCP defines no complete-task at any version and we advertise it anyway, pending
+    # salesagent-f45uf.
     _KNOWN_MISSING_SCHEMA_SKILLS: frozenset[str] = frozenset({"complete_task"})
 
     @pytest.mark.asyncio
