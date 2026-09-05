@@ -56,8 +56,8 @@ class TestA2AProtocolCompliance:
     # the pinned adcp library version. See PR #1186 notes.
 
     # Advertised skills with no task in the pinned index. Shrink-only, except by decision:
-    # AdCP defines no complete-task at any version and we advertise it anyway, pending
-    # salesagent-f45uf.
+    # AdCP defines no complete-task at any version and we advertise it anyway.
+    # FIXME(#1942): tracked there; #1833 decides whether the task belongs here at all.
     _KNOWN_MISSING_SCHEMA_SKILLS: frozenset[str] = frozenset({"complete_task"})
 
     @pytest.mark.asyncio

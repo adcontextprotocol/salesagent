@@ -263,7 +263,7 @@ class TestCaptureUniformity:
     @pytest.mark.xfail(
         strict=True,
         reason=(
-            "salesagent-ehr18: the expectation is right and unmet. The impl hashes "
+            "#2214: the expectation is right and unmet. The impl hashes "
             "raw_wire_payload when a transport threads it and the model dump when none "
             "does, so REST and MCP disagree about what 'the same request' is. Belongs in "
             "BDD once the capture point is uniform -- a cross-transport claim is the one "
@@ -303,8 +303,8 @@ class TestWireLevelHashInput:
     the digest over ``raw_wire_payload`` when a transport threads it and falls back to the
     model dump when none does, so "is the hash over the wire" is answered per transport by
     whether that transport remembered to plumb its bytes into business logic. MCP threads
-    them from ctx state; REST does not. The mechanism needs revising -- salesagent-ehr18 --
-    and until it is, this grades the one transport where the behaviour exists.
+    them from ctx state; REST does not. The mechanism needs revising (#2214), and until it
+    is, this grades the one transport where the behaviour exists.
     """
 
     def test_equivalent_but_differently_encoded_retry_conflicts(self, integration_db):

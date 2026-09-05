@@ -59,7 +59,7 @@ def _mock_response() -> GetProductsResponse:
 # MCP boundary (generated)
 # ---------------------------------------------------------------------------
 # The brand-shorthand tests that stood here are gone with the builder that applied the
-# coercion; the obligation is recorded on salesagent-pt5rn, against the compatibility
+# coercion; the obligation is recorded against the compatibility
 # middleware that will own it.
 #
 # There is no get_products MCP wrapper to test. One generated callable serves every row, so
