@@ -1145,7 +1145,7 @@ class TestMissingFormatFails:
         This used to branch: MCP rejected at the boundary while impl/a2a/rest reached _impl
         and came back with a per-creative ``action="failed"``. There is one accepted shape
         now -- the DTO -- so the rejection happens in the same place on all of them and the
-        per-creative arm is unreachable for this payload.
+        per-creative branch is unreachable for this payload.
 
         The rejection is a oneOf, not a missing field: core/creative-asset.json identifies a
         creative by format_id OR format_kind, so no single field is at fault and

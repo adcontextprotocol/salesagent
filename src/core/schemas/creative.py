@@ -35,9 +35,9 @@ from adcp.types import (
     SyncCreativesRequest as LibrarySyncCreativesRequest,
 )
 
-# The ARM, named at its generated path. ``adcp.types.CreativeAsset`` is bound to this same
-# class at RUNTIME but resolves to the RootModel UNION under mypy, so the public alias made
-# static and runtime disagree about what this model extends (salesagent-tr9xa).
+# The BRANCH, named at its generated path. ``adcp.types.CreativeAsset`` binds to this same
+# class at RUNTIME, but mypy resolves the public alias to the RootModel UNION, so static and
+# runtime disagreed about what this model extends (salesagent-tr9xa).
 from adcp.types.generated_poc.core.creative_asset import CreativeAsset1 as LibraryCreativeAsset
 from adcp.types.generated_poc.core.provenance import AiTool  # TODO: no stable alias in adcp.types
 from adcp.types.generated_poc.creative.list_creatives_response import (
@@ -161,24 +161,23 @@ class CreativeAssetRequest(LibraryCreativeAsset):
     missing REQUEST ones, which is the whole defect in one word.
 
     THE ONEOF, FLATTENED. core/creative-asset.json identifies a creative by ``format_id`` OR
-    by ``format_kind``, and the SDK DOES model that: datamodel-codegen renders two classes
-    with identical field sets differing only in which identifier is required
-    (CreativeAsset1, CreativeAsset2), wrapped in a RootModel union. Pydantic's union
-    validation of that type IS the oneOf, and re-implementing it would normally be the
-    mistake.
+    by ``format_kind``. The SDK models that: datamodel-codegen renders two classes with
+    identical field sets, differing only in which identifier each requires (CreativeAsset1,
+    CreativeAsset2), wrapped in a RootModel union. Pydantic's union validation of that type
+    IS the oneOf, so re-implementing it would normally be the mistake.
 
-    It is not used for ONE reason, and it is a wire-contract reason rather than a taste one.
-    A union arm's failure carries the arm's class name in its ``loc``, so the pointer that
-    reaches the buyer is ``/creatives/0/CreativeAsset1/name``. ``core/error.json`` requires
-    ``issues[].pointer`` to be an RFC 6901 pointer to the offending field IN THE REQUEST
-    PAYLOAD, and ``CreativeAsset1`` is not a member of anything the buyer sent -- it is a
-    codegen artifact name that appears nowhere in AdCP. So the SDK's validation is right and
-    its error reporting is not conformant; reported upstream as salesagent-tr9xa.
+    One thing rules it out, and it is a wire-contract reason rather than a taste one. A
+    failing union branch carries its own class name in the pydantic ``loc``, so the buyer
+    receives the pointer ``/creatives/0/CreativeAsset1/name``. ``core/error.json`` requires
+    ``issues[].pointer`` to address the offending field IN THE REQUEST PAYLOAD, and
+    ``CreativeAsset1`` names nothing the buyer sent: it is a codegen artifact that appears
+    nowhere in AdCP. The SDK validates correctly and reports the failure unconformantly.
+    Reported upstream as salesagent-tr9xa.
 
-    Flattening onto the arm -- which already carries every field of both -- keeps the
-    validation and fixes the pointer: ``format_id`` is relaxed to optional, the constraint
-    is stated as the ``oneOf`` keyword it is, and the pointer stays ``/creatives/0``. Revert
-    to the union type the day its locs are addressable.
+    Flattening onto one branch -- which already carries every field of both -- keeps the
+    validation and fixes the pointer. ``format_id`` relaxes to optional, the constraint
+    states itself as the ``oneOf`` keyword, and the pointer stays ``/creatives/0``. Extend
+    the union type instead on the day its locs address the payload.
     """
 
     # from_attributes: a subclass of an SDK type must accept INSTANCES of that SDK type.
@@ -188,9 +187,9 @@ class CreativeAssetRequest(LibraryCreativeAsset):
     # round-trip through a dict to get past it.
     model_config = ConfigDict(extra=get_pydantic_extra_mode(), from_attributes=True)
 
-    # WEAKENED, deliberately: required -> optional. The parent is one arm of the oneOf, where
-    # format_id is the identifier; on the other arm format_kind is, and format_id is absent.
-    # Requiring it here would announce only half the schema.
+    # WEAKENED, deliberately: required -> optional. The parent is one branch of the oneOf,
+    # where format_id is the identifier. The other branch identifies by format_kind and omits
+    # format_id, so requiring it here announces half the schema.
     # LibraryFormatId, not the local FormatId subclass: the ONLY axis this redeclaration
     # changes is nullability. Narrowing to the subclass would repeat the defect above one
     # level down -- the SDK's own FormatId would stop validating into its own field.
@@ -207,9 +206,9 @@ class CreativeAssetRequest(LibraryCreativeAsset):
         keyword is ``oneOf``. The schema even provides ``issues[].discriminator`` for naming
         the variant.
 
-        So this deliberately does NOT attach a loc pointing at ``format_id``. Doing that
-        reports a field the buyer may not have been required to send at all -- the
-        format_kind arm is equally legal.
+        So this deliberately does NOT attach a loc pointing at ``format_id``. That would
+        report a field the buyer never had to send, because the format_kind branch is
+        equally legal.
 
         The error TYPE is the keyword. A plain ``ValueError`` becomes pydantic's
         ``value_error``, which ``PYDANTIC_KEYWORD_MAP`` classifies as ``None`` -- "no honest
