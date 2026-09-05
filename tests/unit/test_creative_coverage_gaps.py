@@ -21,7 +21,6 @@ from pydantic import BaseModel
 from tests.factories import PrincipalFactory
 from tests.factories.creative_asset import build_assets, image_spec, make_creative_asset_minimal
 from tests.factories.webhook import PushNotificationConfigRequestFactory
-from tests.helpers.construction_assertions import assert_construction_rejects
 from tests.helpers.creative_test_helpers import (
     make_creative_dict as _make_creative_dict,
 )
