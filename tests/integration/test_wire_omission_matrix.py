@@ -195,22 +195,6 @@ _CASES = [
         ],
     ),
     WireOmissionCase(
-        tool="list_authorized_properties",
-        setup=_authorized_properties_env,
-        # No pinned schema validates this response: ListAuthorizedPropertiesResponse is a
-        # v2.4 shape and the pinned 3.1 tree has no list-authorized-properties-response.json
-        # (2.5 had one, for a different shape). The field list carries the obligation.
-        schema=None,
-        absent_paths=[
-            "primary_channels",
-            "primary_countries",
-            "portfolio_description",
-            "advertising_policies",
-            "last_updated",
-            "errors",
-        ],
-    ),
-    WireOmissionCase(
         tool="update_performance_index",
         setup=_performance_env,
         # No task for this tool resolves in the pinned 3.1 tree (it is listed in

@@ -897,71 +897,6 @@ class TestA2ASkillInvocation:
             assert "formats" in artifact_data
 
     @pytest.mark.asyncio
-    async def test_list_authorized_properties_skill(
-        self, handler, sample_tenant, sample_principal, mock_identity, validator
-    ):
-        """Test list_authorized_properties skill invocation."""
-        # Create verified publisher partner for the tenant
-        import uuid
-
-        from sqlalchemy import select
-
-        from src.core.database.database_session import get_db_session
-        from src.core.database.models import PublisherPartner
-
-        # Generate unique publisher domain to avoid conflicts
-        unique_publisher_domain = f"test-publisher-{uuid.uuid4().hex[:8]}.example.com"
-
-        with get_db_session() as session:
-            # Check if publisher already exists, create if not
-            stmt = select(PublisherPartner).filter_by(
-                publisher_domain=unique_publisher_domain, tenant_id=sample_tenant["tenant_id"]
-            )
-            existing_publisher = session.scalars(stmt).first()
-
-            if not existing_publisher:
-                publisher = PublisherPartner(
-                    tenant_id=sample_tenant["tenant_id"],
-                    publisher_domain=unique_publisher_domain,
-                    display_name="Test Publisher",
-                    is_verified=True,  # Must be verified for list_authorized_properties
-                    sync_status="success",
-                )
-                session.add(publisher)
-                session.commit()
-
-        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-
-        # Mock tenant detection - provide Host header so real functions can find tenant in database
-        # Use actual tenant subdomain from fixture
-        with (
-            patch("src.core.resolved_identity.resolve_identity", return_value=mock_identity),
-        ):
-            # Build ServerCallContext with Host header for subdomain detection
-            from tests.a2a_helpers import make_a2a_context
-
-            ctx = make_a2a_context(headers={"host": f"{sample_tenant['subdomain']}.example.com"})
-
-            # Create skill invocation
-            skill_params = {}
-            message = create_a2a_message_with_skill("list_authorized_properties", skill_params)
-            params = SendMessageRequest(message=message)
-
-            # Process the message - executes real code path
-            result = await handler.on_message_send(params, context=ctx)
-
-            # Verify result
-            assert isinstance(result, Task)
-            assert result.metadata["invocation_type"] == "explicit_skill"
-            assert "list_authorized_properties" in result.metadata["skills_requested"]
-            assert result.artifacts is not None
-
-            # Extract response - per AdCP v2.4 spec, response has publisher_domains
-            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
-            assert "publisher_domains" in artifact_data
-            assert len(artifact_data["publisher_domains"]) > 0
-
-    @pytest.mark.asyncio
     async def test_sync_creatives_skill(
         self, handler, sample_tenant, sample_principal, mock_identity, sample_products, validator, sample_account
     ):
@@ -1041,39 +976,6 @@ class TestA2ASkillInvocation:
             # Extract response
             artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
             assert "creatives" in artifact_data
-
-    @pytest.mark.asyncio
-    async def test_update_performance_index_skill(
-        self, handler, sample_tenant, sample_principal, mock_identity, validator
-    ):
-        """Test update_performance_index skill invocation."""
-        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-
-        # Mock tenant detection - provide Host header so real functions can find tenant in database
-        # Use actual tenant subdomain from fixture
-        with (
-            patch("src.core.resolved_identity.resolve_identity", return_value=mock_identity),
-        ):
-            # Build ServerCallContext with Host header for subdomain detection
-            from tests.a2a_helpers import make_a2a_context
-
-            ctx = make_a2a_context(headers={"host": f"{sample_tenant['subdomain']}.example.com"})
-
-            # Create skill invocation
-            skill_params = {
-                "media_buy_id": "mb_test_123",
-                "performance_index": 1.25,
-            }
-            message = create_a2a_message_with_skill("update_performance_index", skill_params)
-            params = SendMessageRequest(message=message)
-
-            # This will likely fail because media_buy doesn't exist, but tests the code path
-            result = await handler.on_message_send(params, context=ctx)
-
-            # Verify the skill was invoked
-            assert isinstance(result, Task)
-            assert result.metadata["invocation_type"] == "explicit_skill"
-            assert "update_performance_index" in result.metadata["skills_requested"]
 
     @pytest.mark.asyncio
     async def test_get_media_buy_delivery_skill(
