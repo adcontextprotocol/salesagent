@@ -861,42 +861,6 @@ class TestA2ASkillInvocation:
             assert payload["revision"] == 2, f"missing/incorrect revision on wire: {payload!r}"
 
     @pytest.mark.asyncio
-    async def test_list_creative_formats_skill(
-        self, handler, sample_tenant, sample_principal, sample_products, mock_identity, validator
-    ):
-        """Test list_creative_formats skill invocation."""
-        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-
-        # Mock tenant detection - provide Host header so real functions can find tenant in database
-        # Use actual tenant subdomain from fixture
-        with (
-            patch("src.core.resolved_identity.resolve_identity", return_value=mock_identity),
-        ):
-            # Build ServerCallContext with Host header for subdomain detection
-            from tests.a2a_helpers import make_a2a_context
-
-            ctx = make_a2a_context(headers={"host": f"{sample_tenant['subdomain']}.example.com"})
-
-            # Create skill invocation
-            skill_params = {"brief": "display formats"}
-            message = create_a2a_message_with_skill("list_creative_formats", skill_params)
-            params = SendMessageRequest(message=message)
-
-            # Process the message - executes real code path
-            result = await handler.on_message_send(params, context=ctx)
-
-            # Verify result
-            assert isinstance(result, Task)
-            assert result.metadata["invocation_type"] == "explicit_skill"
-            assert "list_creative_formats" in result.metadata["skills_requested"]
-            assert result.artifacts is not None
-            assert len(result.artifacts) == 1
-
-            # Extract response
-            artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
-            assert "formats" in artifact_data
-
-    @pytest.mark.asyncio
     async def test_sync_creatives_skill(
         self, handler, sample_tenant, sample_principal, mock_identity, sample_products, validator, sample_account
     ):
@@ -1048,8 +1012,16 @@ class TestA2ASkillInvocation:
             assert_delivery_forwarded_account(mock_delivery, expected, media_buy_ids=["mb_test_123"])
 
     @pytest.mark.asyncio
-    async def test_approve_creative_skill(self, handler, sample_tenant, sample_principal, mock_identity, validator):
-        """Test approve_creative skill raises UnsupportedOperationError."""
+    async def test_unimplemented_skill_is_refused(self, handler, sample_tenant, sample_principal, mock_identity, validator):
+        """An A2A skill this agent does not implement is refused, not silently accepted.
+
+        One test, not three. This stood as approve_creative, get_media_buy_status and
+        optimize_media_buy -- three names that were dropped from the agent card when every
+        A2A skill was locked to a tool the pinned spec defines. Once they stopped existing
+        they were three arbitrary unknown strings testing one dispatch behaviour, which is
+        the hand-written enumeration the registry replaced: dispatch derives from TOOLS, so
+        "not in TOOLS" is one condition however many names you spell it with.
+        """
         from a2a.utils.errors import A2AError
 
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
@@ -1059,51 +1031,12 @@ class TestA2ASkillInvocation:
 
             ctx = make_a2a_context(headers={"host": f"{sample_tenant['subdomain']}.example.com"})
 
-            skill_params = {"creative_id": "creative_test_123"}
-            message = create_a2a_message_with_skill("approve_creative", skill_params)
+            skill_params = {"creative_id": "creative_test_123"}  # any params; the NAME is what is refused
+            message = create_a2a_message_with_skill("no_such_skill_exists", skill_params)
             params = SendMessageRequest(message=message)
 
             with pytest.raises(A2AError):
                 await handler.on_message_send(params, context=ctx)
-
-    @pytest.mark.asyncio
-    async def test_get_media_buy_status_skill(self, handler, sample_tenant, sample_principal, mock_identity, validator):
-        """Test get_media_buy_status skill raises UnsupportedOperationError."""
-        from a2a.utils.errors import A2AError
-
-        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-
-        with patch("src.core.resolved_identity.resolve_identity", return_value=mock_identity):
-            from tests.a2a_helpers import make_a2a_context
-
-            ctx = make_a2a_context(headers={"host": f"{sample_tenant['subdomain']}.example.com"})
-
-            skill_params = {"media_buy_id": "mb_test_123"}
-            message = create_a2a_message_with_skill("get_media_buy_status", skill_params)
-            params = SendMessageRequest(message=message)
-
-            with pytest.raises(A2AError):
-                await handler.on_message_send(params, context=ctx)
-
-    @pytest.mark.asyncio
-    async def test_optimize_media_buy_skill(self, handler, sample_tenant, sample_principal, mock_identity, validator):
-        """Test optimize_media_buy skill raises UnsupportedOperationError."""
-        from a2a.utils.errors import A2AError
-
-        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-
-        with patch("src.core.resolved_identity.resolve_identity", return_value=mock_identity):
-            from tests.a2a_helpers import make_a2a_context
-
-            ctx = make_a2a_context(headers={"host": f"{sample_tenant['subdomain']}.example.com"})
-
-            skill_params = {"media_buy_id": "mb_test_123"}
-            message = create_a2a_message_with_skill("optimize_media_buy", skill_params)
-            params = SendMessageRequest(message=message)
-
-            with pytest.raises(A2AError):
-                await handler.on_message_send(params, context=ctx)
-
 
 if __name__ == "__main__":
     # Run tests directly

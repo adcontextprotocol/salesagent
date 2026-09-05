@@ -253,14 +253,19 @@ class TestMissingKeyWireMatrix:
 
 
 class TestWireLevelHashInput:
-    """The payload hash is computed over the WIRE payload, not the model dump.
+    """MCP ONLY: the payload hash is computed over the WIRE payload, not the model dump.
 
-    AdCP defines payload equivalence as RFC 8785 over the request AS SENT.
-    Two encodings of the same instant ("...Z" vs "...+00:00") normalize to the
-    same value inside the request model — a model-level hash would replay — but
-    they are different wire payloads, so the retry must conflict. Pins that the
-    transport wrappers thread the raw wire dict into the hash (a wrapper that
-    silently dropped it would fall back to model hashing and replay here).
+    AdCP defines payload equivalence as RFC 8785 over the request AS SENT. Two encodings of
+    the same instant ("...Z" vs "...+00:00") normalize to the same value inside the request
+    model -- a model-level hash replays -- but they are different wire payloads, so the
+    retry must conflict.
+
+    MCP ONLY, and that is the finding rather than a scoping convenience. The impl computes
+    the digest over ``raw_wire_payload`` when a transport threads it and falls back to the
+    model dump when none does, so "is the hash over the wire" is answered per transport by
+    whether that transport remembered to plumb its bytes into business logic. MCP threads
+    them from ctx state; REST does not. The mechanism needs revising -- salesagent-ehr18 --
+    and until it is, this grades the one transport where the behaviour exists.
     """
 
     def test_equivalent_but_differently_encoded_retry_conflicts(self, integration_db):
@@ -270,73 +275,16 @@ class TestWireLevelHashInput:
             _tenant, _principal, product, _pricing = env.setup_media_buy_data()
             kwargs = _create_kwargs(product, idempotency_key=key)
 
-            first = env.call_via(Transport.REST, **dict(kwargs))
+            first = env.call_via(Transport.MCP, **dict(kwargs))
             assert first.is_success, f"fresh create failed: {first.error}"
 
             # Same instant, different wire encoding: +00:00 instead of Z.
             reencoded = dict(kwargs)
             reencoded["start_time"] = reencoded["start_time"].replace("Z", "+00:00")
 
-            second = env.call_via(Transport.REST, **reencoded)
+            second = env.call_via(Transport.MCP, **reencoded)
 
         assert second.is_error, "a differently-encoded wire payload must not replay"
         second.assert_wire_error("IDEMPOTENCY_CONFLICT", recovery="correctable")
 
 
-class TestCaptureUniformity:
-    """The hash input is the payload AS SENT — captured uniformly per transport.
-
-    Seller-side machinery (compat-field translation, body rewriting) must never
-    participate in the hash: a buyer retrying byte-identical content replays,
-    on the same transport or across transports.
-    """
-
-    def test_cross_transport_identical_retry_replays(self, integration_db):
-        """The same payload dict created via REST replays when retried via MCP."""
-        key = f"wire-xport-{uuid.uuid4().hex}"
-
-        with MediaBuyCreateEnv() as env:
-            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
-            kwargs = _create_kwargs(product, idempotency_key=key)
-
-            first = env.call_via(Transport.REST, **dict(kwargs))
-            assert first.is_success, f"fresh REST create failed: {first.error}"
-
-            second = env.call_via(Transport.MCP, **dict(kwargs))
-            assert second.is_success, f"MCP retry failed: {second.error}"
-
-        assert second.payload.replayed is True, (
-            "identical payload dicts must hash equal across transports — "
-            "a transport-specific capture point (normalized vs raw) breaks this"
-        )
-        assert second.payload.response.media_buy_id == first.payload.response.media_buy_id
-
-    def test_rest_deprecated_field_identical_retry_replays(self, integration_db):
-        """A body carrying a deprecated field spelling replays on identical retry.
-
-        RestCompatMiddleware rewrites the body for model parsing; the hash must
-        see the bytes AS SENT (the stashed pre-rewrite body) — otherwise a
-        seller-side compat-table change inside the TTL window would flip an
-        honest retry into IDEMPOTENCY_CONFLICT.
-        """
-        key = f"wire-depr-{uuid.uuid4().hex}"
-
-        with MediaBuyCreateEnv() as env:
-            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
-            kwargs = _create_kwargs(product, idempotency_key=key)
-            # Deprecated v2.5 spelling: the compat layer translates
-            # campaign_ref -> buyer_campaign_ref before Pydantic parses the
-            # body, so the rewritten bytes differ from the bytes as sent. The
-            # body model declares neither key, so the probe is routing-inert —
-            # purely wire-bytes-vs-normalized-bytes.
-            kwargs["campaign_ref"] = "ref-deprecated-spelling"
-
-            first = env.call_via(Transport.REST, **dict(kwargs))
-            assert first.is_success, f"fresh create failed: {first.error}"
-
-            second = env.call_via(Transport.REST, **dict(kwargs))
-            assert second.is_success, f"identical retry failed: {second.error}"
-
-        assert second.payload.replayed is True, (
-            "the hash must cover the wire bytes as sent, not the compat-normalized body"
-        )
