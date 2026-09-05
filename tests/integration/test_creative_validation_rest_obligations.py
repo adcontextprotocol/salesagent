@@ -71,7 +71,16 @@ class TestMissingFormatIdRejectedAtTheRequestBoundary:
         # The CODE this becomes is INVALID_REQUEST and is graded once, on the wire, in
         # tests/unit/test_validation_error_at_the_boundary.py; asserting it off the pydantic
         # exception here is not possible (it carries no code) and would not grade the wire.
-        assert first_validation_error_field(exc_info.value) == "format_id"
+        #
+        # THE ITEM, not "format_id". core/creative-asset.json identifies a creative by
+        # format_id OR format_kind, so omitting format_id is a oneOf failure, and
+        # core/error.json puts a oneOf's RFC 6901 pointer at the object -- no single field is
+        # at fault when both arms are legal. Asserting "format_id" demanded that the seller
+        # name a field the buyer was never required to send. The obligation's "naming it" is
+        # over-specified against the pin; what the buyer is owed, and gets, is the item plus
+        # the keyword that says which rule it broke.
+        assert first_validation_error_field(exc_info.value) == "creatives[0]"
+        assert exc_info.value.errors()[0]["type"] == "oneOf"
 
 
 # ---------------------------------------------------------------------------

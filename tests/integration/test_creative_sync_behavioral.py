@@ -1830,7 +1830,11 @@ class TestSyncExtensions:
                 ],
             )
 
-        assert first_validation_error_field(exc_info.value) == "name"
+        # The WHOLE path, item index included: core/error.json wants an RFC 6901 pointer to
+        # the offending field, and "name" alone does not locate which creative was wrong in
+        # a batch. Unlike the format_id case this IS a single-field failure, so the pointer
+        # reaches the field.
+        assert first_validation_error_field(exc_info.value) == "creatives[0].name"
 
     def test_unknown_format_fails_with_hint(self, integration_db):
         """Covers: UC-006-EXT-F-01 — format not in registry → failed with hint."""

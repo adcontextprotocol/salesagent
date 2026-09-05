@@ -160,19 +160,25 @@ class CreativeAssetRequest(LibraryCreativeAsset):
     The old docstring called the response model "richer". It is -- in RESPONSE fields, while
     missing REQUEST ones, which is the whole defect in one word.
 
-    THE ONEOF, FLATTENED ON PURPOSE. core/creative-asset.json identifies a creative by
-    ``format_id`` OR by ``format_kind``. datamodel-codegen renders that as two classes with
-    IDENTICAL field sets differing only in which identifier is required (CreativeAsset1,
-    CreativeAsset2), wrapped in a RootModel union -- and then ``adcp.types`` exports the
-    name ``CreativeAsset`` bound to ARM ONE, not the union. That codegen shape is an SDK
-    defect, reported upstream, not a contract to adopt: a RootModel forces ``.root`` on
-    every reader and puts the arm's class name into buyer-facing error paths
-    (``creatives[0].CreativeAsset1.name``), a name that appears nowhere in AdCP.
+    THE ONEOF, FLATTENED. core/creative-asset.json identifies a creative by ``format_id`` OR
+    by ``format_kind``, and the SDK DOES model that: datamodel-codegen renders two classes
+    with identical field sets differing only in which identifier is required
+    (CreativeAsset1, CreativeAsset2), wrapped in a RootModel union. Pydantic's union
+    validation of that type IS the oneOf, and re-implementing it would normally be the
+    mistake.
 
-    So the oneOf is expressed here instead, on the arm -- which already carries every
-    field of both. ``format_id`` is relaxed to optional and the constraint is stated as
-    what it is: exactly one identifier. One flat model, both arms reachable, field paths
-    that name the buyer's own fields.
+    It is not used for ONE reason, and it is a wire-contract reason rather than a taste one.
+    A union arm's failure carries the arm's class name in its ``loc``, so the pointer that
+    reaches the buyer is ``/creatives/0/CreativeAsset1/name``. ``core/error.json`` requires
+    ``issues[].pointer`` to be an RFC 6901 pointer to the offending field IN THE REQUEST
+    PAYLOAD, and ``CreativeAsset1`` is not a member of anything the buyer sent -- it is a
+    codegen artifact name that appears nowhere in AdCP. So the SDK's validation is right and
+    its error reporting is not conformant; reported upstream as salesagent-tr9xa.
+
+    Flattening onto the arm -- which already carries every field of both -- keeps the
+    validation and fixes the pointer: ``format_id`` is relaxed to optional, the constraint
+    is stated as the ``oneOf`` keyword it is, and the pointer stays ``/creatives/0``. Revert
+    to the union type the day its locs are addressable.
     """
 
     # from_attributes: a subclass of an SDK type must accept INSTANCES of that SDK type.
@@ -211,7 +217,8 @@ class CreativeAssetRequest(LibraryCreativeAsset):
         an envelope with no structured reason. This rejection CAN be substantiated as
         ``oneOf``, so it says so (see ``SELLER_RAISED_KEYWORDS``).
         """
-        if (self.format_id is None) == (self.format_kind is None):
+        supplied = sum(identifier is not None for identifier in (self.format_id, self.format_kind))
+        if supplied != 1:
             raise PydanticCustomError("oneOf", "provide exactly one of format_id or format_kind")
         return self
 

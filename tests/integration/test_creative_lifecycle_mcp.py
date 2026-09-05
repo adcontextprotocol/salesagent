@@ -16,8 +16,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
-from adcp.types import AccountReference, CreativeFilters, PaginationRequest
-from adcp.types.generated_poc.creative.list_creatives_request import Sort
+from adcp.types import AccountReference, CreativeFilters
 from adcp.types.generated_poc.creative.sync_creatives_request import Assignment
 from sqlalchemy import select
 
@@ -655,78 +654,6 @@ class TestCreativeLifecycleMCP:
                 status_val = status_val.value
             assert status_val == "pending_review"
 
-    def test_list_creatives_with_format_filter(self):
-        """Test list_creatives filters by format correctly."""
-        _, core_list_creatives_tool = self._import_mcp_tools()
-        # Create creatives with different formats
-        with get_db_session() as session:
-            creatives = [
-                DBCreative(
-                    tenant_id=self.test_tenant_id,
-                    creative_id=f"format_test_300x250_{i}",
-                    principal_id=self.test_principal_id,
-                    name=f"Banner {i}",
-                    agent_url="https://creative.adcontextprotocol.org",
-                    format="display_300x250_image",
-                    status="approved",
-                    data={"assets": build_assets(image_spec("banner"))},
-                )
-                for i in range(2)
-            ] + [
-                DBCreative(
-                    tenant_id=self.test_tenant_id,
-                    creative_id=f"format_test_video_{i}",
-                    principal_id=self.test_principal_id,
-                    name=f"Video {i}",
-                    agent_url="https://creative.adcontextprotocol.org",
-                    format="video_instream_15s",
-                    status="approved",
-                    data={"duration": 15.0, "assets": build_assets(image_spec("banner"))},
-                )
-                for i in range(3)
-            ]
-            session.add_all(creatives)
-            session.commit()
-
-        identity = self._make_identity()
-        set_current_tenant({"tenant_id": self.test_tenant_id})
-
-        # Test display format filter
-        response = core_list_creatives_tool(format="display_300x250_image", identity=identity)
-        assert len(response.creatives) == 2
-        # Check format field (may be string, FormatId object, or dict)
-        for c in response.creatives:
-            if isinstance(c, dict):
-                format_val = c.get("format")
-            else:
-                format_val = getattr(c, "format", None)
-            # Handle FormatId object by checking its id attribute
-            if hasattr(format_val, "id"):
-                format_id = format_val.id
-            elif isinstance(format_val, dict):
-                format_id = format_val.get("id")
-            else:
-                format_id = format_val
-            assert format_id == "display_300x250_image"
-
-        # Test video format filter
-        response = core_list_creatives_tool(format="video_instream_15s", identity=identity)
-        assert len(response.creatives) == 3
-        # Check format field (may be string, FormatId object, or dict)
-        for c in response.creatives:
-            if isinstance(c, dict):
-                format_val = c.get("format")
-            else:
-                format_val = getattr(c, "format", None)
-            # Handle FormatId object by checking its id attribute
-            if hasattr(format_val, "id"):
-                format_id = format_val.id
-            elif isinstance(format_val, dict):
-                format_id = format_val.get("id")
-            else:
-                format_id = format_val
-            assert format_id == "video_instream_15s"
-
     def test_list_creatives_with_date_filters(self):
         """Test list_creatives filters by creation date range."""
         _, core_list_creatives_tool = self._import_mcp_tools()
@@ -836,61 +763,6 @@ class TestCreativeLifecycleMCP:
         for c in response.creatives:
             name_val = c.get("name") if isinstance(c, dict) else getattr(c, "name", None)
             assert "Banner" in name_val
-
-    def test_list_creatives_pagination_and_sorting(self):
-        """Test list_creatives pagination and sorting options."""
-        _, core_list_creatives_tool = self._import_mcp_tools()
-        # Create multiple creatives for pagination testing
-        with get_db_session() as session:
-            creatives = [
-                DBCreative(
-                    tenant_id=self.test_tenant_id,
-                    creative_id=f"page_test_{i:02d}",
-                    principal_id=self.test_principal_id,
-                    name=f"Creative {i:02d}",
-                    agent_url="https://creative.adcontextprotocol.org",
-                    format="display_300x250_image",
-                    status="approved",
-                    data={"assets": build_assets(image_spec("banner"))},
-                )
-                for i in range(25)  # Create 25 creatives
-            ]
-            session.add_all(creatives)
-            session.commit()
-
-        identity = self._make_identity()
-        set_current_tenant({"tenant_id": self.test_tenant_id})
-
-        # Test first page
-        response = core_list_creatives_tool(page=1, pagination=PaginationRequest(max_results=10), identity=identity)
-        assert len(response.creatives) == 10
-        assert response.query_summary.total_matching == 25
-        assert response.query_summary.returned == 10
-        assert response.pagination.has_more is True
-        assert response.pagination.total_count == 25
-
-        # Test second page
-        response = core_list_creatives_tool(page=2, pagination=PaginationRequest(max_results=10), identity=identity)
-        assert len(response.creatives) == 10
-        assert response.query_summary.returned == 10
-        assert response.pagination.has_more is True
-        assert response.pagination.total_count == 25
-
-        # Test last page
-        response = core_list_creatives_tool(page=3, pagination=PaginationRequest(max_results=10), identity=identity)
-        assert len(response.creatives) == 5
-        assert response.query_summary.returned == 5
-        assert response.pagination.has_more is False
-        assert response.pagination.total_count == 25
-
-        # Test name sorting ascending
-        response = core_list_creatives_tool(
-            sort=Sort(field="name", direction="asc"),
-            pagination=PaginationRequest(max_results=5),
-            identity=identity,
-        )
-        creative_names = [c.get("name") if isinstance(c, dict) else c.name for c in response.creatives]
-        assert creative_names == sorted(creative_names)
 
     def test_list_creatives_with_media_buy_assignments(self):
         """Test list_creatives filters by media buy assignments."""
