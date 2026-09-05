@@ -1,6 +1,6 @@
 """Unit tests for F-03: task management tools require authenticated principal.
 
-Covers the vulnerability where list_tasks / get_task / complete_task accepted
+Covers the vulnerability where list_tasks / get_task_status / complete_task accepted
 requests that had a resolved tenant (via localhost fallback) but no principal_id.
 An unauthenticated caller could read or mutate workflow task state.
 
@@ -15,8 +15,8 @@ from src.core.exceptions import AdCPAuthenticationError, AdCPNotFoundError, AdCP
 from src.core.resolved_identity import ResolvedIdentity
 
 # Every protocol field travels on the request now; the raws take a req, not loose kwargs.
-from src.core.schemas import CompleteTaskRequest, GetTaskRequest, ListTasksRequest
-from src.core.tools.task_management import complete_task_raw, get_task_raw, list_tasks_raw
+from src.core.schemas import CompleteTaskRequest, GetTaskStatusRequest, ListTasksRequest
+from src.core.tools.task_management import complete_task_raw, get_task_status_raw, list_tasks_raw
 
 
 def _identity_no_principal() -> ResolvedIdentity:
@@ -57,22 +57,22 @@ async def test_list_tasks_no_identity_raises_auth_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# get_task
+# get_task_status
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_get_task_no_principal_raises_auth_error() -> None:
-    """get_task must reject identity that has tenant but no principal_id."""
+    """get_task_status must reject identity that has tenant but no principal_id."""
     with pytest.raises(AdCPAuthenticationError) as exc_info:
-        await get_task_raw(req=GetTaskRequest(task_id="step-123"), identity=_identity_no_principal())
+        await get_task_status_raw(req=GetTaskStatusRequest(task_id="step-123"), identity=_identity_no_principal())
 
 
 @pytest.mark.asyncio
 async def test_get_task_no_identity_raises_auth_error() -> None:
-    """get_task must reject a completely missing identity."""
+    """get_task_status must reject a completely missing identity."""
     with pytest.raises(AdCPAuthenticationError):
-        await get_task_raw(req=GetTaskRequest(task_id="step-123"), identity=None)
+        await get_task_status_raw(req=GetTaskStatusRequest(task_id="step-123"), identity=None)
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ async def test_get_task_authenticated_proceeds_past_auth_check(
     mock_uow.return_value.__enter__.return_value.workflows.get_by_step_id_or_raise.side_effect = AdCPTaskNotFoundError()
 
     with pytest.raises(AdCPNotFoundError) as _ei:
-        await get_task_raw(req=GetTaskRequest(task_id="step-999"), identity=_identity_with_principal())
+        await get_task_status_raw(req=GetTaskStatusRequest(task_id="step-999"), identity=_identity_with_principal())
     # The old pattern matched the AUTHORED sentence; the sentence is the
     # code's table entry now, so assert it exactly.
 

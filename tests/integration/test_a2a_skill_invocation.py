@@ -739,25 +739,16 @@ class TestA2ASkillInvocation:
             try:
                 # We can't easily test the actual execution without full setup,
                 # but we can at least verify the skill name is recognized
-                assert skill_name in [
-                    "get_adcp_capabilities",  # AdCP v3 discovery endpoint
-                    "get_products",
-                    "create_media_buy",
-                    "update_media_buy",  # Added for media buy management
-                    "get_media_buy_delivery",  # Added for delivery metrics
-                    "get_creative_delivery",  # Added for creative-level delivery metrics
-                    "update_performance_index",  # Added for performance optimization
-                    "sync_creatives",
-                    "list_creatives",
-                    "approve_creative",
-                    "get_media_buy_status",
-                    "optimize_media_buy",
-                    "list_creative_formats",  # Keep existing creative format endpoint
-                    "list_authorized_properties",  # Added for AdCP compliance
-                    "get_media_buys",
-                    "list_accounts",  # Added for account management (UC-011)
-                    "sync_accounts",  # Added for account sync (UC-011)
-                ], f"Skill {skill_name} not in expected skill list"
+                # DERIVED: a row with a2a=True is a dispatchable skill. The literal list
+                # this replaces named six skills the agent no longer ships (approve_creative,
+                # get_media_buy_status, optimize_media_buy, get_creative_delivery,
+                # list_authorized_properties, update_performance_index) and omitted the task
+                # tools it does.
+                from src.core.tools.registry import TOOLS
+
+                assert skill_name in {
+                    name for name, spec in TOOLS.items() if spec.a2a
+                }, f"Skill {skill_name} is advertised but not declared with a2a in the registry"
             except Exception as e:
                 pytest.fail(f"Skill {skill_name} should be handled but caused error: {e}")
 

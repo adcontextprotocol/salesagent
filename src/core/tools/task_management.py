@@ -1,4 +1,4 @@
-"""Task management MCP tools (list_tasks, get_task, complete_task).
+"""Task management MCP tools (list_tasks, get_task_status, complete_task).
 
 Human-in-the-loop task queue for workflow steps that require approval
 or manual completion. These tools let AI agents query and complete
@@ -29,8 +29,8 @@ from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import (
     CompleteTaskRequest,
     CompleteTaskResponse,
-    GetTaskRequest,
-    GetTaskResponse,
+    GetTaskStatusRequest,
+    GetTaskStatusResponse,
     ListTasksRequest,
     ListTasksResponse,
     TaskSummary,
@@ -134,7 +134,7 @@ def _spec_task_type(step: Any) -> str:
         parseable; the same trick on a task read corrupts the ANSWER a buyer acts on. Filed
         separately; deliberately not reused here.
       * OMIT the row, the way media_buy_list's ``_persisted_revision`` drops a media buy
-        whose required revision is unpublishable. Defensible for a list, but get_task is a
+        whose required revision is unpublishable. Defensible for a list, but get_task_status is a
         single-task read where omission means answering "no such task" about one that exists.
 
     So an unmappable step raises, visibly and attributably, naming the step and its
@@ -263,7 +263,7 @@ async def _list_tasks_impl(
         assert uow.workflows is not None
 
         # SCOPED TO THE CALLER'S PRINCIPAL. This listed the whole TENANT, so every buyer
-        # saw every other buyer's tasks -- a wider version of the same defect get_task had
+        # saw every other buyer's tasks -- a wider version of the same defect get_task_status had
         # (salesagent-prkv.88). The pin grades it: get_products_async.yaml step
         # `list_products_task_wrong_account` lists the same task_id under a different
         # account and requires total_matching 0, "Sellers MUST scope task reconciliation to
@@ -333,11 +333,11 @@ async def list_tasks_raw(
     return await _list_tasks_impl(req=req, identity=identity)
 
 
-async def _get_task_impl(
-    req: GetTaskRequest,
+async def _get_task_status_impl(
+    req: GetTaskStatusRequest,
     identity: ResolvedIdentity | None = None,
-) -> GetTaskResponse:
-    """The transport-agnostic implementation of ``get_task``.
+) -> GetTaskStatusResponse:
+    """The transport-agnostic implementation of ``get_task_status``.
 
     Split out of the MCP wrapper, which used to be both. Without a ``req``-shaped
     callable this tool could not be dispatched over A2A or routed over REST -- one
@@ -355,7 +355,7 @@ async def _get_task_impl(
 
         # SCOPED TO THE CALLER'S PRINCIPAL, which is what req.account's obligation amounts
         # to here: "Sellers MUST return REFERENCE_NOT_FOUND for a task_id that exists only
-        # under a different account or principal" (get-task-status-request.json @ 3.1.1).
+        # under a different account or principal" (get-task-status-status-request.json @ 3.1.1).
         # The lookup was tenant-scoped only, so any authenticated principal could read
         # another's task by id -- request_data and response_data included. The raised error
         # is identical to the absent case, so it does not reveal that the task exists.
@@ -366,10 +366,10 @@ async def _get_task_impl(
         task_type = _spec_task_type(task)
         created_at, updated_at, completed_at = _task_timestamps(task)
 
-        # ``protocol`` and ``domain`` are ONE axis under two names -- get-task-status-response
+        # ``protocol`` and ``domain`` are ONE axis under two names -- get-task-status-status-response
         # spells it protocol (AdcpProtocol, 7 members), list-tasks-response tasks[] spells it
         # domain (Domain, 3) -- so both read the same map rather than each deriving its own.
-        task_detail = GetTaskResponse(
+        task_detail = GetTaskStatusResponse(
             task_id=task.step_id,
             task_type=task_type,
             protocol=_DOMAIN_BY_TASK_TYPE[task_type],
@@ -395,7 +395,7 @@ async def _get_task_impl(
             ],
         )
 
-        # The terminal payload is CONDITIONAL. get-task-status-request.json defaults
+        # The terminal payload is CONDITIONAL. get-task-status-status-request.json defaults
         # include_result to false "for lightweight status-only polls", and the response
         # schema says result is "Present when status is 'completed' and include_result was
         # true in the request; absent otherwise". This used to ship the payload on every
@@ -426,21 +426,21 @@ async def _get_task_impl(
         return task_detail
 
 
-async def get_task_raw(
-    req: GetTaskRequest,
+async def get_task_status_raw(
+    req: GetTaskStatusRequest,
     ctx: Context | ToolContext | None = None,
     identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> GetTaskResponse:
-    """``get_task`` for A2A and REST: the implementation without MCP's Context."""
+) -> GetTaskStatusResponse:
+    """``get_task_status`` for A2A and REST: the implementation without MCP's Context."""
     # NOT_PROVIDED, not None: None is a VALUE a caller can pass to mean anonymous, so a
     # None default cannot tell 'no identity supplied' from 'explicitly anonymous' and the
     # wrapper silently reaches for ambient context in both cases.
     identity = resolve_identity_if_not_provided(identity, ctx)
-    return await _get_task_impl(req=req, identity=identity)
+    return await _get_task_status_impl(req=req, identity=identity)
 
 
 def _task_history(task: Any) -> list[dict[str, Any]]:
-    """The task's exchanges, in the shape get-task-status-response.json gives history items.
+    """The task's exchanges, in the shape get-task-status-status-response.json gives history items.
 
     Two at most today, because a workflow step records one request and one response. The
     list form is the spec's, not a guess at a future shape: if a step ever accumulates more

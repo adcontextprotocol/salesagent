@@ -1,6 +1,6 @@
 """One principal's task is not readable, listable or completable by another, inside a tenant.
 
-salesagent-prkv.88. protocol/get-task-status-request.json @ AdCP 3.1.1 attaches the
+salesagent-prkv.88. protocol/get-task-status-status-request.json @ AdCP 3.1.1 attaches the
 obligation to ``account``: "Sellers MUST return REFERENCE_NOT_FOUND for a task_id that
 exists only under a different account or principal." Two storyboard steps in
 dist/compliance/3.1.1/domains/media-buy/scenarios/get_products_async.yaml grade it:
@@ -68,13 +68,13 @@ def tenant_id(integration_db) -> str:
 
 
 class _GetTaskEnv(TaskManagementEnv):
-    """TaskManagementEnv aimed at get_task rather than list_tasks.
+    """TaskManagementEnv aimed at get_task_status rather than list_tasks.
 
     Subclassed HERE rather than added to tests/harness: the base already dispatches any
     registered MCP tool by name, so this needs the name and nothing else.
     """
 
-    MCP_TOOL = "get_task"
+    MCP_TOOL = "get_task_status"
 
 
 class _CompleteTaskEnv(TaskManagementEnv):

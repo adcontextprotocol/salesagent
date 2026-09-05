@@ -250,7 +250,7 @@ class TestToolsDoNotCallResolveIdentityDirectly:
         "get_media_buys": "src/core/tools/media_buy_list.py",
         "update_performance_index": "src/core/tools/performance.py",
         "list_tasks": "src/core/tools/task_management.py",
-        "get_task": "src/core/tools/task_management.py",
+        "get_task_status": "src/core/tools/task_management.py",
         "complete_task": "src/core/tools/task_management.py",
     }
 
@@ -286,7 +286,7 @@ class TestToolsDoNotCallResolveIdentityDirectly:
             ("get_media_buys", "src/core/tools/media_buy_list.py"),
             ("update_performance_index", "src/core/tools/performance.py"),
             ("list_tasks", "src/core/tools/task_management.py"),
-            ("get_task", "src/core/tools/task_management.py"),
+            ("get_task_status", "src/core/tools/task_management.py"),
             ("complete_task", "src/core/tools/task_management.py"),
         ],
     )

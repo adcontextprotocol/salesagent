@@ -17,7 +17,7 @@ impls — ``_sync_creatives_impl`` / ``_list_creatives_impl`` / ``_activate_sign
 — and the threaded ``_verify_principal``).
 
 Deliberately NOT enforced: functions whose only context-like parameter is the
-FastMCP transport ``Context`` / ``ToolContext`` (``get_task`` / ``complete_task`` in
+FastMCP transport ``Context`` / ``ToolContext`` (``get_task_status`` / ``complete_task`` in
 ``task_management`` — they have no pinned SDK request model, so no ``context``
 field is ever published for them). ``list_tasks`` DOES declare a ``context:
 ContextObject`` parameter and is wired like every other qualifying call site. The

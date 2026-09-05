@@ -18,8 +18,8 @@ So the rule is:
   SDK instead of by a comment.
 * A DTO with no such ancestry, or one whose schema is named differently from its type,
   declares :data:`~src.core.schemas._base.WireSerializerMixin._PINNED_SCHEMA_REF`
-  ITSELF. ``GetTaskRequest`` is the only live case: the tool is ``get_task`` and the
-  schema is ``protocol/get-task-status-request.json``, which no derivation from either
+  ITSELF. ``GetTaskStatusRequest`` is the only live case: the tool is ``get_task_status`` and the
+  schema is ``protocol/get-task-status-status-request.json``, which no derivation from either
   name produces.
 
 COVERAGE, and the half of it that is currently missing
@@ -35,8 +35,8 @@ The other half is GONE. A tool that resolves NO ref is simply absent from that d
 and the test that made such a tool prove the pinned tree holds no request schema for it
 lived in the alignment suite, deleted whole (docs/design/one-tool-registry.md). Nothing
 replaces it here: a tool whose binding is dropped now falls out of the grading silently.
-Its helper — a token-subset candidate search that found ``get-task-status-request.json``
-for ``get_task``, where an exact-filename probe would have reported "no schema exists" —
+Its helper — a token-subset candidate search that found ``get-task-status-status-request.json``
+for ``get_task_status``, where an exact-filename probe would have reported "no schema exists" —
 was deleted with it.
 """
 
@@ -68,8 +68,8 @@ def pinned_request_schema_ref(model: type[BaseModel]) -> str | None:
 
     DERIVED, with no declaration to prefer. A request DTO used to be able to name its own
     ref on ``_PINNED_SCHEMA_REF``, for "a schema named differently from its type, or a DTO
-    with no SDK ancestry at all". GetTaskRequest was the only user and was BOTH of those --
-    the spec calls the operation get-task-status while the tool is get_task, and the model
+    with no SDK ancestry at all". GetTaskStatusRequest was the only user and was BOTH of those --
+    the spec calls the operation get-task-status-status while the tool is get_task_status, and the model
     was hand-written. It now extends the SDK's GetTaskStatusRequest, so the module path
     names the schema and the derivation reaches it unaided.
 

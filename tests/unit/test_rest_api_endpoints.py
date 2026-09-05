@@ -192,7 +192,7 @@ class TestPathFieldsBindFromTheUrl:
     """
 
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
-    @patch("src.core.tools.task_management._get_task_impl")
+    @patch("src.core.tools.task_management._get_task_status_impl")
     def test_path_value_reaches_the_impl_without_a_body_field(self, mock_impl, mock_resolve):
         mock_impl.return_value = MagicMock(model_dump=lambda **kw: {"task": {}})
 
@@ -206,7 +206,7 @@ class TestPathFieldsBindFromTheUrl:
         assert mock_impl.call_args.kwargs["req"].task_id == "task_from_url"
 
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
-    @patch("src.core.tools.task_management._get_task_impl")
+    @patch("src.core.tools.task_management._get_task_status_impl")
     def test_the_url_wins_over_a_body_that_disagrees(self, mock_impl, mock_resolve):
         """The URL is the resource identity, so it overrides a conflicting body value."""
         mock_impl.return_value = MagicMock(model_dump=lambda **kw: {"task": {}})

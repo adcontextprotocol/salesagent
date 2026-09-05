@@ -59,15 +59,13 @@ class TestA2AProtocolCompliance:
     # Shrink-only: when the spec adds a schema for one of these, remove it
     # here — never add an entry. A newly-added skill with no schema is a real
     # failure, not something to allowlist.
-    _KNOWN_MISSING_SCHEMA_SKILLS = frozenset(
-        {
-            "approve_creative",
-            "get_media_buy_status",
-            "optimize_media_buy",
-            "list_authorized_properties",
-            "update_performance_index",
-        }
-    )
+    # EMPTY, and measured empty: not one of the five entries this held
+    # (approve_creative, get_media_buy_status, optimize_media_buy,
+    # list_authorized_properties, update_performance_index) is in TOOLS, so not one is
+    # advertised, so the allowlist was protecting nothing. Skills are derived from the
+    # registry now, which is also why it cannot silently refill: "advertised but not in the
+    # roster" is no longer a state that exists.
+    _KNOWN_MISSING_SCHEMA_SKILLS: frozenset[str] = frozenset()
 
     @pytest.mark.asyncio
     async def test_all_adcp_skills_have_schemas(self):

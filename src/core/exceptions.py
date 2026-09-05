@@ -945,7 +945,7 @@ class AdCPTaskNotFoundError(AdCPNotFoundError[EntityRefDetails]):
 
     Positively graded upstream: the get_products_async storyboard step
     ``get_products_task_status_wrong_account`` expects ``REFERENCE_NOT_FOUND``, and
-    ``get_task`` is a registered MCP tool, so this envelope is buyer-facing.
+    ``get_task_status`` is a registered MCP tool, so this envelope is buyer-facing.
     """
 
     _code: ClassVar[ErrorCodeT] = ErrorCode.REFERENCE_NOT_FOUND

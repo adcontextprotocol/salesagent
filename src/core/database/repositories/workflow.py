@@ -218,7 +218,7 @@ class WorkflowRepository:
         None leaves both exactly as they were.
 
         The BUYER-facing path passes it, and must:
-        protocol/get-task-status-request.json (AdCP 3.1.1) says "Sellers MUST return
+        protocol/get-task-status-status-request.json (AdCP 3.1.1) says "Sellers MUST return
         REFERENCE_NOT_FOUND for a task_id that exists only under a different account or
         principal", and the get_products_async storyboard grades it
         (step get_products_task_status_wrong_account, "Sellers MUST NOT reveal whether the
@@ -237,7 +237,7 @@ class WorkflowRepository:
     def get_by_step_id_or_raise(self, step_id: str, principal_id: str | None = None) -> WorkflowStep:
         """Get a workflow step by ID or raise ``AdCPTaskNotFoundError``.
 
-        Collapses the task fetch-and-raise guard shared by get_task/complete_task.
+        Collapses the task fetch-and-raise guard shared by get_task_status/complete_task.
         No ``context`` parameter by design: those tools carry the FastMCP transport
         ``Context``, not an AdCP ``ContextObject``, so the task not-found envelope
         stays context-less rather than echoing a transport object into a repository.
