@@ -3282,7 +3282,13 @@ def given_webhook_configured(ctx: dict) -> None:
     # runs inside _create_media_buy_impl): https public-unicast IP literal, no
     # DNS dependency. Never fetched by these scenarios.
     webhook_url = f"{UNDIALLED_PUBLIC_HTTPS_ORIGIN}/webhooks/adcp-notifications"
-    push_config = {"url": webhook_url, "events": ["status_change"]}
+    # ``push-notification-config.json`` declares url, authentication, operation_id
+    # and token -- and NOTHING else. There is no event selector on a task-notification
+    # config; subscribing to specific events is what the account-level
+    # ``notification-config`` (subscriber_id + event_types) is for. The
+    # ``events: ["status_change"]`` this used to carry was accepted by the model and
+    # dropped on the way out, so it selected nothing and nothing asserted on it.
+    push_config = {"url": webhook_url}
     ctx["push_notification_config"] = push_config
     # Also wire into request_kwargs if they exist (for create requests)
     if "request_kwargs" in ctx:

@@ -42,13 +42,13 @@ SECRET = "s" * 40
 
 SIGNED_WEBHOOK = {
     "url": "https://buyer.example.com/webhook",
-    "frequency": "daily",
+    "reporting_frequency": "daily",
     "authentication": {"schemes": ["HMAC-SHA256"], "credentials": SECRET},
 }
 
 UNSIGNED_WEBHOOK = {
     "url": "https://buyer.example.com/webhook",
-    "frequency": "daily",
+    "reporting_frequency": "daily",
     # No authentication block at all — the common case, and the one that must keep
     # delivering unsigned. Routing the carrier through the gate must not turn a
     # delivered webhook into a never-delivered one.
@@ -56,7 +56,7 @@ UNSIGNED_WEBHOOK = {
 
 EMPTY_AUTH_WEBHOOK = {
     "url": "https://buyer.example.com/webhook",
-    "frequency": "daily",
+    "reporting_frequency": "daily",
     # Falsy today (`if auth_config:`), so it behaves exactly like an absent block
     # and delivers unsigned. The gate REFUSES an empty block, so the caller keeps
     # the truthiness guard rather than silently making this a non-delivery —
@@ -66,7 +66,7 @@ EMPTY_AUTH_WEBHOOK = {
 
 TWO_SCHEME_WEBHOOK = {
     "url": "https://buyer.example.com/webhook",
-    "frequency": "daily",
+    "reporting_frequency": "daily",
     # The pinned schema allows at most one. A document the spec forbids.
     "authentication": {"schemes": ["Bearer", "HMAC-SHA256"], "credentials": SECRET},
 }
