@@ -79,6 +79,40 @@ class WebhookTaskContextFactory(factory.Factory):
 # with the pin. All three are exported from ``adcp.types``; none needed generating.
 
 
+# ── Sending a webhook config the seller must REJECT ───────────────────────────
+#
+# A conformant baseline is only half of what these schemas need graded. The other
+# half is that a malformed one comes back as an error envelope FROM THE SELLER --
+# and that half has a trap in it.
+#
+# ``payload(**overrides)`` applies its overrides AFTER ``model_dump``, so it can
+# carry a value the model itself would refuse; ``OMIT`` deletes a key outright.
+# Verified against the pinned schemas, every one of these produces a document the
+# schema rejects::
+#
+#     R = ReportingWebhookRequestFactory
+#     R.payload(reporting_frequency="fortnightly")  # not one of hourly/daily/monthly
+#     R.payload(reporting_frequency=OMIT)           # required property missing
+#     R.payload(authentication=OMIT)                # required property missing
+#     R.payload(url=12345)                          # not of type string
+#     NotificationConfigRequestFactory.payload(event_types=["not_a_real_event"])
+#
+# THE TRAP: dispatching that through the ordinary seam grades NOTHING. The typed
+# request is built in the test process, so pydantic raises there, production is
+# never reached, and the scenario proves something about the model instead of the
+# server -- transport framing, boundary translation, and which code each transport
+# actually emits all go ungraded. prkv.33 measured that blast radius: all 86 UC-005
+# instances recorded ``dispatched=False``.
+#
+# So a negative-path scenario dispatches the LITERAL payload
+# (``when_request._call_raw`` / ``dispatch_request``) and asserts on the wire::
+#
+#     assert_envelope_shape(result.wire_error_envelope, "INVALID_REQUEST")
+#
+# ``build()`` is the opposite seam and stays correct for the positive path: it
+# routes overrides through the model, so the caller gets DTO validation.
+
+
 def hmac_authentication(credentials: str = "s" * 40) -> dict[str, object]:
     """An ``authentication`` block for an HMAC-signed webhook.
 
