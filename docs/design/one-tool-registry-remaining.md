@@ -10,7 +10,7 @@ The target shape, entire:
 
 ```
 transport receives bytes
-  -> compat middleware                    (legacy wire shapes -> spec shapes)
+  -> compat middleware                    (legacy wire shapes -> spec shapes)   [ABSENT]
   -> validate into the row's DTO          (the standard schema, nothing else)
   -> resolve the account the request names
   -> honour the idempotency key it carries
@@ -21,6 +21,11 @@ Five steps, in that order, identical on every transport. No transport with a ste
 and nothing between them. Compatibility is the FIRST step and the only place a shape AdCP
 does not define may be seen; after it, everything downstream sees the pinned schema.
 
+The compat step is ABSENT rather than misplaced: it was deleted whole (613044223) because it
+had become a rewrite running in three different places, and it comes back as one designed
+layer or not at all -- prebid/salesagent#2218 carries the eleven rules it held. The other four
+steps run, in that order, on every transport.
+
 ## Where the tree is
 
 Steps 6-9 made the SECOND half true. `invoke_tool` is one path and all three transports take
@@ -29,18 +34,23 @@ it. What they do BEFORE reaching it is still three different programs.
 | Half | Declared once? | Evidence |
 |---|---|---|
 | request -> implementation | yes | `_boundary.invoke`, one call site per transport |
-| bytes -> request | **no** | MCP derives a signature from the DTO; REST derives a body model from the DTO; A2A runs 11 hand-written skill handlers |
+| bytes -> request | yes | all three derive the accepted shape from the row's DTO |
 
-R1 is that asymmetry. R2 is the type discipline the seam should have had from the start, and
-it deletes R1's worst symptom. R3-R5 were each one thing being done in the wrong place; R3 and
-R5 are done, R4 is not.
+That asymmetry was R1, and it is closed. R2 is the type discipline the seam should have had
+from the start. R3-R5 were each one thing being done in the wrong place. R1, R3 and R5 are
+done; R2 and R4 are not.
 
 ---
 
-## R1 — Generate A2A dispatch from the registry
+## R1 — DONE: generate A2A dispatch from the registry
 
-**The defect.** `src/a2a_server/adcp_a2a_server.py` carries 11 `_handle_<tool>_skill` methods
-and a `skill_handlers` dict built by `hasattr`. Three live consequences:
+Landed. `_dispatch_skill` is the whole of A2A's request path: validate the parameter bag into
+the row's DTO, call `invoke_tool`, serialize. The `message` half of the response seam landed
+with it -- see the response-half section below for what remains.
+
+**The defect, as it stood.** `src/a2a_server/adcp_a2a_server.py` carried 11
+`_handle_<tool>_skill` methods and a `skill_handlers` dict built by `hasattr`. Three live
+consequences:
 
 * The card advertises 14 skills (`_derived_skills()` reads `TOOLS`, correctly) and dispatches
   11. `list_tasks`, `get_task_status` and `complete_task` are declared `a2a=True`, appear on
@@ -88,16 +98,14 @@ Two are genuine wire-compatibility REWRITES, accepting a shape the pinned schema
 | `to_brand_reference` | `"Acme"` | `BrandReference(domain="acme")` |
 | `upgrade_legacy_format_id` | `"display_300x250"` | `FormatId(agent_url=<default agent>, id=...)` |
 
-**Both belong in the compat layer, and it already exists.** `normalize_request_params`
-(`src/core/request_compat.py`) translates deprecated wire shapes into current ones BEFORE
-validation, and it is already wired to all three transports -- `mcp_compat_middleware.py:137`,
-`rest_compat_middleware.py:58`, `adcp_a2a_server.py:1644`. It already performs exactly this
-class of rewrite; `account_id (string) -> account: {account_id}` is one of its existing rules.
-
-So the two rewrites MOVE THERE and stop being A2A-only. They do not belong on the DTO either:
-a DTO is the pinned schema, and putting a legacy shorthand in a `BeforeValidator` would make
-the model accept a shape AdCP does not define -- the same mistake as declaring a non-spec
-field, just spelled as behaviour instead of a field.
+**Both were deleted with the rest of the compat layer.** `normalize_request_params` and
+`RestCompatMiddleware` are gone (613044223), as is the v2 response compat (66cf2e979). The
+eleven rules they carried are recorded on prebid/salesagent#2218 so the replacement is
+designed rather than reconstructed. Compat returns as ONE layer, before validation, for every
+transport -- or not at all. It does not belong on the DTO either: a DTO is the pinned schema,
+and putting a legacy shorthand in a `BeforeValidator` would make the model accept a shape AdCP
+does not define, which is the same mistake as declaring a non-spec field, spelled as behaviour
+instead of a field.
 
 The layering the whole design wants:
 
@@ -105,9 +113,10 @@ The layering the whole design wants:
 wire bytes -> compat middleware (legacy shapes -> spec shapes) -> DTO (pinned schema) -> boundary -> impl
 ```
 
-One normalizer, before validation, for every transport. Nothing per-skill and nothing after.
-Today a bare-string `brand` is accepted on A2A and `ValidationError` on MCP and REST, which is
-what happens when the rewrite lives past the point where all transports converge.
+One layer, before validation, for every transport. Nothing per-skill and nothing after. The
+per-skill rewrites were what made a bare-string `brand` acceptable on A2A and a
+`ValidationError` on MCP and REST -- the same bytes, two answers, because the rewrite lived
+past the point where the transports converge.
 
 **On protobuf.** Nothing here parses binary protobuf -- there is no `SerializeToString` or
 `ParseFromString` anywhere in `src/`. The A2A path is `json_format.MessageToDict` over a
@@ -420,6 +429,8 @@ carries the scenario shape, so whoever picks it up writes the Given first.
 
 ## Order
 
-R3 and R5 are done. What remains: R1 first -- it is the missing half of the thesis. R2 was the
-other half of R3's change and is what turns the boundary's remaining probes into attribute
-access. R4 is small and deletes code. R6 last.
+R1, R3 and R5 are done. What remains: R2, which turns the boundary's last probes into
+attribute access; the RESPONSE half of R1's seam (`to_wire`), where `message` already landed
+but `success` is still written into the A2A payload and each transport still runs its own
+`model_dump`; R4, which is small and deletes code; and R6 last. Required-and-nullable
+retention rides on the response seam -- see the section under R1.
