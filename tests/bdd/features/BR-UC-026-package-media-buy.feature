@@ -1142,30 +1142,39 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Paused behavior partition validation -- <partition>
     Given a package request with paused per <partition>
     When the Buyer Agent sends the request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the <tool> spec
+    And the outcome should be <outcome>
 
+    # The When names no tool because the partition chooses it: the first three rows
+    # build a create request, the last two build an update of an existing buy
+    # (MediaBuyDualEnv routes on media_buy_id). One literal tool name would grade
+    # two of these five rows against the wrong contract, so the tool is a column.
     Examples: Valid partitions
-      | partition          | outcome                                    |
-      | active_default     | success with paused=false (default)        |
-      | explicitly_active  | success with paused=false                  |
-      | explicitly_paused  | success with paused=true                   |
-      | pause_on_update    | success with delivery suspended             |
-      | resume_on_update   | success with delivery resumed               |
+      | partition          | outcome                                    | tool             |
+      | active_default     | success with paused=false (default)        | create_media_buy |
+      | explicitly_active  | success with paused=false                  | create_media_buy |
+      | explicitly_paused  | success with paused=true                   | create_media_buy |
+      | pause_on_update    | success with delivery suspended             | update_media_buy |
+      | resume_on_update   | success with delivery resumed               | update_media_buy |
 
   @T-UC-026-boundary-paused @boundary @paused
   Scenario Outline: Paused behavior boundary validation -- <boundary_point>
     Given a package request with paused per boundary <boundary_point>
     When the Buyer Agent sends the request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the <tool> spec
+    And the outcome should be <outcome>
 
+    # Same reason as the partition outline above: the boundary point chooses the
+    # tool ("on create" -> create_media_buy, "on update" / "already-paused" ->
+    # update_media_buy), so the tool is a column rather than a literal.
     Examples: Boundary values
-      | boundary_point                                       | outcome                                    |
-      | paused omitted on create (defaults to false)         | success                                    |
-      | paused=false on create (explicitly active)           | success                                    |
-      | paused=true on create (created paused)               | success                                    |
-      | paused=true on update (pause running package)        | success                                    |
-      | paused=false on update (resume paused package)       | success                                    |
-      | paused=true on already-paused package (idempotent)   | success                                    |
+      | boundary_point                                       | outcome                                    | tool             |
+      | paused omitted on create (defaults to false)         | success                                    | create_media_buy |
+      | paused=false on create (explicitly active)           | success                                    | create_media_buy |
+      | paused=true on create (created paused)               | success                                    | create_media_buy |
+      | paused=true on update (pause running package)        | success                                    | update_media_buy |
+      | paused=false on update (resume paused package)       | success                                    | update_media_buy |
+      | paused=true on already-paused package (idempotent)   | success                                    | update_media_buy |
 
   @T-UC-026-partition-replacement @partition @package_update_array_fields
   Scenario Outline: Update replacement semantics partition validation -- <partition>
