@@ -55,70 +55,58 @@ def _sync_creatives_impl(
     req: SyncCreativesRequest,
     identity: ResolvedIdentity | None = None,
 ) -> SyncCreativesResponse:
-    """Sync creative assets to centralized library (AdCP v2.5 spec compliant endpoint).
+    """The sync_creatives CONTROLLER: resolve who is calling, then run the service.
 
-    Primary creative management endpoint that handles:
-    - Bulk creative upload/update with upsert semantics
-    - Creative assignment to media buy packages via assignments dict
-    - Support for both hosted assets (media_url) and third-party tags (snippet)
-    - Scoped updates via creative_ids filter, dry-run mode, and validation options
+    Thin by construction. Everything a transport must establish before the work can start
+    lives here; the work itself is :func:`sync_creatives`, which takes an already-resolved
+    caller and never asks who they are.
 
-    Every protocol field arrives ON ``req``. This used to be ten separate parameters --
-    creatives, assignments, creative_ids, delete_missing, dry_run, validation_mode,
-    push_notification_config, context, idempotency_key -- all of which are declared fields
-    of the pinned creative/sync-creatives-request.json and are read off ``req``.
+    That split is what lets another tool reuse creative sync. ``create_media_buy`` and
+    ``update_media_buy`` upload a package's inline creatives, and they used to do it by
+    calling this function -- one controller invoking another, which meant the nested call
+    carried the outer request's ``idempotency_key`` into a function that had no business
+    seeing it, and inherited an auth check that had already run. They call the SERVICE now.
+    """
+    principal_id = require_principal_id(identity, context=req.context)
+    identity = require_identity(identity, context=req.context)
+    tenant = require_tenant(identity, context=req.context)
+    return sync_creatives(req, identity=identity, principal_id=principal_id, tenant=tenant)
 
-    ``idempotency_key`` arrives here but this function does nothing with it:
-    :func:`src.core.tools._boundary.invoke` replays and caches by key before the call.
 
-    Args:
-        req: Validated SyncCreativesRequest carrying every protocol field
-        identity: ResolvedIdentity with principal/tenant info (transport-agnostic)
+def sync_creatives(
+    req: SyncCreativesRequest,
+    *,
+    identity: ResolvedIdentity,
+    principal_id: str,
+    tenant: dict,
+) -> SyncCreativesResponse:
+    """Sync creative assets to the centralized creative library.
 
-    Returns:
-        SyncCreativesResponse with synced creatives and assignments
+    THE SERVICE. Takes a resolved caller and does the work: no auth, no transport concerns,
+    no idempotency. Callable from any controller, and from any other service that needs
+    creatives uploaded -- which is the point.
     """
 
     # ``creatives`` is aliased because it is NARROWED below by the creative_ids filter.
     # Everything else is read as ``req.<field>`` at its use site -- no alias, so the request
     # stays the one carrier.
-    #
-    # These two used to be normalised here under an "absent-means-default rule that the
-    # rest of this function must not have to restate". The rule is the MODEL's:
-    # SyncCreativesRequest declares False and strict. It never arrived, because
-    # build_sync_creatives_request forwarded an explicit None over it, so this function
-    # re-established it by hand. The builder omits unsent fields now, so
-    # ``validation_mode``'s ``or "strict"`` is gone -- the declared value arrives.
-    # ``dry_run`` keeps a bool(), for a different reason; see below.
     creatives: Sequence[CreativeAsset | BaseModel | dict[str, Any]] = req.creatives
-    # bool() here narrows the ANNOTATION, it does not supply the default. The model
-    # declares ``bool | None`` -- wider than the pinned {"type": "boolean"} -- so an
-    # explicit null is still representable and two callees below want a real bool. The
-    # default itself now arrives from the model, because the builder omits an unsent
-    # field instead of forwarding a None over it.
+    # bool() here narrows the ANNOTATION, it does not supply the default. The model declares
+    # ``bool | None`` -- wider than the pinned {"type": "boolean"} -- so an explicit null is
+    # still representable and two callees below want a real bool.
     dry_run = bool(req.dry_run)
     validation_mode = enum_value(req.validation_mode)
 
     from pydantic import ValidationError
 
-    # Phase 1a: Models flow through to helpers (which convert via isinstance guard).
-    # No model_dump at orchestrator level — helpers handle dict conversion transitionally.
-
-    # AdCP 2.5: Filter creatives by creative_ids if provided
-    # This allows scoped updates to specific creatives without affecting others
+    # AdCP 2.5: Filter creatives by creative_ids if provided -- scoped updates to specific
+    # creatives without affecting others.
     if req.creative_ids:
         creative_ids_set = set(req.creative_ids)
         creatives = [c for c in creatives if _get_field(c, "creative_id") in creative_ids_set]
         logger.info(f"[sync_creatives] Filtered to {len(creatives)} creatives by creative_ids filter")
 
     start_time = time.time()
-
-    # Authentication — principal_id is required for creative sync (NOT NULL in database).
-    # require_principal_id first so the canonical auth message surfaces for missing/anonymous auth;
-    # require_identity narrows the type. Tenant is resolved at the transport boundary.
-    principal_id = require_principal_id(identity, context=req.context)
-    identity = require_identity(identity, context=req.context)
-    tenant = require_tenant(identity, context=req.context)
 
     # Registration SSRF gate on the buyer-supplied webhook URL, taken HERE: before
     # any DB / workflow write stashes the URL, and before the per-creative loop,

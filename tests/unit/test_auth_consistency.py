@@ -272,28 +272,6 @@ class TestDiscoveryEndpointsAnonymousAccess:
             except ToolError as e:
                 pass  # the operation must raise; its message is not asserted
 
-    def test_list_authorized_properties_works_without_auth(self):
-        """list_authorized_properties should succeed without authentication."""
-        from src.core.tools.properties import _list_authorized_properties_impl
-
-        # Create anonymous identity with tenant
-        mock_tenant = {"tenant_id": "test-tenant", "name": "Test"}
-        identity = _make_identity(principal_id=None, tenant=mock_tenant)
-
-        mock_repo = MagicMock()
-        mock_repo.list_publisher_partners.return_value = []
-        mock_uow = MagicMock()
-        mock_uow.__enter__ = MagicMock(return_value=mock_uow)
-        mock_uow.__exit__ = MagicMock(return_value=False)
-        mock_uow.tenant_config = mock_repo
-
-        with patch("src.core.tools.properties.TenantConfigUoW", return_value=mock_uow):
-            try:
-                result = _list_authorized_properties_impl(req=None, identity=identity)
-                assert result is not None
-            except ToolError as e:
-                pass  # the operation must raise; its message is not asserted
-
 
 class TestDiscoveryEndpointsInvalidAuth:
     """Test that discovery endpoints fail with invalid token (don't silently fall back to anonymous).
@@ -369,29 +347,6 @@ class TestDiscoveryEndpointsInvalidAuth:
 
                 req = ListCreativeFormatsRequest()
                 _list_creative_formats_impl(req, identity)
-            except (ToolError, AdCPSalesAgentError):
-                pass  # Business logic errors OK
-
-            # Verify the identity was anonymous
-            assert identity.principal_id is None
-
-    def test_list_authorized_properties_with_invalid_token_gets_anonymous_identity(self):
-        """list_authorized_properties with invalid token gets anonymous identity at the boundary."""
-        from src.core.tools.properties import _list_authorized_properties_impl
-
-        mock_tenant = {"tenant_id": "test-tenant"}
-        identity = _make_identity(principal_id=None, tenant=mock_tenant)
-
-        mock_repo = MagicMock()
-        mock_repo.list_publisher_partners.return_value = []
-        mock_uow = MagicMock()
-        mock_uow.__enter__ = MagicMock(return_value=mock_uow)
-        mock_uow.__exit__ = MagicMock(return_value=False)
-        mock_uow.tenant_config = mock_repo
-
-        with patch("src.core.tools.properties.TenantConfigUoW", return_value=mock_uow):
-            try:
-                _list_authorized_properties_impl(req=None, identity=identity)
             except (ToolError, AdCPSalesAgentError):
                 pass  # Business logic errors OK
 

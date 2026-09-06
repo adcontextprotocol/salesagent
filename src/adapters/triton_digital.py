@@ -505,27 +505,6 @@ class TritonDigital(AdServerAdapter):
                 self.log(f"Error getting delivery report from Triton: {e}")
                 raise
 
-    def update_media_buy_performance_index(
-        self, media_buy_id: str, package_performance: list[PackagePerformance]
-    ) -> bool:
-        """Updates performance indices for packages in Triton."""
-        self.log(
-            f"TritonDigital.update_media_buy_performance_index for media buy '{media_buy_id}'", dry_run_prefix=False
-        )
-
-        if self.dry_run:
-            self.log("Performance index updates:")
-            for perf in package_performance:
-                self.log(f"  Package {perf.package_id}: index={perf.performance_index:.2f}")
-            self.log("Would adjust flight targeting or budget allocation based on performance")
-            self.log("Note: Triton TAP API may not directly support performance index updates")
-            return True
-        else:
-            # Triton doesn't have a direct performance index API
-            # In production, might update flight budgets or pause poor performers
-            self.log("Triton does not directly support performance index updates. Custom implementation needed.")
-            return True
-
     def update_media_buy(
         self,
         media_buy_id: str,

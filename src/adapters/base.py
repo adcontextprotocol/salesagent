@@ -25,7 +25,6 @@ from src.core.schemas import (
     CreateMediaBuyResponse,
     CreateMediaBuySuccess,
     MediaPackage,
-    PackagePerformance,
     Principal,
     ReportingPeriod,
     UpdateMediaBuyResponse,
@@ -509,13 +508,6 @@ class AdServerAdapter(ABC):
             Adapters that do not support snapshots should not override this method.
         """
         raise NotImplementedError("Snapshots not supported by this adapter")
-
-    @abstractmethod
-    def update_media_buy_performance_index(
-        self, media_buy_id: str, package_performance: list[PackagePerformance]
-    ) -> bool:
-        """Updates the performance index for packages in a media buy."""
-        pass
 
     @abstractmethod
     def update_media_buy(

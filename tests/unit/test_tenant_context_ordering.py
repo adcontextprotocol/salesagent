@@ -170,8 +170,6 @@ def test_all_tools_have_auth_before_tenant_pattern():
         "media_buy_create.py",
         "media_buy_update.py",
         "media_buy_delivery.py",
-        "performance.py",
-        "properties.py",
     ]
 
     issues = []

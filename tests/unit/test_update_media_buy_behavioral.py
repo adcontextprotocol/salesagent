@@ -35,7 +35,6 @@ from src.core.exceptions import (
 )
 from src.core.schemas import (
     Error,
-    SyncCreativesRequest,
     UpdateMediaBuyError,
     UpdateMediaBuyRequest,
     UpdateMediaBuySubmitted,
@@ -1252,21 +1251,25 @@ class TestUC003UploadInlineCreatives:
     """Inline creative upload obligations."""
 
     def test_upload_and_assign_inline_creatives(self):
-        """Inline creatives uploaded and assigned via _sync_creatives_impl.
+        """Inline creatives uploaded and assigned via the creative-sync service.
 
         Covers: UC-003-ALT-UPLOAD-INLINE-CREATIVES-01
         """
         with MediaBuyUpdateEnv(principal_id="principal_test", tenant_id="tenant_test") as env:
-            # Mock _sync_creatives_impl
+            # Substitute the creative-sync service
             mock_sync_response = MagicMock()
             mock_sync_response.creatives = [
                 MagicMock(creative_id="c1", action="created", errors=None),
                 MagicMock(creative_id="c2", action="created", errors=None),
             ]
 
-            with patch(
-                "src.core.tools.media_buy_update._sync_creatives_impl", return_value=mock_sync_response
-            ) as mock_sync:
+            calls: list[tuple] = []
+
+            def _record(req_arg, **kw):
+                calls.append((req_arg, kw))
+                return mock_sync_response
+
+            with patch("src.core.tools.media_buy_update.sync_creatives", side_effect=_record):
                 identity = env.identity
                 req = UpdateMediaBuyRequest(
                     account={"account_id": "acct_test"},
@@ -1299,25 +1302,33 @@ class TestUC003UploadInlineCreatives:
                 result = _update_media_buy_impl(req=req, identity=identity)
 
             assert isinstance(result.response, UpdateMediaBuySuccess)
-            # The REQUEST, stated exactly, not three ANYs. _sync_creatives_impl takes a
-            # SyncCreativesRequest now, so what update_media_buy owes the creative sync is a
-            # request built through the shared builder -- carrying THIS request's account,
-            # client key and context, and the typed Assignments derived from the package.
-            # Asserting the whole object is what makes "the nested call is a real request"
-            # checkable at all; ANY could not tell that account or idempotency_key was lost.
-            mock_sync.assert_called_once_with(
-                req=SyncCreativesRequest(
-                    creatives=req.packages[0].creatives,
-                    account=req.account,
-                    idempotency_key=req.idempotency_key,
-                    context=req.context,
-                    assignments=[
-                        Assignment(creative_id="c1", package_id="pkg_1"),
-                        Assignment(creative_id="c2", package_id="pkg_1"),
-                    ],
-                ),
-                identity=identity,
+            # What update_media_buy owes the creative-sync SERVICE, read off the RECORDED
+            # call rather than by inspecting the mock: the buyer's creatives, the typed
+            # Assignments derived from the package, this request's account and context, and
+            # the caller it already resolved.
+            #
+            # The one field deliberately NOT equal is idempotency_key, and that is the point
+            # of the controller/service split: the service performs no idempotency, so the
+            # nested request carries its own internal key. This used to assert it equalled
+            # req.idempotency_key, which pinned the borrowed-key layering in place.
+            assert len(calls) == 1, f"the service must be called exactly once, got {len(calls)}"
+            sent, kwargs = calls[0]
+            # By id, not by object: the package carries the outer request's creative type and
+            # the service receives the coerced CreativeAssetRequest, so comparing instances
+            # would pin the coercion rather than the forwarding.
+            assert [c.creative_id for c in sent.creatives] == [c.creative_id for c in req.packages[0].creatives]
+            assert sent.account == req.account
+            assert sent.context == req.context
+            assert sent.assignments == [
+                Assignment(creative_id="c1", package_id="pkg_1"),
+                Assignment(creative_id="c2", package_id="pkg_1"),
+            ]
+            assert sent.idempotency_key != req.idempotency_key, (
+                "the nested sync must not reuse the buyer's key -- it is a service call, and "
+                "the buyer's key belongs to the update the controller already keyed"
             )
+            assert kwargs["identity"] is identity
+            assert kwargs["principal_id"] == identity.principal_id
             # affected_packages should track the creative upload
             assert len(result.response.affected_packages) >= 1
 
@@ -1327,13 +1338,13 @@ class TestUC003UploadInlineCreatives:
         Covers: UC-003-ALT-UPLOAD-INLINE-CREATIVES-02
         """
         with MediaBuyUpdateEnv(principal_id="principal_test", tenant_id="tenant_test") as env:
-            # Mock _sync_creatives_impl to return new creatives
+            # Substitute the creative-sync service
             mock_sync_response = MagicMock()
             mock_sync_response.creatives = [
                 MagicMock(creative_id="c3", action="created", errors=None),
             ]
 
-            with patch("src.core.tools.media_buy_update._sync_creatives_impl", return_value=mock_sync_response):
+            with patch("src.core.tools.media_buy_update.sync_creatives", return_value=mock_sync_response):
                 identity = env.identity
                 req = UpdateMediaBuyRequest(
                     account={"account_id": "acct_test"},
@@ -1383,7 +1394,7 @@ class TestUC003UploadInlineCreatives:
             failed_creative.errors = [Error.of(ErrorCode.CREATIVE_INACCESSIBLE)]
             mock_sync_response.creatives = [failed_creative]
 
-            with patch("src.core.tools.media_buy_update._sync_creatives_impl", return_value=mock_sync_response):
+            with patch("src.core.tools.media_buy_update.sync_creatives", return_value=mock_sync_response):
                 identity = env.identity
                 req = UpdateMediaBuyRequest(
                     account={"account_id": "acct_test"},
@@ -2393,7 +2404,7 @@ class TestUC003ExtK:
             failed.errors = [Error.of(ErrorCode.CREATIVE_INACCESSIBLE)]
             mock_sync_response.creatives = [failed]
 
-            with patch("src.core.tools.media_buy_update._sync_creatives_impl", return_value=mock_sync_response):
+            with patch("src.core.tools.media_buy_update.sync_creatives", return_value=mock_sync_response):
                 identity = env.identity
                 req = UpdateMediaBuyRequest(
                     account={"account_id": "acct_test"},
@@ -2446,7 +2457,7 @@ class TestUC003ExtK:
             failed.errors = [Error.of(ErrorCode.CREATIVE_INACCESSIBLE)]
             mock_sync_response.creatives = [failed]
 
-            with patch("src.core.tools.media_buy_update._sync_creatives_impl", return_value=mock_sync_response):
+            with patch("src.core.tools.media_buy_update.sync_creatives", return_value=mock_sync_response):
                 identity = env.identity
                 req = UpdateMediaBuyRequest(
                     account={"account_id": "acct_test"},

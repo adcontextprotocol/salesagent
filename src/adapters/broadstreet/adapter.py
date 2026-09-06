@@ -45,7 +45,6 @@ from src.core.schemas import (
     CreateMediaBuyResponse,
     DeliveryTotals,
     MediaPackage,
-    PackagePerformance,
     Principal,
     ReportingPeriod,
     UpdateMediaBuyResponse,
@@ -591,25 +590,6 @@ class BroadstreetAdapter(AdServerAdapter):
             by_package=[],
             currency="USD",
         )
-
-    def update_media_buy_performance_index(
-        self, media_buy_id: str, package_performance: list[PackagePerformance]
-    ) -> bool:
-        """Update performance index for packages.
-
-        Broadstreet doesn't have a direct performance index feature.
-        This is a no-op for now.
-
-        Args:
-            media_buy_id: Media buy ID
-            package_performance: Performance data per package
-
-        Returns:
-            True (always succeeds as no-op)
-        """
-        self.log(f"Broadstreet.update_media_buy_performance_index for '{media_buy_id}'", dry_run_prefix=False)
-        self.log("[yellow]Broadstreet does not support performance index updates[/yellow]")
-        return True
 
     def update_media_buy(
         self, media_buy_id: str, action: str, package_id: str | None, budget: int | None, today: datetime

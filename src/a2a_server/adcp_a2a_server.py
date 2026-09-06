@@ -300,7 +300,6 @@ DISCOVERY_SKILLS = frozenset(
         "get_adcp_capabilities",  # Agent capabilities (always public per AdCP spec)
         "list_accounts",  # Account discovery (public, returns empty for unauthed per BR-RULE-055)
         "list_creative_formats",  # Creative specifications (always public)
-        "list_authorized_properties",  # Property catalog (always public)
         "get_products",  # Conditional: depends on tenant brand_manifest_policy setting
     }
 )

@@ -52,7 +52,6 @@ from pydantic import BaseModel
 from src.core.idempotency_canonical import canonical_request_hash
 from src.core.idempotency_replay import cache_success, lookup_cached_replay, maybe_evict_expired
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.tools._announced_shape import sdk_grounding
 
 logger = logging.getLogger(__name__)
 
@@ -177,43 +176,16 @@ async def _run(impl: Callable[..., Any], /, **kwargs: Any) -> Any:
     return await result if inspect.isawaitable(result) else result
 
 
-def _spec_declares_idempotency_key(model: type[BaseModel]) -> bool:
-    """Whether the PINNED SCHEMA gives this tool an idempotency key, not merely our DTO.
-
-    The distinction is real and this repo has an instance of it: ``ListAccountsRequest``
-    declares ``idempotency_key`` while ``account/list-accounts-request.json`` does not -- a
-    temporary field kept so a BDD scenario stays constructible, documented as "not a spec
-    field" at its declaration. A read has no at-most-once guarantee for a key to carry, so
-    honouring that field would turn every ``list_accounts`` call into a cache write.
-
-    Answered by asking the SDK ancestor the DTO inherits its vocabulary from, so a field we
-    added ourselves cannot enrol a tool in idempotency. ``sync_accounts`` is the contrast:
-    its parent declares the key because a sync mutates.
-
-    The spec's rule 1 (L1/security.mdx, "Idempotency") says a pure-read task "may leave it
-    optional, but [sellers] MUST accept and apply the replay contract when a caller supplies
-    one" -- which reads at first like a duty to honour any key that arrives. It is not one
-    here. That clause governs a task whose schema DECLARES the field optional (3.2 names
-    ``list_products`` and ``get_products``); ``account/list-accounts-request.json`` declares
-    no such property and sets ``additionalProperties: true``, so an ``idempotency_key`` in
-    that body is an unknown property to TOLERATE, not a key to honour. The SDK's own
-    ``IDEMPOTENT_TASKS`` agrees: it lists exactly the four tools this predicate selects.
-    """
-    parent = sdk_grounding(model)
-    return parent is not None and "idempotency_key" in parent.model_fields
-
-
 def _keyed_scope(req: Any, identity: ResolvedIdentity | None) -> tuple[str, str, str | None, str] | None:
     """``(tenant_id, principal_id, account_id, idempotency_key)`` when this request is cacheable.
 
-    None whenever any part is absent: a request the spec gives no key, a request carrying
+    None whenever any part is absent: a request whose schema declares no key, one carrying
     none, or an identity that resolved no tenant or principal, has no (agent, account, key)
-    scope to be cached under.
+    scope to be cached under. A DTO that declares no ``idempotency_key`` cannot carry one --
+    every request model is the pinned schema and nothing else.
     """
     key = getattr(req, "idempotency_key", None)
     if not key or identity is None:
-        return None
-    if not _spec_declares_idempotency_key(type(req)):
         return None
     if identity.tenant_id is None or identity.principal_id is None:
         return None

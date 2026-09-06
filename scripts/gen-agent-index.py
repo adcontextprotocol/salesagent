@@ -36,7 +36,6 @@ STUBGEN_TARGETS: dict[str, list[str]] = {
         "src/core/tools/media_buy_list.py",
         "src/core/tools/media_buy_delivery.py",
         "src/core/tools/creative_formats.py",
-        "src/core/tools/performance.py",
         "src/core/tools/signals.py",
         "src/core/tools/creatives/_sync.py",
         "src/core/tools/creatives/listing.py",

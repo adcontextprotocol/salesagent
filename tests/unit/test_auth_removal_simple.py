@@ -82,7 +82,6 @@ class TestAuthRemovalChanges:
         # Simple source code check - tools now split across multiple files
         tool_files = [
             "src/core/tools/products.py",
-            "src/core/tools/properties.py",
             "src/core/auth.py",
         ]
 

@@ -10,6 +10,7 @@ Handles media buy updates including:
 
 import logging
 import os
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
@@ -94,7 +95,7 @@ from src.core.schemas import (
     UpdateMediaBuySuccess,
 )
 from src.core.testing_hooks import AdCPTestContext
-from src.core.tools.creatives import _sync_creatives_impl
+from src.core.tools.creatives import sync_creatives
 from src.core.tools.financial_validation import (
     raise_if_validation_failed,
     validate_budget_positive,
@@ -962,8 +963,6 @@ def _update_media_buy_impl(
                                 session.delete(assignment)
 
                         # Add new assignments
-                        import uuid
-
                         for creative_id in added_ids:
                             assignment_id = f"assign_{uuid.uuid4().hex[:12]}"
                             assignment = DBAssignment(
@@ -1024,19 +1023,19 @@ def _update_media_buy_impl(
                         # request; an in-process caller that could not produce one was
                         # reaching into the tool instead of invoking it.
                         #
-                        # account and idempotency_key are the OUTER request's, not invented:
-                        # these creatives belong to that account, and that key is the
-                        # client-generated identifier of the operation they are part of.
-                        # Borrowing the key is harmless because idempotency lives at the
-                        # transport boundary: this call enters the implementation directly,
-                        # so it never touches the (agent, account, key) cache scope.
+                        # account is the OUTER request's, not invented: these creatives
+                        # belong to that account. No idempotency_key: this is a SERVICE call,
+                        # and the service does not do idempotency -- the controller does, and
+                        # only for the request a buyer actually sent.
                         # A buyer's malformed inline creative raises here and travels
                         # untouched to the transport boundary, which names their field --
                         # nothing between this frame and that one may reclassify it.
                         sync_req = SyncCreativesRequest(
                             creatives=pkg_update.creatives,
                             account=req.account,
-                            idempotency_key=req.idempotency_key,
+                            # ITS OWN key: required by the schema, never read by the service,
+                            # and never the outer request's -- see creative_helpers.
+                            idempotency_key=f"internal-creative-upload-{uuid.uuid4().hex}",
                             context=req.context,
                             # The typed Assignment the request model declares, not the
                             # {creative_id: [package_id]} map this used to build. That
@@ -1050,9 +1049,8 @@ def _update_media_buy_impl(
                                 if c.creative_id
                             ],
                         )
-                        sync_response = _sync_creatives_impl(
-                            req=sync_req,
-                            identity=identity,
+                        sync_response = sync_creatives(
+                            sync_req, identity=identity, principal_id=principal_id, tenant=tenant
                         )
 
                         # Check for sync errors

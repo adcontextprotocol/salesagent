@@ -1919,31 +1919,6 @@ class ProductPerformance(SalesAgentBaseModel):
     confidence_score: float | None = None  # 0.0 to 1.0
 
 
-class UpdatePerformanceIndexRequest(SalesAgentBaseModel):
-    TAGS: ClassVar[tuple[str, ...]] = (
-        "performance",
-        "optimization",
-        "metrics",
-        "adcp",
-    )
-
-    media_buy_id: str
-    performance_data: list[ProductPerformance]
-    context: ContextObject | None = Field(
-        None, description="Application-level context provided by the client (echoed in responses)"
-    )
-
-
-class UpdatePerformanceIndexResponse(SalesAgentBaseModel):
-    status: str
-    detail: str
-    context: ContextObject | None = Field(None, description="Application-level context echoed from the request")
-
-    def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        return self.detail
-
-
 # --- Discovery ---
 
 
@@ -2339,11 +2314,6 @@ class MediaPackage(SalesAgentBaseModel):
     product_id: str | None = None  # Product ID for this package
     budget: float | None = None  # Budget allocation in the currency specified by the pricing option
     creative_ids: list[str] | None = None  # Creative IDs to assign to this package
-
-
-class PackagePerformance(SalesAgentBaseModel):
-    package_id: str
-    performance_index: float
 
 
 class AssetStatus(SalesAgentBaseModel):
@@ -3154,88 +3124,6 @@ class PropertyTagMetadata(SalesAgentBaseModel):
     description: str = Field(..., description="Description of what this tag represents")
 
 
-class ListAuthorizedPropertiesRequest(SalesAgentBaseModel):
-    """Request payload for list_authorized_properties task (AdCP spec).
-
-    Note: This type was removed from adcp 3.2.0, so we define it locally.
-
-    Fields:
-    - context: Application-level context (optional)
-    - ext: Extension object for custom fields (optional)
-    - property_tags: Filter to specific property tags (optional)
-    - publisher_domains: Filter to specific publisher domains (optional)
-    """
-
-    TAGS: ClassVar[tuple[str, ...]] = (
-        "properties",
-        "authorization",
-        "publisher",
-        "adcp",
-    )
-
-    context: ContextObject | None = Field(default=None, description="Application-level context")
-    ext: dict[str, Any] | None = Field(default=None, description="Extension object for custom fields")
-    property_tags: list[str] | None = Field(default=None, description="Filter to specific property tags")
-    publisher_domains: list[str] | None = Field(default=None, description="Filter to specific publisher domains")
-
-
-class ListAuthorizedPropertiesResponse(NestedModelSerializerMixin, SalesAgentBaseModel):
-    """Response payload for list_authorized_properties task (AdCP v2.4 spec compliant).
-
-    NOTE: Does not extend library type yet because local publisher_domains type
-    (list[str]) differs from library type (list[PublisherDomain]). Migration tracked in issue #824.
-
-    Per official AdCP v2.4 spec, this response lists publisher domains.
-    Buyers fetch property definitions from each publisher's adagents.json file.
-
-    Protocol fields (status, task_id, message, context_id) are added by the
-    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
-    """
-
-    publisher_domains: list[str] = Field(..., description="Publisher domains this agent is authorized to represent")
-    context: ContextObject | None = Field(None, description="Application-level context echoed from the request")
-    primary_channels: list[str] | None = Field(
-        None, description="Primary advertising channels in this portfolio (helps buyers filter relevance)"
-    )
-    primary_countries: list[str] | None = Field(
-        None, description="Primary countries (ISO 3166-1 alpha-2 codes) where properties are concentrated"
-    )
-    portfolio_description: str | None = Field(
-        None, description="Markdown-formatted description of the property portfolio", max_length=5000
-    )
-    advertising_policies: str | None = Field(
-        None,
-        description=(
-            "Publisher's advertising content policies, restrictions, and guidelines in natural language. "
-            "May include prohibited categories, blocked advertisers, restricted tactics, brand safety requirements, "
-            "or links to full policy documentation."
-        ),
-        min_length=1,
-        max_length=10000,
-    )
-    last_updated: str | None = Field(
-        None,
-        description="ISO 8601 timestamp of when the agent's publisher authorization list was last updated.",
-    )
-    errors: list[Error] | None = Field(
-        None, description="Task-specific errors and warnings (e.g., property availability issues)"
-    )
-
-    def __str__(self) -> str:
-        """Return human-readable message for protocol layer.
-
-        Used by both MCP (for display) and A2A (for task messages).
-        Provides conversational text without adding non-spec fields to the schema.
-        """
-        count = len(self.publisher_domains)
-        if count == 0:
-            return "No authorized publisher domains found."
-        elif count == 1:
-            return "Found 1 authorized publisher domain."
-        else:
-            return f"Found {count} authorized publisher domains."
-
-
 # --- Get Media Buys Types ---
 # DeliveryStatus: imported from adcp library at top of file (all 6 values).
 
@@ -3613,8 +3501,7 @@ class GetMediaBuysResponse(NestedModelSerializerMixin, LibraryGetMediaBuysRespon
         Without this the class inherited pydantic's ``__repr__``, so the wire message
         was a 316-character field dump that itself contained ``message=None``. The
         class never had a curated ``__str__``; re-basing onto the library envelope
-        only made the dump longer. Shape mirrors the sibling
-        ``ListAuthorizedPropertiesResponse.__str__`` above.
+        only made the dump longer.
         """
         count = len(self.media_buys)
         if count == 0:

@@ -1626,33 +1626,6 @@ class TestProtocolEnvelopeConstraints:
 class TestPublisherDomainsPortfolio:
     """Publisher domains portfolio assembly output constraints."""
 
-    def test_publisher_domains_sorted_alphabetically(self):
-        """Publisher domains must be sorted alphabetically in response.
-
-        Covers: CONSTR-PUBLISHER-DOMAINS-PORTFOLIO-01
-        """
-        from src.core.schemas import ListAuthorizedPropertiesResponse
-
-        resp = ListAuthorizedPropertiesResponse(
-            publisher_domains=["xyz.com", "abc.com", "mno.com"],
-        )
-        # The constraint says domains should be sorted; verify the schema accepts them
-        assert resp.publisher_domains == ["xyz.com", "abc.com", "mno.com"]
-        # Verify sorting logic works when applied
-        sorted_domains = sorted(resp.publisher_domains)
-        assert sorted_domains == ["abc.com", "mno.com", "xyz.com"]
-
-    def test_empty_publisher_domains_is_empty_array(self):
-        """Empty portfolio returns empty array, not null.
-
-        Covers: CONSTR-PUBLISHER-DOMAINS-PORTFOLIO-01
-        """
-        from src.core.schemas import ListAuthorizedPropertiesResponse
-
-        resp = ListAuthorizedPropertiesResponse(publisher_domains=[])
-        assert resp.publisher_domains == []
-        assert isinstance(resp.publisher_domains, list)
-
     def test_product_publisher_properties_contain_domains(self):
         """Product publisher_properties carry publisher_domain for portfolio extraction.
 

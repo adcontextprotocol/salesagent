@@ -561,28 +561,6 @@ class Kevel(AdServerAdapter):
                 currency="USD",
             )
 
-    def update_media_buy_performance_index(
-        self, media_buy_id: str, package_performance: list[PackagePerformance]
-    ) -> bool:
-        """Updates performance indices for packages in Kevel."""
-        self.log(f"Kevel.update_media_buy_performance_index for media buy '{media_buy_id}'", dry_run_prefix=False)
-
-        if self.dry_run:
-            self.log("Performance index updates:")
-            for perf in package_performance:
-                self.log(f"  Package {perf.package_id}: index={perf.performance_index:.2f}")
-            self.log("Would adjust flight priorities based on performance:")
-            for perf in package_performance:
-                if perf.performance_index > 1.1:
-                    self.log(f"  Would increase priority for {perf.package_id} (good performance)")
-                elif perf.performance_index < 0.9:
-                    self.log(f"  Would decrease priority for {perf.package_id} (poor performance)")
-            return True
-        else:
-            # In production, would update flight priorities based on performance
-            self.log("Kevel does not directly support performance index updates. Would need custom implementation.")
-            return True
-
     def update_media_buy(
         self,
         media_buy_id: str,

@@ -9,10 +9,14 @@ three become derived from; ``docs/design/one-tool-registry.md`` is the design, a
 registration still lives where it always did. Steps 6-8 delete the three hand-written
 declarations and generate them from here.
 
-Until they do, these rows are hand-written and therefore capable of being wrong. What makes
-them right is not review: ``tests/unit/test_architecture_tool_registry_agrees.py`` compares
-every axis of every row against the LIVE registration objects the three transports route
-real traffic through. A row that disagrees is a defect in the ROW.
+These rows are hand-written and therefore capable of being wrong. What makes them right is
+that the three transports are GENERATED from them: MCP registration loops this mapping, the
+A2A card is ``_derived_skills()`` over it, and the REST router adds a route per ``rest``
+binding. A row cannot disagree with a registration that is built from it.
+
+The one place that is still not true is A2A DISPATCH, which resolves a hand-written
+``_handle_<tool>_skill`` method and silently declines a row that has none -- see
+``docs/design/one-tool-registry-remaining.md`` R1.
 
 :class:`ToolSpec` says where a tool is reachable and what runs it. It says nothing about the
 tool's SHAPE -- the DTO says that itself, which is why ``dto`` is a reference to a model and

@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # Directories scanned by discovery glob (not a hand-maintained file list) for
 # _impl-adjacent get_db_session() calls. The hand-maintained list this replaced
-# omitted accounts.py (the largest new tools module, R1-5/R1-6) entirely and
+# omitted accounts.py (the largest new tools module) entirely and
 # never scanned helpers/ at all -- making a session-opening helper one call
 # frame from _impl invisible to this guard (the guard even taught the
 # workaround: adapter_helpers.py's _read_mock_test_behavior docstring used to
@@ -237,23 +237,6 @@ INTEGRATION_SESSION_ADD_ALLOWLIST = {
         "test_updating_profile_inventory_affects_product_implementation_config",
     ),
     ("tests/integration/test_inventory_profile_updates.py", "test_updating_profile_properties_affects_all_products"),
-    # tests/integration/test_list_authorized_properties_integration.py
-    (
-        "tests/integration/test_list_authorized_properties_integration.py",
-        "test_list_authorized_properties_reads_from_publisher_partner",
-    ),
-    (
-        "tests/integration/test_list_authorized_properties_integration.py",
-        "test_list_authorized_properties_returns_all_registered_publishers",
-    ),
-    (
-        "tests/integration/test_list_authorized_properties_integration.py",
-        "test_list_authorized_properties_returns_empty_when_no_publishers",
-    ),
-    (
-        "tests/integration/test_list_authorized_properties_integration.py",
-        "test_list_authorized_properties_returns_sorted_domains",
-    ),
     # tests/integration/test_media_buy_readiness.py
     ("tests/integration/test_media_buy_readiness.py", "test_tenant"),
     ("tests/integration/test_media_buy_readiness.py", "test_principal"),
@@ -637,7 +620,7 @@ class TestImplNoDirectDbSession:
     @pytest.mark.arch_guard
     def test_discovery_glob_covers_the_files_the_old_list_missed(self):
         """accounts.py and helpers/ were invisible to the hand-maintained
-        IMPL_FILES list (R1-5/R1-6) -- confirm the discovery glob now sees them."""
+        IMPL_FILES list -- confirm the discovery glob now sees them."""
         assert "src/core/tools/accounts.py" in IMPL_FILES
         assert "src/core/helpers/adapter_helpers.py" in IMPL_FILES
         assert "src/core/helpers/activity_helpers.py" in IMPL_FILES
@@ -1086,26 +1069,6 @@ GET_DB_SESSION_IN_TESTS_ALLOWLIST: set[tuple[str, str]] = {
     ),
     ("tests/integration/test_inventory_profile_updates.py", "test_updating_profile_properties_affects_all_products"),
     ("tests/integration/test_inventory_tree_lazy_loading.py", "_bind_factories"),
-    (
-        "tests/integration/test_list_authorized_properties_integration.py",
-        "test_list_authorized_properties_reads_from_publisher_partner",
-    ),
-    (
-        "tests/integration/test_list_authorized_properties_integration.py",
-        "test_list_authorized_properties_returns_all_registered_publishers",
-    ),
-    (
-        "tests/integration/test_list_authorized_properties_integration.py",
-        "test_list_authorized_properties_returns_empty_when_no_publishers",
-    ),
-    (
-        "tests/integration/test_list_authorized_properties_integration.py",
-        "test_list_authorized_properties_returns_sorted_domains",
-    ),
-    (
-        "tests/integration/test_list_authorized_properties_integration.py",
-        "test_list_authorized_properties_tenant_isolation",
-    ),
     ("tests/integration/test_mcp_tool_roundtrip_validation.py", "real_products_in_db"),
     ("tests/integration/test_mcp_tool_roundtrip_validation.py", "test_tenant_id"),
     ("tests/integration/test_mcp_tools_audit.py", "test_get_media_buy_delivery_roundtrip_safety"),

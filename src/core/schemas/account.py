@@ -82,7 +82,6 @@ class ListAccountsRequest(LibraryListAccountsRequest):
     idempotent by construction, so there is no at-most-once guarantee for a key to carry.
     Contrast SyncAccountsRequest below, where the spec DOES declare it because a sync mutates.
 
-    IT IS DECLARED AGAIN BELOW, DELIBERATELY AND TEMPORARILY. See the field comment.
     """
 
     TAGS: ClassVar[tuple[str, ...]] = (
@@ -93,31 +92,6 @@ class ListAccountsRequest(LibraryListAccountsRequest):
     )
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
-
-    # TEMPORARY -- restored on purpose, and it must go. Tracked by salesagent-prkv.65.
-    #
-    # WHY IT IS BACK: @T-UC-011-list-read-idempotency-tolerance builds this model IN THE TEST
-    # PROCESS (tests/bdd/steps/domain/uc011_accounts.py) rather than dispatching a raw payload,
-    # so under dev/CI ``extra="forbid"`` the scenario cannot even construct its request once the
-    # field is absent -- it dies before any transport is crossed and grades nothing. The
-    # scenario's Gherkin is CORRECT (send the envelope, get 3 accounts and the context echo);
-    # only its step implementation is wrong. Declaring the field lets the scenario keep
-    # exercising the dispatch-and-echo path it was written for while the harness is fixed.
-    #
-    # WHY IT IS HARMLESS MEANWHILE: production already tolerates the whole 3.1 envelope without
-    # this field -- measured end to end through Client(mcp) under ENVIRONMENT=production, which
-    # returns is_error=False with context.correlation_id echoed unchanged (graded by
-    # tests/harness/test_forward_compat_acceptance.py::TestReadToolIdempotencyEnvelope). The
-    # field changes no behaviour; it only keeps a badly-wired scenario constructible.
-    #
-    # WHEN IT GOES: the moment the harness can dispatch an arbitrary payload (prkv.65 step 1,
-    # a3b5aea55's template). Convert that When step to raw dispatch, delete this field and the
-    # wrapper parameter, and the scenario then grades the real obligation for the first time.
-    #
-    # WHAT IT IS NOT: this is not a spec field. account/list-accounts-request.json does not
-    # declare idempotency_key, and a read has no at-most-once guarantee for a key to carry.
-    # Do not cite its presence here as evidence that AdCP 3.1.1 wants it.
-    idempotency_key: str | None = None
 
 
 class SyncAccountsRequest(LibrarySyncAccountsRequest):

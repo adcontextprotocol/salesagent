@@ -75,7 +75,3 @@ class TestListCreativeFormatsE2E:
             assert data.get("context") == test_context, (
                 f"Context should be echoed back. Expected {test_context}, got {data.get('context')}"
             )
-
-
-class TestListAuthorizedPropertiesE2E:
-    """E2E tests for the list_authorized_properties discovery endpoint."""

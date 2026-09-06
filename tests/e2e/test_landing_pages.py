@@ -185,19 +185,6 @@ class TestAuthOptionalEndpoints:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_list_authorized_properties_without_auth(self, live_server):
-        """list_authorized_properties should be reachable without authentication via domain routing."""
-        # Unauthenticated: tenant resolved via Host header only (no x-adcp-tenant).
-        mcp_client = make_mcp_client(live_server, tenant=None, host="test-custom-domain.example.com")
-        try:
-            async with mcp_client as client:
-                result = await client.call_tool("list_authorized_properties", {})
-                assert result is not None
-        except Exception:
-            pass
-
-    @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_get_products_without_auth_public_policy(self, live_server):
         """get_products should be reachable without authentication (public policy tenants)."""
         # Unauthenticated: tenant resolved via Host header only (no x-adcp-tenant).

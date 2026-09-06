@@ -32,8 +32,6 @@ from src.core.schemas import (
     GetMediaBuyDeliveryResponse,
     GetProductsRequest,
     GetProductsResponse,
-    ListAuthorizedPropertiesRequest,
-    ListAuthorizedPropertiesResponse,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
     Measurement,
@@ -82,7 +80,6 @@ class TestSchemaMatchesLibrary:
             GetSignalsRequest as LibGetSignalsRequest,
         )
 
-        # NOTE: ListAuthorizedPropertiesRequest was removed from adcp 3.2.0
         # We define it locally in src/core/schemas.py
         from adcp import (
             ListCreativeFormatsRequest as LibListCreativeFormatsRequest,
@@ -106,8 +103,6 @@ class TestSchemaMatchesLibrary:
         from src.core.schemas import (
             GetSignalsRequest as LocalGetSignalsRequest,
         )
-
-        # NOTE: ListAuthorizedPropertiesRequest comparison skipped - removed from adcp 3.2.0
         from src.core.schemas import (
             ListCreativeFormatsRequest as LocalListCreativeFormatsRequest,
         )
@@ -155,7 +150,6 @@ class TestSchemaMatchesLibrary:
         local_fields = set(LocalListCreativeFormatsRequest.model_fields.keys())
         assert lib_fields == local_fields, f"ListCreativeFormatsRequest drift: lib={lib_fields}, local={local_fields}"
 
-        # NOTE: ListAuthorizedPropertiesRequest comparison skipped - type removed from adcp 3.2.0
         # We define it locally in src/core/schemas.py with fields: context, ext, property_tags, publisher_domains
 
         # GetSignalsRequest - adcp 3.9 now includes signal_ids and pagination
@@ -2423,73 +2417,6 @@ class TestAdCPContract:
 
         # Verify field count expectations
         assert len(adcp_response) == 2
-
-    def test_list_authorized_properties_request_adcp_compliance(self):
-        """Test that ListAuthorizedPropertiesRequest complies with AdCP list-authorized-properties-request schema."""
-        # Create request with optional fields per spec
-        # Per AdCP spec: context, ext, publisher_domains, property_tags are all optional
-        request = ListAuthorizedPropertiesRequest(publisher_domains=["example.com", "news.example.com"])
-
-        # Test AdCP-compliant response - use exclude_none=False to see all fields
-        adcp_response = request.model_dump(exclude_none=False)
-
-        # Per AdCP spec, all fields are optional
-        optional_fields = ["context", "ext", "publisher_domains", "property_tags"]
-        for field in optional_fields:
-            assert field in adcp_response
-
-        # Verify publisher_domains is array when present
-        if adcp_response["publisher_domains"] is not None:
-            assert isinstance(adcp_response["publisher_domains"], list)
-
-        # Verify field count expectations - all 4 optional fields
-        assert len(adcp_response) == 4
-
-    def test_list_authorized_properties_response_adcp_compliance(self):
-        """Test that ListAuthorizedPropertiesResponse complies with AdCP v2.4 list-authorized-properties-response schema."""
-        # Create response with required fields only (per AdCP spec, optional fields should be omitted if not set)
-        # Per /schemas/v1/media-buy/list-authorized-properties-response.json, only these fields are spec-compliant:
-        # - publisher_domains (required)
-        # - primary_channels, primary_countries, portfolio_description, advertising_policies, last_updated, errors (optional)
-        response = ListAuthorizedPropertiesResponse(
-            publisher_domains=["example.com"],
-            # All optional fields omitted - per AdCP spec, optional fields with None/empty values should be omitted
-        )
-
-        # Test AdCP-compliant response
-        adcp_response = response.model_dump()
-
-        # Verify required AdCP fields present and non-null
-        required_fields = ["publisher_domains"]
-        for field in required_fields:
-            assert field in adcp_response
-            assert adcp_response[field] is not None
-
-        # Verify publisher_domains is array
-        assert isinstance(adcp_response["publisher_domains"], list)
-
-        # Verify optional fields with None values are omitted per AdCP spec
-        assert "errors" not in adcp_response, "errors with None/empty value should be omitted"
-        assert "primary_channels" not in adcp_response, "primary_channels with None value should be omitted"
-        assert "primary_countries" not in adcp_response, "primary_countries with None value should be omitted"
-        assert "portfolio_description" not in adcp_response, "portfolio_description with None value should be omitted"
-        assert "advertising_policies" not in adcp_response, "advertising_policies with None value should be omitted"
-        assert "last_updated" not in adcp_response, "last_updated with None value should be omitted"
-
-        # Verify message is provided via __str__() not as schema field
-        assert str(response) == "Found 1 authorized publisher domain."
-
-        # Test with optional fields set to non-None values
-        response_with_optionals = ListAuthorizedPropertiesResponse(
-            publisher_domains=["example.com", "example.org"],
-            primary_channels=["display", "video"],
-            advertising_policies="No tobacco ads",
-        )
-        adcp_with_optionals = response_with_optionals.model_dump()
-        assert "primary_channels" in adcp_with_optionals, "Set optional fields should be present"
-        assert "advertising_policies" in adcp_with_optionals, "Set optional fields should be present"
-        assert isinstance(adcp_with_optionals["primary_channels"], list)
-        assert isinstance(adcp_with_optionals["advertising_policies"], str)
 
     def test_get_signals_request_adcp_compliance(self):
         """Test that GetSignalsRequest model complies with AdCP get-signals-request schema."""

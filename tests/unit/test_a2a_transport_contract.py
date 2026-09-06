@@ -48,7 +48,6 @@ ALL_SKILLS = _advertised_skills()
 DISCOVERY_SKILLS = [
     "get_adcp_capabilities",
     "list_creative_formats",
-    "list_authorized_properties",
     "get_products",
     # list_accounts only. Auth is OPTIONAL there per BR-RULE-055 -- an unauthenticated
     # call returns an empty account list rather than a rejection. sync_accounts is NOT in

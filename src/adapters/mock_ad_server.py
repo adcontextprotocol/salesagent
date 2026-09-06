@@ -46,7 +46,6 @@ from src.core.schemas import (
     CreateMediaBuySuccess,
     DeliveryTotals,
     MediaPackage,
-    PackagePerformance,
     ReportingPeriod,
     Snapshot,
     UpdateMediaBuyResponse,
@@ -1570,11 +1569,6 @@ class MockAdServer(AdServerAdapter):
             result.setdefault(media_buy_id, {})[package_id] = snapshot
 
         return result
-
-    def update_media_buy_performance_index(
-        self, media_buy_id: str, package_performance: list[PackagePerformance]
-    ) -> bool:
-        return True
 
     def update_media_buy(
         self,

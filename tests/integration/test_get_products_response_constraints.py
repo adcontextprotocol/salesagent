@@ -18,7 +18,6 @@ from tests.factories import (
     PricingOptionFactory,
     PrincipalFactory,
     ProductFactory,
-    PublisherPartnerFactory,
     TenantFactory,
 )
 from tests.harness.product import ProductEnv
@@ -175,54 +174,3 @@ class TestRelevanceThresholdIntegration:
 
 class TestPublisherDomainsPortfolioIntegration:
     """Publisher domains portfolio assembly from real database."""
-
-    @pytest.mark.asyncio
-    async def test_publisher_domains_from_list_authorized_properties(self, integration_db):
-        """list_authorized_properties returns publisher_domains sorted alphabetically.
-
-        Covers: CONSTR-PUBLISHER-DOMAINS-PORTFOLIO-01
-        """
-        from src.core.resolved_identity import ResolvedIdentity
-        from src.core.tenant_context import LazyTenantContext
-        from src.core.tools.properties import _list_authorized_properties_impl
-
-        with ProductEnv(tenant_id="pub-dom-t1", principal_id="p1") as env:
-            tenant = TenantFactory(tenant_id="pub-dom-t1", subdomain="pub-dom-t1")
-
-            # Add publishers in non-alphabetical order
-            for domain in ["zeta.com", "alpha.com", "mike.com"]:
-                PublisherPartnerFactory(tenant=tenant, publisher_domain=domain)
-
-            identity = ResolvedIdentity(
-                principal_id=None,
-                tenant_id="pub-dom-t1",
-                tenant=LazyTenantContext("pub-dom-t1"),
-                protocol="mcp",
-            )
-
-            response = _list_authorized_properties_impl(req=None, identity=identity)
-            assert response.publisher_domains == ["alpha.com", "mike.com", "zeta.com"]
-
-    @pytest.mark.asyncio
-    async def test_empty_publisher_domains_returns_empty_array(self, integration_db):
-        """Tenant with no publishers returns empty array, not null.
-
-        Covers: CONSTR-PUBLISHER-DOMAINS-PORTFOLIO-01
-        """
-        from src.core.resolved_identity import ResolvedIdentity
-        from src.core.tenant_context import LazyTenantContext
-        from src.core.tools.properties import _list_authorized_properties_impl
-
-        with ProductEnv(tenant_id="pub-dom-t2", principal_id="p1") as env:
-            TenantFactory(tenant_id="pub-dom-t2", subdomain="pub-dom-t2")
-
-            identity = ResolvedIdentity(
-                principal_id=None,
-                tenant_id="pub-dom-t2",
-                tenant=LazyTenantContext("pub-dom-t2"),
-                protocol="mcp",
-            )
-
-            response = _list_authorized_properties_impl(req=None, identity=identity)
-            assert response.publisher_domains == []
-            assert isinstance(response.publisher_domains, list)

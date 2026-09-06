@@ -322,16 +322,8 @@ class TestAnInternalFieldIsNeverAnnounced:
     """
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "list_accounts.idempotency_key was RESTORED deliberately and temporarily "
-            "(salesagent-prkv.65): the UC-011 tolerance scenario builds the model in-process, "
-            "so without the field it cannot construct a request and grades nothing. This "
-            "assertion is CORRECT and unweakened -- strict=True means it fails the build the "
-            "moment the field is removed, forcing this marker to be deleted with it."
-        ),
-    )
+    # Graduated: the field is gone, and this marker's own instruction was to delete it
+    # the moment it was. The UC-011 step that needed it dispatches a literal payload.
     async def test_a_read_tool_does_not_advertise_an_idempotency_key(self) -> None:
         """The field this ticket removed, pinned through the LIVE registry.
 

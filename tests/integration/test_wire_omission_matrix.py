@@ -38,12 +38,10 @@ from tests.factories import (
     PricingOptionFactory,
     PrincipalFactory,
     ProductFactory,
-    PublisherPartnerFactory,
     TenantFactory,
 )
 from tests.factories.creative_asset import CreativeAssetFactory
 from tests.harness.assertions import assert_wire_omits_unset
-from tests.harness.authorized_properties import AuthorizedPropertiesEnv
 from tests.harness.capabilities import CapabilitiesEnv
 from tests.harness.creative_sync import CreativeSyncEnv
 from tests.harness.product import ProductEnv
@@ -119,17 +117,6 @@ def _capabilities_env() -> Iterator[tuple[object, dict]]:
     with CapabilitiesEnv(tenant_id="wire-schema-capabilities", principal_id="test_principal") as env:
         tenant = TenantFactory(tenant_id="wire-schema-capabilities")
         PrincipalFactory(tenant=tenant, principal_id="test_principal")
-        yield env, {}
-
-
-@contextmanager
-def _authorized_properties_env() -> Iterator[tuple[object, dict]]:
-    with AuthorizedPropertiesEnv(tenant_id="wire-shape-properties", principal_id="test_principal") as env:
-        tenant = TenantFactory(tenant_id="wire-shape-properties")
-        PrincipalFactory(tenant=tenant, principal_id="test_principal")
-        # A verified publisher with no advertising_policy — exercises the "has
-        # publishers" branch where every optional field but publisher_domains is unset.
-        PublisherPartnerFactory(tenant=tenant, publisher_domain="example.com")
         yield env, {}
 
 

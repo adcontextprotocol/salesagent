@@ -1613,12 +1613,6 @@ class GoogleAdManager(AdServerAdapter):
             ),
         )
 
-    def update_media_buy_performance_index(self, media_buy_id: str, package_performance: list) -> bool:
-        """Update the performance index for packages in a media buy."""
-        # This would be implemented with appropriate manager delegation
-        self.log(f"Update performance index for media buy {media_buy_id} with {len(package_performance)} packages")
-        return True
-
     def get_config_ui_endpoint(self) -> str | None:
         """Return the endpoint for GAM-specific configuration UI."""
         return "/adapters/gam/config"

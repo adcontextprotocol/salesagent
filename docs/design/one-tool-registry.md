@@ -48,9 +48,10 @@ transport-vs-transport. It is builder-vs-DTO, reproduced three times.
 
 Two facts, both measured, that were not true when the builders were written:
 
-1. **Every `_impl` already takes `req`.** All twelve. Three additionally take
-   `context_id`, `raw_wire_payload` or `request_hash` — transport-derived values,
-   not buyer fields. (Two of those three are gone now; see the table below.)
+1. **Every `_impl` already takes `req`.** All twelve. One additionally takes
+   `context_id` — a transport-derived value, not a buyer field. Two others took
+   `raw_wire_payload` and `request_hash`, both idempotency plumbing, both gone
+   with step 9.
 2. **Every DTO is, or extends, the SDK's pinned request model.** `_register_tool`
    already refuses to register a tool whose DTO is not SDK-grounded.
 
@@ -353,6 +354,13 @@ Everything the deleted suite was protecting is now structural:
 | model rejects nothing the schema declares | the narrowed class is the accepted shape |
 | model has no field the schema lacks | derived: `model_fields - library_declared_fields` |
 | advertised shape matches the model | MCP announces the model itself |
+
+## What remains
+
+Steps 1-9 below have all landed. They made the request -> implementation half of this design
+true. The bytes -> request half is not: A2A still dispatches through hand-written per-skill
+handlers with their own coercions. [One tool registry: what is left](one-tool-registry-remaining.md)
+is the remaining work, R1 first.
 
 ## Migration order
 

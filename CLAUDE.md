@@ -13,14 +13,16 @@ This guide helps you work effectively with the Prebid Sales Agent codebase maint
 6. **Name your PRs correctly** - they need to pass .github/workflows/pr-title-check.yml
 
 ### Common Task Patterns
-- **Adding a new AdCP tool**: Extend library schema → Add `_impl()` function → Add MCP wrapper → Add A2A raw function → Add tests
+- **Adding a new AdCP tool**: Extend library schema → Add `_impl()` controller → Add a `ToolSpec` row to `src/core/tools/registry.py` → Add tests. MCP registration, the A2A card and the REST route are all generated from the row.
 - **Fixing a route issue**: Check for conflicts with `grep -r "@.*route.*your/path"` → Use `url_for()` in Python, `scriptRoot` in JavaScript
 - **Modifying schemas**: Verify against AdCP spec → Update Pydantic model → Run `pytest tests/unit/test_adcp_contract.py`
 - **Database changes**: Use SQLAlchemy 2.0 `select()` → Use `JSONType` for JSON → Create migration with `alembic revision`
 
 ### Key Files to Know
 - `src/core/main.py` - MCP server and tool registration
-- `src/core/tools/` - tool `_impl()` business logic, MCP wrappers, and A2A raw functions (package)
+- `src/core/tools/` - tool `_impl()` controllers and services (package)
+- `src/core/tools/registry.py` - `TOOLS`: the one declaration every transport derives from
+- `src/core/tools/_boundary.py` - the one path from a validated request to a response
 - `src/core/schemas/` - Pydantic models, AdCP-compliant (package)
 - `src/adapters/base.py` - Adapter interface
 - `src/adapters/gam/` - GAM implementation
@@ -280,6 +282,28 @@ calls the implementation as `impl(req=..., identity=..., **extra)`. Both of thos
 properties of the REQUEST, not steps in the work, and doing them once is what keeps the
 transports from disagreeing — the fifteen `*_raw` wrappers this replaced disagreed about
 exactly those two.
+
+**Controller and service.** An `_impl` is a CONTROLLER: it establishes who is calling and
+then delegates. The work itself belongs in a service function that takes an already-resolved
+caller and asks nothing about transports, auth or idempotency:
+
+```python
+def _sync_creatives_impl(req, identity=None):          # controller
+    principal_id = require_principal_id(identity, context=req.context)
+    identity = require_identity(identity, context=req.context)
+    tenant = require_tenant(identity, context=req.context)
+    return sync_creatives(req, identity=identity, principal_id=principal_id, tenant=tenant)
+
+def sync_creatives(req, *, identity, principal_id, tenant):   # service
+    ...
+```
+
+**A controller never calls another controller.** When one tool needs another tool's work --
+`create_media_buy` and `update_media_buy` upload a package's inline creatives -- it calls the
+SERVICE. Calling the other `_impl` re-runs an auth check that already passed and drags the
+outer request's `idempotency_key` into a function with no business seeing it. Today
+`sync_creatives` is the extracted one; extract the next service when a second tool needs it,
+not before.
 
 **Rules for `_impl` functions:**
 - Accept `ResolvedIdentity`, never `Context`, `ToolContext`, or raw headers

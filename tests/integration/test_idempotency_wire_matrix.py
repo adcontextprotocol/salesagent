@@ -306,11 +306,24 @@ class TestHashInputIsTheValidatedRequest:
     answer and replay was silently dead on the transport that forgot (#2214). One digest
     input, taken after validation, is what makes the four transports agree at all.
 
-    The divergence is in the SAFE direction. A replayed response for a semantically identical
-    request still executes the side effect at most once, which is the guarantee the key
-    carries; what is lost is the seller's ability to refuse a re-encoding it could have
-    served. Closing it properly means canonicalising the received body before validation, at
-    a seam that does not exist yet.
+    The divergence is WIDER than the re-encoding this test exercises, and the wider half is
+    not obviously safe. Production runs ``extra="ignore"`` (critical pattern #7) and every
+    pinned AdCP request schema sets ``additionalProperties: true``, so a field the DTO does
+    not declare is dropped by validation BEFORE the hash is taken. Two payloads differing
+    only in such a field hash equal, and the second replays the first:
+
+        ENVIRONMENT=production, same key, ``some_future_field`` ALPHA vs BETA
+        -> canonical_request_hash equal -> the second request replays
+
+    For a re-encoded timestamp the two requests are semantically identical and replaying is
+    harmless. For an undeclared field they are identical only to THIS seller, today: the
+    buyer meant two different things, and a later version that implements the field would
+    read the same two payloads as genuinely different -- with cache rows written under the
+    old reading still in the window.
+
+    Closing either half properly means canonicalising the received body BEFORE validation, at
+    a seam that does not exist. Recorded rather than narrowed, because a test that claims a
+    smaller divergence than production has is worse than one that names the whole of it.
     """
 
     def test_a_re_encoded_but_equivalent_retry_replays(self, integration_db):

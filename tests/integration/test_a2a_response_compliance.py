@@ -17,7 +17,6 @@ from src.core.schemas import (
     CreateMediaBuySuccess,
     GetMediaBuyDeliveryResponse,
     GetProductsResponse,
-    ListAuthorizedPropertiesResponse,
     ListCreativeFormatsResponse,
     ListCreativesResponse,
     SyncCreativesResponse,
@@ -31,42 +30,6 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 @pytest.mark.integration
 class TestA2ASpecCompliance:
     """Test that A2A handlers return spec-compliant responses without extra fields."""
-
-    def test_list_authorized_properties_spec_compliance(self):
-        """Test list_authorized_properties returns only spec-defined fields."""
-        response_data = {
-            "publisher_domains": ["example.com"],
-            "primary_channels": None,
-            "primary_countries": None,
-            "portfolio_description": None,
-            "advertising_policies": None,
-            "last_updated": None,
-            "errors": None,
-        }
-
-        # Verify this is spec-compliant
-        # Include context and ensure it's present in payload
-        ctx = {"user_id": "1234567890"}
-        response = ListAuthorizedPropertiesResponse(**response_data, context=ctx)
-
-        # Check response has NO extra fields
-        spec_fields = {
-            "publisher_domains",
-            "primary_channels",
-            "primary_countries",
-            "portfolio_description",
-            "advertising_policies",
-            "last_updated",
-            "errors",
-            "context",
-        }
-        response_fields = set(response.model_dump().keys())
-        extra_fields = response_fields - spec_fields
-
-        assert extra_fields == set(), f"Response has non-spec fields: {extra_fields}"
-
-        # Verify __str__() works for human-readable message
-        assert str(response) == "Found 1 authorized publisher domain."
 
     def test_get_products_spec_compliance(self):
         """Test get_products returns only spec-defined fields."""
@@ -298,7 +261,6 @@ class TestGetMediaBuysProtocolMessage:
     ``str()`` assertion would prove the method exists and nothing about the
     buyer-visible field.
 
-    Wording mirrors the nearest sibling, ``ListAuthorizedPropertiesResponse.__str__``
     (``src/core/schemas/_base.py``), which uses the same three-branch count form.
     """
 
@@ -328,40 +290,6 @@ class TestGetMediaBuysProtocolMessage:
 class TestMCPAndA2AResponseParity:
     """Test that MCP and A2A return identical response data."""
 
-    def test_response_data_identical(self):
-        """Test that both protocols return the same AdCP response data."""
-        # Create response object like MCP returns
-        mcp_response = ListAuthorizedPropertiesResponse(
-            publisher_domains=["example.com"],
-        )
-
-        # What A2A returns (after our fix)
-        a2a_response_data = mcp_response.model_dump()
-
-        # Both should be identical
-        assert a2a_response_data == mcp_response.model_dump()
-
-        # Per AdCP spec, only fields that were set should be present (exclude_none=True)
-        # Optional fields with None values should be omitted
-        assert set(a2a_response_data.keys()) == {
-            "publisher_domains",
-        }
-
-        # Verify optional fields are omitted when None
-        assert "errors" not in a2a_response_data, "None-valued optional fields should be omitted per AdCP spec"
-        assert "primary_channels" not in a2a_response_data
-        assert "primary_countries" not in a2a_response_data
-        assert "portfolio_description" not in a2a_response_data
-        assert "advertising_policies" not in a2a_response_data
-        assert "last_updated" not in a2a_response_data
-
-        # Both can generate the same human-readable message
-        mcp_message = str(mcp_response)
-        a2a_message = str(ListAuthorizedPropertiesResponse(**a2a_response_data))
-        assert mcp_message == a2a_message
-        # Local schema's __str__() message format
-        assert mcp_message == "Found 1 authorized publisher domain."
-
     def test_all_response_types_have_str_method(self):
         """Test that all AdCP response types support __str__() for human-readable messages."""
         response_types = [
@@ -369,7 +297,6 @@ class TestMCPAndA2AResponseParity:
             UpdateMediaBuySuccess,
             GetMediaBuyDeliveryResponse,
             GetProductsResponse,
-            ListAuthorizedPropertiesResponse,
             ListCreativeFormatsResponse,
             ListCreativesResponse,
             SyncCreativesResponse,
@@ -385,27 +312,6 @@ class TestMCPAndA2AResponseParity:
 @pytest.mark.integration
 class TestA2AResponseRegressionPrevention:
     """Prevent regressions: ensure we never add non-spec fields back."""
-
-    def test_handlers_return_spec_compliant_dicts(self):
-        """Test that handler responses are plain spec-compliant dicts."""
-        # This is a contract test - if someone adds 'success' or 'message' back,
-        # this test will catch it
-
-        from src.core.schemas import ListAuthorizedPropertiesResponse
-
-        response = ListAuthorizedPropertiesResponse(publisher_domains=["test.com"])
-        response_dict = response.model_dump()
-
-        # These fields should NOT be on the Pydantic response MODEL. 'message'
-        # is a genuine spec-defined field on the WIRE envelope's Protocol
-        # Envelope arm (see tests/helpers/adcp_schema_validator.py), but it's
-        # populated by the protocol layer (_serialize_for_a2a et al) at the
-        # transport boundary, not carried on the domain response model itself.
-        forbidden_fields = {"success", "message", "total_count", "specification_version"}
-        actual_fields = set(response_dict.keys())
-
-        violations = forbidden_fields & actual_fields
-        assert violations == set(), f"Response contains forbidden non-spec fields: {violations}"
 
     def test_no_protocol_fields_in_response_data(self):
         """Ensure protocol metadata is separate from response data."""

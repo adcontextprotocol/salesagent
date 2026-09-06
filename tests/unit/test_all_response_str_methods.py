@@ -18,7 +18,6 @@ from src.core.schemas import (
     SimulationControlResponse,
     SyncCreativesResponse,
     UpdateMediaBuySuccess,
-    UpdatePerformanceIndexResponse,
 )
 from tests.factories.creative_asset import build_assets, image_spec
 from tests.helpers.adcp_factories import (
@@ -228,11 +227,6 @@ class TestResponseStrMethods:
     # Note: GetMediaBuyDeliveryResponse, CreateCreativeResponse, GetSignalsResponse
     # have complex nested models. Their __str__() methods are implemented and work,
     # but creating test instances requires many nested fields. Tested via integration tests.
-
-    def test_update_performance_index_response(self):
-        """UpdatePerformanceIndexResponse returns detail field."""
-        resp = UpdatePerformanceIndexResponse(status="success", detail="Performance index updated for 5 products")
-        assert str(resp) == "Performance index updated for 5 products"
 
     def test_create_human_task_response(self):
         """CreateHumanTaskResponse shows task ID and status."""

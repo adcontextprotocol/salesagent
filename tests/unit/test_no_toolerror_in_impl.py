@@ -18,13 +18,11 @@ SIMPLE_MODULE_FILES = [
     "src/core/main.py",
     "src/core/auth.py",
     "src/core/helpers/creative_helpers.py",
-    "src/core/tools/performance.py",
     "src/core/tools/creatives/_workflow.py",
     "src/core/tools/creatives/_sync.py",
     "src/core/tools/creatives/_assignments.py",
     "src/core/tools/media_buy_delivery.py",
     "src/core/tools/creative_formats.py",
-    "src/core/tools/properties.py",
     "src/core/tools/task_management.py",
     "src/core/tools/signals.py",
 ]

@@ -225,21 +225,6 @@ class TestMCPToolRoundtripMinimal:
         content = result.structured_content if hasattr(result, "structured_content") else result
         assert "creatives" in content
 
-    async def test_list_authorized_properties_minimal(self, mcp_client):
-        """Test list_authorized_properties with no req parameter."""
-        try:
-            result = await mcp_client.call_tool("list_authorized_properties", {})  # req parameter is optional
-
-            assert result is not None
-            content = result.structured_content if hasattr(result, "structured_content") else result
-            # May return error if no properties configured - that's expected
-            # Just check we got some content back
-            assert content is not None
-        except Exception as e:
-            # Expected error when no properties configured
-            error_msg = str(e).lower()
-            pass  # the operation must raise; its wording is not asserted
-
 
 @pytest.mark.unit  # Changed from integration - these don't require server
 class TestSchemaConstructionValidation:
@@ -287,7 +272,6 @@ class TestSchemaConstructionValidation:
             ),
             (schemas.GetMediaBuyDeliveryRequest, {}),
             (schemas.ListCreativesRequest, {}),
-            (schemas.ListAuthorizedPropertiesRequest, {}),
         ]
 
         for schema_class, minimal_params in test_cases:

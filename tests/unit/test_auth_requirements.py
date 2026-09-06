@@ -25,7 +25,6 @@ from fastmcp.exceptions import ToolError
 
 from src.core.exceptions import AdCPAuthenticationError, AdCPValidationError
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.schemas import UpdatePerformanceIndexRequest
 from src.core.schemas.creative import ListCreativesRequest
 from tests.factories.creative_asset import build_assets, image_spec
 from tests.helpers.creative_test_helpers import creative_payload, sync_creatives_request
@@ -146,18 +145,6 @@ class TestAuthenticationRequirements:
     # =========================================================================
     # Performance Tools
     # =========================================================================
-
-    def test_update_performance_index_requires_authentication(self):
-        """update_performance_index must reject requests without authentication."""
-        from src.core.tools.performance import _update_performance_index_impl
-
-        # Call without identity (no auth) — _impl raises ValueError or AdCPAuthenticationError (transport-agnostic)
-        req = UpdatePerformanceIndexRequest(
-            media_buy_id="test_buy",
-            performance_data=[{"product_id": "prod1", "performance_index": 0.8}],
-        )
-        with pytest.raises((AdCPValidationError, AdCPAuthenticationError, ToolError, ValueError)) as exc_info:
-            _update_performance_index_impl(req=req, identity=None)
 
     # =========================================================================
     # Signal Tools

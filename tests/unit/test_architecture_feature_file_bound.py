@@ -37,9 +37,7 @@ FEATURES_DIR = BDD_DIR / "features"
 # scenarios that never execute. This set may only shrink.
 UNBOUND_ALLOWLIST: set[str] = {
     "BR-UC-001-discover-available-inventory.feature",
-    "BR-UC-007-list-authorized-properties.feature",
     "BR-UC-008-manage-audience-signals.feature",
-    "BR-UC-009-update-performance-index.feature",
     "BR-UC-012-manage-content-standards.feature",
     "BR-UC-013-manage-property-lists.feature",
     "BR-UC-014-sponsored-intelligence-session.feature",

@@ -530,69 +530,7 @@ class TestListCreativeFormatsResponseShape:
 
 
 # ===========================================================================
-# 6. ListAuthorizedPropertiesResponse
 # ===========================================================================
-
-
-class TestListAuthorizedPropertiesResponseShape:
-    """Verify the serialized shape of ListAuthorizedPropertiesResponse."""
-
-    def test_empty_properties_response(self):
-        """Empty publisher domains list."""
-        from src.core.schemas import ListAuthorizedPropertiesResponse
-
-        resp = ListAuthorizedPropertiesResponse(publisher_domains=[])
-        data = resp.model_dump(mode="json")
-
-        assert_field_type(data, "publisher_domains", list)
-        assert len(data["publisher_domains"]) == 0
-
-    def test_properties_response_with_domains(self):
-        """Response with publisher domains has correct shape."""
-        from src.core.schemas import ListAuthorizedPropertiesResponse
-
-        resp = ListAuthorizedPropertiesResponse(
-            publisher_domains=["news.example.com", "sports.example.com"],
-        )
-        data = resp.model_dump(mode="json")
-
-        assert_field_type(data, "publisher_domains", list)
-        assert len(data["publisher_domains"]) == 2
-        assert all(isinstance(d, str) for d in data["publisher_domains"])
-
-    def test_properties_response_optional_fields(self):
-        """Optional fields are present when set."""
-        from src.core.schemas import ListAuthorizedPropertiesResponse
-
-        resp = ListAuthorizedPropertiesResponse(
-            publisher_domains=["example.com"],
-            advertising_policies="No gambling or tobacco advertising.",
-            portfolio_description="A premium news publisher network.",
-            primary_channels=["display", "video"],
-            primary_countries=["US", "GB"],
-        )
-        data = resp.model_dump(mode="json")
-
-        assert_field_type(data, "publisher_domains", list)
-        assert_field_type(data, "advertising_policies", str)
-        assert_field_type(data, "portfolio_description", str)
-        assert_field_type(data, "primary_channels", list)
-        assert_field_type(data, "primary_countries", list)
-
-    def test_properties_response_none_fields_excluded(self):
-        """None optional fields are excluded from serialization."""
-        from src.core.schemas import ListAuthorizedPropertiesResponse
-
-        resp = ListAuthorizedPropertiesResponse(
-            publisher_domains=["example.com"],
-        )
-        data = resp.model_dump(mode="json")
-
-        # AdCP convention: exclude_none=True by default
-        # Optional fields not set should be absent or None depending on base class behavior
-        # The key assertion: publisher_domains is present and correct
-        assert "publisher_domains" in data
-        assert data["publisher_domains"] == ["example.com"]
 
 
 # ===========================================================================
@@ -821,12 +759,6 @@ class TestSerializationConsistency:
                     "src.core.schemas", fromlist=["ListCreativeFormatsResponse"]
                 ).ListCreativeFormatsResponse(formats=[create_test_format()]),
                 id="list_creative_formats",
-            ),
-            pytest.param(
-                lambda: __import__(
-                    "src.core.schemas", fromlist=["ListAuthorizedPropertiesResponse"]
-                ).ListAuthorizedPropertiesResponse(publisher_domains=["example.com"]),
-                id="list_authorized_properties",
             ),
             pytest.param(
                 lambda: __import__(

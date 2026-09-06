@@ -21,7 +21,7 @@ from ._assets import (
 )
 from ._assignments import _process_assignments
 from ._processing import _create_new_creative, _update_existing_creative
-from ._sync import _sync_creatives_impl
+from ._sync import _sync_creatives_impl, sync_creatives
 from ._validation import _get_field, _validate_creative_input
 from ._workflow import _audit_log_sync, _create_sync_workflow_steps, _send_creative_notifications
 from .listing import _list_creatives_impl

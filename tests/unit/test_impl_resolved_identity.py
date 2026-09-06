@@ -48,13 +48,6 @@ class TestImplSignaturesAcceptResolvedIdentity:
         assert param is not None, "_list_creative_formats_impl must have 'identity' parameter"
 
     @pytest.mark.arch_guard
-    def test_properties_impl_accepts_resolved_identity(self):
-        from src.core.tools.properties import _list_authorized_properties_impl
-
-        param = self._get_identity_param(_list_authorized_properties_impl)
-        assert param is not None, "_list_authorized_properties_impl must have 'identity' parameter"
-
-    @pytest.mark.arch_guard
     def test_products_impl_accepts_resolved_identity(self):
         from src.core.tools.products import _get_products_impl
 
@@ -90,13 +83,6 @@ class TestImplSignaturesAcceptResolvedIdentity:
         assert param is not None, "_get_media_buys_impl must have 'identity' parameter"
 
     @pytest.mark.arch_guard
-    def test_performance_impl_accepts_resolved_identity(self):
-        from src.core.tools.performance import _update_performance_index_impl
-
-        param = self._get_identity_param(_update_performance_index_impl)
-        assert param is not None, "_update_performance_index_impl must have 'identity' parameter"
-
-    @pytest.mark.arch_guard
     def test_sync_creatives_impl_accepts_resolved_identity(self):
         from src.core.tools.creatives._sync import _sync_creatives_impl
 
@@ -126,13 +112,11 @@ class TestNoTransportImportsInImpl:
     IMPL_FUNCTIONS = [
         ("src.core.tools.capabilities", "_get_adcp_capabilities_impl"),
         ("src.core.tools.creative_formats", "_list_creative_formats_impl"),
-        ("src.core.tools.properties", "_list_authorized_properties_impl"),
         ("src.core.tools.products", "_get_products_impl"),
         ("src.core.tools.media_buy_create", "_create_media_buy_impl"),
         ("src.core.tools.media_buy_update", "_update_media_buy_impl"),
         ("src.core.tools.media_buy_delivery", "_get_media_buy_delivery_impl"),
         ("src.core.tools.media_buy_list", "_get_media_buys_impl"),
-        ("src.core.tools.performance", "_update_performance_index_impl"),
         ("src.core.tools.creatives._sync", "_sync_creatives_impl"),
         ("src.core.tools.creatives.listing", "_list_creatives_impl"),
     ]

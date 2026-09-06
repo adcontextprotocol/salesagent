@@ -59,7 +59,6 @@ class TestMCPAuthMiddlewareExists:
             "get_adcp_capabilities",
             "get_products",
             "list_creative_formats",
-            "list_authorized_properties",
         }
         assert expected_discovery.issubset(AUTH_OPTIONAL_TOOLS), (
             f"AUTH_OPTIONAL_TOOLS missing discovery tools: {expected_discovery - AUTH_OPTIONAL_TOOLS}"

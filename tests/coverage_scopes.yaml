@@ -100,7 +100,6 @@ scopes:
     description: "Product catalog, validation, property filtering"
     sources:
       - src/core/tools/products.py
-      - src/core/tools/properties.py
     tests:
       - tests/unit/test_product_adcp36_fields_missing.py
       - tests/unit/test_product_channels_enum.py
