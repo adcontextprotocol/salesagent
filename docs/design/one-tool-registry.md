@@ -395,8 +395,21 @@ Each step leaves the tree green and is independently revertible.
 7. **Generate the A2A card and dispatch**, deleting the `AgentSkill` literals and
    the `skill_handlers` dict.
 8. **Generate REST routes**, deleting the decorators and body-model assignments.
+9. **Delete the fifteen `*_raw` wrappers**, and with them the last per-tool
+   declaration of anything. Steps 6–8 left each transport naming its own
+   pass-through; this one gives them a single seam, `src/core/tools/_boundary.py`,
+   that every transport enters with `invoke_tool(name, req, identity)`.
 
-Steps 6–8 are where "declared once" becomes true. Step 5 is the only one that
+   The wrappers were not only pass-throughs, which is why this step was needed and
+   not merely tidy. Between them they disagreed about the two things they each did
+   beside forwarding: only 3 of 15 resolved the request's `account`, so seven tools
+   accepted the field over REST and A2A and silently dropped it; and the idempotency
+   hash was computed per transport and threaded down, so the generated MCP
+   registration — which calls the implementation directly — stopped computing one and
+   replay went quietly dead on that transport. Both are properties of the REQUEST
+   rather than steps in the work, so both belong at the seam.
+
+Steps 6–9 are where "declared once" becomes true. Step 5 is the only one that
 touches what a buyer can send, and doing it one tool at a time keeps each
 change's fallout attributable to one tool rather than to the migration.
 
@@ -411,3 +424,20 @@ model and the forwarded set are the same object.
 
 They should be deleted as the steps that make their diseases unreachable land,
 and not before. Each deletion states which structural change made it impossible.
+
+Step 9 collected the ones about the wrapper layer. Deleted with the wrappers:
+the raw-function parameter-validation suite, the dead-path guard (no `*_raw`
+survives for a test to drive), the create-wrapper `account`-parameter guard
+(`account` is a DTO field the seam reads), and the ambient-identity-bleed guard
+(the seam takes `identity` as a parameter and never reaches for ambient context,
+so the `NOT_PROVIDED` sentinel it protected is gone too).
+
+One guard was REPLACED rather than deleted, and it is the cautionary one.
+`test_architecture_boundary_completeness.py` used to scan each wrapper for the
+arguments it forwarded, and its wrapper lookup returned `None` — meaning "nothing
+to check" — when it could not find one. The day the wrappers were deleted it went
+green while grading nothing. It now reads the signature of every `TOOLS[...].impl`
+and rejects any parameter the seam cannot supply, which is the obligation that
+survives: one call site passes one argument list, so "does the wrapper forward
+everything" is answered by construction, and the only question left is whether an
+implementation asks for something no caller exists to give it.
