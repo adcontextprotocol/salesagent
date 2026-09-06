@@ -177,11 +177,20 @@ a test asserting the vocabulary is used correctly; the vocabulary is the enforce
 
 Each step leaves the tree green and is independently revertible.
 
-1. **Keep the 20 never-loaded feature files.** They are not deleted and not wired
-   yet. The method for handling them comes out of migrating the connected ones —
-   until a scenario has been migrated by hand it is not known what a never-loaded
-   scenario costs to wire, or whether wiring it is worth more than deleting it.
-   Deciding that now would be deciding it uninformed.
+1. **Keep the 20 never-loaded feature files. They are protocol surface we have
+   not built yet.** 1604 of the 2772 scenarios live in them — 58% — and the
+   tempting reading is that this is dead weight to delete before migrating. It is
+   the opposite: these files describe parts of the spec this seller does not
+   implement, so they are the inventory of what is missing. Deleting them would
+   destroy the record and leave nothing to say which obligations remain.
+
+   They are not migrated with the rest either. A scenario is worth expressing in
+   the shared vocabulary when something executes it; until then the vocabulary it
+   uses costs nothing and constrains nothing. They get wired as the functionality
+   arrives, one at a time, by whoever builds it.
+
+   This is why the migration surface is **1096 scenarios in ten files**, not
+   2772 — see "Which cluster first" below.
 2. **Delete `Transport.IMPL`, and fix the generator rule that emits
    transport-pinned sentences.** Both are deletions with no vocabulary dependency
    and no scenario to migrate. The generator half is the durable one: patching the
@@ -202,19 +211,45 @@ Step 6 is not "migrate 2772 scenarios". A single pass over a corpus this size,
 with a vocabulary that has never been used in anger, produces a method invented
 halfway through and applied inconsistently to everything before it.
 
-### Phase A — a pilot, across deliberately different tools
+### Which cluster first
 
-Migrate a small number of scenarios by hand. Pick them so the shapes differ,
-because the point is to find where the vocabulary does not fit, and one tool
-cannot show that:
+The cluster is the FEATURE FILE. Each names several tools, but one is its
+subject and the rest appear in setup — so a file is one use case, one subject
+tool, one response schema, one request factory and one Given vocabulary. That is
+the unit where a batch is homogeneous.
 
-| candidate | why this one |
-|---|---|
-| `get_products` | the widest DTO — 21 declared fields against 5 the implementation reads |
-| `sync_creatives` | the largest domain step module, 300 steps |
-| `update_media_buy` | the heaviest payload-table user, 259 lines of `a valid update_media_buy request with:` |
-| `get_media_buys` | a query shape rather than a mutation |
-| `complete_task` | a task tool with a path parameter — `POST /tasks/{task_id}/complete` |
+Ten files hold 1096 of the 1168 executing scenarios (94%); the other twenty
+average 3.6 each and ride along with whichever cluster they resemble.
+
+Cost per scenario is the ratio of DISTINCT Given sentences to Given lines — a low
+ratio means the same setup repeats, so one primitive retires many lines:
+
+| file | scenarios | givens | distinct | ratio |
+|---|---|---|---|---|
+| `BR-UC-011-manage-accounts` | 93 | 151 | 46 | **0.30** |
+| `BR-UC-003-update-media-buy` | 132 | 507 | 151 | **0.30** |
+| `BR-UC-006-sync-creatives` | 132 | 377 | 150 | 0.40 |
+| `BR-UC-010-discover-seller-capabilities` | 85 | 188 | 78 | 0.41 |
+| `BR-UC-002-create-media-buy` | 182 | 492 | 206 | 0.42 |
+| `BR-UC-004-deliver-media-buy-metrics` | 142 | 268 | 122 | 0.46 |
+| `BR-UC-019-query-media-buys` | 99 | 178 | 93 | 0.52 |
+| `BR-UC-005-discover-creative-formats` | 85 | 101 | 63 | 0.62 |
+| `BR-UC-026-package-media-buy` | 75 | 116 | 74 | 0.64 |
+| `BR-UC-018-list-creatives` | 71 | 81 | 57 | 0.70 |
+
+### Phase A — the pilot is BR-UC-011
+
+Lowest cost per scenario (three Given lines per distinct sentence) and the
+smallest surface to build against: it exercises three tools —
+`get_adcp_capabilities`, `list_accounts`, `sync_accounts` — so one request
+factory each and one response schema each.
+
+`BR-UC-002` is the opposite on every axis: most scenarios, most distinct
+sentences, seven tools. It goes last, when the vocabulary is proven.
+
+**Verification is a full `cassini run`**, not a local pytest. Scenarios are
+parametrized across transports and a local run silently skips or xfails the arms
+that matter, so its pass count reads green while grading a fraction.
 
 Each pilot scenario is migrated, run, and compared against its own pre-migration
 outcome using the fallout differ (`scripts/compare_test_runs.py`). **A migrated
@@ -250,3 +285,49 @@ at all rather than a generated property.
 
 Phases A and B are sequential and small. Only Phase C is large, and it does not
 start until the method exists.
+
+## Deferred: de-pinning the 81 transport-tagged scenarios
+
+`_TRANSPORT_SPECIFIC_TAGS = {"rest", "mcp", "a2a"}` (conftest.py:3972) makes a
+scenario carrying `@rest`, `@mcp` or `@a2a` SKIP PARAMETRIZATION ENTIRELY —
+`pytest_generate_tests` returns before parametrizing, so it runs ONCE, on
+whatever transport its When step hard-pins. **81 scenarios are in that state**
+(@rest 40, @mcp 32, @a2a 9), and the suite reads as covering three transports
+while they cover one. The repo has been bitten by this before and says so at
+conftest.py:4058 about a now-empty list: a UC sat there because it "genuinely had
+no REST route, which silently dropped 61 scenarios from REST while the suite read
+as covering three transports".
+
+**Attempted and reverted, deliberately.** Two reasons, and the second is the one
+that matters:
+
+1. The steps behind those scenarios SHOULD be transport-agnostic, but nothing has
+   ever proven it — they have only ever run on one transport. De-pinning would
+   produce new failures that are indistinguishable from a baseline that moved
+   under us (the boundary refactor is rewriting response shapes in a sibling
+   worktree). An unattributable result is not a measurement.
+2. Consolidation is the cheaper order. A scenario expressed in shared primitives
+   is transport-agnostic BY CONSTRUCTION, so de-pinning after consolidation is
+   mechanical and safe; de-pinning before it is a bet on 81 unproven step bodies.
+
+### The trap waiting for whoever does it
+
+**Twenty-one twin-sets exist**: scenarios whose names differ ONLY by transport —
+`Create package via REST -- all required fields provided` and `Create package via
+MCP -- ...`, across UC-007 (4), UC-008 (5), UC-009 (3), UC-014 (2), UC-020 (5),
+UC-024 (1) and UC-026 (1).
+
+pytest-bdd stores scenarios in a plain dict keyed by NAME:
+`feature.scenarios[scenario.name] = scenario` (parser.py:521 and :543, against
+`scenarios: OrderedDict[str, ScenarioTemplate]` at :75). No duplicate check, no
+warning. **Strip the transport phrase from both twins and one silently
+disappears** — the file still shows both, and the suite grades one fewer than it
+appears to contain. Exactly the class of silent coverage loss this document
+exists to remove.
+
+So a twin-set MERGES to a single parametrized scenario; it is never renamed
+twice. And the work must be sharded by FEATURE FILE, never by tag: a tag-sharded
+run gives the two halves of a twin to different agents, neither of which can see
+the collision it is half of. That is not hypothetical — it is what the aborted
+run did, and it was stopped one edit before the collision landed in BR-UC-026,
+which is a loaded file.

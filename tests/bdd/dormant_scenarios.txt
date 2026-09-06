@@ -4,7 +4,7 @@
 # converts StepDefinitionNotFoundError into an xfail, so it is reported as EXPECTED
 # and is invisible in a green run. That is DORMANCY (test-wiring), not a graded
 # spec-production gap, and this file is what stops it growing silently
-# (salesagent-kp56h).
+# (#1929).
 #
 # ENFORCEMENT is PER-TEST, not a count: a scenario that goes dormant whose entry is
 # NOT listed here FAILS immediately. A count would only be computable from a full BDD

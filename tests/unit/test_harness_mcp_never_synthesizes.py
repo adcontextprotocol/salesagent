@@ -21,7 +21,7 @@ from fastmcp.exceptions import ToolError
 
 from src.core.exceptions import AdCPValidationError, build_two_layer_error_envelope
 from tests.harness._base import WireError
-from tests.harness.dispatchers import A2ADispatcher, ImplDispatcher, McpDispatcher, RestDispatcher
+from tests.harness.dispatchers import A2ADispatcher, McpDispatcher, RestDispatcher
 
 
 def _raising_env(exc: Exception):
@@ -88,7 +88,6 @@ class TestMcpDoesNotSynthesize:
         """
         result = McpDispatcher().dispatch(_raising_env(_an_error()))
 
-        assert result._synthesized_error_envelope is None
         assert result.wire_error_envelope is None
 
     def test_a_tool_error_carrying_wire_json_is_read_as_the_wire(self):
@@ -104,7 +103,6 @@ class TestMcpDoesNotSynthesize:
         result = McpDispatcher().dispatch(_raising_env(ToolError(json.dumps(envelope))))
 
         assert result.wire_error_envelope == envelope
-        assert result._synthesized_error_envelope is None
 
     def test_a_wire_error_carrying_the_captured_envelope_is_read_as_the_wire(self):
         """The second capture path: the ``WireError`` production actually raises.
@@ -127,7 +125,6 @@ class TestMcpDoesNotSynthesize:
         result = McpDispatcher().dispatch(_raising_env(WireError(envelope)))
 
         assert result.wire_error_envelope == envelope
-        assert result._synthesized_error_envelope is None
 
 
 class TestOnlyTheTransportWithNoWireMaySynthesize:
@@ -143,23 +140,15 @@ class TestOnlyTheTransportWithNoWireMaySynthesize:
     strictly worse and is why it needs its own change (#1417).
     """
 
-    def test_impl_still_synthesizes_because_it_has_no_wire_to_lose(self):
-        """IMPL's value is load-bearing and must survive this change.
-
-        Five integration tests read it. It is not a mask there: ``has_wire=False``
-        is a definition for an in-process call, not a lost capture.
-        """
-        result = ImplDispatcher().dispatch(_raising_env(_an_error()))
-
-        assert result._synthesized_error_envelope is not None
-        assert result.wire_error_envelope is None
-
     @pytest.mark.parametrize("dispatcher", [A2ADispatcher, McpDispatcher, RestDispatcher])
     def test_a_transport_that_has_a_wire_never_synthesizes(self, dispatcher):
-        """BOTH fields, not just the private one (Chris SF3, #1802 review).
+        """``wire_error_envelope is None`` is the whole assertion now.
 
-        Asserting only ``_synthesized_error_envelope is None`` grades the
-        channel that was already closed and leaves the one that matters open.
+        This once asserted a second, private ``_synthesized_error_envelope``
+        field as well. That field is deleted with ``Transport.IMPL``: nothing
+        synthesizes an envelope any more, so there is no channel to close. The
+        review that added the pair (Chris SF3, #1802) named the private half as
+        the one that did NOT redden, so nothing that graded is lost.
         The deleted fallback (then in ``tests/harness/dispatchers.py``, now one
         unwrap per transport family in ``tests/harness/client.py``) did not put
         a rebuilt envelope in the private field -- it handed it back under
@@ -175,5 +164,4 @@ class TestOnlyTheTransportWithNoWireMaySynthesize:
         """
         result = dispatcher().dispatch(_raising_env(_an_error()))
 
-        assert result._synthesized_error_envelope is None
         assert result.wire_error_envelope is None

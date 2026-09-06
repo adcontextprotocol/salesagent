@@ -1,4 +1,4 @@
-"""Domain step definitions for BR-SECURITY-001 (salesagent-prkv.8 / prkv.18).
+"""Domain step definitions for BR-SECURITY-001 (#1587 / salesagent-prkv.18).
 
 Formalizes, as a Gherkin scenario graded across a2a/mcp/rest, the
 obligation that an untyped exception raised inside a dispatched skill's

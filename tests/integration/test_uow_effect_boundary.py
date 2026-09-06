@@ -1,6 +1,6 @@
 """The transaction that owns an effect decides whether that effect fires.
 
-Grades the seam salesagent-prkv.12 (GH #1970) introduces: an effect registered
+Grades the seam #1970 introduces: an effect registered
 on a unit of work runs after that unit COMMITS, and never runs when it rolls
 back — including the ``dry_run`` rollback that makes a preview a preview.
 

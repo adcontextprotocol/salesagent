@@ -1,6 +1,6 @@
 """The bdd_e2e per-scenario DB reset must not contend with a concurrent reader.
 
-Regression cover for salesagent-prkv.48. Over the e2e_rest transport the test
+Regression cover for #2048. Over the e2e_rest transport the test
 runner and the live server share ONE database, so ``_reset_e2e_db`` runs
 concurrently with the server's background scheduler sweeps
 (``delivery_webhook_scheduler`` every 5s under run_all_tests.sh,
@@ -124,7 +124,7 @@ def test_reset_completes_and_empties_while_a_reader_holds_media_buys(e2e_config,
     assert not blocked, (
         f"_reset_e2e_db was still running after {_RESET_DEADLINE_SECONDS}s while a plain reader held an "
         "AccessShareLock on media_buys. It is taking a lock mode that conflicts with readers "
-        "(AccessExclusiveLock, i.e. TRUNCATE/DDL) — that is the salesagent-prkv.48 deadlock cycle."
+        "(AccessExclusiveLock, i.e. TRUNCATE/DDL) — that is the #2048 deadlock cycle."
     )
     assert outcome == {"ok": True}, outcome
 

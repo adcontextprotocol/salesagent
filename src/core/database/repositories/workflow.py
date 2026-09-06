@@ -43,7 +43,7 @@ def build_context(
     caller (a repository delegate, or ``ContextManager`` which keeps its own
     commit/refresh/expunge behaviour) owns the transaction boundary.
 
-    beads: salesagent-prkv.16
+    issue: #2002
     """
     context = DBContext(
         context_id=f"ctx_{uuid.uuid4().hex[:12]}",
@@ -86,7 +86,7 @@ def build_workflow_step(
 
     Does NOT commit.
 
-    beads: salesagent-prkv.16
+    issue: #2002
     """
     # Serialize Pydantic models at the DB boundary.
     from pydantic import BaseModel
@@ -438,7 +438,7 @@ class WorkflowRepository:
         Takes NO ``tenant_id``: it uses ``self._tenant_id``, so a caller
         cannot name another tenant's context. Does NOT commit.
 
-        beads: salesagent-prkv.16
+        issue: #2002
         """
         return build_context(
             self._session,
@@ -477,7 +477,7 @@ class WorkflowRepository:
 
         Does NOT commit.
 
-        beads: salesagent-prkv.16
+        issue: #2002
         """
         if context.tenant_id != self._tenant_id:
             raise ValueError(

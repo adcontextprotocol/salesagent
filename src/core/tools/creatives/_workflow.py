@@ -36,7 +36,7 @@ def _create_sync_workflow_steps(
     they belong to the same transaction: a preview's rollback discards them
     with the creatives, and the approval notification — an ``after_commit``
     effect of that unit — cannot name a step the commit has not yet released
-    (salesagent-prkv.16, GH #2002).
+    (GH #2002).
     """
     # Ensure principal_id is available (should always be set by this point).
     # No principal_id at all -> AUTH_MISSING per v3.1.1 error-code.json

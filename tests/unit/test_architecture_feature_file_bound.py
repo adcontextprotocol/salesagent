@@ -10,7 +10,7 @@ nothing.
 That is not hypothetical. When this guard was written, 20 of 38 feature files
 were unbound, hiding 1604 scenarios and 148 error codes absent from CODE_TABLE
 — codes no raise site can emit, so those scenarios would FAIL if they ran.
-They did not fail, because nothing ran them (salesagent-yz8mo).
+They did not fail, because nothing ran them (#1947).
 
 This guard only stops the population from GROWING. It deliberately does not
 assert that a bound file's scenarios pass — a bound file with a large xfail

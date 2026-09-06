@@ -126,7 +126,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
     Given a tenant is configured for product discovery
     And the outbound private-range egress hatch is open
     When the buyer requests products with a property list agent at "<agent_url>"
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code VALIDATION_ERROR
     And the response error field is property_list.agent_url
 
@@ -141,7 +142,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
     Given a tenant is configured for product discovery
     And the outbound private-range egress hatch is open
     When the buyer requests products with a property list agent at "<agent_url>"
-    Then the refusal is VALIDATION_ERROR / correctable on both envelope layers, and its error object carries the code's own message
+    Then the error is compliant with the AdCP error spec
+    And the refusal is VALIDATION_ERROR / correctable on both envelope layers, and its error object carries the code's own message
     And the error envelope names neither the supplied host nor any IP address
 
     Examples:
@@ -162,7 +164,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
     Given a tenant is configured for product discovery
     And the outbound private-range egress hatch is open
     When the buyer requests products with a property list agent at "http://example.com"
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code VALIDATION_ERROR
     And the response error field is property_list.agent_url
 
@@ -189,7 +192,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   Scenario: a refused creative-agent agent_url is a correctable buyer error at sync ingest
     Given the outbound private-range egress hatch is open
     When the buyer syncs a creative whose format agent is at "https://169.254.169.254"
-    Then the creative is rejected with VALIDATION_ERROR naming field "creatives[0].format_id.agent_url"
+    Then the error is compliant with the AdCP error spec
+    And the creative is rejected with VALIDATION_ERROR naming field "creatives[0].format_id.agent_url"
 
   # The ingest twin: the same obligation — a buyer-supplied URL we refuse comes
   # back as a correctable, non-disclosing error naming the field to fix —
@@ -230,7 +234,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   Scenario Outline: a refused push_notification_config.url is a correctable buyer error at ingest
     Given the outbound private-range egress hatch is open
     When the buyer creates a media buy with push notification url "<webhook_url>"
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code VALIDATION_ERROR
     And the response error field is push_notification_config.url
     And the refusal is VALIDATION_ERROR / correctable on both envelope layers, and its error object carries the code's own message
@@ -328,7 +333,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   @T-EGRESS-CREDS-create-media-buy @egress_create @invariant
   Scenario: a credential-less HMAC-SHA256 registration is refused at create ingest
     When the buyer creates a media buy registering HMAC-SHA256 with no credentials
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is push_notification_config.authentication.credentials
     And the refusal names the missing shared secret and not the URL
@@ -355,7 +361,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   Scenario: a credential-less HMAC-SHA256 registration is refused at update ingest
     Given the Buyer owns an existing media buy
     When the buyer updates the media buy registering HMAC-SHA256 with no credentials
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is push_notification_config.authentication.credentials
     And the refusal names the missing shared secret and not the URL
@@ -363,7 +370,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   @T-EGRESS-CREDS-sync-creatives @egress_sync_creds @invariant
   Scenario: a credential-less HMAC-SHA256 registration is refused at sync ingest
     When the buyer syncs a creative registering HMAC-SHA256 with no credentials
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is push_notification_config.authentication.credentials
     And the refusal names the missing shared secret and not the URL
@@ -382,7 +390,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   Scenario: a credential-less HMAC-SHA256 registration is refused at A2A message/send
     Given a tenant is configured for product discovery
     When the buyer sends a request registering HMAC-SHA256 with no credentials in the protocol envelope
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is push_notification_config.authentication.credentials
     And the refusal names the missing shared secret and not the URL
@@ -438,14 +447,16 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   @T-EGRESS-SCHEMES-multi-create @egress_create @invariant
   Scenario: a two-scheme registration is refused at create ingest
     When the buyer creates a media buy registering two authentication schemes
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is push_notification_config.authentication.schemes
 
   @T-EGRESS-CREDS-short-sync @egress_sync_creds @invariant
   Scenario: a shared secret shorter than the pinned minimum is refused at sync ingest
     When the buyer syncs a creative registering HMAC-SHA256 with a 31-character secret
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is push_notification_config.authentication.credentials
 
@@ -487,7 +498,8 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   Scenario: a shared secret shorter than the pinned minimum is refused at A2A message/send
     Given a tenant is configured for product discovery
     When the buyer sends a request registering HMAC-SHA256 with a 31-character secret in the protocol envelope
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is push_notification_config.authentication.credentials
     And the refusal names the too-short shared secret and not the URL

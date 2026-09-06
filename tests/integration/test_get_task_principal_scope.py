@@ -1,6 +1,6 @@
 """One principal's task is not readable, listable or completable by another, inside a tenant.
 
-salesagent-prkv.88. protocol/get-task-status-status-request.json @ AdCP 3.1.1 attaches the
+#1808. protocol/get-task-status-request.json @ AdCP 3.1.1 attaches the
 obligation to ``account``: "Sellers MUST return REFERENCE_NOT_FOUND for a task_id that
 exists only under a different account or principal." Two storyboard steps in
 dist/compliance/3.1.1/domains/media-buy/scenarios/get_products_async.yaml grade it:

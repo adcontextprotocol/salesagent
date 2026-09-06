@@ -257,7 +257,7 @@ async def _list_tasks_impl(
 
         # SCOPED TO THE CALLER'S PRINCIPAL. This listed the whole TENANT, so every buyer
         # saw every other buyer's tasks -- a wider version of the same defect get_task_status had
-        # (salesagent-prkv.88). The pin grades it: get_products_async.yaml step
+        # (#1808). The pin grades it: get_products_async.yaml step
         # `list_products_task_wrong_account` lists the same task_id under a different
         # account and requires total_matching 0, "Sellers MUST scope task reconciliation to
         # the authenticated account + principal pair".
@@ -453,7 +453,7 @@ async def _complete_task_impl(
         assert uow.workflows is not None
 
         # SCOPED, like the read. The same unscoped lookup made this a cross-principal
-        # WRITE: principal A could complete principal B's task (salesagent-prkv.88).
+        # WRITE: principal A could complete principal B's task (#1808).
         task = uow.workflows.get_by_step_id_or_raise(task_id, principal_id=principal_id)
 
         if task.status not in ["pending", "in_progress", "requires_approval"]:

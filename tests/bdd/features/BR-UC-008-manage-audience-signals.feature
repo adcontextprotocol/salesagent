@@ -1111,7 +1111,7 @@ Feature: BR-UC-008 Manage Audience Signals
     And the response carries at least one signal entry
     And the first signal carries a signal_agent_segment_id and at least one pricing_option_id
     When the Buyer Agent calls activate_signal with the captured signal_agent_segment_id and pricing_option_id
-    Then the activation response should be schema-valid against activate-signal-response.json
+    Then the response is compliant with the activate_signal success spec
     And the deployments array should carry at least one entry with a type discriminator
     And the signal_agent_segment_id on the activation request should match the value captured from discovery
     # signals_baseline storyboard exercises a single end-to-end happy path:
@@ -1126,7 +1126,7 @@ Feature: BR-UC-008 Manage Audience Signals
   Scenario: Signals baseline activation -- agent destination type returns schema-valid deployment
     Given the Buyer Agent holds a signal_agent_segment_id and pricing_option_id from get_signals
     When the Buyer Agent sends activate_signal with destinations of type "agent" and agent_url "https://wonderstruck.salesagents.example"
-    Then the response should be schema-valid against activate-signal-response.json
+    Then the response is compliant with the activate_signal success spec
     And the deployments array should carry at least one entry whose type is "agent"
     And a live deployment should carry an activation_key
     And an async deployment may carry is_live false with estimated_activation_duration_minutes
@@ -1141,7 +1141,7 @@ Feature: BR-UC-008 Manage Audience Signals
   Scenario: Signals baseline activation -- platform destination returns activation_key of type segment_id
     Given the Buyer Agent holds a signal_agent_segment_id and pricing_option_id from get_signals
     When the Buyer Agent sends activate_signal with destinations of type "platform", platform "the-trade-desk", and account "agency-123-ttd"
-    Then the response should be schema-valid against activate-signal-response.json
+    Then the response is compliant with the activate_signal success spec
     And the deployments array should carry at least one entry whose type is "platform"
     And a live deployment should carry an activation_key with type "segment_id"
     And an async deployment may report is_live false with estimated_activation_duration_minutes

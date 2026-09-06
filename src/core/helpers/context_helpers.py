@@ -68,7 +68,7 @@ def ensure_tenant_context(identity: ResolvedIdentity | None = None) -> dict[str,
             set_current_tenant(identity.tenant)
             return identity.tenant
 
-    # AUTH_MISSING/AUTH_INVALID split (salesagent-mkso), completed for the
+    # AUTH_MISSING/AUTH_INVALID split (#2092), completed for the
     # tenant-resolution axis (salesagent-otc5). The signal is whether a
     # credential was PRESENTED (``identity.auth_token``), matching
     # require_tenant() in src/core/auth.py: no token at all -> AUTH_MISSING

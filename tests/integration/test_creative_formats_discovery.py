@@ -127,7 +127,7 @@ class TestAuthOptionalForDiscovery:
         Authentication is optional for discovery, but tenant context is still
         required to resolve which format catalog to return. No credential was
         presented (auth_token=None) -> AUTH_MISSING (salesagent-otc5, completing
-        the salesagent-mkso split for the tenant-resolution axis).
+        the #2092 split for the tenant-resolution axis).
         """
         formats = [_make_format("no_tenant_fmt", "Should Not Reach")]
 

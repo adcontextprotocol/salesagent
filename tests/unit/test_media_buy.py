@@ -4454,7 +4454,7 @@ class TestGetMediaBuysImplAuth:
         Priority: P0
         Type: unit
         Source: get_media_buys
-        Covers: salesagent-3dawm.20
+        Covers: #1651
         """
         from src.core.exceptions import AdCPAuthRequiredError
         from src.core.resolved_identity import ResolvedIdentity

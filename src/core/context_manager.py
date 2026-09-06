@@ -80,7 +80,7 @@ class ContextManager(DatabaseManager):
             The created Context object
         """
         # Row construction lives in the repository layer so this manager and
-        # WorkflowRepository cannot drift apart (salesagent-prkv.16). The
+        # WorkflowRepository cannot drift apart (#2002). The
         # commit/refresh/expunge behaviour below is unchanged for the callers
         # that still hold a ContextManager.
         context = build_context(
@@ -208,7 +208,7 @@ class ContextManager(DatabaseManager):
         # Row construction (Pydantic boundary serialization, request_metadata
         # merge, comments seeding, completed_at rule, object mappings) lives in
         # the repository layer so this manager and WorkflowRepository cannot
-        # drift apart (salesagent-prkv.16). The commit/refresh/expunge/close
+        # drift apart (#2002). The commit/refresh/expunge/close
         # behaviour below is unchanged for the callers that still hold a
         # ContextManager.
         session = self.session

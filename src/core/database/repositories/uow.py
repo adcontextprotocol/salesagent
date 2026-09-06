@@ -325,7 +325,7 @@ class CreativeUoW(BaseUoW):
         # the creatives they approve, so they must join the same transaction:
         # a preview's rollback has to discard them too, and the approval
         # notification (an after_commit effect) must not be able to name a
-        # step the commit has not yet released (salesagent-prkv.16).
+        # step the commit has not yet released (#2002).
         self.workflows = WorkflowRepository(self._session, self._tenant_id)
 
     def _clear_repos(self) -> None:

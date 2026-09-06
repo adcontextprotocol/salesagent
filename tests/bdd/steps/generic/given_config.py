@@ -13,9 +13,10 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
-from pytest_bdd import given, parsers
+from pytest_bdd import given, parsers, when
 
 from tests.bdd.steps.generic._registry import sync_registry as _sync_registry
+from tests.bdd.steps.generic._table import rows as table_rows
 from tests.factories.format import (
     CATEGORY_MAP,
     FormatFactory,
@@ -26,6 +27,7 @@ from tests.factories.format import (
     make_renders,
     make_responsive_renders,
 )
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 
 
 def _add_format(ctx: dict, fmt: object) -> None:
@@ -47,8 +49,7 @@ def _datatable_to_dicts(datatable: Sequence[Sequence[object]]) -> list[dict[str,
     The first row is treated as column headers. Remaining rows become dicts
     keyed by those headers.
     """
-    headers = [str(cell) for cell in datatable[0]]
-    return [{headers[i]: str(cell) for i, cell in enumerate(row)} for row in datatable[1:]]
+    return table_rows(datatable)
 
 
 # ── Format by type + asset type ──────────────────────────────────────
@@ -263,3 +264,26 @@ def given_registry_two_formats_inline(ctx: dict, name_a: str, type_a: str, name_
     for name, fmt_type in [(name_a, type_a), (name_b, type_b)]:
         _add_format(ctx, FormatFactory.build(name=name, type=CATEGORY_MAP.get(fmt_type)))
     _sync_registry(ctx)
+
+
+@given(parsers.parse('the request includes a push_notification_config with url "{url}"'))
+@when(parsers.parse('the request includes a push_notification_config with url "{url}"'))
+def push_notification_config_with_url(ctx: dict, url: str) -> None:
+    """Attach a push_notification_config to the upcoming dispatch.
+
+    REGISTERED UNDER BOTH KEYWORDS, on purpose. Both feature lines that use this
+    sentence write it as ``And``, which inherits whichever keyword came before --
+    and that is how it ended up defined as ``@given`` in
+    ``steps/domain/uc006_sync_creatives.py`` and ``@when`` in
+    ``steps/domain/uc011_accounts.py``. A sentence whose keyword depends on its
+    neighbour cannot be owned by one keyword.
+
+    The two copies were not equivalent, and the difference was a live defect: the
+    @given one set ``push_notification_config`` (which the dispatch reads) AND the
+    url; the @when one set only ``push_notification_url``. Scenarios routed to the
+    @when copy therefore dispatched with NO webhook config, while the Then step
+    that checks "the system registered the webhook" fell back to the url key and
+    passed anyway.
+    """
+    ctx["push_notification_config"] = PushNotificationConfigRequestFactory.payload(url=url)
+    ctx["push_notification_url"] = url

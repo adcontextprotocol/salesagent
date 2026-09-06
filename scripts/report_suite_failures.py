@@ -6,7 +6,7 @@ is NOT part of ``summary.failed``. A run whose only problem is a fixture blowing
 up therefore reads ``failed 0`` in every report while tox exits 1 -- so the
 number a reader reaches for first says the suite is clean. That is exactly how
 one rotating ``DeadlockDetected`` in a bdd_e2e fixture stayed invisible for two
-consecutive full runs (salesagent-prkv.48): the count was 0, the exit code was
+consecutive full runs (#2048): the count was 0, the exit code was
 1, and nothing on stdout connected the two.
 
 This lives in its own script for the same reason

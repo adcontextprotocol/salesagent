@@ -33,7 +33,7 @@ Scope boundary -- excluded on purpose, not by oversight:
   a task with no design-review atom).
 - The signer (``prepare_signed_request``) only ever emits its own canonical
   compact-separator, ``ensure_ascii=True`` serialization of a payload dict --
-  by the Core Invariant salesagent-47n9.1 established, it never signs
+  by the Core Invariant #1441 established, it never signs
   externally-supplied raw bytes. So it can only be graded against the subset
   of ``vectors`` whose ``raw_body`` IS byte-reproducible from a dict via that
   exact serialization (pure-ASCII, compact-form vectors); vectors in other
@@ -159,7 +159,7 @@ class TestVerifierReturnsNoPayloadForValidNonObjectJson:
 
     Signing goes through the SDK's ``sign_legacy_webhook`` rather than our own
     ``prepare_signed_request`` because the latter is dict-typed by Core
-    Invariant salesagent-47n9.1 and so structurally cannot emit a non-object
+    Invariant #1441 and so structurally cannot emit a non-object
     body -- and signing here by hand would put a second copy of the HMAC
     scheme in the tests.
     """

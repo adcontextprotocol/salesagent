@@ -191,7 +191,7 @@ def _record_dormancy(item: pytest.Item, report: pytest.TestReport) -> bool:
     production gap when the cause is that classification. But the auto-convert's own
     reason claims nothing, so it sailed past the check written for it. This routes it
     through the same vocabulary instead of adding a third rule beside the two
-    (salesagent-kp56h).
+    (#1929).
 
     The key is published as a ``user_property`` because pytest-json-report does NOT
     serialize ``wasxfail``: the reason string is invisible in the JSON reports, so the
@@ -831,6 +831,58 @@ _XFAIL_TAGS: dict[str, str] = {
     # write transaction opens; a failed proof
     # rejects the entry with VALIDATION_ERROR at notification_configs[j].url and writes nothing,
     # so the prior array is untouched.
+    #
+    # ── Delivery webhooks POST the result document with no protocol envelope ──
+    # All fourteen scenarios that assert "the webhook payload is compliant with the
+    # AdCP delivery webhook spec" fail on the ENVELOPE layer, because
+    # WebhookDeliveryService posts the delivery report bare.
+    #
+    # THE SPEC IS THE AUTHORITY HERE, not #2058, and the prose is explicit:
+    #   webhooks.mdx:217  "Delivery-report content lives under `result`; it is not
+    #                      valid as the top-level POST body by itself."
+    #   webhooks.mdx:254  "This inner result object is valid delivery-report
+    #                      content, but it is not valid as the top-level webhook
+    #                      POST body:" — then prints the bare report as a LABELLED
+    #                      COUNTER-EXAMPLE, byte-for-byte what this seller sends.
+    # (#2058 cites the same passages at :198-200 and :237-248; the document has
+    # moved since. Both were read at the head that produced these line numbers.)
+    #
+    # The schema chain agrees: core/mcp-webhook-payload.json is the POST body, its
+    # `result` is $ref async-response-data.json, resolving per enums/task-type.json
+    # to media-buy/media-buy-delivery-webhook-result.json for media_buy_delivery.
+    #
+    # WHAT IS OPEN IS ONLY WHERE THE FIX GOES. Two builders disagree:
+    #   delivery_webhook_scheduler.py:332  -> create_mcp_webhook_payload(), wraps
+    #   webhook_delivery_service.py:302    -> the flat body, the counter-example
+    # The in-process BDD legs route through the second
+    # (CircuitBreakerEnv.call_deliver -> send_delivery_webhook,
+    # tests/harness/_mixins.py:1087), so either the sender wraps or the harness
+    # stops routing through a builder a live buyer never reaches. NEITHER makes the
+    # flat body conformant, so do not "fix" this by pointing the step at the
+    # scheduler — that hides the disagreement instead of settling it.
+    #
+    # THE COST IS REAL AND WAS UNDERSTATED TWICE. Six of these were live and
+    # PASSING; run a302146fbd0f4ea1975995cff0f7e724 found them as 24
+    # passed -> failed instances, the only regressions in 21377 shared tests. They
+    # were first reported as "already xfailed" on the strength of grepping each tag
+    # anywhere in this file, which matches comments and other tables. Membership in
+    # a dict is checked by asking the dict.
+    #
+    # Each graduates when #2058 lands, whichever way it is resolved.
+    "T-UC-004-webhook-scheduled": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-hmac": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-bearer": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-notification-type": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-sequence": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-no-aggregated": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-retry-success": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-window-update": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-partial-data": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-adjusted-resend": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-window-first-report": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-delayed-count-nonnegative": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-delayed-no-false-complete": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-delayed-all-available": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
 }
 
 # Selective xfail for parametrized scenarios where only
@@ -4494,7 +4546,7 @@ def _reset_e2e_db(e2e_config) -> None:
     two orders are opposite, and neither side knows about the other: a textbook
     ABBA cycle. Postgres broke it by killing whichever party it picked, which
     surfaced as one rotating ``DeadlockDetected`` per full in-network run, always
-    in scenario SETUP and never on an assertion (salesagent-prkv.48).
+    in scenario SETUP and never on an assertion (#2048).
 
     DELETE takes a RowExclusiveLock, which does not conflict with AccessShareLock
     at all, so the reset can neither block nor be blocked by a concurrent reader

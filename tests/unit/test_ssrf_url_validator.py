@@ -16,7 +16,7 @@ triaged row-by-row so nothing was silently dropped:
 - CGNAT literal -> the supplement-range parity rows (this is the row that
   used to pass ONLY because ``url_validator.BLOCKED_NETWORKS`` covered it —
   now covered by the shared predicate on both verdicts, closing
-  salesagent-634hc).
+  the gap recorded in #1792).
 - non-http / file scheme / require_https -> the non-https parity rows.
 - ``valid_public_https_url_accepted`` -> the accepted half of the
   unresolvable-hostname divergence case.

@@ -20,7 +20,7 @@ from pytest_bdd import given, parsers, then, when
 
 from tests.bdd.steps._harness_db import db_session as _db_session
 from tests.bdd.steps._outcome_helpers import _get_response_field, payload_or_none, require_payload
-from tests.bdd.steps.generic._account_resolution import seed_natural_key_matches
+from tests.bdd.steps.generic._account_resolution import ensure_tenant_principal, seed_natural_key_matches
 from tests.bdd.steps.generic._create_request import build_create_request_kwargs
 from tests.factories.account import AccountFactory, AgentAccountAccessFactory
 
@@ -165,10 +165,7 @@ def given_natural_key_not_found(ctx: dict) -> None:
 def given_account_needs_setup(ctx: dict, account_id: str) -> None:
     """Create account with pending_approval status (setup not complete)."""
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
+    ensure_tenant_principal(ctx, env)
     tenant, principal = ctx["tenant"], ctx["principal"]
     account = AccountFactory(
         tenant=tenant,
@@ -184,13 +181,9 @@ def given_account_needs_setup(ctx: dict, account_id: str) -> None:
 def given_multiple_matches(ctx: dict, count: int) -> None:
     """Create multiple accounts matching the same natural key."""
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    else:
-        tenant = ctx["tenant"]
-        principal = ctx["principal"]
+    ensure_tenant_principal(ctx, env)
+    tenant = ctx["tenant"]
+    principal = ctx["principal"]
 
     brand = ctx.get("request_brand", "multi-brand.com")
     operator = ctx.get("request_operator", "agency.com")
@@ -215,13 +208,9 @@ def given_natural_key_partial_access(ctx: dict, total: int, accessible: int) -> 
     from tests.factories.principal import PrincipalFactory
 
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    else:
-        tenant = ctx["tenant"]
-        principal = ctx["principal"]
+    ensure_tenant_principal(ctx, env)
+    tenant = ctx["tenant"]
+    principal = ctx["principal"]
 
     brand = ctx.get("request_brand", "multi-brand.com")
     operator = ctx.get("request_operator", "agency.com")
@@ -266,13 +255,9 @@ def given_unauthenticated_principal(ctx: dict) -> None:
 def given_account_exists_active(ctx: dict, account_id: str) -> None:
     """Create an active account with agent access."""
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    else:
-        tenant = ctx["tenant"]
-        principal = ctx["principal"]
+    ensure_tenant_principal(ctx, env)
+    tenant = ctx["tenant"]
+    principal = ctx["principal"]
 
     account = AccountFactory(
         tenant=tenant,
@@ -288,13 +273,9 @@ def given_account_exists_active(ctx: dict, account_id: str) -> None:
 def given_account_active(ctx: dict) -> None:
     """Create an active account for the current request context."""
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    else:
-        tenant = ctx["tenant"]
-        principal = ctx["principal"]
+    ensure_tenant_principal(ctx, env)
+    tenant = ctx["tenant"]
+    principal = ctx["principal"]
 
     account_id = ctx.get("request_account_id", "acc-001")
     account = AccountFactory(
@@ -313,13 +294,9 @@ def given_request_with_partition(ctx: dict, partition: str) -> None:
     from adcp.types import AccountReference, AccountReferenceById, AccountReferenceByNaturalKey, BrandReference
 
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    else:
-        tenant = ctx["tenant"]
-        principal = ctx["principal"]
+    ensure_tenant_principal(ctx, env)
+    tenant = ctx["tenant"]
+    principal = ctx["principal"]
 
     if partition == "explicit_account_id":
         account = AccountFactory(
@@ -453,13 +430,9 @@ def given_request_with_boundary_config(ctx: dict, config: str) -> None:
     from adcp.types import AccountReference, AccountReferenceById, AccountReferenceByNaturalKey, BrandReference
 
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    else:
-        tenant = ctx["tenant"]
-        principal = ctx["principal"]
+    ensure_tenant_principal(ctx, env)
+    tenant = ctx["tenant"]
+    principal = ctx["principal"]
 
     if config.startswith("acc-") and "active" in config:
         account_id = config.split()[0]
@@ -790,13 +763,6 @@ def _dispatch_raw_create(ctx: dict) -> None:
     from tests.bdd.steps.generic._dispatch import dispatch_request
 
     dispatch_request(ctx, **ctx.get("request_kwargs", {}))
-
-
-def _ensure_tenant_principal(ctx: dict, env: object) -> None:
-    """Create tenant + principal if not already created by a Given step."""
-    from tests.bdd.steps.generic._account_resolution import ensure_tenant_principal
-
-    ensure_tenant_principal(ctx, env)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1387,12 +1353,8 @@ def given_account_other_agent(ctx: dict) -> None:
     from tests.factories.principal import PrincipalFactory
 
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    else:
-        tenant = ctx["tenant"]
+    ensure_tenant_principal(ctx, env)
+    tenant = ctx["tenant"]
 
     account_id = ctx.get("request_account_id", "acc_other_agent")
     # Create account
@@ -1414,12 +1376,8 @@ def given_natural_key_other_agent(ctx: dict) -> None:
     from tests.factories.principal import PrincipalFactory
 
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    else:
-        tenant = ctx["tenant"]
+    ensure_tenant_principal(ctx, env)
+    tenant = ctx["tenant"]
 
     account = AccountFactory(
         tenant=tenant,
@@ -1437,12 +1395,8 @@ def given_sandbox_account_other_agent(ctx: dict) -> None:
     from tests.factories.principal import PrincipalFactory
 
     env = ctx["env"]
-    if "tenant" not in ctx:
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
-    else:
-        tenant = ctx["tenant"]
+    ensure_tenant_principal(ctx, env)
+    tenant = ctx["tenant"]
 
     account_id = ctx.get("request_account_id", "acc_sandbox_other")
     account = AccountFactory(

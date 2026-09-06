@@ -1,6 +1,6 @@
 """UC-010 step definitions: get_adcp_capabilities discovery (batch 1).
 
-Batch 1 covers the envelope + account families (#1592 / salesagent-4sn7):
+Batch 1 covers the envelope + account families (#1592 / #1825):
 main flow, auth policy, no-tenant minimal, account.* outlines, protocols
 filter, context echo, and version negotiation. Batches 2-3 (media_buy
 families, long tail) land behind the conftest wired-tags gate.

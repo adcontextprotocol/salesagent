@@ -1,5 +1,5 @@
 # Hand-authored feature — not compiled from adcp-req
-# Cross-cutting wire-safety obligation for salesagent-prkv.8 (salesagent-prkv.18)
+# Cross-cutting wire-safety obligation for #1587 (salesagent-prkv.18)
 
 @security
 Feature: Wire error safety for untyped exceptions
@@ -21,4 +21,5 @@ Feature: Wire error safety for untyped exceptions
     Given a tenant is configured for product discovery
     And an untyped exception is raised inside the dispatched skill's business logic
     When the Buyer Agent requests products
-    Then the response is an error with code "INTERNAL_ERROR" and no raw exception text
+    Then the error is compliant with the AdCP error spec
+    And the response is an error with code "INTERNAL_ERROR" and no raw exception text

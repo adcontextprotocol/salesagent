@@ -25,7 +25,8 @@ Feature: UC-010 get_adcp_capabilities — capability declarations must be implem
     Given a tenant is resolvable from the request context
     And the tenant declares specialisms ["signal-owned"] with supported_protocols ["signals"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then specialisms should equal ["sales-non-guaranteed", "signal-owned"]
+    Then the response is compliant with the get_adcp_capabilities spec
+    And specialisms should equal ["sales-non-guaranteed", "signal-owned"]
     And supported_protocols should equal ["media_buy", "signals"]
     # UNION, never replacement: the declaration adds to the baseline rather than
     # replacing it. Replacing would drop media_buy and orphan the unconditionally
@@ -39,7 +40,8 @@ Feature: UC-010 get_adcp_capabilities — capability declarations must be implem
     Given a tenant is resolvable from the request context
     And the tenant declares specialisms ["creative-generative"] with supported_protocols ["media_buy"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then the capability declaration should be rejected as terminal misconfiguration
+    Then the error is compliant with the AdCP error spec
+    And the capability declaration should be rejected as terminal misconfiguration
     # Nothing implements generative creative, and the AAO compliance runner grades
     # the claim, so echoing the declaration would be a false conformance claim.
     # Tracked by #1724.
@@ -49,7 +51,8 @@ Feature: UC-010 get_adcp_capabilities — capability declarations must be implem
     Given a tenant is resolvable from the request context
     And the tenant declares specialisms ["signal-owned"] without declaring its parent protocol
     When the Buyer Agent calls get_adcp_capabilities
-    Then the capability declaration should be rejected as terminal misconfiguration
+    Then the error is compliant with the AdCP error spec
+    And the capability declaration should be rejected as terminal misconfiguration
     # Roll-up coherence: /properties/specialisms — "the runner rejects a specialism
     # claim whose parent protocol is missing". Boundary case for the backing rule:
     # the specialism IS backed, so only the roll-up check can catch this.
@@ -59,7 +62,8 @@ Feature: UC-010 get_adcp_capabilities — capability declarations must be implem
     Given a tenant is resolvable from the request context
     And the tenant declares supported_protocols ["creative"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then the capability declaration should be rejected as terminal misconfiguration
+    Then the error is compliant with the AdCP error spec
+    And the capability declaration should be rejected as terminal misconfiguration
     # A protocol claim commits the seller to that domain's required tool surface
     # (protocols/<p>/index.yaml#required_tools). Generative creative is unimplemented
     # here, so advertising `creative` would route buyer traffic to a domain that

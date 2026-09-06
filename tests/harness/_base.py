@@ -753,7 +753,7 @@ class BaseTestEnv:
         """A2A dispatch via real AdCPRequestHandler — exercises full A2A pipeline.
 
         Dispatches through the real AdCPRequestHandler.on_message_send(), which
-        exercises: message parsing → skill routing → normalize_request_params →
+        exercises: message parsing → skill routing → ToolSpec.validate →
         handler dispatch → _serialize_for_a2a → Task/Artifact framing.
 
         Identity is injected by monkey-patching ``_resolve_a2a_identity`` and

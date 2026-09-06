@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
+from tests.factories.webhook import PushNotificationConfigRequestFactory
 from tests.harness._mixins import LocalOriginMixin
 from tests.harness.media_buy_dual import MediaBuyDualEnv
 from tests.harness.product import ProductEnv
@@ -205,10 +206,9 @@ class MediaBuyPushRegistrationEnv(LocalOriginMixin, MediaBuyDualEnv):
         """
         stashed = self.stashed_push_config(step)
         request_data = dict(step.request_data)
-        request_data["push_notification_config"] = {
-            "url": stashed["url"],
-            "authentication": {"schemes": ["HMAC-SHA256"]},
-        }
+        request_data["push_notification_config"] = PushNotificationConfigRequestFactory.payload(
+            url=stashed["url"], authentication={"schemes": ["HMAC-SHA256"]}
+        )
         step.request_data = request_data
         self.get_session().add(step)
         self.get_session().commit()

@@ -21,6 +21,8 @@ from adcp import get_adcp_spec_version
 # Add parent directories to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from src.core.tools.registry import TOOLS  # noqa: E402  (after the sys.path bootstrap above)
+
 
 class TestA2AEndpointsActual:
     """Test actual A2A endpoints that we implement.
@@ -314,20 +316,21 @@ class TestA2ARequestHandler:
         assert "task_does_not_exist" in str(exc.value)  # the requested id is surfaced
         assert exc.value.data == {"task_id": "task_does_not_exist"}  # ...and machine-readable
 
-    def test_handler_has_skill_methods(self):
-        """Test that handler has skill-specific methods."""
-        # Note: get_signals removed - should come from dedicated signals agents
-        skill_methods = [
-            "_handle_get_products_skill",
-            "_handle_create_media_buy_skill",
-            "_handle_sync_creatives_skill",
-            "_handle_list_creatives_skill",
-        ]
+    def test_core_skills_are_dispatchable_over_a2a(self):
+        """The core skills are dispatchable over A2A, per the registry.
 
-        for method_name in skill_methods:
-            assert hasattr(self.handler, method_name), f"Handler missing skill method: {method_name}"
-            method = getattr(self.handler, method_name)
-            assert callable(method), f"Skill method {method_name} is not callable"
+        This used to assert one ``_handle_<tool>_skill`` method per tool. Those eleven
+        methods are deleted: A2A dispatch is the single derived ``_dispatch_skill``,
+        and a row is dispatchable because ``TOOLS[name].a2a`` is True. The old
+        ``hasattr``-based selection was the defect it appeared to guard — it
+        overrode the registry, advertising ``list_tasks``, ``get_task_status`` and
+        ``complete_task`` on the agent card while answering MethodNotFoundError.
+        """
+        assert callable(self.handler._dispatch_skill), "A2A's one dispatch method is missing"
+
+        # Note: get_signals removed - should come from dedicated signals agents
+        for tool_name in ("get_products", "create_media_buy", "sync_creatives", "list_creatives"):
+            assert TOOLS[tool_name].a2a is True, f"{tool_name} is not dispatchable over A2A"
 
     def test_auth_methods_exist(self):
         """Test that authentication-related methods exist."""
@@ -458,11 +461,12 @@ def test_a2a_regression_summary():
         handler = AdCPRequestHandler()
         assert handler is not None, "REGRESSION: Cannot create A2A handler"
 
-        # Test 3: Core functions are callable
+        # Test 3: get_products is dispatchable over A2A and its row holds a plain callable
         # Note: signals tools removed - using get_products as core function check instead
-        from src.a2a_server.adcp_a2a_server import core_get_products_tool
-
-        assert callable(core_get_products_tool), "REGRESSION: Core function not callable"
+        # (the module-level core_<tool>_tool wrappers are deleted; the registry row is
+        # what invoke_tool calls and what decides A2A dispatchability)
+        assert callable(TOOLS["get_products"].impl), "REGRESSION: registry impl not callable"
+        assert TOOLS["get_products"].a2a is True, "REGRESSION: get_products not dispatchable over A2A"
     except ImportError as e:
         if e.name and e.name.startswith("a2a"):
             pytest.skip(f"a2a-sdk library not installed: {e}")

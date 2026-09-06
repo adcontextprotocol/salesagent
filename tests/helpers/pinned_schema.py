@@ -184,11 +184,33 @@ def _retrieve(uri: str) -> referencing.Resource:
 
 
 def validator_for(ref: str) -> Draft7Validator:
-    """A Draft7Validator for *ref* with full (relative) $ref resolution wired."""
-    _, schema = _resolve_and_load(ref)
+    """A Draft7Validator for *ref* with full (relative) $ref resolution wired.
+
+    *ref* may carry a JSON-pointer fragment naming a subschema —
+    ``"media-buy/create-media-buy-response.json#/oneOf/0"`` validates against
+    that ONE branch of a branching response. The registry is still built from
+    the whole file and keyed on its ``$id``, so the branch's own relative
+    ``$ref``s resolve exactly as they do when the whole document is validated.
+    """
+    file_ref, _, pointer = ref.partition("#")
+    _, schema = _resolve_and_load(file_ref)
     registry: referencing.Registry = referencing.Registry(retrieve=_retrieve)
     registry = registry.with_resource(schema["$id"], DRAFT7.create_resource(schema))
-    return Draft7Validator(schema, registry=registry)
+
+    target = schema
+    if pointer:
+        for token in (t for t in pointer.split("/") if t):
+            key = int(token) if token.isdigit() else token.replace("~1", "/").replace("~0", "~")
+            try:
+                target = target[key]  # type: ignore[index]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise PinnedSchemaError(f"Schema ref {ref!r}: no such subschema at {pointer!r}") from exc
+        # The subschema inherits the document's identity so its relative refs
+        # resolve; without this the branch is an anonymous fragment and every
+        # "../core/*.json" inside it is unresolvable.
+        target = {"$id": schema["$id"], **target}
+
+    return Draft7Validator(target, registry=registry)
 
 
 def validate_against_pinned_schema(filename: str, data: Any) -> None:

@@ -1,6 +1,6 @@
 """Regression test: list_accounts with NO auth token must emit AUTH_MISSING, not AUTH_REQUIRED.
 
-beads: salesagent-mkso
+ticket: #2092
 
 Per the pinned AdCP v3.1.1 error-code enum, ``AUTH_REQUIRED`` is deprecated.
 Absent-credential auth failures must emit ``AUTH_MISSING`` (recovery=correctable);
@@ -12,7 +12,7 @@ for every auth failure, including the absent-token case.
 This test drives ``list_accounts`` over the real REST wire with no credentials
 at all and asserts the two-layer wire envelope carries ``AUTH_MISSING``
 (recovery=correctable) — the 3.1.1-compliant code for the absent-credential
-case (auth.py:353 ``require_principal_id`` classification in salesagent-mkso's
+case (auth.py:353 ``require_principal_id`` classification in #2092's
 reproduction notes). It currently fails because production emits
 ``AUTH_REQUIRED`` instead.
 

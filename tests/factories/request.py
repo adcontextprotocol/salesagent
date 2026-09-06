@@ -7,14 +7,19 @@ every scenario re-derived its own idea of "a valid request", and each copy was
 graded only by "the Pydantic constructor accepted it".
 
 That grade is the weaker of the two contracts in play. Our DTOs and the pinned
-AdCP schemas do not agree field for field (``CreateMediaBuyRequest`` does not
-require ``account``; ``SyncAccountsRequest`` does not require
-``idempotency_key``; the pin requires both), so a payload our constructor accepts
-can still be one the spec rejects. Every baseline here is therefore graded
-against the PINNED SCHEMA by
-``tests/unit/test_request_factory_schema_conformance.py``, with a divergence
-allowlist whose rows each carry a spec citation. Adding a factory without a
-conformant baseline fails that suite.
+the DTOs are GENERATED FROM the pinned schemas, so a payload the constructor
+accepts is a payload the schema accepts. Measured on this tree:
+``CreateMediaBuyRequest`` and ``SyncAccountsRequest`` require exactly the sets
+their pinned schemas require, and ``idempotency_key`` carries the schema's
+``MinLen(16)``, ``MaxLen(255)`` and ``^[A-Za-z0-9_.:-]{16,255}$`` — a
+hand-written ``"test-key-1"`` is REJECTED by the constructor.
+
+This module's docstring used to claim the opposite, and a whole suite existed to
+police the gap it described. The gap had closed and nobody re-measured. What is
+left is a REFUSAL rather than a suite: ``_register_tool`` will not register a
+tool whose DTO does not descend from ``AdcpVersionEnvelope``, because a DTO that
+does not is one from a parallel hierarchy (salesagent-fdkub). Everything a
+payload does on the wire is graded by BDD.
 
 Usage — the perturbation this module exists for::
 
@@ -49,13 +54,27 @@ from typing import Any
 
 import factory
 
-from src.core.schemas import (
-    CreateMediaBuyRequest,
-    ListAccountsRequest,
-    ListCreativeFormatsRequest,
-    SyncAccountsRequest,
-    SyncCreativesRequest,
-)
+from src.core.tools.registry import TOOLS
+
+
+def dto(tool: str) -> type:
+    """The request model for *tool*, read from the registry rather than imported.
+
+    A factory that names its model by import can bind a DIFFERENT class than the
+    one the tool actually uses, and the names are close enough that nothing looks
+    wrong: ``CompleteTaskRequest`` requires ``task_id``, ``resolution`` and
+    ``resolved_by``; ``CompleteTaskRequestLocal``, which is what the registry
+    binds to ``complete_task``, requires only ``task_id``. A factory written
+    against the first produces a baseline the tool would reject, and the failure
+    surfaces as a confusing ValidationError in the test's own setup.
+
+    Reading the model off ``TOOLS`` makes that unrepresentable: there is one
+    answer to 'which DTO does this tool use', and it is the same one MCP
+    announces, the REST body validates against, and A2A dispatches with.
+    """
+    return TOOLS[tool].dto
+
+
 from tests.factories.creative_asset import build_assets, image_spec
 from tests.factories.format import AGENT_URL
 from tests.helpers.sample_account import SAMPLE_ACCOUNT
@@ -150,7 +169,7 @@ class CreateMediaBuyRequestFactory(_RequestFactory):
     """
 
     class Meta:
-        model = CreateMediaBuyRequest
+        model = dto("create_media_buy")
 
     idempotency_key = factory.LazyFunction(fresh_idempotency_key)
     account = factory.LazyFunction(lambda: dict(SAMPLE_ACCOUNT))
@@ -172,7 +191,7 @@ class SyncCreativesRequestFactory(_RequestFactory):
     """
 
     class Meta:
-        model = SyncCreativesRequest
+        model = dto("sync_creatives")
 
     idempotency_key = factory.LazyFunction(fresh_idempotency_key)
     account = factory.LazyFunction(lambda: dict(SAMPLE_ACCOUNT))
@@ -199,7 +218,7 @@ class SyncAccountsRequestFactory(_RequestFactory):
     """
 
     class Meta:
-        model = SyncAccountsRequest
+        model = dto("sync_accounts")
 
     idempotency_key = factory.LazyFunction(fresh_idempotency_key)
     accounts = factory.LazyFunction(
@@ -223,7 +242,7 @@ class ListAccountsRequestFactory(_RequestFactory):
     """
 
     class Meta:
-        model = ListAccountsRequest
+        model = dto("list_accounts")
 
 
 class ListCreativeFormatsRequestFactory(_RequestFactory):
@@ -238,45 +257,161 @@ class ListCreativeFormatsRequestFactory(_RequestFactory):
     """
 
     class Meta:
-        model = ListCreativeFormatsRequest
+        model = dto("list_creative_formats")
 
 
-def declared_request_factories() -> dict[type, type[_RequestFactory]]:
-    """``request DTO -> factory`` for every factory THIS MODULE declares.
+# --- the remaining nine tools -------------------------------------------------
+#
+# Every tool in ``src.core.tools.registry.TOOLS`` has a factory, so a scenario
+# never hand-builds a payload. The tools below mostly declare NO required field:
+# their baseline is the empty request, and what each factory supplies is the
+# smallest set that makes the request MEAN something a seller can answer.
+#
+# Where the pin requires a field our DTO does not, the factory supplies it —
+# same rule ``CreateMediaBuyRequestFactory`` states for ``account``. A baseline
+# is only useful if it is one the spec would accept.
 
-    Read off each factory's own ``Meta.model``, which every ``factory.Factory``
-    subclass must already declare — so the binding a five-row ``REQUEST_FACTORY_BY_TOOL``
-    used to restate is taken from the declaration it was restating. Scoped to this
-    module's namespace rather than ``__subclasses__()`` so a throwaway factory defined
-    inside some other test cannot silently join the registry.
+
+class GetProductsRequestFactory(_RequestFactory):
+    """A get_products request conforming to ``media-buy/get-products-request.json``.
+
+    ``buying_mode`` is supplied because the PIN REQUIRES IT — it is the sole
+    entry in that schema's ``/required``, typed as the enum
+    ``[brief, wholesale, refine]``, and its description says "v3 clients MUST
+    include buying_mode". Our DTO widened it to ``str | None`` and therefore does
+    not require it; that widening is a defect tracked as #2117. The
+    baseline follows the pin rather than the widening, so it stays valid when the
+    widening is deleted.
+
+    ``brief`` pairs with ``buying_mode="brief"``: the pin's own description says
+    'wholesale' means the buyer wants raw inventory and **brief must not be
+    provided**, so brief and wholesale are mutually exclusive. A wholesale
+    baseline is ``payload(buying_mode="wholesale", brief=OMIT)``.
     """
-    factories: dict[type, type[_RequestFactory]] = {}
-    for obj in list(globals().values()):
-        if not (isinstance(obj, type) and issubclass(obj, _RequestFactory) and obj is not _RequestFactory):
-            continue
-        model = obj._meta.model
-        if model in factories:
-            raise RuntimeError(
-                f"{obj.__name__} and {factories[model].__name__} both build {model.__name__}. "
-                f"A DTO has one baseline; two make 'the conformant payload' ambiguous."
-            )
-        factories[model] = obj
-    return factories
+
+    class Meta:
+        model = dto("get_products")
+
+    buying_mode = "brief"
+    brief = "display advertising for an outdoor apparel brand"
+    brand = factory.LazyFunction(lambda: {"domain": "testbrand.com"})
 
 
-def request_factories_by_tool() -> dict[str, type[_RequestFactory]]:
-    """``tool -> its request factory``, DERIVED by joining the two live declarations.
+class UpdateMediaBuyRequestFactory(_RequestFactory):
+    """An update_media_buy request conforming to ``media-buy/update-media-buy-request.json``.
 
-    The tool -> DTO half comes from the MCP registry (the same lookup production
-    announces the tool's shape with) and the DTO -> factory half from ``Meta.model``.
-    Neither half is written here, so a factory cannot be bound to a DIFFERENT model than
-    the tool actually builds, and the join is what the conformance suite grades over.
+    All three of the pin's required fields are supplied, and our DTO requires the
+    same three — the one tool where the two contracts already agree.
 
-    A factory whose model no tool builds is absent from this map — and
-    ``test_every_declared_factory_is_bound_to_a_registered_tool`` fails on it, so
-    "absent" cannot mean "quietly ungraded".
+    ``media_buy_id`` is a placeholder: an update targets a buy that must already
+    exist, so a scenario overrides it with the id its Given step created. The
+    baseline exists to be perturbed, not to be sent as-is.
     """
-    from tests.helpers.registered_tools import registered_request_dtos
 
-    factories = declared_request_factories()
-    return {tool: factories[model] for tool, model in registered_request_dtos().items() if model in factories}
+    class Meta:
+        model = dto("update_media_buy")
+
+    idempotency_key = factory.LazyFunction(fresh_idempotency_key)
+    account = factory.LazyFunction(lambda: dict(SAMPLE_ACCOUNT))
+    media_buy_id = "mb-baseline"
+
+
+class GetMediaBuysRequestFactory(_RequestFactory):
+    """A get_media_buys request. The pin requires nothing.
+
+    ``account`` is supplied because a query with no account asks for every buy
+    the caller can see, which is a different question from the one most
+    scenarios mean. Override with ``account=OMIT`` for the unscoped query.
+    """
+
+    class Meta:
+        model = dto("get_media_buys")
+
+    account = factory.LazyFunction(lambda: dict(SAMPLE_ACCOUNT))
+
+
+class GetMediaBuyDeliveryRequestFactory(_RequestFactory):
+    """A get_media_buy_delivery request. The pin requires nothing.
+
+    Same reasoning as ``GetMediaBuysRequestFactory`` for ``account``.
+    """
+
+    class Meta:
+        model = dto("get_media_buy_delivery")
+
+    account = factory.LazyFunction(lambda: dict(SAMPLE_ACCOUNT))
+
+
+class ListCreativesRequestFactory(_RequestFactory):
+    """A list_creatives request. The pin requires nothing and so does the DTO.
+
+    The baseline is deliberately EMPTY: an unfiltered list is the meaningful
+    default, and every filter, sort and pagination scenario is an override on
+    top of it. Supplying a filter here would make the unfiltered case the
+    special one.
+    """
+
+    class Meta:
+        model = dto("list_creatives")
+
+
+class ListTasksRequestFactory(_RequestFactory):
+    """A list_tasks request. Empty baseline, same reasoning as list_creatives."""
+
+    class Meta:
+        model = dto("list_tasks")
+
+
+class GetAdcpCapabilitiesRequestFactory(_RequestFactory):
+    """A get_adcp_capabilities request. Empty baseline.
+
+    Capabilities is the discovery call: asking with no filters is the whole
+    point, and ``protocols`` narrows it. Auth is optional on this tool, which is
+    a property of the tool rather than of the payload, so nothing here carries it.
+    """
+
+    class Meta:
+        model = dto("get_adcp_capabilities")
+
+
+class GetTaskStatusRequestFactory(_RequestFactory):
+    """A get_task_status request. ``task_id`` is required by the DTO.
+
+    Named for the TOOL, which is named for its spec task: the pin calls the
+    operation ``get-task-status`` and the SDK type is ``GetTaskStatusRequest``,
+    so ``get_task`` was the odd name out and was renamed on main (f562b60df).
+
+    This factory broke loudly on that rename -- ``dto("get_task")`` raised
+    ``KeyError`` at import -- which is the intended failure mode. A factory that
+    named its model by import would have kept building the old class silently.
+
+    Placeholder id, same as ``UpdateMediaBuyRequestFactory.media_buy_id``: a
+    scenario overrides it with the task its Given step created.
+    """
+
+    class Meta:
+        model = dto("get_task_status")
+
+    task_id = "task-baseline"
+
+
+class CompleteTaskRequestFactory(_RequestFactory):
+    """A complete_task request. ``task_id`` and ``status`` are both required.
+
+    ``status`` used to be left unset here, on the reasoning that which terminal
+    status a completion carries is what most scenarios grade, so picking one
+    would make the other arm read as the override. That reasoning held while the
+    DTO typed it ``str | None``. It no longer can: main narrowed it to a required
+    ``Literal["completed", "failed"]`` (f562b60df), so a baseline that omits it
+    does not build at all.
+
+    ``completed`` is therefore the baseline and ``payload(status="failed")`` the
+    other arm -- the ordinary case as the default, which is the same rule every
+    other factory here follows.
+    """
+
+    class Meta:
+        model = dto("complete_task")
+
+    task_id = "task-baseline"
+    status = "completed"

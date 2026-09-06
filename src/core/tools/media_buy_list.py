@@ -185,7 +185,7 @@ def _get_media_buys_impl(
     # Only MCP ever reached these branches -- REST and A2A reject an
     # unauthenticated request at the boundary and already return the two-layer
     # envelope -- which is why get_media_buys was the ONE tool of 16 answering a
-    # fatal auth failure with HTTP 200 and isError:false (salesagent-3dawm.20).
+    # fatal auth failure with HTTP 200 and isError:false (#1651).
     principal_id = require_principal_id(identity, context=req.context)
     principal = resolve_principal_or_raise(principal_id, tenant_id=identity.tenant_id, context=req.context)
 

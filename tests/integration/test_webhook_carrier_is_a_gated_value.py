@@ -35,41 +35,52 @@ from src.core.schemas import GetMediaBuyDeliveryResponse
 from src.core.webhooks.registration import ValidatedWebhookRegistration
 from src.services.delivery_webhook_scheduler import DeliveryWebhookScheduler
 from tests.factories import MediaBuyFactory, PrincipalFactory, TenantFactory
+from tests.factories.request import OMIT
+from tests.factories.webhook import (
+    ReportingWebhookRequestFactory,
+    hmac_authentication,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 SECRET = "s" * 40
 
-SIGNED_WEBHOOK = {
-    "url": "https://buyer.example.com/webhook",
-    "frequency": "daily",
-    "authentication": {"schemes": ["HMAC-SHA256"], "credentials": SECRET},
-}
+# ONE conformant document, built from the SDK model, plus three deliberate
+# perturbations of it. Four sibling dict literals used to sit here, and four
+# module-level constants named alike read as four spec-defined shapes -- when only
+# the first one is. The pin (core/reporting-webhook.json) requires url,
+# authentication and reporting_frequency, and AuthenticationScheme admits exactly
+# Bearer and HMAC-SHA256.
+#
+# So the valid case comes from the factory, which is bound to the SDK class and
+# cannot carry a value the enum refuses. Each invalid case is written as that
+# document MINUS or PLUS the one thing under test, so a reader sees which field is
+# wrong without diffing four literals.
 
-UNSIGNED_WEBHOOK = {
-    "url": "https://buyer.example.com/webhook",
-    "frequency": "daily",
-    # No authentication block at all — the common case, and the one that must keep
-    # delivering unsigned. Routing the carrier through the gate must not turn a
-    # delivered webhook into a never-delivered one.
-}
+SIGNED_WEBHOOK = ReportingWebhookRequestFactory.payload(
+    url="https://buyer.example.com/webhook",
+    authentication=hmac_authentication(SECRET),
+)
 
-EMPTY_AUTH_WEBHOOK = {
-    "url": "https://buyer.example.com/webhook",
-    "frequency": "daily",
-    # Falsy today (`if auth_config:`), so it behaves exactly like an absent block
-    # and delivers unsigned. The gate REFUSES an empty block, so the caller keeps
-    # the truthiness guard rather than silently making this a non-delivery —
-    # that transition needs an owner sign-off (fo99.4 / BasicCredentials precedent).
-    "authentication": {},
-}
+#: No authentication block at all -- the common case, and the one that must keep
+#: delivering unsigned. Routing the carrier through the gate must not turn a
+#: delivered webhook into a never-delivered one. The pin REQUIRES authentication,
+#: so this document is deliberately non-conformant.
+UNSIGNED_WEBHOOK = ReportingWebhookRequestFactory.payload(url="https://buyer.example.com/webhook", authentication=OMIT)
 
-TWO_SCHEME_WEBHOOK = {
-    "url": "https://buyer.example.com/webhook",
-    "frequency": "daily",
-    # The pinned schema allows at most one. A document the spec forbids.
-    "authentication": {"schemes": ["Bearer", "HMAC-SHA256"], "credentials": SECRET},
-}
+#: Falsy today (``if auth_config:``), so it behaves exactly like an absent block
+#: and delivers unsigned. The gate REFUSES an empty block, so the caller keeps the
+#: truthiness guard rather than silently making this a non-delivery -- that
+#: transition needs an owner sign-off (fo99.4 / BasicCredentials precedent).
+EMPTY_AUTH_WEBHOOK = ReportingWebhookRequestFactory.payload(url="https://buyer.example.com/webhook", authentication={})
+
+#: Two schemes. The pinned schema allows at most one, so this is a document the
+#: spec forbids -- both names are real AuthenticationScheme members, which is what
+#: makes the pair the violation rather than either value.
+TWO_SCHEME_WEBHOOK = ReportingWebhookRequestFactory.payload(
+    url="https://buyer.example.com/webhook",
+    authentication={"schemes": ["Bearer", "HMAC-SHA256"], "credentials": SECRET},
+)
 
 
 def _delivery_response() -> GetMediaBuyDeliveryResponse:

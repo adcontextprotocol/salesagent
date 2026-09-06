@@ -1,7 +1,7 @@
 """The A2A JSON-RPC InternalError carries the two-layer envelope in its ``data``.
 
 WHAT THIS FILE NO LONGER TESTS, and why. It began as a reproduction for
-salesagent-prkv.8: an untyped exception's own ``str()`` reaching the buyer as the
+#1587: an untyped exception's own ``str()`` reaching the buyer as the
 error ``message``. That leak is now structurally impossible rather than merely
 fixed. ``AdCPSalesAgentError.__init__`` takes no ``message`` parameter at all,
 and ``message`` is a read-only property returning ``CODE_TABLE[code].message``

@@ -1,6 +1,6 @@
 """A create that LOSES the natural-key race must not surface as a 500.
 
-Regression for salesagent-ocs1, the concurrency half of salesagent-0njj.
+Regression for #1535 Part 2, the concurrency half of salesagent-0njj.
 
 0njj closed the sequential duplicate: ``AccountRepository.create`` refuses a key
 that already resolves (the message), and ``uq_accounts_natural_key`` enforces it

@@ -31,7 +31,10 @@ from tests.bdd.steps._outcome_helpers import (
     wire_error_envelope_or_none,
     wire_field,
 )
+from tests.bdd.steps.generic._account_resolution import ensure_tenant_principal
 from tests.bdd.steps.generic._dispatch import dispatch_request, dispatch_via_client
+from tests.bdd.steps.generic._table import as_bool
+from tests.bdd.steps.generic._table import rows as table_rows
 from tests.bdd.steps.generic.then_error import _wire_code
 from tests.factories.account import AccountFactory, AgentAccountAccessFactory
 from tests.factories.request import fresh_idempotency_key
@@ -184,12 +187,14 @@ def _assert_wire_field_rejection(ctx: dict, field: str, code: str = "INVALID_REQ
 
 
 def _setup_tenant_and_principal(ctx: dict) -> tuple[Any, Any]:
-    """Set up default tenant + principal, caching in ctx to avoid duplicates."""
-    if "tenant" not in ctx:
-        env = ctx["env"]
-        tenant, principal = env.setup_default_data()
-        ctx["tenant"] = tenant
-        ctx["principal"] = principal
+    """This module's 22 call sites, routed to the canonical owner.
+
+    ``ensure_tenant_principal`` (``steps/generic/_account_resolution.py``) is the
+    one implementation; ``uc002`` and ``uc006`` already delegate to it the same
+    way. The only difference here is the return value, which this module's
+    callers use.
+    """
+    ensure_tenant_principal(ctx, ctx["env"])
     return ctx["tenant"], ctx["principal"]
 
 
@@ -308,18 +313,6 @@ def _sync_pre_create(ctx: dict, brand_domain: str, operator: str, billing: str, 
 # ═══════════════════════════════════════════════════════════════════════
 # GIVEN steps — authentication and account setup
 # ═══════════════════════════════════════════════════════════════════════
-
-
-@given("the Buyer Agent has an authenticated connection")
-@given(parsers.parse("the Buyer Agent has an authenticated connection via {transport}"))
-def given_authenticated_connection(ctx: dict, transport: str | None = None) -> None:
-    """Set up authenticated connection.
-
-    The transport arg is accepted but ignored — pytest_generate_tests
-    controls which transport is used for dispatch.
-    """
-    ctx["has_auth"] = True
-    _setup_tenant_and_principal(ctx)
 
 
 @given("the Buyer Agent has an unauthenticated connection")
@@ -442,13 +435,6 @@ def given_seller_legal_review(ctx: dict) -> None:
 def given_seller_auto_approve(ctx: dict) -> None:
     """Configure seller to auto-approve (status=active, no setup)."""
     _set_approval_mode(ctx, "auto")
-
-
-@given("the Buyer is authenticated with a valid principal_id")
-def given_buyer_authenticated(ctx: dict) -> None:
-    """Buyer has authenticated identity with valid principal_id."""
-    ctx["has_auth"] = True
-    _setup_tenant_and_principal(ctx)
 
 
 @given(parsers.parse('the agent has {count:d} accessible accounts with statuses "{s1}", "{s2}", "{s3}"'))
@@ -674,7 +660,7 @@ def when_list_sandbox_filter(ctx: dict, value: str) -> None:
     """
     from src.core.schemas.account import ListAccountsRequest
 
-    dispatch_request(ctx, req=ListAccountsRequest(sandbox=value.lower() == "true"))
+    dispatch_request(ctx, req=ListAccountsRequest(sandbox=as_bool(value)))
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -817,7 +803,7 @@ def then_pagination_has_more_with_cursor(ctx: dict, has_more: str) -> None:
     """Assert pagination metadata with has_more and cursor."""
     resp = require_payload(ctx)
     assert resp.pagination is not None, "Expected pagination metadata"
-    expected = has_more.lower() == "true"
+    expected = as_bool(has_more)
     assert resp.pagination.has_more == expected, f"Expected has_more={expected}, got {resp.pagination.has_more}"
     if expected:
         assert resp.pagination.cursor is not None, "Expected cursor when has_more is true"
@@ -828,7 +814,7 @@ def then_pagination_has_more(ctx: dict, has_more: str) -> None:
     """Assert pagination metadata with has_more."""
     resp = require_payload(ctx)
     assert resp.pagination is not None, "Expected pagination metadata"
-    expected = has_more.lower() == "true"
+    expected = as_bool(has_more)
     assert resp.pagination.has_more == expected, f"Expected has_more={expected}, got {resp.pagination.has_more}"
 
 
@@ -1215,7 +1201,7 @@ def _parse_sync_table(datatable: Any) -> list[dict[str, Any]]:
             elif key == "brand.brand_id":
                 brand["brand_id"] = value
             elif key == "sandbox":
-                entry[key] = value.lower() == "true"
+                entry[key] = as_bool(value)
             else:
                 entry[key] = value
         if brand:
@@ -1239,8 +1225,7 @@ def _dispatch_sync_table(ctx: dict, datatable: Any, *, idempotency_key: str | No
     the behavior these scenarios grade.
     """
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     ctx["sync_request_brand_pairs"] = _extract_brand_pairs(accounts)
@@ -2383,12 +2368,6 @@ def then_no_setup(ctx: dict) -> None:
 # ── Push notification steps (registration only) ──────────────────────
 
 
-@when(parsers.parse('the request includes a push_notification_config with url "{url}"'))
-def when_push_config(ctx: dict, url: str) -> None:
-    """Record push notification config for the sync request."""
-    ctx["push_notification_url"] = url
-
-
 @then("the system registers the webhook for async account status notifications")
 def then_webhook_registered(ctx: dict) -> None:
     """Assert the system acknowledged webhook registration for status notifications.
@@ -2421,9 +2400,12 @@ def then_webhook_registered(ctx: dict) -> None:
         )
     # Verify the request actually carried push_notification_config (distinguishes
     # this step from a plain "sync succeeded" check)
-    push_config = (
-        ctx.get("push_notification_config") or ctx.get("request_push_config") or ctx.get("push_notification_url")
-    )
+    # ONE key. This read used to fall back across push_notification_config /
+    # request_push_config / push_notification_url, and the fallback was hiding a
+    # real gap: the @when copy of the step set only the url, never the config the
+    # dispatch reads, so its scenarios sent no webhook config at all and this
+    # assertion passed off the leftover url.
+    push_config = ctx.get("push_notification_config")
     assert push_config is not None, (
         "Then 'webhook registered' but the When step did not set push_notification_config/url in ctx — "
         "cannot verify webhook registration without a configured webhook"
@@ -2617,15 +2599,14 @@ def when_sync_with_dry_run(ctx: dict, value: str, datatable: Any) -> None:
     """Send sync_accounts with dry_run flag and accounts table."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     try:
         req = SyncAccountsRequest(
             idempotency_key=fresh_idempotency_key(),
             accounts=accounts,
-            dry_run=value.lower() == "true",
+            dry_run=as_bool(value),
         )
         dispatch_request(ctx, req=req)
     except Exception as exc:
@@ -2637,8 +2618,7 @@ def when_sync_with_delete_missing(ctx: dict, value: str, datatable: Any) -> None
     """Send sync_accounts with delete_missing flag and accounts table."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     ctx["sync_request_domains"] = {a["brand"]["domain"] for a in accounts if a.get("brand", {}).get("domain")}
@@ -2646,7 +2626,7 @@ def when_sync_with_delete_missing(ctx: dict, value: str, datatable: Any) -> None
         req = SyncAccountsRequest(
             idempotency_key=fresh_idempotency_key(),
             accounts=accounts,
-            delete_missing=value.lower() == "true",
+            delete_missing=as_bool(value),
         )
         dispatch_request(ctx, req=req)
     except Exception as exc:
@@ -2658,8 +2638,7 @@ def when_sync_without_delete_missing(ctx: dict, datatable: Any) -> None:
     """Send sync_accounts without delete_missing (uses default=False)."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     ctx["sync_request_domains"] = {a["brand"]["domain"] for a in accounts if a.get("brand", {}).get("domain")}
@@ -2675,8 +2654,7 @@ def when_agent_a_sync_delete_missing(ctx: dict, datatable: Any) -> None:
     """Send sync_accounts under agent A's identity with delete_missing=True."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
 
     identity_a = _make_identity_for_agent(ctx, "A")
@@ -4062,8 +4040,7 @@ def when_sync_no_principal(ctx: dict, datatable: Any) -> None:
         principal_id=None,
         protocol="mcp",
     )
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
     req = SyncAccountsRequest(idempotency_key=fresh_idempotency_key(), accounts=accounts)
     dispatch_request(ctx, req=req, identity=broken_identity)
@@ -4190,8 +4167,7 @@ def when_sync_dryrun_and_delete_missing(ctx: dict, datatable: Any) -> None:
     """Send sync_accounts with both dry_run=True and delete_missing=True."""
     from src.core.schemas.account import SyncAccountsRequest
 
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
     req = SyncAccountsRequest(
         idempotency_key=fresh_idempotency_key(), accounts=accounts, dry_run=True, delete_missing=True
@@ -4205,8 +4181,7 @@ def when_named_agent_sync_delete_missing(ctx: dict, name: str, datatable: Any) -
     from src.core.schemas.account import SyncAccountsRequest
 
     identity = _make_identity_for_agent(ctx, name)
-    headers = datatable[0]
-    rows = [dict(zip(headers, row, strict=True)) for row in datatable[1:]]
+    rows = table_rows(datatable)
     accounts = _parse_sync_table(rows)
     req = SyncAccountsRequest(idempotency_key=fresh_idempotency_key(), accounts=accounts, delete_missing=True)
     dispatch_request(ctx, req=req, identity=identity)

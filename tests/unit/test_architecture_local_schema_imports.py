@@ -84,7 +84,7 @@ ALLOWLIST: set[tuple[str, str]] = {
     # FIXME(#1388): xandr adapter imports SDK types directly
     ("src/adapters/xandr.py", "DeliveryMeasurement"),
     # NOTE: xandr.py's DeliveryType import and capabilities.py's Targeting import
-    # were removed from this allowlist (salesagent-3s5a) -- the subclass-identity
+    # were removed from this allowlist (#1592) -- the subclass-identity
     # check (_shadows_local_schema) proved neither is a real Pattern #1 violation:
     # both are SDK flat-namespace name collisions with an UNRELATED local schema
     # class of the same bare name, not the actual SDK parent the local class extends.

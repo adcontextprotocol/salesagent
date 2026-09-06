@@ -524,7 +524,7 @@ Feature: BR-UC-014 Sponsored Intelligence Session
       | session_id missing                          | error "INVALID_REQUEST" with suggestion "Provide the session_id from si_initiate_session"     |
 
   @T-UC-014-part-termination @partition @termination-handoff @br-rule-100
-  Scenario Outline: Termination reason partition validation - <partition>
+  Scenario Outline: Termination ACP handoff partition validation - <partition>
     Given an active SI session exists with session_id "sess-term"
     When the Buyer Agent sends si_terminate_session with session_id "sess-term" and reason matching <partition>
     Then <outcome>
@@ -544,7 +544,7 @@ Feature: BR-UC-014 Sponsored Intelligence Session
       | handoff_transaction_no_acp  | error "INVALID_REQUEST" with suggestion "Ensure the brand agent generates ACP checkout data"           |
 
   @T-UC-014-bound-termination @boundary @termination-handoff @br-rule-100
-  Scenario Outline: Termination reason boundary validation - <boundary_point>
+  Scenario Outline: Termination ACP handoff boundary validation - <boundary_point>
     Given an active SI session exists with session_id "sess-term"
     When the Buyer Agent sends si_terminate_session at boundary <boundary_point>
     Then <outcome>
@@ -1254,15 +1254,15 @@ Feature: BR-UC-014 Sponsored Intelligence Session
   @T-UC-014-storyboard-baseline-session-id-roundtrip @schema-v3.1 @v3-1 @baseline-conformance @session-id-roundtrip
   Scenario: SI baseline conformance -- session_id roundtrips from initiate through send_message to terminate
     Given the Buyer Agent calls si_get_offering for offering_id "novamotors_conversational_v1"
-    And the si_get_offering response is schema-valid against si-get-offering-response.json
+    And the response is compliant with the si_get_offering spec
     When the Buyer Agent calls si_initiate_session with intent "User is researching electric vehicles for long road trips"
-    Then the si_initiate_session response should be schema-valid against si-initiate-session-response.json
+    Then the response is compliant with the si_initiate_session spec
     And the response should carry a platform-assigned session_id
     When the Buyer Agent calls si_send_message with the captured session_id and a user message
-    Then the si_send_message response should be schema-valid against si-send-message-response.json
+    Then the response is compliant with the si_send_message spec
     And the session_id sent on si_send_message should match the value captured from si_initiate_session
     When the Buyer Agent calls si_terminate_session with the captured session_id and reason "handoff_complete"
-    Then the si_terminate_session response should be schema-valid against si-terminate-session-response.json
+    Then the response is compliant with the si_terminate_session spec
     And the session_id sent on si_terminate_session should match the value captured from si_initiate_session
     # si_baseline storyboard exercises the four-call lifecycle:
     #   si_get_offering -> si_initiate_session (returns session_id) ->

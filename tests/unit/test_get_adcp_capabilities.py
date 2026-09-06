@@ -711,9 +711,9 @@ class TestResponseShapeCapabilities:
 
 
 class TestAccountBlockAndSigningDeclarations:
-    """Pin the salesagent-3s5a contract: account block + honest signing declarations.
+    """Pin the #1592 contract: account block + honest signing declarations.
 
-    Core Invariant (salesagent-3s5a): every field capabilities.py emits is either
+    Core Invariant (#1592): every field capabilities.py emits is either
     (a) read from the exact tenant config the corresponding enforcement path reads
     (supported_billing via resolve_supported_billing, mirroring _check_billing_policy),
     or (b) a true constant of the current architecture (require_operator_auth=False,

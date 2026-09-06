@@ -1,6 +1,6 @@
 """MCP wire shape for list_accounts: unset response fields must be absent, never null.
 
-Regression for salesagent-rrz8. FastMCP's ``ToolResult`` serializes a raw
+Regression for #1623. FastMCP's ``ToolResult`` serializes a raw
 (non-dict) ``structured_content`` via ``pydantic_core.to_jsonable_python``,
 which BYPASSES ``SalesAgentBaseModel.model_dump(exclude_none=True)``. 13 of
 14 MCP tool wrappers (including ``list_accounts`` at

@@ -393,7 +393,7 @@ def patched_internals():
         patch("src.core.tools.media_buy_list.MediaBuyUoW") as m_uow,
         # Patched on src.core.auth, not re-exported into the tool module:
         # media_buy_list now calls the shared resolve_principal_or_raise()
-        # rather than open-coding the lookup (salesagent-3dawm.20). This is
+        # rather than open-coding the lookup (#1651). This is
         # the same target the sibling media-buy wrapper tests already use.
         patch("src.core.auth.get_principal_object") as m_principal,
         patch("src.core.tools.media_buy_list._fetch_target_media_buys") as m_buys,
@@ -449,7 +449,7 @@ class TestGetMediaBuysImpl:
 
         Nothing could be authorized, so the empty list was never a result. The
         requirement changed, and the test changes with it rather than the code
-        being bent back to a graded gap (salesagent-3dawm.20).
+        being bent back to a graded gap (#1651).
         """
         identity = make_identity(principal_id=None)
 

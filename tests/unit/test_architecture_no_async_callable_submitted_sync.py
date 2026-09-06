@@ -1,6 +1,6 @@
 """Guard: an ``async def`` never reaches a SYNCHRONOUS invoker as a bare callable.
 
-This is the shape salesagent-prkv.14 / GH #1972 removed. ``_ai_review_creative_async``
+This is the shape GH #1972 removed. ``_ai_review_creative_async``
 was an ``async def`` handed to ``_ai_review_executor.submit(...)``. ``submit()`` CALLS
 the callable on a worker thread, and calling an ``async def`` only constructs a
 coroutine object — the body never runs. The worker stored that object as the Future's

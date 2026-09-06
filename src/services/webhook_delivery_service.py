@@ -574,7 +574,7 @@ class WebhookDeliveryService:
         # serialization as two independent things to keep in sync.
         #
         # The auth DECISION above that transport is owned entirely by
-        # deliver_webhook/adeliver_webhook (salesagent-47n9.24, GH #1894). This
+        # deliver_webhook/adeliver_webhook (#1894). This
         # sender used to make
         # it inline and made it wrong four ways at once: it read webhook_secret (a
         # column with zero writers in src/, so the signing branch was unreachable

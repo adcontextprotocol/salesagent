@@ -29,7 +29,8 @@ Feature: A buyer-facing suggestion is resolved from the code table, not authored
     # field at all, so this scenario fails on every transport against the old code.
     Given the buyer requests a media buy the seller will reject
     When the Buyer Agent sends the create_media_buy request
-    Then the response is an error carrying the seller's own code "MEDIA_BUY_REJECTED"
+    Then the error is compliant with the AdCP error spec
+    And the response is an error carrying the seller's own code "MEDIA_BUY_REJECTED"
     And the wire error carries a non-empty suggestion
 
   # NO UNIFORMITY SCENARIO HERE, and the reason matters. A draft of this feature carried

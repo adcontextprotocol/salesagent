@@ -921,7 +921,7 @@ def _ai_review_creative(
             # way submit() did. asyncio.run would also work now that this
             # function is a plain def on a pool worker with no running loop, but
             # that correctness would be incidental -- it was the live landmine
-            # while the caller was async (salesagent-prkv.14).
+            # while the caller was async (#1972).
             run_async_in_sync_context(_call_webhook_for_creative_status(creative_id=creative_id, tenant_id=tenant_id))
             logger.info(f"[AI Review Async] Webhook called for {creative_id}")
 

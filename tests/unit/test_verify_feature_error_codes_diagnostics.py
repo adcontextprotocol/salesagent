@@ -42,7 +42,7 @@ def test_missing_sdk_exits_2(monkeypatch, capsys):
     """An unimportable dependency produces the diagnostic exit code, never the findings one.
 
     The gate now resolves canonicality through CODE_TABLE rather than adcp.ErrorCode
-    (salesagent-3dawm.17: emittability, not spec membership), so this blocks the module
+    (#1753: emittability, not spec membership), so this blocks the module
     load_enum actually performs. Patching `adcp` alone made the test ORDER-DEPENDENT:
     once any earlier test had imported src.core.errors.codes, it sat in sys.modules and
     the import never re-entered __import__, so the guard did not fire and the test

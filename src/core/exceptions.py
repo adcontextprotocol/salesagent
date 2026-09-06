@@ -489,7 +489,7 @@ class AdCPInvalidRequestError(AdCPValidationError):
 # credentials and retry) vs AUTH_INVALID (credentials presented but rejected;
 # terminal — do not auto-retry, rotate/escalate). AUTH_REQUIRED itself is
 # retained by the spec only as a deprecated backward-compat alias. See
-# salesagent-mkso for the migration; distinct suggestion strings per code
+# #2092 for the migration; distinct suggestion strings per code
 # since "provide valid credentials" reads as invalid-framing for the
 # genuinely-absent-credential sites.
 
@@ -530,7 +530,7 @@ class AdCPAuthorizationError(AdCPSalesAgentError[EntityRefDetails]):
     requested action under the seller's own policies." Distinct from
     ``AUTHORIZATION_REQUIRED`` (a downstream-platform-connection gap, not this
     class's shape) — migrated off the deprecated AUTH_REQUIRED alias
-    (salesagent-otc5, completing salesagent-mkso for this axis).
+    (salesagent-otc5, completing #2092 for this axis).
     """
 
     _code: ClassVar[ErrorCodeT] = ErrorCode.PERMISSION_DENIED

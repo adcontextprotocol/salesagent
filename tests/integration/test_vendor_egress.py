@@ -1,6 +1,6 @@
 """Vendor and operator egress, driven at a REAL local origin — the retry-drift gate.
 
-salesagent-gstl migrates the ten remaining operator-configured call sites onto
+#1589 migrates the ten remaining operator-configured call sites onto
 ``src/core/security/outbound_http.py``. The seam decides address policy, TLS
 policy, redirect refusal, the response-size cap, the attempt count and the
 backoff schedule, and it grades all six exactly once, in

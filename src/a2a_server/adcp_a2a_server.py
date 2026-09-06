@@ -1522,16 +1522,19 @@ class AdCPRequestHandler(RequestHandler):
 
     @staticmethod
     def _serialize_for_a2a(response: ProtocolEnvelope | dict) -> dict[str, Any]:
-        """Serialize a tool's response for A2A at the framework boundary.
+        """Wrap the one wire body in A2A's container.
 
-        The single serialization point for every A2A skill response: the model dump, then the
-        ``message``/``success`` stamp, in that order and nowhere else.
+        A2A adds NOTHING to the body. ``to_wire`` produces the same bytes for all three
+        transports and this method only chooses the container -- an artifact ``DataPart``,
+        where MCP chooses a ``ToolResult`` and REST the HTTP body.
 
-        ``message`` and ``success`` are not spec fields on any response model -- they are A2A
-        transport-envelope markers (like MCP's ``task_id``/``adcp_version``; see
-        ``tests/integration/test_harness_wire_response.py::ENVELOPE_MARKERS``), a deliberate
-        A2A-binding deviation (#1868 review). ``success`` is derived from ``errors`` so a
-        response carrying per-item errors reports ``success=False`` uniformly.
+        It used to stamp two keys INTO the payload: ``message``, from ``str(response)``, and
+        ``success``, derived from ``errors``. ``message`` is a declared envelope field now,
+        filled by the implementation and serialized like any other, so all three transports
+        carry it -- REST never did before. ``success`` is deleted rather than moved: only three
+        response schemas in the whole pinned 3.1 tree declare that property and none is one of
+        our fourteen, so A2A was writing a key AdCP does not define into every buyer's payload,
+        and a buyer can derive it from ``errors``, which they already have.
 
         A dict passes through unchanged. Nothing on the skill path produces one any more --
         the branch survives for callers holding a response built elsewhere.
@@ -1568,7 +1571,7 @@ class AdCPRequestHandler(RequestHandler):
         A2A silently dropped -- and for the seven tools whose ``account`` is optional the
         request then proceeded with NO account scope, meaning no authorization against that
         account and a different idempotency scope. The genuine wire-compatibility rewrites
-        moved to ``normalize_request_params``, which every transport shares.
+        moved to ``ToolSpec.validate``, the one seam every transport shares.
 
         That normalizer runs HERE rather than in ``_handle_explicit_skill``, so the two natural
         language entry points take the same steps as an explicit skill invocation. This is A2A's

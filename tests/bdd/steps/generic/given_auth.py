@@ -7,7 +7,9 @@ an authenticated buyer, a missing tenant, or a sandbox account can reuse them.
 
 from __future__ import annotations
 
-from pytest_bdd import given
+from pytest_bdd import given, parsers
+
+from tests.bdd.steps.generic._account_resolution import ensure_tenant_principal
 
 # ── Authenticated / tenant-present paths ────────────────────────────
 
@@ -77,3 +79,81 @@ def given_production_account(ctx: dict) -> None:
     ctx["sandbox"] = False
     ctx["has_tenant"] = True
     ctx.setdefault("tenant_id", "prod_tenant")
+
+
+@given("the Buyer is authenticated")
+@given(parsers.parse('the Buyer is authenticated as principal "{principal_id}" on tenant "{tenant_id}"'))
+@given("the Buyer is authenticated with a valid principal_id")
+@given("the Buyer Agent has an authenticated connection")
+@given(parsers.parse("the Buyer Agent has an authenticated connection via {transport}"))
+def given_buyer_authenticated(
+    ctx: dict,
+    transport: str | None = None,
+    principal_id: str | None = None,
+    tenant_id: str | None = None,
+) -> None:
+    """P01 — a buyer with a valid identity. THE authentication setup, 381 feature lines.
+
+    Five sentences, one function, ONE body. The collapse is proven at the
+    implementation, not at the wording: every spelling registered here was
+    measured to normalize (``ast.dump`` with attributes stripped) to exactly the
+    two statements below, so they are interchangeable by construction rather
+    than by anyone judging them similar. ``the Buyer is authenticated with a
+    valid principal_id`` (234 feature lines) and ``the Buyer Agent has an
+    authenticated connection`` (118) were two functions in
+    ``steps/domain/uc011_accounts.py`` with byte-identical bodies, saying the
+    same thing in different words because nothing forced them to meet.
+
+    ``the Buyer is authenticated`` is the CANONICAL spelling — the one a feature
+    file should be written in when the scenario carries no principal/tenant data
+    of its own. The other three sentences are legacy spellings kept so the ~295
+    feature lines still using them keep resolving; pytest-bdd matches on text, so
+    deleting a spelling breaks every scenario that uses it.
+
+    ``principal_id``/``tenant_id`` are the P01 parameters: when a scenario names
+    who it authenticates as, the env is re-pointed FIRST and
+    ``ensure_tenant_principal`` then seeds exactly that pair (the factories read
+    the env's ids), so the named identity is the one that reaches the wire. When
+    the sentence names neither — every one of the 381 lines today — both are
+    ``None``, nothing is switched, and the body is byte-for-byte the collapsed
+    one. This is deliberately NOT the same step as
+    ``uc003_ext_error_scenarios.given_buyer_authenticated_as`` (``... as
+    principal "P"``, no tenant): that one has a DIFFERENT normalized body
+    (``authenticate_env_as`` — a principal switch with no tenant/principal
+    seeding), so it is not P01 however similar it reads, and it is left alone.
+
+    ``transport`` is parsed and DISCARDED, and that is not an oversight in this
+    function: ``pytest_generate_tests`` parametrizes every scenario over
+    a2a/mcp/rest, so a sentence naming one either lies or defeats the
+    parametrization. The 29 feature lines that say "via <transport>" are a
+    Gherkin-generation defect; the parameter is accepted so they keep resolving
+    until the generator stops emitting them, and ignored so they cannot pin.
+    """
+    env = ctx["env"]
+    named = tenant_id is not None or principal_id is not None
+
+    # REFUSE rather than silently seed nothing. ensure_tenant_principal returns
+    # early when ctx already holds a tenant, so naming a principal/tenant AFTER a
+    # Background has authenticated would re-point the env at the named pair and
+    # seed nothing for it -- _resolve_auth_token then finds no Principal row and
+    # returns None, and the scenario runs UNAUTHENTICATED while its own sentence
+    # says otherwise. That is the quiet failure this repo forbids, and it is worse
+    # than a crash: the scenario still reports a result, just not the one it names.
+    #
+    # No caller hits this today (all 381 lines pass neither parameter), which is
+    # exactly why it is worth failing loudly now -- the first scenario to use the
+    # parameterized spelling would otherwise inherit a silent no-op.
+    if named and "tenant" in ctx:
+        raise AssertionError(
+            f"this scenario already authenticated before naming principal={principal_id!r} "
+            f"tenant={tenant_id!r}, so the named pair would be switched to but never seeded, "
+            f"and the request would go out unauthenticated. Name the identity in the FIRST "
+            f"authentication step of the scenario (or its Background), not in a later one."
+        )
+
+    if tenant_id is not None:
+        env.switch_tenant(tenant_id)
+    if principal_id is not None:
+        env.switch_principal(principal_id)
+    ctx["has_auth"] = True
+    ensure_tenant_principal(ctx, env)

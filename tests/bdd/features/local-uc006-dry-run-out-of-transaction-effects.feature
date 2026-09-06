@@ -34,7 +34,8 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
     And the tenant has a slack_webhook_url configured
     And a <creative_state> creative on a <format_kind> format served by a creative agent
     When the Buyer Agent syncs the creative
-    Then the response is the success variant carrying a creatives array
+    Then the response is compliant with the sync_creatives success spec
+    And the response is the success variant carrying a creatives array
     And every creative result has action "<expected_action>"
     And the AI review submissions name exactly the synced creative
     And the creative agent is called to build or preview the creative
@@ -53,7 +54,8 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
     And the tenant has a slack_webhook_url configured
     And a <creative_state> creative on a <format_kind> format served by a creative agent
     When the Buyer Agent previews the creative with dry_run true
-    Then the response is the success variant carrying a creatives array
+    Then the response is compliant with the sync_creatives success spec
+    And the response is the success variant carrying a creatives array
     And every creative result has action "<expected_action>"
     And no AI review is submitted
     And no creative agent request is made
@@ -119,7 +121,8 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
     And the tenant has a slack_webhook_url configured
     And a creative with a known format_id
     When the Buyer Agent syncs the creative
-    Then the response is the success variant carrying a creatives array
+    Then the response is compliant with the sync_creatives success spec
+    And the response is the success variant carrying a creatives array
     And every creative result has action "created"
     And the committed workflow rows name exactly the synced creatives
 
@@ -130,7 +133,8 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
     And the tenant has a slack_webhook_url configured
     And a creative with a known format_id
     When the Buyer Agent previews the creative with dry_run true
-    Then the response is the success variant carrying a creatives array
+    Then the response is compliant with the sync_creatives success spec
+    And the response is the success variant carrying a creatives array
     And every creative result has action "created"
     And no workflow step, mapping or context row is committed for the tenant
     And no Slack notification should be sent

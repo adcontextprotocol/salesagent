@@ -55,7 +55,7 @@ def resolve_account(
     # variant runs a scoped query before rejection. The natural-key path skips the
     # access-scope join on a None principal and could otherwise disclose a
     # tenant-wide match count; require_principal_id raises AUTH_MISSING first
-    # (#1417; split per v3.1.1 error-code.json — salesagent-mkso).
+    # (#1417; split per v3.1.1 error-code.json — #2092).
     from src.core.auth import require_principal_id
 
     require_principal_id(identity)

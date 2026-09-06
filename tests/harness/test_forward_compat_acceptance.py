@@ -11,9 +11,9 @@ reject the request at the transport layer. This is the forward-compatibility
 contract: accept now, handle later.
 
 Each payload is tested through all three transport paths:
-- MCP: Client(mcp) → middleware (normalize + strip + deep-strip) → TypeAdapter → tool
-- A2A: normalize_request_params → model_validate(extra='ignore') → _impl
-- REST/direct: normalize_request_params → model_validate(extra='ignore') → _impl
+- MCP: Client(mcp) → middleware (strip) → ToolSpec.validate (deep-strip) → TypeAdapter → tool
+- A2A:  ToolSpec.validate (deep-strip to schema) → model_validate(extra='ignore') → _impl
+- REST: ToolSpec.validate (deep-strip to schema) → model_validate(extra='ignore') → _impl
 """
 
 from __future__ import annotations

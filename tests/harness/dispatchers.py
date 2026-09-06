@@ -39,7 +39,6 @@ from typing import TYPE_CHECKING, Any
 from tests.harness.transport import (
     Transport,
     TransportResult,
-    _envelope_from_adcp_error,
 )
 
 if TYPE_CHECKING:
@@ -68,48 +67,6 @@ if TYPE_CHECKING:
 #   - ``has_wire`` is declared PER CONSTRUCTION SITE (required and keyword-only
 #     on TransportResult), True only downstream of an actual send/receive; a
 #     catch-all branch that may fire before anything was sent declares False.
-
-
-class ImplDispatcher:
-    """Dispatch via direct ``_impl()`` call.
-
-    IMPL is the in-process direct call — there is no wire by definition.
-    ``wire_error_envelope`` is left ``None`` on this transport; the envelope
-    that production WOULD emit at the boundary is exposed on the separate
-    private ``_synthesized_error_envelope`` field so tests cannot accidentally lean
-    on IMPL to catch real-wire regressions (a regression in the production
-    boundary translator would not change what this dispatcher computes,
-    because both call ``build_two_layer_error_envelope`` on the same
-    in-memory exception). Use A2A, REST, or MCP for wire-shape coverage.
-
-    KEPT BY THIS MERGE, NOT ENDORSED BY IT. ``98f925f35`` deleted
-    ``Transport.IMPL``, this dispatcher and ``synthesized_error_envelope`` on the
-    grounds that IMPL was never a transport, and modelling it as one gave every
-    "assert on the wire" rule a standing escape hatch. It comes back here only
-    because main's #1802 added six integration modules that parametrise over
-    ``Transport.IMPL`` (``test_media_buy_adapter_format_dial_guard.py``,
-    ``test_url_provenance_wire.py``, ``test_creative_agent_url_ingest_refusal.py``,
-    ``test_creative_agent_dial_refusal_recovery.py``,
-    ``test_creative_advisory_recovery_pair.py``,
-    ``test_webhook_url_ingest_refusal.py``) and would fail collection without it.
-    Re-landing the deletion means migrating those six, not re-arguing the case —
-    ``has_wire=False`` and the private ``_synthesized_error_envelope`` hold the
-    line in the meantime, and ``TransportResult.has_wire`` already documents "the
-    day ``Transport.IMPL`` is removed".
-    """
-
-    def dispatch(self, env: BaseTestEnv, **kwargs: Any) -> TransportResult:
-        try:
-            payload = env.call_impl(**kwargs)
-        except Exception as exc:
-            return TransportResult(
-                has_wire=False,  # in-process call, no wire exists
-                error=exc,
-                _synthesized_error_envelope=_envelope_from_adcp_error(exc),
-            )
-        return TransportResult(
-            payload=payload, envelope={"transport": "impl"}, has_wire=False
-        )  # in-process call, no wire exists
 
 
 class A2ADispatcher:
@@ -356,15 +313,8 @@ class A2AE2EDispatcher:
 
 DISPATCHERS: dict[
     Transport,
-    ImplDispatcher
-    | A2ADispatcher
-    | RestDispatcher
-    | McpDispatcher
-    | RestE2EDispatcher
-    | McpE2EDispatcher
-    | A2AE2EDispatcher,
+    A2ADispatcher | RestDispatcher | McpDispatcher | RestE2EDispatcher | McpE2EDispatcher | A2AE2EDispatcher,
 ] = {
-    Transport.IMPL: ImplDispatcher(),
     Transport.A2A: A2ADispatcher(),
     Transport.REST: RestDispatcher(),
     Transport.MCP: McpDispatcher(),

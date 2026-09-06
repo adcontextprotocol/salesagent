@@ -26,7 +26,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Discover full format catalog
     Given the creative agent registry has formats across multiple categories
     When the Buyer Agent requests all formats with no filters
-    Then the response should include all registered formats
+    Then the response is compliant with the list_creative_formats spec
+    And the response should include all registered formats
     And each format should include a format_id with agent_url and id
     And each format should include a name and type category
     And each format should include asset requirements with type and dimensions
@@ -38,7 +39,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Discover filtered format catalog
     Given the creative agent registry has formats of types "display" and "video"
     When the Buyer Agent requests formats with type filter "display"
-    Then the response should include only display formats
+    Then the response is compliant with the list_creative_formats spec
+    And the response should include only display formats
     And no video formats should be present in the results
     # POST-S3: Only matching formats returned when filters applied
 
@@ -46,7 +48,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Creative agent referrals included in response
     Given the seller has additional creative agents beyond the default
     When the Buyer Agent requests the format catalog
-    Then the response should include creative_agents referrals
+    Then the response is compliant with the list_creative_formats spec
+    And the response should include creative_agents referrals
     And each referral should include the agent URL and supported capabilities
     # POST-S4: Creative agent referrals present when available
 
@@ -54,7 +57,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Per-format pricing options surfaced pass-through by the media-buy aggregator
     Given the creative agent registry has formats with vendor pricing options
     When the Buyer Agent requests the format catalog
-    Then the response should include all registered formats
+    Then the response is compliant with the list_creative_formats spec
+    And the response should include all registered formats
     And each format offering vendor pricing should include its pricing_options
     # POST-S5: per-format pricing surfaced pass-through. The media-buy request [S1] carries
     # no `include_pricing` flag (that field exists only on the creative-variant request), and
@@ -70,7 +74,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Formats without vendor pricing carry no pricing_options
     Given the creative agent registry has formats without vendor pricing options
     When the Buyer Agent requests the format catalog
-    Then no format should include pricing_options
+    Then the response is compliant with the list_creative_formats spec
+    And no format should include pricing_options
     # POST-S5: pricing_options presence reflects registry data, not a request flag. The
     # media-buy request carries no `include_pricing` gate, so the aggregator never strips
     # pricing_options — formats lack them only when the registry supplies none.
@@ -81,14 +86,16 @@ Feature: BR-UC-005 Discover Creative Formats
     And the registry has format "video-banner" of type "display" with asset type "video"
     And the registry has format "pre-roll" of type "video" with asset type "video"
     When the Buyer Agent requests formats with type "display" and asset_types ["video"]
-    Then only "video-banner" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "video-banner" should be returned
     # BR-RULE-031 INV-1: both filters must match (type=display AND asset=video)
 
   @T-UC-005-inv-031-1-violated @UC-005-MAIN-MCP-16 @invariant @BR-RULE-031
   Scenario: BR-RULE-031 INV-1 violated - AND combination excludes partial matches
     Given the registry has format "pre-roll" of type "video" with asset type "video"
     When the Buyer Agent requests formats with type "display" and asset_types ["video"]
-    Then no formats should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And no formats should be returned
     # BR-RULE-031 INV-1: type=display excludes video-type format despite matching asset_types
 
   @T-UC-005-inv-031-2-holds @UC-005-MAIN-MCP-04 @invariant @BR-RULE-031
@@ -100,7 +107,8 @@ Feature: BR-UC-005 Discover Creative Formats
     | Pre-Roll        | video   |
     | Audio Spot      | audio   |
     When the Buyer Agent requests all formats with no filters
-    Then the results should be ordered:
+    Then the response is compliant with the list_creative_formats spec
+    And the results should be ordered:
     | name            | type    |
     | Audio Spot      | audio   |
     | Alpha Banner    | display |
@@ -113,7 +121,8 @@ Feature: BR-UC-005 Discover Creative Formats
     Given the registry has format "leaderboard" with format_id id "fmt-001"
     And the registry has format "pre-roll" with format_id id "fmt-002"
     When the Buyer Agent requests formats with format_ids filter ["fmt-001"]
-    Then only "leaderboard" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "leaderboard" should be returned
     # BR-RULE-049 INV-2: format_ids matches on the (agent_url, id) federation pair
     # (core/format-id.json requires [agent_url, id]; list_formats step match_keys [agent_url, id])
 
@@ -121,7 +130,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: BR-RULE-049 INV-2 violated - Non-matching format IDs silently excluded
     Given the registry has format "leaderboard" with format_id id "fmt-001"
     When the Buyer Agent requests formats with format_ids filter ["fmt-999", "fmt-001"]
-    Then only "leaderboard" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "leaderboard" should be returned
     And no error should be raised for "fmt-999"
     # BR-RULE-049 INV-2: references that match no (agent_url, id) pair are silently excluded
     # --- INV-3: asset_types OR semantics ---
@@ -132,21 +142,24 @@ Feature: BR-UC-005 Discover Creative Formats
     And the registry has format "video-ad" with assets of type "video"
     And the registry has format "rich-media" with assets of types "image" and "html"
     When the Buyer Agent requests formats with asset_types filter ["image", "video"]
-    Then "banner", "video-ad", and "rich-media" should all be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "banner", "video-ad", and "rich-media" should all be returned
     # BR-RULE-049 INV-3: at least one matching asset type -> format included (OR semantics)
 
   @T-UC-005-inv-049-3-violated @UC-005-MAIN-MCP-07 @invariant @BR-RULE-049
   Scenario: BR-RULE-049 INV-3 violated - No matching asset type excludes format
     Given the registry has format "text-only" with assets of type "text"
     When the Buyer Agent requests formats with asset_types filter ["video"]
-    Then "text-only" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "text-only" should not be returned
     # BR-RULE-049 INV-3: no matching asset type -> format excluded
 
   @T-UC-005-inv-049-3-group @UC-005-MAIN-MCP-07 @invariant @BR-RULE-049
   Scenario: BR-RULE-049 INV-3 edge - Group assets checked in addition to individual assets
     Given the registry has format "rich-media" with a repeatable asset group containing "image" and "text"
     When the Buyer Agent requests formats with asset_types filter ["text"]
-    Then "rich-media" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "rich-media" should be returned
     # BR-RULE-049 INV-3: both individual and group assets checked
     # --- INV-4: dimension ANY render match ---
 
@@ -157,7 +170,8 @@ Feature: BR-UC-005 Discover Creative Formats
     | 300   | 250    |
     | 728   | 90     |
     When the Buyer Agent requests formats with min_width 700
-    Then "companion-ad" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "companion-ad" should be returned
     # BR-RULE-049 INV-4: ANY render satisfies constraint (728 >= 700)
 
   @T-UC-005-inv-049-4-violated @UC-005-MAIN-MCP-09 @invariant @BR-RULE-049
@@ -167,14 +181,16 @@ Feature: BR-UC-005 Discover Creative Formats
     | 300   | 250    |
     | 320   | 50     |
     When the Buyer Agent requests formats with min_width 700
-    Then "small-banner" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "small-banner" should not be returned
     # BR-RULE-049 INV-4: no render satisfies min_width 700
 
   @T-UC-005-inv-049-4-nodim @UC-005-MAIN-MCP-09 @invariant @BR-RULE-049
   Scenario: BR-RULE-049 INV-4 edge - Formats without dimensions excluded by dimension filter
     Given the registry has format "audio-spot" with no render dimensions
     When the Buyer Agent requests formats with min_width 100
-    Then "audio-spot" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "audio-spot" should not be returned
     # BR-RULE-049 INV-4: formats without dimension info excluded
     # --- INV-5: is_responsive=true ---
 
@@ -183,7 +199,8 @@ Feature: BR-UC-005 Discover Creative Formats
     Given the registry has format "responsive-banner" with responsive render dimensions
     And the registry has format "fixed-banner" with non-responsive render dimensions
     When the Buyer Agent requests formats with is_responsive true
-    Then only "responsive-banner" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "responsive-banner" should be returned
     # BR-RULE-049 INV-5: is_responsive=true -> only formats with responsive render dimension
     # --- INV-6: is_responsive=false ---
 
@@ -192,7 +209,8 @@ Feature: BR-UC-005 Discover Creative Formats
     Given the registry has format "responsive-banner" with responsive render dimensions
     And the registry has format "fixed-banner" with non-responsive render dimensions
     When the Buyer Agent requests formats with is_responsive false
-    Then only "fixed-banner" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "fixed-banner" should be returned
     # BR-RULE-049 INV-6: is_responsive=false -> only formats with no responsive dimensions
     # --- INV-7: name_search case-insensitive substring ---
 
@@ -201,14 +219,16 @@ Feature: BR-UC-005 Discover Creative Formats
     Given the registry has format named "Premium Leaderboard"
     And the registry has format named "Standard Banner"
     When the Buyer Agent requests formats with name_search "leader"
-    Then only "Premium Leaderboard" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "Premium Leaderboard" should be returned
     # BR-RULE-049 INV-7: case-insensitive substring match
 
   @T-UC-005-inv-049-7-violated @UC-005-MAIN-MCP-11 @invariant @BR-RULE-049
   Scenario: BR-RULE-049 INV-7 violated - Name search no match excluded
     Given the registry has format named "Standard Banner"
     When the Buyer Agent requests formats with name_search "video"
-    Then no formats should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And no formats should be returned
     # BR-RULE-049 INV-7: no substring match -> excluded
     # --- INV-8: disclosure_positions AND-match (NEW) ---
 
@@ -217,21 +237,24 @@ Feature: BR-UC-005 Discover Creative Formats
     Given the registry has format "video-ad" with supported_disclosure_positions ["prominent", "footer", "overlay"]
     And the registry has format "audio-ad" with supported_disclosure_positions ["prominent", "audio"]
     When the Buyer Agent requests formats with disclosure_positions filter ["prominent", "footer"]
-    Then only "video-ad" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "video-ad" should be returned
     # BR-RULE-049 INV-8: ALL requested positions must be supported (AND semantics)
 
   @T-UC-005-inv-049-8-violated @UC-005-MAIN-MCP-18 @invariant @BR-RULE-049
   Scenario: BR-RULE-049 INV-8 violated - Disclosure positions partial match excluded
     Given the registry has format "audio-ad" with supported_disclosure_positions ["prominent", "audio"]
     When the Buyer Agent requests formats with disclosure_positions filter ["prominent", "footer"]
-    Then "audio-ad" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "audio-ad" should not be returned
     # BR-RULE-049 INV-8: format only supports "prominent" not "footer" -> excluded
 
   @T-UC-005-inv-049-8-nofield @UC-005-MAIN-MCP-18 @invariant @BR-RULE-049
   Scenario: BR-RULE-049 INV-8 edge - Format without disclosure positions excluded
     Given the registry has format "basic-banner" with no supported_disclosure_positions field
     When the Buyer Agent requests formats with disclosure_positions filter ["prominent"]
-    Then "basic-banner" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "basic-banner" should not be returned
     # BR-RULE-049 INV-8: formats without supported_disclosure_positions excluded
     # --- INV-9: output_format_ids OR-match (NEW) ---
 
@@ -240,7 +263,8 @@ Feature: BR-UC-005 Discover Creative Formats
     Given the registry has format "structured-ad" with disclosure_capabilities positions ["prominent", "footer"]
     And "structured-ad" has no supported_disclosure_positions field
     When the Buyer Agent requests formats with disclosure_positions filter ["prominent", "footer"]
-    Then only "structured-ad" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "structured-ad" should be returned
     # BR-RULE-049 INV-8 (v3.1): match against disclosure_capabilities[].position when present
     # --- INV-9: output_format_ids OR-match (NEW) ---
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/list-creative-formats-request.json
@@ -255,7 +279,8 @@ Feature: BR-UC-005 Discover Creative Formats
     | agent_url                                    | id             |
     | https://creatives.adcontextprotocol.org      | audio_ad       |
     When the Buyer Agent requests formats with output_format_ids filter [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_static"}]
-    Then only "universal-builder" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "universal-builder" should be returned
     # BR-RULE-049 INV-9: ANY requested ID matches -> format included (OR semantics)
 
   @T-UC-005-inv-049-9-violated @UC-005-MAIN-MCP-19 @invariant @BR-RULE-049
@@ -264,14 +289,16 @@ Feature: BR-UC-005 Discover Creative Formats
     | agent_url                                    | id        |
     | https://creatives.adcontextprotocol.org      | audio_ad  |
     When the Buyer Agent requests formats with output_format_ids filter [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_static"}]
-    Then "audio-builder" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "audio-builder" should not be returned
     # BR-RULE-049 INV-9: no matching output ID -> excluded
 
   @T-UC-005-inv-049-9-nofield @UC-005-MAIN-MCP-19 @invariant @BR-RULE-049
   Scenario: BR-RULE-049 INV-9 edge - Format without output_format_ids excluded
     Given the registry has format "simple-banner" with no output_format_ids field
     When the Buyer Agent requests formats with output_format_ids filter [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_static"}]
-    Then "simple-banner" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "simple-banner" should not be returned
     # BR-RULE-049 INV-9: formats without output_format_ids excluded
     # --- INV-10: input_format_ids OR-match (NEW) ---
 
@@ -285,7 +312,8 @@ Feature: BR-UC-005 Discover Creative Formats
     | agent_url                                    | id             |
     | https://creatives.adcontextprotocol.org      | video_hosted   |
     When the Buyer Agent requests formats with input_format_ids filter [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_static"}]
-    Then only "resizer" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "resizer" should be returned
     # BR-RULE-049 INV-10: ANY requested ID matches -> format included (OR semantics)
 
   @T-UC-005-inv-049-10-violated @UC-005-MAIN-MCP-20 @invariant @BR-RULE-049
@@ -294,14 +322,16 @@ Feature: BR-UC-005 Discover Creative Formats
     | agent_url                                    | id           |
     | https://creatives.adcontextprotocol.org      | video_hosted |
     When the Buyer Agent requests formats with input_format_ids filter [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_static"}]
-    Then "transcoder" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "transcoder" should not be returned
     # BR-RULE-049 INV-10: no matching input ID -> excluded
 
   @T-UC-005-inv-049-10-nofield @UC-005-MAIN-MCP-20 @invariant @BR-RULE-049
   Scenario: BR-RULE-049 INV-10 edge - Format without input_format_ids excluded
     Given the registry has format "basic-display" with no input_format_ids field
     When the Buyer Agent requests formats with input_format_ids filter [{"agent_url": "https://creatives.adcontextprotocol.org", "id": "display_static"}]
-    Then "basic-display" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "basic-display" should not be returned
     # BR-RULE-049 INV-10: formats without input_format_ids excluded (works from raw assets)
 
   @T-UC-005-inv-049-11-holds @invariant @BR-RULE-049
@@ -311,7 +341,8 @@ Feature: BR-UC-005 Discover Creative Formats
     | prominent | continuous  |
     | footer    | initial     |
     When the Buyer Agent requests formats with disclosure_persistence filter ["continuous", "initial"]
-    Then only "eu-compliant" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And only "eu-compliant" should be returned
     # BR-RULE-049 INV-11: each requested mode satisfied by >=1 position (AND across modes, existential across positions)
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/list-creative-formats-request.json
 
@@ -321,7 +352,8 @@ Feature: BR-UC-005 Discover Creative Formats
     | position | persistence |
     | footer   | flexible    |
     When the Buyer Agent requests formats with disclosure_persistence filter ["continuous"]
-    Then "flex-only" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "flex-only" should not be returned
     # BR-RULE-049 INV-11: no position supports "continuous" -> excluded
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/list-creative-formats-request.json
 
@@ -329,14 +361,16 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: BR-RULE-049 INV-11 edge - Format without disclosure_capabilities excluded
     Given the registry has format "legacy-banner" with no disclosure_capabilities field
     When the Buyer Agent requests formats with disclosure_persistence filter ["initial"]
-    Then "legacy-banner" should not be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "legacy-banner" should not be returned
     # BR-RULE-049 INV-11: formats without disclosure_capabilities cannot declare persistence -> excluded
 
   @T-UC-005-empty-catalog @UC-005-MAIN-MCP-01 @edge-case
   Scenario: Empty catalog when no agents have formats
     Given no creative agents have any registered formats
     When the Buyer Agent requests the format catalog
-    Then the response should include an empty formats array
+    Then the response is compliant with the list_creative_formats spec
+    And the response should include an empty formats array
     And no error should be raised
     # Edge case: PRE-B1 boundary — no formats available
 
@@ -344,7 +378,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Dimension boundary - inclusive range at threshold
     Given the registry has format "exact-fit" with render width 728 and height 90
     When the Buyer Agent requests formats with min_width 728 and max_width 728
-    Then "exact-fit" should be returned
+    Then the response is compliant with the list_creative_formats spec
+    And "exact-fit" should be returned
     # BR-RULE-049 INV-4: dimension range is inclusive (width == min_width == max_width)
 
   @T-UC-005-ext-a @extension @ext-a @error @post-f1 @post-f2 @post-f3
@@ -352,7 +387,8 @@ Feature: BR-UC-005 Discover Creative Formats
     Given the Buyer has no authentication credentials
     And no hostname-based tenant resolution is possible
     When the Buyer Agent requests the format catalog
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "AUTH_MISSING"
     And the error recovery classification should be "correctable"
     And the error should include a "suggestion" field
@@ -364,7 +400,7 @@ Feature: BR-UC-005 Discover Creative Formats
     #   recovery. The old "message should indicate tenant context could not be
     #   determined" assertion cannot hold once the sentence is derived from the
     #   code, and it graded a copy of CODE_TABLE's own text anyway
-    #   (salesagent-qzub9).
+    #   (#1753).
     # POST-F3: Suggestion advises providing auth -- AUTH_MISSING's table entry is
     #   "provide credentials via the auth header and retry".
     # --- ext-b: Invalid Request Parameters ---
@@ -373,7 +409,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Invalid request parameters
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with type "not_a_category"
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "type"
     And the error should include a "suggestion" field
@@ -386,7 +423,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Invalid disclosure position value
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with disclosure_positions filter ["sidebar"]
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "disclosure_positions"
     And the error should include a "suggestion" field
@@ -398,7 +436,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Empty disclosure positions array
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with disclosure_positions filter []
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "disclosure_positions"
     And the error should include a "suggestion" field
@@ -410,7 +449,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Duplicate disclosure positions
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with disclosure_positions filter ["prominent", "prominent"]
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "disclosure_positions"
     And the error should include a "suggestion" field
@@ -423,7 +463,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Invalid disclosure persistence value
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with disclosure_persistence filter ["permanent"]
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "disclosure_persistence"
     And the error should include a "suggestion" field
@@ -436,7 +477,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Empty disclosure persistence array
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with disclosure_persistence filter []
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "disclosure_persistence"
     And the error should include a "suggestion" field
@@ -449,7 +491,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Duplicate disclosure persistence modes
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with disclosure_persistence filter ["continuous", "continuous"]
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "disclosure_persistence"
     And the error should include a "suggestion" field
@@ -463,7 +506,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Empty output format IDs array
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with output_format_ids filter []
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "output_format_ids"
     And the error should include a "suggestion" field
@@ -475,7 +519,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Invalid output format ID structure - missing agent_url
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with output_format_ids filter [{"id": "display_static"}]
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "output_format_ids"
     And the error should include a "suggestion" field
@@ -487,7 +532,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Invalid output format ID structure - missing id
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with output_format_ids filter [{"agent_url": "https://example.com"}]
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "output_format_ids"
     And the error should include a "suggestion" field
@@ -500,7 +546,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Empty input format IDs array
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with input_format_ids filter []
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "input_format_ids"
     And the error should include a "suggestion" field
@@ -512,7 +559,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Invalid input format ID structure - missing agent_url
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with input_format_ids filter [{"id": "display_static"}]
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "input_format_ids"
     And the error should include a "suggestion" field
@@ -524,7 +572,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Invalid input format ID structure - missing id
     Given the Buyer has tenant context
     When the Buyer Agent requests formats with input_format_ids filter [{"agent_url": "https://example.com"}]
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "input_format_ids"
     And the error should include a "suggestion" field
@@ -558,7 +607,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Format type filter partition - <partition>
     Given a seller with formats of various types
     When the Buyer Agent requests creative formats with type filter "<partition>"
-    Then the type filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the type filtering should result in <expected>
 
     Examples: Valid partitions
       | partition     | expected |
@@ -576,7 +626,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Format IDs filter partition - <partition>
     Given a seller with known format IDs in the catalog
     When the Buyer Agent requests creative formats with format_ids "<partition>"
-    Then the format_ids filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the format_ids filtering should result in <expected>
 
     Examples: Valid partitions
       | partition       | expected |
@@ -589,7 +640,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Asset types filter partition - <partition>
     Given a seller with formats containing various asset types
     When the Buyer Agent requests creative formats with asset_types "<partition>"
-    Then the asset_types filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the asset_types filtering should result in <expected>
 
     Examples: Valid partitions
       | partition            | expected |
@@ -607,7 +659,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Dimension filter partition - <partition>
     Given a seller with formats of various render dimensions
     When the Buyer Agent requests creative formats with dimension filter "<partition>"
-    Then the dimension filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the dimension filtering should result in <expected>
 
     Examples: Valid partitions
       | partition           | expected |
@@ -625,7 +678,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Responsive filter partition - <partition>
     Given a seller with both responsive and fixed-dimension formats
     When the Buyer Agent requests creative formats with is_responsive "<partition>"
-    Then the responsive filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the responsive filtering should result in <expected>
 
     Examples: Valid partitions
       | partition         | expected |
@@ -637,7 +691,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Name search filter partition - <partition>
     Given a seller with formats named "Standard Banner", "Video Interstitial", "Native Card"
     When the Buyer Agent requests creative formats with name_search "<partition>"
-    Then the name search filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the name search filtering should result in <expected>
 
     Examples: Valid partitions
       | partition         | expected |
@@ -654,7 +709,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: WCAG level filter partition - <partition>
     Given a seller with formats at various accessibility conformance levels
     When the Buyer Agent requests creative formats with wcag_level "<partition>"
-    Then the wcag filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the wcag filtering should result in <expected>
 
     Examples: Valid partitions
       | partition     | expected |
@@ -671,7 +727,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Disclosure positions filter partition - <partition>
     Given a seller with formats supporting various disclosure positions
     When the Buyer Agent requests creative formats with disclosure_positions "<partition>"
-    Then the disclosure_positions filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the disclosure_positions filtering should result in <expected>
 
     Examples: Valid partitions
       | partition                      | expected |
@@ -691,7 +748,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Disclosure persistence filter partition - <partition>
     Given a seller with formats declaring various disclosure persistence capabilities
     When the Buyer Agent requests creative formats with disclosure_persistence "<partition>"
-    Then the disclosure_persistence filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the disclosure_persistence filtering should result in <expected>
 
     Examples: Valid partitions
       | partition                                  | expected |
@@ -712,7 +770,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Output format IDs filter partition - <partition>
     Given a seller with formats that produce various output formats
     When the Buyer Agent requests creative formats with output_format_ids "<partition>"
-    Then the output_format_ids filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the output_format_ids filtering should result in <expected>
 
     Examples: Valid partitions
       | partition                    | expected |
@@ -732,7 +791,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Input format IDs filter partition - <partition>
     Given a seller with formats that accept various input formats
     When the Buyer Agent requests creative formats with input_format_ids "<partition>"
-    Then the input_format_ids filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the input_format_ids filtering should result in <expected>
 
     Examples: Valid partitions
       | partition                    | expected |
@@ -752,7 +812,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Format type filter boundary - <boundary_point>
     Given a seller with formats of various types
     When the Buyer Agent requests creative formats at type boundary "<boundary_point>"
-    Then the type handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the type handling should be <expected>
 
     Examples:
       | boundary_point              | expected |
@@ -767,7 +828,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Format IDs filter boundary - <boundary_point>
     Given a seller with known format IDs in the catalog
     When the Buyer Agent requests creative formats at format_ids boundary "<boundary_point>"
-    Then the format_ids handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the format_ids handling should be <expected>
 
     Examples:
       | boundary_point                      | expected |
@@ -780,7 +842,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Asset types filter boundary - <boundary_point>
     Given a seller with formats containing various asset types
     When the Buyer Agent requests creative formats at asset_types boundary "<boundary_point>"
-    Then the asset_types handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the asset_types handling should be <expected>
 
     Examples:
       | boundary_point                                    | expected |
@@ -797,7 +860,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Dimension filter boundary - <boundary_point>
     Given a seller with formats of various render dimensions
     When the Buyer Agent requests creative formats at dimension boundary "<boundary_point>"
-    Then the dimension handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the dimension handling should be <expected>
 
     Examples:
       | boundary_point                    | expected |
@@ -811,7 +875,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Responsive filter boundary - <boundary_point>
     Given a seller with both responsive and fixed-dimension formats
     When the Buyer Agent requests creative formats at responsive boundary "<boundary_point>"
-    Then the responsive handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the responsive handling should be <expected>
 
     Examples:
       | boundary_point            | expected |
@@ -823,7 +888,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Name search filter boundary - <boundary_point>
     Given a seller with formats named "Standard Banner", "Video Interstitial", "Native Card"
     When the Buyer Agent requests creative formats at name_search boundary "<boundary_point>"
-    Then the name search handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the name search handling should be <expected>
 
     Examples:
       | boundary_point              | expected |
@@ -837,7 +903,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: WCAG level filter boundary - <boundary_point>
     Given a seller with formats at various accessibility conformance levels
     When the Buyer Agent requests creative formats at wcag_level boundary "<boundary_point>"
-    Then the wcag handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the wcag handling should be <expected>
 
     Examples:
       | boundary_point                                   | expected |
@@ -850,7 +917,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Disclosure positions filter boundary - <boundary_point>
     Given a seller with formats supporting various disclosure positions
     When the Buyer Agent requests creative formats at disclosure boundary "<boundary_point>"
-    Then the disclosure handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the disclosure handling should be <expected>
 
     Examples:
       | boundary_point                                          | expected |
@@ -866,7 +934,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Disclosure persistence filter boundary - <boundary_point>
     Given a seller with formats declaring various disclosure persistence capabilities
     When the Buyer Agent requests creative formats at persistence boundary "<boundary_point>"
-    Then the persistence handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the persistence handling should be <expected>
 
     Examples:
       | boundary_point                                    | expected |
@@ -884,7 +953,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Output format IDs filter boundary - <boundary_point>
     Given a seller with formats that produce various output formats
     When the Buyer Agent requests creative formats at output_format_ids boundary "<boundary_point>"
-    Then the output_format_ids handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the output_format_ids handling should be <expected>
 
     Examples:
       | boundary_point                                   | expected |
@@ -901,7 +971,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Input format IDs filter boundary - <boundary_point>
     Given a seller with formats that accept various input formats
     When the Buyer Agent requests creative formats at input_format_ids boundary "<boundary_point>"
-    Then the input_format_ids handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the input_format_ids handling should be <expected>
 
     Examples:
       | boundary_point                                   | expected |
@@ -918,7 +989,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Creative agent format type partition - <partition>
     Given a seller with creative agent formats of various types
     When the Buyer Agent queries creative agent formats with type "<partition>"
-    Then the creative agent type filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the creative agent type filtering should result in <expected>
 
     Examples: Valid partitions
       | partition     | expected |
@@ -940,7 +1012,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Creative agent asset type partition - <partition>
     Given a seller with creative agent formats containing various asset types
     When the Buyer Agent queries creative agent formats with asset_types "<partition>"
-    Then the creative agent asset type filtering should result in <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the creative agent asset type filtering should result in <expected>
 
     Examples: Valid partitions
       | partition     | expected |
@@ -962,7 +1035,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Creative agent format type boundary - <boundary_point>
     Given a seller with creative agent formats of various types
     When the Buyer Agent queries creative agent formats at type boundary "<boundary_point>"
-    Then the creative agent type handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the creative agent type handling should be <expected>
 
     # Type filter REMOVED in adcp 3.12 — no 'type' field on the request, so
     # 'native' dispatches unfiltered like every other value; production no longer
@@ -978,7 +1052,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Creative agent asset type boundary - <boundary_point>
     Given a seller with creative agent formats containing various asset types
     When the Buyer Agent queries creative agent formats at asset_types boundary "<boundary_point>"
-    Then the creative agent asset type handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the creative agent asset type handling should be <expected>
 
     Examples:
       | boundary_point                                                  | expected |
@@ -992,7 +1067,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Sandbox account receives simulated creative formats with sandbox flag
     Given the request targets a sandbox account
     When the Buyer Agent sends a list_creative_formats request
-    Then the response status should be "completed"
+    Then the response is compliant with the list_creative_formats spec
+    And the response status should be "completed"
     And the response should contain "formats" array
     And the response should include sandbox equals true
     And no real ad platform API calls should have been made
@@ -1004,7 +1080,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Production account creative formats response does not include sandbox flag
     Given the request targets a production account
     When the Buyer Agent sends a list_creative_formats request
-    Then the response status should be "completed"
+    Then the response is compliant with the list_creative_formats spec
+    And the response status should be "completed"
     And the response should contain "formats" array
     And the response should not include a sandbox field
     # BR-RULE-209 INV-5: production account -> sandbox absent
@@ -1013,7 +1090,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Sandbox account with invalid filter returns real validation error
     Given the request targets a sandbox account
     When the Buyer Agent sends a list_creative_formats request with invalid dimension filters
-    Then the response should indicate a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a validation error
     And the error should be a real validation error, not simulated
     And the error should include a suggestion for how to fix the issue
     # BR-RULE-209 INV-7: sandbox validation errors are real
@@ -1023,7 +1101,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: Sandbox response flag boundary - <boundary_point>
     Given a seller handling a list_creative_formats request for the given account context
     When the Buyer Agent inspects the sandbox response flag at boundary "<boundary_point>"
-    Then the sandbox response handling should be <expected>
+    Then the response is compliant with the list_creative_formats spec
+    And the sandbox response handling should be <expected>
     # BR-RULE-209 INV-4: sandbox account -> sandbox: true in response
     # BR-RULE-209 INV-5: production account -> sandbox absent in response
     # BR-RULE-209: explicit production may carry sandbox: false (still a non-simulated response)
@@ -1038,7 +1117,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario Outline: asset_types filter accepts registry discriminator values
     Given the seller catalog has at least one format containing an "<asset_type>" asset
     When the Buyer Agent requests creative formats with asset_types filter ["<asset_type>"]
-    Then the response status should be "completed"
+    Then the response is compliant with the list_creative_formats spec
+    And the response status should be "completed"
     And each returned format should contain at least one asset of type "<asset_type>"
     # v3.1: the asset_types FILTER enum is asset-content-type.json (14 values).
     # vast_tracker / daast_tracker are manifest-payload discriminators in
@@ -1066,7 +1146,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: asset_types filter rejects nested-variant discriminators (no sibling registry entries)
     Given the request targets a production account
     When the Buyer Agent sends a list_creative_formats request with asset_types ["vast_url"]
-    Then the response should indicate a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a validation error
     And the error should indicate "asset_types" must use outer registry discriminators only
     # v3.1: registry forbids sibling entries like vast_url/vast_inline; use vast with inner delivery_type
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/list-creative-formats-request.json
@@ -1075,7 +1156,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Format response carries constraints under requirements, not on the asset schema
     Given the seller catalog has a format with a required image asset capped at 2 MB
     When the Buyer Agent requests creative formats for that format
-    Then the format's "assets" entry should expose "asset_type" with value "image"
+    Then the response is compliant with the list_creative_formats spec
+    And the format's "assets" entry should expose "asset_type" with value "image"
     And the same entry should expose constraints under "requirements" (e.g., max_file_size)
     And the asset_type payload shape should NOT carry "max_file_size" or "required"
     # v3.1: registry mandates payload-vs-requirements separation
@@ -1084,7 +1166,7 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Format ID roundtrip -- list_creative_formats returns the same format object that get_products advertised
     Given the Buyer Agent captured a format_id object {agent_url, id} from a prior get_products response
     When the Buyer Agent sends list_creative_formats with format_ids [{captured agent_url, captured id}]
-    Then the response should be schema-valid against media-buy/list-creative-formats-response.json
+    Then the response is compliant with the list_creative_formats spec
     And the formats array should contain at least one entry
     And formats[0].format_id should roundtrip verbatim with the captured {agent_url, id}
     And an empty formats[] would indicate a stale catalog reference and is a compliance failure
@@ -1103,7 +1185,8 @@ Feature: BR-UC-005 Discover Creative Formats
     Given a product advertises a format_id whose agent_url points at a third-party creative agent
     And the seller has no local copy of that format in its own catalog
     When the Buyer Agent sends list_creative_formats with that third-party format_id
-    Then the seller should NOT fabricate a local format entry to satisfy the third-party reference
+    Then the response is compliant with the list_creative_formats spec
+    And the seller should NOT fabricate a local format entry to satisfy the third-party reference
     And the verification result should be reported as an observation rather than a graded failure
     # media-buy/index.yaml list_formats_integrity: when products[].format_ids[].agent_url
     # points at a creative agent different from this seller's agent, the seller cannot
@@ -1118,7 +1201,8 @@ Feature: BR-UC-005 Discover Creative Formats
   Scenario: Baseline list_creative_formats response carries format_id objects with agent_url and id
     Given the Buyer Agent calls list_creative_formats without filters
     When the response returns a non-empty formats array
-    Then every entry's format_id should be an object carrying both agent_url and id
+    Then the response is compliant with the list_creative_formats spec
+    And every entry's format_id should be an object carrying both agent_url and id
     And no entry's format_id should be a bare string
     # creative/index.yaml discover_formats phase: every format_id returned must be an
     # object with both agent_url (the creative agent's URL) and id (the format's

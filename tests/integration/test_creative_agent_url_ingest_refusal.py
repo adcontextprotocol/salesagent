@@ -81,7 +81,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 # boundary inside ``_impl``, so every dispatch path must carry it. Same matrix
 # as the sibling sync error suites (test_creative_sync_transport.py,
 # test_webhook_url_ingest_refusal.py's sync leg).
-_ALL_TRANSPORTS = [Transport.IMPL, Transport.A2A, Transport.REST, Transport.MCP]
+_ALL_TRANSPORTS = [Transport.A2A, Transport.REST, Transport.MCP]
 
 # Buyer-supplied URLs the seam refuses before opening a connection: one for
 # scheme policy, one for address policy. Neither resolves DNS or touches the

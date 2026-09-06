@@ -378,8 +378,10 @@ class TestA2ASkillInvocation:
             # Extract response data
             artifact_data = validator.extract_adcp_payload_from_a2a_artifact(result.artifacts[0])
             # Per AdCP spec, CreateMediaBuyResponse has media_buy_id, packages, etc.
-            # No 'success' field in the spec - that's a protocol-level field
+            # `success` is not one of them and is not on the wire at all: A2A used to
+            # stamp it into the payload after serializing, and that stamp is deleted.
             assert "media_buy_id" in artifact_data
+            assert "success" not in artifact_data
 
             # Verify packages are properly serialized (this would have caught the bug!)
             assert "packages" in artifact_data
@@ -672,15 +674,20 @@ class TestA2ASkillInvocation:
     ):
         """The artifact's TextPart carries exactly the DataPart's ``message``, verbatim.
 
-        The human-readable text is READ from the payload, not re-derived from
-        it: ``_stamp_a2a_protocol_fields`` stamps ``str(response)`` onto
-        ``message`` at serialization time, and ``on_message_send`` copies that
-        string into the TextPart. Equality is the whole contract — a future
-        change that rebuilds a response model from the outbound dict to call
-        ``__str__()`` again would hand pydantic before-validators a reference
-        to the dict about to go on the wire (the mechanism behind the
-        list_creatives format_id bare-string defect), and any drift between
-        the two parts would show up here first.
+        The human-readable text is READ from the payload, not re-derived from it. It
+        used to be re-derived: ``_stamp_a2a_protocol_fields`` overwrote ``message`` with
+        ``str(response)`` at serialization time. That stamp is deleted — ``message`` is a
+        declared envelope field the implementation fills, and A2A's serializer is
+        ``to_wire``, which adds nothing — so the DataPart carries the implementation's
+        sentence and ``on_message_send`` copies that same string into the TextPart.
+
+        Equality is the whole contract, and it is a stronger claim now than when a stamp
+        guaranteed both parts came from one ``str()`` call: two independent reads of the
+        payload have to agree. A future change that rebuilt a response model from the
+        outbound dict to re-derive the text would hand pydantic before-validators a
+        reference to the dict about to go on the wire (the mechanism behind the
+        list_creatives format_id bare-string defect), and any drift between the two parts
+        would show up here first.
         """
         from tests.utils.a2a_helpers import extract_data_from_artifact
 
@@ -703,9 +710,9 @@ class TestA2ASkillInvocation:
         assert len(text_parts) == 1, f"expected exactly one TextPart, got {len(text_parts)}"
 
         data = extract_data_from_artifact(artifact)
-        assert data["message"], "the DataPart must carry a non-empty stamped message"
+        assert data["message"], "the DataPart must carry the implementation's non-empty message"
         assert text_parts[0] == data["message"], (
-            "the TextPart must be the stamped message verbatim, not a value re-derived "
+            "the TextPart must be the DataPart's message verbatim, not a value re-derived "
             f"from the payload — TextPart={text_parts[0]!r} DataPart.message={data['message']!r}"
         )
 
@@ -886,7 +893,12 @@ class TestA2ASkillInvocation:
                     {
                         "creative_id": "creative_test_1",
                         "name": "Test Creative",
-                        "format_id": "display_300x250",
+                        # The object shape the pin declares. A bare string used to be
+                        # accepted because A2A coerced it before validating; that
+                        # per-skill normalization is deleted (the DTO is the accepted
+                        # shape on every transport), so a string is now the
+                        # INVALID_REQUEST it is on MCP and REST.
+                        "format_id": {"agent_url": "https://creative.test.example.com", "id": "display_300x250"},
                         "assets": build_assets(image_spec("asset_1", url="https://example.com/creative.jpg")),
                     }
                 ],

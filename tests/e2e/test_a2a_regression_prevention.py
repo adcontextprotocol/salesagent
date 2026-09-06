@@ -20,6 +20,7 @@ import requests
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler, create_agent_card
+from src.core.tools.registry import TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -116,82 +117,68 @@ class TestAgentCardURLRegression:
 
 
 class TestFunctionCallRegression:
-    """Tests to prevent function call/import issues with core tools."""
+    """Tests to prevent function call/import issues with core tools.
 
-    def test_core_function_imports_are_callable(self):
-        """Test that imported core functions are actually callable."""
-        try:
-            # Note: signals tools removed - should come from dedicated signals agents
-            from src.a2a_server.adcp_a2a_server import (
-                core_create_media_buy_tool,
-                core_get_products_tool,
-                core_list_creatives_tool,
-                core_sync_creatives_tool,
-            )
-        except ImportError as e:
-            if e.name and e.name.startswith("a2a"):
-                pytest.skip(f"a2a-sdk library not installed: {e}")
-            raise
+    The ``core_<tool>_tool`` module-level wrappers this class was written against
+    are deleted along with the per-tool ``_handle_<tool>_skill`` methods (one
+    boundary for every transport). What they asserted — "the thing A2A calls is a
+    plain callable, not a FunctionTool that needs ``.fn()``" — is now a property of
+    the registry row, which is the one place any transport looks.
+    """
 
-        # These should be callable functions, not FunctionTool objects
-        assert callable(core_get_products_tool), "core_get_products_tool should be callable"
-        assert callable(core_create_media_buy_tool), "core_create_media_buy_tool should be callable"
-        assert callable(core_list_creatives_tool), "core_list_creatives_tool should be callable"
-        assert callable(core_sync_creatives_tool), "core_sync_creatives_tool should be callable"
+    def test_registry_rows_hold_plain_callables(self):
+        """Each core tool's registry row holds a plain callable implementation.
 
-    def test_core_function_call_patterns(self):
-        """Test that function calls use correct patterns (not .fn())."""
-        # Read the A2A server file and check for correct call patterns
-        file_path = os.path.join(os.path.dirname(__file__), "..", "..", "src", "a2a_server", "adcp_a2a_server.py")
-
-        with open(file_path) as f:
-            content = f.read()
-
-        # Should not have .fn() calls on core tools
+        The successor to ``test_core_function_imports_are_callable`` and
+        ``test_core_function_call_patterns``. Those graded four deleted module-level
+        wrappers and grepped the A2A server source for ``core_*_tool.fn(`` — with the
+        names gone, the grep can only pass vacuously. ``TOOLS[name].impl`` is what
+        ``invoke_tool`` actually calls, so it is where "plain callable, not a
+        FunctionTool" has to hold.
+        """
         # Note: signals tools removed - should come from dedicated signals agents
-        problematic_patterns = [
-            "core_get_products_tool.fn(",
-            "core_create_media_buy_tool.fn(",
-            "core_list_creatives_tool.fn(",
-            "core_sync_creatives_tool.fn(",
-        ]
+        for tool_name in ("get_products", "create_media_buy", "sync_creatives", "list_creatives"):
+            impl = TOOLS[tool_name].impl
+            assert callable(impl), f"{tool_name}: registry impl is not callable"
+            assert not hasattr(impl, "fn"), (
+                f"{tool_name}: registry impl is a wrapper object exposing .fn, not the function itself"
+            )
 
-        for pattern in problematic_patterns:
-            assert pattern not in content, f"Found problematic function call pattern: {pattern}"
+    def test_core_skills_are_dispatchable_over_a2a(self):
+        """The core skills are dispatchable over A2A, per the registry.
 
-    def test_handler_skill_methods_exist(self):
-        """Test that all skill handler methods exist and are callable."""
+        This used to assert a ``_handle_<tool>_skill`` method existed per tool. Those
+        eleven methods are deleted; A2A dispatch is the one derived
+        ``AdCPRequestHandler._dispatch_skill``. The ``hasattr`` filter that used to
+        select those methods was itself the defect — it silently overrode the
+        registry, so ``list_tasks``, ``get_task_status`` and ``complete_task`` were
+        advertised on the agent card and then answered MethodNotFoundError. The
+        obligation that survives is that the registry row says the tool is
+        dispatchable over A2A, which is now the only thing that decides it.
+        """
         handler = AdCPRequestHandler()
+        assert callable(handler._dispatch_skill), "A2A's one dispatch method is missing"
 
-        # All these methods should exist and be callable
         # Note: get_signals removed - should come from dedicated signals agents
-        required_skill_methods = [
-            "_handle_get_products_skill",
-            "_handle_create_media_buy_skill",
-            "_handle_sync_creatives_skill",
-            "_handle_list_creatives_skill",
-        ]
+        for tool_name in ("get_products", "create_media_buy", "sync_creatives", "list_creatives"):
+            assert TOOLS[tool_name].a2a is True, f"{tool_name} is not dispatchable over A2A"
 
-        for method_name in required_skill_methods:
-            assert hasattr(handler, method_name), f"Handler missing method: {method_name}"
-            method = getattr(handler, method_name)
-            assert callable(method), f"Handler method not callable: {method_name}"
+    def test_a2a_dispatch_is_awaitable(self):
+        """A2A's one dispatch method is a coroutine function.
 
-    def test_async_function_signatures(self):
-        """Test that async functions have correct signatures."""
+        The successor to ``test_async_function_signatures``, which pinned
+        ``core_get_products_tool`` / ``core_create_media_buy_tool`` as coroutines.
+        Those wrappers are deleted, and "every tool impl is async" is not the
+        replacement invariant — registry impls are a mix (``_list_creative_formats_impl``
+        is sync, and ``invoke_tool`` handles both). What A2A's request path actually
+        requires is that ``_dispatch_skill`` be awaitable, since ``on_message_send``
+        awaits it.
+        """
         import inspect
 
-        try:
-            # Note: signals tools removed - should come from dedicated signals agents
-            from src.a2a_server.adcp_a2a_server import core_create_media_buy_tool, core_get_products_tool
-        except ImportError as e:
-            if e.name and e.name.startswith("a2a"):
-                pytest.skip(f"a2a-sdk library not installed: {e}")
-            raise
-
-        # These should be async functions
-        assert inspect.iscoroutinefunction(core_get_products_tool), "core_get_products_tool should be async"
-        assert inspect.iscoroutinefunction(core_create_media_buy_tool), "core_create_media_buy_tool should be async"
+        assert inspect.iscoroutinefunction(AdCPRequestHandler._dispatch_skill), (
+            "_dispatch_skill must be async — the A2A request path awaits it"
+        )
 
 
 class TestAuthenticationFlow:
@@ -280,25 +267,23 @@ def test_regression_prevention_summary():
         agent_card = create_agent_card()
         assert not agent_card.supported_interfaces[0].url.endswith("/"), "REGRESSION: Agent card URL has trailing slash"
 
-        # 2. Function imports are callable
+        # 2. The registry row holds a plain callable implementation
         # Note: signals tools removed - using get_products as core function check
-        from src.a2a_server.adcp_a2a_server import core_get_products_tool
+        assert callable(TOOLS["get_products"].impl), "REGRESSION: registry impl not callable"
 
-        assert callable(core_get_products_tool), "REGRESSION: Core function not callable"
-
-        # 3. Handler has required methods
+        # 3. A2A's one dispatch method exists, and the registry says get_products
+        #    is dispatchable over it (the per-tool _handle_*_skill methods are gone)
         handler = AdCPRequestHandler()
-        assert hasattr(handler, "_handle_get_products_skill"), "REGRESSION: Handler missing skill method"
+        assert callable(handler._dispatch_skill), "REGRESSION: Handler missing _dispatch_skill"
+        assert TOOLS["get_products"].a2a is True, "REGRESSION: get_products not dispatchable over A2A"
     except ImportError as e:
         if e.name and e.name.startswith("a2a"):
             pytest.skip(f"a2a-sdk library not installed: {e}")
         raise
 
-    # 4. File doesn't contain problematic patterns
-    file_path = os.path.join(os.path.dirname(__file__), "..", "..", "src", "a2a_server", "adcp_a2a_server.py")
-    with open(file_path) as f:
-        content = f.read()
-    assert "core_get_products_tool.fn(" not in content, "REGRESSION: Found .fn() call pattern"
+    # (The former check 4 — grepping adcp_a2a_server.py for "core_get_products_tool.fn(" —
+    # is dropped: that wrapper name no longer exists anywhere, so the grep could only
+    # pass vacuously. Check 2 grades the same property where it now lives, on the row.)
 
     logger.info("✅ All regression prevention checks passed")
 

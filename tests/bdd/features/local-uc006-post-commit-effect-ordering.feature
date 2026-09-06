@@ -36,7 +36,8 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
     And the tenant has a slack_webhook_url configured
     And a <creative_state> creative on a static format served by a creative agent
     When the Buyer Agent syncs the creative
-    Then the response is the success variant carrying a creatives array
+    Then the response is compliant with the sync_creatives success spec
+    And the response is the success variant carrying a creatives array
     And every creative result has action "<expected_action>"
     And the AI review submissions name exactly the synced creative
     And each AI review submission observes the creative exactly as the sync committed it
@@ -68,7 +69,7 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
   #     the Slack message exist, while the creatives were already committed at
   #     `if not dry_run: stack.close()`. That is the GH #1987 orphan: a creative
   #     sitting at pending_review that no workflow step and no human ever hears
-  #     about (salesagent-prkv.15).
+  #     about (#1987).
   #   * once the workflow-step write joins the creatives transaction, the
   #     notification becomes an after_commit effect and therefore fires BEFORE
   #     the assignment stage — the direct inverse of today's order.
@@ -87,7 +88,8 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
     And an assignment to a package that exists in the tenant
     And the effects escaping the sync transaction are observed as they fire
     When the Buyer Agent syncs the creative
-    Then the response is the success variant carrying a creatives array
+    Then the response is compliant with the sync_creatives success spec
+    And the response is the success variant carrying a creatives array
     And a Slack notification should be sent immediately
     And the workflow steps the request committed were already visible when Slack was notified
     And no creative assignment was committed when Slack was notified
@@ -107,7 +109,8 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
     And validation_mode is "strict"
     And assignments referencing a non-existent package_id
     When the Buyer Agent syncs the creative
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code PACKAGE_NOT_FOUND
     And every committed creative awaiting approval has a committed workflow step
     # The buyer-facing half is graded on the real wire bytes, not on the
@@ -119,7 +122,7 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
     # AdCPPackageNotFoundError declares (src/core/exceptions.py) and what
     # _assignments.py raises in strict mode.
     #
-    # Cross-reference salesagent-prkv.15 (GH #1987): the buyer still gets the
+    # Cross-reference GH #1987: the buyer still gets the
     # assignment error — that half is production's current, correct behaviour and
     # is asserted first so this scenario cannot be "fixed" by swallowing it. What
     # must change is the second half. _process_assignments raises out of the impl

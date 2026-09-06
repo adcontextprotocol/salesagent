@@ -90,7 +90,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the tenant billing policy is configured as operator, agent
     And the tenant account is configured for sandbox: false in response (explicit production)
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should include adcp.major_versions containing 3
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include adcp.major_versions containing 3
     And adcp.idempotency.supported should equal true
     And adcp.idempotency.replay_ttl_seconds should be an integer between 3600 and 604800
     And the response should include supported_protocols containing "media_buy"
@@ -136,7 +137,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the adapter resolves but enumerating its channels fails
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should include media_buy.supported_pricing_models
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include media_buy.supported_pricing_models
     And media_buy.portfolio primary_channels should equal "display"
     # The adapter class feeds THREE sections: primary_channels, supported_pricing_models
     # and targeting capabilities. This scenario fails exactly ONE of them — channel
@@ -157,7 +159,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
   Scenario: Seller declares its reporting delivery methods
     Given a tenant is resolvable from the request context
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.reporting_delivery_methods should be a non-empty unique subset of ["webhook", "offline"]
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.reporting_delivery_methods should be a non-empty unique subset of ["webhook", "offline"]
     # SPLIT OUT of @T-UC-010-main (#1721). This assert is the ONLY one of that
     # scenario's asserts production cannot satisfy, and leaving it inside meant the
     # whole scenario strict-xfailed -- masking the account / pricing / features /
@@ -179,7 +182,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the system has known state before the request
     When the Buyer Agent calls get_adcp_capabilities
-    Then the row counts of tenants, principals, publisher_partners and media_buys should equal their pre-request values
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the row counts of tenants, principals, publisher_partners and media_buys should equal their pre-request values
     # POST-F1: System state is unchanged (read-only operation)
     # Observable set pinned (was "system state should be unchanged"): the storyboard
     # defines the read-only obligation (stateful: false); the exact tables snapshot is
@@ -193,7 +197,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities
-    Then last_updated should parse as an RFC 3339 date-time value
+    Then the response is compliant with the get_adcp_capabilities spec
+    And last_updated should parse as an RFC 3339 date-time value
     # POST-S7: Buyer knows when capabilities were last updated
     # Format pinned to the schema keyword (was "valid ISO 8601 timestamp"): the value
     # must parse as a JSON-Schema date-time (RFC 3339), e.g. "2025-10-14T14:25:30Z".
@@ -206,7 +211,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant uses the mock adapter with full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.supported_pricing_models should be a non-empty unique array of pricing-model enum values
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.supported_pricing_models should be a non-empty unique array of pricing-model enum values
     And each pricing model should be one of "cpm", "vcpm", "cpc", "cpcv", "cpv", "cpp", "cpa", "flat_rate", "time"
     And media_buy.supported_pricing_models should contain no duplicates
     # POST-S10: Buyer knows supported pricing models across seller's portfolio
@@ -220,7 +226,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the tenant has full capabilities configured
     And the tenant supports audience targeting
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.audience_targeting.supported_identifier_types should equal ["hashed_email", "hashed_phone"]
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.audience_targeting.supported_identifier_types should equal ["hashed_email", "hashed_phone"]
     And media_buy.audience_targeting.minimum_audience_size should equal 1000
     And media_buy.audience_targeting.supported_uid_types should equal ["uid2", "rampid"]
     And media_buy.audience_targeting.supports_platform_customer_id should equal true
@@ -245,7 +252,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the tenant has full capabilities configured
     And the tenant supports conversion tracking
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.conversion_tracking should be present
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.conversion_tracking should be present
     And media_buy.conversion_tracking.supported_event_types should equal ["purchase", "page_view"]
     And media_buy.conversion_tracking.supported_uid_types should equal ["uid2", "rampid"]
     And media_buy.conversion_tracking.supported_hashed_identifiers should equal ["hashed_email"]
@@ -277,7 +285,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And "creative" is in supported_protocols
     And the tenant declares creative supports_compliance true
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should include the creative section
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include the creative section
     And creative.supports_compliance should equal true
     # POST-S14: Buyer knows creative protocol capabilities
     # NOT-IN-SPEC direction note: schema says the block is "Only present if creative is in
@@ -301,7 +310,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the tenant has full capabilities configured
     And the Buyer has <token_state> authentication
     When the Buyer Agent invokes get_adcp_capabilities via <channel>
-    Then the response should be <outcome>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should be <outcome>
     And a success outcome should carry adcp.major_versions, adcp.idempotency, supported_protocols and the media_buy section
     # INV-1 (no token -> full data), INV-2 (valid token -> full data),
     # INV-3 (invalid MCP/REST -> treated absent; local contract — this project's token rides
@@ -337,7 +347,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities without authentication
     And the Buyer Agent calls get_adcp_capabilities authenticated with a valid principal_id
-    Then both responses should contain identical capabilities data ignoring last_updated and context
+    Then the response is compliant with the get_adcp_capabilities spec
+    And both responses should contain identical capabilities data ignoring last_updated and context
     # INV-4: Unauthenticated and authenticated callers receive identical data — the response
     # is the seller's surface, not caller-scoped (get_adcp_capabilities.mdx L23).
     # Comparison excludes volatile fields (last_updated, context echo) to avoid flake.
@@ -347,7 +358,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
   Scenario: no_tenant — tenant absent, minimal capabilities
     Given no tenant can be resolved from the request context
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should include adcp.major_versions containing 3
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include adcp.major_versions containing 3
     And the response should include adcp.supported_versions as a non-empty array
     And each value in adcp.supported_versions should match pattern "^\d+\.\d+(-[a-zA-Z0-9.-]+)?$"
     And adcp.idempotency.supported should be exactly true or false, and when false replay_ttl_seconds and in_flight_max_seconds should be absent
@@ -382,7 +394,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the adapter is in <adapter_state> state
     And the database is in <db_state> state
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should pass schema validation for get-adcp-capabilities-response
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should pass schema validation for get-adcp-capabilities-response
     And primary_channels should be <expected_channels>
     And publisher_domains should be <expected_domains>
     # NOT-IN-SPEC: degradation policy is spec-silent — production authoritative; the one hard
@@ -407,7 +420,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the adapter is unavailable
     And the database query fails
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should pass schema validation for get-adcp-capabilities-response
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should pass schema validation for get-adcp-capabilities-response
     And the wire response should not contain an adcp_error field
     And the response should include media_buy.portfolio with primary_channels "display"
     # INV-5 (local): degrade-don't-error; the schema-validity half is the spec-hard invariant
@@ -427,7 +441,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
   Scenario Outline: Account section presence depends on tenant resolution
     Given <tenant_condition>
     When the Buyer Agent calls get_adcp_capabilities
-    Then the account section should be <account_state>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the account section should be <account_state>
     And a present account section should include supported_billing as a non-empty array of billing-party enum values
     # NOT-IN-SPEC: account presence is an mdx SHOULD ("All sellers should declare this
     # section"); mapping presence to tenant resolution is production choice. The account
@@ -460,7 +475,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the adapter is in <adapter_state> state
     And the tenant has <capability> configured as <capability_state>
     When the Buyer Agent calls get_adcp_capabilities
-    Then the media_buy.<section> section should be <section_state>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the media_buy.<section> section should be <section_state>
     And a present audience_targeting section should include supported_identifier_types and minimum_audience_size
     # 3.1.1 presence-indicates-support model: the wire flags features.audience_targeting /
     # features.conversion_tracking were REMOVED in 3.0 (mdx L183-184) — the Given now names
@@ -485,7 +501,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the tenant has full capabilities configured
     And <creative_condition>
     When the Buyer Agent calls get_adcp_capabilities
-    Then the creative section should be <creative_state>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the creative section should be <creative_state>
     # Row 1 is spec-true (schema: creative "Only present if creative is in supported_protocols").
     # Row 2 (present-when-declared) is NOT-IN-SPEC strictly — "only present if" is a necessary
     # condition, not an emission mandate; presence-when-declared is the sensible local choice.
@@ -503,7 +520,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the Buyer has an invalid authentication token
     When the Buyer Agent sends a get_adcp_capabilities skill request via A2A with the token
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code AUTH_INVALID
     # Graduated (salesagent-7moz): A2A now always validates a presented token
     # regardless of the requested skill's own auth requirement.
@@ -525,7 +543,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the Buyer has an invalid authentication token
     When the Buyer Agent calls get_adcp_capabilities via MCP with the token
-    Then the response should be a success carrying adcp.major_versions, adcp.idempotency and supported_protocols
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should be a success carrying adcp.major_versions, adcp.idempotency and supported_protocols
     And the response should carry the tenant's normal capabilities, not gated on the invalid token
     # LOCAL CONTRACT (documented reading): treat-invalid-as-absent sits in tension with the
     # AUTH_INVALID seller-MUST, which governs an Authorization header; this project's MCP
@@ -543,7 +562,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities with protocols filter ["media_buy"]
-    Then the response should include the media_buy section
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include the media_buy section
     And the response should include adcp, supported_protocols and account as protocol-invariant blocks
     And the response should NOT include the signals, governance, sponsored_intelligence or creative sections
     # Graduated: the POST /api/v1/capabilities route carries protocols/context/adcp_version
@@ -561,7 +581,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities with protocols filter ["media_buy", "signals", "governance", "sponsored_intelligence", "creative"]
-    Then the response should include the media_buy section
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include the media_buy section
     And the response should include the signals section
     And the response should include the governance section
     And the response should include the sponsored_intelligence section
@@ -578,7 +599,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities with ext {"acme_dsp": {"tier": "gold"}}
-    Then the response should be success
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should be success
     And the response should pass schema validation for get-adcp-capabilities-response
     # get-adcp-capabilities-request.json declares `ext` ($ref core/ext.json: "Extension object
     # for platform-specific, vendor-namespaced parameters. Extensions are always optional and
@@ -594,7 +616,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities with protocols filter ["marketing"]
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     # Graduated: build_get_adcp_capabilities_request now constructs a real typed
     # GetAdcpCapabilitiesRequest — Pydantic enforces the protocols enum, so "marketing"
@@ -609,7 +632,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities with protocols filter []
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     # Graduated: build_get_adcp_capabilities_request now constructs a real typed
     # GetAdcpCapabilitiesRequest — Pydantic enforces minItems:1, so an empty protocols
@@ -622,7 +646,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities with context {"session_id": "abc-123", "trace": "xyz-789"}
-    Then the response context should equal {"session_id": "abc-123", "trace": "xyz-789"}
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response context should equal {"session_id": "abc-123", "trace": "xyz-789"}
     # Former @T-UC-010-ext-e-mcp / @T-UC-010-ext-e-a2a twins merged 2026-07-13: echo is
     # transport-invariant; the 4-way parametrization covers all transports.
     # Graduated: _get_adcp_capabilities_impl echoes req.context verbatim onto the response
@@ -637,7 +662,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities without context
-    Then the wire response should not contain a context field
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the wire response should not contain a context field
     # Implied by echo semantics (context is defined purely as caller-supplied echo; optional
     # in the protocol envelope) — no explicit MUST-omit in the spec; storyboard does not
     # grade absence. Assert on the wire response, not the typed payload.
@@ -647,7 +673,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
   Scenario: context_nested — deeply nested context object echoed unchanged
     Given a tenant is resolvable from the request context
     When the Buyer Agent calls get_adcp_capabilities with context {"deep": {"nested": {"level": 3, "data": true}}}
-    Then the response context should equal {"deep": {"nested": {"level": 3, "data": true}}}
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response context should equal {"deep": {"nested": {"level": 3, "data": true}}}
     # Graduated: _get_adcp_capabilities_impl echoes req.context verbatim.
     # Context is opaque — never parsed, modified, or validated; arbitrary nesting is valid
     # (core/context.json: object, additionalProperties true) and preserved byte-for-byte.
@@ -657,7 +684,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
   Scenario: context_empty_object — empty context echoed, context = {}
     Given a tenant is resolvable from the request context
     When the Buyer Agent calls get_adcp_capabilities with context {}
-    Then the wire response context should equal {}
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the wire response context should equal {}
     # Graduated: _get_adcp_capabilities_impl echoes req.context verbatim.
     # Empty object validates against core/context.json; echo-unchanged applies. Assert on the
     # wire (typed payloads may coerce empty-object/None ambiguously).
@@ -668,7 +696,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the adapter reports channels <adapter_channels>
     When the Buyer Agent calls get_adcp_capabilities
-    Then primary_channels should be <expected_result>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And primary_channels should be <expected_result>
     # NOT-IN-SPEC / production mapping: 3.1.1 defines only the channels enum value set — the
     # aliasing table (video->olv, audio->streaming_audio), the unrecognized-dropped rule and
     # the display fallback are production choices this outline pins (spec-silent ->
@@ -694,7 +723,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the adapter reports all 20 channels enum values
     When the Buyer Agent calls get_adcp_capabilities
-    Then primary_channels should equal the channels enum's 20 canonical values
+    Then the response is compliant with the get_adcp_capabilities spec
+    And primary_channels should equal the channels enum's 20 canonical values
     # 3.1.1 enum has 20 values: display, olv, social, search, ctv, linear_tv, radio,
     # streaming_audio, podcast, dooh, ooh, print, cinema, email, gaming, retail_media,
     # influencer, affiliate, product_placement, sponsored_intelligence
@@ -713,7 +743,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.features should have boolean flags inline_creative_management, property_list_filtering, catalog_management and committed_metrics_supported
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.features should have boolean flags inline_creative_management, property_list_filtering, catalog_management and committed_metrics_supported
     And media_buy.content_standards should be present
     And media_buy.conversion_tracking should be present
     And media_buy.audience_targeting should be present
@@ -743,7 +774,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant capabilities are configured as <capability_config>
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should satisfy <expected_assertion>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should satisfy <expected_assertion>
     # Rebuilt 2026-07-13 around the 3.1.1 shape (4 named flags + additionalProperties
     # boolean; presence-object partitions for conversion_tracking / audience_targeting /
     # content_standards incl. audience_targeting's required members; account.sandbox
@@ -773,7 +805,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the adapter provides full targeting capabilities
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.execution.targeting.geo_countries should equal true
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.execution.targeting.geo_countries should equal true
     And media_buy.execution.targeting.geo_regions should equal true
     And media_buy.execution.targeting.geo_metros should equal {"nielsen_dma": true, "uk_itl1": true, "uk_itl2": true, "eurostat_nuts2": true}
     And media_buy.execution.targeting.geo_postal_areas should be a country-keyed map where US contains "zip"
@@ -811,7 +844,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the adapter provides targeting as <targeting_config>
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.execution.targeting should satisfy <expected_targeting>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.execution.targeting should satisfy <expected_targeting>
     # Concretized 2026-07-13: each row's expected column is an exact implementable assertion.
     # Postal rows re-authored to the native country-keyed map (postal-area-support.json);
     # one legacy-alias migration row retained (deprecated-compat). Emission-threshold rows
@@ -838,7 +872,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the adapter provides targeting for <boundary_point>
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.execution.targeting should satisfy <expected>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.execution.targeting should satisfy <expected>
     # Concretized 2026-07-13 (the outline previously had NO expected column at all). The
     # former postal-threshold and at_plz rows duplicated targeting-partitions rows 4/5/9/10
     # and were dropped (scenario-level DRY); the surviving rows are unique coverage.
@@ -854,7 +889,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
   Scenario Outline: Degradation path - <partition>
     Given <precondition>
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should pass schema validation for get-adcp-capabilities-response
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should pass schema validation for get-adcp-capabilities-response
     And the response should satisfy <expected_degradation>
     # NOT-IN-SPEC / ungraded: degradation paths are production contract (the 3.1.1 storyboard
     # grades only the happy path). Every degraded response must still validate against the
@@ -898,7 +934,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should include adcp.major_versions containing 3
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include adcp.major_versions containing 3
     And the response should include adcp.supported_versions as a non-empty array
     And each value in adcp.supported_versions should match pattern "^\d+\.\d+(-[a-zA-Z0-9.-]+)?$"
     # adcp.supported_versions (release-precision strings like "3.0", "3.1"); optional in
@@ -913,7 +950,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares adcp.build_version "3.1.2+scope3.deploy.4821"
     When the Buyer Agent calls get_adcp_capabilities
-    Then adcp.build_version should equal "3.1.2+scope3.deploy.4821"
+    Then the response is compliant with the get_adcp_capabilities spec
+    And adcp.build_version should equal "3.1.2+scope3.deploy.4821"
     And adcp.build_version should match pattern "^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$"
     # adcp.build_version is advisory only; buyers MUST NOT use it for negotiation (buyer-side
     # obligation — kept as a comment, not a Then: negotiation outcome is a function of
@@ -926,7 +964,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares idempotency posture <posture>
     When the Buyer Agent calls get_adcp_capabilities
-    Then adcp.idempotency.supported should equal <supported>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And adcp.idempotency.supported should equal <supported>
     And adcp.idempotency should satisfy <expected_fields>
     # adcp.idempotency is REQUIRED (no default; sellers without it are non-compliant).
     # IdempotencySupported: replay_ttl_seconds required, integer 3600..604800 (rows 1-2 sit
@@ -948,7 +987,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities
-    Then adcp.idempotency should be present in the response
+    Then the response is compliant with the get_adcp_capabilities spec
+    And adcp.idempotency should be present in the response
     And adcp.idempotency.supported should be exactly true or false, and when false replay_ttl_seconds and in_flight_max_seconds should be absent
     # Sellers without idempotency declaration are non-compliant and unsafe for retries
     # ("Clients MUST NOT assume a default").
@@ -967,7 +1007,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares idempotency posture supported=true replay_ttl_seconds=86400 in_flight_max_seconds=86400
     When the Buyer Agent calls get_adcp_capabilities
-    Then adcp.idempotency.in_flight_max_seconds should be less than or equal to adcp.idempotency.replay_ttl_seconds
+    Then the response is compliant with the get_adcp_capabilities spec
+    And adcp.idempotency.in_flight_max_seconds should be less than or equal to adcp.idempotency.replay_ttl_seconds
     # Cross-field rule ("MUST be no greater than replay_ttl_seconds ... validators MUST
     # enforce this cross-field constraint at the test layer since JSON Schema cannot express
     # field-relative bounds"). Equality is allowed — this boundary row is valid.
@@ -978,7 +1019,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities
-    Then each value in supported_protocols should be one of "media_buy", "signals", "governance", "sponsored_intelligence", "creative", "brand", "measurement"
+    Then the response is compliant with the get_adcp_capabilities spec
+    And each value in supported_protocols should be one of "media_buy", "signals", "governance", "sponsored_intelligence", "creative", "brand", "measurement"
     And if supported_protocols contains "measurement" then experimental_features should contain "measurement.core"
     # v3.1: enum adds "brand" and "measurement"; measurement is experimental in 3.1 — agents
     # implementing it MUST also list measurement.core in experimental_features.
@@ -989,7 +1031,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares <supports_proposals_state>
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.supports_proposals should be <expected>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.supports_proposals should be <expected>
     # media_buy.supports_proposals — when true, seller is graded against proposal-lifecycle
     # storyboards. Row 3 fixed 2026-07-13: the schema default documents buyer/runner
     # interpretation — a seller that omits the field emits NO key; the spec does not obligate
@@ -1009,7 +1052,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares reporting delivery methods <methods> with offline protocols <protocols>
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.reporting_delivery_methods should be <expected_methods>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.reporting_delivery_methods should be <expected_methods>
     And media_buy.offline_delivery_protocols should be <expected_protocols>
     And webhook_signing.supported should be <webhook_signing_supported>
     # media_buy.reporting_delivery_methods enum [webhook, offline], minItems 1, uniqueItems;
@@ -1032,7 +1076,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares media_buy.content_standards with supports_local_evaluation=true supported_channels=["display","social"] supports_webhook_delivery=true
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.content_standards.supports_local_evaluation should equal true
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.content_standards.supports_local_evaluation should equal true
     And media_buy.content_standards.supported_channels should equal ["display", "social"]
     And media_buy.content_standards.supports_webhook_delivery should equal true
     And webhook_signing.supported should equal true
@@ -1049,7 +1094,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares trusted_match surfaces <surfaces>
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.execution.trusted_match.surfaces should equal <surfaces>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.execution.trusted_match.surfaces should equal <surfaces>
     And each surface should be one of "website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio", "ai_assistant"
     # media_buy.execution.trusted_match.surfaces (x-status experimental); presence of the
     # object indicates deployed TMP infrastructure; axe_integrations DEPRECATED.
@@ -1069,7 +1115,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has legacy axe_integrations ["https://axe.example.com/integration"] declared
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.execution.axe_integrations should equal ["https://axe.example.com/integration"]
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.execution.axe_integrations should equal ["https://axe.example.com/integration"]
     And each axe_integrations entry should be a URI
     # 3.1.1: deprecation is description-prose ("Deprecated. Legacy AXE integrations. Use
     # trusted_match for new integrations.") — no deprecated keyword; the testable seller
@@ -1082,7 +1129,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares creative_specs vast_versions=["4.2"] mraid_versions=["3.0"] vpaid=true simid=true
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.execution.creative_specs.vast_versions should equal ["4.2"]
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.execution.creative_specs.vast_versions should equal ["4.2"]
     And media_buy.execution.creative_specs.mraid_versions should equal ["3.0"]
     And media_buy.execution.creative_specs.vpaid should equal true
     And media_buy.execution.creative_specs.simid should equal true
@@ -1097,7 +1145,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And "brand" is in supported_protocols
     And the tenant declares brand.rights=true right_types=[talent, music] available_uses=[likeness, sync] generation_providers=["openai"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should include brand section
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include brand section
     And brand.rights should equal true
     And brand.right_types should equal ["talent", "music"]
     And brand.available_uses should equal ["likeness", "sync"]
@@ -1120,7 +1169,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares request_signing posture <posture>
     When the Buyer Agent calls get_adcp_capabilities
-    Then request_signing.supported should equal <supported>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And request_signing.supported should equal <supported>
     And request_signing.covers_content_digest should be <expected_digest>
     # request_signing.required = [supported]; covers_content_digest enum [required,
     # forbidden, either], default "either", optional — a supported=false seller typically
@@ -1141,7 +1191,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares request_signing.supported_for=["create_media_buy"] required_for=["create_media_buy"] protocol_methods_supported_for=["tasks/cancel"] protocol_methods_required_for=["tasks/cancel"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then request_signing.required_for should contain only AdCP tool names without "/"
+    Then the response is compliant with the get_adcp_capabilities spec
+    And request_signing.required_for should contain only AdCP tool names without "/"
     And request_signing.protocol_methods_required_for should match pattern "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
     And request_signing.required_for should be a subset of request_signing.supported_for
     And request_signing.protocol_methods_required_for should be a subset of request_signing.protocol_methods_supported_for
@@ -1158,7 +1209,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares request_signing.supported_for=["create_media_buy", "update_media_buy"] required_for=["create_media_buy"] warn_for=["update_media_buy"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then request_signing.required_for should be a subset of request_signing.supported_for
+    Then the response is compliant with the get_adcp_capabilities spec
+    And request_signing.required_for should be a subset of request_signing.supported_for
     And request_signing.warn_for should be a subset of request_signing.supported_for
     And request_signing.warn_for should be disjoint from request_signing.required_for
     # The three x-adcp-validation relations (test-layer constraints — JSON Schema cannot
@@ -1171,7 +1223,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares webhook_signing posture <posture>
     When the Buyer Agent calls get_adcp_capabilities
-    Then webhook_signing.supported should equal <supported>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And webhook_signing.supported should equal <supported>
     And webhook_signing should satisfy <expected_extras>
     # webhook_signing: required=[supported]; profile closed enum ["adcp/webhook-signing/v1"];
     # algorithms items in {ed25519, ecdsa-p256-sha256}, minItems 1, uniqueItems;
@@ -1193,7 +1246,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares <emission_state>
     When the Buyer Agent calls get_adcp_capabilities
-    Then webhook_signing.supported should be <expected>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And webhook_signing.supported should be <expected>
     # One-directional rule (fixed 2026-07-13): "When the seller advertises mutating-webhook
     # emission (reporting_delivery_methods includes webhook, content_standards.
     # supports_webhook_delivery true, OR wholesale_feed_webhooks.supported true), this MUST
@@ -1215,7 +1269,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the tenant declares request_signing.supported_for=["create_media_buy"]
     And the tenant declares sponsored_intelligence.brand_url "https://brand.seller.example/render"
     When the Buyer Agent calls get_adcp_capabilities
-    Then identity.brand_json_url should be present
+    Then the response is compliant with the get_adcp_capabilities spec
+    And identity.brand_json_url should be present
     And identity.brand_json_url should match pattern "^https://"
     And identity.brand_json_url should be distinct from sponsored_intelligence.brand_url
     # identity.brand_json_url: format uri, pattern ^https://; required_when.any_of includes
@@ -1232,7 +1287,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares identity.key_origins for <purpose> at <origin>
     When the Buyer Agent calls get_adcp_capabilities
-    Then identity.key_origins.<purpose> should equal <origin>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And identity.key_origins.<purpose> should equal <origin>
     And the same response should declare <posture_anchor>
     # identity.key_origins has exactly four purposes (additionalProperties false); purpose
     # anchoring is normative via x-adcp-validation.verifier_constraints.purpose_anchoring —
@@ -1253,7 +1309,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares identity.compromise_notification.emits=true accepts=true
     When the Buyer Agent calls get_adcp_capabilities
-    Then identity.compromise_notification.emits should equal true
+    Then the response is compliant with the get_adcp_capabilities spec
+    And identity.compromise_notification.emits should equal true
     And identity.compromise_notification.accepts should equal true
     # Strengthened 2026-07-13 from type-only to value equality (type checks passed even with
     # inverted values). Schema: {emits, accepts} booleans default false, additionalProperties false.
@@ -1264,7 +1321,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares <signing_posture> with identity block <identity_state>
     When the Buyer Agent calls get_adcp_capabilities
-    Then the seller capabilities builder should treat the configuration as <verdict>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the seller capabilities builder should treat the configuration as <verdict>
     # Identity block description: "an agent declaring a signing posture elsewhere in the
     # response with an empty identity MUST be rejected by storyboard runners as missing
     # brand_json_url"; identity: {} alone is schema-valid but advisory-neutral. Enforcement
@@ -1292,7 +1350,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And "measurement" is in supported_protocols
     And the tenant declares measurement.metrics with metric_id "viewable_impressions"
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should include measurement section
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include measurement section
     And measurement.metrics should be a non-empty array
     And each metrics entry's metric_id should match pattern "^[a-z][a-z0-9_]*$" with length 1..64
     And a metrics entry should carry metric_id "viewable_impressions"
@@ -1312,7 +1371,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares a measurement metric with accreditation <accreditation>
     When the Buyer Agent calls get_adcp_capabilities
-    Then the metric accreditation should equal the declared <accreditation> fields exactly
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the metric accreditation should equal the declared <accreditation> fields exactly
     # accreditations[] items: accrediting_body required (open string), optional
     # certification_id, valid_until (date), evidence_url (uri); additionalProperties false.
     # The former "may include" pseudo-assert replaced by per-row exact-field equality.
@@ -1329,7 +1389,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares the compliance-testing scenarios it implements
     When the Buyer Agent calls get_adcp_capabilities
-    Then compliance_testing.scenarios should be a non-empty array of strings
+    Then the response is compliant with the get_adcp_capabilities spec
+    And compliance_testing.scenarios should be a non-empty array of strings
     And compliance_testing.scenarios should NOT contain "list_scenarios"
     And compliance_testing.scenarios should be a subset of the scenario ids returned by the seller's comply_test_controller list_scenarios call
     # Fixed 2026-07-13: at 3.1.1 scenarios items are OPEN strings — there is NO enum ("Values
@@ -1352,7 +1413,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And "creative" and "media_buy" are in supported_protocols
     And the tenant claims specialisms ["creative-generative", "sales-non-guaranteed"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then specialisms should equal ["creative-generative", "sales-non-guaranteed"]
+    Then the response is compliant with the get_adcp_capabilities spec
+    And specialisms should equal ["creative-generative", "sales-non-guaranteed"]
     And each specialism should be a member of the 3.1.1 specialism enum
     And specialism "creative-generative" should roll up to "creative" in supported_protocols
     And specialism "sales-non-guaranteed" should roll up to "media_buy" in supported_protocols
@@ -1369,7 +1431,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant implements experimental surfaces ["brand.rights_lifecycle", "trusted_match.core"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then experimental_features should equal ["brand.rights_lifecycle", "trusted_match.core"]
+    Then the response is compliant with the get_adcp_capabilities spec
+    And experimental_features should equal ["brand.rights_lifecycle", "trusted_match.core"]
     And each id should match pattern "^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
     # experimental_features[] pattern-enforced, uniqueItems; both fixture ids appear in the
     # schema's own examples.
@@ -1381,7 +1444,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the tenant has full capabilities configured
     And the seller surfaces an advisory warning during discovery
     When the Buyer Agent calls get_adcp_capabilities
-    Then the response should include errors as an array of error objects
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response should include errors as an array of error objects
     And each errors entry should carry code and message
     And the response envelope status should equal "completed" and the envelope should not carry adcp_error
     # errors is a top-level optional array of core/error.json ("Task-specific errors and
@@ -1403,7 +1467,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And "creative" is in supported_protocols
     And the tenant declares creative posture supports_compliance=true has_creative_library=true supports_generation=false supports_transformation=false
     When the Buyer Agent calls get_adcp_capabilities
-    Then creative.supports_compliance should equal true
+    Then the response is compliant with the get_adcp_capabilities spec
+    And creative.supports_compliance should equal true
     And creative.has_creative_library should equal true
     And creative.supports_generation should be absent or false
     And creative.supports_transformation should be absent or false
@@ -1422,7 +1487,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the seller speaks adcp release-precision versions "3.0", "3.1"
     When the Buyer Agent calls get_adcp_capabilities with adcp_version "4.0"
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code VERSION_UNSUPPORTED
     And the error details should carry supported_versions as a non-empty array
     And each supported_versions entry should match pattern "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
@@ -1446,7 +1512,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the seller speaks adcp release-precision versions "3.0", "3.1"
     When the Buyer Agent calls get_adcp_capabilities with adcp_major_version 4
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code VERSION_UNSUPPORTED
     And the error details should include supported_versions containing "3.0" and "3.1"
     # Graduated: version negotiation now implemented (src/core/version_negotiation.py).
@@ -1466,7 +1533,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the seller speaks adcp release-precision versions "3.0", "3.1"
     And the seller's build_version is "3.1.2+scope3.deploy.4821"
     When the Buyer Agent calls get_adcp_capabilities with adcp_version "4.0"
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code VERSION_UNSUPPORTED
     And the error details should include build_version equal to "3.1.2+scope3.deploy.4821"
     And the error details should carry supported_versions as a non-empty array
@@ -1490,7 +1558,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares request_signing posture sets for <boundary_point>
     When the Buyer Agent calls get_adcp_capabilities
-    Then request_signing should hold the subset and disjoint relations for a <expected> posture
+    Then the response is compliant with the get_adcp_capabilities spec
+    And request_signing should hold the subset and disjoint relations for a <expected> posture
     # x-adcp-validation relations on request_signing: required_for subset_of supported_for;
     # warn_for disjoint_with required_for and subset_of supported_for;
     # protocol_methods_required_for subset_of protocol_methods_supported_for. These are
@@ -1525,7 +1594,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares idempotency posture at <boundary_point>
     When the Buyer Agent calls get_adcp_capabilities
-    Then adcp.idempotency should echo a <expected> posture within the replay_ttl_seconds bounds
+    Then the response is compliant with the get_adcp_capabilities spec
+    And adcp.idempotency should echo a <expected> posture within the replay_ttl_seconds bounds
     # replay_ttl_seconds integer minimum 3600 maximum 604800 (schema-enforced); cross-field
     # in_flight_max_seconds <= replay_ttl_seconds is test-layer-enforced ("validators MUST
     # enforce this cross-field constraint at the test layer") — the failing side of the
@@ -1555,7 +1625,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant account is configured for <boundary_point>
     When the Buyer Agent calls get_adcp_capabilities
-    Then the capabilities response should be schema-valid and account.sandbox should be <expected_value>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the capabilities response should be schema-valid and account.sandbox should be <expected_value>
     # account.sandbox boolean, default false — absent means buyers treat as false. The former
     # row 4 ("capability not declared, sandbox provisioning requested → invalid") was a
     # sync_accounts obligation, not a get_adcp_capabilities behavior — rescoped to UC-011
@@ -1574,7 +1645,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And the seller speaks adcp release-precision versions "3.0", "3.1"
     And the seller's error-details builder is configured for <boundary_point>
     When the Buyer Agent calls get_adcp_capabilities with adcp_version "4.0"
-    Then the emitted VERSION_UNSUPPORTED details must carry supported_versions equal to ["3.0", "3.1"], never empty or omitted
+    Then the error is compliant with the AdCP error spec
+    And the emitted VERSION_UNSUPPORTED details must carry supported_versions equal to ["3.0", "3.1"], never empty or omitted
     # Graduated: version negotiation now implemented (src/core/version_negotiation.py), emitting
     # a non-empty, release-precision supported_versions in VERSION_UNSUPPORTED details.
     # Rebuilt 2026-07-13: the former When ("Buyer Agent inspects the error details") was not
@@ -1603,7 +1675,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant identity and signing posture are configured for <boundary_point>
     When the Buyer Agent calls get_adcp_capabilities
-    Then identity.brand_json_url should be graded <expected> against its required_when rule
+    Then the response is compliant with the get_adcp_capabilities spec
+    And identity.brand_json_url should be graded <expected> against its required_when rule
     # Mirrors identity.brand_json_url x-adcp-validation.required_when.any_of (six signing-
     # posture signals) plus the empty-identity-with-posture rejection from the identity block
     # description. Enforcement is storyboard-level in 3.x (schema-required only under 4.x
@@ -1634,7 +1707,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant declares webhook_signing posture described as <boundary_point>
     When the Buyer Agent calls get_adcp_capabilities
-    Then webhook_signing should be graded <expected> against its must_equal_when and algorithm-enum rules
+    Then the response is compliant with the get_adcp_capabilities spec
+    And webhook_signing should be graded <expected> against its must_equal_when and algorithm-enum rules
     # webhook_signing.supported must_equal_when (triggers: reporting_delivery_methods
     # contains webhook; content_standards.supports_webhook_delivery true;
     # wholesale_feed_webhooks.supported true — third trigger row added 2026-07-13);
@@ -1666,7 +1740,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant is configured with require_operator_auth <configured>
     When the Buyer Agent calls get_adcp_capabilities
-    Then account.require_operator_auth should be <expected>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And account.require_operator_auth should be <expected>
     # XFAIL-EXPECTED: production gap — #1856 (account block fields beyond the legacy shape
     # are not emitted)
     # 3.1.1 semantics (major rewrite vs beta.3): the flag declares WHO must authenticate —
@@ -1690,7 +1765,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant is configured with require_operator_auth true and OAuth support <oauth_state>
     When the Buyer Agent calls get_adcp_capabilities
-    Then account.authorization_endpoint should be <expected>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And account.authorization_endpoint should be <expected>
     # XFAIL-EXPECTED: production gap — #1856 (account.authorization_endpoint not emitted)
     # Present (format uri) when the seller supports OAuth for operator authentication; if
     # absent while require_operator_auth is true, operators obtain credentials out-of-band
@@ -1707,7 +1783,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant is configured with required_for_products <configured>
     When the Buyer Agent calls get_adcp_capabilities
-    Then account.required_for_products should be <expected>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And account.required_for_products should be <expected>
     # XFAIL-EXPECTED: production gap — #1856 (account.required_for_products not emitted)
     # default false: buyer can browse products without an account (price comparison and
     # discovery before committing); true requires establishing an account before get_products.
@@ -1724,7 +1801,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant billing policy is configured as <billing_config>
     When the Buyer Agent calls get_adcp_capabilities
-    Then account.supported_billing should equal <expected_set>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And account.supported_billing should equal <expected_set>
     And account.supported_billing should be a non-empty array
     And each supported_billing value should be one of "operator", "agent", "advertiser"
     # Graduated: account.supported_billing now derives from resolve_supported_billing(tenant)
@@ -1750,7 +1828,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant does not expose the get_account_financials task
     When the Buyer Agent calls get_adcp_capabilities
-    Then account.account_financials should be absent or false
+    Then the response is compliant with the get_adcp_capabilities spec
+    And account.account_financials should be absent or false
     # account.account_financials (default false) is the pre-call discriminator: "buyers MUST
     # consult this field before issuing get_account_financials; when false (or absent),
     # sellers MAY reject the call with UNSUPPORTED_FEATURE / OPERATION_NOT_SUPPORTED". The
@@ -1764,7 +1843,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities
-    Then supported_protocols should contain "media_buy"
+    Then the response is compliant with the get_adcp_capabilities spec
+    And supported_protocols should contain "media_buy"
     And the account section should be present with a non-empty supported_billing
     And account.supported_billing should equal [operator, agent, advertiser]
     # Graduated: the account block is now emitted on the tenant-resolved path.
@@ -1788,7 +1868,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And "creative" is in supported_protocols
     And the tenant declares creative.multiplicity supports_catalog_fanout=true max_creatives_limit=50 supports_variants=true max_variants_limit=8 variant_dimensions=["voice","theme"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then creative.multiplicity.supports_catalog_fanout should equal true
+    Then the response is compliant with the get_adcp_capabilities spec
+    And creative.multiplicity.supports_catalog_fanout should equal true
     And creative.multiplicity.max_creatives_limit should equal 50
     And creative.multiplicity.supports_variants should equal true
     And creative.multiplicity.max_variants_limit should equal 8
@@ -1809,7 +1890,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     And "creative" is in supported_protocols
     And the tenant declares creative posture supports_refinement=true refinable_retention_seconds=86400 supports_transformers=true supports_spend_controls=true supports_evaluator=true
     When the Buyer Agent calls get_adcp_capabilities
-    Then creative.supports_refinement should equal true
+    Then the response is compliant with the get_adcp_capabilities spec
+    And creative.supports_refinement should equal true
     And creative.refinable_retention_seconds should equal 86400
     And creative.supports_transformers should equal true
     And creative.supports_spend_controls should equal true
@@ -1832,7 +1914,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant creative approval mode is configured as <configured>
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.creative_approval_mode should be <expected>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.creative_approval_mode should be <expected>
     # Partially graded: production emits the constant require_human (shipped #1721 C5) — that row
     # passes; the <configured>=auto_approve row is strict-excluded (#1724: never claim
     # auto_approve without auto-approval behavior) and the tenant-config surface is #1856.
@@ -1853,7 +1936,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And the tenant governance consultation is configured as <configured>
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.governance_aware should be <expected>
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.governance_aware should be <expected>
     # DORMANT: no Given/Then step definitions exist for this scenario yet, so it
     # never runs — it does not xfail on a graded production gap.
     # NEW at 3.1.1 (default false): conformance declaration that the seller consults a
@@ -1873,7 +1957,8 @@ Feature: BR-UC-010 Discover Seller Capabilities
     Given a tenant is resolvable from the request context
     And at least one tenant product declares vendor_metric_optimization with supported targets ["cost_per"]
     When the Buyer Agent calls get_adcp_capabilities
-    Then media_buy.vendor_metric_optimization should be present
+    Then the response is compliant with the get_adcp_capabilities spec
+    And media_buy.vendor_metric_optimization should be present
     And media_buy.vendor_metric_optimization.supported_targets should equal ["cost_per"]
     And each supported_targets value should be one of "cost_per", "threshold_rate"
     # DORMANT: no Given/Then step definitions exist for this scenario yet, so it

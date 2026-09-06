@@ -116,7 +116,7 @@ def _create_basic_media_buy_with_webhook(
                 "packages": [{"product_id": product.product_id, "pricing_option_id": pricing_option.id}],
                 "reporting_webhook": {
                     "url": "https://example.com/webhook",  # outbound HTTP will be mocked
-                    "frequency": "daily",
+                    "reporting_frequency": "daily",
                 },
             },
         )

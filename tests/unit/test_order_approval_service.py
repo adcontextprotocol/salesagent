@@ -217,7 +217,7 @@ def test_approval_webhook_rejects_metadata_url_without_post(caplog):
         patch("src.services.order_approval_service.get_db_session") as mock_db,
         # The seam call now lives one layer down, inside deliver_webhook
         # (src.core.security.webhook_egress) -- the shared delivery function every
-        # webhook sender routes through since salesagent-47n9.1.
+        # webhook sender routes through since #1441.
         patch("src.core.security.webhook_egress.send", wraps=real_send) as spy_send,
         caplog.at_level(logging.WARNING, logger="src.services.order_approval_service"),
     ):
@@ -236,7 +236,7 @@ def test_approval_webhook_rejects_metadata_url_without_post(caplog):
 
     # content=, not json=: deliver_webhook serializes once (via
     # prepare_signed_request) and transmits those exact bytes via content=, never
-    # json= (salesagent-47n9.1's Core Invariant -- no webhook sender may reach
+    # json= (#1441's Core Invariant -- no webhook sender may reach
     # json= on the egress seam).
     spy_send.assert_called_once_with(metadata_url, content=ANY, headers=ANY, timeout=10.0, max_attempts=3)
     assert "was refused by egress policy" in caplog.text

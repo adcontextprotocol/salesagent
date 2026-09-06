@@ -33,7 +33,7 @@ Available mocks via env.mock:
     "adapter"      -- get_adapter (module-level import in capabilities.py)
     "audit_logger" -- log_tool_activity (module-level import in capabilities.py)
 
-beads: salesagent-4sn7 (#1592 / #1210)
+tickets: #1825 (#1592 / #1210)
 """
 
 from __future__ import annotations

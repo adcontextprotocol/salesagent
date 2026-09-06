@@ -135,7 +135,7 @@ class TestListTasksTool:
             status="requires_approval",
             object_type=None,
             object_id=None,
-            # list_tasks scopes to the caller now (salesagent-prkv.88); it listed the
+            # list_tasks scopes to the caller now (#1808); it listed the
             # whole tenant, so every buyer saw every other buyer's tasks.
             principal_id="principal_123",
         )

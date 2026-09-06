@@ -2,7 +2,7 @@
 
 The sibling guard ``test_architecture_uow_effect_boundary.py`` covers the EFFECT
 half of GH #1970 — an outbound call or notification that a rollback cannot undo.
-This guard covers the WRITE half, the shape salesagent-prkv.16 removed: a request
+This guard covers the WRITE half, the shape GH #2002 removed: a request
 owns a unit of work, and a helper it calls opens its OWN. The rows that helper
 writes then commit on their own transaction, so the owning request's rollback
 does not reach them (a preview leaves them behind) and — worse — the helper's exit
@@ -13,7 +13,8 @@ WHY THE SESSION TEARS. ``get_db_session()`` yields the THREAD-SCOPED session
 holds, with no nesting refcount. The inner unit's ``__exit__`` runs
 ``session.close(); scoped.remove()``, so the outer unit is left holding a closed
 session; on a preview branch the inner rollback discards the OUTER unit's writes too.
-That is salesagent-db4ci, a live P1 defect, and it is what this guard measures.
+That is GH #1644 (site 1 in its comment thread), a live P1 defect, and it is what
+this guard measures.
 
 WHAT COUNTS AS TRANSACTIONAL CONTEXT — measured, not assumed. This is the trap
 the sibling guard's docstring names, and it is sharper here. The prkv.16 disease
@@ -496,7 +497,7 @@ class TestDetectorMetaTests:
     # ── clause A: a call made while a unit is lexically open ──────────────
 
     def test_flags_a_call_inside_an_open_unit_to_a_function_that_opens_its_own(self):
-        """salesagent-db4ci in miniature — the site this guard was measured against."""
+        """GH #1644 in miniature — the site this guard was measured against."""
         src = (
             "from src.pkg.callee import helper\n"
             "\n"

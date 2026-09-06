@@ -25,9 +25,9 @@ only record). Reconciled items were fixed by the Phase-2 wave (run
 | C1 + C2 (account not enforced at _impl boundary; +9d5 REST FIXME) | OPEN P1 sec | `salesagent-xpcd` |
 | C3 (cross-principal 200+empty, not 403) | OPEN P1 sec | `salesagent-h25j` |
 | C4 (ValidationError→AdCPSalesAgentError boundary translator) | OPEN P2 broad | `salesagent-l6ev` |
-| C5 (`include_package_daily_breakdown` no-op) | OPEN P2 | `salesagent-kzk0` |
+| C5 (`include_package_daily_breakdown` no-op) | OPEN P2 | #1776 |
 | C6 (date-range validation in success envelope) | OPEN P3 | `salesagent-t6y9` |
-| C7 (end-only date_range default) | OPEN P3 | `salesagent-losz` |
+| C7 (end-only date_range default) | OPEN P3 | [#1319](https://github.com/prebid/salesagent/issues/1319) |
 | C8 (MCP list_creative_formats missing fmt-id params) | RECONCILED (PR #1331) | — |
 | C10 (description-only spec constraints) | OPEN P3 | `salesagent-o9w4` |
 | C11 (reporting_period echo) | RECONCILED (salesagent-18h.1) | — |
@@ -41,7 +41,7 @@ only record). Reconciled items were fixed by the Phase-2 wave (run
 | B7 (UC-006 fake AdCPValidationError) | RECONCILED (salesagent-miva) | — |
 | H1, H2 (`_assert_partition_outcome` weak) | RECONCILED (salesagent-6oq) | — |
 | reporting_dimensions breakdowns (was phantom "zk1") | OPEN P2 | `salesagent-z8nf` |
-| creative per-format resilience (one bad fmt nukes all) | OPEN P2 | `salesagent-az8d` (← `w8yn`) |
+| creative per-format resilience (one bad fmt nukes all) | OPEN P2 | #1333 |
 | non-UC004/5/6 audit remainder | OPEN | epic `salesagent-pvo2` |
 
 ---
