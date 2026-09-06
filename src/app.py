@@ -54,7 +54,6 @@ from src.landing.landing_page import generate_fallback_landing_page
 from src.routes.api_v1 import router as api_v1_router
 from src.routes.health import debug_router as health_debug_router
 from src.routes.health import router as health_router
-from src.routes.rest_compat_middleware import RestCompatMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -598,7 +597,6 @@ app.include_router(health_debug_router)
 # ---------------------------------------------------------------------------
 
 app.add_middleware(UnifiedAuthMiddleware)
-app.add_middleware(RestCompatMiddleware)
 
 _cors_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000").split(",")
 

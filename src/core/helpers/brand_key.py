@@ -45,9 +45,7 @@ def brand_key_parts(brand: BrandReference | dict | str | None) -> tuple[Any, str
     to re-narrow ``domain``: it is a required ``str`` on that model, and only the
     dict/None branches can widen it to ``None``.
 
-    The bare-string branch is the domain shorthand ``to_brand_reference`` already accepts
-    (``"ACME.COM"`` and ``{"domain": "ACME.COM"}`` go through one normalize-then-validate
-    funnel there and are equivalent). It is covered here so this helper is TOTAL over the
+    The bare-string branch is covered here so this helper is TOTAL over the
     same union the request models declare -- without it, every caller reading a domain off
     a request field had to narrow the union itself, and four of them simply wrote
     ``request.brand.domain`` and were wrong on two of the three branches.

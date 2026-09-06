@@ -97,7 +97,6 @@ _MINIMUM_COLLECTED_ITEMS = 6000
 # regression, not a shrug.
 _MODULES_WITHOUT_SCENARIO_IDENTITY = frozenset(
     {
-        "tests/bdd/test_brand_shorthand_bdd.py",
         "tests/bdd/test_get_products_inventory_profile.py",
     }
 )

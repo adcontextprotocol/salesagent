@@ -1565,7 +1565,7 @@ class AdCPRequestHandler(RequestHandler):
         the defect. Each coerced its own parameters -- twelve call sites across
         ``to_account_reference``, ``to_brand_reference``, ``coerce_creative_filters``,
         ``upgrade_legacy_format_id`` and ``to_context_object`` -- and MCP and REST ran none of
-        them, so the same bytes had two meanings.
+        them, so the same bytes had two meanings. All of them are deleted.
 
         The coercions are gone rather than moved. Pydantic performs four of the five unaided on
         the plain dict a buyer sends, and the helpers were worse than redundant:
@@ -1585,10 +1585,7 @@ class AdCPRequestHandler(RequestHandler):
         artifact is that it has no integer type, and pydantic's non-strict mode already coerces
         ``2.0`` to an ``int`` field.
         """
-        from src.core.request_compat import normalize_request_params
-
-        params = normalize_request_params(skill_name, parameters).params
-        response = await invoke_tool(skill_name, TOOLS[skill_name].validate(params), identity)
+        response = await invoke_tool(skill_name, TOOLS[skill_name].validate(parameters), identity)
         return self._serialize_for_a2a(response)
 
     async def _handle_explicit_skill(

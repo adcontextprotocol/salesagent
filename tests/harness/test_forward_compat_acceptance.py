@@ -24,7 +24,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.core.request_compat import normalize_request_params
 from tests.helpers import assert_envelope_shape
 
 # ---------------------------------------------------------------------------
@@ -465,51 +464,6 @@ class TestReadToolIdempotencyEnvelope:
 # ---------------------------------------------------------------------------
 # A2A transport: normalize + model_validate (production mode)
 # ---------------------------------------------------------------------------
-
-
-class TestA2aForwardCompat:
-    """A2A transport: normalize + strip + model_validate acceptance.
-
-    Note: Pydantic's model_config extra mode is evaluated at import time,
-    so we can't switch to extra='ignore' at runtime. Instead we verify the
-    A2A pipeline: normalize deprecated fields + strip unknown top-level params
-    (matching what the A2A handler does before model_validate).
-
-    In production, models are compiled with extra='ignore' so unknown
-    top-level fields are also accepted. That behavior is tested by the
-    MCP tests above, which exercise the real production middleware.
-    """
-
-    @pytest.mark.parametrize(
-        "label,payload",
-        [
-            ("current_spec", CURRENT_SPEC_GET_PRODUCTS),
-            ("v25_brand_manifest", V25_BRAND_MANIFEST),
-            ("v25_promoted_offerings", V25_PROMOTED_OFFERINGS),
-        ],
-        ids=lambda x: x if isinstance(x, str) else "",
-    )
-    def test_normalize_then_model_validate(self, label: str, payload: dict):
-        """A2A path: normalize → strip unknown top-level → model_validate → accepted.
-
-        Note: Nested unknowns in library types (BrandReference, AccountReference)
-        are rejected even in production because the adcp library uses extra='forbid'.
-        Deep-strip handles this on MCP only. A2A tests focus on normalization
-        of deprecated fields and top-level stripping.
-        """
-        from src.core.schemas import GetProductsRequest
-
-        # Step 1: Normalize (same as A2A handler does)
-        result = normalize_request_params("get_products", dict(payload))
-        normalized = result.params
-
-        # Step 2: Strip unknown top-level params (A2A handlers pop unknowns)
-        known_fields = set(GetProductsRequest.model_fields.keys())
-        clean = {k: v for k, v in normalized.items() if k in known_fields}
-
-        # Step 3: model_validate should not raise
-        req = GetProductsRequest.model_validate(clean)
-        assert req.brief == payload.get("brief", "")
 
 
 # ---------------------------------------------------------------------------
@@ -1121,7 +1075,7 @@ class TestMiddlewareAdversarial:
 
     def test_deeply_nested_payload_no_stack_overflow(self):
         """5+ nesting levels — deep-strip handles without stack overflow."""
-        from src.core.request_compat import deep_strip_to_schema
+        from src.core.mcp_compat_middleware import deep_strip_to_schema
 
         # Build 10-level deep schema and value
         schema: dict = {"type": "object", "properties": {}, "additionalProperties": False}
@@ -1149,7 +1103,7 @@ class TestMiddlewareAdversarial:
 
     def test_empty_anyof_variants_passes_through(self):
         """anyOf with only null variants — value passes through unchanged."""
-        from src.core.request_compat import deep_strip_to_schema
+        from src.core.mcp_compat_middleware import deep_strip_to_schema
 
         schema = {
             "type": "object",

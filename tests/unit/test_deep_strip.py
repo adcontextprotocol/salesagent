@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.core.request_compat import deep_strip_to_schema
+from src.core.mcp_compat_middleware import deep_strip_to_schema
 
 # ---------------------------------------------------------------------------
 # Shared schemas

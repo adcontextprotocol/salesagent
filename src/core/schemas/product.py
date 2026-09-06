@@ -299,15 +299,9 @@ class GetProductsRequest(LibraryGetProductsRequest):
     # onto the tool's ``__annotations__`` and FastMCP validates against it. Narrowing it
     # without a replacement is what broke the shorthand twice (18 mcp scenarios, then 16).
     #
-    # The replacement now exists: ``_normalize_brand`` in src/core/request_compat.py
-    # coerces the shorthand through ``to_brand_reference`` BEFORE validation on all three
-    # transports. So the shorthand still works and the announced shape is the spec's shape
-    # -- which is the point. Backwards-compatibility tolerance belongs in the compat layer,
-    # not in the announced contract; this DTO exists to correct what we do not want from
-    # the SDK, not to carry pre-3.x payload tolerance.
-    brand: LibraryBrandReference | None = Field(
-        default=None, description="Brand reference (see request_compat for the shorthand this agent also accepts)"
-    )
+    # The shorthand is no longer accepted anywhere: the compat layer that coerced it was
+    # deleted whole. This DTO announces the spec's shape and nothing else.
+    brand: LibraryBrandReference | None = Field(default=None, description="Brand reference")
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 

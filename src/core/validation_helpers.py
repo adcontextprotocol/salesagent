@@ -58,7 +58,7 @@ def adcp_validation_boundary(
     A model coerced OUTSIDE its parent request has lost that context by the time the
     error is in hand: pydantic's ``loc`` starts at the coerced model's own root, so
     ``to_push_notification_config`` would report ``authentication.schemes[0]`` and
-    ``to_brand_reference`` would report ``domain`` — neither of which is a path into
+    the brand coercion would report ``domain`` — neither of which is a path into
     what the buyer sent. Coercing the same value AS A DTO FIELD needs no wrapper (the
     loc carries the field), so the honest end state for these two is to stop coercing
     ahead of construction rather than to keep a wrapper. That move is not done.

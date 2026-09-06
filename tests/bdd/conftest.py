@@ -81,8 +81,6 @@ pytest_plugins = [
     "tests.bdd.steps.domain.admin_accounts",
     "tests.bdd.steps.domain.uc_get_products_inventory",
     "tests.bdd.steps.domain.egress_ssrf",
-    "tests.bdd.steps.domain.uc_brand_shorthand",
-    "tests.bdd.steps.domain.compat_normalization",
     "tests.bdd.steps.domain.local_constraint_relaxations",
     "tests.bdd.steps.domain.codes_open_vocabulary",
     "tests.bdd.steps.domain.security_wire_safety",

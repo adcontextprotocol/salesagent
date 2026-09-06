@@ -1,16 +1,15 @@
 """Unit tests for RequestCompatMiddleware (FastMCP on_call_tool).
 
-Tests that the middleware calls normalize_request_params and replaces
+Tests the middleware's unknown-field stripping, its TypeAdapter retry, and
 the context message when translations are applied.
 """
 
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.core.exceptions import AdCPValidationError
 from src.core.mcp_compat_middleware import RequestCompatMiddleware
-from src.core.request_compat import NormalizationResult
 from src.core.tool_error_logging import AdCPToolError
 from tests.helpers import assert_envelope_shape, assert_no_raw_validation_leak
 
@@ -60,72 +59,6 @@ class _ValidationErrorRecord:
 
     def __repr__(self) -> str:
         return "AdCPValidationError(error_code='INVALID_REQUEST')"
-
-
-class TestMiddlewareCallsNormalizer:
-    """Middleware delegates to normalize_request_params."""
-
-    @pytest.mark.asyncio
-    async def test_normalizer_called_with_tool_name_and_args(self, middleware):
-        ctx = _make_context("get_products", {"brand_manifest": "https://acme.com/brand", "brief": "ads"})
-        call_next = AsyncMock()
-
-        with patch("src.core.mcp_compat_middleware.normalize_request_params") as mock_norm:
-            mock_norm.return_value = NormalizationResult(
-                params={"brand": {"domain": "acme.com"}, "brief": "ads"},
-                translations_applied=["brand_manifest → brand"],
-            )
-            await middleware.on_call_tool(ctx, call_next)
-
-            mock_norm.assert_called_once_with(
-                "get_products", {"brand_manifest": "https://acme.com/brand", "brief": "ads"}
-            )
-
-
-class TestMiddlewareReplacesContext:
-    """When translations applied, context.copy(message=...) creates new context."""
-
-    @pytest.mark.asyncio
-    async def test_context_replaced_when_translations_applied(self, middleware):
-        ctx = _make_context("get_products", {"brand_manifest": "https://acme.com/brand"})
-        captured_ctx = None
-
-        async def capturing_call_next(context):
-            nonlocal captured_ctx
-            captured_ctx = context
-
-        with patch("src.core.mcp_compat_middleware.normalize_request_params") as mock_norm:
-            mock_norm.return_value = NormalizationResult(
-                params={"brand": {"domain": "acme.com"}},
-                translations_applied=["brand_manifest → brand"],
-            )
-            await middleware.on_call_tool(ctx, capturing_call_next)
-
-            # context.copy was called with a new message
-            ctx.copy.assert_called_once_with(message=ANY)
-            # call_next received the copied context with normalized arguments
-            assert captured_ctx is not None
-            assert captured_ctx is not ctx
-            assert captured_ctx.message.arguments == {"brand": {"domain": "acme.com"}}
-
-
-class TestMiddlewarePassthrough:
-    """When no translations, original context passes through unchanged."""
-
-    @pytest.mark.asyncio
-    async def test_no_translations_no_copy(self, middleware):
-        ctx = _make_context("get_products", {"brand": {"domain": "acme.com"}, "brief": "ads"})
-        call_next = AsyncMock()
-
-        with patch("src.core.mcp_compat_middleware.normalize_request_params") as mock_norm:
-            mock_norm.return_value = NormalizationResult(
-                params={"brand": {"domain": "acme.com"}, "brief": "ads"},
-                translations_applied=[],
-            )
-            await middleware.on_call_tool(ctx, call_next)
-
-            ctx.copy.assert_not_called()
-            call_next.assert_called_once_with(ctx)
 
 
 class TestShouldRetry:
@@ -275,14 +208,3 @@ class TestMiddlewareEdgeCases:
 
         await middleware.on_call_tool(ctx, call_next)
         call_next.assert_called_once_with(ctx)
-
-    @pytest.mark.asyncio
-    async def test_empty_arguments_passthrough(self, middleware):
-        ctx = _make_context("get_products", {})
-        call_next = AsyncMock()
-
-        with patch("src.core.mcp_compat_middleware.normalize_request_params") as mock_norm:
-            mock_norm.return_value = NormalizationResult(params={}, translations_applied=[])
-            await middleware.on_call_tool(ctx, call_next)
-
-            call_next.assert_called_once_with(ctx)

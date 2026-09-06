@@ -14,7 +14,6 @@ import inspect
 import logging
 from collections.abc import Collection, Mapping
 from typing import Any
-from urllib.parse import urlparse
 
 # FIXME(#1388): GetProductsResponse, Product have local subclasses; import from src.core.schemas.
 from adcp import CreativeFilters, GetProductsResponse, Product
@@ -26,10 +25,8 @@ from adcp.types import (
     PushNotificationConfig,
     ReportingWebhook,
 )
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
-from src.core.errors.details import ValidationDetails
-from src.core.exceptions import AdCPInvalidRequestError
 from src.core.schemas.product import GetProductsRequest
 from src.core.validation_helpers import adcp_validation_boundary
 
@@ -125,128 +122,6 @@ def require_push_notification_config(
         # deferred to whatever first dereferences the result.
         raise ValueError(f"{field_prefix} is required but resolved to None")
     return coerced
-
-
-def is_url_shorthand(value: str) -> bool:
-    """Return True when a string looks like a URL (scheme or protocol-relative)."""
-    return "://" in value or value.startswith("//")
-
-
-def brand_shorthand_to_domain(value: str) -> str:
-    """Normalize AdCP v3 brand string shorthand to a domain hostname.
-
-    Storyboard runners may send ``https://test.example``; ``BrandReference.domain``
-    expects a hostname (no scheme/path) per the adcp library pattern.
-
-    Returns empty string when a URL-shaped value cannot be parsed into a hostname
-    (malformed IPv6, etc.) so legacy ``brand_manifest`` middleware can silently
-    strip the field. Callers on the explicit ``brand`` path must use
-    ``to_brand_reference`` / ``_coerce_domain_or_raise`` instead — those raise
-    ``AdCPInvalidRequestError(field="brand")`` rather than dropping the brand.
-    """
-    value = value.strip()
-    if not value:
-        return value
-    if is_url_shorthand(value):
-        try:
-            parsed = urlparse(value if "://" in value else f"https:{value}")
-        except ValueError:
-            return ""
-        if parsed.hostname:
-            return parsed.hostname.lower()
-        return ""
-    return value.lower()
-
-
-def _coerce_domain_or_raise(raw: str) -> str:
-    """Normalize brand shorthand and validate against BrandReference.domain pattern.
-
-    Used for explicit ``brand`` on tool boundaries — malformed input must surface
-    as ``INVALID_REQUEST / field="brand"``, not be coerced to missing brand
-    (which would mis-route ``require_brand`` policy to an authorization error).
-
-    INVALID_REQUEST, not VALIDATION_ERROR. Both failures below are the domain
-    failing ``BrandReference.domain``'s lowercase-hostname PATTERN — a path, an
-    underscore, an IDN host, an unparseable URL. The pinned enum
-    (adcp 6.6.0, _schemas/3.1/enums/error-code.json) splits these on exactly that
-    axis: INVALID_REQUEST is "malformed, missing required fields, or violates
-    schema constraints"; VALIDATION_ERROR is "invalid field values or violates
-    business rules BEYOND schema validation". A pattern is a schema constraint,
-    so this is the first. VALIDATION_ERROR stays correct for the other kind — a
-    well-formed value that does not resolve (an unknown format id) or that a
-    seller policy refuses.
-
-    Raises:
-        AdCPInvalidRequestError: when the value cannot be normalized to a valid
-            hostname (empty parse, path/underscore/IDN/pattern mismatch). Always
-            tagged ``field="brand"`` so wire envelopes name the request field.
-    """
-    domain = brand_shorthand_to_domain(raw)
-    if not domain:
-        raise AdCPInvalidRequestError(
-            details=ValidationDetails(rejected_value=str(raw)),
-            field="brand",
-        )
-    try:
-        BrandReference(domain=domain)
-    except ValidationError as e:
-        raise AdCPInvalidRequestError(
-            details=ValidationDetails(rejected_value=domain),
-            field="brand",
-        ) from e
-    return domain
-
-
-def to_brand_reference(brand: dict[str, Any] | BrandReference | str | None) -> BrandReference | None:
-    """Convert dict/string brand to BrandReference for adcp 3.6.0 compatibility.
-
-    String and dict ``domain`` values share one normalize-then-validate funnel so
-    ``"ACME.COM"`` / ``{"domain":"ACME.COM"}`` / URL-in-domain are equivalent.
-
-    Args:
-        brand: Brand as dict, string domain shorthand, BrandReference, or None
-
-    Returns:
-        BrandReference or None
-
-    Raises:
-        AdCPInvalidRequestError: when an explicit brand cannot be coerced to a
-            valid ``BrandReference`` (tagged ``field="brand"``). See
-            ``_coerce_domain_or_raise`` for why this is INVALID_REQUEST and not
-            VALIDATION_ERROR.
-    """
-    if brand is None:
-        return None
-    if isinstance(brand, BrandReference):
-        return brand
-    # Raise-capable coercion routes through the internal boundary (like
-    # ``coerce_creative_filters``/``_coerce_wire_object``) so a malformed brand
-    # rejects as a typed error with field + top-level suggestion from every call
-    # site — no hand-rolled ValidationError translation (#1417). The boundary
-    # only remaps pydantic ValidationError (which ``adcp_error_for`` already
-    # grades INVALID_REQUEST, same schema-constraint reasoning); the explicit
-    # raises below are typed already and pass through it untouched.
-    with adcp_validation_boundary(context="brand", field="brand"):
-        if isinstance(brand, str):
-            return BrandReference(domain=_coerce_domain_or_raise(brand))
-        if isinstance(brand, dict):
-            domain_raw = brand.get("domain")
-            if not isinstance(domain_raw, str):
-                # Wrong JSON type for a declared string field — a schema
-                # constraint, so INVALID_REQUEST like the pattern failures.
-                raise AdCPInvalidRequestError(
-                    field="brand",
-                )
-            allowed = BrandReference.model_fields.keys()
-            ref_data = {key: value for key, value in brand.items() if key in allowed}
-            ref_data["domain"] = _coerce_domain_or_raise(domain_raw)
-            return BrandReference(**ref_data)
-        # brand is neither a string, a dict, nor a BrandReference — again a type
-        # violation of the declared shape, not a refused value.
-        raise AdCPInvalidRequestError(
-            details=ValidationDetails(received_type=type(brand).__name__),
-            field="brand",
-        )
 
 
 # Re-export commonly used generated types for convenience
@@ -357,9 +232,6 @@ def select_request_fields(
 
 __all__ = [
     "accepted_kwargs",
-    "is_url_shorthand",
-    "brand_shorthand_to_domain",
-    "to_brand_reference",
     "require_push_notification_config",
     "to_push_notification_config",
     "select_request_fields",
