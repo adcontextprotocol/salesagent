@@ -3604,10 +3604,14 @@ async def _create_media_buy_impl(
             error_msg = response.errors[0].message if response.errors else "Unknown error"
             error_code = response.errors[0].code if response.errors else "UNKNOWN"
             logger.error(f"[ADAPTER] Adapter returned error response: {error_code} - {error_msg}")
-            # Returned UNCACHED on purpose: errors are never cached (AdCP 3.0.1
-            # idempotency), so a retry with the same key re-executes instead of
-            # replaying this failure. Pinned by TestErrorsAreNeverCached.
-            return CreateMediaBuyResult(response=response, status=AdcpTaskStatus.failed.value)
+            # RAISED, not returned. This was the one site in the tree that reported failure by
+            # returning a result carrying status="failed", and the boundary grew an
+            # `_is_error_result` status inspection to avoid caching it. Raising says the same
+            # thing through control flow: a raise never reaches the save, so AdCP's "an error
+            # is never cached" holds because the code cannot express caching one -- rather than
+            # because a status check remembered to look. The transports translate this into the
+            # same two-layer envelope they build for every other tool's failures.
+            raise AdCPAdapterError(details=AdapterFailureDetails(status=error_code))
 
         # At this point, response is CreateMediaBuySuccess - safe to access success-specific fields
         # Type narrowing: media_buy_id must be present in successful response

@@ -41,9 +41,11 @@ exists to fix. On top of that the spec's closed exclusion list is stripped
 ``push_notification_config.authentication.credentials``), so a key never hashes itself and a
 rotated webhook credential does not turn a retry into a conflict.
 
-Errors are never saved. Most implementations raise, and a raise never reaches the save --
-but ``create_media_buy`` RETURNS a failure for an adapter rejection, so the save also checks
-the protocol status the response carries.
+Errors are never saved, and that is now a property of control flow rather than a check: every
+implementation RAISES on failure, and a raise never reaches the save. ``create_media_buy`` was
+the one exception -- it returned a result carrying ``status="failed"`` for an adapter rejection,
+which is why this module used to inspect the returned status before caching. It raises like
+everything else now, so a returned result IS a success and there is nothing left to inspect.
 
 Idempotency is scoped to (agent, account, key) per the spec, with no tool dimension.
 """
@@ -163,30 +165,6 @@ def _deserializer_for(impl: Callable[..., Any]) -> Callable[[dict[str, Any]], An
     return deserialize
 
 
-#: Protocol task statuses that mean the work did NOT succeed, from the pinned
-#: ``GeneratedTaskStatus`` enum. An ALLOWLIST of cacheable statuses would be the safer shape
-#: if the enum's membership were the only risk, but it is not: a status the spec adds later
-#: is far more likely to be another non-terminal or another failure than a new success, and
-#: an allowlist would silently stop caching it. Naming the failures makes the omission loud.
-_FAILED_STATUSES: frozenset[str] = frozenset({"failed", "rejected", "canceled", "unknown"})
-
-
-def _is_error_result(result: Any) -> bool:
-    """Whether this response reports that the work did not succeed.
-
-    AdCP security.mdx#idempotency rule 3: an error is never cached, so a retry after one
-    re-executes rather than replaying the failure forever. An implementation that RAISES
-    never reaches the save, which covers most of them -- but ``create_media_buy`` returns a
-    ``CreateMediaBuyResult`` carrying ``status="failed"`` for an adapter rejection, and that
-    is a returned error, not a success.
-
-    Read off the protocol status the envelope already carries. A response with no ``status``
-    is not a task envelope at all and cannot report failure this way; if its work failed, it
-    raised.
-    """
-    return getattr(result, "status", None) in _FAILED_STATUSES
-
-
 async def _run(impl: Callable[..., Any], /, **kwargs: Any) -> Any:
     """Call an implementation, awaiting it only if it is a coroutine function.
 
@@ -196,7 +174,32 @@ async def _run(impl: Callable[..., Any], /, **kwargs: Any) -> Any:
     return await result if inspect.isawaitable(result) else result
 
 
-def _keyed_scope(req: Any, identity: ResolvedIdentity | None) -> tuple[str, str, str | None, str] | None:
+def _declared(req: BaseModel, name: str) -> Any:
+    """The value of ``name`` on ``req``, or None when its schema does not declare the field.
+
+    The conditional is REAL and stays: ``account`` is declared by 10 of the 14 pinned request
+    schemas and ``idempotency_key`` by 4, so "does this request carry one" is a per-tool fact
+    rather than something the boundary should assume either way.
+
+    What changed is WHERE the question is asked. ``getattr(req, name, None)`` asks the
+    INSTANCE and answers None for anything that lacks the attribute -- including an object
+    that is not a request at all, which then runs unscoped: no authorization against an
+    account, and no idempotency key. Asking ``model_fields`` puts the question to the
+    DECLARATION, and a non-model raises here instead of proceeding silently.
+
+    An earlier plan proposed a ``BuyerRequest`` base declaring ``account`` and
+    ``idempotency_key`` as properties returning None, so a DTO whose schema declares the field
+    would shadow the property with a real one. Measured, pydantic shadows the other way: the
+    value is stored and ``model_dump`` shows it, but attribute access returns the PROPERTY.
+    Every tool that declares an account would have resolved none, silently -- so that design
+    is recorded here as rejected rather than left for someone to rediscover.
+    """
+    if name not in type(req).model_fields:
+        return None
+    return getattr(req, name)
+
+
+def _keyed_scope(req: BaseModel, identity: ResolvedIdentity | None) -> tuple[str, str, str | None, str] | None:
     """``(tenant_id, principal_id, account_id, idempotency_key)`` when this request is cacheable.
 
     None whenever any part is absent: a request whose schema declares no key, one carrying
@@ -204,7 +207,7 @@ def _keyed_scope(req: Any, identity: ResolvedIdentity | None) -> tuple[str, str,
     scope to be cached under. A DTO that declares no ``idempotency_key`` cannot carry one --
     every request model is the pinned schema and nothing else.
     """
-    key = getattr(req, "idempotency_key", None)
+    key = _declared(req, "idempotency_key")
     if not key or identity is None:
         return None
     if identity.tenant_id is None or identity.principal_id is None:
@@ -212,7 +215,9 @@ def _keyed_scope(req: Any, identity: ResolvedIdentity | None) -> tuple[str, str,
     return identity.tenant_id, identity.principal_id, identity.account_id, key
 
 
-async def invoke_tool(tool_name: str, req: Any, identity: Any = None, **extra: Any) -> Any:
+async def invoke_tool(
+    tool_name: str, req: BaseModel, identity: ResolvedIdentity | None = None, **extra: Any
+) -> ProtocolEnvelope:
     """Run the registry's tool named ``tool_name``.
 
     The form every transport calls. A transport names the TOOL and hands over the request it
@@ -224,13 +229,19 @@ async def invoke_tool(tool_name: str, req: Any, identity: Any = None, **extra: A
     return await invoke(tool_name, TOOLS[tool_name].impl, req, identity, **extra)
 
 
-async def invoke(tool_name: str, impl: Callable[..., Any], req: Any, identity: Any = None, **extra: Any) -> Any:
+async def invoke(
+    tool_name: str,
+    impl: Callable[..., Any],
+    req: BaseModel,
+    identity: ResolvedIdentity | None = None,
+    **extra: Any,
+) -> ProtocolEnvelope:
     """Run ``tool_name`` for a request that arrived over a transport.
 
     ``extra`` carries anything a particular implementation declares beyond req/identity
     (``context_id``), forwarded untouched.
     """
-    account = getattr(req, "account", None)
+    account = _declared(req, "account")
     if account is not None and identity is not None:
         from src.core.transport_helpers import enrich_identity_with_account
 
@@ -255,9 +266,6 @@ async def invoke(tool_name: str, impl: Callable[..., Any], req: Any, identity: A
         return replay
 
     result = await _run(impl, req=req, identity=identity, **extra)
-    if _is_error_result(result):
-        return result
-
     cache_success(
         tenant_id=tenant_id,
         principal_id=principal_id,
@@ -270,7 +278,7 @@ async def invoke(tool_name: str, impl: Callable[..., Any], req: Any, identity: A
         # wrong response variant -- the buyer would see a success where the original answer
         # was a pending task. A response with no status is not a task envelope; it succeeded
         # by having returned at all.
-        protocol_status=getattr(result, "status", None) or "completed",
+        protocol_status=result.status or "completed",
         payload_hash=request_hash,
     )
     maybe_evict_expired(tenant_id)

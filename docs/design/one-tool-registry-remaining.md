@@ -125,7 +125,7 @@ pydantic can validate it directly. Any handling written for a binary-protobuf as
 dead code. The one real Struct artifact is that it has no integer type -- every number arrives
 as a double -- and pydantic's non-strict mode already coerces `2.0` to an `int` field.
 
-## R2 — Requests and responses each get one base, and the boundary stops probing
+## R2 — DONE: the boundary stops probing
 
 **The defect.** `invoke_tool(tool_name: str, req: Any, identity: Any = None, **extra: Any) -> Any`.
 Because `req` is `Any`, the boundary asks three questions it should already know the answer to:
@@ -138,32 +138,34 @@ this works: once every response inherited `ProtocolEnvelope`, the probe became a
 and `_response_model_for` could be typed `type[ProtocolEnvelope]`. The three above are the same
 move on the REQUEST side, which R3 did not touch.
 
-**The change, and why it is not generics.** An earlier draft proposed making `ToolSpec` generic
-and casting at the registry literal. That is the wrong shape: it buys a static check and leaves
-every probe in place. The right shape is that a request IS a thing with those accessors.
+**What landed, and why it is not the `BuyerRequest` mixin this section proposed.** The plan
+called for a local base declaring `account` and `idempotency_key` as PROPERTIES returning None,
+on the reading that a DTO whose schema declares the field would shadow the property with a real
+pydantic field. Measured on the pinned pydantic, the shadowing runs the other way:
 
-All 14 request DTOs already share `AdcpVersionEnvelope -> AdCPBaseModel -> BaseModel`. Add one
-local mixin above the SDK parent declaring the two accessors the boundary needs:
-
-```python
-class BuyerRequest(BaseModel):
-    """What the boundary may ask any request, whether or not its schema declares it."""
-
-    @property
-    def account(self) -> AccountReference | None: return None
-    @property
-    def idempotency_key(self) -> str | None: return None
+```
+class D(BuyerRequest):  account: str | None = None
+d = D(account="acct-1")
+    d.__dict__["account"]  ->  "acct-1"       # the value IS stored
+    d.model_dump()         ->  {"account": "acct-1"}
+    d.account              ->  None            # the PROPERTY wins
 ```
 
-A DTO whose pinned schema declares the field shadows the property with the real pydantic
-field; one that does not inherits `None`. **Nothing is added to the wire** -- a property is not
-a model field, so `model_dump`, `model_fields` and the announced shape are untouched, and the
-"the DTO is the SDK model, nothing added" rule holds. `req.account` then always works, and
-`_spec_declares_idempotency_key` becomes what it always meant: does this DTO override the
-property with a real field.
+Following it would have made `req.account` None for all ten tools that declare an account and
+`req.idempotency_key` None for all four that declare a key -- no authorization against the
+named account, no replay, and nothing failing. That is the defect class this whole document
+exists to remove, so the design is recorded as REJECTED rather than left to be rediscovered.
 
-Then `invoke_tool(tool_name: str, req: BuyerRequest, identity: ResolvedIdentity | None) -> AdcpResponse`,
-and the three remaining probes become attribute access.
+What landed instead keeps the conditional, because the conditional is real, and moves WHERE the
+question is asked. `_declared(req, name)` consults `type(req).model_fields` -- the DECLARATION
+-- and then reads the attribute. `getattr(req, name, None)` asked the INSTANCE and answered
+None for anything lacking the attribute, including an object that is not a request at all,
+which then ran unscoped. A non-model now raises here instead.
+
+The signatures are typed: `invoke_tool(tool_name: str, req: BaseModel, identity:
+ResolvedIdentity | None = None, **extra) -> ProtocolEnvelope`. `getattr(result, "status")` is
+gone outright -- a response IS a `ProtocolEnvelope`, so `result.status` is attribute access,
+which is R3's dividend arriving on the request side.
 
 **The response side is already done, by R3.** Every response model inherits `ProtocolEnvelope`
 rather than a hand-written mixin, because the SDK ships that class and the pinned schemas
@@ -318,7 +320,7 @@ the combination is what we want: typed so a buyer and a type checker can see it,
 the idempotency layer sets it.
 
 
-## R4 — A failure is an exception; delete the status check
+## R4 — DONE: a failure is an exception; the status check is deleted
 
 **The defect.** `_boundary._is_error_result` inspects the returned response's protocol status to
 decide whether to cache it. It exists for exactly one caller: `media_buy_create.py:3605`, where
@@ -334,8 +336,8 @@ status was `Literal["completed"]`. That was true only while a local mixin declar
 mixin is deleted and the field is the SDK's `TaskStatus` now. The conclusion is unchanged, the
 reason is weaker: unreachable by behaviour, not by type.)
 
-**The change.** Make that one site raise the typed `AdCPSalesAgentError` the adapter error
-already carries, like every other failure path in the tree. Then:
+**What landed.** That one site raises `AdCPAdapterError` now, like every other failure path in
+the tree. Then:
 
 * `_is_error_result` and `_FAILED_STATUSES` are deleted -- **a return IS a success**, which is
   the only rule the boundary needs;
@@ -413,11 +415,24 @@ carries the scenario shape, so whoever picks it up writes the Given first.
 
 ---
 
-## R7 — Forward compatibility is one transport's private fix for a gap in the models
+## R7 — DONE: forward compatibility was one transport's private fix for a gap in the models
 
-**The defect, measured.** `RequestCompatMiddleware` deep-strips request fields absent from the
-tool's JSON Schema, in production only (`src/core/mcp_compat_middleware.py`). A2A and REST
-strip nothing. Its own docstring says why it exists: FastMCP's `TypeAdapter` validates the
+**Landed.** `ToolSpec.validate` reduces a parameter bag to the fields the schema declares, at
+every nesting depth, before the DTO sees it -- rejected in development, dropped in production,
+on all three transports. `deep_strip_to_schema` moved to `src/core/schemas/_accepted_shape.py`
+and is called from the one seam every transport passes through; the schema is derived from the
+row's DTO rather than stored on the row. One rule changed: an unknown key is kept only where
+the object declares NO properties (`ext`, `context` -- AdCP's shape for "arbitrary data lives
+here"), not wherever `additionalProperties` allows it.
+
+Two other mechanisms were built and thrown away, and `_accepted_shape.py` records why: a
+`model_validator` walking the data against the model tree deleted every `account.account_id`
+and every creative asset on its first run, and setting `extra` on the 255 reachable SDK classes
+made pydantic's `__eq__` time-dependent.
+
+**The defect, as it stood.** `RequestCompatMiddleware` deep-stripped request fields absent from
+the tool's JSON Schema, in production only (`src/core/mcp_compat_middleware.py`). A2A and REST
+stripped nothing. Its own docstring says why it exists: FastMCP's `TypeAdapter` validates the
 announced signature BEFORE our model does and rejects unknown fields, so "stripping bridges
 the gap".
 
@@ -477,19 +492,19 @@ adcontextprotocol/adcp-client-python#1136 and #1137. Measure before choosing.
 
 ## Order
 
-R1, R3 and R5 are done, both halves of R1 included.
+R1, R2, R3, R4, R5 and R7 are done.
 
-What remains, in the order worth taking:
+What remains:
 
-1. **R7** -- forward compatibility is one transport's private fix for a gap in the models,
-   and the gap breaks a documented idempotency invariant one nesting level down. The last
-   live cross-transport divergence, and the only remaining item with a buyer-visible bug in
-   it.
-2. **R2** -- the request half, turning the boundary's three remaining probes into attribute
-   access.
-3. **R4** -- small, deletes code, and makes "a return IS a success" the only rule the boundary
-   needs.
-4. **Required-and-nullable retention** as a generic rule off `model_fields` (the section under
+1. **Required-and-nullable retention** as a generic rule off `model_fields` (the section under
    R1). Deletes `_PINNED_SCHEMA_REF`, `_pinned_fields.py`, `AlwaysIncludeFieldsMixin` and two
    adopters that derive nothing.
-5. **R6** last, behind prebid/salesagent#2217.
+2. **R6**, behind prebid/salesagent#2217. It needs concurrent same-key traffic to occur in
+   production and few sellers implement rule 9 at all.
+
+Beyond this document: the creative pipeline carries five fields AdCP 3.1.1 does not define on
+`core/creative-asset.json` -- `snippet`, `snippet_type`, `template_variables`, `duration`,
+`variants` -- with 231 production references. They were built against AdCP v1.3 (a205d9309)
+and never migrated when the repo moved to 3.1.1 (c7acbbd6e); `git log -S snippet --
+src/core/schemas/` is empty. They survived only because the SDK's nested models were
+`extra="allow"`, which R7 has now closed.
