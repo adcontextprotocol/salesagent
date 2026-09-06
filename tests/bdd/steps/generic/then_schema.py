@@ -39,7 +39,44 @@ from tests.helpers.pinned_schema import validator_for
 from tests.helpers.response_schemas import response_schema_ref, response_validator
 
 
+def _dispatch_errored(ctx: dict) -> bool:
+    """Whether the call under test was REFUSED rather than answered.
+
+    ``TransportResult`` is the object that holds the outcome, so ask it. Falling
+    back to ``ctx["error"]`` covers the steps that stash an exception directly.
+    """
+    result = ctx.get("result")
+    if result is not None:
+        return not result.is_success
+    return ctx.get("error") is not None or ctx.get("wire_error_envelope") is not None
+
+
 def _assert_compliant(ctx: dict, tool: str, branch: str | None) -> None:
+    """Grade whatever the call actually produced, against the contract for THAT outcome.
+
+    Outcome-aware on purpose, and this is the correction of a real mistake. The
+    first version graded the response schema unconditionally, so it called
+    ``wire_dict``, which asserts ``is_success``. Every scenario whose call was
+    refused then failed with "expected a success wire body, got error ..." — a
+    message about the harness, blaming a step that was working, for a request
+    that was SUPPOSED to be refused. 345 scenarios failed that way in run
+    1c81890872ef4fd9be44f6265ada9a44.
+
+    The SCENARIO OUTLINE makes the unconditional version not merely inconvenient
+    but impossible: one outline carries both ``Examples: Valid partitions`` and
+    ``Examples: Invalid partitions``, so its single Then line is executed once
+    per row against BOTH outcomes. No fixed choice of contract is right for every
+    row. The contract has to follow the outcome, which is what this does.
+
+    It does NOT weaken the grading, because it does not decide whether the
+    outcome was correct — it only decides which contract applies to the outcome
+    that happened. Whether the call SHOULD have succeeded is pinned by the
+    scenario's own assertions sitting beneath this line, which is the whole point
+    of a general check plus a specific one.
+    """
+    if _dispatch_errored(ctx):
+        then_error_compliant(ctx)
+        return
     wire = wire_dict(ctx)
     errors = sorted(response_validator(tool, branch).iter_errors(wire), key=lambda e: list(e.absolute_path))
     if errors:
