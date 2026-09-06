@@ -231,7 +231,7 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator        | billing  |
     | acme-corp.com   | acme-corp.com   | operator |
-    Then the response is a success variant with accounts array
+    Then the response is compliant with the sync_accounts success spec
     And the account for brand domain "acme-corp.com" has action "created"
     And the account has a seller-assigned account_id
     And the account has status "active"
@@ -383,7 +383,7 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator           | billing    |
     | acme-corp.com   | pinnacle-media.com | advertiser |
-    Then the response is a success variant with accounts array
+    Then the response is compliant with the sync_accounts success spec
     And the account for brand domain "acme-corp.com" has action "created"
     And the account billing is "advertiser"
     And the account has a seller-assigned account_id
@@ -596,7 +596,7 @@ Feature: BR-UC-011 Manage Accounts
     | brand.domain        | operator            | billing  |
     | acme-corp.com       | acme-corp.com       | operator |
     | invalid-brand.test  | invalid-brand.test  | operator |
-    Then the response is a success variant with accounts array
+    Then the response is compliant with the sync_accounts success spec
     And the account for brand domain "acme-corp.com" has action "created"
     And the account for brand domain "invalid-brand.test" has action "failed"
     And the failed account includes a per-account errors array
@@ -690,7 +690,7 @@ Feature: BR-UC-011 Manage Accounts
     | brand.domain      | operator          | billing  |
     | good-brand.com    | good-brand.com    | agent    |
     | bad-brand.com     | bad-brand.com     | operator |
-    Then the response is a success variant with accounts array
+    Then the response is compliant with the sync_accounts success spec
     And the account for brand domain "good-brand.com" has action "created"
     And the account for brand domain "bad-brand.com" has action "failed"
     And the failed account has status "rejected" with BILLING_NOT_SUPPORTED error
@@ -757,7 +757,7 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: Register a paused account-level notification subscriber and read it back
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request provisioning brand domain "acme-corp.com" with a paused notification config subscriber "buyer-primary" for url "https://buyer.example/webhooks/adcp/creative", event_types "creative.status_changed, creative.purged", and legacy Bearer authentication
-    Then the response is a success variant with accounts array
+    Then the response is compliant with the sync_accounts success spec
     And the account notification_configs echo exactly 1 subscriber
     And the echoed subscriber "buyer-primary" has url "https://buyer.example/webhooks/adcp/creative" and active false
     And the echoed subscriber has event_types "creative.status_changed, creative.purged"
@@ -1008,7 +1008,7 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with dry_run true and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response is a success variant
+    Then the response is compliant with the sync_accounts success spec
     And the response includes dry_run true
     And the account for brand domain "acme-corp.com" shows action "created"
     And no accounts were actually created or modified on the seller
@@ -1019,7 +1019,7 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And an account for brand domain "acme-corp.com" already exists with billing "operator"
     When the Buyer Agent sends a sync_accounts request with dry_run true and a settings-update entry keyed by the existing account's account_id setting payment_terms "net_45"
-    Then the response is a success variant
+    Then the response is compliant with the sync_accounts success spec
     And the response includes dry_run true
     And the account for brand domain "acme-corp.com" has action "updated"
     And the account payment_terms is "net_45"
@@ -1066,7 +1066,7 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And an account for brand domain "acme-corp.com" already exists with billing "operator"
     When the Buyer Agent sends a sync_accounts request with delete_missing true and a settings-update entry keyed by the existing account's account_id setting payment_terms "net_45"
-    Then the response is a success variant
+    Then the response is compliant with the sync_accounts success spec
     And the response contains an accounts array with 1 items
     And the account payment_terms is "net_45"
     And brand domain "acme-corp.com" remains in its current state
@@ -1257,7 +1257,7 @@ Feature: BR-UC-011 Manage Accounts
     | acme-corp.com   | acme-corp.com | operator |
     Then the response contains an accounts array
     And the response does not contain an operation-level errors array
-    And the response is the success variant of oneOf
+    And the response is compliant with the sync_accounts success spec
 
   @T-UC-011-atomic-all-failed @sync @atomic @partition @boundary
   Scenario: success with all per-account failures -- still success variant (success with all per-account failures)
@@ -1266,7 +1266,7 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response is a success variant with accounts array
+    Then the response is compliant with the sync_accounts success spec
     And all accounts have action "failed"
     And the response does not contain an operation-level errors array
 
@@ -1307,7 +1307,7 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain  | operator      | billing  | sandbox |
     | acme-corp.com | acme-corp.com | operator | true    |
-    Then the response is a success variant with accounts array
+    Then the response is compliant with the sync_accounts success spec
     And the provisioned account should have sandbox equals true
     And the account should have a seller-assigned account_id
     And no real ad platform account should have been created
@@ -1364,7 +1364,7 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the seller declares account.sandbox equals true in capabilities
     When the Buyer Agent sends a sync_accounts request with idempotency_key "sandbox-shape-001" and a request item where sandbox is <request_item>
-    Then the response is a success variant with accounts array
+    Then the response is compliant with the sync_accounts success spec
     And the per-account result sandbox field is "<response_field>"
     # @bva sandbox: sandbox: true in response (sandbox account)
     # @bva sandbox: sandbox: false in response (explicit production)
