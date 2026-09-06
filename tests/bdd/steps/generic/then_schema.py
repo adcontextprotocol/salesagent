@@ -115,6 +115,20 @@ def then_webhook_payload_compliant(ctx: dict) -> None:
     Reads the body off the socket (``env.delivered_requests``), not a dict the
     sender kept. Grading what the sender believes it sent cannot catch a
     serialization that changes it.
+
+    WHAT THIS CANNOT CATCH, measured rather than assumed: the inner schema sets
+    ``additionalProperties: true``, so it ACCEPTS a result carrying
+    ``aggregated_totals`` — which webhooks.mdx:253 forbids ("API-only for
+    get_media_buy_delivery responses and must not be emitted in reporting
+    webhook result payloads"), and which GH #2058 violation 1 reports as live.
+    A prose MUST NOT that the schema does not encode is invisible to any
+    schema check.
+
+    That is the argument for the general check and a specific one sitting side
+    by side rather than the general one replacing anything. The scenario that
+    catches it is ``@T-UC-004-webhook-no-aggregated``, asserting the field's
+    absence by name. Never delete a specific assertion on the grounds that a
+    compliance line now covers the response — for prose obligations it does not.
     """
     deliveries = ctx["env"].delivered_requests
     assert deliveries, "no webhook POST was made, so there is no payload to grade"

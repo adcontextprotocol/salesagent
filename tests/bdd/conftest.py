@@ -842,28 +842,36 @@ _XFAIL_TAGS: dict[str, str] = {
     # webhook body, so those assertions were checking the contents of an
     # envelope that never existed.
     #
-    # The pin composes a delivery webhook in two layers, and the chain is
-    # explicit, not inferred: core/mcp-webhook-payload.json is the POST body
-    # (required idempotency_key, operation_id, task_id, task_type, status,
-    # timestamp); its `result` is $ref async-response-data.json, which resolves
-    # per enums/task-type.json to media-buy/media-buy-delivery-webhook-result.json
-    # for media_buy_delivery. That inner schema states it in its own description:
-    # "carried under core/mcp-webhook-payload.json result ... This is not a
-    # top-level webhook POST body and does not include protocol envelope".
+    # Owned by GH #2058, violation 2, which already carries the full evidence:
+    # the authority is dist/docs/3.1.1/building/by-layer/L3/webhooks.mdx:198-200
+    # ("Delivery-report content lives under `result`; it is not valid as the
+    # top-level POST body by itself"), and :237-248 prints the flat delivery
+    # report AS THE COUNTER-EXAMPLE. The schema chain agrees:
+    # core/mcp-webhook-payload.json is the POST body, its `result` is
+    # $ref async-response-data.json, which resolves per enums/task-type.json to
+    # media-buy/media-buy-delivery-webhook-result.json for media_buy_delivery.
     #
-    # WebhookDeliveryService builds the inner result document and posts it bare:
-    # src/services/webhook_delivery_service.py:295 assembles delivery_payload,
-    # and src/core/security/webhook_egress.py:188 (_canonical_body) serializes
-    # exactly that dict as the body. No envelope is added anywhere in the chain.
+    # THERE ARE TWO BUILDERS AND THEY DISAGREE, which is what makes this worth
+    # reading before acting on a failure here:
+    #   delivery_webhook_scheduler.py:332  -> create_mcp_webhook_payload(...), the
+    #                                         CORRECT envelope; the live path
+    #   webhook_delivery_service.py:302    -> the flat body, the counter-example
+    # The in-process BDD legs route through the SECOND one
+    # (CircuitBreakerEnv.call_deliver -> send_delivery_webhook,
+    # tests/harness/_mixins.py:1087), so these seven fail on the builder the
+    # harness reaches, NOT on the one a live buyer receives. #2058 says which of
+    # the two to reconcile is still open — a production fix and a harness fix are
+    # both live options — so do not "fix" this by pointing the step at the
+    # scheduler; that would hide the disagreement rather than settle it.
     #
-    # Owned by salesagent-tkmle. Each graduates the moment the sender wraps.
-    "T-UC-004-webhook-window-update": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
-    "T-UC-004-webhook-partial-data": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
-    "T-UC-004-webhook-adjusted-resend": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
-    "T-UC-004-window-first-report": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
-    "T-UC-004-delayed-count-nonnegative": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
-    "T-UC-004-delayed-no-false-complete": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
-    "T-UC-004-delayed-all-available": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
+    # Each graduates when #2058 lands, whichever way it is resolved.
+    "T-UC-004-webhook-window-update": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-partial-data": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-adjusted-resend": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-window-first-report": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-delayed-count-nonnegative": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-delayed-no-false-complete": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-delayed-all-available": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
 }
 
 # Selective xfail for parametrized scenarios where only
