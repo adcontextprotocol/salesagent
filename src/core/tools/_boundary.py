@@ -56,6 +56,7 @@ import typing
 from collections.abc import Callable
 from typing import Any
 
+from adcp.types import ProtocolEnvelope
 from pydantic import BaseModel
 
 from src.core.idempotency_canonical import canonical_request_hash
@@ -65,12 +66,19 @@ from src.core.resolved_identity import ResolvedIdentity
 logger = logging.getLogger(__name__)
 
 
-def _response_model_for(impl: Callable[..., Any]) -> type[BaseModel] | None:
+def _response_model_for(impl: Callable[..., Any]) -> type[ProtocolEnvelope] | None:
     """The model an implementation returns, read off its annotation.
 
     Derived rather than declared: a registry row says which DTO a tool ACCEPTS, and the
     implementation's own signature already says what it returns. Storing the response type
     a second time would be a second declaration that can disagree with the function.
+
+    Narrowed to ``ProtocolEnvelope``, not ``BaseModel``, because that is what an AdCP response
+    IS -- every pinned response schema composes ``core/protocol-envelope.json`` with ``allOf``,
+    and all fourteen models inherit the class. The narrowing is what lets this module ASSIGN
+    ``replayed`` instead of probing ``model_fields`` for it, and
+    ``test_architecture_dto_adds_no_field.py`` grades that every registered tool keeps the
+    base, so the annotation cannot quietly become a lie.
 
     ``None`` when the callable has no readable annotations, rather than a raise: the only
     consequence is that a cached envelope cannot be revived, so the request executes fresh --
@@ -82,7 +90,7 @@ def _response_model_for(impl: Callable[..., Any]) -> type[BaseModel] | None:
     except Exception:
         return None
     annotation = hints.get("return")
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+    if isinstance(annotation, type) and issubclass(annotation, ProtocolEnvelope):
         return annotation
     return None
 
@@ -126,9 +134,15 @@ def _deserializer_for(impl: Callable[..., Any]) -> Callable[[dict[str, Any]], An
     response model changed between the deploy that wrote it and the one replaying it, inside
     the TTL window -- must fall through to fresh execution rather than fail a request.
 
-    A model that declares the spec's ``replayed`` marker gets it set here, which is the only
-    place that can: the marker says "you are seeing a stored answer", so it is a property of
-    the REPLAY and never of the stored body. Read off the model rather than listed per tool.
+    The spec's ``replayed`` marker is set here, which is the only place that can: the marker
+    says "you are seeing a stored answer", so it is a property of the REPLAY and never of the
+    stored body -- AdCP L1/security rule 4 puts it on the outgoing envelope for exactly that
+    reason, and the cached body stays clean so repeated replays of one key each carry it once.
+
+    A plain assignment, with no check that the field exists: every response model inherits
+    ``adcp.types.ProtocolEnvelope``, so every response HAS it. This used to probe
+    ``model_fields`` and ``setattr``, which is what a boundary does when the models it handles
+    disagree about their own envelope -- and they did: four of the fourteen were missing it.
     """
     model = _response_model_for(impl)
 
@@ -143,10 +157,7 @@ def _deserializer_for(impl: Callable[..., Any]) -> Callable[[dict[str, Any]], An
         except Exception:
             logger.warning("Cached %s envelope failed validation — treating as a miss", model.__name__, exc_info=True)
             return None
-        if "replayed" in model.model_fields:
-            # setattr, not attribute assignment: which model this is, is a per-row fact, so
-            # no statically-known type declares the field.
-            setattr(result, "replayed", True)  # noqa: B010
+        result.replayed = True
         return result
 
     return deserialize

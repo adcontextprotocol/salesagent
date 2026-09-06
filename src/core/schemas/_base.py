@@ -35,6 +35,7 @@ from adcp.types import (
     MediaBuyStatus,  # noqa: F401 — re-exported via src.core.schemas
     PriceGuidance,  # Replaces local PriceGuidance class
     PricingModel,  # Replaces local PricingModel enum (lowercase members: .cpm, .cpc, etc.)
+    ProtocolEnvelope,
 )
 from adcp.types import CreateMediaBuyRequest as LibraryCreateMediaBuyRequest
 
@@ -878,20 +879,39 @@ class CreateMediaBuySubmitted(AdCPCreateMediaBuySubmitted):
 CreateMediaBuyResponse = CreateMediaBuySuccess | CreateMediaBuyError
 
 
-class TaskResultEnvelope(SalesAgentBaseModel):
+class TaskResultEnvelope(ProtocolEnvelope, SalesAgentBaseModel):
     """DRY base for protocol-status-wrapping result types.
 
-    Serializes to {"status": <TaskStatus>, ...response_fields} by flattening
-    the domain response at the root and overwriting 'status' with the
-    protocol TaskStatus. Subclasses declare the typed 'response' field.
-    """
+    Serializes to {"status": <TaskStatus>, ...response_fields} by flattening the domain
+    response at the root and overwriting the envelope fields this wrapper owns. Subclasses
+    declare the typed 'response' field.
 
-    status: str
+    IT INHERITS ``ProtocolEnvelope``, which is the whole point of the class. Every pinned
+    response schema composes that envelope with ``allOf``, and the nine tools whose models
+    descend from an SDK response get its eleven fields for free. This wrapper does not descend
+    from one -- it is ours, built to pair a domain response with the protocol status -- so
+    before this base it declared ``status: str`` by hand and nothing else. Ten of the eleven
+    envelope fields were therefore absent from create_media_buy and update_media_buy, and
+    ``replayed`` had to be hand-added to ``CreateMediaBuyResult`` alone to make replay
+    observable at all. That hand-addition is deleted; the field arrives here now.
+
+    ``status`` is the envelope's ``TaskStatus`` rather than a bare ``str``, so a value outside
+    the pinned enum no longer type-checks.
+    """
 
     @model_serializer(mode="wrap")
     def _serialize(self, serializer, info):
         result = self.response.model_dump(mode=info.mode, context=info.context)
         result["status"] = self.status
+        # The wrapper owns ``replayed``, not the domain response. A variant that declares its
+        # own (``UpdateMediaBuySubmitted`` does, via the SDK parent) would otherwise emit the
+        # response's default -- which is how a REPLAYED submitted update went on the wire
+        # saying ``replayed: false``, asserting a fresh execution. Popped unconditionally and
+        # re-added only when true, so a fresh response omits it exactly as the schema says:
+        # "set to false (or omitted) when the request was executed fresh".
+        result.pop("replayed", None)
+        if self.replayed:
+            result["replayed"] = True
         return result
 
 
@@ -907,25 +927,10 @@ class CreateMediaBuyResult(TaskResultEnvelope):
 
     response: CreateMediaBuySuccess | CreateMediaBuyError | CreateMediaBuySubmitted
 
-    # Spec idempotency replay marker (AdCP 3.0.1 idempotency: top-level on the
-    # envelope / top of the structured result). Wrapper-owned: set True ONLY when
-    # this response is a verbatim replay of a previously cached result (success
-    # OR submitted — the replay test asserts True on a submitted replay). Injected
-    # at response time, never stored in the cached body; omitted when False on
-    # EVERY variant so fresh responses are byte-identical across variants.
-    replayed: bool = False
-
-    @model_serializer(mode="wrap")
-    def _serialize(self, serializer, info):
-        result = self.response.model_dump(mode=info.mode, context=info.context)
-        result["status"] = self.status
-        # The adcp 6.6 submitted base declares replayed=False as a FIELD, so it
-        # rides response.model_dump(); strip it — the wrapper is the marker's
-        # single source (PR #1567 round-3).
-        result.pop("replayed", None)
-        if self.replayed:
-            result["replayed"] = True
-        return result
+    # ``replayed`` and the serializer that omits it when false used to be declared HERE, and
+    # only here -- which is why create_media_buy carried the replay marker and its three
+    # siblings did not. Both live on TaskResultEnvelope now, so update_media_buy gets the same
+    # behaviour instead of the inverted one it had (emitting ``replayed: false`` on a replay).
 
     def __iter__(self):
         """Support tuple unpacking: response, status = result."""
@@ -3264,20 +3269,28 @@ class CompleteTaskRequest(AdcpVersionEnvelope):
     context: ContextObject | None = Field(default=None, description="Application-level context")
 
 
-class CompleteTaskResponse(AdcpVersionEnvelope):
+class CompleteTaskResponse(AdcpVersionEnvelope, ProtocolEnvelope):
     """Response from completing a task.
 
-    On the SDK's base envelope for the same reason the request is: the pin defines no
+    On the SDK's base envelopes for the same reason the request is: the pin defines no
     complete-task schema, and a response that cannot carry ``adcp_version`` is not a response
     in this protocol. The impl returned a bare ``dict`` while both its siblings returned
     response models, so the REST boundary's ``response.model_dump(mode="json")`` raised
     AttributeError on the one tool of the three that had no model.
+
+    ``ProtocolEnvelope`` for the second half of the same argument: a response that cannot carry
+    ``status`` is not one either. Every tool with a pinned schema gets the envelope through
+    that schema's ``allOf``; this one has no schema to get it from, so it names the base
+    directly. That is not a local invention -- it is the same class the other thirteen inherit.
     """
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
+    # task_id and message REDECLARE envelope fields to make them required: this response
+    # always names the task it completed and always says so. status is NOT redeclared -- the
+    # envelope's TaskStatus is the pinned enum, and narrowing it to a bare str is how a value
+    # outside that enum would have reached the wire.
     task_id: str = Field(..., description="The task that was completed")
-    status: str = Field(..., description="The status it was marked with")
     message: str = Field(..., description="Human-readable confirmation")
     completed_at: str = Field(..., description="ISO-8601 completion time")
     completed_by: str = Field(..., description="Principal that completed it")

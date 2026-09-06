@@ -64,6 +64,41 @@ def test_dto_declares_no_field_the_pinned_schema_lacks(tool_name: str) -> None:
 
 
 @pytest.mark.arch_guard
+@pytest.mark.parametrize("tool_name", sorted(TOOLS))
+def test_response_model_carries_the_protocol_envelope(tool_name: str) -> None:
+    """Every response IS a ``ProtocolEnvelope`` -- the eleven fields, typed, on all fourteen.
+
+    `core/protocol-envelope.json` is composed into every pinned response schema with `allOf`,
+    so `status`, `task_id`, `message`, `replayed` and the rest are part of every response's
+    contract. Nine of our models inherit the class through their SDK parent. The other five
+    had to name it:
+
+    * `sync_creatives`, `sync_accounts` -- the SDK's generated success ARM drops the
+      composition (a hand-written post-generation step attaches `ProtocolEnvelope` only to the
+      `submitted` arm), so they inherit it locally until that is fixed upstream;
+    * `create_media_buy`, `update_media_buy` -- their wrapper `TaskResultEnvelope` is ours and
+      descends from no SDK response, so it names the base directly;
+    * `complete_task` -- the pin describes no such task, so there is no schema to inherit from.
+
+    This is what lets `_boundary._response_model_for` be typed `type[ProtocolEnvelope]` and the
+    boundary ASSIGN `result.replayed = True` rather than probing `model_fields` for it. A
+    response model that loses the base makes that annotation a lie, and the replay marker goes
+    silently missing on that tool -- which is exactly what happened before, on four of them.
+    """
+    from adcp.types import ProtocolEnvelope
+
+    from src.core.tools._boundary import _response_model_for
+
+    model = _response_model_for(TOOLS[tool_name].impl)
+    assert model is not None, (
+        f"{tool_name}'s implementation does not return a ProtocolEnvelope subclass, so the "
+        f"boundary cannot revive a cached response for it and every retry re-executes silently"
+    )
+    missing = sorted(set(ProtocolEnvelope.model_fields) - set(model.model_fields))
+    assert missing == [], f"{model.__name__} is missing envelope fields {missing}"
+
+
+@pytest.mark.arch_guard
 def test_the_allowlist_has_no_stale_entries() -> None:
     """An allowance whose field is gone must be removed, so the list can only shrink."""
     stale: list[str] = []

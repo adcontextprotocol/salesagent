@@ -20,6 +20,7 @@ from adcp.types import Error as LibraryError
 from adcp.types import ListAccountsRequest as LibraryListAccountsRequest
 from adcp.types import ListAccountsResponse as LibraryListAccountsResponse
 from adcp.types import NotificationConfig as LibraryNotificationConfig
+from adcp.types import ProtocolEnvelope
 from adcp.types import Setup as LibrarySetup
 from adcp.types import SyncAccountsRequest as LibrarySyncAccountsRequest
 from adcp.types.aliases import SyncAccountsSuccessResponse as LibrarySyncAccountsSuccess
@@ -205,12 +206,19 @@ class SyncAccountsResponse(
     CompletedTaskStatusMixin,
     NestedModelSerializerMixin,
     LibrarySyncAccountsSuccess,  # type: ignore[misc]
+    ProtocolEnvelope,
 ):
     """Extends library SyncAccountsResponse success variant.
 
     adcp 3.10: SyncAccountsResponse is a union TypeAlias (not RootModel).
     Since the error variant is never constructed (ToolError handles failures),
     we subclass the success variant directly.
+
+    ``ProtocolEnvelope`` IS INHERITED HERE AS A LOCAL WORKAROUND, for the same reason and with
+    the same expiry as ``SyncCreativesResponse`` -- see that class. The pinned
+    ``account/sync-accounts-response.json`` composes the envelope with ``allOf``; the SDK's
+    generated success arm does not inherit it, so without this base nine of its eleven fields
+    are untyped and reach the wire only as pydantic extras.
 
     SDK 5.7 had collapsed the success envelope to just `status`, and this class
     carried local copies of accounts/dry_run/context/ext as a result. adcp 6.6

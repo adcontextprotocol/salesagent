@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from enum import Enum, StrEnum
 from typing import Any, ClassVar, Literal
 
-from adcp.types import CreativeStatus
+from adcp.types import CreativeStatus, ProtocolEnvelope
 from adcp.types import Error as LibraryError
 from adcp.types import FormatId as LibraryFormatId
 from adcp.types import (
@@ -571,12 +571,27 @@ class AssignmentResult(SalesAgentBaseModel):
     )
 
 
-class SyncCreativesResponse(CompletedTaskStatusMixin, LibrarySyncCreativesSuccess):
+class SyncCreativesResponse(CompletedTaskStatusMixin, LibrarySyncCreativesSuccess, ProtocolEnvelope):
     """Extends library SyncCreativesResponse success variant.
 
     adcp 3.9: SyncCreativesResponse is now a union TypeAlias (not RootModel).
     Since the error variant is never constructed (ToolError handles failures),
     we subclass the success variant directly.
+
+    ``ProtocolEnvelope`` IS INHERITED HERE AS A LOCAL WORKAROUND, and it should not have to
+    be. ``creative/sync-creatives-response.json`` composes the envelope into the whole
+    response with ``allOf``, so every arm carries its eleven fields -- but the SDK's generated
+    ``SyncCreativesResponse1`` (this class's parent) inherits ``AdcpVersionEnvelope`` alone.
+    The cause is not the code generator: ``scripts/post_generate_fixes.py`` in
+    adcp-client-python re-emits the ``oneOf``-armed response modules by hand and attaches
+    ``ProtocolEnvelope`` only when the arm is the ``submitted`` one, never reading the root
+    ``allOf``. The TypeScript SDK at the same 3.1.1 pin gets it right, intersecting the
+    envelope across every arm.
+
+    Without this base, nine of the eleven envelope fields are untyped here and reach the wire
+    only as pydantic extras -- ``replayed`` among them, which is why a replayed sync used to
+    go out with no marker at all. Delete this base the day the SDK's success arms compose the
+    envelope; ``ProtocolEnvelope`` is exported and correct, only the arms fail to inherit it.
 
     adcp 6.6 restored the fields SDK 5.7 had collapsed off the success envelope:
     dry_run, context (ContextObject|None) and ext (ExtensionObject|None) are all
