@@ -865,6 +865,22 @@ _XFAIL_TAGS: dict[str, str] = {
     # scheduler; that would hide the disagreement rather than settle it.
     #
     # Each graduates when #2058 lands, whichever way it is resolved.
+    #
+    # THIRTEEN, not the seven first recorded here. The original comment claimed the
+    # other six were "already xfailed"; they were not. That was measured by grepping
+    # each tag anywhere in this file, which matches comments and other tables — so
+    # six scenarios that GRADED and PASSED were reported as costing nothing, and the
+    # webhook change was written up as cheaper than it was. Run
+    # a302146fbd0f4ea1975995cff0f7e724 found them as 24 passed -> failed instances,
+    # the only regressions in the whole comparison. Membership in a dict is checked
+    # by asking the dict.
+    "T-UC-004-webhook-scheduled": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-hmac": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-bearer": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-notification-type": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-sequence": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-no-aggregated": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    "T-UC-004-webhook-retry-success": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
     "T-UC-004-webhook-window-update": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
     "T-UC-004-webhook-partial-data": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
     "T-UC-004-webhook-adjusted-resend": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
