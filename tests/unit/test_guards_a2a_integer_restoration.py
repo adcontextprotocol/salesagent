@@ -22,12 +22,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _struct_value_construction_sites() -> list[str]:
+def _struct_value_construction_sites(repo_root: Path = REPO_ROOT) -> list[str]:
     """Every ``src/`` call to struct_pb2.Value(...) or struct_pb2.Struct(...),
     as ``path:lineno``, found via AST (not regex, so a reformatted call site
-    can't slip past)."""
+    can't slip past).
+
+    *repo_root* is a parameter ONLY so the meta-test below can point the scan at a
+    sandbox. It must not become a way to narrow the real scan.
+    """
     sites: list[str] = []
-    for path in (REPO_ROOT / "src").rglob("*.py"):
+    for path in (repo_root / "src").rglob("*.py"):
         try:
             tree = ast.parse(path.read_text(), filename=str(path))
         except SyntaxError:
@@ -40,7 +44,7 @@ def _struct_value_construction_sites() -> list[str]:
             if attr_name in {"Value", "Struct"} and isinstance(func, ast.Attribute):
                 value_source = func.value
                 if isinstance(value_source, ast.Name) and value_source.id == "struct_pb2":
-                    sites.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
+                    sites.append(f"{path.relative_to(repo_root)}:{node.lineno}")
     return sites
 
 
@@ -58,19 +62,30 @@ class TestOnlyOneStructValueConstructionSite:
         )
         assert sites, "expected at least the known _dict_to_value construction sites -- scan may be broken"
 
-    def test_scan_would_catch_a_stray_construction_site(self, tmp_path, monkeypatch):
+    def test_scan_would_catch_a_stray_construction_site(self, tmp_path):
         """Meta-test: prove the AST scan actually detects a stray site, not just
-        that today's tree happens to be clean."""
-        fake_src = REPO_ROOT / "src" / "_tmp_guard_meta_test_stray.py"
-        fake_src.write_text("from google.protobuf import struct_pb2\nv = struct_pb2.Value()\n")
-        try:
-            sites = _struct_value_construction_sites()
-            assert any("_tmp_guard_meta_test_stray.py" in s for s in sites), (
-                "the AST scan failed to detect a deliberately-planted stray "
-                "struct_pb2.Value() construction site -- the guard is vacuous"
-            )
-        finally:
-            fake_src.unlink()
+        that today's tree happens to be clean.
+
+        PLANTED IN A SANDBOX, never in the real ``src/``. It used to write
+        ``src/_tmp_guard_meta_test_stray.py`` into the working tree and unlink it in a
+        ``finally``. That is a shared-state mutation, and the unit suite runs
+        ``-n 16``: a sibling worker running the REAL scan during this window found this
+        test's specimen and failed with "found a struct_pb2.Value/Struct() construction
+        site outside src/a2a_server/adcp_a2a_server.py:
+        ['src/_tmp_guard_meta_test_stray.py:2']". Intermittent on the box (it passed the
+        run before and failed the one after), invisible locally where the file is
+        collected serially. ``tmp_path`` was already a parameter here and simply unused.
+        """
+        planted = tmp_path / "src"
+        planted.mkdir()
+        (planted / "stray.py").write_text("from google.protobuf import struct_pb2\nv = struct_pb2.Value()\n")
+
+        sites = _struct_value_construction_sites(tmp_path)
+
+        assert any("stray.py" in s for s in sites), (
+            "the AST scan failed to detect a deliberately-planted stray "
+            "struct_pb2.Value() construction site -- the guard is vacuous"
+        )
 
 
 class TestA2ARoutesWrapWithIntegerRestoration:
