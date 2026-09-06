@@ -124,6 +124,15 @@ def then_webhook_payload_compliant(ctx: dict) -> None:
     A prose MUST NOT that the schema does not encode is invisible to any
     schema check.
 
+    That gap is upstream, not ours, and is now asked about there:
+    adcontextprotocol/adcp#7329. The schema does not encode it at 3.1, at 3.1.20
+    (``latest_stable``) or at 3.2.0-rc.1, and the generated SDK model is
+    ``extra="allow"`` — it accepts ``aggregated_totals`` and round-trips it into
+    its own output. Until that is resolved, do NOT tighten this step by
+    hand-coding the prohibition here: a local rule that the pin does not carry
+    is how a suite starts grading one seller's reading of the spec instead of
+    the spec.
+
     That is the argument for the general check and a specific one sitting side
     by side rather than the general one replacing anything. The scenario that
     catches it is ``@T-UC-004-webhook-no-aggregated``, asserting the field's
