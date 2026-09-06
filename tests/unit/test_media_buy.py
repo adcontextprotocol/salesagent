@@ -4496,55 +4496,7 @@ class TestGetMediaBuysImplAuth:
 
         assert exc_info.value.error_code == "AUTH_MISSING"
 
-    def test_account_id_not_supported(self):
-        """GMB-A03: account_id parameter raises 'not yet supported' error.
-
-        Spec: CONFIRMED -- account_id exists in spec (media-buy.json has account field)
-        https://github.com/adcontextprotocol/adcp/blob/8f26baf3549c00d2638341fed1d80abacb5d894a/schemas/core/media-buy.json
-        Priority: P1
-        Type: unit
-        Source: get_media_buys
-
-        Migrated to typed AdCPCapabilityNotSupportedError (wire code:
-        UNSUPPORTED_FEATURE) — was previously AdCPValidationError.
-        """
-        from src.core.exceptions import AdCPCapabilityNotSupportedError
-        from src.core.resolved_identity import ResolvedIdentity
-        from src.core.tools.media_buy_list import _get_media_buys_impl
-
-        req = GetMediaBuysRequest(account_id="acc_123")
-        identity = ResolvedIdentity(
-            principal_id="principal_1",
-            tenant_id="tenant_1",
-            tenant={"tenant_id": "tenant_1", "adapter_type": "mock"},
-            protocol="mcp",
-            testing_context=None,
-        )
-
-        with pytest.raises(AdCPCapabilityNotSupportedError) as _ei:
-            _get_media_buys_impl(req, identity=identity)
         # The identifier is STRUCTURED now: details/field, not prose.
-
-    def test_account_id_unsupported_recovery_is_correctable(self):
-        """Unsupported account_id should be correctable — buyer removes the param.
-
-        Covers: (PR #1083 review)
-        """
-        from src.core.exceptions import AdCPCapabilityNotSupportedError
-        from src.core.resolved_identity import ResolvedIdentity
-        from src.core.tools.media_buy_list import _get_media_buys_impl
-
-        req = GetMediaBuysRequest(account_id="acc_123")
-        identity = ResolvedIdentity(
-            principal_id="principal_1",
-            tenant_id="tenant_1",
-            tenant={"tenant_id": "tenant_1", "adapter_type": "mock"},
-            protocol="mcp",
-            testing_context=None,
-        )
-
-        with pytest.raises(AdCPCapabilityNotSupportedError) as exc_info:
-            _get_media_buys_impl(req, identity=identity)
 
 
 # ===========================================================================

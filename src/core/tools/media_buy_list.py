@@ -165,7 +165,7 @@ def _get_media_buys_impl(
     """
     identity = require_identity(identity, context=req.context)
 
-    if req.account is not None or req.account_id is not None:
+    if req.account is not None:
         raise AdCPCapabilityNotSupportedError()
 
     testing_ctx = identity.testing_context

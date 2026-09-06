@@ -10,13 +10,16 @@ The target shape, entire:
 
 ```
 transport receives bytes
+  -> compat middleware                    (legacy wire shapes -> spec shapes)
   -> validate into the row's DTO          (the standard schema, nothing else)
   -> resolve the account the request names
   -> honour the idempotency key it carries
   -> impl(req, identity)
 ```
 
-Nothing before it, nothing between the steps, and no transport with a step of its own.
+Five steps, in that order, identical on every transport. No transport with a step of its own,
+and nothing between them. Compatibility is the FIRST step and the only place a shape AdCP
+does not define may be seen; after it, everything downstream sees the pinned schema.
 
 ## Where the tree is
 
@@ -62,12 +65,55 @@ async def _handle_skill(self, skill_name: str, parameters: dict, identity) -> An
 Delete the 11 methods and the `hasattr` filter. A row dispatches because it is in the
 registry, not because someone wrote a matching method name.
 
-**What happens to the coercions.** Each is either a wire-compatibility rewrite every transport
-owes a buyer, or it is nothing. Move each into the DTO as a `BeforeValidator` on the field it
-coerces -- where all three transports get it, and where a value the pin forbids RAISES instead
-of vanishing. `_coerce_wire_object`'s `return None` dies with the move.
+**What happens to the coercions.** Measured, not assumed. Pydantic already does four of the
+five, unaided, on the plain dict a buyer sends:
 
----
+```
+{"account":  {"account_id": "acct_1"}}   -> AccountReference
+{"filters":  {"tags": ["promo"]}}        -> CreativeFilters
+{"brand":    {"domain": "b.com"}}        -> BrandReference
+{"context":  {"conversation_id": "c1"}}  -> ContextObject
+```
+
+`to_account_reference`, `coerce_creative_filters`, `to_context_object` and the dict arm of
+`to_brand_reference` are therefore doing work the DTO does anyway. They DELETE. They are also
+worse than redundant: `_coerce_wire_object` returns `None` for a non-dict, so where pydantic
+would raise, A2A silently drops -- which is the finding above.
+
+Two are genuine wire-compatibility REWRITES, accepting a shape the pinned schema does not:
+
+| Rewrite | Input | Result |
+|---|---|---|
+| `to_brand_reference` | `"Acme"` | `BrandReference(domain="acme")` |
+| `upgrade_legacy_format_id` | `"display_300x250"` | `FormatId(agent_url=<default agent>, id=...)` |
+
+**Both belong in the compat layer, and it already exists.** `normalize_request_params`
+(`src/core/request_compat.py`) translates deprecated wire shapes into current ones BEFORE
+validation, and it is already wired to all three transports -- `mcp_compat_middleware.py:137`,
+`rest_compat_middleware.py:58`, `adcp_a2a_server.py:1644`. It already performs exactly this
+class of rewrite; `account_id (string) -> account: {account_id}` is one of its existing rules.
+
+So the two rewrites MOVE THERE and stop being A2A-only. They do not belong on the DTO either:
+a DTO is the pinned schema, and putting a legacy shorthand in a `BeforeValidator` would make
+the model accept a shape AdCP does not define -- the same mistake as declaring a non-spec
+field, just spelled as behaviour instead of a field.
+
+The layering the whole design wants:
+
+```
+wire bytes -> compat middleware (legacy shapes -> spec shapes) -> DTO (pinned schema) -> boundary -> impl
+```
+
+One normalizer, before validation, for every transport. Nothing per-skill and nothing after.
+Today a bare-string `brand` is accepted on A2A and `ValidationError` on MCP and REST, which is
+what happens when the rewrite lives past the point where all transports converge.
+
+**On protobuf.** Nothing here parses binary protobuf -- there is no `SerializeToString` or
+`ParseFromString` anywhere in `src/`. The A2A path is `json_format.MessageToDict` over a
+`Struct`, so `parameters` is a plain JSON-shaped dict by the time a handler sees it, and
+pydantic can validate it directly. Any handling written for a binary-protobuf assumption is
+dead code. The one real Struct artifact is that it has no integer type -- every number arrives
+as a double -- and pydantic's non-strict mode already coerces `2.0` to an `int` field.
 
 ## R2 — Requests and responses each get one base, and the boundary stops probing
 
@@ -197,26 +243,27 @@ answer `IDEMPOTENCY_IN_FLIGHT` on a collision with an incomplete row. It subsume
 `_raise_degraded_replay_outcome`'s transient branch and closes the adapter double-execution
 window.
 
-**Priority: lowest.** It needs concurrent same-key traffic to observe, and few sellers implement
-it. It is listed because the enum member exists and the gap should be known, not because it is
-urgent.
+**Can BDD grade it today? No.** The only scenario row in the tree that names
+`IDEMPOTENCY_IN_FLIGHT` is in `BR-UC-028-manage-collection-lists.feature`, which is on the
+UNBOUND allowlist (`test_architecture_feature_file_bound.py`) for a tool this seller does not
+implement -- so it never executes. There is no concurrency in the BDD harness and none is
+needed.
 
----
+**And it does not need concurrency to be gradable.** The observable state is a row: an
+attempt whose payload hash is populated and whose response slot is empty. A Given seeds that
+row -- the same shape `seed_cached_success` already provides for the replay case -- and the
+When dispatches a second request with the same key. The response is `IDEMPOTENCY_IN_FLIGHT`
+whether the first request is genuinely still running or merely recorded as such, because the
+seller cannot tell the difference either; that is the whole point of writing the row first.
 
-## Settled, not open
+So the work is: write the attempt row before running, complete it after, answer
+`IDEMPOTENCY_IN_FLIGHT` on a collision with an incomplete row -- and one BDD scenario with a
+`seed_incomplete_attempt` Given, wired to a bound feature, to grade it on all four
+transports.
 
-**Payload equivalence is over what we process.** The hash is taken on
-`req.model_dump(mode="json")` -- the validated request. Undeclared fields are dropped by
-`extra="ignore"` before hashing, and re-encodings of one value (`"...Z"` vs `"...+00:00"`)
-normalize to one form. That is deliberate: equivalence is over the request as this seller
-understands it, and what it deliberately discards cannot be part of the comparison.
-
-The pinned prose reads more strictly ("identical canonical JSON form, not field-by-field
-semantic comparison"), which would require canonicalising the received body BEFORE validation --
-three capture points, one per transport, which is the exact arrangement whose failure motivated
-this design. The residual risk is bounded by the replay TTL: a deploy that starts implementing a
-previously-undeclared field re-reads old cache rows differently for at most one TTL window.
-Recorded in `tests/integration/test_idempotency_wire_matrix.py::TestHashInputIsTheValidatedRequest`.
+**Priority: lowest.** It needs concurrent same-key traffic to occur in production, and few
+sellers implement it. It is listed because the enum member exists, the gap should be known,
+and the grading cost turns out to be one Given.
 
 ---
 

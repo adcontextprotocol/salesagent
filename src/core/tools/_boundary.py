@@ -27,10 +27,19 @@ how the previous arrangement went wrong in three ways at once:
 ## The idempotency rule, entire
 
 Save a non-error response that carried a key. On a later request with the same key: same
-payload replays it verbatim, different payload is IDEMPOTENCY_CONFLICT. The digest is
-``canonical_request_hash``, which strips the spec's closed exclusion list
-(``idempotency_key``, ``context``, ``governance_context``), so a key never hashes itself and
-two requests differing only in field order are the same request.
+payload replays it verbatim, different payload is IDEMPOTENCY_CONFLICT.
+
+The digest is ``canonical_request_hash`` over the VALIDATED request -- ``req.model_dump``,
+after the DTO has parsed it. Equivalence is therefore over the request as this seller
+understands it: two spellings of one instant are one payload, and a field the pinned schema
+does not define is dropped by ``extra="ignore"`` before hashing, so it cannot distinguish two
+requests either. That is deliberate. What the seller deliberately discards cannot be part of
+what it compares, and the alternative -- canonicalising the received bytes before validation
+-- needs a capture point per transport, which is the arrangement whose failure this seam
+exists to fix. On top of that the spec's closed exclusion list is stripped
+(``idempotency_key``, ``context``, ``governance_context``, and
+``push_notification_config.authentication.credentials``), so a key never hashes itself and a
+rotated webhook credential does not turn a retry into a conflict.
 
 Errors are never saved. Most implementations raise, and a raise never reaches the save --
 but ``create_media_buy`` RETURNS a failure for an adapter rejection, so the save also checks

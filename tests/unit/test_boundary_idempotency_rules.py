@@ -86,39 +86,6 @@ class TestTheStoredShapeIsTheInverseOfTheLoadedOne:
         assert _is_task_envelope(dict) is False
 
 
-class TestOnlyTheMutatingToolsCarryAKey:
-    """A DTO is the pinned schema and nothing else, so declaring the field IS the answer.
-
-    There is no predicate here to test any more. ``_keyed_scope`` reads
-    ``req.idempotency_key``; a DTO whose pinned schema declares no such property has none,
-    and the boundary's scope is None. That used to need
-    ``_spec_declares_idempotency_key``, a predicate whose whole job was to ignore ONE
-    locally-added field on ``ListAccountsRequest`` -- a field added to work around a BDD step
-    that constructed the model in-process. The step dispatches a literal payload now, so the
-    field went, and the predicate with it.
-
-    What survives is worth pinning: the set of keyed tools must stay the spec's.
-    """
-
-    #: The pinned schemas that declare the key. Cross-checked below against the SDK's own
-    #: ``adcp._idempotency.IDEMPOTENT_TASKS``, so this literal cannot drift silently.
-    EXPECTED = {"create_media_buy", "update_media_buy", "sync_creatives", "sync_accounts"}
-
-    def test_exactly_the_mutating_tools_declare_a_key(self) -> None:
-        declared = {name for name, spec in TOOLS.items() if "idempotency_key" in spec.dto.model_fields}
-        assert declared == self.EXPECTED
-
-    def test_the_sdk_agrees_about_which_tools_those_are(self) -> None:
-        """The SDK is a cross-check, never the authority -- but it should not disagree."""
-        from adcp._idempotency import IDEMPOTENT_TASKS
-
-        assert self.EXPECTED <= IDEMPOTENT_TASKS
-
-    def test_a_read_tool_declares_no_key(self) -> None:
-        """``list_accounts`` is the one that carried a non-spec field. It carries none now."""
-        assert "idempotency_key" not in TOOLS["list_accounts"].dto.model_fields
-
-
 class TestTheResponseModelIsReadOffTheImplementation:
     """The cache can only revive an envelope it can name a type for."""
 

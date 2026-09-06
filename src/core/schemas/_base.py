@@ -3445,21 +3445,6 @@ class GetMediaBuysRequest(LibraryGetMediaBuysRequest):
     # silently opted this model out of that -- an unknown field was accepted everywhere.
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
-    # A departure from the spec's field set, and declaring it here IS the statement of that:
-    # media-buy/get-media-buys-request.json (AdCP 3.1.1) defines no account_id, the spec field
-    # is `account`, and the added set is derived as
-    # ``set(model_fields) - library_declared_fields(cls)`` rather than listed a second time
-    # (docs/design/one-tool-registry.md).
-    #
-    # It does NOT filter, despite the class docstring above calling it a filter. Its one
-    # reader is media_buy_list.py's guard, which REFUSES the request when it is set
-    # (AdCPCapabilityNotSupportedError) -- and no transport can set it: no wrapper parameter
-    # on MCP, and REST and A2A both narrow to the builder's kwargs. So the refusal it drives
-    # is unreachable from the wire and is exercised only by tests that construct the DTO
-    # in-process. Whether to keep giving a typed refusal to a caller who spells `account_id`
-    # is a compatibility question, not a spec one.
-    account_id: str | None = Field(default=None, description="Account to filter to (legacy, prefer account)")
-
 
 class GetMediaBuysResponse(NestedModelSerializerMixin, LibraryGetMediaBuysResponse):
     """Extends library GetMediaBuysResponse.
