@@ -56,7 +56,13 @@ if TYPE_CHECKING:
 # fixture lookup. Simple ``import`` is not enough — pytest only discovers
 # fixtures from conftest files and registered plugins.
 pytest_plugins = [
+    # scenario_liveness FIRST: it measures steps_bound for every scenario, and
+    # unbound_steps skips on that same condition. Registering the instrument
+    # ahead of the skip keeps unwired scenarios inside the measurement instead
+    # of vanishing from it the moment they start skipping — otherwise the count
+    # of work remaining would appear to shrink as the work is hidden.
     "tests.bdd.scenario_liveness",
+    "tests.bdd.unbound_steps",
     "tests.bdd.steps.generic.given_auth",
     "tests.bdd.steps.generic.given_config",
     "tests.bdd.steps.generic.given_entities",
@@ -5446,5 +5452,13 @@ def _harness_env(request: pytest.FixtureRequest, ctx: dict) -> Generator[None, N
         # NOT WIRED is a real answer, not an absence. Each branch UC keeps its own
         # catch-all row (below) carrying the reason it used to xfail with inline;
         # reaching here means no row claimed the scenario at all.
-        pytest.xfail(f"No harness wired for {uc} (markers: {sorted(marker_names)})")
+        #
+        # SKIP, not xfail. This fires during fixture setup, so the scenario never
+        # dispatches anything and no step body runs — an xfail here asserted "it
+        # ran and failed as expected" about something that never ran. The two are
+        # not interchangeable in a summary: an xfail count reads as work that is
+        # measured and known-broken, while these are simply not measured at all.
+        # Binding the twenty unbound feature files made the difference matter:
+        # UC-001 alone contributes 1110 instances that reach exactly here.
+        pytest.skip(f"No harness wired for {uc} (markers: {sorted(marker_names)})")
     yield from _run_env_route(request, ctx, route, e2e_config)
