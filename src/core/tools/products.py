@@ -13,7 +13,6 @@ from typing import Any, cast
 from adcp import FormatId
 from adcp import Product as LibraryProduct
 from adcp.types import PropertyListReference
-from fastmcp.server.context import Context
 
 from src.adapters import get_adapter_default_channels
 from src.core.audit_logger import get_audit_logger
@@ -36,12 +35,6 @@ from src.core.schemas import (
     Product,  # Extends library Product
 )
 from src.core.testing_hooks import AdCPTestContext
-from src.core.tool_context import ToolContext
-from src.core.transport_helpers import (
-    NOT_PROVIDED,
-    IdentityOrNotProvided,
-    resolve_identity_if_not_provided,
-)
 from src.core.validation_helpers import safe_parse_json_field
 from src.services.policy_check_service import PolicyCheckService, PolicyStatus
 
@@ -823,34 +816,6 @@ async def _get_products_impl(req: GetProductsRequest, identity: ResolvedIdentity
     )
 
     return resp
-
-
-async def get_products_raw(
-    req: GetProductsRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> GetProductsResponse:
-    """Get available products matching the brief.
-
-    Raw function without @mcp.tool decorator for A2A server use.
-    Returns a clean GetProductsResponse model — v2 compat is applied
-    at the caller's boundary (A2A handler), not here.
-
-    Args:
-        req: The built GetProductsRequest -- brief, brand, filters, property_list and
-            context all travel ON it. Callers build it with
-            ``create_get_products_request``, the one builder every transport shares.
-        ctx: FastMCP context (automatically provided)
-        identity: Resolved identity from transport boundary (preferred over ctx)
-
-    Returns:
-        GetProductsResponse containing matching products
-    """
-    # Resolve identity from transport context only if the caller omitted it
-    identity = resolve_identity_if_not_provided(identity, ctx, require_valid_token=False)
-
-    # Call shared implementation
-    return await _get_products_impl(req, identity)
 
 
 def get_product_catalog(tenant_id: str | None = None) -> list[Product]:

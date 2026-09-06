@@ -182,6 +182,7 @@ class TestListPagination:
         assert len(response.creatives) == 2
         assert response.pagination.has_more is True
 
+
 class TestListPrincipalIsolation:
     """Creatives are principal-scoped — cross-principal isolation."""
 

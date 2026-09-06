@@ -59,6 +59,7 @@ from src.core.schemas import (
     UpdateMediaBuySuccess,
 )
 from src.core.testing_hooks import AdCPTestContext
+from src.core.tools._boundary import invoke_tool
 from src.core.tools.media_buy_delivery import _get_media_buy_delivery_impl
 
 # ---------------------------------------------------------------------------
@@ -1452,7 +1453,10 @@ class TestIdempotencyKeyRequired:
 
 
 class TestCreateMediaBuyIdempotency:
-    """UC-002 idempotency: _create_media_buy_impl returns existing media buy on replay.
+    """UC-002 idempotency: a replayed key returns the original media buy.
+
+    Dispatched through ``invoke_tool`` -- the boundary owns the probe and the cache write, so
+    calling the implementation directly would bypass the behavior these tests grade.
 
     Per adcp 3.12, retrying with the same idempotency_key must return the original
     media_buy_id without creating a duplicate ad-server booking.
@@ -1466,7 +1470,6 @@ class TestCreateMediaBuyIdempotency:
         Covers: UC-002-MAIN-IDEMPOTENCY
         """
         from src.core.idempotency_canonical import canonical_request_hash
-        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         idem_key = "550e8400-e29b-41d4-a716-446655440000"
         req = _make_request(idempotency_key=idem_key)
@@ -1494,13 +1497,16 @@ class TestCreateMediaBuyIdempotency:
             patch("src.core.tools.media_buy_create.validate_setup_complete"),
             patch("src.core.auth.get_principal_object") as mock_principal,
             patch("src.core.database.repositories.MediaBuyUoW", return_value=mock_uow),
+            # Account resolution is the boundary's OTHER database read, and it is not what
+            # these two grade; a pass-through keeps the probe the only DB call in play.
+            patch("src.core.transport_helpers.enrich_identity_with_account", side_effect=lambda i, a=None: i),
         ):
             mock_princ = MagicMock()
             mock_princ.principal_id = "test_principal"
             mock_princ.name = "Test Buyer"
             mock_principal.return_value = mock_princ
 
-            result = await _create_media_buy_impl(req, identity=identity)
+            result = await invoke_tool("create_media_buy", req, identity)
 
         assert isinstance(result, CreateMediaBuyResult)
         assert isinstance(result.response, CreateMediaBuySuccess)
@@ -1519,7 +1525,6 @@ class TestCreateMediaBuyIdempotency:
 
         Covers: UC-002-MAIN-IDEMPOTENCY
         """
-        from src.core.tools.media_buy_create import _create_media_buy_impl
 
         req = _make_request(idempotency_key="new-key-never-seen")
         identity = _make_identity()
@@ -1563,6 +1568,7 @@ class TestCreateMediaBuyIdempotency:
             patch("src.core.auth.get_principal_object") as mock_principal,
             patch("src.core.tools.media_buy_create.get_context_manager") as mock_ctx_mgr,
             patch("src.core.database.repositories.MediaBuyUoW", side_effect=uow_instances),
+            patch("src.core.transport_helpers.enrich_identity_with_account", side_effect=lambda i, a=None: i),
         ):
             mock_princ = MagicMock()
             mock_princ.principal_id = "test_principal"
@@ -1578,7 +1584,7 @@ class TestCreateMediaBuyIdempotency:
             # which fails with the typed AdCPProductNotFoundError. Capture it so
             # we can still assert the idempotency probe ran.
             with pytest.raises(AdCPProductNotFoundError):
-                await _create_media_buy_impl(req, identity=identity)
+                await invoke_tool("create_media_buy", req, identity)
 
         # β idempotency probe ran (verbatim success cache), found nothing → proceeded
         mock_idem_attempts_repo.find_by_key.assert_called_once_with(

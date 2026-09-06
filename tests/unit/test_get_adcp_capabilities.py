@@ -133,18 +133,6 @@ class TestGetAdcpCapabilitiesImports:
 
         assert callable(_get_adcp_capabilities_impl)
 
-    def test_raw_function_exists(self):
-        """Test that the raw function exists."""
-        from src.core.tools.capabilities import get_adcp_capabilities_raw
-
-        assert callable(get_adcp_capabilities_raw)
-
-    def test_raw_function_exported_from_tools(self):
-        """Test that the raw function is exported from tools module."""
-        from src.core.tools import get_adcp_capabilities_raw
-
-        assert callable(get_adcp_capabilities_raw)
-
 
 class TestGetAdcpCapabilitiesImpl:
     """Test the _get_adcp_capabilities_impl function."""

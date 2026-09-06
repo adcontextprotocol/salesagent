@@ -7,26 +7,15 @@ from contextlib import ExitStack
 from typing import Any
 
 from adcp.types import CreativeAction, CreativeAsset
-from adcp.types import GeneratedTaskStatus as AdcpTaskStatus
 from pydantic import BaseModel
-from pydantic import ValidationError as PydanticValidationError
 
 from src.core.auth import require_identity, require_principal_id, require_tenant
-from src.core.idempotency_replay import cache_success, lookup_cached_replay, maybe_evict_expired
-
-#: Scope component of the idempotency cache key (see IdempotencyAttempt.tool_name), so a
-#: sync_creatives key can never resolve to a create_media_buy response.
-_IDEMPOTENCY_TOOL_NAME = "sync_creatives"
 from src.core.database.repositories.uow import CreativeUoW
 from src.core.errors.details import ValidationDetails
 from src.core.exceptions import AdCPSalesAgentError, adcp_error_for
 from src.core.helpers import enum_value, log_tool_activity
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.schemas import (
-    SyncCreativeResult,
-    SyncCreativesResponse,
-    validate_idempotency_key_shape,  # noqa: F401
-)
+from src.core.schemas import SyncCreativeResult, SyncCreativesResponse
 from src.core.schemas.creative import SyncCreativesRequest
 from src.core.validation_helpers import format_validation_error, run_async_in_sync_context
 from src.core.webhook_validator import webhook_url_for_log
@@ -62,32 +51,9 @@ def _with_creative(details: ValidationDetails | None, creative_id: str) -> Valid
     return details.model_copy(update={"creative_id": creative_id})
 
 
-def _replay_cached_sync(envelope: dict[str, object]) -> SyncCreativesResponse | None:
-    """Reconstruct a cached sync_creatives success from the verbatim cache.
-
-    The cache stores ``{"status": <protocol task status>, "response": <SyncCreativesResponse
-    dump>}``. Returns None when the stored envelope no longer validates against the current
-    schema -- drift between the writing and the replaying deploy inside the TTL window --
-    so callers treat it as a miss and re-execute rather than erroring.
-    """
-    try:
-        return SyncCreativesResponse.model_validate(envelope["response"])
-    except (KeyError, TypeError, PydanticValidationError):
-        logger.warning("Cached sync_creatives envelope failed validation — treating as a miss", exc_info=True)
-        return None
-
-
 def _sync_creatives_impl(
     req: SyncCreativesRequest,
     identity: ResolvedIdentity | None = None,
-    # PLUMBING, not a request field: the RFC 8785 canonical hash of the transmission the
-    # wrapper received, computed there from the request it already built. Passed in rather
-    # than derived here because canonicalising means dumping the request model, and an
-    # _impl must not call model_dump (the no-model-dump-in-impl guard) -- nor rebuild the
-    # request, which would be a second construction path. It is also the switch that says
-    # a TRANSMISSION happened: an in-process caller has no wire bytes, so it passes None
-    # and the at-most-once machinery below stays out of its way.
-    request_hash: str | None = None,
 ) -> SyncCreativesResponse:
     """Sync creative assets to centralized library (AdCP v2.5 spec compliant endpoint).
 
@@ -99,16 +65,15 @@ def _sync_creatives_impl(
 
     Every protocol field arrives ON ``req``. This used to be ten separate parameters --
     creatives, assignments, creative_ids, delete_missing, dry_run, validation_mode,
-    push_notification_config, context, idempotency_key -- so the request was spread across
-    the call signature and there was no single object for "the request was validated" to
-    mean anything about. Nine of the ten are declared fields of the pinned
-    creative/sync-creatives-request.json and are read off ``req``; only ``request_hash``
-    is not a request field, and it stays a parameter beside ``identity``.
+    push_notification_config, context, idempotency_key -- all of which are declared fields
+    of the pinned creative/sync-creatives-request.json and are read off ``req``.
+
+    ``idempotency_key`` arrives here but this function does nothing with it:
+    :func:`src.core.tools._boundary.invoke` replays and caches by key before the call.
 
     Args:
         req: Validated SyncCreativesRequest carrying every protocol field
         identity: ResolvedIdentity with principal/tenant info (transport-agnostic)
-        request_hash: canonical hash of the transmission (see above), or None in-process
 
     Returns:
         SyncCreativesResponse with synced creatives and assignments
@@ -134,15 +99,6 @@ def _sync_creatives_impl(
     dry_run = bool(req.dry_run)
     validation_mode = enum_value(req.validation_mode)
 
-    # AdCP 3.1.1 requires this key and defines it as CLIENT-generated so that resending
-    # after a lost response is at-most-once. Its SHAPE is re-checked here so a malformed key
-    # is a buyer-facing VALIDATION_ERROR rather than silence.
-    #
-    # The key is HONOURED, not merely accepted: the probe below replays a stored success
-    # for a repeated key and refuses a repeated key carrying a different payload. Accepting
-    # it without deduplicating was worse than not taking it, because the spec attaches the
-    # at-most-once promise to the field's presence.
-    validate_idempotency_key_shape(req.idempotency_key)
     from pydantic import ValidationError
 
     # Phase 1a: Models flow through to helpers (which convert via isinstance guard).
@@ -163,34 +119,6 @@ def _sync_creatives_impl(
     principal_id = require_principal_id(identity, context=req.context)
     identity = require_identity(identity, context=req.context)
     tenant = require_tenant(identity, context=req.context)
-
-    # At-most-once probe, through the SHARED machinery media_buy_create uses -- one cache,
-    # one conflict rule, one ceiling. A dry run is excluded deliberately: it performs no
-    # write, so there is no side effect to deduplicate, and caching one would let a dry run
-    # answer a subsequent real sync carrying the same key.
-    #
-    # Ahead of the SSRF gate below on purpose: a replay returns a stored response and
-    # performs no registration, so there is no URL to stash and nothing to gate.
-    #
-    # Gated on request_hash as well as the key -- the SAME condition the cache WRITE below
-    # already carried, so for every transport this is unchanged (the wrappers compute the
-    # hash under exactly `idempotency_key and not dry_run`). What it excludes is the
-    # in-process caller, which has no transmission to hash. That caller carries the OUTER
-    # media buy's client key, and the cache scope is the spec's (agent, account, key) tuple
-    # with NO tool dimension (IdempotencyAttemptRepository.find_by_key), so probing with it
-    # would hit the media buy's own row and -- passing request_hash=None against a stored
-    # hash -- raise IDEMPOTENCY_CONFLICT on a perfectly good nested sync.
-    if request_hash is not None and req.idempotency_key and not dry_run:
-        replay = lookup_cached_replay(
-            tenant_id=tenant["tenant_id"],
-            principal_id=principal_id,
-            account_id=identity.account_id,
-            idempotency_key=req.idempotency_key,
-            request_hash=request_hash,
-            deserialize=_replay_cached_sync,
-        )
-        if replay is not None:
-            return replay
 
     # Registration SSRF gate on the buyer-supplied webhook URL, taken HERE: before
     # any DB / workflow write stashes the URL, and before the per-creative loop,
@@ -622,21 +550,4 @@ def _sync_creatives_impl(
         context=req.context,
     )
 
-    # Cached only on the success path, so an error is never replayed (AdCP
-    # security.mdx#idempotency rule 3) -- every failure returns or raises before here.
-    # request_hash is set by the wrapper under exactly this condition, so the extra check
-    # narrows the type rather than adding a case: a cache row without a payload hash carries
-    # no conflict signal, and writing one would make a later reuse silently replayable.
-    if req.idempotency_key and not dry_run and request_hash is not None:
-        cache_success(
-            tenant_id=tenant["tenant_id"],
-            principal_id=principal_id,
-            account_id=identity.account_id,
-            tool_name=_IDEMPOTENCY_TOOL_NAME,
-            idempotency_key=req.idempotency_key,
-            response_model=response,
-            protocol_status=AdcpTaskStatus.completed.value,
-            payload_hash=request_hash,
-        )
-        maybe_evict_expired(tenant["tenant_id"])
     return response

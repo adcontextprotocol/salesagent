@@ -48,7 +48,6 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from fastmcp.server.context import Context
 from pydantic import BaseModel, RootModel, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,9 +55,7 @@ from sqlalchemy.orm import Session
 from src.core.errors.codes import ErrorCode
 from src.core.errors.details import ConfigurationDetails, ValidationDetails
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.tool_context import ToolContext
 from src.core.tools._media_buy_status import resolve_canonical_status
-from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 
 logger = logging.getLogger(__name__)
 
@@ -406,28 +403,6 @@ def _get_media_buys_impl(
         context=req.context,
         errors=row_advisories or None,
     )
-
-
-def get_media_buys_raw(
-    req: GetMediaBuysRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-):
-    """Get media buys (raw function for A2A server use).
-
-    Args:
-        req: The built GetMediaBuysRequest -- filters, account, context and
-            include_snapshot all travel ON it, so this wrapper documents no
-            per-field parameters.
-        ctx: Context for authentication (used if identity not pre-resolved)
-        identity: Pre-resolved identity (preferred over ctx)
-
-    Returns:
-        GetMediaBuysResponse
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx, require_valid_token=True, protocol="a2a")
-
-    return _get_media_buys_impl(req, identity=identity)
 
 
 # --- Helper functions ---

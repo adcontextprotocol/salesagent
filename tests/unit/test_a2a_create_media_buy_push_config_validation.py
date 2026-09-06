@@ -18,11 +18,10 @@ What remains here is the positive control: a conformant no-auth config must surv
 request untouched.
 """
 
-from unittest.mock import AsyncMock, patch
-
 import pytest
 
 from src.core.schemas import CreateMediaBuyResult
+from tests.helpers.capture_wrapper_req import stub_impl
 
 
 def _valid_packages_params() -> dict:
@@ -80,13 +79,10 @@ async def test_no_auth_push_config_still_works():
         captured.update(kwargs)
         return submitted_result
 
-    with patch(
-        "src.a2a_server.adcp_a2a_server.core_create_media_buy_tool",
-        new=AsyncMock(side_effect=fake_tool),
-    ):
+    with stub_impl("create_media_buy", side_effect=fake_tool):
         result = await handler._handle_create_media_buy_skill(params, identity)
 
-    assert captured, "core_create_media_buy_tool was never called for no-auth config"
+    assert captured, "create_media_buy's implementation was never reached for a no-auth config"
     # ON THE REQUEST, not beside it. A no-auth config carries no credentials, so no
     # MinLen(32) constraint applies and it passes the schema untouched.
     built = captured["req"].push_notification_config

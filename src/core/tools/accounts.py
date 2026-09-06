@@ -30,7 +30,6 @@ from adcp.types.generated_poc.account.sync_accounts_request import (
 )
 from adcp.types.generated_poc.core.account_ref import AccountReference1, AccountReference2
 from adcp.types.generated_poc.core.business_entity import BusinessEntity
-from fastmcp.server.context import Context
 from pydantic import BaseModel
 
 from src.core.audit_logger import get_audit_logger
@@ -53,8 +52,6 @@ from src.core.schemas.account import (
     SyncAccountsResponse,
     SyncResponseAccount,
 )
-from src.core.tool_context import ToolContext
-from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 from src.core.webhooks.registration import accept_push_notification_config
 from src.services.notification_proof_service import NotificationProofService, get_notification_proof_service
 
@@ -246,25 +243,6 @@ def _list_accounts_impl(
 # ---------------------------------------------------------------------------
 # A2A raw wrapper
 # ---------------------------------------------------------------------------
-
-
-def list_accounts_raw(
-    req: ListAccountsRequest | None = None,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> ListAccountsResponse:
-    """List accounts accessible to the authenticated agent (raw function for A2A).
-
-    Args:
-        req: Optional request with filter parameters.
-        ctx: FastMCP context.
-        identity: Pre-resolved identity (if available).
-
-    Returns:
-        ListAccountsResponse with accessible accounts.
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx, require_valid_token=False)
-    return _list_accounts_impl(req, identity)
 
 
 # ===========================================================================
@@ -1752,22 +1730,3 @@ async def _sync_accounts_impl(
 # ---------------------------------------------------------------------------
 # sync_accounts A2A raw wrapper
 # ---------------------------------------------------------------------------
-
-
-async def sync_accounts_raw(
-    req: SyncAccountsRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> SyncAccountsResponse:
-    """Sync accounts by natural key (raw function for A2A).
-
-    Args:
-        req: Sync request with accounts to upsert.
-        ctx: FastMCP context.
-        identity: Pre-resolved identity (if available).
-
-    Returns:
-        SyncAccountsResponse with per-account action results.
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx, require_valid_token=True)
-    return await _sync_accounts_impl(req, identity)

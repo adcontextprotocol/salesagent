@@ -29,11 +29,8 @@ from adcp.types import Format as AdcpFormat
 from adcp.utils.format_assets import get_format_assets
 
 # Format subclass preserved through backward-compatibility helper (PEP 695 type param below).
-from fastmcp.server.context import Context
-
 from src.core.exceptions import AdCPSalesAgentError, AdCPServiceUnavailableError
 from src.core.helpers import enum_value
-from src.core.tool_context import ToolContext
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +86,6 @@ from src.core.schemas import Error as AdCPResponseError
 if TYPE_CHECKING:
     from src.core.creative_agent_registry import FormatFetchResult
 from src.core.schemas import ListCreativeFormatsRequest, ListCreativeFormatsResponse, format_id_identity
-from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 
 
 def _infer_asset_type(asset_id: str) -> str:
@@ -534,24 +530,3 @@ def _route_agent_failures(
         else:
             routed.append(advisory)
     return routed
-
-
-def list_creative_formats_raw(
-    req: ListCreativeFormatsRequest | None = None,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> ListCreativeFormatsResponse:
-    """List all available creative formats (raw function for A2A server use).
-
-    Delegates to shared implementation.
-
-    Args:
-        req: Optional request with filter parameters
-        ctx: FastMCP context
-        identity: Pre-resolved identity (if available)
-
-    Returns:
-        ListCreativeFormatsResponse with all available formats
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx, require_valid_token=False)
-    return _list_creative_formats_impl(req, identity)

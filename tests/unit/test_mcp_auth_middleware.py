@@ -23,6 +23,8 @@ import pytest
 
 from src.core.resolved_identity import ResolvedIdentity
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 class TestMCPAuthMiddlewareExists:
     """Verify MCPAuthMiddleware class structure."""
@@ -233,70 +235,27 @@ class TestGetMediaBuysImplRefactored:
 
 
 class TestToolsDoNotCallResolveIdentityDirectly:
-    """After middleware is in place, MCP tool wrappers should read from context state,
-    not call resolve_identity_from_context() directly."""
+    """No module under ``src/core/tools`` resolves identity for itself.
 
-    # MCP tool wrapper functions (registered in main.py:300-313)
-    MCP_TOOL_WRAPPERS = {
-        "get_adcp_capabilities": "src/core/tools/capabilities.py",
-        "get_products": "src/core/tools/products.py",
-        "list_creative_formats": "src/core/tools/creative_formats.py",
-        "sync_creatives": "src/core/tools/creatives/sync_wrappers.py",
-        "list_creatives": "src/core/tools/creatives/listing.py",
-        "list_authorized_properties": "src/core/tools/properties.py",
-        "create_media_buy": "src/core/tools/media_buy_create.py",
-        "update_media_buy": "src/core/tools/media_buy_update.py",
-        "get_media_buy_delivery": "src/core/tools/media_buy_delivery.py",
-        "get_media_buys": "src/core/tools/media_buy_list.py",
-        "update_performance_index": "src/core/tools/performance.py",
-        "list_tasks": "src/core/tools/task_management.py",
-        "get_task_status": "src/core/tools/task_management.py",
-        "complete_task": "src/core/tools/task_management.py",
-    }
+    Identity is resolved ONCE per request, at the transport boundary: the MCP middleware
+    above, the A2A handler, or the REST auth dependency. A tool that reaches for ambient
+    context instead is resolving a second time, and can resolve to a DIFFERENT caller than
+    the one the boundary authenticated.
 
-    def _get_function_body_calls(self, filepath: str, func_name: str) -> list[str]:
-        """Extract function call names from a specific function's body using AST."""
-        source = Path(filepath).read_text()
-        tree = ast.parse(source)
+    Derived, not enumerated. This used to carry a hand-written table of fourteen tool names
+    and the file each one's MCP wrapper lived in, and grade only the function whose name
+    matched the tool. Those wrappers are gone -- every transport reaches an implementation
+    through ``TOOLS`` -- so the table graded nothing while still failing whenever a file
+    moved. Walking the package instead has no list to fall behind.
+    """
 
-        calls = []
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if node.name == func_name:
-                    for child in ast.walk(node):
-                        if isinstance(child, ast.Call):
-                            if isinstance(child.func, ast.Name):
-                                calls.append(child.func.id)
-                            elif isinstance(child.func, ast.Attribute):
-                                calls.append(child.func.attr)
-        return calls
-
-    @pytest.mark.parametrize(
-        "tool_name,filepath",
-        [
-            ("get_adcp_capabilities", "src/core/tools/capabilities.py"),
-            ("get_products", "src/core/tools/products.py"),
-            ("list_creative_formats", "src/core/tools/creative_formats.py"),
-            ("sync_creatives", "src/core/tools/creatives/sync_wrappers.py"),
-            ("list_creatives", "src/core/tools/creatives/listing.py"),
-            ("list_authorized_properties", "src/core/tools/properties.py"),
-            ("create_media_buy", "src/core/tools/media_buy_create.py"),
-            ("update_media_buy", "src/core/tools/media_buy_update.py"),
-            ("get_media_buy_delivery", "src/core/tools/media_buy_delivery.py"),
-            ("get_media_buys", "src/core/tools/media_buy_list.py"),
-            ("update_performance_index", "src/core/tools/performance.py"),
-            ("list_tasks", "src/core/tools/task_management.py"),
-            ("get_task_status", "src/core/tools/task_management.py"),
-            ("complete_task", "src/core/tools/task_management.py"),
-        ],
-    )
-    def test_mcp_wrapper_does_not_call_resolve_identity(self, tool_name, filepath):
-        """MCP tool wrapper must NOT call resolve_identity_from_context() directly.
-
-        After the middleware, identity is read from ctx.get_state('identity').
-        """
-        calls = self._get_function_body_calls(filepath, tool_name)
-        assert "resolve_identity_from_context" not in calls, (
-            f"MCP wrapper {tool_name} in {filepath} still calls resolve_identity_from_context(). "
-            "It should read identity from ctx.get_state('identity') instead."
+    def test_no_tool_module_calls_resolve_identity_from_context(self):
+        offenders = []
+        for path in sorted((REPO_ROOT / "src" / "core" / "tools").rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text())):
+                if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "resolve_identity_from_context":
+                    offenders.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
+        assert offenders == [], (
+            f"tool modules must not resolve identity themselves: {offenders}. "
+            "The transport boundary resolves it once and hands it to invoke_tool()."
         )

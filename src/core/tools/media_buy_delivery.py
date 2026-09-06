@@ -13,7 +13,6 @@ from datetime import UTC, date, datetime, timedelta
 from math import floor
 from typing import Any, cast
 
-from fastmcp.server.context import Context
 from pydantic import RootModel
 from rich.console import Console
 
@@ -24,7 +23,6 @@ from src.core.exceptions import (
     AdCPValidationError,
 )
 from src.core.helpers import enum_value
-from src.core.tool_context import ToolContext
 
 
 def _validate_attribution_window(attribution_window: "AttributionWindow | None") -> None:
@@ -110,7 +108,6 @@ from src.core.tools._media_buy_status import (
     NO_MORE_DATA_STATUSES,
     resolve_canonical_status,
 )
-from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 from src.core.utils import utc_flight_end, utc_flight_start
 
 
@@ -703,37 +700,6 @@ def _get_media_buy_delivery_impl(
             )
 
     return response
-
-
-def get_media_buy_delivery_raw(
-    req: GetMediaBuyDeliveryRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-):
-    """Get delivery metrics for media buys (raw function for A2A server use).
-
-    Args:
-        req: The built GetMediaBuyDeliveryRequest -- every wire field, ``account``
-            included, travels ON it. Callers build it with
-            ``_build_get_media_buy_delivery_request``, the one builder all three
-            transports share.
-        ctx: Context for authentication
-        identity: Pre-resolved identity (preferred over ctx)
-
-    Returns:
-        GetMediaBuyDeliveryResponse with delivery metrics
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx)
-
-    # Account resolution at the boundary, read OFF the request. It used to arrive as a
-    # parameter beside the request, so the same buyer field had two carriers and only the
-    # parameter one enriched identity.
-    if req.account is not None and identity is not None:
-        from src.core.transport_helpers import enrich_identity_with_account
-
-        identity = enrich_identity_with_account(identity, req.account)
-
-    return _get_media_buy_delivery_impl(req, identity)
 
 
 def _resolve_delivery_status_filter(

@@ -10,13 +10,14 @@ receive a pre-resolved identity parameter.
 """
 
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from src.core.schema_helpers import to_brand_reference
 from tests.factories.principal import PrincipalFactory
+from tests.helpers.capture_wrapper_req import stub_impl
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ async def test_handle_get_products_skill_passes_brand():
     """Test that _handle_get_products_skill passes brand parameter to core tool."""
     handler = AdCPRequestHandler()
 
-    with patch("src.a2a_server.adcp_a2a_server.core_get_products_tool") as mock_core_tool:
+    with stub_impl("get_products") as mock_core_tool:
         mock_response = MagicMock()
         mock_response.model_dump.return_value = {"products": [], "message": "Test products"}
         mock_core_tool.return_value = mock_response
@@ -61,7 +62,7 @@ async def test_handle_get_products_skill_forwards_property_list():
     """
     handler = AdCPRequestHandler()
 
-    with patch("src.a2a_server.adcp_a2a_server.core_get_products_tool") as mock_core_tool:
+    with stub_impl("get_products") as mock_core_tool:
         mock_response = MagicMock()
         mock_response.model_dump.return_value = {"products": [], "message": "Test products"}
         mock_core_tool.return_value = mock_response
@@ -90,7 +91,7 @@ async def test_handle_get_products_skill_no_brief_no_brand_raises():
     """Test that AdCPValidationError from _impl propagates through the handler."""
     handler = AdCPRequestHandler()
 
-    with patch("src.a2a_server.adcp_a2a_server.core_get_products_tool") as mock_core_tool:
+    with stub_impl("get_products") as mock_core_tool:
         from src.core.exceptions import AdCPValidationError
 
         mock_core_tool.side_effect = AdCPValidationError()

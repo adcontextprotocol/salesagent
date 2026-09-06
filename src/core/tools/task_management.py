@@ -15,7 +15,6 @@ from adcp.types.generated_poc.core.async_response_data import AdcpAsyncResponseD
 from adcp.types.generated_poc.core.pagination_response import PaginationResponse
 from adcp.types.generated_poc.protocol.get_task_status_response import HistoryItem
 from adcp.types.generated_poc.protocol.list_tasks_response import QuerySummary
-from fastmcp.server.context import Context
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import require_identity, require_principal_id, require_tenant
@@ -35,12 +34,6 @@ from src.core.schemas import (
     ListTasksResponse,
     TaskSummary,
     enum_value,
-)
-from src.core.tool_context import ToolContext
-from src.core.transport_helpers import (
-    NOT_PROVIDED,
-    IdentityOrNotProvided,
-    resolve_identity_if_not_provided,
 )
 
 logger = logging.getLogger(__name__)
@@ -320,19 +313,6 @@ async def _list_tasks_impl(
         return _list_tasks_response(formatted_tasks, total=total, limit=limit, offset=offset)
 
 
-async def list_tasks_raw(
-    req: ListTasksRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> ListTasksResponse:
-    """``list_tasks`` for A2A and REST: the implementation without MCP's Context."""
-    # NOT_PROVIDED, not None: None is a VALUE a caller can pass to mean anonymous, so a
-    # None default cannot tell 'no identity supplied' from 'explicitly anonymous' and the
-    # wrapper silently reaches for ambient context in both cases.
-    identity = resolve_identity_if_not_provided(identity, ctx)
-    return await _list_tasks_impl(req=req, identity=identity)
-
-
 async def _get_task_status_impl(
     req: GetTaskStatusRequest,
     identity: ResolvedIdentity | None = None,
@@ -424,19 +404,6 @@ async def _get_task_status_impl(
             task_detail.history = [HistoryItem(**entry) for entry in _task_history(task)]
 
         return task_detail
-
-
-async def get_task_status_raw(
-    req: GetTaskStatusRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> GetTaskStatusResponse:
-    """``get_task_status`` for A2A and REST: the implementation without MCP's Context."""
-    # NOT_PROVIDED, not None: None is a VALUE a caller can pass to mean anonymous, so a
-    # None default cannot tell 'no identity supplied' from 'explicitly anonymous' and the
-    # wrapper silently reaches for ambient context in both cases.
-    identity = resolve_identity_if_not_provided(identity, ctx)
-    return await _get_task_status_impl(req=req, identity=identity)
 
 
 def _task_history(task: Any) -> list[dict[str, Any]]:
@@ -535,16 +502,3 @@ async def _complete_task_impl(
             completed_at=completed_time.isoformat(),
             completed_by=principal_id,
         )
-
-
-async def complete_task_raw(
-    req: CompleteTaskRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> CompleteTaskResponse:
-    """``complete_task`` for A2A and REST: the implementation without MCP's Context."""
-    # NOT_PROVIDED, not None: None is a VALUE a caller can pass to mean anonymous, so a
-    # None default cannot tell "no identity supplied" from "explicitly anonymous" and the
-    # wrapper silently reaches for ambient context in both cases.
-    identity = resolve_identity_if_not_provided(identity, ctx)
-    return await _complete_task_impl(req=req, identity=identity)

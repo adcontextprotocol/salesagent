@@ -4,7 +4,6 @@ Prebid Sales Agent A2A Server using official a2a-sdk library.
 Supports both standard A2A message format and JSON-RPC 2.0.
 """
 
-import copy
 import json
 import logging
 import uuid
@@ -80,38 +79,9 @@ from src.core.schema_helpers import (
 from src.core.schemas import CreativeStatusEnum
 from src.core.tool_context import ToolContext
 from src.core.tool_error_logging import record_boundary_error
-from src.core.tools import (
-    create_media_buy_raw as core_create_media_buy_tool,
-)
-from src.core.tools import (
-    get_media_buy_delivery_raw as core_get_media_buy_delivery_tool,
-)
-from src.core.tools import (
-    get_media_buys_raw as core_get_media_buys_tool,
-)
-from src.core.tools import (
-    get_products_raw as core_get_products_tool,
-)
-from src.core.tools import (
-    list_accounts_raw as core_list_accounts_tool,
-)
 
 # Signals tools removed - should come from dedicated signals agents, not sales agent
-from src.core.tools import (
-    list_creative_formats_raw as core_list_creative_formats_tool,
-)
-from src.core.tools import (
-    list_creatives_raw as core_list_creatives_tool,
-)
-from src.core.tools import (
-    sync_accounts_raw as core_sync_accounts_tool,
-)
-from src.core.tools import (
-    sync_creatives_raw as core_sync_creatives_tool,
-)
-from src.core.tools import (
-    update_media_buy_raw as core_update_media_buy_tool,
-)
+from src.core.tools._boundary import invoke_tool
 from src.core.tools.registry import TOOLS
 from src.core.version import get_version
 from src.core.webhook_validator import (
@@ -1656,12 +1626,6 @@ class AdCPRequestHandler(RequestHandler):
         Raises:
             ValueError: For unknown skills or invalid parameters
         """
-        # The buyer's wire payload, captured BEFORE the pnc protocol-layer
-        # injection, deprecated-field normalization, and any handler mutations —
-        # the idempotency payload-hash input (AdCP defines equivalence over the
-        # request as sent). Deep copy: downstream steps mutate nested dicts.
-        raw_wire_payload = copy.deepcopy(parameters)
-
         # Inject the protocol-layer push config into parameters for skills that need it.
         #
         # The TYPED model the seam already accepted, not a dict re-derived from the
@@ -1727,10 +1691,7 @@ class AdCPRequestHandler(RequestHandler):
         try:
             handler = skill_handlers[skill_name]
             # Handlers return raw Pydantic models (or raise typed AdCPSalesAgentError on validation failure)
-            if skill_name == "create_media_buy":
-                result = await handler(parameters, identity, raw_wire_payload=raw_wire_payload)
-            else:
-                result = await handler(parameters, identity)
+            result = await handler(parameters, identity)
             # Serialize at the boundary — models become dicts with protocol fields
             return self._serialize_for_a2a(result)
         except A2AError:
@@ -1775,7 +1736,7 @@ class AdCPRequestHandler(RequestHandler):
         # shape that silently drops every field added later, and this one already named five
         # of the twenty-one fields the DTO declares.
         req = TOOLS["get_products"].validate(parameters)
-        response = await core_get_products_tool(req=req, identity=identity)
+        response = await invoke_tool("get_products", req, identity)
 
         # Apply v2 compat for pre-3.0 clients at the boundary
         from src.core.version_compat import apply_version_compat
@@ -1789,12 +1750,7 @@ class AdCPRequestHandler(RequestHandler):
             response_data = self._stamp_a2a_protocol_fields(response)
         return apply_version_compat("get_products", response_data, adcp_version)
 
-    async def _handle_create_media_buy_skill(
-        self,
-        parameters: dict,
-        identity: ResolvedIdentity,
-        raw_wire_payload: dict | None = None,
-    ) -> dict:
+    async def _handle_create_media_buy_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
         """Handle explicit create_media_buy skill invocation.
 
         IMPORTANT: This handler ONLY accepts AdCP spec-compliant format:
@@ -1833,8 +1789,6 @@ class AdCPRequestHandler(RequestHandler):
         # past it. The bypass had one field announced by three separate mechanisms.
 
         # Normalize explicit brand through the shared coercion funnel (#1324).
-        # Keep params JSON-serializable: raw_wire_payload falls back to params for
-        # direct handler callers, and idempotency hashes RFC 8785 over that dict.
         # to_brand_reference returns None only for None input (excluded above); every
         # other input returns BrandReference or raises typed AdCPValidationError.
         if params.get("brand") is not None:
@@ -1877,14 +1831,7 @@ class AdCPRequestHandler(RequestHandler):
         # Boundary-coerced values override the raw bag; everything else validates
         # straight into the DTO, which is the accepted shape.
         req = TOOLS["create_media_buy"].validate({**params, "account": to_account_reference(params.get("account"))})
-        response = await core_create_media_buy_tool(
-            req=req,
-            identity=identity,
-            # The DataPart params AS SENT (pre-normalization, pre-mutation) are
-            # the idempotency payload-hash input; the post-processed dict is the
-            # fallback only for direct handler callers.
-            raw_wire_payload=raw_wire_payload if raw_wire_payload is not None else params,
-        )
+        response = await invoke_tool("create_media_buy", req, identity)
 
         return response
 
@@ -1960,7 +1907,7 @@ class AdCPRequestHandler(RequestHandler):
                 "account": to_account_reference(parameters.get("account")),
             }
         )
-        response = core_sync_creatives_tool(req=req, identity=identity)
+        response = await invoke_tool("sync_creatives", req, identity)
 
         return response
 
@@ -1989,7 +1936,7 @@ class AdCPRequestHandler(RequestHandler):
         # Boundary-coerced values override the raw bag; everything else validates
         # straight into the DTO, which is the accepted shape.
         req = TOOLS["list_creatives"].validate({**parameters, "filters": filters})
-        response = core_list_creatives_tool(req=req, identity=identity)
+        response = await invoke_tool("list_creatives", req, identity)
 
         return response
 
@@ -2014,10 +1961,8 @@ class AdCPRequestHandler(RequestHandler):
         # The DTO is the accepted shape, so validating into it IS the selection. The version
         # envelope no longer needs re-adding by hand: it was stripped by the selection, and
         # every DTO now inherits adcp_version / adcp_major_version from the SDK request model.
-        from src.core.tools.capabilities import get_adcp_capabilities_raw
-
         req = TOOLS["get_adcp_capabilities"].validate(parameters)
-        response = await get_adcp_capabilities_raw(req=req, identity=identity)
+        response = await invoke_tool("get_adcp_capabilities", req, identity)
 
         return response
 
@@ -2037,7 +1982,7 @@ class AdCPRequestHandler(RequestHandler):
         req = TOOLS["list_creative_formats"].validate(parameters)
 
         # Call core function with identity
-        response = core_list_creative_formats_tool(req=req, identity=identity)
+        response = await invoke_tool("list_creative_formats", req, identity)
 
         return response
 
@@ -2050,7 +1995,7 @@ class AdCPRequestHandler(RequestHandler):
 
         # The DTO is the accepted shape, so validating into it IS the selection.
         request = TOOLS["list_accounts"].validate(parameters)
-        return core_list_accounts_tool(req=request, identity=identity)
+        return await invoke_tool("list_accounts", request, identity)
 
     async def _handle_sync_accounts_skill(self, parameters: dict, identity: ResolvedIdentity | None) -> Any:
         """Handle explicit sync_accounts skill invocation.
@@ -2060,7 +2005,7 @@ class AdCPRequestHandler(RequestHandler):
 
         # The DTO is the accepted shape, so validating into it IS the selection.
         request = TOOLS["sync_accounts"].validate(parameters)
-        return await core_sync_accounts_tool(req=request, identity=identity)
+        return await invoke_tool("sync_accounts", request, identity)
 
     async def _handle_update_media_buy_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
         """Handle explicit update_media_buy skill invocation (CRITICAL for campaign management)."""
@@ -2109,7 +2054,7 @@ class AdCPRequestHandler(RequestHandler):
         # Boundary-coerced values override the raw bag; everything else validates
         # straight into the DTO, which is the accepted shape.
         built = TOOLS["update_media_buy"].validate({**params, "media_buy_id": req.media_buy_id or ""})
-        response = core_update_media_buy_tool(req=built, identity=identity)
+        response = await invoke_tool("update_media_buy", built, identity)
 
         return response
 
@@ -2125,7 +2070,7 @@ class AdCPRequestHandler(RequestHandler):
         GetMediaBuysRequest.model_validate(parameters)
         # The DTO is the accepted shape, so validating into it IS the selection.
         req = TOOLS["get_media_buys"].validate(parameters)
-        return core_get_media_buys_tool(req=req, identity=identity)
+        return await invoke_tool("get_media_buys", req, identity)
 
     async def _handle_get_media_buy_delivery_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
         """Handle explicit get_media_buy_delivery skill invocation (CRITICAL for monitoring).
@@ -2162,7 +2107,7 @@ class AdCPRequestHandler(RequestHandler):
         # wrapper's parameter list, then rebuild -- three steps whose only effect was to
         # drop whatever that hand-written list happened to omit.
         req = GetMediaBuyDeliveryRequest.model_validate(params)
-        response = core_get_media_buy_delivery_tool(req=req, identity=identity)
+        response = await invoke_tool("get_media_buy_delivery", req, identity)
 
         return response
 

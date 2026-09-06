@@ -9,13 +9,14 @@ This test verifies resolve_identity() is called at most once per NL request.
 """
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from tests.a2a_helpers import make_a2a_context
 from tests.factories.principal import PrincipalFactory
+from tests.helpers.capture_wrapper_req import registry_impl
 
 _MOCK_IDENTITY = PrincipalFactory.make_identity(
     principal_id="test-principal",
@@ -54,12 +55,11 @@ async def test_nl_product_query_calls_resolve_identity_once():
     params = _make_nl_message("Show me available products in the catalog")
 
     with patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY) as mock_resolve:
-        with patch("src.a2a_server.adcp_a2a_server.core_get_products_tool") as mock_products:
-            # core_get_products_tool returns a Pydantic GetProductsResponse;
-            # NL _get_products iterates response.products so the mock must
-            # return a real model (not a raw dict).
-            mock_products.return_value = GetProductsResponse(products=[])
-
+        # Substituted at the REGISTRY ROW: the row captured the implementation at import,
+        # so patching a module attribute would leave dispatch reaching the real one. The stub
+        # returns a Pydantic GetProductsResponse because NL _get_products iterates
+        # response.products.
+        with registry_impl("get_products", AsyncMock(return_value=GetProductsResponse(products=[]))):
             await handler.on_message_send(params, context=ctx)
 
     assert mock_resolve.call_count == 1, (
@@ -82,10 +82,8 @@ async def test_nl_pricing_query_calls_resolve_identity_once():
     params = _make_nl_message("What is the pricing for CPM ads?")
 
     with patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY) as mock_resolve:
-        with patch("src.a2a_server.adcp_a2a_server.core_get_products_tool") as mock_products:
-            # Return a dict to bypass model_dump() path
-            mock_products.return_value = {"products": [], "message": "No products found"}
-
+        stub = AsyncMock(return_value={"products": [], "message": "No products found"})
+        with registry_impl("get_products", stub):
             await handler.on_message_send(params, context=ctx)
 
     assert mock_resolve.call_count == 1, (
@@ -107,10 +105,11 @@ async def test_nl_targeting_query_calls_resolve_identity_once():
     params = _make_nl_message("Show me audience targeting options")
 
     with patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY) as mock_resolve:
-        # Mock the core capabilities function (not the handler — to expose both calls)
-        with patch("src.core.tools.capabilities.get_adcp_capabilities_raw") as mock_caps:
-            mock_caps.return_value = {"protocols": [], "targeting": {}}
-
+        # Substitute the capabilities implementation at the REGISTRY ROW, not at its module
+        # attribute: the row captured the function object at import, so patching the module
+        # name would leave the dispatched call reaching the real implementation.
+        mock_caps = AsyncMock(return_value={"protocols": [], "targeting": {}})
+        with registry_impl("get_adcp_capabilities", mock_caps):
             await handler.on_message_send(params, context=ctx)
 
     assert mock_resolve.call_count == 1, (

@@ -5,7 +5,7 @@ resolve_account calls .root on it expecting an AccountReference RootModel.
 Verifies the A2A handler wraps the dict in AccountReference before forwarding.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from adcp.types import AccountReference as LibraryAccountReference
@@ -14,6 +14,7 @@ from src.core.exceptions import AdCPValidationError
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schema_helpers import to_account_reference
 from src.core.schemas import SyncCreativesRequest
+from tests.helpers.capture_wrapper_req import stub_impl
 
 _MOCK_IDENTITY = ResolvedIdentity(
     principal_id="principal_123",
@@ -76,7 +77,7 @@ class TestSyncCreativesAccountCoercion:
             result.model_dump.return_value = {}
             return result
 
-        with patch("src.a2a_server.adcp_a2a_server.core_sync_creatives_tool", side_effect=_fake_core):
+        with stub_impl("sync_creatives", side_effect=_fake_core):
             import asyncio
 
             asyncio.run(
@@ -147,7 +148,7 @@ class TestSyncCreativesFormatIdStaysWire:
             result.model_dump.return_value = {}
             return result
 
-        with patch("src.a2a_server.adcp_a2a_server.core_sync_creatives_tool", side_effect=_fake_core):
+        with stub_impl("sync_creatives", side_effect=_fake_core):
             import asyncio
 
             asyncio.run(

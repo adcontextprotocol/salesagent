@@ -12,6 +12,7 @@ from starlette.testclient import TestClient
 
 from src.app import app
 from tests.factories import PrincipalFactory
+from tests.helpers.capture_wrapper_req import stub_impl
 
 _IDENTITY = PrincipalFactory.make_identity(protocol="rest")
 _CLIENT = TestClient(app)
@@ -31,7 +32,7 @@ class TestRESTCreativeFormatsFilterForwarding:
         ids=["name_search", "max_width", "is_responsive", "min_width"],
     )
     @patch("src.core.resolved_identity.resolve_identity")
-    @patch("src.core.tools.creative_formats._list_creative_formats_impl")
+    @stub_impl("list_creative_formats")
     def test_filter_forwarded_to_impl(self, mock_impl, mock_resolve, body, field, expected):
         """Filter params in POST body must reach _impl via req."""
         from src.core.schemas import ListCreativeFormatsResponse

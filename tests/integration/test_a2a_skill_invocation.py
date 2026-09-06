@@ -746,9 +746,9 @@ class TestA2ASkillInvocation:
                 # tools it does.
                 from src.core.tools.registry import TOOLS
 
-                assert skill_name in {
-                    name for name, spec in TOOLS.items() if spec.a2a
-                }, f"Skill {skill_name} is advertised but not declared with a2a in the registry"
+                assert skill_name in {name for name, spec in TOOLS.items() if spec.a2a}, (
+                    f"Skill {skill_name} is advertised but not declared with a2a in the registry"
+                )
             except Exception as e:
                 pytest.fail(f"Skill {skill_name} should be handled but caused error: {e}")
 
@@ -1012,7 +1012,9 @@ class TestA2ASkillInvocation:
             assert_delivery_forwarded_account(mock_delivery, expected, media_buy_ids=["mb_test_123"])
 
     @pytest.mark.asyncio
-    async def test_unimplemented_skill_is_refused(self, handler, sample_tenant, sample_principal, mock_identity, validator):
+    async def test_unimplemented_skill_is_refused(
+        self, handler, sample_tenant, sample_principal, mock_identity, validator
+    ):
         """An A2A skill this agent does not implement is refused, not silently accepted.
 
         One test, not three. This stood as approve_creative, get_media_buy_status and
@@ -1037,6 +1039,7 @@ class TestA2ASkillInvocation:
 
             with pytest.raises(A2AError):
                 await handler.on_message_send(params, context=ctx)
+
 
 if __name__ == "__main__":
     # Run tests directly

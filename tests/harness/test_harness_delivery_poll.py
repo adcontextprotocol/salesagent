@@ -6,10 +6,12 @@ but have no ``Covers:`` tags — they test infrastructure, not obligations.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from datetime import UTC, date, datetime
 
 from src.core.schemas import GetMediaBuyDeliveryRequest, GetMediaBuyDeliveryResponse
+from src.core.tools._boundary import invoke_tool
 from tests.harness.delivery_poll_unit import DeliveryPollEnv
 
 #: adcp_version / adcp_major_version / ext are the version-envelope trio every request
@@ -223,10 +225,6 @@ class TestDeliveryPollEnvContract:
         and it is what this grades. Every declared field is passed, so a field the
         builder drops from its signature fails here rather than silently vanishing.
         """
-        from src.core.tools.media_buy_delivery import (
-            get_media_buy_delivery_raw,
-        )
-
         with DeliveryPollEnv() as env:
             env.add_buy(media_buy_id="mb_001")
             env.set_adapter_response("mb_001", impressions=5000)
@@ -245,7 +243,7 @@ class TestDeliveryPollEnvContract:
             declared = set(GetMediaBuyDeliveryRequest.model_fields) - _VERSION_ENVELOPE_FIELDS
             assert declared <= buildable, f"builder cannot construct declared fields: {declared - buildable}"
 
-            response = get_media_buy_delivery_raw(req=req, identity=env.identity)
+            response = asyncio.run(invoke_tool("get_media_buy_delivery", req, env.identity))
 
             assert isinstance(response, GetMediaBuyDeliveryResponse)
 

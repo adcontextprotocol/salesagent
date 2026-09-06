@@ -325,5 +325,3 @@ class TestWireLevelHashInput:
 
         assert second.is_error, "a differently-encoded wire payload must not replay"
         second.assert_wire_error("IDEMPOTENCY_CONFLICT", recovery="correctable")
-
-

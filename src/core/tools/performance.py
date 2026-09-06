@@ -26,7 +26,6 @@ from src.core.schemas import (
 )
 from src.core.tools._mcp import mcp_result
 from src.core.tools.media_buy_update import _verify_principal
-from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 
 
 def _build_update_performance_index_request(
@@ -154,32 +153,6 @@ async def update_performance_index(
     req = _build_update_performance_index_request(media_buy_id, performance_data, context)
     response = _update_performance_index_impl(req=req, identity=identity)
     return mcp_result(response)
-
-
-def update_performance_index_raw(
-    req: UpdatePerformanceIndexRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-):
-    """Update performance data for a media buy (raw function for A2A server use).
-
-    Delegates to the shared implementation.
-
-    Takes the BUILT request. Every transport constructs it through
-    _build_update_performance_index_request, so the wrapper has one parameter shape rather
-    than re-listing the DTO's fields -- a list that drifts from the DTO the moment the spec
-    adds one.
-
-    Args:
-        req: The built UpdatePerformanceIndexRequest
-        ctx: Context for authentication
-        identity: Pre-resolved identity (if available)
-
-    Returns:
-        UpdatePerformanceIndexResponse
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx, require_valid_token=True)
-    return _update_performance_index_impl(req=req, identity=identity)
 
 
 # --- Human-in-the-Loop Task Queue Tools ---

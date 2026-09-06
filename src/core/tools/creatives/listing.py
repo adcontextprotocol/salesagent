@@ -5,8 +5,6 @@ import time
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from fastmcp.server.context import Context
-
 from src.core.audit_logger import get_audit_logger
 from src.core.auth import require_identity, require_principal_id, require_tenant
 from src.core.database.repositories.uow import CreativeUoW
@@ -21,8 +19,6 @@ from src.core.schemas import (
     ListCreativesRequest,
     ListCreativesResponse,
 )
-from src.core.tool_context import ToolContext
-from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 
 logger = logging.getLogger(__name__)
 
@@ -499,29 +495,3 @@ def _list_creatives_impl(
         errors=unreadable_status_advisories or None,
         context=req.context,
     )
-
-
-def list_creatives_raw(
-    req: "ListCreativesRequest",
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-):
-    """List creative assets with filtering and pagination (raw function for A2A server use, AdCP v2.5).
-
-    Delegates to the shared implementation. Every request value travels ON ``req``: the four
-    out-of-band arguments this wrapper used to take beside it (``format``, ``page``,
-    ``include_performance``, ``include_sub_assets``) are gone -- the first two are
-    ListCreativesRequest fields now, and the last two were removed from the AdCP spec at 3.10
-    and read by nothing in this codebase, so forwarding them was a no-op through three layers.
-
-    Args:
-        req: The built ListCreativesRequest
-        ctx: FastMCP context (automatically provided)
-        identity: ResolvedIdentity (transport-agnostic, preferred over ctx)
-
-    Returns:
-        ListCreativesResponse with filtered creative assets and pagination info
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx)
-
-    return _list_creatives_impl(req=req, identity=identity)

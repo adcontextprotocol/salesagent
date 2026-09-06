@@ -24,7 +24,6 @@ from src.core.schemas import ListAuthorizedPropertiesRequest, ListAuthorizedProp
 from src.core.testing_hooks import AdCPTestContext
 from src.core.tool_context import ToolContext
 from src.core.tools._mcp import mcp_result
-from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 from src.core.validation_helpers import safe_parse_json_field
 
 logger = logging.getLogger(__name__)
@@ -262,24 +261,3 @@ async def list_authorized_properties(
     response = _list_authorized_properties_impl(req, identity)
 
     return mcp_result(response)
-
-
-def list_authorized_properties_raw(
-    req: "ListAuthorizedPropertiesRequest" = None,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> "ListAuthorizedPropertiesResponse":
-    """List all properties this agent is authorized to represent (raw function for A2A server use).
-
-    Delegates to shared implementation.
-
-    Args:
-        req: Optional request with filter parameters
-        ctx: FastMCP context
-        identity: Pre-resolved identity (if available)
-
-    Returns:
-        ListAuthorizedPropertiesResponse with authorized properties
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx, require_valid_token=False)
-    return _list_authorized_properties_impl(req, identity)

@@ -1,15 +1,14 @@
 """REST API v1 endpoints.
 
 REST transport for AdCP tools, proving the 3-transport pattern
-(MCP + A2A + REST). Each endpoint calls the shared _impl/_raw function
-and applies version compat at the boundary.
+(MCP + A2A + REST). Every route reaches its implementation through
+``src.core.tools._boundary.invoke_tool`` and applies version compat at the boundary.
 """
 
 from __future__ import annotations
 
 import inspect
 import logging
-from importlib import import_module
 from typing import Any
 
 from fastapi import APIRouter
@@ -18,6 +17,7 @@ from pydantic import BaseModel, create_model
 from src.core.auth_context import require_auth, resolve_auth
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.tools._announced_shape import apply_signature
+from src.core.tools._boundary import invoke_tool
 from src.core.tools.registry import TOOLS
 from src.core.version_compat import apply_version_compat
 
@@ -37,9 +37,9 @@ router = APIRouter(prefix="/api/v1", tags=["api-v1"])
 # model to assign: TOOLS says which tools are reachable over REST, with what verb and at
 # what path, and everything else is resolved from the row.
 #
-# A tool with no ``*_raw`` wrapper gets no route. That is not an opt-out -- it is the three
-# task tools, which ARE their MCP wrapper and have no transport-agnostic callable for a
-# route to invoke. They acquire a route when they acquire a wrapper.
+# Every row with a ``rest`` binding gets a route. There is no second condition: the handler
+# calls ``invoke_tool``, which reaches the implementation through the registry, so a row can
+# no longer be reachable over one transport and not another for want of a per-tool wrapper.
 
 
 def _body_model_for(spec: Any) -> Any:
@@ -58,7 +58,7 @@ def _body_model_for(spec: Any) -> Any:
     return create_model(f"{spec.dto.__name__}Body", __base__=spec.dto, **relaxed)
 
 
-def _rest_handler(tool_name: str, spec: Any, raw: Any, body_model: type[BaseModel]) -> Any:
+def _rest_handler(tool_name: str, spec: Any, body_model: type[BaseModel]) -> Any:
     """One route handler, built from a registry row.
 
     The body model IS the DTO, so FastAPI has already produced the request: there is no
@@ -82,13 +82,10 @@ def _rest_handler(tool_name: str, spec: Any, raw: Any, body_model: type[BaseMode
     async def handler(body: Any, identity: ResolvedIdentity | None = None, **path_values: Any) -> Any:
         if path_values:
             body = spec.dto.model_validate({**body.model_dump(exclude_unset=True), **path_values})
-        # Resolved per call, not frozen into the closure. Late binding is what every other
-        # Python dispatch does, and a route that froze the callable at import could not be
-        # substituted -- the module attribute and the thing the route invoked were two
-        # different objects. Costs one cached import_module + getattr.
-        response = _raw_wrapper_for(tool_name, spec.impl)(req=body, identity=identity)
-        if inspect.isawaitable(response):
-            response = await response
+        # Named, not frozen: the handler names the TOOL and ``invoke_tool`` reads the registry
+        # per call. A route that froze the callable at import could not be substituted -- the
+        # registry row and the thing the route invoked were two different objects.
+        response = await invoke_tool(tool_name, body, identity)
         result = response.model_dump(mode="json")
         # Version compat runs where it ran before and nowhere else. Whether it should run
         # on every tool is a RESPONSE-half question and deliberately not this ticket's.
@@ -97,7 +94,7 @@ def _rest_handler(tool_name: str, spec: Any, raw: Any, body_model: type[BaseMode
         return result
 
     handler.__name__ = tool_name
-    handler.__doc__ = (raw.__doc__ or "").strip().split("\n")[0]
+    handler.__doc__ = (spec.impl.__doc__ or "").strip().split("\n")[0]
     dep = resolve_auth if spec.auth == "optional" else require_auth
     path_params = [
         # Typed from the DTO field, so the path segment is validated as the field it fills.
@@ -126,31 +123,15 @@ def _rest_handler(tool_name: str, spec: Any, raw: Any, body_model: type[BaseMode
     return handler
 
 
-def _raw_wrapper_for(tool_name: str, impl: Any) -> Any:
-    """The transport-agnostic ``*_raw`` callable for a row, or None if the tool has none."""
-    module_name = impl.__module__
-    for candidate in (module_name, module_name.rpartition(".")[0]):
-        if not candidate:
-            continue
-        found = getattr(import_module(candidate), f"{tool_name}_raw", None)
-        if found is not None:
-            return found
-    return None
-
-
 for _name, _spec in TOOLS.items():
     if _spec.rest is None:
-        continue
-    _raw = _raw_wrapper_for(_name, _spec.impl)
-    if _raw is None:
         continue
     # The body model IS the DTO. It used to derive from the MCP wrapper parameters, which
     # made the wrapper the REST accepted shape too; the wrappers are gone. The one projection
     # is a templated path: those fields travel in the URL, so the body may omit them.
-    _body_model = _body_model_for(_spec)
     router.add_api_route(
         _spec.rest.path,
-        _rest_handler(_name, _spec, _raw, _body_model),
+        _rest_handler(_name, _spec, _body_model_for(_spec)),
         methods=[_spec.rest.verb],
         name=_name,
     )

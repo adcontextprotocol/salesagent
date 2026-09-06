@@ -43,7 +43,6 @@ from adcp.types.generated_poc.protocol.get_adcp_capabilities_response import (
     Targeting,
     WebhookSigning,
 )
-from fastmcp.server.context import Context
 
 from src.adapters.base import TargetingCapabilities
 from src.core.auth import require_identity
@@ -66,8 +65,6 @@ from src.core.schemas.capability_declarations import (
     DEFAULT_SUPPORTED_PROTOCOLS,
     CapabilityDeclarations,
 )
-from src.core.tool_context import ToolContext
-from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 from src.core.version_negotiation import negotiate_adcp_version
 from src.services.targeting_capabilities import supports_property_list_filtering
 
@@ -595,27 +592,3 @@ def _get_adcp_capabilities_impl(
             response = response.model_copy(update=dropped)
 
     return response
-
-
-async def get_adcp_capabilities_raw(
-    req: GetAdcpCapabilitiesRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-) -> GetAdcpCapabilitiesResponse:
-    """Get the capabilities of this AdCP sales agent.
-
-    Raw function without @mcp.tool decorator for A2A server / REST use.
-
-    Args:
-        req: The built GetAdcpCapabilitiesRequest -- protocols, context, adcp_version,
-            adcp_major_version and ext all travel ON it. Callers build it with
-            ``build_get_adcp_capabilities_request``, the one builder every transport
-            shares, so this wrapper takes no per-field parameters to re-list.
-        ctx: FastMCP context (automatically provided)
-        identity: Pre-resolved identity (preferred over ctx)
-
-    Returns:
-        GetAdcpCapabilitiesResponse containing agent capabilities
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx, require_valid_token=False)
-    return _get_adcp_capabilities_impl(req, identity)

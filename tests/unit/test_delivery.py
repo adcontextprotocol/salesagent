@@ -24,6 +24,7 @@ Cross-references:
 - test_delivery_simulator.py: simulator service tests (kept separate)
 """
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -45,10 +46,8 @@ from src.core.schemas import (
     ReportingPeriod,
 )
 from src.core.testing_hooks import AdCPTestContext
-from src.core.tools.media_buy_delivery import (
-    _get_media_buy_delivery_impl,
-    get_media_buy_delivery_raw,
-)
+from src.core.tools._boundary import invoke_tool
+from src.core.tools.media_buy_delivery import _get_media_buy_delivery_impl
 from src.services.webhook_delivery_service import CircuitBreaker, CircuitState, WebhookDeliveryService
 from tests.harness.delivery_poll_unit import DeliveryPollEnv
 
@@ -848,7 +847,7 @@ class TestDeliveryStatusFilter:
                     status_filter=status,
                 )
                 assert req.status_filter == status
-                response = get_media_buy_delivery_raw(req=req, identity=env.identity)
+                response = asyncio.run(invoke_tool("get_media_buy_delivery", req, env.identity))
                 assert isinstance(response, GetMediaBuyDeliveryResponse)
 
 

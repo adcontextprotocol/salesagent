@@ -7,7 +7,7 @@ Validates that each REST transport endpoint:
 
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from adcp.types import AccountReference as LibraryAccountReference
@@ -17,6 +17,7 @@ from starlette.testclient import TestClient
 from src.app import app
 from src.core.resolved_identity import ResolvedIdentity
 from tests.helpers import assert_envelope_shape
+from tests.helpers.capture_wrapper_req import stub_impl
 
 client = TestClient(app)
 
@@ -101,7 +102,7 @@ class TestCreateMediaBuyScalarForwarding:
         ids=list(_CREATE_FORWARDED_SCALARS),
     )
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
-    @patch("src.core.tools.media_buy_create.create_media_buy_raw", new_callable=AsyncMock)
+    @stub_impl("create_media_buy")
     def test_scalar_forwards_to_raw(self, mock_raw, mock_resolve, field, wire_value, expected):
         mock_raw.return_value = MagicMock(model_dump=lambda **kw: {})
         body = {
@@ -136,11 +137,13 @@ class TestGetMediaBuyDeliveryEndpoint:
 
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
     @patch("src.core.transport_helpers.enrich_identity_with_account")
-    @patch("src.core.tools.media_buy_delivery._get_media_buy_delivery_impl")
+    @stub_impl("get_media_buy_delivery")
     def test_account_is_coerced_before_enriching_identity(self, mock_impl, mock_enrich, mock_resolve):
-        # Patches _impl, NOT get_media_buy_delivery_raw: enrichment lives in the raw
-        # wrapper now (one site, off req.account, instead of a copy per transport), so
-        # mocking the wrapper out would make mock_enrich unreachable and the test vacuous.
+        # Substitutes the IMPLEMENTATION, not the boundary: enrichment lives in
+        # ``_boundary.invoke`` (one site, off req.account, instead of a copy per transport),
+        # so stubbing the boundary out would make mock_enrich unreachable and this vacuous.
+        # The explicit enrich patch is applied after ``stub_impl``'s own pass-through and
+        # therefore wins.
         enriched_identity = _MOCK_IDENTITY.model_copy(update={"account_id": "acct-1"})
         mock_enrich.return_value = enriched_identity
         mock_impl.return_value = MagicMock(model_dump=lambda **kw: {"media_buys": []})
@@ -162,12 +165,13 @@ class TestGetMediaBuyDeliveryEndpoint:
         # is what used to crash resolve_account on ``account_ref.root``.
         mock_enrich.assert_called_once_with(_MOCK_IDENTITY, expected_account)
         # And it rides on the request, so every transport carries it the one way.
-        assert mock_impl.call_args[0][0].account == expected_account
-        assert mock_impl.call_args[0][1] is enriched_identity
+        # The boundary calls an implementation by keyword, so both arrive named.
+        assert mock_impl.call_args.kwargs["req"].account == expected_account
+        assert mock_impl.call_args.kwargs["identity"] is enriched_identity
 
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
     @patch("src.core.transport_helpers.enrich_identity_with_account")
-    @patch("src.core.tools.media_buy_delivery.get_media_buy_delivery_raw")
+    @stub_impl("get_media_buy_delivery")
     def test_malformed_account_returns_validation_error(self, mock_impl, mock_enrich, mock_resolve):
         response = client.post(
             "/api/v1/media-buys/delivery",
@@ -192,7 +196,7 @@ class TestPathFieldsBindFromTheUrl:
     """
 
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
-    @patch("src.core.tools.task_management._get_task_status_impl")
+    @stub_impl("get_task_status")
     def test_path_value_reaches_the_impl_without_a_body_field(self, mock_impl, mock_resolve):
         mock_impl.return_value = MagicMock(model_dump=lambda **kw: {"task": {}})
 
@@ -206,7 +210,7 @@ class TestPathFieldsBindFromTheUrl:
         assert mock_impl.call_args.kwargs["req"].task_id == "task_from_url"
 
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
-    @patch("src.core.tools.task_management._get_task_status_impl")
+    @stub_impl("get_task_status")
     def test_the_url_wins_over_a_body_that_disagrees(self, mock_impl, mock_resolve):
         """The URL is the resource identity, so it overrides a conflicting body value."""
         mock_impl.return_value = MagicMock(model_dump=lambda **kw: {"task": {}})

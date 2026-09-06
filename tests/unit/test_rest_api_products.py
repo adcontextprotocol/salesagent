@@ -16,6 +16,7 @@ from starlette.testclient import TestClient
 from src.app import app
 from src.core.resolved_identity import ResolvedIdentity
 from tests.factories.principal import PrincipalFactory
+from tests.helpers.capture_wrapper_req import stub_impl
 
 _MOCK_IDENTITY = ResolvedIdentity(
     principal_id="test-principal",
@@ -41,7 +42,7 @@ class TestRESTProductsEndpoint:
     """Verify POST /api/v1/products endpoint."""
 
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
-    @patch("src.core.tools.products._get_products_impl")
+    @stub_impl("get_products")
     def test_endpoint_returns_200(self, mock_impl, mock_resolve):
         """POST /api/v1/products should return 200 with valid request."""
         from src.core.schemas import GetProductsResponse
@@ -56,7 +57,7 @@ class TestRESTProductsEndpoint:
         assert response.status_code == 200
 
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
-    @patch("src.core.tools.products._get_products_impl")
+    @stub_impl("get_products")
     def test_response_has_products_field(self, mock_impl, mock_resolve):
         """Response must contain 'products' list."""
         from src.core.schemas import GetProductsResponse
@@ -73,7 +74,7 @@ class TestRESTProductsEndpoint:
         assert isinstance(body["products"], list)
 
     @patch("src.core.resolved_identity.resolve_identity")
-    @patch("src.core.tools.products._get_products_impl")
+    @stub_impl("get_products")
     def test_works_without_auth(self, mock_impl, mock_resolve):
         """get_products is a discovery skill — should work without auth.
 

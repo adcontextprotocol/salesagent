@@ -4,6 +4,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
+
 # All MCP tools - unified mode is now enabled by default
 # Note: signals tools (get_signals, activate_signal) removed - should come from dedicated signals agents
 def _registry_tools() -> set[str]:

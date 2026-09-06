@@ -9,13 +9,12 @@ After the identity-at-transport-boundary refactor , handlers receive
 a pre-resolved identity parameter rather than resolving auth internally.
 """
 
-from unittest.mock import patch
-
 import pytest
 from a2a.types import InvalidRequestError
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from tests.factories.principal import PrincipalFactory
+from tests.helpers.capture_wrapper_req import stub_impl
 
 
 class TestAuthOptionalSkills:
@@ -34,7 +33,7 @@ class TestAuthOptionalSkills:
     @pytest.mark.asyncio
     async def test_list_creative_formats_without_auth(self):
         """list_creative_formats should work with anonymous identity (no principal)."""
-        with patch("src.a2a_server.adcp_a2a_server.core_list_creative_formats_tool") as mock_tool:
+        with stub_impl("list_creative_formats") as mock_tool:
             mock_tool.return_value = {"formats": []}
 
             result = await self.handler._handle_list_creative_formats_skill(parameters={}, identity=self.anon_identity)
@@ -46,7 +45,7 @@ class TestAuthOptionalSkills:
     @pytest.mark.asyncio
     async def test_list_creative_formats_with_auth(self):
         """list_creative_formats should work with authenticated identity."""
-        with patch("src.a2a_server.adcp_a2a_server.core_list_creative_formats_tool") as mock_tool:
+        with stub_impl("list_creative_formats") as mock_tool:
             mock_tool.return_value = {"formats": []}
 
             result = await self.handler._handle_list_creative_formats_skill(parameters={}, identity=self.mock_identity)
@@ -57,7 +56,7 @@ class TestAuthOptionalSkills:
     @pytest.mark.asyncio
     async def test_get_products_without_auth(self):
         """get_products should work with anonymous identity."""
-        with patch("src.a2a_server.adcp_a2a_server.core_get_products_tool") as mock_tool:
+        with stub_impl("get_products") as mock_tool:
             mock_tool.return_value = {"products": []}
 
             result = await self.handler._handle_get_products_skill(
@@ -70,7 +69,7 @@ class TestAuthOptionalSkills:
     @pytest.mark.asyncio
     async def test_get_products_with_auth(self):
         """get_products should work with authenticated identity."""
-        with patch("src.a2a_server.adcp_a2a_server.core_get_products_tool") as mock_tool:
+        with stub_impl("get_products") as mock_tool:
             mock_tool.return_value = {"products": []}
 
             result = await self.handler._handle_get_products_skill(

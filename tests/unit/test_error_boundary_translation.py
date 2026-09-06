@@ -49,7 +49,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -81,6 +81,7 @@ from src.core.tool_error_logging import (
     with_error_logging,
 )
 from tests.helpers import assert_envelope_shape
+from tests.helpers.capture_wrapper_req import registry_impl
 
 
 def _capabilities_response(side_effect: Exception):
@@ -101,7 +102,7 @@ def _capabilities_response(side_effect: Exception):
     # faked to reach the exception handlers.
     app.dependency_overrides[_resolve_auth_dep] = lambda: None
     try:
-        with patch("src.core.tools.capabilities.get_adcp_capabilities_raw", side_effect=side_effect):
+        with registry_impl("get_adcp_capabilities", AsyncMock(side_effect=side_effect)):
             client = TestClient(app, raise_server_exceptions=False)
             return client.post("/api/v1/capabilities", json={})
     finally:

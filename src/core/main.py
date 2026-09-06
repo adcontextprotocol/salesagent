@@ -1,6 +1,4 @@
-import inspect
 import logging
-from importlib import import_module
 from typing import Any
 
 from fastmcp import FastMCP
@@ -427,7 +425,7 @@ def _register_tool(fn: Any) -> None:
 # module as the row's ``impl``, so ``TOOLS`` supplies the address and this file needs no
 # sixteen imports whose only purpose was to be passed to the call below. A name that does not
 # resolve is a defect in the row, not an optional registration.
-async def _call_tool(spec: Any, kwargs: dict[str, Any]) -> Any:
+async def _call_tool(tool_name: str, spec: Any, kwargs: dict[str, Any]) -> Any:
     """The one call path: build the request, resolve identity, call the implementation.
 
     Every hand-written MCP wrapper did exactly this. They differed only in WHICH
@@ -437,7 +435,7 @@ async def _call_tool(spec: Any, kwargs: dict[str, Any]) -> Any:
     which is the accept-and-ignore hazard one layer below the one this design removes.
     """
     from src.core.schema_helpers import accepted_kwargs
-    from src.core.transport_helpers import enrich_identity_with_account
+    from src.core.tools._boundary import invoke
 
     ctx = kwargs.pop("ctx", None)
     identity = kwargs.pop("identity", None)
@@ -448,24 +446,16 @@ async def _call_tool(spec: Any, kwargs: dict[str, Any]) -> Any:
 
     if identity is None and isinstance(ctx, Context):
         identity = await ctx.get_state("identity")
-    account = getattr(req, "account", None)
-    if account is not None:
-        identity = enrich_identity_with_account(identity, account)
 
-    # The closed set of three the boundary supplies and a buyer never can.
+    # What the transport supplies and a buyer never can. Account resolution and idempotency
+    # used to be here too, per-transport; they live in ``invoke`` now, so this is the one
+    # value MCP genuinely knows that the shared path cannot derive.
     declared = accepted_kwargs(spec.impl)
     extra: dict[str, Any] = {}
-    if declared and isinstance(ctx, Context):
-        for name in ("context_id", "raw_wire_payload", "request_hash"):
-            if name in declared:
-                extra[name] = await ctx.get_state(name)
+    if declared and isinstance(ctx, Context) and "context_id" in declared:
+        extra["context_id"] = await ctx.get_state("context_id")
 
-    # Not every implementation is a coroutine: 8 of the 14 are plain def. The
-    # hand-written wrappers each knew which their own was; one generated call path cannot
-    # assume, and an unconditional await raises TypeError AFTER the implementation has run
-    # to completion -- so the work commits and the buyer is told it failed.
-    result = spec.impl(req=req, identity=identity, **extra)
-    return await result if inspect.isawaitable(result) else result
+    return await invoke(tool_name, spec.impl, req, identity, **extra)
 
 
 def _tool_callable(tool_name: str, spec: Any) -> Any:
@@ -491,31 +481,10 @@ def _tool_callable(tool_name: str, spec: Any) -> Any:
         # diverges the moment the registry changes -- which also made a registered tool
         # impossible to substitute, since the row and the thing the server invoked were two
         # different objects. Costs one dict lookup.
-        return mcp_result(await _call_tool(TOOLS[tool_name], kwargs))
+        return mcp_result(await _call_tool(tool_name, TOOLS[tool_name], kwargs))
 
     tool.__name__ = tool_name
     return tool
-
-
-def _mcp_wrapper_for(tool_name: str, impl: Any) -> Any:
-    """The MCP wrapper for a registry row, resolved from the row itself.
-
-    Looked up beside the row's ``impl`` and then in that module's package: fifteen tools
-    define the wrapper next to the implementation, and ``sync_creatives`` exports it from
-    ``src.core.tools.creatives`` while the implementation lives in the private ``._sync``.
-    Both are searched so the layout is derived rather than enumerated -- a per-tool table of
-    where to look would be the fourth declaration this registry exists to delete.
-    """
-    module_name = impl.__module__
-    for candidate in (module_name, module_name.rpartition(".")[0]):
-        wrapper = getattr(import_module(candidate), tool_name, None) if candidate else None
-        if wrapper is not None:
-            return wrapper
-    raise RuntimeError(
-        f"{tool_name} is declared in TOOLS but neither {module_name} nor its package defines "
-        f"an MCP wrapper of that name. The registry says which tools exist; a row whose "
-        f"wrapper cannot be found is a wrong row, not a tool that opts out of MCP."
-    )
 
 
 for _tool_name, _spec in TOOLS.items():

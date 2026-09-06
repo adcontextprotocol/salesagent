@@ -32,7 +32,6 @@ if TYPE_CHECKING:
 MAX_CAMPAIGN_BUDGET: Decimal = Decimal(os.environ.get("MAX_CAMPAIGN_BUDGET_USD", "10000000"))
 
 from adcp.types import ContextObject
-from fastmcp.server.context import Context
 from sqlalchemy import select
 
 from src.core.exceptions import (
@@ -47,7 +46,6 @@ from src.core.exceptions import (
     AdCPInvalidRequestError,
     AdCPValidationError,
 )
-from src.core.tool_context import ToolContext
 from src.core.webhook_validator import reject_unsafe_webhook_registration_url, webhook_url_for_log
 from src.core.webhooks.registration import accept_push_notification_config
 
@@ -103,7 +101,6 @@ from src.core.tools.financial_validation import (
     validate_max_daily_package_spend,
     validate_min_package_budget,
 )
-from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 from src.core.utils import utc_flight_start
 from src.core.validation_helpers import package_field_path
 from src.services.targeting_capabilities import (
@@ -1030,9 +1027,9 @@ def _update_media_buy_impl(
                         # account and idempotency_key are the OUTER request's, not invented:
                         # these creatives belong to that account, and that key is the
                         # client-generated identifier of the operation they are part of.
-                        # No request_hash is passed -- there is no transmission here to
-                        # canonicalise -- which is what keeps the borrowed key out of the
-                        # shared (agent, account, key) cache scope.
+                        # Borrowing the key is harmless because idempotency lives at the
+                        # transport boundary: this call enters the implementation directly,
+                        # so it never touches the (agent, account, key) cache scope.
                         # A buyer's malformed inline creative raises here and travels
                         # untouched to the transport boundary, which names their field --
                         # nothing between this frame and that one may reclassify it.
@@ -1428,44 +1425,3 @@ def _normalize_pacing(pacing: str | None) -> Literal["even", "asap", "daily_budg
     if pacing == "daily_budget":
         return "daily_budget"
     return "even"
-
-
-def update_media_buy_raw(
-    req: UpdateMediaBuyRequest,
-    ctx: Context | ToolContext | None = None,
-    identity: IdentityOrNotProvided = NOT_PROVIDED,
-):
-    """Update an existing media buy (raw function for A2A server use).
-
-    Delegates to the shared implementation.
-
-    Args:
-        media_buy_id: The ID of the media buy to update (required)
-        paused: True to pause campaign, False to resume (adcp 2.12.0+)
-        flight_start_date: Change start date
-        flight_end_date: Change end date
-        currency: Update currency
-        start_time: Update start datetime
-        end_time: Update end datetime
-        pacing: Pacing strategy
-        daily_budget: Daily budget cap
-        packages: Package updates
-        push_notification_config: Push notification config for status updates
-        context: Application level context per adcp spec
-        reporting_webhook: Webhook configuration for automated reporting delivery
-        ext: Extension object for custom fields (optional, per AdCP spec)
-        idempotency_key: Idempotency key for retry safety (optional, per AdCP spec)
-        revision: Buyer's expected-current revision, per the pinned
-            update-media-buy-request.json. Accepted on every transport so a buyer can
-            hand back the token it read; the stale-token CONFLICT check itself is a
-            separate, still-ungraded gap.
-        ctx: Context for authentication (deprecated, use identity)
-        identity: Pre-resolved identity (if available)
-
-    Returns:
-        UpdateMediaBuyResponse
-    """
-    identity = resolve_identity_if_not_provided(identity, ctx, require_valid_token=True)
-    # A2A/REST callers pass identity directly without a FastMCP Context, so there
-    # is no workflow context_id to forward — _impl creates one if needed.
-    return _update_media_buy_impl(req=req, identity=identity, context_id=None)

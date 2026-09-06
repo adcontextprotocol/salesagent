@@ -79,4 +79,3 @@ class TestListCreativeFormatsE2E:
 
 class TestListAuthorizedPropertiesE2E:
     """E2E tests for the list_authorized_properties discovery endpoint."""
-

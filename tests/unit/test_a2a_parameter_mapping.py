@@ -18,6 +18,7 @@ from adcp.types import AccountReference as LibraryAccountReference
 from src.core.schemas import GetMediaBuyDeliveryRequest
 from tests.factories.principal import PrincipalFactory
 from tests.helpers import assert_envelope_shape
+from tests.helpers.capture_wrapper_req import stub_impl
 from tests.utils.a2a_helpers import assert_delivery_forwarded_account
 
 _MOCK_IDENTITY = PrincipalFactory.make_identity(
@@ -48,7 +49,7 @@ class TestA2AParameterMapping:
 
         with (
             patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY),
-            patch("src.a2a_server.adcp_a2a_server.core_update_media_buy_tool") as mock_update,
+            stub_impl("update_media_buy") as mock_update,
         ):
             mock_update.return_value = {"status": "success", "media_buy_id": "mb_123"}
 
@@ -100,7 +101,7 @@ class TestA2AParameterMapping:
 
         with (
             patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY),
-            patch("src.a2a_server.adcp_a2a_server.core_update_media_buy_tool") as mock_update,
+            stub_impl("update_media_buy") as mock_update,
         ):
             mock_update.return_value = {"status": "success"}
 
@@ -171,7 +172,7 @@ class TestA2AParameterMapping:
 
         with (
             patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY),
-            patch("src.a2a_server.adcp_a2a_server.core_get_media_buy_delivery_tool") as mock_delivery,
+            stub_impl("get_media_buy_delivery") as mock_delivery,
         ):
             mock_delivery.return_value = {"media_buys": []}
 
@@ -206,7 +207,7 @@ class TestA2AParameterMapping:
 
         with (
             patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY),
-            patch("src.a2a_server.adcp_a2a_server.core_get_media_buy_delivery_tool") as mock_delivery,
+            stub_impl("get_media_buy_delivery") as mock_delivery,
         ):
             mock_delivery.return_value = {"media_buys": []}
 
@@ -240,7 +241,7 @@ class TestA2AParameterMapping:
 
         handler = AdCPRequestHandler()
 
-        with patch("src.a2a_server.adcp_a2a_server.core_get_media_buy_delivery_tool") as mock_delivery:
+        with stub_impl("get_media_buy_delivery") as mock_delivery:
             mock_delivery.return_value = {"media_buys": []}
 
             parameters = {"account": {"account_id": "acct-1"}}
@@ -264,7 +265,7 @@ class TestA2AParameterMapping:
 
         handler = AdCPRequestHandler()
 
-        with patch("src.a2a_server.adcp_a2a_server.core_get_media_buy_delivery_tool") as mock_delivery:
+        with stub_impl("get_media_buy_delivery") as mock_delivery:
             mock_delivery.return_value = {"media_buys": []}
 
             account = {"brand": {"domain": "acmeoutdoor.example"}, "operator": "pinnacle-agency.example"}
@@ -294,7 +295,7 @@ class TestA2AParameterMapping:
 
         handler = AdCPRequestHandler()
 
-        with patch("src.a2a_server.adcp_a2a_server.core_get_media_buy_delivery_tool") as mock_delivery:
+        with stub_impl("get_media_buy_delivery") as mock_delivery:
             with pytest.raises(AdCPSalesAgentError) as exc_info:
                 asyncio.run(
                     handler._handle_explicit_skill(

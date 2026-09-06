@@ -240,6 +240,7 @@ class TestMCPToolRoundtripMinimal:
             error_msg = str(e).lower()
             pass  # the operation must raise; its wording is not asserted
 
+
 @pytest.mark.unit  # Changed from integration - these don't require server
 class TestSchemaConstructionValidation:
     """Test that schemas are constructed correctly from tool parameters."""
