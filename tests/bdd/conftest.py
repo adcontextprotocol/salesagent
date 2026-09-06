@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 import pytest
 
 from scripts.audit import storyboard_spec
-from tests.bdd.unregistered_tools import undispatchable_tools_in
 from tests.helpers.ledger import load_ledger_nodeids
 from tests.helpers.marker_names import derive_marker_names
 
@@ -56,13 +55,7 @@ if TYPE_CHECKING:
 # fixture lookup. Simple ``import`` is not enough — pytest only discovers
 # fixtures from conftest files and registered plugins.
 pytest_plugins = [
-    # scenario_liveness FIRST: it measures steps_bound for every scenario, and
-    # unbound_steps skips on that same condition. Registering the instrument
-    # ahead of the skip keeps unwired scenarios inside the measurement instead
-    # of vanishing from it the moment they start skipping — otherwise the count
-    # of work remaining would appear to shrink as the work is hidden.
     "tests.bdd.scenario_liveness",
-    "tests.bdd.unbound_steps",
     "tests.bdd.steps.generic.given_auth",
     "tests.bdd.steps.generic.given_config",
     "tests.bdd.steps.generic.given_entities",
@@ -1357,35 +1350,6 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         marker_names = {m.name for m in item.iter_markers()}
         nodeid = item.nodeid
-
-        # A scenario calling a tool this seller has not built cannot pass: nothing
-        # dispatches it, so no response exists and no assertion in it is reachable.
-        # Running it yields a guaranteed failure that says only "the tool does not
-        # exist" — noise a reader has to re-diagnose every time.
-        #
-        # SKIP rather than xfail, deliberately. An xfail RUNS the scenario and
-        # tolerates the failure, which is right when production is expected to be
-        # wrong about something being graded. Here there is nothing to grade, so
-        # calling it an expected FAILURE would claim a measurement never taken.
-        #
-        # Derived from TOOLS, so it cannot go stale in the direction that hurts:
-        # when a tool is finally built, its scenarios start running the same day,
-        # with no list for anyone to forget to update.
-        scenario = getattr(getattr(item, "function", None), "__scenario__", None)
-        if scenario is not None:
-            undispatchable = undispatchable_tools_in(scenario)
-            if undispatchable:
-                unbuilt = sorted(t for t, why in undispatchable.items() if why == "unbuilt")
-                stale = sorted(t for t, why in undispatchable.items() if why == "stale")
-                parts = []
-                if unbuilt:
-                    parts.append(
-                        f"unbuilt protocol surface: {', '.join(unbuilt)} defined by the pinned AdCP spec but not registered"
-                    )
-                if stale:
-                    parts.append(f"stale scenario: {', '.join(stale)} is in neither the pinned spec nor the registry")
-                item.add_marker(pytest.mark.skip(reason="; ".join(parts) + " (src/core/tools/registry.py)"))
-                continue
 
         # Detect transport from parametrized nodeid: [mcp], [mcp-...], [a2a], [rest], etc.
         is_mcp = "[mcp]" in nodeid or "[mcp-" in nodeid
@@ -5452,13 +5416,5 @@ def _harness_env(request: pytest.FixtureRequest, ctx: dict) -> Generator[None, N
         # NOT WIRED is a real answer, not an absence. Each branch UC keeps its own
         # catch-all row (below) carrying the reason it used to xfail with inline;
         # reaching here means no row claimed the scenario at all.
-        #
-        # SKIP, not xfail. This fires during fixture setup, so the scenario never
-        # dispatches anything and no step body runs — an xfail here asserted "it
-        # ran and failed as expected" about something that never ran. The two are
-        # not interchangeable in a summary: an xfail count reads as work that is
-        # measured and known-broken, while these are simply not measured at all.
-        # Binding the twenty unbound feature files made the difference matter:
-        # UC-001 alone contributes 1110 instances that reach exactly here.
-        pytest.skip(f"No harness wired for {uc} (markers: {sorted(marker_names)})")
+        pytest.xfail(f"No harness wired for {uc} (markers: {sorted(marker_names)})")
     yield from _run_env_route(request, ctx, route, e2e_config)
