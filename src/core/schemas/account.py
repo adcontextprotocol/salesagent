@@ -154,11 +154,6 @@ class ListAccountsResponse(NestedModelSerializerMixin, LibraryListAccountsRespon
     # and to enforce the spec-required field (#1399 Plan-B).
     accounts: list[Account]  # type: ignore[assignment]
 
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        count = len(self.accounts) if self.accounts else 0
-        return f"Found {count} account{'s' if count != 1 else ''}."
-
 
 class SyncResponseAccount(SalesAgentBaseModel):
     """Per-account result in a sync_accounts response.
@@ -255,12 +250,6 @@ class SyncAccountsResponse(
     # SyncAccountsRequest.context is itself a ContextObject, and `ext` weakened the
     # parent's ExtensionObject to a bare dict while no construction site passes it.
     accounts: list[SyncResponseAccount]
-
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        count = len(self.accounts) if self.accounts else 0
-        dry_run_note = " (dry run)" if self.dry_run else ""
-        return f"Synced {count} account{'s' if count != 1 else ''}{dry_run_note}."
 
 
 __all__ = [

@@ -16,7 +16,6 @@ import logging
 from adcp import EventType, TimeUnit
 from adcp.types._generated import MediaChannel
 from adcp.types.generated_poc.pricing_options.time_option import Parameters as TimeParameters
-from packaging.version import InvalidVersion, Version
 
 # Import our extended Product (includes implementation_config) and the local
 # pricing member subclasses (our extra policy + internal adapter annotations)
@@ -35,39 +34,6 @@ from src.core.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-
-V3_VERSION = Version("3.0.0")
-
-
-def needs_v2_compat(adcp_version: str | None) -> bool:
-    """Check if a client needs v2 backward-compat fields in responses.
-
-    V2 compat fields (is_fixed, rate, price_guidance.floor) are only needed
-    for pre-3.0 clients. V3+ clients get clean responses per AdCP v3 spec.
-
-    An ABSENT version means the PINNED version, not v2. This used to return True
-    for ``None``, so any client that simply omitted ``adcp_version`` was served
-    three fields that do not exist in the pinned schema -- on an agent that
-    declares itself as 3.1.1, silence is not evidence of a legacy caller, and
-    guessing "ancient" on no evidence made the non-conformant shape the default.
-    An UNPARSEABLE version still gets compat: that is a positive signal that the
-    caller sent something we do not understand, which is a different situation
-    from sending nothing at all.
-
-    Args:
-        adcp_version: Client-declared AdCP version string, or None if absent.
-
-    Returns:
-        True only if the client declared a version below 3.0, or declared one we
-        cannot parse. False when no version was declared (assume the pin).
-    """
-    if adcp_version is None:
-        return False
-    try:
-        return Version(adcp_version) < V3_VERSION
-    except InvalidVersion:
-        logger.warning(f"Unparseable adcp_version '{adcp_version}', defaulting to v2 compat")
-        return True
 
 
 def convert_pricing_option_to_adcp(
@@ -539,79 +505,3 @@ def convert_product_model_to_schema(product_model, adapter_type: str | None = No
             product_data["device_types"] = device_targets
 
     return Product(**product_data)
-
-
-def dump_pricing_option_v2_compat(po_model) -> dict:
-    """Serialize a pricing option model with v2.x backward-compat fields.
-
-    Takes a pricing option model object (CpmPricingOption, VcpmPricingOption, etc.)
-    and returns a serialized dict that includes v2.x fields:
-    - is_fixed: True if fixed_price is present, False otherwise
-    - rate: Copy of fixed_price when present (v2.x field name)
-    - price_guidance.floor: Copy of floor_price when present
-
-    Handles both RootModel-wrapped and unwrapped pricing option types.
-
-    Args:
-        po_model: A pricing option model (library type or RootModel wrapper).
-
-    Returns:
-        Serialized pricing option dict with v2.x backward-compat fields added.
-    """
-    # Unwrap RootModel if needed (adcp library wraps in PricingOption RootModel)
-    inner = getattr(po_model, "root", po_model)
-
-    # Serialize the model to dict
-    po_dict = inner.model_dump(mode="json", exclude_none=True)
-
-    # Read fields from the model, not the dict, to derive v2 compat values
-    fixed_price = getattr(inner, "fixed_price", None)
-    floor_price = getattr(inner, "floor_price", None)
-
-    # Add is_fixed discriminator (v2.x expected this field)
-    po_dict["is_fixed"] = fixed_price is not None
-
-    # Add rate field (v2.x name for fixed_price)
-    if fixed_price is not None:
-        po_dict["rate"] = fixed_price
-
-    # If floor_price is set, add floor to price_guidance for v2.x compat
-    if floor_price is not None:
-        if "price_guidance" not in po_dict:
-            po_dict["price_guidance"] = {}
-        po_dict["price_guidance"]["floor"] = floor_price
-
-    return po_dict
-
-
-def dump_product_v2_compat(product) -> dict:
-    """Serialize a Product model with v2.x backward-compat pricing options.
-
-    Takes a Product model and returns a serialized dict where pricing_options
-    include v2.x backward-compat fields (is_fixed, rate, price_guidance.floor).
-
-    Args:
-        product: A Product model (schema object with pricing_options).
-
-    Returns:
-        Serialized product dict with v2.x backward-compat pricing options.
-    """
-    product_dict = product.model_dump(mode="json")
-
-    # Replace pricing_options with v2-compat serialization from models
-    if hasattr(product, "pricing_options") and product.pricing_options:
-        product_dict["pricing_options"] = [dump_pricing_option_v2_compat(po) for po in product.pricing_options]
-
-    return product_dict
-
-
-def dump_products_v2_compat(products: list) -> list[dict]:
-    """Serialize a list of Product models with v2.x backward-compat pricing.
-
-    Args:
-        products: List of Product model objects.
-
-    Returns:
-        List of serialized product dicts with v2.x backward-compat fields.
-    """
-    return [dump_product_v2_compat(p) for p in products]

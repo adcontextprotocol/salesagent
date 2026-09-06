@@ -129,36 +129,54 @@ def _normalize_packages(packages: list[dict[str, Any]]) -> tuple[list[dict[str, 
     return result, translations
 
 
-def normalize_request_params(
-    tool_name: str,
-    params: dict[str, Any],
-) -> NormalizationResult:
-    """Translate deprecated fields to current equivalents.
+def _upgrade_creative_format_ids(creatives: Any) -> tuple[Any, bool]:
+    """Rewrite a legacy ``format_id`` on each creative into the 3.1 federated shape.
 
-    Args:
-        tool_name: The MCP/A2A tool name (e.g., "get_products", "create_media_buy").
-        params: Raw request parameters dict.
+    ``core/format-id.json`` @ 3.1 types the field as ``{agent_url, id}``. A pre-3.1 buyer
+    sends a bare string, or a dict with no ``agent_url``; both are shapes the pinned
+    ``CreativeAsset`` rejects outright, so this is a genuine wire-compatibility rewrite and
+    belongs here rather than on the DTO -- a ``BeforeValidator`` accepting the shorthand would
+    make the model announce a shape AdCP does not define.
 
-    Returns:
-        NormalizationResult with normalized params, inferred version, and
-        list of translations applied.
+    The result is dumped straight back to a wire dict. ``upgrade_legacy_format_id`` returns
+    OUR ``FormatId`` subclass, and pydantic does not re-validate a model instance that already
+    satisfies the annotation, so handing the instance on made A2A the only transport whose
+    ``CreativeAsset.format_id`` was a different CLASS. Pydantic v2 equality is class-sensitive,
+    so the registry match in ``creatives/_processing`` then found nothing and every generative
+    creative was written as a plain static asset with no error.
+
+    Returns ``(creatives, changed)``; ``changed`` is False when every entry already carried the
+    canonical shape, so a request that needed no help is not logged as a translation.
     """
-    result = dict(params)
+    if not isinstance(creatives, list):
+        return creatives, False
+
+    from src.core.format_cache import upgrade_legacy_format_id
+
+    result = []
+    changed = False
+    for creative in creatives:
+        if not isinstance(creative, dict) or "format_id" not in creative:
+            result.append(creative)
+            continue
+        upgraded = upgrade_legacy_format_id(creative["format_id"]).model_dump(mode="json")
+        changed = changed or upgraded != creative["format_id"]
+        result.append({**creative, "format_id": upgraded})
+    return result, changed
+
+
+def _normalize_tool_scoped(tool_name: str, result: dict[str, Any]) -> list[str]:
+    """Apply the deprecated-field rewrites that only make sense for one tool.
+
+    A rewrite belongs here when the field it renames exists on some tools and not others, so
+    the rule has to consult ``tool_name`` -- ``media_buy_id`` is the pre-1.6 singular on
+    get_media_buy_delivery and the spec field on update_media_buy, and applying it everywhere
+    would corrupt the second. The top-level rules in the caller need no such test.
+
+    Mutates ``result`` in place and returns the translations applied, matching
+    ``_normalize_packages``.
+    """
     translations: list[str] = []
-
-    # --- Version inference ---
-    inferred = "2.5" if V25_SIGNALS & result.keys() else "3.0"
-
-    # --- Top-level translations (all tools) ---
-
-    # account_id (string) → account: {account_id: str}
-    if "account_id" in result:
-        if "account" not in result:
-            result["account"] = {"account_id": result["account_id"]}
-            translations.append("account_id → account")
-        del result["account_id"]
-
-    # --- Tool-scoped translations ---
 
     # campaign_ref → ext.buyer_campaign_ref (create_media_buy only)
     # AdCP 3.12 removed the top-level buyer_campaign_ref field from
@@ -197,6 +215,72 @@ def normalize_request_params(
             result["catalogs"] = result["promoted_offerings"]
             translations.append("promoted_offerings → catalogs")
         del result["promoted_offerings"]
+
+    # custom_targeting → targeting_overlay (create_media_buy)
+    if "custom_targeting" in result:
+        if tool_name == "create_media_buy" and "targeting_overlay" not in result:
+            result["targeting_overlay"] = result["custom_targeting"]
+            translations.append("custom_targeting → targeting_overlay")
+        del result["custom_targeting"]
+
+    # updates.packages → packages (update_media_buy)
+    if "updates" in result:
+        legacy_updates = result["updates"]
+        if tool_name == "update_media_buy" and "packages" not in result and isinstance(legacy_updates, dict):
+            if "packages" in legacy_updates:
+                result["packages"] = legacy_updates["packages"]
+                translations.append("updates.packages → packages")
+        del result["updates"]
+
+    # media_buy_id (singular) → media_buy_ids (get_media_buy_delivery). The plural is the
+    # spec's shape since AdCP 1.6; the singular is the pre-1.6 spelling. Scoped to that one
+    # tool because update_media_buy's media_buy_id IS the spec field.
+    if tool_name == "get_media_buy_delivery" and "media_buy_id" in result:
+        if "media_buy_ids" not in result:
+            result["media_buy_ids"] = [result["media_buy_id"]]
+            translations.append("media_buy_id → media_buy_ids")
+        del result["media_buy_id"]
+
+    # creatives[].format_id shorthand → FormatId (sync_creatives)
+    if tool_name == "sync_creatives" and "creatives" in result:
+        result["creatives"], format_ids_upgraded = _upgrade_creative_format_ids(result["creatives"])
+        if format_ids_upgraded:
+            translations.append("creatives[].format_id shorthand → FormatId")
+
+    return translations
+
+
+def normalize_request_params(
+    tool_name: str,
+    params: dict[str, Any],
+) -> NormalizationResult:
+    """Translate deprecated fields to current equivalents.
+
+    Args:
+        tool_name: The MCP/A2A tool name (e.g., "get_products", "create_media_buy").
+        params: Raw request parameters dict.
+
+    Returns:
+        NormalizationResult with normalized params, inferred version, and
+        list of translations applied.
+    """
+    result = dict(params)
+    translations: list[str] = []
+
+    # --- Version inference ---
+    inferred = "2.5" if V25_SIGNALS & result.keys() else "3.0"
+
+    # --- Top-level translations (all tools) ---
+
+    # account_id (string) → account: {account_id: str}
+    if "account_id" in result:
+        if "account" not in result:
+            result["account"] = {"account_id": result["account_id"]}
+            translations.append("account_id → account")
+        del result["account_id"]
+
+    # --- Tool-scoped translations ---
+    translations.extend(_normalize_tool_scoped(tool_name, result))
 
     # --- Package-level translations ---
     if "packages" in result and isinstance(result["packages"], list):

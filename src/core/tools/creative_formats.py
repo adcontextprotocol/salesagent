@@ -474,6 +474,9 @@ def _list_creative_formats_impl(
 
     # Format list from registry is compatible with library Format type
     response = ListCreativeFormatsResponse(
+        message=f"Found {len(page_formats)} creative format{'s' if len(page_formats) != 1 else ''}."
+        if page_formats
+        else "No creative formats are currently supported.",
         formats=page_formats,
         creative_agents=creative_agents_list,
         errors=agent_errors if agent_errors else None,

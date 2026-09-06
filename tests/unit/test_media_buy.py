@@ -385,28 +385,6 @@ class TestCreateMediaBuyResponseShapes:
         assert status == "completed"
         assert response.media_buy_id == "mb_1"
 
-    def test_error_str_includes_error_count(self):
-        """UC-002-R06: CreateMediaBuyError.__str__ mentions error count.
-
-        Spec: UNSPECIFIED (implementation-defined string representation)
-        Covers: UC-002-POST-02
-        """
-        from src.core.schemas import Error
-
-        resp = CreateMediaBuyError(
-            errors=[Error(code="VALIDATION_ERROR", message="a"), Error(code="INVALID_REQUEST", message="b")]
-        )
-        assert "2 error" in str(resp)
-
-    def test_success_str_includes_media_buy_id(self):
-        """UC-002-R07: CreateMediaBuySuccess.__str__ mentions media_buy_id.
-
-        Spec: UNSPECIFIED (implementation-defined string representation)
-        Covers: UC-002-POST-04
-        """
-        resp = _make_success(media_buy_id="mb_123")
-        assert "mb_123" in str(resp)
-
 
 class TestCreateMediaBuyValidation:
     """UC-002 business rule validation: budget, products, pricing, dates."""

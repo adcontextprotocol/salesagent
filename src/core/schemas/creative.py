@@ -623,35 +623,6 @@ class SyncCreativesResponse(LibrarySyncCreativesSuccess, ProtocolEnvelope):
             result["creatives"] = [c.model_dump(**kwargs) for c in self.creatives]
         return result
 
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-
-        # action is always str: our field_validator normalizes enum→str on construction.
-        created = sum(1 for c in self.creatives if c.action == "created")
-        updated = sum(1 for c in self.creatives if c.action == "updated")
-        deleted = sum(1 for c in self.creatives if c.action == "deleted")
-        failed = sum(1 for c in self.creatives if c.action == "failed")
-
-        parts = []
-        if created:
-            parts.append(f"{created} created")
-        if updated:
-            parts.append(f"{updated} updated")
-        if deleted:
-            parts.append(f"{deleted} deleted")
-        if failed:
-            parts.append(f"{failed} failed")
-
-        if parts:
-            msg = f"Creative sync completed: {', '.join(parts)}"
-        else:
-            msg = "Creative sync completed: no changes"
-
-        if self.dry_run:
-            msg += " (dry run)"
-
-        return msg
-
 
 class ListCreativeFormatsRequest(LibraryListCreativeFormatsRequest):
     """Extends library ListCreativeFormatsRequest from AdCP spec.
@@ -690,20 +661,6 @@ class ListCreativeFormatsResponse(NestedModelSerializerMixin, LibraryListCreativ
     Protocol fields (status, task_id, message, context_id) are added by the
     protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
     """
-
-    def __str__(self) -> str:
-        """Return human-readable message for protocol layer.
-
-        Used by both MCP (for display) and A2A (for task messages).
-        Provides conversational text without adding non-spec fields to the schema.
-        """
-        count = len(self.formats)
-        if count == 0:
-            return "No creative formats are currently supported."
-        elif count == 1:
-            return "Found 1 creative format."
-        else:
-            return f"Found {count} creative formats."
 
 
 class ListCreativesRequest(LibraryListCreativesRequest):
@@ -774,15 +731,6 @@ class ListCreativesResponse(NestedModelSerializerMixin, LibraryListCreativesResp
     pagination: Pagination = Field(..., description="Pagination information for navigating results")
     creatives: list[Creative] = Field(..., description="Array of creative assets")
 
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        count = self.query_summary.returned
-        total = self.query_summary.total_matching
-        if count == total:
-            return f"Found {count} creative{'s' if count != 1 else ''}."
-        else:
-            return f"Showing {count} of {total} creatives."
-
 
 class CheckCreativeStatusRequest(SalesAgentBaseModel):
     creative_ids: list[str]
@@ -807,10 +755,6 @@ class CreateCreativeResponse(NestedModelSerializerMixin, SalesAgentBaseModel):
     creative: Creative
     status: CreativeApprovalStatus
     suggested_adaptations: list[CreativeAdaptation] = Field(default_factory=list)
-
-    def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        return f"Creative {self.creative.creative_id} created with status: {self.status.status}"
 
 
 class AssignCreativeRequest(SalesAgentBaseModel):

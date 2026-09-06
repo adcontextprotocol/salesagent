@@ -45,6 +45,7 @@ from adcp.types import Format as LibraryFormat
 # Import types from stable API (per adcp 2.7.0+)
 from adcp.types import FormatId as LibraryFormatId
 from adcp.types import GetAdcpCapabilitiesRequest as LibraryGetAdcpCapabilitiesRequest
+from adcp.types import GetAdcpCapabilitiesResponse as LibraryGetAdcpCapabilitiesResponse
 from adcp.types import GetMediaBuysRequest as LibraryGetMediaBuysRequest
 from adcp.types import GetMediaBuysResponse as LibraryGetMediaBuysResponse
 from adcp.types import GetTaskStatusResponse as LibraryGetTaskStatusResponse
@@ -805,10 +806,6 @@ class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, AdCPCreateMediaBuySuccess,
         """Dump including internal fields for database storage and internal processing."""
         return self.model_dump(context={"include_internal": True}, **kwargs)
 
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        return f"Media buy {self.media_buy_id} created successfully."
-
 
 class CreateMediaBuyError(AdCPCreateMediaBuyError):
     """Failed create_media_buy response, extending the SDK error branch.
@@ -816,13 +813,6 @@ class CreateMediaBuyError(AdCPCreateMediaBuyError):
     Extends the official adcp CreateMediaBuyError type.
     Per AdCP PR #113, this response contains ONLY domain data.
     """
-
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        if self.errors:
-            return f"Media buy creation encountered {len(self.errors)} error(s)."
-        else:
-            return "Media buy creation failed."
 
 
 class CreateMediaBuySubmitted(AdCPCreateMediaBuySubmitted):
@@ -842,10 +832,6 @@ class CreateMediaBuySubmitted(AdCPCreateMediaBuySubmitted):
     ``status`` defaults to ``"submitted"`` on the library base; ``task_id`` is
     required (the workflow step id the admin approval flow acts on).
     """
-
-    def __str__(self) -> str:
-        """Return human-readable summary message for the protocol envelope."""
-        return f"Media buy submitted for approval (task {self.task_id})."
 
 
 # Union type for the SYNCHRONOUS create_media_buy contract (adapter returns,
@@ -912,9 +898,6 @@ class CreateMediaBuyResult(TaskResultEnvelope):
     def __iter__(self):
         """Support tuple unpacking: response, status = result."""
         return iter((self.response, self.status))
-
-    def __str__(self) -> str:
-        return str(self.response)
 
 
 # --- Update Media Buy Response Components ---
@@ -1094,13 +1077,6 @@ class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess, ProtocolEnvelope):  # typ
         """Dump including internal fields for database storage and internal processing."""
         return self.model_dump(context={"include_internal": True}, **kwargs)
 
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        if self.affected_packages:
-            return f"Media buy {self.media_buy_id} updated: {len(self.affected_packages)} package(s) affected."
-        else:
-            return f"Media buy {self.media_buy_id} updated successfully."
-
 
 class UpdateMediaBuyError(AdCPUpdateMediaBuyError):  # type: ignore[misc]
     """Failed update_media_buy response, extending the SDK error branch.
@@ -1108,13 +1084,6 @@ class UpdateMediaBuyError(AdCPUpdateMediaBuyError):  # type: ignore[misc]
     Extends the official adcp UpdateMediaBuyError type.
     Per AdCP PR #113, this response contains ONLY domain data.
     """
-
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        if self.errors:
-            return f"Media buy update encountered {len(self.errors)} error(s)."
-        else:
-            return "Media buy update failed."
 
 
 class UpdateMediaBuySubmitted(AdCPUpdateMediaBuySubmitted):  # type: ignore[misc]
@@ -1134,10 +1103,6 @@ class UpdateMediaBuySubmitted(AdCPUpdateMediaBuySubmitted):  # type: ignore[misc
     ``"submitted"`` on the library base; ``task_id`` is required.
     """
 
-    def __str__(self) -> str:
-        """Return human-readable summary message for the protocol envelope."""
-        return f"Media buy update submitted for approval (task {self.task_id})."
-
 
 # Union type for update_media_buy operation
 UpdateMediaBuyResponse = UpdateMediaBuySuccess | UpdateMediaBuyError | UpdateMediaBuySubmitted
@@ -1151,9 +1116,6 @@ class UpdateMediaBuyResult(TaskResultEnvelope):
     """
 
     response: UpdateMediaBuySuccess | UpdateMediaBuyError | UpdateMediaBuySubmitted
-
-    def __str__(self) -> str:
-        return str(self.response)
 
 
 class TaskStatus(StrEnum):
@@ -2720,10 +2682,6 @@ class CreateHumanTaskResponse(SalesAgentBaseModel):
     status: str
     due_by: datetime | None = None
 
-    def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        return f"Task {self.task_id} created with status: {self.status}"
-
 
 class GetPendingTasksRequest(SalesAgentBaseModel):
     """Request for pending human tasks."""
@@ -2945,15 +2903,6 @@ class GetSignalsResponse(NestedModelSerializerMixin, LibraryGetSignalsResponse):
 
     signals: list[Signal] = Field(..., description="Array of available signals")  # type: ignore[assignment]
 
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        count = len(self.signals)
-        if count == 0:
-            return "No signals found matching your criteria."
-        elif count == 1:
-            return "Found 1 signal."
-        return f"Found {count} signals."
-
 
 # --- Signal Activation ---
 class ActivateSignalRequest(LibraryActivateSignalRequest):
@@ -3009,12 +2958,6 @@ class ActivateSignalResponse(SalesAgentBaseModel):
     errors: list[Error] | None = Field(None, description="Optional error reporting")
     context: ContextObject | None = Field(None, description="Application-level context echoed from the request")
 
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        if self.errors:
-            return f"Signal {self.signal_id} activation encountered {len(self.errors)} error(s)."
-        return f"Signal {self.signal_id} activated successfully."
-
 
 # --- Simulation and Time Progression Control ---
 class SimulationControlRequest(SalesAgentBaseModel):
@@ -3034,12 +2977,6 @@ class SimulationControlResponse(SalesAgentBaseModel):
     current_state: dict[str, Any] | None = None
     simulation_time: datetime | None = None
     context: ContextObject | None = Field(None, description="Application-level context echoed from the request")
-
-    def __str__(self) -> str:
-        """Return human-readable text for MCP content field."""
-        if self.message:
-            return self.message
-        return f"Simulation control: {self.status}"
 
 
 # --- Authorized Properties Constants ---
@@ -3346,6 +3283,10 @@ class GetAdcpCapabilitiesRequest(LibraryGetAdcpCapabilitiesRequest):
     )
 
 
+class GetAdcpCapabilitiesResponse(LibraryGetAdcpCapabilitiesResponse):
+    """The get_adcp_capabilities response."""
+
+
 class ListTasksRequest(LibraryListTasksRequest):
     """Extends the pinned ListTasksRequest.
 
@@ -3468,27 +3409,6 @@ class GetMediaBuysResponse(NestedModelSerializerMixin, LibraryGetMediaBuysRespon
     # Redeclared for Pattern #4 (nested serialization with the local item subclass);
     # the library types it as a Sequence.
     media_buys: list[GetMediaBuysMediaBuy]
-
-    def __str__(self) -> str:
-        """Return the human-readable message for the protocol layer.
-
-        This is a buyer-visible protocol field, not a debugging aid. Both transports
-        read it: A2A stamps ``str(self)`` onto ``response_data["message"]``
-        (adcp_a2a_server.py ``_stamp_a2a_protocol_fields``), and MCP falls back to
-        ``str(self)`` for ``ToolResult.content`` because ``get_media_buys`` returns
-        ``mcp_result(response)`` with no explicit ``content``.
-
-        Without this the class inherited pydantic's ``__repr__``, so the wire message
-        was a 316-character field dump that itself contained ``message=None``. The
-        class never had a curated ``__str__``; re-basing onto the library envelope
-        only made the dump longer.
-        """
-        count = len(self.media_buys)
-        if count == 0:
-            return "No media buys found."
-        if count == 1:
-            return "Found 1 media buy."
-        return f"Found {count} media buys."
 
 
 # Re-export product schemas for backward compatibility.

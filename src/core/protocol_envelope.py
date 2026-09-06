@@ -146,8 +146,8 @@ class ProtocolEnvelope(BaseModel):
         if hasattr(payload, "model_dump"):
             payload_dict = payload.model_dump(mode="json")
             # Generate message from __str__ if not provided
-            if message is None and hasattr(payload, "__str__"):
-                message = str(payload)
+            if message is None:
+                message = getattr(payload, "message", None)
         else:
             payload_dict = payload
 

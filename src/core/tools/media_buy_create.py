@@ -1960,6 +1960,7 @@ def _submitted_approval_result(step, req: CreateMediaBuyRequest, adapter) -> Cre
             task_id=step.step_id,  # Client tracks approval via this ID
             context=req.context,
             errors=property_list_unsupported_advisories(req.packages, adapter),
+            message=f"Media buy submitted for approval (task {step.step_id}).",
         ),
         status=AdcpTaskStatus.submitted.value,
     )
@@ -3566,8 +3567,10 @@ async def _create_media_buy_impl(
             # valid_actions (spec 3.1.1 pending_creatives_to_start.yaml grades
             # media_buy_status alongside the envelope status; partial GH #1326).
             simulated_lifecycle = MediaBuyStatus.pending_start.value
+            simulated_message_id = f"dry_run_{uuid.uuid4().hex[:12]}"
             simulated_response = CreateMediaBuySuccess.sync_success(
-                media_buy_id=f"dry_run_{uuid.uuid4().hex[:12]}",
+                media_buy_id=simulated_message_id,
+                message=f"Media buy {simulated_message_id} created successfully.",
                 packages=simulated_packages,
                 media_buy_status=simulated_lifecycle,  # AdCP 3.1: mirrors deprecated `status`
                 valid_actions=valid_actions_for_status(simulated_lifecycle),
@@ -4102,6 +4105,7 @@ async def _create_media_buy_impl(
         # Create AdCP response with typed Package objects
         adcp_response = CreateMediaBuySuccess.sync_success(
             media_buy_id=response.media_buy_id,
+            message=f"Media buy {response.media_buy_id} created successfully.",
             packages=response_packages,
             # Read from the row the repository just wrote, not minted here. A buy that
             # is not yet committed carries a NULL confirmed_at, and saying so is the

@@ -15,10 +15,10 @@ so REST and MCP advertise the same set by construction, and ``e2e_rest`` -- whic
 HTTP against this route, with no schema of its own -- inherits it for free. A2A needs no
 schema at all: it consumes the parameter bag wholesale through the request seam.
 
-Version-envelope fields are added back explicitly. They are NOT request data (the DTO
-selection strips them by design), but the REST routes read ``adcp_version`` to drive
-``apply_version_compat``, so the body must carry them. Naming them here separates envelope
-from payload, which the hand-written classes did not.
+Version-envelope fields are added back explicitly. They are NOT request data -- the DTO
+selection strips them by design -- but they are part of the announced request shape, so the
+body must carry them. Naming them here separates envelope from payload, which the
+hand-written classes did not.
 """
 
 from __future__ import annotations

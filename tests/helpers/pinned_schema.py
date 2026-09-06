@@ -27,10 +27,9 @@ and it maps back to a path with no invented naming convention in between.
 
 The pure resolution primitives (``schema_root``, ``normalize_ref``, ``load``,
 ``PinnedSchemaError``, and their private helpers) live in
-``tests/helpers/adcp_pinned_schema.py`` — a stdlib-only module test code
-(``src/core/version_compat.py``) also imports, so there is exactly ONE
-resolution implementation shared by prod and tests, never a test-only copy
-duplicated into src/. This module re-exports every one of those names and
+``tests/helpers/adcp_pinned_schema.py`` — a stdlib-only module, so there is
+exactly ONE resolution implementation and never a second copy. This module
+re-exports every one of those names and
 adds on top the jsonschema-validation surfaces plus the pinned-enum readers
 that the test-side oracles grade against:
 

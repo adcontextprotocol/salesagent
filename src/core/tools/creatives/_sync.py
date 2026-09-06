@@ -536,6 +536,7 @@ def sync_creatives(
         creatives=results,
         dry_run=dry_run,
         context=req.context,
+        message=message,
     )
 
     return response

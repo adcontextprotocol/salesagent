@@ -494,4 +494,9 @@ def _list_creatives_impl(
         status_summary=None,
         errors=unreadable_status_advisories or None,
         context=req.context,
+        message=(
+            f"Found {len(creatives)} creative{'s' if len(creatives) != 1 else ''}."
+            if len(creatives) == total_count
+            else f"Showing {len(creatives)} of {total_count} creatives."
+        ),
     )

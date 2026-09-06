@@ -579,6 +579,7 @@ def _update_media_buy_impl(
                 _dry_run_mbs, _dry_run_actions = _adcp_status_and_actions(_dry_run_mb)
                 dry_run_response = UpdateMediaBuySuccess(
                     media_buy_id=req.media_buy_id or "",
+                    message=f"Media buy {req.media_buy_id or ''} updated successfully.",
                     # A dry run applies nothing, so it reports the CURRENT token, not a bump.
                     revision=_dry_run_revision,
                     media_buy_status=_dry_run_mbs,  # AdCP 3.1: mirrors `status`
@@ -609,6 +610,7 @@ def _update_media_buy_impl(
                 # update was applied. task_id is the workflow step the admin approval flow acts on.
                 approval_response = UpdateMediaBuySubmitted(
                     task_id=step.step_id,
+                    message=f"Media buy update submitted for approval (task {step.step_id}).",
                     context=req.context,
                     errors=property_list_unsupported_advisories(req.packages, adapter),
                 )
@@ -718,7 +720,12 @@ def _update_media_buy_impl(
                 # Manual approval case - convert adapter result to appropriate Success/Error
                 # adcp v1.2.1 oneOf pattern: Check if result is Error variant (has errors field)
                 if isinstance(result, UpdateMediaBuyError) and result.errors:
-                    error_response = UpdateMediaBuyError(errors=result.errors)
+                    error_response = UpdateMediaBuyError(
+                        errors=result.errors,
+                        message=f"Media buy update encountered {len(result.errors)} error(s)."
+                        if result.errors
+                        else "Media buy update failed.",
+                    )
                     ctx_manager.audit_workflow_step_result(
                         step.step_id,
                         error_response,
@@ -754,6 +761,7 @@ def _update_media_buy_impl(
                     _post_action_mbs, _post_action_actions = _adcp_status_and_actions(_post_action_mb)
                     success_response = UpdateMediaBuySuccess(
                         media_buy_id=media_buy_id,
+                        message=f"Media buy {media_buy_id} updated successfully.",
                         revision=_post_action_revision,
                         media_buy_status=_post_action_mbs,  # AdCP 3.1: mirrors `status`
                         affected_packages=affected_pkgs,
@@ -801,7 +809,12 @@ def _update_media_buy_impl(
                                 if (result.errors and len(result.errors) > 0)
                                 else "Update failed"
                             )
-                            response_data = UpdateMediaBuyError(errors=result.errors)
+                            response_data = UpdateMediaBuyError(
+                                errors=result.errors,
+                                message=f"Media buy update encountered {len(result.errors)} error(s)."
+                                if result.errors
+                                else "Media buy update failed.",
+                            )
                             ctx_manager.audit_workflow_step_result(
                                 step.step_id,
                                 response_data,
@@ -888,7 +901,12 @@ def _update_media_buy_impl(
                                 if (result.errors and len(result.errors) > 0)
                                 else "Update failed"
                             )
-                            response_data = UpdateMediaBuyError(errors=result.errors)
+                            response_data = UpdateMediaBuyError(
+                                errors=result.errors,
+                                message=f"Media buy update encountered {len(result.errors)} error(s)."
+                                if result.errors
+                                else "Media buy update failed.",
+                            )
                             ctx_manager.audit_workflow_step_result(
                                 step.step_id,
                                 response_data,
@@ -1384,6 +1402,7 @@ def _update_media_buy_impl(
             _final_mbs, _final_actions = _adcp_status_and_actions(_final_mb)
             final_response = UpdateMediaBuySuccess(
                 media_buy_id=req.media_buy_id or "",
+                message=f"Media buy {req.media_buy_id or ''} updated successfully.",
                 revision=_final_revision,
                 media_buy_status=_final_mbs,  # AdCP 3.1: mirrors `status`
                 affected_packages=affected_packages_list,

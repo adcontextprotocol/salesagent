@@ -445,6 +445,7 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                         # the call is the shape that made a detached read possible here.
                         create_media_buy_approved_result = CreateMediaBuySuccess.sync_success(
                             media_buy_id=media_buy_id,
+                            message=f"Media buy {media_buy_id} created successfully.",
                             packages=[Package(package_id=x.package_id) for x in all_packages],
                             confirmed_at=approval.confirmed_at,
                             revision=approval.revision,
@@ -537,7 +538,10 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                     rejection = AdCPMediaBuyRejectedError(
                         details=RejectionReasonDetails(rejection_reason=reason) if reason else None
                     )
-                    create_media_buy_rejected_result = CreateMediaBuyError(errors=[Error.from_exception(rejection)])
+                    create_media_buy_rejected_result = CreateMediaBuyError(
+                        errors=[Error.from_exception(rejection)],
+                        message="Media buy creation encountered 1 error(s).",
+                    )
                     webhook_task = _media_buy_webhook_task(step_data, tenant_id, media_buy_id, media_buy_data)
                     # The dialect fork moved into notify(); this site passes the protocol it
                     # already read from the workflow step (salesagent-pldmk.39).

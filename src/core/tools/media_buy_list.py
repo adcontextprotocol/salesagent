@@ -402,6 +402,9 @@ def _get_media_buys_impl(
         media_buys=response_media_buys,
         context=req.context,
         errors=row_advisories or None,
+        message=f"Found {len(response_media_buys)} media buy{'s' if len(response_media_buys) != 1 else ''}."
+        if response_media_buys
+        else "No media buys found.",
     )
 
 

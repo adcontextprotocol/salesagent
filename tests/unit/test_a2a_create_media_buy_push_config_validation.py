@@ -80,7 +80,7 @@ async def test_no_auth_push_config_still_works():
         return submitted_result
 
     with stub_impl("create_media_buy", side_effect=fake_tool):
-        result = await handler._handle_create_media_buy_skill(params, identity)
+        result = await handler._dispatch_skill("create_media_buy", params, identity)
 
     assert captured, "create_media_buy's implementation was never reached for a no-auth config"
     # ON THE REQUEST, not beside it. A no-auth config carries no credentials, so no

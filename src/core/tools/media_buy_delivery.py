@@ -670,6 +670,9 @@ def _get_media_buy_delivery_impl(
             notification_type=notification_type,
             sequence_number=sequence_number,
             next_expected_at=next_expected_at,
+            message=f"Retrieved delivery data for {len(deliveries)} media buy{'s' if len(deliveries) != 1 else ''}."
+            if deliveries
+            else "No delivery data found for the specified period.",
         )
 
         # Apply testing hooks if needed

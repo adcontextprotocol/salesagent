@@ -36,7 +36,7 @@ class TestAuthOptionalSkills:
         with stub_impl("list_creative_formats") as mock_tool:
             mock_tool.return_value = {"formats": []}
 
-            result = await self.handler._handle_list_creative_formats_skill(parameters={}, identity=self.anon_identity)
+            result = await self.handler._dispatch_skill("list_creative_formats", {}, self.anon_identity)
 
             assert result is not None
             assert "formats" in result
@@ -48,7 +48,7 @@ class TestAuthOptionalSkills:
         with stub_impl("list_creative_formats") as mock_tool:
             mock_tool.return_value = {"formats": []}
 
-            result = await self.handler._handle_list_creative_formats_skill(parameters={}, identity=self.mock_identity)
+            result = await self.handler._dispatch_skill("list_creative_formats", {}, self.mock_identity)
 
             assert result is not None
             mock_tool.assert_called_once()
@@ -59,9 +59,7 @@ class TestAuthOptionalSkills:
         with stub_impl("get_products") as mock_tool:
             mock_tool.return_value = {"products": []}
 
-            result = await self.handler._handle_get_products_skill(
-                parameters={"brief": "test campaign"}, identity=self.anon_identity
-            )
+            result = await self.handler._dispatch_skill("get_products", {"brief": "test campaign"}, self.anon_identity)
 
             assert result is not None
             mock_tool.assert_called_once()
@@ -72,9 +70,7 @@ class TestAuthOptionalSkills:
         with stub_impl("get_products") as mock_tool:
             mock_tool.return_value = {"products": []}
 
-            result = await self.handler._handle_get_products_skill(
-                parameters={"brief": "test campaign"}, identity=self.mock_identity
-            )
+            result = await self.handler._dispatch_skill("get_products", {"brief": "test campaign"}, self.mock_identity)
 
             assert result is not None
             mock_tool.assert_called_once()

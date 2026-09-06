@@ -331,39 +331,6 @@ class GetProductsResponse(NestedModelSerializerMixin, LibraryGetProductsResponse
     # required so the model cannot construct an under-specified shape (#1399 Plan-B).
     products: list[LibraryProduct]
 
-    def __str__(self) -> str:
-        """Return human-readable message for protocol layer.
-
-        Used by both MCP (for display) and A2A (for task messages).
-        Provides conversational text without adding non-spec fields to the schema.
-        """
-        count = len(self.products) if self.products else 0
-
-        # Base message
-        if count == 0:
-            base_msg = "No products matched your requirements."
-        elif count == 1:
-            base_msg = "Found 1 product that matches your requirements."
-        else:
-            base_msg = f"Found {count} products that match your requirements."
-
-        # Check if this looks like an anonymous response (all pricing options have no rates)
-        # Import here to avoid circular import (schemas -> helpers -> auth -> schemas)
-        from src.core.helpers.pricing_helpers import pricing_option_has_rate
-
-        if (
-            count > 0
-            and self.products
-            and all(
-                all(not pricing_option_has_rate(po) for po in p.pricing_options)
-                for p in self.products
-                if p.pricing_options
-            )
-        ):
-            return f"{base_msg} Please connect through an authorized buying agent for pricing data."
-
-        return base_msg
-
 
 class ProductCatalog(SalesAgentBaseModel):
     """E-commerce product feed information."""

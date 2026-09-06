@@ -728,10 +728,10 @@ class TestA2AExplicitSkillReraise:
         handler = AdCPRequestHandler()
         raised = AdCPValidationError(field="packages[0].budget")
 
-        async def mock_skill(parameters, identity):
+        async def mock_skill(skill_name, parameters, identity):
             raise raised
 
-        with patch.object(handler, "_handle_get_products_skill", mock_skill):
+        with patch.object(handler, "_dispatch_skill", mock_skill):
             with pytest.raises(AdCPValidationError) as exc_info:
                 await handler._handle_explicit_skill("get_products", {}, None)
 
@@ -755,10 +755,10 @@ class TestA2AExplicitSkillReraise:
 
         handler = AdCPRequestHandler()
 
-        async def mock_skill(parameters, identity):
+        async def mock_skill(skill_name, parameters, identity):
             raise raised
 
-        with patch.object(handler, "_handle_get_products_skill", mock_skill):
+        with patch.object(handler, "_dispatch_skill", mock_skill):
             with pytest.raises(expected_cls) as exc_info:
                 await handler._handle_explicit_skill("get_products", {}, None)
 
@@ -775,10 +775,10 @@ class TestA2AExplicitSkillReraise:
         handler = AdCPRequestHandler()
         raised = MethodNotFoundError(message="not found")
 
-        async def mock_skill(parameters, identity):
+        async def mock_skill(skill_name, parameters, identity):
             raise raised
 
-        with patch.object(handler, "_handle_get_products_skill", mock_skill):
+        with patch.object(handler, "_dispatch_skill", mock_skill):
             with pytest.raises(MethodNotFoundError) as exc_info:
                 await handler._handle_explicit_skill("get_products", {}, None)
 

@@ -223,6 +223,37 @@ there, once, from `model_summary()`, and the 23 `__str__` overrides are deleted;
 becomes what it is, an A2A envelope field applied by A2A to its DataPart rather than written
 into the payload. Version compat gets one home instead of two.
 
+### What is still not conformant BY CONSTRUCTION after that
+
+With one seam and one body, a reply's field set, types and shape all follow from the SDK class
+the implementation returned, so they cannot drift. One property does not follow: retention of a
+field the pin lists in `required` while typing it nullable. The SDK base serializes
+`exclude_none=True` unconditionally, which drops the key, and `AlwaysIncludeFieldsMixin` puts it
+back -- but only for a class that OPTS IN by naming `_PINNED_SCHEMA_REF`.
+
+Measured across the fourteen registered tools' pinned response schemas, excluding the shared
+`error.json` and envelope subtrees we never construct, there are exactly three such fields:
+
+| Site | Model | Retained |
+|---|---|---|
+| `create-media-buy-response.json#/oneOf/0` -> `confirmed_at` | `CreateMediaBuySuccess` | yes |
+| `get-media-buys-response.json .media_buys[]` -> `confirmed_at` | `GetMediaBuysMediaBuy` | yes |
+| `get-task-status-response.json .result` (nests the create response) | `GetTaskStatusResponse.result: AdcpAsyncResponseData \| None` | **no** |
+
+Two of three adopt. The third is the SDK's own type with no ref and no retention. A fourth
+site, added by a spec bump, drops silently with nothing red -- which is the same
+declare-versus-derive defect R3 removed from the envelope, one level down.
+
+**So the seam derives the ref instead of asking for it.** A response model's pinned schema is
+derivable from its SDK ancestry for every class that maps to a root schema; only the `oneOf`
+branches and the nested item models need a hand-written sub-schema ref, and those are the two
+that already carry one. Deriving turns "did the author remember to opt in" into "does this
+class have an SDK ancestor", which every response model does.
+
+Two exceptions stay deliberate and stay subtractive: `apply_version_compat` rewrites
+`get_products` responses for pre-3.0 buyers on purpose, and `_INTERNAL_ONLY_FIELDS` /
+`exclude=True` strip our internal fields (`workflow_step_id`) from every protocol response.
+
 ---
 
 ## R3 — DONE: type the protocol envelope on every response

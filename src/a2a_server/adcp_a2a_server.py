@@ -7,7 +7,7 @@ Supports both standard A2A message format and JSON-RPC 2.0.
 import json
 import logging
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator
 
 # Import core functions for direct calls (raw functions without FastMCP decorators)
 from datetime import UTC, datetime
@@ -49,7 +49,7 @@ from a2a.types import (
 )
 from a2a.utils.errors import A2AError
 from adcp.server.mcp_tools import ADCP_TOOL_DEFINITIONS
-from adcp.types import ContextObject, GeneratedTaskStatus
+from adcp.types import GeneratedTaskStatus
 from adcp.types.base import AdCPBaseModel
 from google.protobuf import json_format, struct_pb2
 
@@ -70,12 +70,6 @@ from src.core.exceptions import (
     build_two_layer_error_envelope,
 )
 from src.core.resolved_identity import ResolvedIdentity
-from src.core.schema_helpers import (
-    coerce_creative_filters,
-    select_request_fields,
-    to_account_reference,
-    to_brand_reference,
-)
 from src.core.schemas import CreativeStatusEnum
 from src.core.tool_context import ToolContext
 from src.core.tool_error_logging import record_boundary_error
@@ -95,13 +89,6 @@ from src.core.webhooks.registration import (
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 logger = logging.getLogger(__name__)
-
-
-#: The ONE request model this file still names, for the ONE selection that is deliberately
-#: NOT narrowed to a builder: _handle_update_media_buy_skill validates the whole bag against
-#: the DTO before building. Every narrowed selection reads its model off the tool
-#: (``select_request_fields_for``) and names nothing.
-from src.core.schemas import UpdateMediaBuyRequest  # noqa: E402
 
 
 def _require_params(params: dict, required: list[str], *, field: str | None = None) -> None:
@@ -882,7 +869,7 @@ class AdCPRequestHandler(RequestHandler):
                     # Per A2A spec, use TextPart + DataPart pattern (not description field)
                     #
                     # The text is READ from the payload, never re-derived from it:
-                    # _stamp_a2a_protocol_fields already stamped str(response) onto
+                    # _serialize_for_a2a already stamped str(response) onto
                     # artifact_data["message"] at serialization time. An outbound
                     # payload is finished — feeding it back through Model(**data)
                     # to recover the same string handed pydantic before-validators
@@ -974,7 +961,7 @@ class AdCPRequestHandler(RequestHandler):
                 # -- a second declaration of one tool on one transport, which is how it kept
                 # a lazy import of a deleted builder alive after every other caller was
                 # rewired: nothing enumerating the registry could see it.
-                result = await self._handle_get_products_skill({"brief": combined_text}, identity)
+                result = await self._dispatch_skill("get_products", {"brief": combined_text}, identity)
                 tenant_id = (identity.tenant_id or "unknown") if identity else "unknown"
                 principal_id = (identity.principal_id or "unknown") if identity else "unknown"
 
@@ -998,10 +985,7 @@ class AdCPRequestHandler(RequestHandler):
                 )
             elif any(word in combined_text for word in ["price", "pricing", "cost", "cpm", "budget"]):
                 # Redirect pricing queries to get_products which has real price_guidance
-                result = await self._handle_get_products_skill(
-                    {"brief": combined_text},
-                    identity,
-                )
+                result = await self._dispatch_skill("get_products", {"brief": combined_text}, identity)
                 tenant_id = (identity.tenant_id or "unknown") if identity else "unknown"
                 principal_id = (identity.principal_id or "unknown") if identity else "unknown"
 
@@ -1026,7 +1010,7 @@ class AdCPRequestHandler(RequestHandler):
                 )
             elif any(word in combined_text for word in ["target", "audience"]):
                 # Redirect targeting queries to get_adcp_capabilities which has real targeting info
-                result = await self._handle_get_adcp_capabilities_skill({}, identity)
+                result = await self._dispatch_skill("get_adcp_capabilities", {}, identity)
                 tenant_id = (identity.tenant_id or "unknown") if identity else "unknown"
                 principal_id = (identity.principal_id or "unknown") if identity else "unknown"
 
@@ -1537,61 +1521,23 @@ class AdCPRequestHandler(RequestHandler):
         raise UnsupportedOperationError(message="Extended agent card not supported")
 
     @staticmethod
-    def _stamp_a2a_protocol_fields(response: AdCPBaseModel) -> dict[str, Any]:
-        """Dump a Pydantic response and stamp the A2A protocol fields onto it.
-
-        ``message`` and ``success`` are not spec fields on any response
-        model — they are A2A transport-envelope markers (like MCP's
-        ``task_id``/``adcp_version``; see
-        ``tests/integration/test_harness_wire_response.py::ENVELOPE_MARKERS``),
-        a deliberate A2A-binding deviation (#1868 review).
-        ``success`` is derived from ``errors`` so a response carrying
-        per-item errors reports ``success=False`` uniformly, regardless of
-        which caller stamped it.
-
-        Single point for this derivation — three sites used to duplicate it
-        inline, and two of the three (the get_products explicit-skill and
-        NL handlers, which need the dict pre-stamped before
-        ``apply_version_compat`` sees it) omitted the errors-derivation
-        entirely, always forcing ``success=True``.
-
-        Args:
-            response: Pydantic model from a skill handler.
-
-        Returns:
-            Dict with ``message``/``success`` stamped, ready for A2A.
-        """
-        response_data = response.model_dump(mode="json")
-        response_data["message"] = str(response)
-
-        # Derive success from errors field if present, default True otherwise
-        if "errors" in response_data:
-            response_data["success"] = not bool(response_data["errors"])
-        else:
-            response_data.setdefault("success", True)
-
-        return response_data
-
-    @staticmethod
     def _serialize_for_a2a(response: AdCPBaseModel | dict) -> dict[str, Any]:
-        """Serialize a handler response for A2A protocol at the framework boundary.
+        """Serialize a tool's response for A2A at the framework boundary.
 
-        Single serialization point for all explicit-skill A2A responses.
+        The single serialization point for every A2A skill response: the model dump, then the
+        ``message``/``success`` stamp, in that order and nowhere else.
 
-        - Pydantic models: serialized via ``model_dump(mode="json")`` here,
-          and the protocol fields (``message``, ``success``) are added via
-          ``_stamp_a2a_protocol_fields``.
-        - Dicts: passed through. Only skill handlers that pre-apply version
-          compat (e.g., ``_handle_get_products_skill`` calls
-          ``apply_version_compat`` and emits a dict already populated with
-          ``message``/``success`` via ``_stamp_a2a_protocol_fields``) use
-          this path. Error dicts that bypass the envelope contract were
-          retired in this PR — NL handlers now raise typed ``AdCPSalesAgentError``
-          instead.
+        ``message`` and ``success`` are not spec fields on any response model -- they are A2A
+        transport-envelope markers (like MCP's ``task_id``/``adcp_version``; see
+        ``tests/integration/test_harness_wire_response.py::ENVELOPE_MARKERS``), a deliberate
+        A2A-binding deviation (#1868 review). ``success`` is derived from ``errors`` so a
+        response carrying per-item errors reports ``success=False`` uniformly.
+
+        A dict passes through unchanged. Nothing on the skill path produces one any more --
+        the branch survives for callers holding a response built elsewhere.
 
         Args:
-            response: Pydantic model OR pre-serialized dict from a skill
-                handler.
+            response: Pydantic model returned by the tool, or an already-serialized dict.
 
         Returns:
             Dict ready for A2A DataPart.
@@ -1599,7 +1545,51 @@ class AdCPRequestHandler(RequestHandler):
         if isinstance(response, dict):
             return response
 
-        return AdCPRequestHandler._stamp_a2a_protocol_fields(response)
+        response_data = response.model_dump(mode="json")
+        if "errors" in response_data:
+            response_data["success"] = not bool(response_data["errors"])
+        else:
+            response_data.setdefault("success", True)
+        return response_data
+
+    async def _dispatch_skill(
+        self,
+        skill_name: str,
+        parameters: dict,
+        identity: ResolvedIdentity | None,
+    ) -> dict[str, Any]:
+        """Validate a parameter bag into the row's DTO, run the tool, serialize the answer.
+
+        The whole of A2A's request path. Eleven ``_handle_<tool>_skill`` methods stood here,
+        and what they had in common was these three lines; what they did NOT have in common was
+        the defect. Each coerced its own parameters -- twelve call sites across
+        ``to_account_reference``, ``to_brand_reference``, ``coerce_creative_filters``,
+        ``upgrade_legacy_format_id`` and ``to_context_object`` -- and MCP and REST ran none of
+        them, so the same bytes had two meanings.
+
+        The coercions are gone rather than moved. Pydantic performs four of the five unaided on
+        the plain dict a buyer sends, and the helpers were worse than redundant:
+        ``_coerce_wire_object`` returns ``None`` for a non-dict, so where MCP and REST raised,
+        A2A silently dropped -- and for the seven tools whose ``account`` is optional the
+        request then proceeded with NO account scope, meaning no authorization against that
+        account and a different idempotency scope. The genuine wire-compatibility rewrites
+        moved to ``normalize_request_params``, which every transport shares.
+
+        That normalizer runs HERE rather than in ``_handle_explicit_skill``, so the two natural
+        language entry points take the same steps as an explicit skill invocation. This is A2A's
+        whole request path, and a path that only some callers reach is the shape this change
+        exists to remove.
+
+        ``parameters`` is a plain JSON-shaped dict by the time it arrives: the A2A path is
+        ``json_format.MessageToDict`` over a ``Struct``, never binary protobuf. The one Struct
+        artifact is that it has no integer type, and pydantic's non-strict mode already coerces
+        ``2.0`` to an ``int`` field.
+        """
+        from src.core.request_compat import normalize_request_params
+
+        params = normalize_request_params(skill_name, parameters).params
+        response = await invoke_tool(skill_name, TOOLS[skill_name].validate(params), identity)
+        return self._serialize_for_a2a(response)
 
     async def _handle_explicit_skill(
         self,
@@ -1638,12 +1628,8 @@ class AdCPRequestHandler(RequestHandler):
         # config is validated exactly once, at the transport boundary that owns it.
         if push_config_registration and skill_name in ("create_media_buy", "sync_creatives"):
             parameters = {**parameters, "push_notification_config": push_config_registration.config}
-        # Normalize deprecated fields before any handler sees the parameters
-        from src.core.request_compat import normalize_request_params
-
-        compat_result = normalize_request_params(skill_name, parameters)
-        parameters = compat_result.params
-
+        # Deprecated wire shapes are normalized in ``_dispatch_skill``, which is the one
+        # place every A2A request passes through -- the NL entry points reach it too.
         logger.info("Handling explicit skill: %s with parameters: %s", skill_name, list(parameters.keys()))
 
         # Validate identity for non-discovery skills. Stay a JSON-RPC
@@ -1669,30 +1655,18 @@ class AdCPRequestHandler(RequestHandler):
                 data=build_two_layer_error_envelope(AdCPAuthRequiredError()),
             )
 
-        # Map skill names to handlers. Handler signatures are heterogeneous
-        # (discovery skills accept ``identity: ResolvedIdentity | None``; the rest
-        # require non-None), so the dispatch is typed dynamically — the non-discovery
-        # guard above enforces a non-None identity before the call.
-        # Dispatch is DERIVED: TOOLS says which tools exist on A2A, and the handler for a
-        # tool is ``_handle_{name}_skill`` on this class. There is no dict to keep in step --
-        # a row with a2a=True is dispatchable, which is what makes TOOLS the single
-        # declaration rather than a second one that can disagree with the card beside it.
-        skill_handlers: dict[str, Callable[..., Awaitable[Any]]] = {
-            name: getattr(self, f"_handle_{name}_skill")
-            for name, spec in TOOLS.items()
-            if spec.a2a and hasattr(self, f"_handle_{name}_skill")
-        }
-
-        if skill_name not in skill_handlers:
-            available_skills = list(skill_handlers.keys())
+        # A row with ``a2a=True`` IS dispatchable. There is no second list and no per-tool
+        # method: the registry says which tools this transport serves, and the card is derived
+        # from the same rows, so the two cannot disagree. They used to -- a ``hasattr`` filter
+        # over ``_handle_{name}_skill`` methods silently overrode the declaration, so
+        # ``list_tasks``, ``get_task_status`` and ``complete_task`` appeared on the card and
+        # answered ``MethodNotFoundError``.
+        if skill_name not in TOOLS or not TOOLS[skill_name].a2a:
+            available_skills = [name for name, spec in TOOLS.items() if spec.a2a]
             raise MethodNotFoundError(message=f"Unknown skill '{skill_name}'. Available skills: {available_skills}")
 
         try:
-            handler = skill_handlers[skill_name]
-            # Handlers return raw Pydantic models (or raise typed AdCPSalesAgentError on validation failure)
-            result = await handler(parameters, identity)
-            # Serialize at the boundary — models become dicts with protocol fields
-            return self._serialize_for_a2a(result)
+            return await self._dispatch_skill(skill_name, parameters, identity)
         except A2AError:
             # Re-raise A2AError as-is (already properly formatted)
             raise
@@ -1721,394 +1695,6 @@ class AdCPRequestHandler(RequestHandler):
         # Untyped exceptions fall through to the dispatcher's `except Exception`
         # at the call site, which routes them through `_build_failed_skill_result`
         # for uniform envelope shape. No catch-all here.
-
-    async def _handle_get_products_skill(self, parameters: dict, identity: ResolvedIdentity | None) -> Any:
-        """Handle explicit get_products skill invocation.
-
-        Aligned with adcp spec - brand must be a BrandReference dict.
-
-        NOTE: Authentication is OPTIONAL for this endpoint. Access depends on tenant's
-        brand_manifest_policy setting (public/require_brand/require_auth).
-        """
-        # The DTO is the accepted shape, so validating into it IS the selection -- the same
-        # step REST and MCP take, from the same registry row. A hand-listed forward is the
-        # shape that silently drops every field added later, and this one already named five
-        # of the twenty-one fields the DTO declares.
-        req = TOOLS["get_products"].validate(parameters)
-        response = await invoke_tool("get_products", req, identity)
-
-        # Apply v2 compat for pre-3.0 clients at the boundary
-        from src.core.version_compat import apply_version_compat
-
-        adcp_version = parameters.get("adcp_version")
-        if isinstance(response, dict):
-            response_data = response
-        else:
-            # Stamp protocol fields (message, success) before apply_version_compat
-            # sees the dict, since a dict bypasses _serialize_for_a2a's own stamping.
-            response_data = self._stamp_a2a_protocol_fields(response)
-        return apply_version_compat("get_products", response_data, adcp_version)
-
-    async def _handle_create_media_buy_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
-        """Handle explicit create_media_buy skill invocation.
-
-        IMPORTANT: This handler ONLY accepts AdCP spec-compliant format:
-        - packages[] (required) - each package must have budget
-        - brand (required)
-        - start_time (required)
-        - end_time (required)
-
-        Per AdCP v2.2.0 spec, budget is specified at the PACKAGE level, not top level.
-        Legacy format (product_ids, total_budget, start_date, end_date) is NOT supported.
-        """
-        tool_context = self._make_tool_context(identity, "create_media_buy")
-
-        # Parse parameters into typed request model (validation at A2A boundary)
-        from src.core.schemas import CreateMediaBuyRequest
-
-        # Pre-process: A2A field name translations
-        params = {**parameters}
-        if "custom_targeting" in params:
-            params.setdefault("targeting_overlay", params.pop("custom_targeting"))
-        # No server-minted defaults for buyer payload fields: a randomized
-        # po_number would change the request's canonical idempotency hash, so an
-        # identical A2A retry would reject as IDEMPOTENCY_CONFLICT instead of
-        # replaying — and the stored payload would diverge from the same request
-        # sent via MCP/REST (cross-transport parity). po_number stays None when
-        # the buyer omits it, exactly like the other transports.
-        # buyer_ref removed in adcp 3.12
-
-        # push_notification_config is an A2A *transport-layer* parameter
-        # (injected by _handle_explicit_skill from the SendMessageConfiguration).
-        # It stays IN params so the builder puts it on the request like every other field.
-        # It used to be popped out here and forwarded beside the request, so that the adcp
-        # Authentication.credentials MinLen(32) constraint would not apply to the whole
-        # create_media_buy (gh-#1299). That constraint now applies, deliberately: a payload
-        # that does not conform to the schema is refused AT the schema rather than carried
-        # past it. The bypass had one field announced by three separate mechanisms.
-
-        # Normalize explicit brand through the shared coercion funnel (#1324).
-        # to_brand_reference returns None only for None input (excluded above); every
-        # other input returns BrandReference or raises typed AdCPValidationError.
-        if params.get("brand") is not None:
-            brand_ref = to_brand_reference(params["brand"])
-            assert brand_ref is not None  # None only for None input; excluded by guard
-            params["brand"] = brand_ref.model_dump(mode="json")
-
-        # Validate required AdCP parameters (packages is optional in model but required by spec).
-        # Raise typed AdCPValidationError so the outer dispatcher's `except AdCPSalesAgentError` branch
-        # routes through `_build_failed_skill_result` -> `_build_error_envelope`, producing
-        # the single two-layer envelope wire shape. Returning a custom dict here bypasses
-        # the envelope builder and erases the real code on the buyer side.
-        _require_params(params, ["brand", "packages", "start_time", "end_time"])
-
-        # Validated for its rejection: a refusal here leaves the handler as a pydantic
-        # ValidationError and the dispatcher gives it the same field + message +
-        # buyer-facing suggestion every transport emits (AdCP POST-F3, #1417).
-        # Validated for its rejection only: the values forwarded below are the wire values
-        # (create_media_buy_raw re-validates them through this same model), so the model is
-        # the boundary's gate rather than a container to pluck from.
-        CreateMediaBuyRequest.model_validate(params)
-
-        # Call core function with validated parameters and identity.
-        # Per AdCP 3.1.1 (media-buy/package-update.json) targeting_overlay and budgets live on each
-        # PackageRequest; only request-level spec fields are forwarded here.
-        #
-        # Selected off the TOOL rather than hand-listed. It named create_media_buy_raw until
-        # the wrappers moved to taking the built request, whose signature would now select
-        # nothing -- and it then named the builder, which is a second place to name the wrong
-        # one. The ten-name list before that dropped `ext` and `paused` — both declared by
-        # CreateMediaBuyRequest AND accepted by the builder, so both were honoured on MCP and
-        # silently discarded on A2A. That is the same defect class as the missing
-        # idempotency_key on update_media_buy; the cure is to stop enumerating.
-
-        # Wrap for boundary-pattern consistency with delivery/sync_creatives. A crash is
-        # structurally impossible here (create_media_buy_raw re-coerces via
-        # CreateMediaBuyRequest), and to_account_reference is idempotent on an already
-        # typed/dict account — but resolving at the boundary keeps all three handlers uniform.
-        # The DTO is the accepted shape, so validating into it IS the selection.
-        # Boundary-coerced values override the raw bag; everything else validates
-        # straight into the DTO, which is the accepted shape.
-        req = TOOLS["create_media_buy"].validate({**params, "account": to_account_reference(params.get("account"))})
-        response = await invoke_tool("create_media_buy", req, identity)
-
-        return response
-
-    async def _handle_sync_creatives_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
-        """Handle explicit sync_creatives skill invocation (AdCP spec endpoint)."""
-        # DEBUG: Log incoming parameters
-        logger.info("[A2A sync_creatives] Received parameters keys: %s", list(parameters.keys()))
-        logger.info("[A2A sync_creatives] assignments param: %s", parameters.get("assignments"))
-        logger.info("[A2A sync_creatives] creatives count: %s", len(parameters.get("creatives", [])))
-
-        # Create ToolContext from A2A auth info and resolve identity
-        tool_context = self._make_tool_context(identity, "sync_creatives")
-
-        # Map A2A parameters - creatives is required.
-        # Raise typed AdCPValidationError so the outer dispatcher emits a two-layer envelope.
-        if "creatives" not in parameters:
-            raise AdCPValidationError()
-
-        # Pass wire dicts THROUGH; do not pre-construct CreativeAsset here.
-        # ``sync_creatives_raw`` declares ``list[CreativeAsset] | list[dict]`` for
-        # exactly this reason: ``_sync_creatives_impl`` validates each entry
-        # individually, which is what produces the per-creative partial-success
-        # results this tool's contract promises. Building CreativeAsset(**c) at the
-        # boundary hard-failed the WHOLE call on one malformed entry, so A2A alone
-        # could not express a partial success -- and it was a third construction of
-        # a request the other two transports build by one shared path.
-        #
-        # The legacy format_id upgrade stays -- it is a wire-compatibility rewrite of
-        # a field's shape (a bare string, or a dict with no agent_url, both of which
-        # the library CreativeAsset rejects outright) -- but it is dumped straight
-        # back to a wire dict. upgrade_legacy_format_id returns OUR FormatId
-        # subclass, and pydantic does not re-validate a model instance that already
-        # satisfies the annotation, so handing that instance on made A2A the only
-        # transport whose CreativeAsset.format_id was a different CLASS. Pydantic v2
-        # equality is class-sensitive, so the registry match in _processing then
-        # found nothing and every generative creative was written as a plain static
-        # asset with no error. Dumping keeps the rewrite and
-        # leaves the request identical to the one MCP and REST build.
-        from src.core.format_cache import upgrade_legacy_format_id
-
-        creatives = [
-            {**c, "format_id": upgrade_legacy_format_id(c["format_id"]).model_dump(mode="json")}
-            if isinstance(c, dict) and "format_id" in c
-            else c
-            for c in parameters["creatives"]
-        ]
-
-        ctx_param = parameters.get("context")
-        context = ContextObject(**ctx_param) if isinstance(ctx_param, dict) else ctx_param
-
-        # Call core function with spec-compliant parameters (AdCP 2.5: full upsert
-        # semantics, patch parameter removed).
-        #
-        # Selected off the TOOL rather than hand-listed (it named sync_creatives_raw until
-        # the wrappers moved to taking the built request): the set forwarded is "the DTO's
-        # fields INTERSECT the builder's parameters", the same set MCP advertises and read
-        # from the same lookup, so a field added to the DTO and the builder cannot reach one
-        # transport and not another (which is how idempotency_key -- AdCP 3.1.1 /required --
-        # was lost here until it was hand-added back).
-        #
-        # Three fields are set AFTER selection because they need boundary coercion the raw
-        # bag cannot carry: `creatives` (legacy format_id upgraded above), `context` (typed
-        # ContextObject) and `account` (typed AccountReference).
-
-        # The DTO is the accepted shape, so validating into it IS the selection.
-        # Boundary-coerced values override the raw bag; everything else validates
-        # straight into the DTO, which is the accepted shape.
-        req = TOOLS["sync_creatives"].validate(
-            {
-                **parameters,
-                "creatives": creatives,
-                "context": context,
-                "account": to_account_reference(parameters.get("account")),
-            }
-        )
-        response = await invoke_tool("sync_creatives", req, identity)
-
-        return response
-
-    async def _handle_list_creatives_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
-        """Handle explicit list_creatives skill invocation (AdCP spec endpoint)."""
-        # Create ToolContext from A2A auth info and resolve identity
-        tool_context = self._make_tool_context(identity, "list_creatives")
-
-        # Structured AdCP CreativeFilters (statuses, concept_ids, format_ids, …)
-        # arrive over the wire as a JSON dict; coerce to the typed model the core
-        # function expects so they are honoured rather than dropped. Invalid filters
-        # raise AdCPValidationError (VALIDATION_ERROR + suggestion) via the shared helper.
-        filters = coerce_creative_filters(parameters.get("filters"))
-
-        # Call core function with optional parameters (fixing original validation bug)
-        # Selected off the TOOL rather than hand-listed. The 20-name list this replaces is the
-        # shape that silently drops every field added later, which is how an A2A buyer's
-        # media_buy_ids came to be ignored (a recorded gap row 11). It named list_creatives_raw
-        # when it was written; the wrapper takes the built request now, so intersecting with IT
-        # would select nothing -- which is exactly the choice no site should be making, and
-        # REST's ListCreativesBody now reads the same seam off the same tool.
-        # `filters` is set explicitly AFTER selection because it needs typed coercion
-        # (invalid filters must raise AdCPValidationError, not reach the impl as a dict).
-
-        # The DTO is the accepted shape, so validating into it IS the selection.
-        # Boundary-coerced values override the raw bag; everything else validates
-        # straight into the DTO, which is the accepted shape.
-        req = TOOLS["list_creatives"].validate({**parameters, "filters": filters})
-        response = await invoke_tool("list_creatives", req, identity)
-
-        return response
-
-    async def _handle_get_adcp_capabilities_skill(self, parameters: dict, identity: ResolvedIdentity | None) -> Any:
-        """Handle explicit get_adcp_capabilities skill invocation (CRITICAL AdCP discovery endpoint).
-
-        NOTE: Authentication is OPTIONAL for this endpoint since it returns public discovery data.
-        Returns agent capabilities including supported protocols, targeting, and portfolio info.
-        """
-        # Identity already resolved at transport boundary (on_message_send)
-
-        # Import and call the core implementation
-
-        # Consume the parameter bag wholesale rather than naming each field: a handler
-        # that enumerates is the shape that silently drops every field added later --
-        # which is exactly how `ext` went missing here (a recorded gap Lane D).
-        # adcp_version / adcp_major_version are forwarded EXPLICITLY: select_request_fields
-        # strips the version-envelope pair by design (a REST body defaults adcp_version to
-        # "1.0.0", which the envelope pattern rejects), but for THIS tool they are real
-        # request data -- they drive version negotiation and the unsupported-version
-        # advisory. Selecting alone would silently disable that negotiation.
-        # The DTO is the accepted shape, so validating into it IS the selection. The version
-        # envelope no longer needs re-adding by hand: it was stripped by the selection, and
-        # every DTO now inherits adcp_version / adcp_major_version from the SDK request model.
-        req = TOOLS["get_adcp_capabilities"].validate(parameters)
-        response = await invoke_tool("get_adcp_capabilities", req, identity)
-
-        return response
-
-    async def _handle_list_creative_formats_skill(self, parameters: dict, identity: ResolvedIdentity | None) -> Any:
-        """Handle explicit list_creative_formats skill invocation (CRITICAL AdCP endpoint).
-
-        NOTE: Authentication is OPTIONAL for this endpoint since it returns public discovery data.
-        """
-        # Identity already resolved at transport boundary (on_message_send)
-
-        # Build request from parameters (all optional).
-
-        # Selected off the TOOL rather than hand-listed: the 13-name list this
-        # replaces already dropped ext, pagination, property_id and publisher_domain,
-        # all of which ListCreativeFormatsRequest declares (a recorded gap Lane D).
-        # The DTO is the accepted shape, so validating into it IS the selection.
-        req = TOOLS["list_creative_formats"].validate(parameters)
-
-        # Call core function with identity
-        response = await invoke_tool("list_creative_formats", req, identity)
-
-        return response
-
-    async def _handle_list_accounts_skill(self, parameters: dict, identity: ResolvedIdentity | None) -> Any:
-        """Handle explicit list_accounts skill invocation.
-
-        Authentication is OPTIONAL per BR-RULE-055 — unauthenticated calls
-        return an empty account list.
-        """
-
-        # The DTO is the accepted shape, so validating into it IS the selection.
-        request = TOOLS["list_accounts"].validate(parameters)
-        return await invoke_tool("list_accounts", request, identity)
-
-    async def _handle_sync_accounts_skill(self, parameters: dict, identity: ResolvedIdentity | None) -> Any:
-        """Handle explicit sync_accounts skill invocation.
-
-        Authentication is REQUIRED per BR-RULE-055.
-        """
-
-        # The DTO is the accepted shape, so validating into it IS the selection.
-        request = TOOLS["sync_accounts"].validate(parameters)
-        return await invoke_tool("sync_accounts", request, identity)
-
-    async def _handle_update_media_buy_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
-        """Handle explicit update_media_buy skill invocation (CRITICAL for campaign management)."""
-        # Identity already resolved at transport boundary (on_message_send)
-
-        # Parse parameters into typed request model (validation at A2A boundary)
-
-        # Pre-process: support legacy 'updates.packages' → 'packages'
-        params = {**parameters}
-        if "packages" not in params and "updates" in params:
-            legacy_updates = params.pop("updates")
-            if isinstance(legacy_updates, dict) and "packages" in legacy_updates:
-                params["packages"] = legacy_updates["packages"]
-
-        # media_buy_id is required. Raise typed AdCPValidationError so the dispatcher
-        # routes it through the two-layer envelope, matching the create_media_buy skill.
-        if "media_buy_id" not in params:
-            raise AdCPValidationError()
-
-        # Validate top-level fields via typed model (packages validated by _raw
-        # which handles legacy formats with extra fields like 'status')
-        # Selected off the DTO, not hand-listed. The seven-name list this replaces omitted
-        # `account` and `idempotency_key` until they were noticed and hand-added back, while
-        # sitting directly above a comment praising the SELECTED half of this same function
-        # for not hand-listing: the two halves of one function disagreed, which is the whole
-        # argument for having one rule.
-        #
-        # `packages` is the ONE documented exception and is excluded from the gate on
-        # purpose: it carries legacy shapes (extra keys like `status`) that
-        # update_media_buy_raw normalises downstream, so validating it here would reject
-        # requests the tool accepts. It is still FORWARDED below — excluded from the
-        # validation gate, not from the request.
-        validation_bag = select_request_fields(UpdateMediaBuyRequest, params, None)
-        validation_bag.pop("packages", None)
-        req = UpdateMediaBuyRequest.model_validate(validation_bag)
-
-        # Selected off the TOOL rather than hand-listed. The
-        # eight-name list this replaces silently dropped currency, daily_budget, ext,
-        # flight_start_date, flight_end_date, idempotency_key and pacing -- all accepted on
-        # MCP and REST. idempotency_key is the costly one: AdCP 3.1.1 puts it in
-        # update-media-buy-request.json /required, so a spec-conformant A2A buyer's
-        # at-most-once key was being discarded, the same defect class as .
-        # media_buy_id comes from the validated model; the rest of the bag is selected.
-
-        # The DTO is the accepted shape, so validating into it IS the selection.
-        # Boundary-coerced values override the raw bag; everything else validates
-        # straight into the DTO, which is the accepted shape.
-        built = TOOLS["update_media_buy"].validate({**params, "media_buy_id": req.media_buy_id or ""})
-        response = await invoke_tool("update_media_buy", built, identity)
-
-        return response
-
-    async def _handle_get_media_buys_skill(self, parameters: dict, identity: ResolvedIdentity) -> Any:
-        """Handle get_media_buys skill invocation.
-
-        Builds through the SHARED builder and hands the wrapper the built request, like REST
-        and MCP. ``include_snapshot`` travels IN the request now -- it is a GetMediaBuysRequest
-        field, and popping it out here was how this transport came to carry it separately.
-        """
-        from src.core.schemas import GetMediaBuysRequest
-
-        GetMediaBuysRequest.model_validate(parameters)
-        # The DTO is the accepted shape, so validating into it IS the selection.
-        req = TOOLS["get_media_buys"].validate(parameters)
-        return await invoke_tool("get_media_buys", req, identity)
-
-    async def _handle_get_media_buy_delivery_skill(self, parameters: dict, identity: ResolvedIdentity) -> dict:
-        """Handle explicit get_media_buy_delivery skill invocation (CRITICAL for monitoring).
-
-        Per AdCP spec, all parameters are optional:
-        - media_buy_ids (plural, per AdCP v1.6.0 spec) or media_buy_id (singular, legacy)
-        - status_filter: Filter by status (active, pending, paused, completed, failed, all)
-        - start_date: Start date for reporting period (YYYY-MM-DD)
-        - end_date: End date for reporting period (YYYY-MM-DD)
-
-        When no media_buy_ids are provided, returns delivery data for all media buys
-        the requester has access to, filtered by the provided criteria.
-        """
-        # Identity already resolved at transport boundary (on_message_send)
-
-        # Parse parameters into typed request model (validation at A2A boundary)
-        # Pre-process: support singular media_buy_id (legacy) → media_buy_ids (spec)
-        from src.core.schemas import GetMediaBuyDeliveryRequest
-
-        params = {**parameters}
-        if "media_buy_ids" not in params and "media_buy_id" in params:
-            params["media_buy_ids"] = [params.pop("media_buy_id")]
-
-        # Builds through the SHARED builder and hands the wrapper the built request -- the
-        # same two steps REST and MCP take. Selection is against the TOOL's own seam:
-        # the nine-name list this replaces once dropped reporting_dimensions,
-        # attribution_window, include_package_daily_breakdown and account, silently
-        # discarding the buyer's requested attribution window (gh-#1299 follow-up).
-        # Deriving the field set makes that class of omission structurally impossible.
-        # Raw values are forwarded for everything the builder coerces itself
-        # (status_filter str→MediaBuyStatus, dates, the dimension/window objects).
-        # The DTO is the accepted shape, so validating into it IS the selection. This used
-        # to validate, then re-narrow through select_request_fields_for against the MCP
-        # wrapper's parameter list, then rebuild -- three steps whose only effect was to
-        # drop whatever that hand-written list happened to omit.
-        req = GetMediaBuyDeliveryRequest.model_validate(params)
-        response = await invoke_tool("get_media_buy_delivery", req, identity)
-
-        return response
 
     def _extract_brand_name_from_query(self, query: str) -> str:
         """Extract or infer brand name from the user query.

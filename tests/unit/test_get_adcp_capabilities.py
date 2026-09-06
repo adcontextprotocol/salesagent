@@ -337,13 +337,18 @@ class TestGetAdcpCapabilitiesA2AIntegration:
 
         assert "get_adcp_capabilities" in DISCOVERY_SKILLS
 
-    def test_skill_handler_exists(self):
-        """Test that the skill handler method exists."""
-        from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
+    def test_the_registry_row_makes_the_skill_dispatchable(self):
+        """A2A serves this tool because the registry row says so, not because a method exists.
 
-        handler = AdCPRequestHandler.__new__(AdCPRequestHandler)
-        assert hasattr(handler, "_handle_get_adcp_capabilities_skill")
-        assert callable(handler._handle_get_adcp_capabilities_skill)
+        This asserted `hasattr(handler, "_handle_get_adcp_capabilities_skill")`. That method
+        is gone, and so is the `hasattr` filter that used it to decide dispatch -- a filter
+        that silently overrode the registry, so `list_tasks`, `get_task_status` and
+        `complete_task` appeared on the agent card and answered MethodNotFoundError. The
+        row IS the declaration now, and it is what this grades.
+        """
+        from src.core.tools.registry import TOOLS
+
+        assert TOOLS["get_adcp_capabilities"].a2a is True
 
 
 # ===========================================================================

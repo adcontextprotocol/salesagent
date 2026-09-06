@@ -9,29 +9,11 @@ from datetime import UTC, datetime
 import pytest
 
 from src.core.protocol_envelope import ProtocolEnvelope
-from src.core.schemas import CreateMediaBuySuccess, GetProductsResponse
+from src.core.schemas import CreateMediaBuySuccess
 
 
 class TestProtocolEnvelope:
     """Test protocol envelope wrapping per AdCP v2.4 spec."""
-
-    def test_wrap_pydantic_model_with_minimal_fields(self):
-        """Test wrapping a Pydantic model with only required envelope fields."""
-        # Create domain response
-        response = GetProductsResponse(products=[])
-
-        # Wrap in protocol envelope
-        envelope = ProtocolEnvelope.wrap(payload=response, status="completed", add_timestamp=False)
-
-        # Verify envelope structure
-        assert envelope.status == "completed"
-        assert "products" in envelope.payload
-        assert envelope.payload["products"] == []
-        # Note: GetProductsResponse still has adcp_version (will be removed in later task)
-        assert envelope.message is not None  # Generated from __str__
-        assert envelope.task_id is None
-        assert envelope.context_id is None
-        assert envelope.timestamp is None
 
     def test_wrap_pydantic_model_with_all_fields(self):
         """Test wrapping with all optional envelope fields."""
@@ -82,25 +64,6 @@ class TestProtocolEnvelope:
         assert envelope.message == "Found 1 product"
         assert envelope.payload == payload_dict
 
-    def test_model_dump_excludes_none_values(self):
-        """Test that model_dump excludes None values by default."""
-        response = GetProductsResponse(products=[])
-
-        envelope = ProtocolEnvelope.wrap(payload=response, status="completed", add_timestamp=False)
-
-        dumped = envelope.model_dump()
-
-        # None values should be excluded
-        assert "task_id" not in dumped
-        assert "context_id" not in dumped
-        assert "timestamp" not in dumped
-        assert "push_notification_config" not in dumped
-
-        # Required and present values should be included
-        assert "status" in dumped
-        assert "payload" in dumped
-        assert "message" in dumped  # Generated from __str__
-
     def test_status_values_from_spec(self):
         """Test all valid status values per AdCP spec."""
         valid_statuses = [
@@ -136,20 +99,6 @@ class TestProtocolEnvelope:
         # Internal fields should be excluded from payload
         assert "workflow_step_id" not in envelope.payload
         assert "media_buy_id" in envelope.payload
-
-    def test_message_generation_from_payload_str(self):
-        """Test that message is auto-generated from payload.__str__ if not provided."""
-        response = CreateMediaBuySuccess.carrier(
-            media_buy_id="mb_456",
-            packages=[{"package_id": "pkg_1", "paused": False}],
-        )
-
-        envelope = ProtocolEnvelope.wrap(payload=response, status="completed", add_timestamp=False)
-
-        # Message should be generated from response.__str__
-        assert envelope.message is not None
-        assert "mb_456" in envelope.message
-        assert "created successfully" in envelope.message.lower()
 
     def test_timestamp_format(self):
         """Test that timestamp is ISO 8601 UTC datetime."""

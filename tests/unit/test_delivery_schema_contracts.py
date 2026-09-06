@@ -264,27 +264,6 @@ def _make_delivery_response(**overrides):
 
 
 class TestGetMediaBuyDeliveryResponseMethods:
-    def test_str_zero_deliveries(self):
-        resp = _make_delivery_response(media_buy_deliveries=[])
-        assert str(resp) == "No delivery data found for the specified period."
-
-    def test_str_one_delivery(self):
-        resp = _make_delivery_response()
-        assert str(resp) == "Retrieved delivery data for 1 media buy."
-
-    def test_str_multiple_deliveries(self):
-        deliveries = [
-            {
-                "media_buy_id": f"buy_{i}",
-                "status": "active",
-                "totals": {"impressions": 100, "spend": 1.0},
-                "by_package": [],
-            }
-            for i in range(3)
-        ]
-        resp = _make_delivery_response(media_buy_deliveries=deliveries)
-        assert str(resp) == "Retrieved delivery data for 3 media buys."
-
     # next_expected_at is graded against the pin, not against a hand-declared set.
     # get-media-buy-delivery-response.json types it {"type": "string"} — NOT nullable —
     # omits it from `required`, and its description scopes it to "webhook deliveries

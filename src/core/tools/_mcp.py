@@ -24,6 +24,6 @@ def mcp_result(response: AdCPBaseModel, content: str | None = None) -> ToolResul
     mcp_result?" structural check -- so the bound is where it has to be caught.
     """
     return ToolResult(
-        content=content if content is not None else str(response),
+        content=content if content is not None else (getattr(response, "message", None) or ""),
         structured_content=response.model_dump(mode="json"),
     )

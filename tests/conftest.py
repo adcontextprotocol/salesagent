@@ -167,7 +167,6 @@ _ENTITY_PATTERNS: dict[str, list[str]] = {
         "all_response_str",
         "openapi_surface",
         "json_serialization",
-        "version_compat",
         "signals_response",
         "discovery_endpoint",
     ],

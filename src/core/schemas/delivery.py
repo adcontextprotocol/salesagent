@@ -344,15 +344,6 @@ class GetMediaBuyDeliveryResponse(
     # `notification_type is not None` included 'final', the one case the pin excludes.
     _PINNED_SCHEMA_REF: ClassVar[str] = "media-buy/get-media-buy-delivery-response.json"
 
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        count = len(self.media_buy_deliveries)
-        if count == 0:
-            return "No delivery data found for the specified period."
-        elif count == 1:
-            return "Retrieved delivery data for 1 media buy."
-        return f"Retrieved delivery data for {count} media buys."
-
     def webhook_payload(
         self,
         requested_metrics: list[str] | None = None,
@@ -518,15 +509,6 @@ class GetCreativeDeliveryResponse(NestedModelSerializerMixin, LibraryGetCreative
     creatives: list[CreativeDeliveryData] = Field(  # type: ignore[assignment]
         ..., description="Array of creative delivery data"
     )
-
-    def __str__(self) -> str:
-        """Return human-readable summary message for protocol envelope."""
-        count = len(self.creatives)
-        if count == 0:
-            return "No creative delivery data found for the specified period."
-        elif count == 1:
-            return "Retrieved delivery data for 1 creative."
-        return f"Retrieved delivery data for {count} creatives."
 
 
 class AdapterCreativeDeliveryItem(SalesAgentBaseModel):

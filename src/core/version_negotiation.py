@@ -5,9 +5,6 @@ accepts, derived from the pinned SDK spec version -- never a literal/
 hardcoded list duplicated across response-construction sites (mirrors
 ``resolve_supported_billing()`` in ``src/core/billing_policy.py``).
 
-Do NOT confuse with ``src/core/version_compat.py`` -- that module handles the
-unrelated v2/v3 wire-payload compatibility shims, not protocol version
-negotiation.
 """
 
 from __future__ import annotations

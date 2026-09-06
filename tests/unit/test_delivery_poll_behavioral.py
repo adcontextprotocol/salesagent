@@ -518,30 +518,6 @@ class TestMCPToolResultContent:
         assert "aggregated_totals" in sc
         assert "media_buy_deliveries" in sc
 
-    async def test_content_is_string_representation(self):
-        """content field contains a human-readable string form of the response.
-
-        Covers: UC-004-MAIN-13
-        """
-        from unittest.mock import AsyncMock
-
-        from fastmcp.server.context import Context
-
-        stub_response = self._stub_delivery_response()
-
-        mock_ctx = MagicMock(spec=Context)
-        mock_ctx.get_state = AsyncMock(return_value=None)
-
-        with registry_impl("get_media_buy_delivery", lambda req, identity=None, **kw: stub_response):
-            result = await mcp_tool("get_media_buy_delivery")(
-                media_buy_ids=["mb_001"],
-                ctx=mock_ctx,
-            )
-
-        content_text = result.content[0].text if hasattr(result.content[0], "text") else str(result.content[0])
-        assert len(content_text) > 0
-        assert "No delivery data found" in content_text or "delivery" in content_text.lower()
-
 
 # ---------------------------------------------------------------------------
 # UC-004-MAIN-14
@@ -616,60 +592,12 @@ class TestMediaBuyDeliveryResponseStr:
     Covers: UC-004-DISPLAY-01
     """
 
-    def test_zero_deliveries(self):
-        """Zero media buys produces 'No delivery data found' message.
-
-        Covers: UC-004-DISPLAY-01
-        """
-        resp = _make_media_buy_delivery_response(0)
-        assert str(resp) == "No delivery data found for the specified period."
-
-    def test_one_delivery(self):
-        """Single media buy produces singular message.
-
-        Covers: UC-004-DISPLAY-01
-        """
-        resp = _make_media_buy_delivery_response(1)
-        assert str(resp) == "Retrieved delivery data for 1 media buy."
-
-    def test_many_deliveries(self):
-        """Multiple media buys produces plural message with count.
-
-        Covers: UC-004-DISPLAY-01
-        """
-        resp = _make_media_buy_delivery_response(5)
-        assert str(resp) == "Retrieved delivery data for 5 media buys."
-
 
 class TestCreativeDeliveryResponseStr:
     """__str__ returns a human-readable summary for creative delivery responses.
 
     Covers: UC-004-DISPLAY-01
     """
-
-    def test_zero_creatives(self):
-        """Zero creatives produces 'No creative delivery data found' message.
-
-        Covers: UC-004-DISPLAY-01
-        """
-        resp = _make_creative_delivery_response(0)
-        assert str(resp) == "No creative delivery data found for the specified period."
-
-    def test_one_creative(self):
-        """Single creative produces singular message.
-
-        Covers: UC-004-DISPLAY-01
-        """
-        resp = _make_creative_delivery_response(1)
-        assert str(resp) == "Retrieved delivery data for 1 creative."
-
-    def test_many_creatives(self):
-        """Multiple creatives produces plural message with count.
-
-        Covers: UC-004-DISPLAY-01
-        """
-        resp = _make_creative_delivery_response(3)
-        assert str(resp) == "Retrieved delivery data for 3 creatives."
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 REST transport for AdCP tools, proving the 3-transport pattern
 (MCP + A2A + REST). Every route reaches its implementation through
-``src.core.tools._boundary.invoke_tool`` and applies version compat at the boundary.
+``src.core.tools._boundary.invoke_tool``.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from src.core.resolved_identity import ResolvedIdentity
 from src.core.tools._announced_shape import apply_signature
 from src.core.tools._boundary import invoke_tool
 from src.core.tools.registry import TOOLS
-from src.core.version_compat import apply_version_compat
 
 logger = logging.getLogger(__name__)
 
@@ -86,12 +85,7 @@ def _rest_handler(tool_name: str, spec: Any, body_model: type[BaseModel]) -> Any
         # per call. A route that froze the callable at import could not be substituted -- the
         # registry row and the thing the route invoked were two different objects.
         response = await invoke_tool(tool_name, body, identity)
-        result = response.model_dump(mode="json")
-        # Version compat runs where it ran before and nowhere else. Whether it should run
-        # on every tool is a RESPONSE-half question and deliberately not this ticket's.
-        if tool_name == "get_products":
-            return apply_version_compat("get_products", result, body.adcp_version)
-        return result
+        return response.model_dump(mode="json")
 
     handler.__name__ = tool_name
     handler.__doc__ = (spec.impl.__doc__ or "").strip().split("\n")[0]

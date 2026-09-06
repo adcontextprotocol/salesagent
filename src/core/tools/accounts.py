@@ -227,6 +227,7 @@ def _list_accounts_impl(
         accounts=paginated,
         pagination=pagination_resp,
         context=req.context,
+        message=f"Found {len(paginated)} account{'s' if len(paginated) != 1 else ''}.",
     )
 
 
@@ -1714,6 +1715,7 @@ async def _sync_accounts_impl(
         accounts=results,
         dry_run=dry_run if dry_run else None,
         context=req.context,
+        message=f"Synced {len(results)} account{'s' if len(results) != 1 else ''}{' (dry run)' if dry_run else ''}.",
     )
 
 
