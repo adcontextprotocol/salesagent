@@ -187,6 +187,10 @@ class DeliveryWebhookScheduler:
         Returns:
             bool: True only if the sender reported the delivery as made.
         """
+        # Captured as a plain str up front: everything after the release below runs
+        # against EXPIRED ORM instances, so a post-send ``media_buy.media_buy_id``
+        # would silently re-open a transaction just to format a log line.
+        media_buy_id = media_buy.media_buy_id
         try:
             # Determine reporting frequency from AdCP config (hourly, daily, monthly)
             raw_freq = str(reporting_webhook.get("frequency") or "daily").lower()
@@ -386,8 +390,29 @@ class DeliveryWebhookScheduler:
             # than guessing a dialect the data never stated.
             protocol = getattr(push_notification_config, "protocol", None) or "mcp"
 
-            # Send webhook notification OUTSIDE the session context
-            # This ensures the session is closed before async webhook call
+            # RELEASE THE READ TRANSACTION BEFORE ANY SOCKET EXISTS (#1757 — "the rule a
+            # connection held across a POST to a buyer-supplied URL would break", stated
+            # at protocol_webhook_service._deliver's signer= argument and obeyed there).
+            #
+            # Everything above is SELECTs plus an expunge; this ends that transaction and
+            # drops the locks it holds. Without it the caller's session (BOTH callers open
+            # one and pass it in) stays open for the whole delivery — which is the retry
+            # ladder, i.e. SECONDS of outbound HTTP to a buyer-controlled endpoint — while
+            # holding row locks on webhook_delivery_log. MEASURED, not theorised: a live
+            # bdd_e2e worker deadlocked exactly there, pg_stat_activity showing this
+            # session "idle in transaction" on push_notification_configs while the BDD
+            # harness's per-scenario `TRUNCATE TABLE webhook_delivery_log, ...` waited on
+            # an ACCESS EXCLUSIVE lock behind it. Everything queued, /health stopped
+            # answering, and the server read as hung while sitting at 0.01% CPU.
+            #
+            # The comment this replaces claimed the opposite — "Send webhook notification
+            # OUTSIDE the session context / This ensures the session is closed before async
+            # webhook call". It was never true: the session is the CALLER's and is still
+            # open. Committing a read-only transaction is the release; it expires the ORM
+            # instances, which is why media_buy_id is captured above and why the batch
+            # loop's next iteration refreshes (a short query, holding nothing).
+            session.commit()
+
             delivered = await self.webhook_service.notify(
                 push_notification_config,
                 task=webhook_task,
@@ -401,20 +426,20 @@ class DeliveryWebhookScheduler:
             )
 
             if delivered:
-                logger.info(f"Sent delivery report webhook for media buy {media_buy.media_buy_id}")
+                logger.info(f"Sent delivery report webhook for media buy {media_buy_id}")
             else:
                 # NOT an exception: the sender already booked the outcome (delivery-log
                 # row plus audit entry) and named the reason. Re-raising would turn one
                 # buyer's refused destination into a batch-level error and lose the
                 # per-media-buy verdict this function now returns.
                 logger.warning(
-                    f"Delivery report webhook for media buy {media_buy.media_buy_id} was NOT delivered; "
+                    f"Delivery report webhook for media buy {media_buy_id} was NOT delivered; "
                     "see the sender's own refusal/failure log line above"
                 )
             return bool(delivered)
 
         except Exception as e:
-            logger.error(f"Error sending delivery report for media buy {media_buy.media_buy_id}: {e}", exc_info=True)
+            logger.error(f"Error sending delivery report for media buy {media_buy_id}: {e}", exc_info=True)
             raise
 
 
