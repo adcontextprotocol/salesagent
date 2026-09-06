@@ -177,11 +177,20 @@ a test asserting the vocabulary is used correctly; the vocabulary is the enforce
 
 Each step leaves the tree green and is independently revertible.
 
-1. **Keep the 20 never-loaded feature files.** They are not deleted and not wired
-   yet. The method for handling them comes out of migrating the connected ones —
-   until a scenario has been migrated by hand it is not known what a never-loaded
-   scenario costs to wire, or whether wiring it is worth more than deleting it.
-   Deciding that now would be deciding it uninformed.
+1. **Keep the 20 never-loaded feature files. They are protocol surface we have
+   not built yet.** 1604 of the 2772 scenarios live in them — 58% — and the
+   tempting reading is that this is dead weight to delete before migrating. It is
+   the opposite: these files describe parts of the spec this seller does not
+   implement, so they are the inventory of what is missing. Deleting them would
+   destroy the record and leave nothing to say which obligations remain.
+
+   They are not migrated with the rest either. A scenario is worth expressing in
+   the shared vocabulary when something executes it; until then the vocabulary it
+   uses costs nothing and constrains nothing. They get wired as the functionality
+   arrives, one at a time, by whoever builds it.
+
+   This is why the migration surface is **1096 scenarios in ten files**, not
+   2772 — see "Which cluster first" below.
 2. **Delete `Transport.IMPL`, and fix the generator rule that emits
    transport-pinned sentences.** Both are deletions with no vocabulary dependency
    and no scenario to migrate. The generator half is the durable one: patching the
@@ -202,19 +211,45 @@ Step 6 is not "migrate 2772 scenarios". A single pass over a corpus this size,
 with a vocabulary that has never been used in anger, produces a method invented
 halfway through and applied inconsistently to everything before it.
 
-### Phase A — a pilot, across deliberately different tools
+### Which cluster first
 
-Migrate a small number of scenarios by hand. Pick them so the shapes differ,
-because the point is to find where the vocabulary does not fit, and one tool
-cannot show that:
+The cluster is the FEATURE FILE. Each names several tools, but one is its
+subject and the rest appear in setup — so a file is one use case, one subject
+tool, one response schema, one request factory and one Given vocabulary. That is
+the unit where a batch is homogeneous.
 
-| candidate | why this one |
-|---|---|
-| `get_products` | the widest DTO — 21 declared fields against 5 the implementation reads |
-| `sync_creatives` | the largest domain step module, 300 steps |
-| `update_media_buy` | the heaviest payload-table user, 259 lines of `a valid update_media_buy request with:` |
-| `get_media_buys` | a query shape rather than a mutation |
-| `complete_task` | a task tool with a path parameter — `POST /tasks/{task_id}/complete` |
+Ten files hold 1096 of the 1168 executing scenarios (94%); the other twenty
+average 3.6 each and ride along with whichever cluster they resemble.
+
+Cost per scenario is the ratio of DISTINCT Given sentences to Given lines — a low
+ratio means the same setup repeats, so one primitive retires many lines:
+
+| file | scenarios | givens | distinct | ratio |
+|---|---|---|---|---|
+| `BR-UC-011-manage-accounts` | 93 | 151 | 46 | **0.30** |
+| `BR-UC-003-update-media-buy` | 132 | 507 | 151 | **0.30** |
+| `BR-UC-006-sync-creatives` | 132 | 377 | 150 | 0.40 |
+| `BR-UC-010-discover-seller-capabilities` | 85 | 188 | 78 | 0.41 |
+| `BR-UC-002-create-media-buy` | 182 | 492 | 206 | 0.42 |
+| `BR-UC-004-deliver-media-buy-metrics` | 142 | 268 | 122 | 0.46 |
+| `BR-UC-019-query-media-buys` | 99 | 178 | 93 | 0.52 |
+| `BR-UC-005-discover-creative-formats` | 85 | 101 | 63 | 0.62 |
+| `BR-UC-026-package-media-buy` | 75 | 116 | 74 | 0.64 |
+| `BR-UC-018-list-creatives` | 71 | 81 | 57 | 0.70 |
+
+### Phase A — the pilot is BR-UC-011
+
+Lowest cost per scenario (three Given lines per distinct sentence) and the
+smallest surface to build against: it exercises three tools —
+`get_adcp_capabilities`, `list_accounts`, `sync_accounts` — so one request
+factory each and one response schema each.
+
+`BR-UC-002` is the opposite on every axis: most scenarios, most distinct
+sentences, seven tools. It goes last, when the vocabulary is proven.
+
+**Verification is a full `cassini run`**, not a local pytest. Scenarios are
+parametrized across transports and a local run silently skips or xfails the arms
+that matter, so its pass count reads green while grading a fraction.
 
 Each pilot scenario is migrated, run, and compared against its own pre-migration
 outcome using the fallout differ (`scripts/compare_test_runs.py`). **A migrated
