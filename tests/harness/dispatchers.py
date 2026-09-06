@@ -150,7 +150,7 @@ class A2ADispatcher:
 
 
 class RestDispatcher:
-    """Dispatch via FastAPI TestClient → route → _raw() → _impl().
+    """Dispatch via FastAPI TestClient → route → invoke_tool() → _impl().
 
     Identity flows through kwargs to env._run_rest_request(), which pops it
     and configures the FastAPI auth dep override per-request.

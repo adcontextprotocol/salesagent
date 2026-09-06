@@ -58,32 +58,38 @@ def _seed_account(tenant_id: str, principal_ids: tuple[str, ...]) -> None:
 
 
 def _list_creatives(**kwargs):
-    """Build the request from its fields, then call the wrapper.
+    """Build the request from its fields, then dispatch it at the boundary.
 
-    ``list_creatives_raw`` takes the BUILT request and nothing beside it. ``format`` and
-    ``page`` are not builder parameters -- they are ListCreativesRequest fields, and the
-    builder's signature is what keeps them off the REST body and the A2A parameter bag -- so
-    they are set on the model the builder returns, the way an internal caller would.
+    ``format`` and ``page`` are ListCreativesRequest fields that no transport puts on the
+    wire, so they are set on the built model the way an internal caller would.
     """
-    from src.core.tools.creatives.listing import list_creatives_raw
+    import asyncio
 
-    transport = {k: kwargs.pop(k) for k in ("ctx", "identity") if k in kwargs}
+    from src.core.tools._boundary import invoke_tool
+
+    identity = kwargs.pop("identity", None)
+    kwargs.pop("ctx", None)
     internal = {name: kwargs.pop(name) for name in ("format", "page") if name in kwargs}
     req = ListCreativesRequest(**kwargs)
     if internal:
         req = req.model_copy(update=internal)
-    return list_creatives_raw(req=req, **transport)
+    return asyncio.run(invoke_tool("list_creatives", req, identity))
 
 
 def _sync_creatives(**kwargs):
-    """Build a SyncCreativesRequest from flat fields, then call the wrapper.
+    """Build a SyncCreativesRequest from flat fields, then dispatch it at the boundary.
 
-    sync_creatives_raw takes the BUILT request; this module's call sites stay flat.
+    ``invoke_tool`` is the path every transport takes -- account resolution and the
+    idempotency probe included -- so a call site here reaches production the way a buyer
+    does. This module's call sites stay flat.
     """
-    from src.core.tools.creatives.sync_wrappers import sync_creatives_raw
+    import asyncio
 
-    transport = {k: kwargs.pop(k) for k in ("ctx", "identity") if k in kwargs}
-    return sync_creatives_raw(req=SyncCreativesRequest(**kwargs), **transport)
+    from src.core.tools._boundary import invoke_tool
+
+    identity = kwargs.pop("identity", None)
+    kwargs.pop("ctx", None)
+    return asyncio.run(invoke_tool("sync_creatives", SyncCreativesRequest(**kwargs), identity))
 
 
 class MockContext:
@@ -968,8 +974,7 @@ class TestCreativeLifecycleMCP:
 
         # Note: Product and PricingOption are created in setup_test_data fixture
 
-        # Import create_media_buy tool
-        from src.core.tools import create_media_buy_raw
+        from src.core.tools._boundary import invoke_tool
 
         # Create media buy with creative_ids in packages
         creative_ids = [c["creative_id"] for c in sample_creatives]
@@ -1078,12 +1083,13 @@ class TestCreativeLifecycleMCP:
                 )
             ]
 
-            # Call create_media_buy with packages containing creative_ids
-            # Through the shared builder, since the wrapper takes the built request.
-            response = await create_media_buy_raw(
-                req=CreateMediaBuyRequest(
-                    # This module seeds ACCOUNT_ID, not the suite default; the wrapper resolves
-                    # the reference, so it has to name the row this file created.
+            # Call create_media_buy with packages containing creative_ids, through the
+            # boundary every transport enters.
+            response = await invoke_tool(
+                "create_media_buy",
+                CreateMediaBuyRequest(
+                    # This module seeds ACCOUNT_ID, not the suite default; the boundary
+                    # resolves the reference, so it has to name the row this file created.
                     account={"account_id": ACCOUNT_ID},
                     brand={"domain": "testbrand.com"},
                     packages=packages,
@@ -1092,10 +1098,10 @@ class TestCreativeLifecycleMCP:
                     po_number="PO-TEST-123",
                     idempotency_key=f"sync-{uuid4().hex}",
                 ),
-                identity=identity,
+                identity,
             )
 
-            # Verify response -- create_media_buy_raw returns CreateMediaBuyResult
+            # Verify response -- create_media_buy returns CreateMediaBuyResult
             # which supports tuple unpacking: (domain_response, status)
             domain_response, status = response
             print(f"DEBUG create_media_buy response: {domain_response}")

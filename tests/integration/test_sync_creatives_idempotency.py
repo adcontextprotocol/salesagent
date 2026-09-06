@@ -98,11 +98,19 @@ def test_a_different_key_executes_normally(synced):
 
 
 @pytest.mark.requires_db
-def test_a_dry_run_is_not_cached(synced):
-    """A dry run performs no write, so there is no side effect to deduplicate.
+def test_a_dry_run_and_a_real_sync_are_different_requests(synced):
+    """Reusing a dry run's key for the real sync is a conflict, not a silent replay.
 
-    Caching one would be actively wrong: the dry run's response would then answer a
-    subsequent REAL sync carrying the same key, and the real sync would never execute.
+    ``dry_run`` is a request field the spec does not exclude from the payload digest
+    (the exclusion list is closed: idempotency_key, context, governance_context), so a
+    preview and the commit that follows it are two different requests. Sending both under
+    one key is what ``creative/sync-creatives-request.json`` tells the client not to do --
+    "MUST be unique per (seller, request) pair... use a fresh UUID v4 for each request" --
+    and rule 5 answers it: same key, different payload, IDEMPOTENCY_CONFLICT.
+
+    The danger this replaces was real and is now structurally impossible: the impl used to
+    skip caching dry runs so that a dry run's response could not answer a later real sync.
+    With the payload in the digest it cannot, because the two never match.
     """
     key = "sync-idem-dryrun-000001"
 
@@ -115,10 +123,19 @@ def test_a_dry_run_is_not_cached(synced):
     )
     assert dry.dry_run is True
 
+    with pytest.raises(AdCPIdempotencyConflictError):
+        _sync_creatives(
+            creatives=[_make_creative_dict(creative_id="c_idem_dry")],
+            idempotency_key=key,
+            account=AccountReference(root={"account_id": ACCOUNT_ID}),
+            identity=synced,
+        )
+
+    # A fresh key is what the schema asks the client for, and it executes.
     real = _sync_creatives(
         creatives=[_make_creative_dict(creative_id="c_idem_dry")],
-        idempotency_key=key,
+        idempotency_key="sync-idem-dryrun-000002",
         account=AccountReference(root={"account_id": ACCOUNT_ID}),
         identity=synced,
     )
-    assert real.dry_run is not True, "the dry run must not have been cached as this key's answer"
+    assert real.dry_run is not True

@@ -6,18 +6,20 @@ that nested request is the OUTER request's ``idempotency_key`` — the buyer's o
 client-generated key, not an invented one, because the nested upload is part of that one
 operation.
 
-That borrowing collides with the verbatim success cache unless the at-most-once probe is
-gated on ``request_hash``. The cache's lookup scope is the spec's (agent, account, key)
-tuple with NO tool dimension (``IdempotencyAttemptRepository.find_by_key`` says so
-explicitly: "a key reused by a different tool must hit this same row"). So a nested sync
-probing with the borrowed key finds the MEDIA BUY's own row, and — having no transmission to
-canonicalise, so presenting ``request_hash=None`` against a stored hash —
-``raise_on_payload_conflict`` would reject a perfectly valid nested sync with
-IDEMPOTENCY_CONFLICT.
+Borrowing collides with the verbatim success cache if the implementation probes it. The
+cache's lookup scope is the spec's (agent, account, key) tuple with NO tool dimension
+(``IdempotencyAttemptRepository.find_by_key`` says so explicitly: "a key reused by a
+different tool must hit this same row"), so a nested sync probing with the borrowed key would
+find the MEDIA BUY's own row and be refused with IDEMPOTENCY_CONFLICT.
 
-These tests pin both halves of the gate: the in-process caller is exempt, and the transports
-are not.
+It cannot, because the probe lives at the transport boundary
+(``src/core/tools/_boundary.py``) and a nested upload never crosses one — it enters the
+implementation directly. That used to be arranged by threading a ``request_hash`` down and
+having the in-process caller pass ``None``; the exemption is now structural, and these tests
+pin both halves of it: the in-process caller is exempt, and the transports are not.
 """
+
+import asyncio
 
 import pytest
 
@@ -35,7 +37,7 @@ _OUTER_HASH = "0" * 64
 
 
 class TestNestedSyncBorrowsTheOuterKey:
-    """The gate on ``request_hash`` in ``_sync_creatives_impl``'s at-most-once probe."""
+    """A borrowed key reaches the cache from a transport and never from in-process."""
 
     def _seed(self, env: CreativeSyncEnv) -> None:
         tenant = TenantFactory(tenant_id="test_tenant")
@@ -51,11 +53,12 @@ class TestNestedSyncBorrowsTheOuterKey:
 
     @pytest.mark.requires_db
     def test_in_process_sync_with_the_borrowed_key_executes(self, integration_db):
-        """No transmission, so no probe: the nested sync runs instead of conflicting.
+        """No boundary crossed, so no probe: the nested sync runs instead of conflicting.
 
-        Without the ``request_hash is not None`` gate this raises IDEMPOTENCY_CONFLICT — the
-        probe hits the seeded create_media_buy row and compares its stored hash against the
-        None the in-process caller carries.
+        ``call_impl`` is the path ``create_media_buy``'s inline-creative upload takes. If the
+        probe ever moved back into the implementation, this raises IDEMPOTENCY_CONFLICT: the
+        probe would hit the seeded create_media_buy row, whose stored hash cannot match a
+        sync_creatives payload.
         """
         with CreativeSyncEnv() as env:
             self._seed(env)
@@ -63,9 +66,6 @@ class TestNestedSyncBorrowsTheOuterKey:
             response = env.call_impl(
                 creatives=[creative_payload(creative_id="c_nested")],
                 idempotency_key=_OUTER_KEY,
-                # EXPLICIT None: this is what create_media_buy's and update_media_buy's
-                # nested uploads pass, because neither has wire bytes to canonicalise.
-                request_hash=None,
             )
 
         assert [r.creative_id for r in response.creatives] == ["c_nested"]
@@ -73,33 +73,35 @@ class TestNestedSyncBorrowsTheOuterKey:
 
     @pytest.mark.requires_db
     def test_a_transport_reusing_the_same_key_still_conflicts(self, integration_db):
-        """The gate exempts the in-process caller ONLY — it does not disable the conflict.
+        """The in-process exemption is not a way to opt out of at-most-once.
 
-        A transport canonicalises what arrived, so it presents a real hash. Reusing the media
-        buy's key for a sync_creatives payload must still be refused, which is what stops the
-        gate from being a way to opt out of at-most-once.
+        A buyer's sync_creatives carrying the media buy's key crosses the boundary, which
+        canonicalises the request and compares it to the stored hash. A different payload
+        under the same key is the definition of the conflict, and it is refused.
         """
+        from src.core.schemas.creative import SyncCreativesRequest
+        from src.core.tools._boundary import invoke_tool
+
         with CreativeSyncEnv() as env:
             self._seed(env)
+            req = SyncCreativesRequest(
+                creatives=[creative_payload(creative_id="c_nested")],
+                idempotency_key=_OUTER_KEY,
+                account=env.default_account_reference(),
+            )
 
             with pytest.raises(AdCPIdempotencyConflictError):
-                env.call_impl(
-                    creatives=[creative_payload(creative_id="c_nested")],
-                    idempotency_key=_OUTER_KEY,
-                    # A DIFFERENT hash from the stored one — a different payload under the
-                    # same key, which is the definition of the conflict.
-                    request_hash="1" * 64,
-                )
+                asyncio.run(invoke_tool("sync_creatives", req, env.identity))
 
     @pytest.mark.requires_db
     def test_both_in_process_callers_borrow_a_required_outer_key(self):
-        """Both converted call sites borrow, so the gate protects both — not just one.
+        """Both converted call sites borrow, so the exemption protects both — not just one.
 
         Both fields the nested request needs -- ``account`` and ``idempotency_key`` -- are
         spec-REQUIRED on BOTH outer requests, so neither nested upload can avoid carrying a
         real outer key, and neither can fail to supply an account. Read off the models rather
         than asserted in prose, so a requiredness change fails this test instead of silently
-        invalidating the reasoning the gate rests on.
+        invalidating the reasoning this exemption rests on.
 
         create_media_buy's ``account`` was the one exception when this test was written --
         the last surviving instance of salesagent-prkv.28 -- and it is required now, so the

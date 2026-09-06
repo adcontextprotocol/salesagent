@@ -2,8 +2,9 @@
 
 Minimal harness — discovery operation, pure DB read, no adapter calls.
 A2A dispatch goes through the REAL pipeline (``on_message_send`` →
-``_handle_list_authorized_properties_skill``); the tool has no ``*_raw``
-production surface reachable from tests (#1417 dead-path rule).
+``_handle_list_authorized_properties_skill``). The tool has no row in
+``src/core/tools/registry.py``, so the A2A skill handler is its only production
+surface reachable from tests (#1417 dead-path rule).
 
 Requires: integration_db fixture.
 """

@@ -427,9 +427,10 @@ _XFAIL_TAGS: dict[str, str] = {
     # and the demanded code/recovery match the pinned enum.
     #
     # a2a XPASSed alone only because the strict marker deselected the mcp/rest siblings;
-    # the marker's removal re-selects them, and MCP passes because sync_creatives now
-    # reaches _impl through sync_creatives_raw (it was the one wrapper dropping
-    # request_hash, so replay was dead on that transport alone).
+    # the marker's removal re-selects them, and all three pass because replay is decided at
+    # the shared boundary (``src/core/tools/_boundary.py``). It used to be per-transport
+    # plumbing, and MCP was the transport that stopped threading the hash -- so replay was
+    # dead there alone.
     # No sibling entry in e2e_rest_known_failures.txt.
     # FIXME: UC-003 main/alt-timing — production doesn't populate these fields
     # Steps have hard assertions now; xfail at scenario level until production catches up.
@@ -948,9 +949,9 @@ _SELECTIVE_XFAIL: list[tuple[str, set[str], str]] = [
             "assignment_count",
         },
         # GRADUATED (2026-08-31, ): the max_results rows are OUT of this
-        # entry because the gap it described is closed -- list_creatives_raw and
-        # ListCreativesBody now declare the spec's pagination object, so max_results has a
-        # path on A2A and REST and those rows XPASSed strict. The limit=1000/1001 rows are
+        # entry because the gap it described is closed -- ListCreativesRequest declares the
+        # spec's pagination object and every transport validates into it, so max_results has
+        # a path on A2A and REST and those rows XPASSed strict. The limit=1000/1001 rows are
         # gone entirely: `limit` is not an AdCP 3.1.1 field, and the code cap they graded is
         # not a spec behaviour.
         # Still dormant: assignment_count sorting is genuinely unimplemented --

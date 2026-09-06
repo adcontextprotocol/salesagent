@@ -141,15 +141,20 @@ def mock_format_registry():
 
 
 def _sync_creatives(**kwargs):
-    """Build a SyncCreativesRequest from flat fields, then call the wrapper.
+    """Build a SyncCreativesRequest from flat fields, then dispatch it at the boundary.
 
-    sync_creatives_raw takes the BUILT request. Routing this module's call sites through
-    one seam keeps them flat and readable without re-listing the request's fields at each.
+    ``invoke_tool`` is the path every transport takes -- account resolution and the
+    idempotency probe included -- so a call site here reaches production the way a buyer
+    does. Routing this module's call sites through one seam keeps them flat and readable
+    without re-listing the request's fields at each.
     """
-    from src.core.tools.creatives.sync_wrappers import sync_creatives_raw
+    import asyncio
 
-    transport = {k: kwargs.pop(k) for k in ("ctx", "identity") if k in kwargs}
-    return sync_creatives_raw(req=SyncCreativesRequest(**kwargs), **transport)
+    from src.core.tools._boundary import invoke_tool
+
+    identity = kwargs.pop("identity", None)
+    kwargs.pop("ctx", None)
+    return asyncio.run(invoke_tool("sync_creatives", SyncCreativesRequest(**kwargs), identity))
 
 
 class TestCrossPrincipalIsolation:

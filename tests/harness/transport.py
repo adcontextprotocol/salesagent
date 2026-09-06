@@ -177,8 +177,8 @@ class Transport(StrEnum):
     """Dispatch transports for behavioral tests."""
 
     IMPL = "impl"  # Direct _impl() call
-    A2A = "a2a"  # _raw() A2A wrapper
-    REST = "rest"  # FastAPI TestClient → route → _raw() → _impl()
+    A2A = "a2a"  # the A2A handler
+    REST = "rest"  # FastAPI TestClient → route → invoke_tool() → _impl()
     MCP = "mcp"  # Mock Context → MCP wrapper → _impl()
     E2E_REST = "e2e_rest"  # Real HTTP via httpx → nginx → server
     E2E_MCP = "e2e_mcp"  # Real MCP via httpx → nginx → server (placeholder)

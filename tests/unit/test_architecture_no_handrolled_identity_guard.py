@@ -19,7 +19,7 @@ hand-roll the guard via:
 Scans ``src/core/tools``, ``src/core/helpers``, ``src/adapters``. ``assert identity
 is not None`` and ``if not identity.is_authenticated: raise`` are flagged in ANY
 function (no legitimate open-coded use). Bare ``X is None`` identity guards are flagged only inside ``*_impl``
-functions AND only when the branch RAISES; transport wrappers (``*_raw``, MCP tool
+functions AND only when the branch RAISES; transports (the A2A handler, MCP tool
 functions) legitimately guard at the boundary and are out of scope, and a non-raising
 ``if X is None`` branch (graceful degradation — strip pricing for an anonymous caller,
 return minimal capabilities) is legitimate business logic, not a hand-rolled guard.

@@ -1,7 +1,6 @@
 """Integration tests for account REST routes (list_accounts + sync_accounts).
 
 Verifies REST transport parity with IMPL/A2A/MCP transports.
-These routes don't exist yet — tests should FAIL until implemented.
 
 """
 
@@ -14,7 +13,7 @@ from tests.factories.account import AccountFactory, AgentAccountAccessFactory
 
 @pytest.mark.requires_db
 class TestListAccountsRestRoute:
-    """REST /api/v1/accounts route should call list_accounts_raw."""
+    """REST /api/v1/accounts reaches the same implementation IMPL does."""
 
     def test_list_accounts_returns_accounts(self, integration_db):
         """GET accounts via REST returns same data as IMPL."""
@@ -46,7 +45,7 @@ class TestListAccountsRestRoute:
 
 @pytest.mark.requires_db
 class TestSyncAccountsRestRoute:
-    """REST /api/v1/accounts/sync route should call sync_accounts_raw."""
+    """REST /api/v1/accounts/sync reaches the same implementation IMPL does."""
 
     def test_sync_accounts_creates_account(self, integration_db):
         """POST sync via REST creates account same as IMPL."""

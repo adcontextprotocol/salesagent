@@ -14,7 +14,7 @@ Subclasses override:
     call_impl(**kwargs): Any           -- call production function
 
 Multi-transport support (subclasses may also override):
-    call_a2a(**kwargs): Any            -- call _raw() A2A wrapper
+    call_a2a(**kwargs): Any            -- dispatch through the A2A handler
     REST_ENDPOINT: str                 -- POST endpoint path for REST dispatch
     build_rest_body(**kwargs): dict    -- convert kwargs to REST body
     parse_rest_response(data): model  -- parse JSON dict to Pydantic model

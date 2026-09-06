@@ -299,94 +299,53 @@ class TestDegradedFallbackStatus:
 
 
 class TestRaceLoserPayloadRules:
-    """_replay_after_race enforces the same payload rules as the probe."""
+    """Reusing a key with a different payload is refused, at the boundary that owns the rule.
 
-    def test_different_payload_after_race_conflicts(self, integration_db):
-        """A race loser whose payload differs gets IDEMPOTENCY_CONFLICT, never the winner's response."""
+    This used to drive ``_replay_after_race``, the create-path helper that resolved a race
+    loser to the winner's cached response and applied the payload rule a second time on the
+    way. Replay moved to ``src/core/tools/_boundary.py``, which probes BEFORE any transport
+    reaches the implementation, so the conflict is decided there for every tool at once and
+    the loser of an actual commit race simply retries into it.
+    """
+
+    def test_different_payload_under_a_stored_key_conflicts(self, integration_db):
+        """A create carrying a seen key and a different payload never sees the stored response."""
+        from datetime import timedelta
+
         from src.core.exceptions import AdCPSalesAgentError
-        from src.core.tools.media_buy_create import _replay_after_race
-        from tests.factories import PrincipalFactory, TenantFactory
+        from tests.harness.media_buy_create import MediaBuyCreateEnv
         from tests.helpers import make_active_cached_success, seed_cached_success
 
-        idem_key = f"rconf-{uuid.uuid4().hex}"
-        tenant_id = f"rconf_t_{uuid.uuid4().hex[:6]}"
+        idem_key = f"rconf-{uuid.uuid4().hex[:12]}00000000"
 
-        with BareIntegrationEnv() as env:
-            tenant = TenantFactory(tenant_id=tenant_id)
-            principal = PrincipalFactory(tenant=tenant)
-            principal_id = principal.principal_id
-            env.get_session()
-
-        seed_cached_success(
-            tenant_id,
-            principal_id,
-            idem_key,
-            response_model=make_active_cached_success("mb_race_winner"),
-            payload_hash="winner-hash",
-            account_id=DEFAULT_TEST_ACCOUNT_ID,
-        )
-
-        with pytest.raises(AdCPSalesAgentError) as exc_info:
-            _replay_after_race(
-                tenant_id,
-                idempotency_key=idem_key,
-                principal_id=principal_id,
+        with MediaBuyCreateEnv() as env:
+            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
+            seed_cached_success(
+                env._tenant_id,
+                env._principal_id,
+                idem_key,
+                response_model=make_active_cached_success("mb_race_winner"),
+                # A hash no request canonicalises to, so whatever the create below produces
+                # differs from it -- which is the condition under test.
+                payload_hash="winner-hash",
                 account_id=DEFAULT_TEST_ACCOUNT_ID,
-                request_hash="loser-different-hash",
             )
+
+            now = datetime.now(UTC)
+            with pytest.raises(AdCPSalesAgentError) as exc_info:
+                env.call_impl(
+                    brand={"domain": "conflict-test.example.com"},
+                    packages=[
+                        {"product_id": product.product_id, "budget": 5000.0, "pricing_option_id": "cpm_usd_fixed"}
+                    ],
+                    start_time=(now + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    end_time=(now + timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    idempotency_key=idem_key,
+                )
 
         assert exc_info.value.error_code == "IDEMPOTENCY_CONFLICT"
         # Read-oracle defense: the conflict must not leak the winner's response.
-
-    def test_invalid_cached_envelope_fails_closed(self, integration_db):
-        """An unusable cache row fails closed (transient) — never a fabricated body,
-        never an internal error.
-
-        Schema drift between the writing and replaying deploy means the verbatim
-        envelope is unrecoverable on this deploy; per the spec, that is a
-        rejection, not a reconstruction.
-        """
-
-        from src.core.exceptions import AdCPSalesAgentError
-        from src.core.tools.media_buy_create import _replay_after_race
-        from tests.factories import MediaBuyFactory, MediaPackageFactory, PrincipalFactory, TenantFactory
-        from tests.helpers import LegacyCachedShape, seed_cached_success
-
-        idem_key = f"rinv-{uuid.uuid4().hex}"
-        tenant_id = f"rinv_t_{uuid.uuid4().hex[:6]}"
-
-        with BareIntegrationEnv() as env:
-            tenant = TenantFactory(tenant_id=tenant_id)
-            principal = PrincipalFactory(tenant=tenant)
-            principal_id = principal.principal_id
-            winner = MediaBuyFactory(
-                tenant=tenant,
-                principal=principal,
-                idempotency_key=idem_key,
-                status="active",
-            )
-            MediaPackageFactory(media_buy=winner, package_id="pkg_rinv_1")
-            env.get_session()
-
-        seed_cached_success(
-            tenant_id,
-            principal_id,
-            idem_key,
-            response_model=LegacyCachedShape(),
-            payload_hash="same-hash",
-            account_id=DEFAULT_TEST_ACCOUNT_ID,
-        )
-
-        with pytest.raises(AdCPSalesAgentError) as exc_info:
-            _replay_after_race(
-                tenant_id,
-                idempotency_key=idem_key,
-                principal_id=principal_id,
-                account_id=DEFAULT_TEST_ACCOUNT_ID,
-                request_hash="same-hash",
-            )
-
-        assert exc_info.value.error_code == "SERVICE_UNAVAILABLE"
+        assert "mb_race_winner" not in str(exc_info.value)
 
 
 class TestRaceSeamThroughEntrypoint:
@@ -600,7 +559,7 @@ class TestDegradedExpiryAnchoring:
         from datetime import timedelta
 
         from src.core.exceptions import AdCPSalesAgentError
-        from src.core.tools.media_buy_create import _replay_after_race
+        from src.core.tools.media_buy_create import _raise_degraded_replay_outcome
         from tests.helpers import make_active_cached_success, seed_cached_success, seed_media_buy
 
         idem_key = f"degstore-{uuid.uuid4().hex}"
@@ -623,12 +582,11 @@ class TestDegradedExpiryAnchoring:
         )
 
         with pytest.raises(AdCPSalesAgentError) as exc_info:
-            _replay_after_race(
+            _raise_degraded_replay_outcome(
                 tenant_id,
-                idempotency_key=idem_key,
-                principal_id=principal_id,
+                idem_key,
+                principal_id,
                 account_id=DEFAULT_TEST_ACCOUNT_ID,
-                request_hash="store-hash",
             )
 
         assert exc_info.value.error_code == "IDEMPOTENCY_EXPIRED"

@@ -253,44 +253,48 @@ class GetCreativesResponse(AdCPBaseModel):
 
 **Why**: Pydantic doesn't auto-call custom `model_dump()` on nested models.
 
-### 5. Transport Boundary: Layer Separation
-All tools have two layers: **transport wrappers** (MCP, A2A, REST) and **business logic** (`_impl` functions). The layers have strict responsibilities.
+### 5. Transport Boundary: One Path to Every Implementation
+All tools have two layers: a **transport** (MCP, A2A, REST) that parses a request and writes
+a response, and **business logic** (`_impl` functions). Between them sits ONE seam —
+`src/core/tools/_boundary.py` — and there are no per-tool wrappers at all.
 
 **`_impl` functions** (business logic layer):
 ```python
 async def _create_media_buy_impl(
     req: CreateMediaBuyRequest,
-    push_notification_config: dict | None = None,
     identity: ResolvedIdentity | None = None,    # NOT Context/ToolContext
+    context_id: str | None = None,
 ) -> CreateMediaBuyResult:
-    # Business logic only — no transport awareness
+    # Business logic only — no transport awareness, no account resolution, no idempotency
     ...
 ```
 
-**Transport wrappers** (boundary layer):
+**Transports** name a tool and hand over the request they validated:
 ```python
-# MCP wrapper — resolves identity, forwards ALL params to _impl
-@mcp.tool()
-async def create_media_buy(ctx: Context, ...) -> CreateMediaBuyResponse:
-    identity = resolve_identity(ctx.http.headers, protocol="mcp")
-    return await _create_media_buy_impl(req=req, identity=identity, ...)
-
-# A2A wrapper — same contract, different transport
-async def create_media_buy_raw(...) -> CreateMediaBuyResponse:
-    identity = resolve_identity(headers, protocol="a2a")
-    return await _create_media_buy_impl(req=req, identity=identity, ...)
+# Every transport, one call. The registry says which function runs.
+response = await invoke_tool("create_media_buy", req, identity)
 ```
+
+`invoke_tool` resolves the account the request names, honours its `idempotency_key`, and
+calls the implementation as `impl(req=..., identity=..., **extra)`. Both of those are
+properties of the REQUEST, not steps in the work, and doing them once is what keeps the
+transports from disagreeing — the fifteen `*_raw` wrappers this replaced disagreed about
+exactly those two.
 
 **Rules for `_impl` functions:**
 - Accept `ResolvedIdentity`, never `Context`, `ToolContext`, or raw headers
 - Raise `AdCPSalesAgentError` subclasses, never `ToolError` (that's transport-specific)
 - Zero imports from `fastmcp`, `a2a`, `starlette`, or `fastapi`
-- No auth extraction or tenant resolution — that's the wrapper's job
+- No auth extraction, tenant resolution, account resolution, or idempotency — the boundary's job
+- Declare only `req`, `identity` and `context_id`: nothing else can be supplied
 
-**Rules for transport wrappers:**
-- Call `resolve_identity()` to create `ResolvedIdentity` before calling `_impl`
-- Forward **every** `_impl` parameter — don't silently drop any
+**Rules for transports:**
+- Resolve identity, then call `invoke_tool(tool_name, req, identity)` — never an implementation directly
 - Catch `AdCPSalesAgentError` and translate to transport-appropriate error format
+
+**Substituting an implementation in a test** patches the registry ROW, not a module
+attribute: `TOOLS` holds the function object, so `patch("...._x_impl")` renames something
+nothing consults. Use `tests/helpers/capture_wrapper_req.py` (`stub_impl`, `registry_impl`).
 
 **Enforced by:** `test_transport_agnostic_impl.py`, `test_impl_resolved_identity.py`, `test_no_toolerror_in_impl.py`, `test_architecture_boundary_completeness.py`
 

@@ -50,7 +50,7 @@ Two facts, both measured, that were not true when the builders were written:
 
 1. **Every `_impl` already takes `req`.** All twelve. Three additionally take
    `context_id`, `raw_wire_payload` or `request_hash` — transport-derived values,
-   not buyer fields.
+   not buyer fields. (Two of those three are gone now; see the table below.)
 2. **Every DTO is, or extends, the SDK's pinned request model.** `_register_tool`
    already refuses to register a tool whose DTO is not SDK-grounded.
 
@@ -266,26 +266,27 @@ req = build_request(name, payload)
 return await spec.impl(req=req, identity=identity, **transport_derived)
 ```
 
-`transport_derived` is a **closed set of three**, not open kwargs. Measured
-across all twelve implementations:
+`transport_derived` is a **closed set of one**, not open kwargs:
 
 | impl | beyond `req` and `identity` |
 |---|---|
-| `_create_media_buy_impl` | `context_id`, `raw_wire_payload` |
+| `_create_media_buy_impl` | `context_id` |
 | `_update_media_buy_impl` | `context_id` |
-| `_sync_creatives_impl` | `request_hash` |
-| the other nine | nothing |
+| the other twelve | nothing |
+
+It was a set of three when this was written. Both of the others were idempotency plumbing,
+and they are gone because idempotency is not the implementation's job:
+`src/core/tools/_boundary.py` probes the replay cache and writes to it around the call, so
+`_sync_creatives_impl` needs no `request_hash` and `_create_media_buy_impl` needs no
+`raw_wire_payload`. What each transport threaded down, and got subtly different, is now taken
+once from the model. `tests/unit/test_architecture_boundary_completeness.py` grades the
+closed set: an implementation declaring anything else fails, because nothing could fill it.
 
 **No implementation takes `**kwargs`**, and none may. The generic call passes only
 what the target declares — `accepted_kwargs(impl)` already exists for exactly
 this. An open `**kwargs` at this seam would let a transport hand an
 implementation anything at all, which is the accept-and-ignore hazard one layer
 below the one this design removes.
-
-These three are supplied by the boundary and never by a buyer. `raw_wire_payload`
-in particular is the request as sent, captured before normalisation, and exists
-because RFC 8785 idempotency hashing needs the payload the buyer actually sent —
-not the model built from it.
 
 ## The DTO is the SDK's model, extended
 

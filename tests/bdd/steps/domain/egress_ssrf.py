@@ -362,12 +362,12 @@ def when_sync_creatives_hmac_without_credentials(ctx: dict) -> None:
 def when_sync_creatives_short_credentials(ctx: dict) -> None:
     """Dispatch sync_creatives with a secret one character under the pinned minimum.
 
-    The sync twin of the multi-scheme create above, and the second hole the same
-    untyped forward opens: ``sync_creatives_raw`` DECLARES
-    ``PushNotificationConfig | None`` but performs no coercion, so the buyer's
-    raw dict travels to ``_sync_creatives_impl`` and a secret the pin calls too
-    short is stored and later used to sign — a secret both ends must agree on,
-    accepted at a strength the spec says neither end may rely on.
+    The sync twin of the multi-scheme create above. The hole it grades was an untyped
+    forward: a wrapper DECLARED ``PushNotificationConfig | None`` and performed no coercion,
+    so the buyer's raw dict travelled to ``_sync_creatives_impl`` and a secret the pin calls
+    too short was stored and later used to sign — a secret both ends must agree on, accepted
+    at a strength the spec says neither end may rely on. Every transport validates into
+    ``SyncCreativesRequest`` now, so the coercion happens before dispatch.
     """
     _dispatch_sync_registering(ctx, _HMAC_WITH_SHORT_CREDENTIALS)
 

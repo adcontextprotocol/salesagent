@@ -25,36 +25,40 @@ uvx adcp http://localhost:8000/mcp/ --auth test-token list_tools
 uvx adcp http://localhost:8000/mcp/ --auth <real-token> get_products '{"brief":"video"}'
 ```
 
-## Transport Boundary: Layer Separation (Critical Pattern #5)
+## Transport Boundary: One Path to Every Implementation (Critical Pattern #5)
 
-All tools have two layers with strict responsibilities:
+A transport parses a request and writes a response. Between it and the business logic sits
+ONE seam, `src/core/tools/_boundary.py`. There are no per-tool wrappers.
 
-**`_impl` functions** (business logic — transport-agnostic):
+**`_impl` functions** (transport-agnostic):
 ```python
 async def _create_media_buy_impl(
     req: CreateMediaBuyRequest,
-    push_notification_config: dict | None = None,
     identity: ResolvedIdentity | None = None,    # NOT Context/ToolContext
+    context_id: str | None = None,
 ) -> CreateMediaBuyResult:
-    # Business logic only — no transport awareness
     ...
 ```
 
-**Transport wrappers** (boundary — resolves identity, forwards all params):
+**Every transport** names the tool and hands over the request it validated:
 ```python
-@mcp.tool()
-async def create_media_buy(ctx: Context, ...) -> CreateMediaBuyResponse:
-    identity = resolve_identity(ctx.http.headers, protocol="mcp")
-    return await _create_media_buy_impl(req=req, identity=identity, ...)
-
-async def create_media_buy_raw(...) -> CreateMediaBuyResponse:
-    identity = resolve_identity(headers, protocol="a2a")
-    return await _create_media_buy_impl(req=req, identity=identity, ...)
+identity = resolve_identity(headers, protocol="a2a")   # or the MCP middleware / REST auth dep
+response = await invoke_tool("create_media_buy", req, identity)
 ```
 
-**`_impl` rules:** Accept `ResolvedIdentity` (not Context). Raise `AdCPSalesAgentError` (not ToolError). Zero imports from fastmcp/a2a/starlette/fastapi.
+`invoke_tool` reads `src/core/tools/registry.py` for the implementation, resolves the account
+the request names, and honours its `idempotency_key` — once, for every transport.
 
-**Wrapper rules:** Call `resolve_identity()` first. Forward every `_impl` parameter. Translate `AdCPSalesAgentError` to transport-specific format.
+**`_impl` rules:** Accept `ResolvedIdentity` (not Context). Raise `AdCPSalesAgentError` (not
+ToolError). Zero imports from fastmcp/a2a/starlette/fastapi. No account resolution and no
+idempotency. Declare only `req`, `identity`, `context_id`.
+
+**Transport rules:** Resolve identity, call `invoke_tool`, translate `AdCPSalesAgentError` to
+the transport's error format.
+
+**Substituting an implementation in a test** patches the registry ROW — `TOOLS` holds the
+function object, so patching a module attribute renames something nothing consults. Use
+`stub_impl` / `registry_impl` from `tests/helpers/capture_wrapper_req.py`.
 
 **Enforced by 4 structural guards** — see `docs/development/structural-guards.md`.
 

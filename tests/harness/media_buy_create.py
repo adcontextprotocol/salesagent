@@ -391,9 +391,18 @@ class MediaBuyCreateEnv(EgressHatchMixin, IntegrationEnv):
         return self.setup_default_account().account_id
 
     def call_impl(self, **kwargs: Any) -> CreateMediaBuyResult:
-        """Call _create_media_buy_impl with real DB."""
-        from src.core.tools.media_buy_create import _create_media_buy_impl
-        from src.core.transport_helpers import enrich_identity_with_account
+        """Dispatch create_media_buy at the shared boundary, with a real DB.
+
+        IMPL means "the production path minus the wire", and for this tool that path starts
+        at ``invoke_tool``: nothing calls ``_create_media_buy_impl`` in process, so its only
+        real callers are transports and they all enter here. Account resolution and the
+        idempotency probe therefore run, exactly as they do for a buyer.
+
+        Contrast ``CreativeSyncEnv.call_impl``, which stays a direct implementation call
+        because production genuinely has an in-process caller there -- this tool's own inline
+        creative upload.
+        """
+        from src.core.tools._boundary import invoke_tool
 
         self._commit_factory_data()
         identity = kwargs.pop("identity", self.identity)
@@ -405,8 +414,7 @@ class MediaBuyCreateEnv(EgressHatchMixin, IntegrationEnv):
         else:
             self._seed_named_account(req)
 
-        identity = enrich_identity_with_account(identity, req.account)
-        return asyncio.run(_create_media_buy_impl(req=req, identity=identity))
+        return asyncio.run(invoke_tool("create_media_buy", req, identity))
 
     def _flatten_request(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         """Convert a ``req=`` kwarg into the flat parameter dict the wrappers take.

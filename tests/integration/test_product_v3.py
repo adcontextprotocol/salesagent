@@ -95,8 +95,8 @@ async def _call_get_products(
     property_list: dict | None = None,
     tenant_overrides: dict | None = None,
 ):
-    """Convenience wrapper for get_products_raw with identity resolution."""
-    from src.core.tools.products import get_products_raw
+    """Dispatch get_products at the shared boundary, with identity resolution."""
+    from src.core.tools._boundary import invoke_tool
 
     tenant_dict: dict[str, Any] = {"tenant_id": tenant_id}
     if tenant_overrides:
@@ -107,22 +107,19 @@ async def _call_get_products(
         tenant_id=tenant_id,
         tenant=tenant_dict,
     )
-    ctx = Mock()
-    ctx.meta = {"headers": {"x-adcp-auth": "test_token"}}
-
     if brand is _BRAND_DEFAULT:
         brand = {"domain": "testbrand.com"}
 
-    # Built through the shared builder, then handed over -- the wrapper takes the request
-    # now, the same as every transport. This one helper drives every get_products case in
-    # the module, so the build lives here rather than at 77 call sites.
+    # Built, then handed to the boundary -- the same two steps every transport takes. This
+    # one helper drives every get_products case in the module, so the build lives here
+    # rather than at 77 call sites.
     req = GetProductsRequest(
         brief=brief,
         brand=brand,
         filters=filters,
         property_list=property_list,
     )
-    return await get_products_raw(req=req, ctx=ctx, identity=identity)
+    return await invoke_tool("get_products", req, identity)
 
 
 # ---------------------------------------------------------------------------
@@ -246,13 +243,13 @@ class TestPreconditions:
 
     @pytest.mark.asyncio
     async def test_mcp_connection_established(self, uc001_products):
-        """Verify MCP tool function is callable and returns valid response.
+        """Verify the tool is reachable through the registry and returns a valid response.
 
         Covers: UC-001-PRECOND-03
         """
-        from src.core.tools.products import get_products_raw
+        from src.core.tools.registry import TOOLS
 
-        assert callable(get_products_raw)
+        assert callable(TOOLS["get_products"].impl)
         result = await _call_get_products(brief="any campaign")
         assert result is not None
 

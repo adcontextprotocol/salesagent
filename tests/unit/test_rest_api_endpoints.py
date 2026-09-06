@@ -55,10 +55,9 @@ class TestCreateMediaBuyEndpoint:
 # ---------------------------------------------------------------------------
 # Runtime scalar-forwarding oracles (#1417)
 #
-# The body-completeness guard proves each REST scalar is DECLARED on the *_raw
-# wrapper signature; it does NOT prove the route actually forwards the request
-# value. These TestClient tests patch the *_raw wrapper and assert the sentinel
-# value the buyer sent reaches the wrapper — one test per non-echoed scalar.
+# The DTO declares each REST scalar; that does NOT prove the route forwards the request
+# value. These TestClient tests substitute the implementation at its registry row and assert
+# the sentinel value the buyer sent reaches it — one test per non-echoed scalar.
 # ---------------------------------------------------------------------------
 
 # field -> (wire value, value the route must forward to the raw wrapper).
@@ -94,7 +93,7 @@ _UPDATE_FORWARDED_SCALARS = {
 
 
 class TestCreateMediaBuyScalarForwarding:
-    """Each non-echoed create scalar reaches create_media_buy_raw at runtime."""
+    """Each non-echoed create scalar reaches the implementation at runtime."""
 
     @pytest.mark.parametrize(
         ("field", "wire_value", "expected"),
@@ -103,8 +102,8 @@ class TestCreateMediaBuyScalarForwarding:
     )
     @patch("src.core.resolved_identity.resolve_identity", return_value=_MOCK_IDENTITY)
     @stub_impl("create_media_buy")
-    def test_scalar_forwards_to_raw(self, mock_raw, mock_resolve, field, wire_value, expected):
-        mock_raw.return_value = MagicMock(model_dump=lambda **kw: {})
+    def test_scalar_forwards_to_impl(self, mock_impl, mock_resolve, field, wire_value, expected):
+        mock_impl.return_value = MagicMock(model_dump=lambda **kw: {})
         body = {
             # A BUILDABLE payload: create-media-buy-request.json puts minItems 1 on
             # packages. An empty list passed only while create_media_buy_raw was mocked --
@@ -127,9 +126,9 @@ class TestCreateMediaBuyScalarForwarding:
         assert response.status_code == 200, response.text
         # Each scalar is graded on the built REQUEST the wrapper receives -- except
         # push_notification_config, which stays a kwarg beside it (gh-#1299).
-        kwargs = mock_raw.call_args.kwargs
+        kwargs = mock_impl.call_args.kwargs
         actual = kwargs[field] if field in kwargs else getattr(kwargs["req"], field)
-        assert actual == expected, f"REST create route did not forward {field!r} to create_media_buy_raw"
+        assert actual == expected, f"REST create route did not forward {field!r} to the implementation"
 
 
 class TestGetMediaBuyDeliveryEndpoint:

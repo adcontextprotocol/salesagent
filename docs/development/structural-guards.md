@@ -81,70 +81,31 @@ is live.
 
 **File:** `tests/unit/test_architecture_boundary_completeness.py`
 
-**What it enforces:** When an `_impl` function accepts a parameter, both its
-MCP wrapper and A2A wrapper must pass that parameter at the call site.
+**What it enforces:** An `_impl` function may declare only parameters the boundary can
+supply — `req`, `identity` and `context_id` — and must accept the first two.
 
-**Why it matters:** The codebase follows Critical Pattern #5 — every tool has
-a shared `_impl` function called by both MCP and A2A wrappers. If a wrapper
-doesn't forward a parameter, that transport layer silently loses access to
-the functionality.
+**Why it matters:** Every transport reaches an implementation through
+`src/core/tools/_boundary.py`, which calls it as `impl(req=..., identity=..., **extra)`.
+`extra` is not open: it carries the transport-derived values the boundary knows how to
+obtain, which today is `context_id` alone. A parameter outside that set can never be filled,
+so it silently takes its default on every call — the tool accepts something no caller can
+send.
 
 #### How it works
 
-The guard maintains a registry of all `_impl` functions:
+It reads the signature of every `TOOLS[...].impl` and compares it to
+`BOUNDARY_SUPPLIED_PARAMS`. There is no registry of implementations to maintain and no file
+to locate: the registry names them.
 
-```python
-IMPL_REGISTRY = [
-    ("src.core.tools.media_buy_create", "_create_media_buy_impl"),
-    ("src.core.tools.creatives._sync", "_sync_creatives_impl"),
-    # ... 13 total
-]
-```
+#### What it replaced, and why the replacement was necessary
 
-For each `_impl`:
+The guard used to scan each `*_raw` and MCP wrapper for the arguments it forwarded, because
+there were fifteen wrappers and any one could drop a parameter the others passed. There are
+none left, so "does the wrapper forward everything" is answered by construction.
 
-1. **Get the signature** via `inspect.signature()` to find all parameter names
-2. **Derive wrapper names** from the `_impl` name:
-   - `_create_media_buy_impl` → MCP: `create_media_buy`, A2A: `create_media_buy_raw`
-3. **Parse the wrapper file's AST** to find the wrapper function, then locate
-   the `_impl(...)` call inside it
-4. **Extract the keyword arguments** actually passed at the call site
-5. **Flag any `_impl` parameter** not present in the call arguments
-
-#### Example of what it catches
-
-```python
-# _impl accepts push_notification_config:
-async def _create_media_buy_impl(
-    req, push_notification_config=None, identity=None, context_id=None
-): ...
-
-# MCP wrapper forgets to pass it:
-@mcp.tool()
-async def create_media_buy(...):
-    return await _create_media_buy_impl(
-        req=req,
-        identity=identity,
-        context_id=context_id,
-        # push_notification_config is MISSING — MCP callers can never use it
-    )
-```
-
-#### Tests
-
-| Test | What It Checks |
-|------|---------------|
-| `test_mcp_wrappers_pass_all_impl_params` | Every MCP wrapper passes all `_impl` parameters |
-| `test_a2a_wrappers_pass_all_impl_params` | Every A2A wrapper passes all `_impl` parameters |
-| `test_known_violations_are_still_violations` | Allowlisted violations haven't been fixed (stale entry detection) |
-
-#### Current known violations (3)
-
-| Wrapper | Missing Parameter | Tracked By |
-|---------|------------------|------------|
-| `create_media_buy` (MCP) | `push_notification_config` | salesagent-v0kb |
-| `create_media_buy_raw` (A2A) | `context_id` | salesagent-v0kb |
-| `update_media_buy_raw` (A2A) | `context_id` | salesagent-v0kb |
+The old form also demonstrated the failure this guard exists to prevent. Its wrapper lookup
+returned `None` when it could not find a wrapper, and `None` meant "nothing to check" — so
+the day the wrappers were deleted, it went green while grading nothing.
 
 ### Query Type Safety Guard
 
