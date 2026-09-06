@@ -141,6 +141,20 @@ def then_webhook_payload_compliant(ctx: dict) -> None:
     core/mcp-webhook-payload.json result ... This is not a top-level webhook POST
     body and does not include protocol envelope".
 
+    THE PROSE IS EXPLICIT, and this step was once weakened to drop the envelope
+    check on the grounds that GH #2058 "had not decided". That reasoning was
+    wrong twice: an internal issue is not the authority, and the spec had already
+    ruled. ``webhooks.mdx:217`` — "Delivery-report content lives under ``result``;
+    it is not valid as the top-level POST body by itself" — and ``:254`` prints
+    the bare report as a LABELLED COUNTER-EXAMPLE: "This inner result object is
+    valid delivery-report content, but it is not valid as the top-level webhook
+    POST body". The counter-example is byte-for-byte what this seller sends.
+
+    What #2058 has open is only WHERE the fix goes — the sender wraps, or the
+    harness stops routing through a builder a buyer never reaches. Neither
+    resolution makes the flat body conformant, so the assertion stands either way
+    and the scenarios stay ledgered against it until one lands.
+
     Both layers are graded, and the failure names WHICH layer broke — an envelope
     that never arrived is a different defect from a malformed report inside a
     correct envelope, and one message that cannot tell them apart sends the reader
@@ -178,39 +192,30 @@ def then_webhook_payload_compliant(ctx: dict) -> None:
     body = deliveries[-1].json()
     assert body, f"the webhook POST carried no JSON body: {deliveries[-1].body!r}"
 
-    # Grade the delivery report, wherever it sits. Nested under `result` when the
-    # sender wrapped it; the whole body when it did not.
-    #
-    # THE ENVELOPE IS NOT ASSERTED HERE, and that is a deliberate reversal. The
-    # first version required core/mcp-webhook-payload.json and failed every
-    # scenario on it, because WebhookDeliveryService posts the report bare. That
-    # turned 24 PASSING scenarios into failures over a question GH #2058 has not
-    # answered: it names two builders that disagree (delivery_webhook_scheduler
-    # wraps, webhook_delivery_service does not), says the in-process BDD legs
-    # route through the second, and states outright that whether the fix is
-    # production-side or harness-side is still open.
-    #
-    # Grading an undecided contract is not rigour, it is picking a side and
-    # charging the suite for it. Measured: production's actual body CONFORMS to
-    # the delivery-result schema and violates the envelope schema in six ways.
-    # So the report content is gradeable today and the envelope is not, and this
-    # step grades exactly the half that is settled.
-    #
-    # When #2058 lands, add the envelope check back — one direction makes it
-    # required, the other makes it wrong — and delete this paragraph.
-    report = body.get("result") if isinstance(body.get("result"), dict) else body
-
-    failures = sorted(
-        validator_for("media-buy/media-buy-delivery-webhook-result.json").iter_errors(report),
+    envelope_failures = sorted(
+        validator_for("core/mcp-webhook-payload.json").iter_errors(body),
         key=lambda e: list(e.absolute_path),
     )
-    if failures:
+    if envelope_failures:
         detail = "\n".join(
-            f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in failures
+            f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in envelope_failures
         )
-        where = "the webhook envelope's result" if report is not body else "the webhook POST body"
         raise AssertionError(
-            f"{where} does not comply with media-buy/media-buy-delivery-webhook-result.json:\n{detail}"
+            f"the webhook POST body is not a core/mcp-webhook-payload.json envelope "
+            f"(it carries {sorted(body)}):\n{detail}"
+        )
+
+    result_failures = sorted(
+        validator_for("media-buy/media-buy-delivery-webhook-result.json").iter_errors(body.get("result")),
+        key=lambda e: list(e.absolute_path),
+    )
+    if result_failures:
+        detail = "\n".join(
+            f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in result_failures
+        )
+        raise AssertionError(
+            f"the webhook envelope is well-formed but its result does not comply with "
+            f"media-buy/media-buy-delivery-webhook-result.json:\n{detail}"
         )
 
 
