@@ -215,7 +215,7 @@ with it. The summary is now the `message` field, set by the implementation --
 subclassing defeats, and its fallback is `f"{cls.__name__} response"` -- worse than our text on
 nine of fourteen.
 
-### What is still not conformant BY CONSTRUCTION after that
+### DONE: required-and-nullable retention is derived, not declared
 
 With one seam and one body, a reply's field set, types and shape all follow from the SDK class
 the implementation returned, so they cannot drift. One property does not follow: retention of a
@@ -236,11 +236,18 @@ Two of three adopt. The third is the SDK's own type with no ref and no retention
 site, added by a spec bump, drops silently with nothing red -- which is the same
 declare-versus-derive defect R3 removed from the envelope, one level down.
 
-**So the seam derives the ref instead of asking for it.** A response model's pinned schema is
-derivable from its SDK ancestry for every class that maps to a root schema; only the `oneOf`
-branches and the nested item models need a hand-written sub-schema ref, and those are the two
-that already carry one. Deriving turns "did the author remember to opt in" into "does this
-class have an SDK ancestor", which every response model does.
+**Landed, and simpler than this section proposed.** The retained set is read off the model's own
+`model_fields` -- a field it declares required whose type admits `None` -- so nothing names a
+schema at all. `_PINNED_SCHEMA_REF` is deleted along with `required_nullable_fields` and its
+150 lines of `$ref` / `allOf` / JSON-pointer walking; `_pinned_fields.py` keeps only
+`revision_minimum`, which has a live production caller.
+
+Measured across the 416 models reachable from a response, the derived rule reproduces the old
+result exactly on every adopter, and it cannot name the wrong schema, which the string could --
+two of the four adopters named a ref that derived nothing at all, and those two have dropped
+the mixin. Exactly three models declare a required-and-nullable field:
+`CreateMediaBuySuccess.confirmed_at` and `GetMediaBuysMediaBuy.confirmed_at`, both retained,
+and `DiscriminatorItem.value` from `core/error.json`, which this seller never constructs.
 
 One exception stays, and it is subtractive: `_INTERNAL_ONLY_FIELDS` / `exclude=True` strip our
 internal fields (`workflow_step_id`) from every protocol response. The other used to be

@@ -14,11 +14,13 @@ from decimal import Decimal
 # --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
 # --- MCP Status System (AdCP PR #77) ---
 from enum import StrEnum
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, TypeAlias, cast
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, TypeAlias, cast, get_args
 
 from src.core.enum_helpers import enum_value
 
 if TYPE_CHECKING:
+    from pydantic.fields import FieldInfo
+
     from src.core.schemas.creative import Creative
 
 from adcp import Error as _LibraryError
@@ -448,27 +450,35 @@ class WireSerializerMixin:
     A class that needs both names both mixins and still gets exactly one serializer.
     """
 
-    # The schema an adopter is graded against. Naming it is the whole opt-in: the
-    # always-include set is DERIVED from the pin, so it cannot disagree with it.
-    # Declaring the field names by hand is what let two adopters drift into
-    # emitting schema-invalid nulls (advertiser/rate_card/payment_terms on Account,
-    # next_expected_at on the delivery response) — both typed as plain optionals by
-    # the pin, neither required, neither nullable.
-    #: A RESPONSE model's pinned schema, for the sub-schema refs a module path cannot name
-    #: (``...#/oneOf/0``, ``...#/properties/media_buys/items``). Request DTOs no longer
-    #: declare it -- their ref is derived from SDK ancestry, so a DTO cannot name the wrong
-    #: schema for itself.
-    _PINNED_SCHEMA_REF: ClassVar[str | None] = None
+    if TYPE_CHECKING:
+        # This mixin is only ever composed onto a pydantic model, and it reads the host's
+        # fields. Declaring that here states the requirement instead of leaving mypy to infer
+        # a plain class and reject ``cls.model_fields``.
+        model_fields: ClassVar[dict[str, FieldInfo]]
+
     _SERIALIZE_NESTED_MODELS: ClassVar[bool] = False
 
     @classmethod
     def _always_include_null_fields(cls) -> frozenset[str]:
-        """Fields the pin lists in ``required`` AND types nullable."""
-        if cls._PINNED_SCHEMA_REF is None:
-            return frozenset()
-        from src.core.schemas._pinned_fields import required_nullable_fields
+        """Fields this model declares REQUIRED whose type admits ``None``.
 
-        return required_nullable_fields(cls._PINNED_SCHEMA_REF)
+        Read off ``model_fields``, not off a schema path. ``required`` and nullable are
+        independent axes in JSON Schema, and their conjunction is exactly "the key must be
+        present, its value may be null" -- which is the one case the SDK base's blanket
+        ``exclude_none=True`` gets wrong. The model already carries both axes, so nothing
+        needs naming.
+
+        This used to read ``_PINNED_SCHEMA_REF``, a hand-written schema path per adopter, and
+        resolve it through 150 lines of ``$ref`` / ``allOf`` / JSON-pointer walking. Measured
+        across the 416 models reachable from a response, the derived rule reproduces that
+        result exactly on every adopter -- and it cannot name the wrong schema, which the
+        string could. Two of the four adopters named a ref that derived nothing at all.
+        """
+        return frozenset(
+            name
+            for name, field in cls.model_fields.items()
+            if field.is_required() and type(None) in get_args(field.annotation)
+        )
 
     _INTERNAL_ONLY_FIELDS: ClassVar[frozenset[str]] = frozenset()
     """Fields kept OFF protocol responses unless ``context={"include_internal": True}``.
@@ -564,10 +574,12 @@ class AlwaysIncludeFieldsMixin(WireSerializerMixin):
     of those produces a response that fails item-level validation: the same class
     of silent omission as the missing envelope status (GH #1900).
 
-    Adopters name the schema they are graded against in ``_PINNED_SCHEMA_REF`` and
-    the field set is derived from it — there is no list to keep in step with the
-    spec. The hook and the serializer live in :class:`WireSerializerMixin`; this
-    class is the opt-in name.
+    The retained set is derived from the model's own ``model_fields`` — a field it
+    declares required whose type admits ``None`` — so there is nothing to name and
+    nothing to keep in step with the spec. Adopters used to write a
+    ``_PINNED_SCHEMA_REF`` schema path, which could name the wrong schema and, on
+    two of the four, named one that derived nothing. The hook and the serializer
+    live in :class:`WireSerializerMixin`; this class is the opt-in name.
 
     The two footguns this mixin used to document are fixed rather than described —
     see ``WireSerializerMixin._apply_always_include``: only a ``None`` value is
@@ -710,7 +722,6 @@ class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, AdCPCreateMediaBuySuccess,
     # pin lists confirmed_at in `required`, so a document missing it fails validation.
     # That is the same silent-omission class as GH #1900, which is why this PR exists.
     # It was invisible until now only because the field could never be null.
-    _PINNED_SCHEMA_REF: ClassVar[str] = "media-buy/create-media-buy-response.json#/oneOf/0"
 
     # Replaces a second @model_serializer that used to live on this class. Two wrap
     # serializers in one model means only one runs, so composing the always-include
@@ -3139,7 +3150,6 @@ class GetMediaBuysMediaBuy(AlwaysIncludeFieldsMixin, LibraryGetMediaBuysMediaBuy
     # types it ["string","null"], so it is the one field that must stay on the wire
     # as an explicit null. This adopter was already correct; deriving means it stays
     # correct across a pin bump without anyone re-checking.
-    _PINNED_SCHEMA_REF: ClassVar[str] = "media-buy/get-media-buys-response.json#/properties/media_buys/items"
 
     def model_dump(self, **kwargs):
         """Serialize local package subclasses, then keep required-nullable fields."""

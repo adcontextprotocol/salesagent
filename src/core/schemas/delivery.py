@@ -29,7 +29,7 @@ from adcp.types.generated_poc.media_buy.get_media_buy_delivery_response import (
 from pydantic import ConfigDict, Field
 
 from src.core.config import get_pydantic_extra_mode
-from src.core.schemas._base import AlwaysIncludeFieldsMixin, NestedModelSerializerMixin, SalesAgentBaseModel
+from src.core.schemas._base import NestedModelSerializerMixin, SalesAgentBaseModel
 
 # ---------------------------------------------------------------------------
 # Simple enum / leaf types
@@ -315,9 +315,7 @@ class AggregatedTotals(LibraryAggregatedTotals):
 # ---------------------------------------------------------------------------
 
 
-class GetMediaBuyDeliveryResponse(
-    AlwaysIncludeFieldsMixin, NestedModelSerializerMixin, LibraryGetMediaBuyDeliveryResponse
-):
+class GetMediaBuyDeliveryResponse(NestedModelSerializerMixin, LibraryGetMediaBuyDeliveryResponse):
     """Extends library GetMediaBuyDeliveryResponse with local overrides.
 
     Library provides: reporting_period, currency, errors, context, ext,
@@ -342,7 +340,6 @@ class GetMediaBuyDeliveryResponse(
     # own description says it is "only present in webhook deliveries when
     # notification_type is not 'final'", so a null is never the right wire value and
     # `notification_type is not None` included 'final', the one case the pin excludes.
-    _PINNED_SCHEMA_REF: ClassVar[str] = "media-buy/get-media-buy-delivery-response.json"
 
     def webhook_payload(
         self,

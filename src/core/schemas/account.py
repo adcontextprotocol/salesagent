@@ -30,7 +30,6 @@ from pydantic import ConfigDict, model_validator
 
 from src.core.config import get_pydantic_extra_mode
 from src.core.schemas._base import (
-    AlwaysIncludeFieldsMixin,
     NestedModelSerializerMixin,
     SalesAgentBaseModel,
     validate_idempotency_key_shape,
@@ -41,12 +40,18 @@ from src.core.schemas._base import (
 # ---------------------------------------------------------------------------
 
 
-class Account(AlwaysIncludeFieldsMixin, LibraryAccountDomain):
+class Account(LibraryAccountDomain):
     """Extends library Account with salesagent model_config.
 
     Library provides: account_id, name, advertiser, billing_proxy, status,
     brand, operator, billing, rate_card, payment_terms, credit_limit, setup,
     account_scope, governance_agents, sandbox, ext.
+
+    No required-nullable retention: it declares no field that is both required and
+    nullable, so the mixin it used to name did nothing here. Its schema ref claimed
+    otherwise for a while and emitted three explicit nulls that FAILED validation
+    against core/account.json -- advertiser, rate_card and payment_terms are plain
+    optionals there, listed in no ``required`` set.
     """
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
@@ -56,7 +61,6 @@ class Account(AlwaysIncludeFieldsMixin, LibraryAccountDomain):
     # them in `required`, so the intersection is empty and all three are omitted
     # when null. Declaring them always-include emitted a document that FAILED
     # validation against that schema, on list_accounts — a registered A2A skill.
-    _PINNED_SCHEMA_REF: ClassVar[str] = "core/account.json"
 
 
 # ---------------------------------------------------------------------------
