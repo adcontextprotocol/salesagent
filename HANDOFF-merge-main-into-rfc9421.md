@@ -16,57 +16,68 @@ now WEDGES.** See §0.
 
 ---
 
-## 0. STATE — every known failure is root-caused and fixed; needs one quiet-box run
+## 0. GREEN — all seven suites, zero failures, at `f6dd2ad6b`
 
-Best evidence, `innet_060926_1735`, taken on a FREE box (load 0.47, 84 GB available):
+| suite | passed | failed | errors | run |
+|---|---|---|---|---|
+| unit | 7735 | 0 | 0 | `innet_060926_1850` |
+| integration | 3511 | 0 | 0 | `innet_060926_1922` |
+| bdd_inprocess | 2444 | 0 | 0 | `innet_060926_1850` |
+| bdd_e2e | 588 | 0 | 0 | `innet_060926_1850` |
+| e2e | 161 | 0 | 0 | `innet_060926_1850` |
+| admin | 138 | 0 | 0 | `innet_060926_1850` |
+| ui | 5 | 0 | 0 | `innet_060926_1850` |
+| security-audit | OK | | | both |
 
-| suite | result |
-|---|---|
-| unit | 7734 passed, **1 failed** |
-| integration | 3511 passed, 0 failed |
-| bdd_inprocess | 2444 passed, 0 failed |
-| **bdd_e2e** | **588 passed, 0 failed, 0 errors** |
-| e2e / admin / ui | 161 / 138 / 5 passed, 0 failed |
-| security-audit | OK |
+Two runs, ONE tree (`f6dd2ad6b`, nothing committed between them). The first got six suites
+green; its `integration` collected ZERO tests — it aborted when a co-tenant saturated the
+box and the live server's `/health` stopped answering — so it was re-run alone and came
+back `exit=0`, 3511 passed. Cassini's own verdict on the first run was "NOT the tests — 0
+failures/errors across 7 suite(s)".
 
-That single failure was `test_guards_a2a_integer_restoration` — **fixed in `9b9a5a990`**. So
-no known failure remains. What is missing is one uncontended run to certify it.
+**Read the counts, not the exit code.** A contended run can exit non-zero having proven
+nothing; cassini says so rather than publishing stale numbers, and a suite reporting
+`0 collected` is a suite that did not run.
 
-### The box is shared, and that is the whole difficulty
-
-Runs are only trustworthy when nothing else is on the machine. **Check first:**
+### The box is shared — check before believing a red
 
 ```bash
 ssh hetzner2-vm "docker ps --format '{{.Names}}' | sed -E 's/^(sa-[a-z0-9]+).*/\1/' | sort -u; free -g | sed -n 2p; uptime"
 ```
 
-Contended runs produced, at various times, all of: `bdd_inprocess exit -9` (OOM kill),
-`unit exit 3` (pytest INTERNALERROR, zero FAILED rows), and two `test_outbound_http.py`
-timing failures (`retry_after_lengthens_a_wait…`, `delivery_failure_envelope_hides…`)
-that are 0F on a free box. **None of these are real; do not chase them.** A run whose
-report directory "held no suite reports" is likewise not a verdict — cassini says so
-explicitly rather than publishing the previous run's numbers.
+Contention produced ALL of the following at some point, none of them real: `bdd_inprocess
+exit -9` (OOM kill), `unit exit 3` (pytest INTERNALERROR, zero FAILED rows), `integration`
+collection abort (`E2E_BASE_URL ... /health did not answer` plus a consequent "Different
+tests were collected between gw5 and gw2"), and two `test_outbound_http.py` TIMING rows.
 
-### Four real defects were found and fixed here, in dependency order
+Separately, the box's rootless Docker hit the kernel keyring cap
+(`unable to join session keyring ... disk quota exceeded`, uid 1003 at 200/200 keys) and
+could not start ANY container until `kernel.keys.maxkeys` was raised. If `docker run
+hello-world` fails on the box, that is the first thing to check — the leak that fills it
+is still unfixed.
 
-Each was hidden by the one before it, and all four were latent until the first was fixed —
-before that, no webhook delivery ever left the server over `e2e_rest`.
+### Four real defects fixed, in dependency order
 
-1. **`868f9c06b`** — a gate reading a flag nothing set (merge regression: our gate + #1802's
-   new issuing path), two capture addresses for one endpoint, and a header-blind reader
-   over a service that was never header-blind. Mutation-verified on all three legs.
+Each was hidden by the one before it; all were latent until the first was fixed, because
+until then no webhook delivery ever left the server over `e2e_rest`.
+
+1. **`868f9c06b`** — a gate reading a flag nothing set (our gate + #1802's new issuing
+   path — a semantic merge conflict no textual conflict could show), two capture addresses
+   for one endpoint, and a header-blind reader over a service that was never header-blind.
+   Mutation-verified on all three legs.
 2. **`0464a9504`** — the delivery-report sender omitted the required `idempotency_key`
-   (webhooks.mdx :195/:253, graded by `webhook-emission.yaml`), and the admin trigger
-   reported "Sent" for a webhook refused before any connection.
-3. **`721843f67`** — a DB transaction held open across the whole delivery including the
+   (webhooks.mdx :195/:253, graded by `webhook-emission.yaml`); the admin trigger reported
+   "Sent" for a webhook refused before any connection.
+3. **`721843f67`** — a DB transaction held open across the entire delivery INCLUDING the
    retry ladder, deadlocking the harness's per-scenario TRUNCATE. Violated the repo's own
-   #1757 rule, behind a comment claiming the opposite. Diagnosed from `pg_stat_activity`,
-   not guessed: `idle in transaction` + two `Lock/relation` waiters, server at 0.01% CPU.
-4. **`699a717a5`** — the same TRUNCATE could still lose a normal lock-order race; now
-   bounded-retries on a detected deadlock only.
+   #1757 rule from behind a comment claiming the opposite. Diagnosed from
+   `pg_stat_activity` (`idle in transaction` + two `Lock/relation` waiters, server at 0.01%
+   CPU), not inferred.
+4. **`45a331a4b`** — the same TRUNCATE could still lose an ordinary lock-order race;
+   bounded retry on a DETECTED deadlock only, everything else still raises.
 
-Plus `4fe71c41e`, which parks the circuit-breaker scenarios (they graded the runner's own
-process, and the e2e sender has no breaker at all) — see §0.5 for what replaces them.
+Plus `4fe71c41e` (park the circuit-breaker scenarios — see §0.5) and `9b9a5a990` (a guard
+meta-test was planting a specimen in the real `src/` while a parallel worker scanned it).
 
 ---
 
