@@ -991,7 +991,7 @@ Feature: BR-UC-020 Build Creative
   Scenario: Build a VAST-compatible serving tag from a synced video creative referenced by creative_id
     Given a video creative has been synced to the library with creative_id "video_30s_trail_pro"
     When the Buyer Agent sends build_creative referencing the creative_id and a target_format_id with id "vast_30s"
-    Then the response should be schema-valid against build-creative-response.json
+    Then the response is compliant with the build_creative success spec
     And the response should carry a serving tag compatible with the VAST target_format_id
     And the response should reference the originating creative_id
     # creative_lifecycle build_video_tag: the buyer references an existing

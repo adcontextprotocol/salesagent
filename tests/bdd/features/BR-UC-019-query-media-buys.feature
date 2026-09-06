@@ -66,7 +66,7 @@ Feature: BR-UC-019 Query Media Buys
     And today is "2026-03-15"
     When the Buyer Agent sends a get_media_buys request with no filters
     Then the response envelope carries status completed
-    And the response should be schema-valid against media-buy/get-media-buys-response.json
+    And the response is compliant with the get_media_buys spec
     # core/protocol-envelope.json marks `status` REQUIRED on every task response
     # envelope, and get-media-buys-response.json composes that arm via a top-level
     # allOf — so the requirement reaches this response through composition rather
@@ -1502,7 +1502,7 @@ Feature: BR-UC-019 Query Media Buys
   Scenario: get_media_buys called immediately after create_media_buy resolves the freshly-created buy by media_buy_id
     Given the buyer captured a media_buy_id from a successful create_media_buy response
     When the Buyer Agent calls get_media_buys with that media_buy_id under the same account
-    Then the response should be schema-valid against media-buy/get-media-buys-response.json
+    Then the response is compliant with the get_media_buys spec
     And the media_buys array should include the freshly-created buy
     And the included entry should expose the same media_buy_id and status "pending_creatives"
     # media-buy/index.yaml create_buy / check_buy_status step: after the buyer

@@ -1582,7 +1582,7 @@ Feature: BR-UC-006 Sync Creative Assets
     Given the tenant has a product with creative_policy.provenance_required = true
     And the Buyer Agent submits a creative whose manifest carries no provenance object at all
     When the Buyer Agent sends sync_creatives
-    Then the response envelope should be schema-valid against sync-creatives-response.json
+    Then the response is compliant with the sync_creatives success spec
     And the per-creative result should report action "failed"
     And the creatives entry carries error code "PROVENANCE_REQUIRED"
     # provenance_enforcement Phase 2: cheapest buyer mistake -- no provenance attached.
@@ -1654,7 +1654,7 @@ Feature: BR-UC-006 Sync Creative Assets
   Scenario: Bulk sync of three creatives in three different formats returns per-creative action
     Given the Buyer Agent submits three creatives in three different formats in a single sync_creatives call
     When the Buyer Agent sends sync_creatives
-    Then the response envelope should be schema-valid against sync-creatives-response.json
+    Then the response is compliant with the sync_creatives success spec
     And the creatives array should carry one result per submitted creative
     And every per-creative result should expose an action field
     And every action value should be "created", "updated", or "failed"

@@ -35,7 +35,6 @@ from __future__ import annotations
 from pytest_bdd import parsers, then
 
 from tests.bdd.steps._outcome_helpers import wire_dict
-from tests.helpers.pinned_schema import validate_against_pinned_schema
 from tests.helpers.response_schemas import response_schema_ref, response_validator
 
 
@@ -78,14 +77,11 @@ def then_response_compliant_branch(ctx: dict, tool: str, branch: str) -> None:
     _assert_compliant(ctx, tool, branch)
 
 
-@then(parsers.parse("the response should be schema-valid against {schema_file}"))
-def then_response_schema_valid(ctx: dict, schema_file: str) -> None:
-    """Assert the response validates against the pinned AdCP schema.
-
-    Superseded by the two steps above, which name the tool rather than the file.
-    Kept while scenarios still name files; each migrated scenario deletes one use.
-    """
-    validate_against_pinned_schema(schema_file, wire_dict(ctx))
+#: ``the response should be schema-valid against <file>`` is DELETED. It named a
+#: schema file, which is a second spelling of "which tool is this scenario
+#: exercising" — and the two drift, silently, because a scenario whose When
+#: changes keeps asserting the old contract and still passes. All 20 uses across
+#: nine feature files now name the tool instead.
 
 
 @then(parsers.parse("the response envelope carries status {expected_status}"))

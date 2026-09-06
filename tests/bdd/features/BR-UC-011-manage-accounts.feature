@@ -249,7 +249,7 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator        | billing  |
     | acme-corp.com   | acme-corp.com   | operator |
-    Then the response should be schema-valid against sync-accounts-response.json
+    Then the response is compliant with the sync_accounts success spec
     And the response envelope carries status completed
     # core/protocol-envelope.json marks `status` REQUIRED on every task response
     # envelope, and sync-accounts-response.json composes that arm through a

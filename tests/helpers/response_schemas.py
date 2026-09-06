@@ -53,11 +53,24 @@ def _category(tool: str) -> str | None:
 
 
 def response_schema_ref(tool: str) -> str:
-    """The schema ref for *tool*'s response, category-qualified where one exists."""
+    """The schema ref for *tool*'s response, category-qualified where one exists.
+
+    REGISTRY MEMBERSHIP IS REQUIRED, and the failure is the point. A tool this
+    seller has not built cannot be dispatched, so no response exists to grade —
+    a scenario naming one is not a scenario that could pass. Resolving its schema
+    anyway would let such a scenario look gradeable while exercising nothing,
+    which is how a whole use case quietly stops counting.
+
+    ``activate_signal``, ``build_creative``, ``preview_creative`` and the ``si_*``
+    session tools all have pinned schemas and no implementation. Raising here
+    names them, one scenario at a time, and that count IS the scale of what is
+    left to build.
+    """
     if tool not in TOOLS:
         raise KeyError(
-            f"{tool!r} is not a registered tool. The registry "
-            f"(src/core/tools/registry.py) holds: {sorted(TOOLS)}"
+            f"{tool!r} is not a registered tool, so nothing can dispatch it and no "
+            f"response exists to grade. The registry (src/core/tools/registry.py) "
+            f"holds: {sorted(TOOLS)}"
         )
     filename = tool.replace("_", "-") + "-response.json"
     category = _category(tool)

@@ -1350,7 +1350,7 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
   Scenario: Delivery reporting -- controller-injected impressions and spend produce schema-compliant get_media_buy_delivery response
     Given a comply_test_controller has injected simulated delivery with impressions 5000, clicks 150, and spend 250.00 USD into a media buy
     When the Buyer Agent calls get_media_buy_delivery for the media buy with include_package_daily_breakdown true
-    Then the response should be schema-valid against get-media-buy-delivery-response.json
+    Then the response is compliant with the get_media_buy_delivery spec
     And the response should carry a media_buy_deliveries array with at least one entry
     And the per-package breakdown should reflect the injected impressions and spend
     # delivery_reporting storyboard: the test controller injects delivery metrics
@@ -1369,7 +1369,7 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     And the buyer created a media buy from one of those products
     And controller-driven simulated delivery emitted impressions but did not emit "completed_views"
     When the Buyer Agent calls get_media_buy_delivery for the media buy
-    Then the response should be schema-valid against get-media-buy-delivery-response.json
+    Then the response is compliant with the get_media_buy_delivery spec
     And the per-package missing_metrics entry should include scope "standard" and metric_id "completed_views"
     And missing_metrics should be empty or absent when all product-declared metrics were emitted
     # measurement_accountability storyboard: end-to-end contract in three pieces:
@@ -1392,7 +1392,7 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     And the buyer created a media buy from the matching product
     And controller-driven simulated delivery emitted vendor_metric_values for that vendor metric
     When the Buyer Agent calls get_media_buy_delivery for the media buy
-    Then the response should be schema-valid against get-media-buy-delivery-response.json
+    Then the response is compliant with the get_media_buy_delivery spec
     And the per-package vendor_metric_values should carry one row per (vendor.domain, vendor.brand_id, metric_id)
     And the row for vendor "attentionvendor.example" should include metric_id "attention_units"
     And the seller should NOT emit duplicate rows for the same (vendor.domain, vendor.brand_id, metric_id) within a single reporting period

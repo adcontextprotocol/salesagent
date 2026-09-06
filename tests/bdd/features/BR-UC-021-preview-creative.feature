@@ -946,7 +946,7 @@ Feature: BR-UC-021 Preview Creative
   Scenario: Preview a synced display creative -- returns preview_url and render_dimensions matching the format
     Given a display creative has been synced to the library with creative_id "display_trail_pro_300x250" and format_id {agent_url, "display_300x250"}
     When the Buyer Agent sends preview_creative with request_type "single" and the synced creative_manifest
-    Then the response should be schema-valid against preview-creative-response.json
+    Then the response is compliant with the preview_creative singleresponse spec
     And the response should carry a preview_url the buyer can inspect
     And the render_dimensions on the preview should match the format_id "display_300x250"
     # creative_lifecycle preview_display: the buyer requests a preview of a

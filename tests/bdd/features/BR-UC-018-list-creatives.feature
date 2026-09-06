@@ -747,7 +747,7 @@ Feature: BR-UC-018 List Creatives
   Scenario: List creatives with no filters returns the library including recently synced creatives
     Given the buyer recently synced three creatives in three different formats via sync_creatives
     When the Buyer Agent sends list_creatives with no filters for the same account
-    Then the response should be schema-valid against list-creatives-response.json
+    Then the response is compliant with the list_creatives spec
     And the creatives array should include each of the synced creatives
     And each creative entry should expose creative_id, name, format_id, and status
     # creative_lifecycle list_and_filter / list_all: after sync_creatives,
@@ -765,7 +765,7 @@ Feature: BR-UC-018 List Creatives
   Scenario: List creatives filtered by a format_id object returns only creatives matching that {agent_url, id}
     Given the buyer has synced creatives in formats including {agent_url, "display_300x250"} and {agent_url, "video_30s"}
     When the Buyer Agent sends list_creatives with filters.format_ids carrying one format_id object {agent_url, "display_300x250"}
-    Then the response should be schema-valid against list-creatives-response.json
+    Then the response is compliant with the list_creatives spec
     And the creatives array should only include creatives whose format_id matches both agent_url and id
     And the creatives array should NOT include creatives whose format_id has a different id even on the same agent_url
     # creative_lifecycle list_filtered: the buyer filters by a format_id object
@@ -779,7 +779,7 @@ Feature: BR-UC-018 List Creatives
   Scenario: List creatives filtered by concept_ids returns only creatives in that concept carrying concept_id and concept_name
     Given the authenticated principal has creatives grouped under concept "concept_summer_2026" and other creatives under different concepts
     When the Buyer Agent sends list_creatives with filters.concept_ids ["concept_summer_2026"]
-    Then the response should be schema-valid against list-creatives-response.json
+    Then the response is compliant with the list_creatives spec
     And the creatives array should only include creatives belonging to concept "concept_summer_2026"
     And each returned creative should carry concept_id "concept_summer_2026" and a concept_name
     # v3.1 ADDED filter filters.concept_ids (array of concept-id strings, minItems 1).
