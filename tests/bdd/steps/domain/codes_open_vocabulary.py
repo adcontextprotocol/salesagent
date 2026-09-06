@@ -68,13 +68,13 @@ def given_seller_will_reject(ctx: dict) -> None:
 
     env = ctx["env"]
 
-    # In-process arm.
+    # In-process branch.
     mock_adapter = env.mock["adapter"].return_value
     mock_adapter.create_media_buy.side_effect = AdCPMediaBuyRejectedError(
         details=RejectionReasonDetails(rejection_reason=_REJECTION_REASON)
     )
 
-    # Live-server arm: the sanctioned injection channel, keyed on the env's own tenant.
+    # Live-server branch: the sanctioned injection channel, keyed on the env's own tenant.
     set_adapter_test_behavior(
         env,
         env._tenant_id,

@@ -299,7 +299,7 @@ class TestRefusedAgentUrlIsNotDialled:
     ``call_mcp_tool`` is the MCP seam's entry point, so the egress seam's
     address and scheme policy applies ONCE, at its top, before the connection
     candidates are built — outside the retry loop and outside the ``try`` whose
-    arm is a bare ``except Exception``.
+    branch is a bare ``except Exception``.
 
     Position is the whole obligation. Validating inside that loop would leave
     ``OutboundRequestBlocked`` caught, logged as "MCP connection attempt N/M
@@ -500,8 +500,8 @@ class TestExhaustedFailureReachesTheRegistryClassified:
     """An exhausted TOOL failure classifies exactly as an exhausted CONNECT failure does.
 
     Both legs run the same production path — ``SignalsAgentRegistry._fetch_signals_operator``,
-    whose ``except (MCPConnectionError, MCPCompatibilityError)`` arm delegates to
-    ``raise_mapped_mcp_error`` — and both must land on the one envelope that arm
+    whose ``except (MCPConnectionError, MCPCompatibilityError)`` branch delegates to
+    ``raise_mapped_mcp_error`` — and both must land on the one envelope that branch
     produces for a seam failure carrying no HTTP status.
 
     The connect leg is the reference: it passes today, so a failure of this test
@@ -509,7 +509,7 @@ class TestExhaustedFailureReachesTheRegistryClassified:
     the classifier. The tool leg is the new obligation. Verified against the
     unmodified seam while authoring: today the tool leg raises an unclassified
     ``RuntimeError: generator didn't stop after athrow()`` that the registry's
-    ``except`` arm does not even catch — so this is a NEW obligation, not an
+    ``except`` branch does not even catch — so this is a NEW obligation, not an
     extension of a green one.
     """
 
@@ -636,7 +636,7 @@ class TestDialTimeRefusalIsNotRetriedOrLaundered:
     grades the other half, and the half that is currently wrong: the pre-check
     PASSES and the in-loop ``guarded_client_factory`` resolution REFUSES. That
     refusal is raised inside ``async with client``, i.e. inside the per-attempt
-    ``try`` whose arm is a bare ``except Exception`` — so today it is caught,
+    ``try`` whose branch is a bare ``except Exception`` — so today it is caught,
     logged as "MCP connection attempt N/M failed", slept on, retried against the
     destination egress policy has already refused, and finally re-raised as
     ``MCPConnectionError``. The registry then classifies that as

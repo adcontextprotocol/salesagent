@@ -75,7 +75,7 @@ def _walk_pointer(node: Any, pointer: str) -> Any:
 
     ``schema[token]`` alone is wrong the moment a pointer crosses a list: every
     token arrives as ``str``, so ``#/oneOf/0`` raises ``TypeError`` on the array
-    rather than selecting the arm. A pinned root that composes through ``oneOf``
+    rather than selecting the branch. A pinned root that composes through ``oneOf``
     is exactly the shape a caller needs a pointer for -- the bare ref is
     underivable by design -- so refusing array tokens made the disjunctive case
     unreachable through the one mechanism provided for it.
@@ -97,32 +97,32 @@ def _is_nullable(prop: dict[str, Any]) -> bool:
     """
     if "null" in (prop.get("type") or []):
         return True
-    return any("null" in (arm.get("type") or []) for key in ("anyOf", "oneOf") for arm in (prop.get(key) or []))
+    return any("null" in (branch.get("type") or []) for key in ("anyOf", "oneOf") for branch in (prop.get(key) or []))
 
 
 def _merge_all_of(schema: dict[str, Any], base: Path) -> tuple[set[str], dict[str, Any], bool]:
     """Transitive ``allOf`` closure: merged ``required``, merged ``properties``, and
-    whether any arm carries an unmergeable composition keyword.
+    whether any branch carries an unmergeable composition keyword.
 
-    Only each arm's OWN top-level ``required`` is merged — an ``if``/``then`` arm
+    Only each branch's OWN top-level ``required`` is merged — an ``if``/``then`` branch
     states a conditional, not a requirement, and reading its ``if.required`` as
     unconditional would invent requiredness the pin does not declare.
     """
     required: set[str] = set()
     properties: dict[str, Any] = {}
     unmergeable = False
-    # Each arm travels with the file it came from, so a nested arm reached through an
+    # Each branch travels with the file it came from, so a nested branch reached through an
     # external ``$ref`` resolves its own relative refs against that file's directory.
-    stack: list[tuple[Any, Path]] = [(arm, base) for arm in schema.get("allOf") or []]
+    stack: list[tuple[Any, Path]] = [(branch, base) for branch in schema.get("allOf") or []]
     # Visited subschemas, by the identity ``_resolve`` reports. This exists only to
-    # terminate a cyclic ``allOf`` graph — merging the same arm twice is harmless,
+    # terminate a cyclic ``allOf`` graph — merging the same branch twice is harmless,
     # since both a set union and a dict update are idempotent. Deduplicating on
     # anything coarser than a subschema (a file, or a ``$ref`` spelling) silently
-    # drops a distinct arm and returns an incomplete ``required`` list.
+    # drops a distinct branch and returns an incomplete ``required`` list.
     merged: set[tuple[str, str]] = set()
     while stack:
-        arm, arm_base = stack.pop()
-        resolved, resolved_base, identity = _resolve(arm, arm_base)
+        branch, arm_base = stack.pop()
+        resolved, resolved_base, identity = _resolve(branch, arm_base)
         if not isinstance(resolved, dict):
             continue
         if identity is not None:
@@ -130,7 +130,7 @@ def _merge_all_of(schema: dict[str, Any], base: Path) -> tuple[set[str], dict[st
                 continue
             merged.add(identity)
         required |= set(resolved.get("required") or [])
-        # allOf is conjunctive, so an arm cannot contradict an earlier one about a
+        # allOf is conjunctive, so an branch cannot contradict an earlier one about a
         # property: merge order is immaterial.
         properties.update(resolved.get("properties") or {})
         if any(key in resolved for key in ("anyOf", "oneOf")):
@@ -156,9 +156,9 @@ def required_nullable_fields(ref: str) -> frozenset[str]:
     pin declares none. ``anyOf``/``oneOf`` are disjunctive: no complete list exists,
     whatever else was found, so a root carrying one raises
     :class:`UnderivablePinnedSchema` rather than reporting the half it could read.
-    ``account/sync-accounts-response.json`` is why — its ``allOf`` arms yield the
+    ``account/sync-accounts-response.json`` is why — its ``allOf`` branches yield the
     protocol envelope's ``status`` while the payload's requiredness lives in
-    ``oneOf`` arms, so a walk gated on emptiness returns a partial read dressed as a
+    ``oneOf`` branches, so a walk gated on emptiness returns a partial read dressed as a
     complete one.
     """
     path_part, _, pointer = ref.partition("#")

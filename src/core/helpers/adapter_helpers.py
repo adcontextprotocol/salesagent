@@ -55,7 +55,7 @@ def raise_mapped_adcp_error(exc: ADCPError, *, agent_label: str, logger: logging
     may succeed), and any other AdCP error maps to a generic adapter failure.
 
     Always raises; the ``NoReturn`` annotation lets callers delegate from a single
-    ``except ADCPError`` arm without a trailing ``raise``.
+    ``except ADCPError`` branch without a trailing ``raise``.
 
     ``exc.message`` is THIRD-PARTY free text and never reaches the wire: the SDK
     builds e.g. ``ADCPConnectionError`` as ``f"Failed to connect: {last_error}"``

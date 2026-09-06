@@ -17,7 +17,7 @@ from tests.bdd.steps.generic._auth import authenticate_env_as
 
 
 def _inject_privilege_error(ctx: dict) -> None:
-    """Arm the adapter to refuse an admin-only update with PERMISSION_DENIED.
+    """Branch the adapter to refuse an admin-only update with PERMISSION_DENIED.
 
     Storyboard BR-UC-003-ext-n grounds the privilege check at the ADAPTER
     (step 9b: "Adapter checks admin privilege requirement — operation requires
@@ -28,7 +28,7 @@ def _inject_privilege_error(ctx: dict) -> None:
     ``PERMISSION_DENIED`` (adcp-req BR-UC-003 impl-coverage), recovery
     correctable, with a buyer-facing "privileges" suggestion.
 
-    So we arm the method production actually calls during update
+    So we branch the method production actually calls during update
     (``adapter.update_media_buy``) with the canonical rejection. This makes the
     test wire-ready: the instant production gates admin-only actions and lets
     the adapter rejection surface on the wire, the strict xfail in conftest
@@ -573,7 +573,7 @@ def given_buyer_no_admin(ctx: dict) -> None:
     """
     ctx["buyer_is_admin"] = False
 
-    # If update already requires admin, arm the adapter privilege error now
+    # If update already requires admin, branch the adapter privilege error now
     if ctx.get("update_requires_admin"):
         _inject_privilege_error(ctx)
 
@@ -673,7 +673,7 @@ def given_media_buy_uncancellable(ctx: dict) -> None:
 
     BR-RULE-216 INV-4: a buy not cancellable in its current state must reject a
     cancel with NOT_CANCELLABLE. Production never reads canceled and has no
-    state-based cancellation check (gap, ext-v). We arm the update adapter to
+    state-based cancellation check (gap, ext-v). We branch the update adapter to
     refuse the cancel (the seller-side gate) and set canceled=true so the real
     cancellation path is exercised on the wire.
     """
@@ -682,7 +682,7 @@ def given_media_buy_uncancellable(ctx: dict) -> None:
     kwargs = _ensure_update_defaults(ctx)
     kwargs["canceled"] = True
     ctx["uncancellable"] = True
-    # Arm the seller-side refusal at the update adapter with the canonical code.
+    # Branch the seller-side refusal at the update adapter with the canonical code.
     env = ctx["env"]
     mock_adapter = env.mock["update_adapter"].return_value
     mock_adapter.update_media_buy.side_effect = AdCPSalesAgentError(

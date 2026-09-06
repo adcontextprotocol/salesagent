@@ -44,7 +44,7 @@ Available mocks via env.mock:
     "send_notifications"  -- _send_creative_notifications (from _workflow)
     "audit_log"           -- _audit_log_sync (from _workflow)
     "config"              -- get_config (lazy import in _processing.py)
-    "ai_review_executor"  -- _ai_review_executor (lazy import in _processing.py, ai-powered arm)
+    "ai_review_executor"  -- _ai_review_executor (lazy import in _processing.py, ai-powered branch)
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ def creative_fingerprint(creative: Any) -> tuple[str, str]:
     reasons: the dry_run oracle compares the tenant's library before and after a
     preview, and the post-commit oracle compares what an escaping effect could
     SEE against what the sync actually committed. ``status`` alone is too weak
-    for either -- the update arm re-writes ``data`` while leaving ``status`` at
+    for either -- the update branch re-writes ``data`` while leaving ``status`` at
     ``pending_review``, so a status-only fingerprint reads a stale row and a
     freshly-updated one as identical.
     """
@@ -146,7 +146,7 @@ class CreativeSyncEnv(EgressHatchMixin, IntegrationEnv):
         "send_notifications": "src.core.tools.creatives._sync._send_creative_notifications",
         "audit_log": "src.core.tools.creatives._sync._audit_log_sync",
         "config": "src.core.config.get_config",
-        # The ai-powered arm of _processing.py hands a job to a real
+        # The ai-powered branch of _processing.py hands a job to a real
         # ThreadPoolExecutor that opens its OWN AdminCreativeUoW, COMMITS a review
         # verdict, and then fires Slack + the push webhook
         # (src/admin/blueprints/creatives.py). That is an effect which escapes the
@@ -474,7 +474,7 @@ class CreativeSyncEnv(EgressHatchMixin, IntegrationEnv):
             "every field of this snapshot is read over a second pooled connection to the engine "
             "THIS process is bound to. Under e2e_rest the request runs in the Docker server "
             "process against its own database, so the read answers about the wrong database -- it "
-            "would report zero rows on every arm and grade nothing, which is strictly worse than "
+            "would report zero rows on every branch and grade nothing, which is strictly worse than "
             "not grading. Observing it e2e needs a server-side read-back surface (a tenant-scoped "
             "admin endpoint over workflow_steps / object_workflow_mapping / creative_assignments), "
             "which is its own build"

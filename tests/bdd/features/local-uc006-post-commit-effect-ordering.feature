@@ -5,9 +5,9 @@
 # NOT a protocol obligation, and deliberately not dressed as one. AdCP 3.1.1 is
 # silent on WHEN a seller may run a background review; what it is not silent
 # about is what sync_creatives reports. The sibling file
-# local-uc006-dry-run-out-of-transaction-effects.feature grades the preview arm
+# local-uc006-dry-run-out-of-transaction-effects.feature grades the preview branch
 # (an effect a rollback cannot reach must not fire at all); this file grades the
-# LIVE arm of the same seam, where the failure is ordering rather than
+# LIVE branch of the same seam, where the failure is ordering rather than
 # occurrence. Per the project's source hierarchy, where the schema is silent the
 # invariant is production's own — stated here so it is graded rather than
 # assumed.
@@ -17,13 +17,13 @@
 # _processing.py hands it to a background executor and it opens its own session,
 # so committed rows are the only state it can ever read. Today the sync
 # ``flush()``es and submits from INSIDE the still-open transaction, which is not
-# a commit: on the create arm the job's session finds no row, and on the update
-# arm it finds the row as it was BEFORE this sync touched it.
+# a commit: on the create branch the job's session finds no row, and on the update
+# branch it finds the row as it was BEFORE this sync touched it.
 #
 # Why the outline is create x update and not the four-cell partition its sibling
 # uses: the AI-review submit is on the approval-mode branch, which does not fork
 # on format kind, so generative vs agent-served-static reaches the same submit.
-# What DOES fork it is whether the creative already exists — the two arms have
+# What DOES fork it is whether the creative already exists — the two branches have
 # separate submit sites and separate wrong answers (missing row vs stale row).
 #
 # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/creative/sync-creatives-response.json
@@ -52,8 +52,8 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
 
     Examples:
       | partition_boundary                             | creative_state | expected_action |
-      | create arm, no row exists until the commit     | new            | created         |
-      | update arm, the row exists but is pre-update   | existing       | updated         |
+      | create branch, no row exists until the commit     | new            | created         |
+      | update branch, the row exists but is pre-update   | existing       | updated         |
 
   # --- the workflow-step seam of the same invariant (GH #2002) ---
   #

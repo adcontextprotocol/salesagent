@@ -18,16 +18,16 @@ the one ``call_mcp``/``call_a2a`` pair as ``deliver_*(...).payload``, and the wi
 channel a scenario grades — ``DeliverResult.wire_response`` — travels on the
 RETURN VALUE. A ``call_*`` override here would both violate the single-dispatch
 guard (``tests/unit/test_architecture_harness_single_dispatch.py``) and throw the
-list arm's real wire away.
+list branch's real wire away.
 
 REST is routed too, and has to be: ``get_media_buys`` answers on
 ``POST /api/v1/media-buys/query`` and ``_NO_REST_UC_TAG_PREFIXES`` is now EMPTY
 (tests/bdd/conftest.py), so every UC-019 scenario — this composite's included — is
-parametrized on rest and e2e_rest. The list arm switches the endpoint, the body
+parametrized on rest and e2e_rest. The list branch switches the endpoint, the body
 builder and the response parser together, exactly as ``AccountSyncEnv`` switches
-between its two verbs; the create arm is untouched.
+between its two verbs; the create branch is untouched.
 ``tests/integration/test_harness_rest_refusal.py`` pins all three switches, and
-pins that the non-list arm still delegates through ``super()``.
+pins that the non-list branch still delegates through ``super()``.
 
 GH #1900, GH #1941
 """
@@ -127,7 +127,7 @@ class MediaBuyCreateListEnv(MediaBuyListDispatchMixin, MediaBuyCreateEnv):
 
         Declared for the same reason as ``REST_ENDPOINT``: under
         ``MediaBuyCreateUpdateListEnv`` the inherited property answers "put" whenever
-        the update flag is set, and this class's list arm returns from
+        the update flag is set, and this class's list branch returns from
         ``build_rest_body`` before that flag is recomputed — so a list dispatch
         following an update would otherwise PUT the query route. ``getattr`` over the
         proxy because the plain create env declares no such attribute and the
@@ -141,8 +141,8 @@ class MediaBuyCreateListEnv(MediaBuyListDispatchMixin, MediaBuyCreateEnv):
         """Route the in-process REST call to the endpoint of the verb being dispatched.
 
         ``call_rest``/``RestDispatcher`` resolved ``endpoint`` from ``REST_ENDPOINT``
-        before the flag for THIS request was set, so the list arm recomputes it. The
-        other arm forwards the argument UNCHANGED rather than recomputing: below this
+        before the flag for THIS request was set, so the list branch recomputes it. The
+        other branch forwards the argument UNCHANGED rather than recomputing: below this
         class sits ``MediaBuyDualEnv``, whose ``REST_ENDPOINT`` is a property over its
         own create-vs-update flag that is not set until its ``_run_rest_request``
         runs — reading it here would resolve against the PREVIOUS request's verb.
@@ -155,7 +155,7 @@ class MediaBuyCreateListEnv(MediaBuyListDispatchMixin, MediaBuyCreateEnv):
     def build_rest_body(self, **kwargs: Any) -> dict[str, Any]:
         """Build the body of whichever verb is being dispatched.
 
-        This used to ``pytest.fail`` on the list arm, on the ground that
+        This used to ``pytest.fail`` on the list branch, on the ground that
         ``get_media_buys`` had no REST route. It has one —
         ``@router.post("/media-buys/query")`` — and ``_NO_REST_UC_TAG_PREFIXES`` is
         empty, so UC-019 IS parametrized on rest and e2e_rest. The refusal therefore

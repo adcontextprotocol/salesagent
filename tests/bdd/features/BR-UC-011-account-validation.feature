@@ -4,7 +4,7 @@
 # derivation is blind to: the pinned 3.1 spec marks every accounts[] entry
 # required:[brand,operator,billing] (sync-accounts-request.json @ v3.1-04f59d2d5),
 # yet BR-UC-011 has no scenario for a brandless entry. SDK 5.7 added an
-# account-reference arm (Accounts3) that makes brand optional, so a brandless
+# account-reference branch (Accounts3) that makes brand optional, so a brandless
 # entry must be rejected as a clean buyer-correctable 400 — not crash with a 500.
 #
 # Companion files in this directory survive `python scripts/compile_bdd.py --merge`

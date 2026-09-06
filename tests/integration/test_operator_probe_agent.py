@@ -293,7 +293,7 @@ class TestProbeResultSuccessShape:
 
 
 # ---------------------------------------------------------------------------
-# 4. ProbeResult failure shape -- both arms of probe_failure
+# 4. ProbeResult failure shape -- both branches of probe_failure
 # ---------------------------------------------------------------------------
 
 _OPERATOR_LEVERS = (
@@ -314,12 +314,12 @@ _OPERATOR_LEVERS = (
 # would pass for any text at all, including none.
 _CONFIG_FAILURE_SENTENCE = f"Connection failed: Endpoint refused the handshake. {_OPERATOR_LEVERS}"
 
-# The non-configuration arm has the SAME obligation and had the same blindness:
+# The non-configuration branch has the SAME obligation and had the same blindness:
 # ``str()`` of a typed error is its ``CODE_TABLE`` message, which reads "Service
 # temporarily unavailable" for an unreachable endpoint, a rate-limited one and an
 # undelivered request alike. ``raise_mapped_mcp_error`` puts the sentence naming
 # WHICH one into ``internal_detail``. No advice is appended here, unlike the
-# configuration arm: none of the operator's levers is known to be the cause.
+# configuration branch: none of the operator's levers is known to be the cause.
 # Written out in full rather than composed from the detail the dial raises, for
 # the same reason as above -- an expectation derived from the input would hold
 # for any output.
@@ -354,10 +354,10 @@ class TestProbeResultFailureShape:
     async def test_unreachable_endpoint_names_the_endpoint_not_the_code_table_sentence(self, creative_row):
         """A SERVICE_UNAVAILABLE failure reports which endpoint state it was.
 
-        The probe's second arm admits every failure the configuration arm does
+        The probe's second branch admits every failure the configuration branch does
         not -- unreachable, rate-limited, undelivered -- and all three share one
         ``CODE_TABLE`` sentence, so reading ``str(exc)`` would tell the operator
-        nothing at all. Graded on the creative registry only because the arm is
+        nothing at all. Graded on the creative registry only because the branch is
         one shared function; the parity case below covers both.
         """
         dial = _raising_dial(
@@ -373,7 +373,7 @@ class TestProbeResultFailureShape:
 
     @pytest.mark.asyncio
     async def test_creative_unexpected_failure_reports_the_short_form(self, creative_row):
-        """The non-configuration arm: no advice is offered, because none of the
+        """The non-configuration branch: no advice is offered, because none of the
         operator's levers is known to be the cause."""
         with patch(_SEAM_DIAL, _raising_dial(RuntimeError("socket exploded"))):
             result = await CreativeAgentRegistry().probe_agent(creative_row)

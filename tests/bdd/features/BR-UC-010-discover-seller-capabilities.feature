@@ -791,7 +791,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # the full [broad, phrase, exact] enum (minItems 1); geo_proximity = the full member object;
     # geo_postal_areas = the native country-keyed map. US is enum [zip, zip_plus_four] exactly
     # (postal-area-support.json's named US property) -- the [postal_code, custom] enum is a
-    # DIFFERENT arm of the same schema (additionalProperties, for countries with no named
+    # DIFFERENT branch of the same schema (additionalProperties, for countries with no named
     # property), not what US uses. PRODUCTION GAP (strict xfail): _build_geo_postal_areas
     # builds the native country-keyed map correctly -- the real remaining gap is
     # age_restriction, language, keyword_targets, negative_keywords and geo_proximity, never

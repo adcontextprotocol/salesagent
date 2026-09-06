@@ -949,7 +949,7 @@ class ContextManager(DatabaseManager):
                     except OutboundError as e:
                         # The seam's two failure classes (OutboundRequestBlocked /
                         # OutboundDeliveryFailed) replaced the requests exceptions
-                        # this used to catch — including the separate Timeout arm,
+                        # this used to catch — including the separate Timeout branch,
                         # which was a property of requests' taxonomy and has no
                         # counterpart here (a timeout arrives as
                         # OutboundDeliveryFailed with http_status=None, and its

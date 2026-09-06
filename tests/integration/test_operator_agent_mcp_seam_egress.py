@@ -90,7 +90,7 @@ def _assert_terminal_by_code(exc: AdCPConfigurationError) -> None:
 def _assert_transient_by_code(exc: AdCPServiceUnavailableError) -> None:
     """SERVICE_UNAVAILABLE / transient — what a status-less seam failure maps to.
 
-    ``raise_mapped_mcp_error``'s no-recoverable-status arm — delegated to
+    ``raise_mapped_mcp_error``'s no-recoverable-status branch — delegated to
     ``adcp_error_for_status``'s ``status is None`` branch
     (``src/core/helpers/outbound_error_mapping.py``) — is the one an
     ``MCPCompatibilityError`` reaches: nothing HTTP is wrapped beneath it. The
@@ -228,7 +228,7 @@ class TestOperatorAgentFailureIsClassifiedTerminalByCode:
     async def test_a_rejected_handshake_is_configuration_error(self, monkeypatch):
         """A terminal 4xx reported by the guarded seam -> CONFIGURATION_ERROR / terminal.
 
-        Grades ``raise_mapped_mcp_error``'s terminal-4xx arm — delegated to
+        Grades ``raise_mapped_mcp_error``'s terminal-4xx branch — delegated to
         ``adcp_error_for_status``'s ``400 <= status < 500`` branch
         (``src/core/helpers/outbound_error_mapping.py``) — on the signals path:
         "the endpoint this deployment is configured to use rejected us" is a
@@ -238,7 +238,7 @@ class TestOperatorAgentFailureIsClassifiedTerminalByCode:
         The failure is injected as the seam's OWN contract rather than by serving
         a 404 over a socket: fastmcp's handshake surfaces a plain "Session
         terminated" with no HTTP status attached, so a real 404 never reaches the
-        status-bearing arm at all (verified — it lands in the unreachable arm and
+        status-bearing branch at all (verified — it lands in the unreachable branch and
         raises SERVICE_UNAVAILABLE). What the mapper actually keys on is a
         ``httpx.HTTPStatusError`` chained beneath the seam's exception, which is
         what ``wrapped_failure`` exists to recover; that chain is
@@ -317,7 +317,7 @@ class TestAPayloadThatIsNotAJSONObjectIsClassified:
     the fix must not cover only one: ``structured_content`` carrying a JSON array
     (the isinstance hole), and a ``TextContent`` block whose ``.text`` is not
     valid JSON at all (``json.loads`` raising ``JSONDecodeError``, a bare
-    ``ValueError`` that no ``except`` arm on either path catches).
+    ``ValueError`` that no ``except`` branch on either path catches).
     """
 
     @pytest.mark.parametrize("path", list(_OPERATOR_FETCHES), ids=list(_OPERATOR_FETCHES))

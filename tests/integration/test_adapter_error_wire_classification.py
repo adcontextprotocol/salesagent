@@ -20,7 +20,7 @@ untouched (``except AdCPSalesAgentError as adcp_err: raise`` at
 src/core/tools/media_buy_create.py:4214, ahead of the ``except Exception`` that
 collapses everything else to SERVICE_UNAVAILABLE). So the buyer-facing half of
 the contract is sound and the fix does not need to touch it -- this test pins
-that, because deleting the passthrough arm would silently undo the whole fix.
+that, because deleting the passthrough branch would silently undo the whole fix.
 
 ``TestRawFaultIsClassified`` grades the ADAPTER, and is the reproduction. It runs
 the real ``GAMOrdersManager`` over a mocked GAM client, so the fault travels the

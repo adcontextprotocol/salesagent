@@ -302,7 +302,7 @@ def test_decorator_records_failure_when_the_handler_catches_and_returns(integrat
 
     The decorator flips ``success`` inside ``except Exception``, which then
     re-raises. A handler that instead catches its own domain refusal, flashes it
-    for the operator and returns a redirect never reaches that arm — so the
+    for the operator and returns a redirect never reaches that branch — so the
     refusal was written to the audit log as a SUCCESSFUL admin action.
 
     ``register_webhook`` is the live instance: an SSRF-blocked URL raises

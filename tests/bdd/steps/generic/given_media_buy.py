@@ -111,7 +111,7 @@ def harness_create_request_kwargs(ctx: dict) -> dict[str, Any]:
     ``_ensure_request_defaults`` only reads ``default_product`` /
     ``default_pricing_option`` when it FIRST builds ``request_kwargs``; a
     scenario whose Given steps created ``request_kwargs`` earlier (before the
-    UC-004 create arm seeded the harness data) would dispatch against the
+    UC-004 create branch seeded the harness data) would dispatch against the
     placeholder ids. Re-pinning the package to the harness product here is what
     both create-dispatching When steps share instead of each carrying a copy.
     """

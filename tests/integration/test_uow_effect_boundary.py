@@ -7,10 +7,10 @@ back — including the ``dry_run`` rollback that makes a preview a preview.
 Level. This is integration, not unit: it runs a real ``CreativeUoW`` against a
 real PostgreSQL session, because the whole obligation is about transaction
 disposal and a mocked session cannot have a disposal. It sits beside, not
-instead of, the behavioural graders — the live arm is graded end to end by
+instead of, the behavioural graders — the live branch is graded end to end by
 tests/bdd/features/local-uc006-post-commit-effect-ordering.feature and the
-preview arm by local-uc006-dry-run-out-of-transaction-effects.feature. What
-neither can reach is the exception arm and the queue's own hygiene: production
+preview branch by local-uc006-dry-run-out-of-transaction-effects.feature. What
+neither can reach is the exception branch and the queue's own hygiene: production
 has no path that raises out of the sync's UoW block after an effect has been
 registered, and a scenario cannot inject one without a fault-injection seam that
 would itself be untested code.
@@ -56,7 +56,7 @@ class TestAfterCommitEffectBoundary:
         assert fired == []
 
     def test_effect_does_not_run_when_the_block_raises(self, integration_db):
-        """The failure arm no scenario can reach: rollback by exception, not by preview."""
+        """The failure branch no scenario can reach: rollback by exception, not by preview."""
         fired: list[str] = []
 
         with pytest.raises(RuntimeError, match="creative sync blew up"):
@@ -110,7 +110,7 @@ class TestAfterCommitEffectBoundary:
         """The granularity sync_creatives actually isolates at.
 
         Each creative is processed inside ``creative_repo.savepoint()``, and the
-        AI-review submit is the FIRST thing the ai-powered arm registers. A
+        AI-review submit is the FIRST thing the ai-powered branch registers. A
         savepoint rollback does not touch ``session.info``, so before this the
         effect survived its own creative's failure and the OUTER commit drained
         it — the background job then ran for a creative the buyer was told had

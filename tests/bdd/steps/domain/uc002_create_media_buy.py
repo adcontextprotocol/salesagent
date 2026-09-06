@@ -2231,7 +2231,7 @@ def then_slack_notification_sent(ctx: dict) -> None:
 # ═══════════════════════════════════════════════════════════════════════
 # Authored to wake @T-UC-002-v31-success-revision-and-actions, which had no step
 # definitions and so sat behind the UC-002 harness xfail. It grades the three v3.1
-# fields on the arm the buyer meets first — the same three the create response used
+# fields on the branch the buyer meets first — the same three the create response used
 # to fabricate from schema defaults rather than read from the persisted row.
 
 

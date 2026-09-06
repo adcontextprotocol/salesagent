@@ -1253,7 +1253,7 @@ def then_auth_outcome(ctx: dict, outcome: str) -> None:
     "a success outcome should carry adcp.major_versions, adcp.idempotency, supported_protocols and the media_buy section"
 )
 def then_success_carries_sections(ctx: dict) -> None:
-    """Both arms of the @T-UC-010-auth outline get a verdict.
+    """Both branches of the @T-UC-010-auth outline get a verdict.
 
     The step's claim is conditional on a success outcome, but the outline it is
     bound to also carries ONE error row — invalid token over A2A — and this step

@@ -192,7 +192,7 @@ async def test_resolution_failure_is_not_a_validation_error():
 
     Callers branch on SchemaValidationError to mean "the payload violates the
     contract" — a missing/unresolvable schema must not be conflated with that
-    (the ``except SchemaError: raise`` arm in ``_validate_against_schema``).
+    (the ``except SchemaError: raise`` branch in ``_validate_against_schema``).
     """
     validator = AdCPSchemaValidator()
     with pytest.raises(SchemaError) as exc_info:

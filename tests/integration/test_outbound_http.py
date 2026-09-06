@@ -1794,7 +1794,7 @@ def test_an_unparseable_retry_after_is_treated_as_absent(seam_call, header, monk
     only — an HTTP-date drags clock-skew policy into the one module that must not
     grow policy — and the limitation is stated rather than half-implemented. The
     code this ticket deletes called ``int()`` on the raw header, so a spec-legal
-    date form raised ``ValueError`` out of an ``except httpx`` arm and crashed the
+    date form raised ``ValueError`` out of an ``except httpx`` branch and crashed the
     fetch: this is a latent bug fix, not only a migration.
     """
     set_flags(monkeypatch, private=True)
@@ -2020,7 +2020,7 @@ _CROSSING_BASE = "4"
 _CROSSING_RETRY_AFTER = "6"
 _CROSSING_WAITS = [6.0, 8.0]
 
-# The rate-limited answer that precedes every multi-arm sequence below. The
+# The rate-limited answer that precedes every multi-branch sequence below. The
 # header is the state a later attempt must not inherit: 30 seconds is a number
 # the buyer would act on, and it belongs to a 429 that is not the failure being
 # reported by the time these sequences end.
@@ -2107,12 +2107,12 @@ def test_a_size_cap_abort_after_a_rate_limit_carries_no_stale_retry_after(seam_c
 
 @pytest.mark.parametrize("seam_call", SEAM_CALLS)
 def test_both_paths_walk_retry_retry_terminal_through_the_same_machine(seam_call, monkeypatch, local_origin_tls):
-    """503, then 429, then 404: two retries and a terminal arm, identically on both paths.
+    """503, then 429, then 404: two retries and a terminal branch, identically on both paths.
 
-    One origin exercising two of the machine's three arms in sequence, at
+    One origin exercising two of the machine's three branches in sequence, at
     ``max_attempts=5`` so that what stops the walk is the TERMINAL decision and
     not exhaustion — with the attempt budget spent, a machine that never routed
-    to the terminal arm would look the same from outside.
+    to the terminal branch would look the same from outside.
 
     ``retry_after`` is None on the reported failure even though attempt 2 sent
     one: the value belongs to the response being reported, and the 404 sent
@@ -2145,11 +2145,11 @@ def test_both_paths_walk_retry_retry_terminal_through_the_same_machine(seam_call
 
 @pytest.mark.parametrize("seam_call", SEAM_CALLS)
 def test_both_paths_walk_retry_retry_success_through_the_same_machine(seam_call, monkeypatch, local_origin_tls):
-    """503, then 429, then 200: the same two retries and the machine's third arm.
+    """503, then 429, then 200: the same two retries and the machine's third branch.
 
     The sibling of the terminal walk above, and the reason the fork has three
-    arms rather than a boolean: "not retryable" splits into a delivered response
-    and a failure, and a machine that returned the terminal arm where success is
+    branches rather than a boolean: "not retryable" splits into a delivered response
+    and a failure, and a machine that returned the terminal branch where success is
     due would fail every migrated call site's happy path. Graded on the same
     scripted prefix so the two cases differ only in the final answer.
     """

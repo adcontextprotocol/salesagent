@@ -251,7 +251,7 @@ def test_update_responses_and_get_media_buys_report_the_same_revision(integratio
 def test_create_response_reports_the_persisted_confirmed_at_and_revision(integration_db, transport):
     """The CREATE producer is the same producer, for both persisted fields.
 
-    This module graded update, dry-run and pause/resume, and never the arm the buyer
+    This module graded update, dry-run and pause/resume, and never the branch the buyer
     meets FIRST. That gap is why the create response could mint its own values for
     two years of review rounds: ``confirmed_at`` defaulted to ``datetime.now(UTC)``
     and ``revision`` to ``1``, neither read from the row the repository had just
@@ -289,7 +289,7 @@ def test_create_response_reports_the_persisted_confirmed_at_and_revision(integra
     assert create_body["confirmed_at"] == listed_buy["confirmed_at"], (
         f"{transport}: create reported confirmed_at={create_body['confirmed_at']!r} while "
         f"get_media_buys reports {listed_buy['confirmed_at']!r} for the same buy. Two producers "
-        f"for a field the pin calls stable after it is set; the create arm must read the column, "
+        f"for a field the pin calls stable after it is set; the create branch must read the column, "
         f"not stamp its own clock"
     )
     assert create_body["revision"] == listed_buy["revision"], (
@@ -343,7 +343,7 @@ def test_dry_run_update_reports_the_current_revision_and_moves_nothing(integrati
         listed = env.call_impl(req=GetMediaBuysRequest(media_buy_ids=[buy.media_buy_id]))
 
         # A failed update returns UpdateMediaBuyError in the same envelope, which
-        # carries no `revision` — assert the success arm explicitly so a refusal
+        # carries no `revision` — assert the success branch explicitly so a refusal
         # fails as a refusal rather than as a KeyError three lines down.
         assert isinstance(simulated.response, UpdateMediaBuySuccess), (
             f"dry-run update did not succeed: {simulated.response!r}"
@@ -382,7 +382,7 @@ def test_update_raises_media_buy_not_found_when_the_row_vanishes_mid_transaction
     ``get_by_id_or_raise``) — the same buyer-facing code for the same fact.
 
     The disappearance is injected at the repository seam rather than simulated
-    with a fake row: ``update_fields`` arms it, so the re-read that follows the
+    with a fake row: ``update_fields`` branches it, so the re-read that follows the
     write returns None exactly as a concurrent DELETE would, while every lookup
     BEFORE the write still resolves normally (ownership, currency).
     """
@@ -503,7 +503,7 @@ def test_pause_resume_reports_media_buy_not_found_when_the_row_vanishes_mid_tran
     ``AttributeError`` — an untyped INTERNAL_ERROR on the wire for a condition the
     buyer can act on.
 
-    The seam that arms the disappearance is the adapter call, not a repository
+    The seam that branches the disappearance is the adapter call, not a repository
     write: the toggle branch delegates the state change to the ad server and
     writes no column of its own, so the adapter call IS its write. Arming there
     reproduces a DELETE landing between the ad server accepting the toggle and

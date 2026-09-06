@@ -410,7 +410,7 @@ class TestProductFormatOverrideEdgeCases:
 
         The SUSPECT(salesagent-z4zl) marker is REMOVED and its question answered by
         salesagent-w4x1: yes, the override path should propagate — and now does. The
-        arm was ``except (AdCPNotFoundError, Exception)``, whose first member is dead
+        branch was ``except (AdCPNotFoundError, Exception)``, whose first member is dead
         (``Exception`` already covers it) and whose second swallowed everything,
         including a typed transient. A creative agent answering 429 was reported as
         "no such override".

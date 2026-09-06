@@ -45,7 +45,7 @@ class TenantLookupRepository:
     def find_by_id_or_subdomain(self, tenant_id: str, subdomain: str) -> Tenant | None:
         """The tenant holding either key — the pair a tenant INSERT can collide on.
 
-        Both arms are needed because the two are minted independently: the admin
+        Both branches are needed because the two are minted independently: the admin
         create-tenant form derives ``tenant_id`` from the subdomain, while the
         tenant management API mints a uuid-derived one. So a tenant created
         through the API can hold a subdomain that a tenant_id-only check reports

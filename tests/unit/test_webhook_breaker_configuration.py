@@ -5,7 +5,7 @@
 ``_TIMEOUT_SECONDS``) shipped with no test at all — ``grep -rn
 "ADCP_WEBHOOK_BREAKER" tests/`` returned zero before this file.
 
-The unset arm is the one that matters most, and it is the reason this is not
+The unset branch is the one that matters most, and it is the reason this is not
 ceremony. ``docker-compose.e2e.yml`` supplies a shorter recovery timeout so the
 e2e stack can reach HALF_OPEN without spending 60 real seconds per scenario. If
 a knob stopped being read — renamed, typo'd, or moved to an import-time read
@@ -13,7 +13,7 @@ that freezes the first value — the stack would go on looking configured while
 running the shipped 60-second default, and every breaker scenario would either
 slow down or silently stop reaching the state it grades. Nothing would fail.
 
-The rejection arms are graded too, because ``env_float``'s contract is to fall
+The rejection branches are graded too, because ``env_float``'s contract is to fall
 back LOUDLY rather than honour a non-positive or non-numeric value: a knob set
 to ``0`` must yield the default, not zero. Silently honouring it would give a
 breaker that never opens or never recovers.
@@ -83,7 +83,7 @@ def test_a_rejected_value_falls_back_rather_than_being_honoured(
 
     Honouring ``0`` would give a breaker with a zero failure threshold (opens on
     nothing) or a zero recovery timeout (never stays open) — both worse than the
-    default, and both invisible without this arm.
+    default, and both invisible without this branch.
     """
     monkeypatch.setenv(env_var, rejected)
 

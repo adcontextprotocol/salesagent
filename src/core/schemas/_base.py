@@ -474,7 +474,7 @@ class WireSerializerMixin:
 
     Declarative because the alternative is a second ``@model_serializer`` per class
     that needs one, and a class with two wrap serializers silently runs only one of
-    them — which is how ``confirmed_at`` went missing from the create success arm
+    them — which is how ``confirmed_at`` went missing from the create success branch
     even after the always-include mixin was composed.
     """
 
@@ -554,40 +554,6 @@ class NestedModelSerializerMixin(WireSerializerMixin):
     _SERIALIZE_NESTED_MODELS: ClassVar[bool] = True
 
 
-class CompletedTaskStatusMixin:
-    """Declares the protocol-envelope ``status`` of a synchronous success arm.
-
-    The spec fact: ``core/protocol-envelope.json`` at the pinned AdCP 3.1.1 lists
-    ``status`` in ``required`` and calls it "REQUIRED on every task response
-    envelope". A response type that only ever represents a synchronously
-    *completed* task therefore carries ``"completed"`` invariantly — it is not a
-    value any constructor should have to thread.
-
-    The four adopters reach that same declaration for two different reasons, and
-    they do NOT share an obsolescence condition:
-
-    * ``SyncAccountsResponse``, ``SyncCreativesResponse`` — the adcp 6.6 parents
-      have no ``status`` field at all, so this mixin SUPPLIES it (additive
-      subclassing, not an override). Those adoptions are temporary: they die the
-      day adcp ships the field, and
-      ``test_sync_arm_mixin_presence_tracks_the_parents_missing_status`` is the
-      biconditional that forces the deletion rather than merely reporting it.
-    * ``CreateMediaBuySuccess``, ``UpdateMediaBuySuccess`` — the parents already
-      declare ``status: Literal["completed"]`` as REQUIRED. Here the mixin adds
-      only the DEFAULT, which is permanent and spec-correct: no SDK bump obsoletes
-      it, and every ``UpdateMediaBuySuccess`` construction site relies on it.
-
-    ``GetMediaBuysResponse`` deliberately does NOT adopt this. It inherits the
-    pinned envelope's ``TaskStatus`` correctly, and composing a ``Literal`` over
-    that would narrow an eight-member enum to a single value.
-
-    Base order is style, not contract — Pydantic collects this declaration from a
-    plain mixin whether it sits first or last in the bases, so nothing pins it.
-    """
-
-    status: Literal["completed"] = "completed"
-
-
 class AlwaysIncludeFieldsMixin(WireSerializerMixin):
     """Keeps spec-required fields on the wire even when their value is null.
 
@@ -659,13 +625,17 @@ def _mirror_media_buy_status(model: Any) -> Any:
     return model
 
 
-class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, CompletedTaskStatusMixin, AdCPCreateMediaBuySuccess):
-    """Successful create_media_buy response extending adcp v1.2.1 type.
+class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, AdCPCreateMediaBuySuccess, ProtocolEnvelope):
+    """Successful create_media_buy response, extending the SDK success branch.
 
     Extends the official adcp CreateMediaBuySuccess type with internal workflow tracking.
-    Per AdCP PR #113, this response contains ONLY domain data.
-    Protocol fields (status, task_id, message, context_id) are added by the
-    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+
+    ``media-buy/create-media-buy-response.json`` @ 3.1.1 composes
+    ``core/version-envelope.json`` and ``core/protocol-envelope.json`` at its ROOT and puts
+    the Success/Error/Submitted branches under ``oneOf``, so the document a buyer receives
+    is the envelope fields plus one branch's fields, flat. This class IS that document:
+    ``ProtocolEnvelope`` is a base, and ``status``, ``task_id``, ``message``, ``context_id``
+    and the rest are declared rather than attached by whichever transport happens to run.
 
     AdCP spec 3.0.0 ``error-handling.mdx`` allows non-fatal errors on the
     success envelope ("populate only the payload... MUST NOT populate
@@ -676,9 +646,16 @@ class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, CompletedTaskStatusMixin, 
     ``SyncAccountsResponse``.
     """
 
-    # adcp 6.6 (spec 3.1.1) made these required on the success envelope. Only ``status``
-    # is invariant for a synchronous success (see CompletedTaskStatusMixin, composed
-    # above). ``confirmed_at`` and ``revision`` are NOT: they are columns the repository
+    # adcp 6.6 (spec 3.1.1) made these required on the success envelope. ``status`` is
+    # REQUIRED and typed ``Literal["completed"]`` by the SDK parent, because this is the
+    # success branch and the branch's schema makes the value a const. A local
+    # ``CompletedTaskStatusMixin`` used to declare that field and supply its default; it is
+    # deleted, and nothing replaced it, because the SDK parent already does both jobs — its
+    # own ``_normalize_legacy_status`` before-validator fills ``"completed"`` when a caller
+    # omits the field. Listing ``ProtocolEnvelope`` AFTER the parent is deliberate: the
+    # parent's narrower ``Literal`` wins, so ``status="failed"`` on a success branch stays a
+    # type error rather than becoming an eight-member enum.
+    # ``confirmed_at`` and ``revision`` are NOT invariant: they are columns the repository
     # owns, so they carry NO default here and every construction site states where its
     # value came from. A default made this model a second producer of persisted state —
     # and an invisible one, because the write-seam guard scans assignments and a
@@ -688,14 +665,14 @@ class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, CompletedTaskStatusMixin, 
     # including a ``pending_creatives`` buy whose column is NULL precisely because the
     # seller has not committed. The docstring of ``CreateMediaBuySubmitted`` below
     # already rejects that reasoning in so many words ("would falsely assert the seller
-    # confirmed a buy that is not yet committed"); the Success arm was doing it.
+    # confirmed a buy that is not yet committed"); the Success branch was doing it.
     #
     # Both keep the parent's REQUIRED types and lose only their local defaults, so
     # omitting either is a construction error instead of a fabricated value.
     #
     # WIDENED to ``| None``, and the whole stack already agreed except this line:
     #
-    #   pin  create-media-buy-response.json @ 3.1.1 arm0 (CreateMediaBuySuccess)
+    #   pin  create-media-buy-response.json @ 3.1.1 branch0 (CreateMediaBuySuccess)
     #        type ["string", "null"], and IN ``required`` -> present, may be null
     #   ORM  MediaBuy.confirmed_at  Mapped[datetime | None], nullable=True
     #   DB   media_buys.confirmed_at  is_nullable = YES
@@ -707,9 +684,9 @@ class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, CompletedTaskStatusMixin, 
     #
     # It previously said "deliberately NOT widened", on the premise that "this seller
     # never [sends null]: ... a create that is NOT committed (manual approval pending)
-    # returns the ``CreateMediaBuySubmitted`` arm instead." That premise was false for
+    # returns the ``CreateMediaBuySubmitted`` branch instead." That premise was false for
     # one path, and review found it: a ``pending_creatives`` create returns the
-    # SUCCESS arm, not Submitted. While PENDING_CREATIVES sat in
+    # SUCCESS branch, not Submitted. While PENDING_CREATIVES sat in
     # ``_SELLER_COMMITTED_STATUSES`` the buy got stamped and the non-null type held --
     # but the stamp itself was the defect, a write-once buyer-visible commitment minted
     # at the moment of a HOLD, before the ad server was contacted. Removing that
@@ -723,8 +700,8 @@ class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, CompletedTaskStatusMixin, 
     # this is an approved exception rather than a silent increase.
     confirmed_at: AwareDatetime | None  # type: ignore[assignment]
 
-    # Names the arm this model IS, so the retained-field set is DERIVED from the pin
-    # rather than listed here. arm0 is CreateMediaBuySuccess; the bare ref is
+    # Names the branch this model IS, so the retained-field set is DERIVED from the pin
+    # rather than listed here. branch0 is CreateMediaBuySuccess; the bare ref is
     # underivable by design because the root composes through oneOf.
     #
     # Adopting the mixin is not optional once confirmed_at can be null: the library
@@ -758,10 +735,10 @@ class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, CompletedTaskStatusMixin, 
         than a silently fabricated value. Pass what the persisted row holds — the
         repository owns both columns.
 
-        This factory exists ONLY because mypy's pydantic plugin does not treat the
-        subclass ``status`` default as satisfying the required parent field (spurious
-        ``call-arg``); callers route the untyped ``**kwargs`` through here to dodge
-        that. Do NOT re-default anything here.
+        This factory exists ONLY because mypy's pydantic plugin does not treat the SDK
+        parent's ``_normalize_legacy_status`` before-validator as satisfying the required
+        ``status`` field (spurious ``call-arg``); callers route the untyped ``**kwargs``
+        through here to dodge that. Do NOT re-default anything here.
         """
         return cls(**kwargs)
 
@@ -834,7 +811,7 @@ class CreateMediaBuySuccess(AlwaysIncludeFieldsMixin, CompletedTaskStatusMixin, 
 
 
 class CreateMediaBuyError(AdCPCreateMediaBuyError):
-    """Failed create_media_buy response extending adcp v1.2.1 type.
+    """Failed create_media_buy response, extending the SDK error branch.
 
     Extends the official adcp CreateMediaBuyError type.
     Per AdCP PR #113, this response contains ONLY domain data.
@@ -849,7 +826,7 @@ class CreateMediaBuyError(AdCPCreateMediaBuyError):
 
 
 class CreateMediaBuySubmitted(AdCPCreateMediaBuySubmitted):
-    """Async/pending create_media_buy response extending adcp v3.1.1 type.
+    """Async/pending create_media_buy response, extending the SDK submitted branch.
 
     Spec 3.1.1 ``create-media-buy-response.json`` models a buy that cannot be
     confirmed before the response is emitted (e.g. one pending human approval)
@@ -965,13 +942,14 @@ class AffectedPackage(LibraryPackage):
     )
 
 
-class UpdateMediaBuySuccess(CompletedTaskStatusMixin, AdCPUpdateMediaBuySuccess):  # type: ignore[misc]
-    """Successful update_media_buy response extending adcp v1.2.1 type.
+class UpdateMediaBuySuccess(AdCPUpdateMediaBuySuccess, ProtocolEnvelope):  # type: ignore[misc]
+    """Successful update_media_buy response, extending the SDK success branch.
 
     Extends the official adcp UpdateMediaBuySuccess type with internal workflow tracking.
-    Per AdCP PR #113, this response contains ONLY domain data.
-    Protocol fields (status, task_id, message, context_id) are added by the
-    protocol layer (MCP, A2A, REST) via ProtocolEnvelope wrapper.
+
+    ``media-buy/update-media-buy-response.json`` @ 3.1.1 composes the version and protocol
+    envelopes at its ROOT, exactly as the create response does, so this class declares the
+    envelope fields alongside its branch fields. See ``CreateMediaBuySuccess``.
 
     Carries an optional ``errors`` field for non-fatal advisories on the
     same basis as ``CreateMediaBuySuccess`` (AdCP 3.0.0 error-handling
@@ -981,9 +959,13 @@ class UpdateMediaBuySuccess(CompletedTaskStatusMixin, AdCPUpdateMediaBuySuccess)
     """
 
     # adcp 6.6 (spec 3.1.1) made status/revision required on the update success envelope.
-    # status is invariant for a synchronous applied update — see
-    # CompletedTaskStatusMixin (composed above), which supplies the default so the
-    # literal is not threaded through every constructor.
+    # status is REQUIRED and typed Literal["completed"] by the SDK parent, because this is the
+    # success branch and the branch's schema makes the value a const. A local
+    # CompletedTaskStatusMixin used to declare the field and supply its default; it is
+    # deleted, and the SDK parent's own _normalize_legacy_status before-validator fills
+    # "completed" when a caller omits it. ProtocolEnvelope is listed AFTER the parent
+    # deliberately: the parent's narrower Literal wins, so status="failed" on a success
+    # branch stays a type error rather than becoming an eight-member enum.
     #
     # revision is NOT invariant — it is the buy's live optimistic-concurrency token, so
     # it is a column the repository owns and carries NO default here. It previously
@@ -1019,8 +1001,8 @@ class UpdateMediaBuySuccess(CompletedTaskStatusMixin, AdCPUpdateMediaBuySuccess)
 
         An adapter's ``update_media_buy`` returns this type, but what it returns is not
         an envelope: the tool builds a fresh one for the buyer after the row is written.
-        Measured across every read site. On the error arm each call reads only
-        ``result.errors``. On the success arm exactly two fields are read, both in
+        Measured across every read site. On the error branch each call reads only
+        ``result.errors``. On the success branch exactly two fields are read, both in
         ``media_buy_update`` and both through ``getattr`` with a fallback:
         ``media_buy_id`` (defaulting to the request's) and ``affected_packages``
         (defaulting to ``[]``). So an adapter that omits either is not a broken read.
@@ -1121,7 +1103,7 @@ class UpdateMediaBuySuccess(CompletedTaskStatusMixin, AdCPUpdateMediaBuySuccess)
 
 
 class UpdateMediaBuyError(AdCPUpdateMediaBuyError):  # type: ignore[misc]
-    """Failed update_media_buy response extending adcp v1.2.1 type.
+    """Failed update_media_buy response, extending the SDK error branch.
 
     Extends the official adcp UpdateMediaBuyError type.
     Per AdCP PR #113, this response contains ONLY domain data.
@@ -1136,7 +1118,7 @@ class UpdateMediaBuyError(AdCPUpdateMediaBuyError):  # type: ignore[misc]
 
 
 class UpdateMediaBuySubmitted(AdCPUpdateMediaBuySubmitted):  # type: ignore[misc]
-    """Async/pending update_media_buy response extending adcp v3.1.1 type.
+    """Async/pending update_media_buy response, extending the SDK submitted branch.
 
     Spec 3.1.1 ``update-media-buy-response.json`` models a not-yet-applied update
     (e.g. one pending human approval) as the ``UpdateMediaBuySubmitted`` variant of
@@ -3019,7 +3001,7 @@ class ActivateSignalResponse(SalesAgentBaseModel):
     the envelope status": this model is spec-divergent in SHAPE. So when #1353
     registers activate_signal on a transport, the fix is to rebuild it on the library
     success variant — never to patch a status field onto this shape, which would
-    manufacture false conformance against an arm that requires deployments.
+    manufacture false conformance against an branch that requires deployments.
     """
 
     signal_id: str = Field(..., description="Activated signal ID")

@@ -408,7 +408,7 @@ class TestAdminMediaBuyRejectWebhook:
     ):
         """Rejecting the buy is a mutation of the buy: revision moves, confirmation does not.
 
-        approve_media_buy's reject arm assigns media_buy.status = "rejected" directly, so the
+        approve_media_buy's reject branch assigns media_buy.status = "rejected" directly, so the
         buy changes state while ``revision`` — the buyer's optimistic-concurrency token, which
         must strictly increase on every mutation — stays where it was. Routing the write through
         MediaBuyRepository.update_status is what moves it. "rejected" is NOT in

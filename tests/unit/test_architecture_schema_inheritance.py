@@ -415,14 +415,14 @@ class TestSchemaInheritance:
             # permanent, while a row names itself and can be audited.
             #
             # The weakening is toward the PIN, not away from it:
-            # create-media-buy-response.json @ 3.1.1 arm0 (CreateMediaBuySuccess) types
+            # create-media-buy-response.json @ 3.1.1 branch0 (CreateMediaBuySuccess) types
             # confirmed_at ["string","null"] AND lists it in ``required``. The SDK parent
             # is the side that diverges -- it under-specifies its own schema by typing the
             # field non-null. MediaBuy.confirmed_at is Mapped[datetime | None] and the
             # column is nullable, so this annotation was the only layer narrower than the
             # contract.
             #
-            # Forced by the create path: a ``pending_creatives`` create returns this arm, and
+            # Forced by the create path: a ``pending_creatives`` create returns this branch, and
             # that buy is a HOLD with no seller commitment to report. While the status sat
             # in _SELLER_COMMITTED_STATUSES it was stamped and the non-null type held --
             # but the stamp was the defect.
@@ -506,9 +506,9 @@ class TestSchemaInheritance:
             #     stopped the members drifting; the local SnapshotUnavailableReason copy
             #     had lost one of the pinned three.
             # Required-field tightening (#1399 Plan-B): pinned 3.1 marks these
-            # success-arm fields required; the SDK base declares them optional, so
+            # success-branch fields required; the SDK base declares them optional, so
             # we redeclare required to match the spec.
-            # Pattern #4 on the two sync success arms. Both narrow the parent's item
+            # Pattern #4 on the two sync success branches. Both narrow the parent's item
             # type to a local subclass that adds fields the library type lacks
             # (SyncResponseAccount; SyncCreativeResult's assigned_to /
             # assignment_errors), so serializing through the parent annotation would

@@ -117,7 +117,7 @@ def resolve_or_write[T](
       ``IntegrityError``\\ s raised by every statement in the view.
     - A **bare context manager** exposing ``guard.conflicted`` keeps control flow
       honest, but forces the caller to write its polite answer twice, once per
-      arm. That duplication is precisely what the bug is made of.
+      branch. That duplication is precisely what the bug is made of.
     - This helper must **never produce the response itself**, for the same
       registry reason — which is also why it takes no Flask import: all the
       polite answers callers return (a ``(jsonify(...), 409)``, a

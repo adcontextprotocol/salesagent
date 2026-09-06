@@ -897,12 +897,12 @@ class TestDeliverWithBackoffClientError:
 
 @pytest.mark.requires_db
 class TestIsAdjustedNotificationType:
-    """``is_adjusted`` decides the notification_type, and both arms are graded.
+    """``is_adjusted`` decides the notification_type, and both branches are graded.
 
     An adjusted report REPLACES figures the buyer already booked; a scheduled one
     adds to them. The buyer tells the two apart by these two fields and nothing
-    else, so the False arm is not a mirror of the True arm — a build that marked
-    every report adjusted would satisfy the True arm alone and quietly ask buyers
+    else, so the False branch is not a mirror of the True branch — a build that marked
+    every report adjusted would satisfy the True branch alone and quietly ask buyers
     to overwrite good data on every delivery.
 
     Covers: line 239 of webhook_delivery_service.py,

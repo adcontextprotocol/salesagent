@@ -1,6 +1,6 @@
 """BDD binding for the locally-added UC-006 post-commit effect-ordering feature.
 
-The live-arm half of the escaping-effect seam. Its sibling
+The live-branch half of the escaping-effect seam. Its sibling
 (test_uc006_dry_run_out_of_transaction_effects.py) grades that a preview fires
 no effect its rollback cannot reach; this one grades that when the effect DOES
 fire, it fires after the transaction that owns it has committed — the only

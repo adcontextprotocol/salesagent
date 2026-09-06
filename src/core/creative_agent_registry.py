@@ -62,8 +62,8 @@ def _known_asset_types() -> frozenset[str]:
     # annotation shape: list[Union[ImageFormatAsset, VideoFormatAsset, ...]] | None
     for outer in typing.get_args(assets_field):
         for inner in typing.get_args(outer):  # the Union inside list[...]
-            for arm in typing.get_args(inner):
-                asset_type_field = getattr(arm, "model_fields", {}).get("asset_type")
+            for branch in typing.get_args(inner):
+                asset_type_field = getattr(branch, "model_fields", {}).get("asset_type")
                 if asset_type_field is not None:
                     literals.update(typing.get_args(asset_type_field.annotation))
     return frozenset(literals)
@@ -86,7 +86,7 @@ def _unknown_asset_types(fmt_data: dict[str, Any]) -> set[str]:
 def _is_purely_additive_asset_type(fmt_data: dict[str, Any], unknown_types: set[str]) -> bool:
     """True iff the ONLY reason fmt_data fails validation is an unknown additive asset_type.
 
-    Strategy (value-agnostic, robust to adcp's many-armed discriminated union):
+    Strategy (value-agnostic, robust to adcp's many-branched discriminated union):
     substitute every unknown asset_type with a known sentinel and re-validate. If
     it then validates cleanly, the format is well-formed apart from AdCP-additive
     enum growth → safe to drop. If it still fails, there is a genuine structural
@@ -97,7 +97,7 @@ def _is_purely_additive_asset_type(fmt_data: dict[str, Any], unknown_types: set[
     patched = copy.deepcopy(fmt_data)
     for asset in patched.get("assets") or []:
         if isinstance(asset, dict) and asset.get("asset_type") in unknown_types:
-            asset["asset_type"] = "image"  # known sentinel arm
+            asset["asset_type"] = "image"  # known sentinel branch
     try:
         Format.model_validate(patched)
     except ValidationError:

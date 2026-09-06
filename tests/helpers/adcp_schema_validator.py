@@ -221,14 +221,14 @@ class AdCPSchemaValidator:
         Extract the AdCP payload from protocol wrapper fields.
 
         The pinned schema's response envelope is an allOf of the version
-        fields plus a "Protocol Envelope" arm (e.g.
+        fields plus a "Protocol Envelope" branch (e.g.
         get-products-response.json allOf[1]) that spec-defines message and
         context_id — both are populated by the protocol layer, not the
         Pydantic response model, but they ARE modeled and typed on the wire
         envelope the buyer actually receives, so they must be graded, not
         exempted. "errors" is a spec-defined top-level property on several
         response schemas too (and required on some "failed"/partial-failure
-        oneOf arms) — stripping it previously let a payload that should fail
+        oneOf branches) — stripping it previously let a payload that should fail
         validation (e.g. status="failed" with no errors array) pass
         silently. Only "clarification_needed" has no basis in the pinned
         schemas and stays stripped.
@@ -294,8 +294,8 @@ class AdCPSchemaValidator:
         except SchemaError:
             # Schema-RESOLUTION failures (bad ref, missing file) must not be
             # wrapped as SchemaValidationError: callers branch on that type to
-            # mean "the payload violates the contract". Subclass arm above,
-            # base-class arm here — order matters.
+            # mean "the payload violates the contract". Subclass branch above,
+            # base-class branch here — order matters.
             raise
         except _INSTRUMENT_FAILURES as e:
             # The INSTRUMENT is broken, not the payload: the schema itself is
@@ -303,7 +303,7 @@ class AdCPSchemaValidator:
             # on disk is corrupt. Same class as the AssertionError that
             # _resolve_pinned already maps here, so it gets the same type.
             #
-            # There is deliberately no `except Exception` arm after this one.
+            # There is deliberately no `except Exception` branch after this one.
             # A bug in this validator (an AttributeError, a TypeError) must
             # propagate unwrapped: relabelling it SchemaValidationError tells
             # the reader "your payload violates the AdCP contract" and sends

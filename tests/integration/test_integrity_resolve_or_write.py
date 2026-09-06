@@ -20,7 +20,7 @@ work staged in the transaction, then a contested write that loses.
 
 **An unrelated constraint violation must keep its own story.** The narrowing is
 only observable when the re-resolve WOULD find a winner — otherwise the
-"claim no cause we cannot attribute" arm re-raises and an unnarrowed handler
+"claim no cause we cannot attribute" branch re-raises and an unnarrowed handler
 looks correct. That combination (a resolvable conflict plus a failure caused by
 a DIFFERENT constraint) cannot be staged through a route, where the two are the
 same statement. Here the write violates the ``role`` CHECK while a resolvable
@@ -103,7 +103,7 @@ class TestSavepointRecoveryKeepsEarlierWork:
             constraint="uq_users_tenant_email",
         )
 
-        # The race arm answers with the winner — the same answer the pre-check
+        # The race branch answers with the winner — the same answer the pre-check
         # would have produced had it seen the row.
         assert adopted is not None
         assert adopted.user_id == "user_winner"
@@ -148,7 +148,7 @@ class TestNarrowingKeepsUnrelatedViolations:
 
         def write():
             # A row the re-resolve CAN answer with lands in the write window, so
-            # the "claim no cause we cannot attribute" arm is not what saves this
+            # the "claim no cause we cannot attribute" branch is not what saves this
             # — only the narrowing is. Without it, a bad ``role`` is reported as
             # this row.
             _commit_winner_from_independent_session(tenant.tenant_id, "user_resolvable")

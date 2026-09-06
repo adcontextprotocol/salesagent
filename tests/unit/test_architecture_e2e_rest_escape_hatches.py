@@ -148,7 +148,7 @@ def test_conftest_e2e_rest_xfail_routes_match_pin() -> None:
 # _SOME_NEW_TAGS)` changes the unparsed condition and fails the pin below.
 #
 # The gate is no longer written inside the hook. `_parametrize_ctx` (extracted
-# so the AdCP arm and the admin arm share ONE append-e2e-when-enabled tail —
+# so the AdCP branch and the admin branch share ONE append-e2e-when-enabled tail —
 # duplicating it is the R0801 shape the DRY invariant treats as a defect) moved
 # the append into a module-level function that appends a PARAMETER, so an
 # `E2E_REST`-attribute scan anchored to `pytest_generate_tests` finds nothing at
@@ -412,7 +412,7 @@ def test_exclusion_point_detector_sees_a_named_e2e_rest_filter() -> None:
 
 
 def test_exclusion_point_detector_sees_an_early_return() -> None:
-    """The early-return arm, proved synthetically like its rebind sibling."""
+    """The early-return branch, proved synthetically like its rebind sibling."""
     source = (
         "def pytest_generate_tests(metafunc):\n"
         "    transports = [Transport.A2A]\n"
@@ -555,7 +555,7 @@ EXPECTED_UNSUPPORTED_DECLARATIONS: frozenset[tuple[str, str, str]] = frozenset(
             "every field of this snapshot is read over a second pooled connection to the engine "
             "THIS process is bound to. Under e2e_rest the request runs in the Docker server "
             "process against its own database, so the read answers about the wrong database -- it "
-            "would report zero rows on every arm and grade nothing, which is strictly worse than "
+            "would report zero rows on every branch and grade nothing, which is strictly worse than "
             "not grading. Observing it e2e needs a server-side read-back surface (a tenant-scoped "
             "admin endpoint over workflow_steps / object_workflow_mapping / creative_assignments), "
             "which is its own build",

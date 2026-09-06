@@ -20,7 +20,7 @@ This module is the migration's ONLY grading. The integration suite builds its
 schema with ``Base.metadata.create_all``, so nothing else in the suite executes
 a migration's SQL; without a migration test the repair is completely ungraded.
 
-The refusal arms matter as much as the happy one. The Core Invariant is that an
+The refusal branches matter as much as the happy one. The Core Invariant is that an
 automated repair may rewrite only a provably-mangled representation of a value
 the buyer already submitted: it may never choose between two accounts, never
 guess at an unrecognised shape, and never silently skip one. Since migrations

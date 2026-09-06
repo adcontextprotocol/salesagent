@@ -546,12 +546,12 @@ def _get_media_buy_delivery_impl(
                 logger.error("Error processing delivery for %s: %s", media_buy_id, e)
                 adapter_errors.append(
                     Error.of(  # structural-guard: advisory per-buy result in GetMediaBuyDeliveryResponse.errors[]
-                        # INTERNAL_ERROR, not SERVICE_UNAVAILABLE. This arm said the
+                        # INTERNAL_ERROR, not SERVICE_UNAVAILABLE. This branch said the
                         # latter because "the ADAPTER was unreachable ... matches the
                         # sibling adapter handler above" -- but the adapter cannot reach
                         # here. Its call at :313 sits in its OWN try whose handler
                         # (:343) catches Exception and `continue`s, so an adapter
-                        # failure is advised there and never arrives at this outer arm.
+                        # failure is advised there and never arrives at this outer branch.
                         # What does arrive is a crash in OUR per-buy processing, which
                         # is not a downstream outage and which retrying cannot fix.
                         # The reasoning was copied from the sibling along with the code

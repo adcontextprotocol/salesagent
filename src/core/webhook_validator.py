@@ -194,7 +194,7 @@ class WebhookURLValidator:
         byte-identically.
 
         When ``ADCP_TESTING=true``, localhost/loopback are allowed for
-        capture servers — graded on both arms in
+        capture servers — graded on both branches in
         ``tests/unit/test_webhook_security.py::TestLocalhostAllowanceUnderTestingMode``.
         """
         try:

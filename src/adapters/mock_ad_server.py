@@ -682,7 +682,7 @@ class MockAdServer(AdServerAdapter):
         if request.brand:
             # Through the canonical accessor: `brand` is declared as the widened union
             # (BrandReference | dict | str), so reading `.domain` off it is wrong on two
-            # of the three arms. The comment this replaces asserted the narrow arm.
+            # of the three branches. The comment this replaces asserted the narrow branch.
             test_message = brand_key_parts(request.brand)[0] or None
 
         if test_message and isinstance(test_message, str) and has_test_keywords(test_message):

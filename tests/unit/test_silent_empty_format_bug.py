@@ -48,7 +48,7 @@ class TestListAllFormatsErrorPropagation:
 
         The failure is injected at the dial as ``call_operator_mcp_tool``
         imports it, so it travels the full production path — through that
-        function's except arms (which do NOT catch a bare ``RuntimeError``) and
+        function's except branches (which do NOT catch a bare ``RuntimeError``) and
         out of ``_fetch_formats_operator`` — before the recording under test.
         """
         monkeypatch.delenv("ADCP_TESTING", raising=False)

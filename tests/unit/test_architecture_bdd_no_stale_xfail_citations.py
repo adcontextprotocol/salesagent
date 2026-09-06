@@ -344,7 +344,7 @@ class TestGuardIsNotVacuous:
             "empty in tests/bdd/conftest.py. If every BDD scenario really has graduated, retire "
             "this guard deliberately rather than leaving it green over an empty set."
         )
-        # Per-structure, because a union hides one arm going empty: a broken read of
+        # Per-structure, because a union hides one branch going empty: a broken read of
         # _SELECTIVE_XFAIL would still leave the union non-empty via _XFAIL_TAGS, and
         # every selectively-xfailed scenario would silently read as graduated.
         # _MCP_SELECTIVE_XFAIL is deliberately excluded: conftest.py:1031 records that
@@ -406,7 +406,7 @@ class TestGuardMechanics:
     def test_active_tag_membership_rule_covers_all_four_quadrants(self) -> None:
         """The membership rule graded on synthetic input, so every branch is exercised.
 
-        The dormant-UC-010 arm in particular has no live counter-example to point
+        The dormant-UC-010 branch in particular has no live counter-example to point
         at: production is free to have zero dormant tags on any given day, and a
         rule that only ever sees one quadrant is a rule nothing checks.
         """

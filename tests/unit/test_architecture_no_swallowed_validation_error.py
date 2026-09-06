@@ -135,8 +135,8 @@ def _is_passthrough(handler: ast.ExceptHandler) -> bool:
 def _swallowing_types(node: ast.Try) -> list[str]:
     """Which of ``_CATCHES_VALIDATION_ERROR`` this ``try`` actually swallows.
 
-    Python dispatches to the FIRST matching handler, so ORDER decides. An arm that catches
-    ``ValidationError`` and re-raises makes every later arm unreachable for it -- which is
+    Python dispatches to the FIRST matching handler, so ORDER decides. An branch that catches
+    ``ValidationError`` and re-raises makes every later branch unreachable for it -- which is
     exactly how the ``creative_helpers`` fix works (``except (AdCPSalesAgentError,
     ValidationError): raise`` sits above the ``except Exception`` that used to reclassify
     it). A guard that ignored order would flag that fix and force it to be written as
@@ -202,7 +202,7 @@ def test_no_handler_swallows_a_builders_validation_error():
         "the buyer's field and issues (src/core/exceptions.py::adcp_error_for); a handler "
         "in between answers something else, and both prior instances answered something "
         "strictly worse -- an adapter outage, and a bare VALIDATION_ERROR with no field. "
-        "Let it propagate: re-raise it from an arm ABOVE the catch-all "
+        "Let it propagate: re-raise it from an branch ABOVE the catch-all "
         "(`except (AdCPSalesAgentError, ValidationError): raise`), or narrow the handler "
         "so it cannot match. Do NOT re-add a wrapper that translates it here. "
         "Violations:\n  " + "\n  ".join(violations)

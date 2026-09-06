@@ -215,7 +215,7 @@ class TestUnsupportedTargetingRaisesTypedCapabilityError:
     enums/error-code.json) classifies UNSUPPORTED_FEATURE as correctable —
     "check get_adcp_capabilities and remove unsupported fields" — so these
     raise sites must emit AdCPCapabilityNotSupportedError, which the impl's
-    ``except AdCPSalesAgentError: raise`` arm passes through untouched.
+    ``except AdCPSalesAgentError: raise`` branch passes through untouched.
     """
 
     def test_postal_targeting_raises_capability_not_supported(self, gam_manager):

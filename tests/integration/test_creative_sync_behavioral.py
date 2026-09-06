@@ -808,7 +808,7 @@ def _sync_wire(slug: str, *, dry_run: bool, seed: list | tuple = (), setup=None,
 def _sync_raises(slug: str, *, dry_run: bool, exc_type: type, seed: list | tuple = (), setup=None, **kwargs):
     """Run ONE sync expecting *exc_type* and return the raised exception.
 
-    Sibling of ``_sync_wire`` for the strict-mode arms: a raise produces no results
+    Sibling of ``_sync_wire`` for the strict-mode branches: a raise produces no results
     list, so the wire-list oracle cannot express the case. ``call_impl`` has no wire
     — impl-level exception assertions are the sanctioned form here (tests/CLAUDE.md,
     Error Verification Policy: "acceptable ONLY in _impl-level tests").
@@ -919,7 +919,7 @@ class TestDryRunPreviewMatchesLiveRun:
         """The reproduction: the preview has no memory of what entry 1 accounted for.
 
         Live, entry 1 is created and FLUSHED (repositories/creative.py:229-230), so
-        entry 2's ``get_by_id`` finds that row and reports an update. The dry_run arm
+        entry 2's ``get_by_id`` finds that row and reports an update. The dry_run branch
         appends and ``continue``s before any write (_sync.py:186-214), so entry 2's
         lookup still misses and the preview claims ``created`` twice — an outcome a
         real run cannot produce, and precisely the one a buyer previews to rule out.
@@ -998,8 +998,8 @@ class TestDryRunPreviewMatchesLiveRun:
         """The second, independent divergence — it fires on EVERY update preview.
 
         With no duplicates involved, against a creative that is already persisted,
-        the dry_run arm builds its ``SyncCreativeResult`` without ``changes`` at all
-        (_sync.py:196-203) while the live update arm returns the fields it modified.
+        the dry_run branch builds its ``SyncCreativeResult`` without ``changes`` at all
+        (_sync.py:196-203) while the live update branch returns the fields it modified.
         The buyer sees no changed-field list in a preview and a full one in the real
         run.
         """
@@ -1027,7 +1027,7 @@ class TestDryRunPreviewMatchesLiveRun:
         assert _persisted_creative_ids("nop_dry") == [], "dry_run must not persist any creative"
 
     def test_delete_missing_preview_matches_live(self, integration_db):
-        """Regression pin on the one dry_run arm that is already correct today.
+        """Regression pin on the one dry_run branch that is already correct today.
 
         ``delete_missing`` under dry_run runs the block and appends ``deleted``
         results, skipping only the ``status = 'archived'`` mutation
@@ -1810,7 +1810,7 @@ class TestSyncExtensions:
         This asserted a per-creative ``action=failed``. ``name`` is required by
         core/creative-asset.json @ AdCP 3.1.1, and every transport builds a
         SyncCreativesRequest before _impl runs, so the omission is refused at the request
-        boundary and the per-creative arm is never reached. Same obligation, one layer up.
+        boundary and the per-creative branch is never reached. Same obligation, one layer up.
         """
         from tests.helpers.creative_test_helpers import sync_creatives_request
 

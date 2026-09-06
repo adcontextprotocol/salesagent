@@ -7,7 +7,7 @@ Two things are wrong with that on the wire, and only the wire can show them:
 1. The buyer is told ``VALIDATION_ERROR`` — "your request is malformed" — for a
    fault entirely on our side (an ``AttributeError``, a ``TypeError``, a DNS
    failure inside the resolver).
-2. The arm forced ``recovery="transient"`` while the pinned AdCP enum classifies
+2. The branch forced ``recovery="transient"`` while the pinned AdCP enum classifies
    ``VALIDATION_ERROR`` as ``correctable``. The buyer is simultaneously told the
    request is invalid AND that retrying the identical request may work.
 

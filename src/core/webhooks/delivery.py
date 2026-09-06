@@ -114,7 +114,7 @@ class WebhookDeliveryOutcome:
 @dataclass(frozen=True, slots=True)
 class WebhookTaskContext:
     """A delivery's task identity, constructed once and consumed identically
-    by all three failure arms and the success path in
+    by all three failure branches and the success path in
     ``_send_with_retry_and_logging``.
 
     Absorbs the metadata/payload pluck block that used to run inline at the

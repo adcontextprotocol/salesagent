@@ -182,7 +182,7 @@ class TestA2ASpecCompliance:
         ctx = {"user_id": "1234567890"}
         response = GetMediaBuysResponse(media_buys=[], context=ctx)
 
-        # `status` reaches the wire through the composed protocol-envelope arm rather
+        # `status` reaches the wire through the composed protocol-envelope branch rather
         # than the root properties. `replayed` is an SDK 5.7 envelope default the pin
         # does not declare — accepted here on the same footing as the get_products
         # case above, and legal only because this root sets additionalProperties true.
@@ -322,7 +322,7 @@ class TestA2AResponseRegressionPrevention:
         response_dict = response.model_dump()
 
         # These are protocol-envelope fields (spec-defined on the WIRE
-        # envelope's Protocol Envelope arm — see
+        # envelope's Protocol Envelope branch — see
         # tests/helpers/adcp_schema_validator.py — and populated by the protocol
         # layer at the transport boundary), correctly absent from the
         # Pydantic response MODEL itself.

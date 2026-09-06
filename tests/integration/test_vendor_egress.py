@@ -385,7 +385,7 @@ def test_kevel_update_does_not_retry_a_failing_origin(local_origin_tls, monkeypa
 def test_triton_status_check_does_not_retry_a_failing_origin(local_origin_tls, monkeypatch):
     """A failed Triton status check costs one hit and degrades to ``unknown``.
 
-    The degradation is asserted alongside the count because it is the arm the
+    The degradation is asserted alongside the count because it is the branch the
     migration has to preserve: ``except requests.exceptions.RequestException``
     narrows to ``except OutboundError``, and a miss there turns a soft
     "unknown" into a raised error on a read path.
@@ -474,7 +474,7 @@ def test_gam_report_download_does_not_retry_a_failing_origin(local_origin_tls, m
     # to assert on was that relabelled string -- and the download branch's
     # migration onto `raise_mapped_outbound_error` bought nothing observable,
     # because this outer handler swallowed the classification on the way out.
-    # An `except AdCPError: raise` arm ahead of the catch-all is what changed, and
+    # An `except AdCPError: raise` branch ahead of the catch-all is what changed, and
     # this is where it shows: the seam's own class, its attempt count, and its
     # fixed message survive to the caller.
     with pytest.raises(OutboundDeliveryFailed) as raised:
@@ -597,7 +597,7 @@ def test_google_token_exchange_does_not_retry_a_retryable_failure(local_origin_t
 def test_gam_callback_flashes_googles_rejection_on_a_400(local_origin_tls, monkeypatch, admin_client):
     """``GET /auth/gam/callback`` turns Google's 400 into the operator's message.
 
-    This is the arm of the extraction that must NOT move: the service raises,
+    This is the branch of the extraction that must NOT move: the service raises,
     and the status-keyed wording stays in the blueprint because it is UI copy,
     not vendor logic. The message is asserted whole rather than by substring —
     it names the three causes a 400 collapses (expired code, redirect-URI
@@ -606,7 +606,7 @@ def test_gam_callback_flashes_googles_rejection_on_a_400(local_origin_tls, monke
     the only diagnosis they get.
 
     Driven at a real origin rather than by patching the exchange out: a mocked
-    exception proves the ``except`` arm can be entered, not that a real 400
+    exception proves the ``except`` branch can be entered, not that a real 400
     from a real socket arrives there as an ``OutboundError`` whose
     ``http_status`` is 400. Only the second claim survives the extraction.
     """

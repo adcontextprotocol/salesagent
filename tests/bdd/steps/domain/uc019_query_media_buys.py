@@ -2844,7 +2844,7 @@ def _is_wire_integer(value: Any) -> bool:
     load-bearing here: A2A frames its DataPart as a protobuf ``Struct``, whose only
     numeric kind is ``number_value`` (a double), so an integer field arrives as
     ``1.0`` on A2A and ``1`` on MCP. Asserting ``isinstance(int)`` would fail the
-    a2a arm of every revision scenario over a framing detail while letting a real
+    a2a branch of every revision scenario over a framing detail while letting a real
     fractional revision through on MCP; this rejects ``1.5`` and ``"1"`` on both.
     """
     return isinstance(value, (int, float)) and not isinstance(value, bool) and float(value).is_integer()

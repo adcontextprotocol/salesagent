@@ -21,7 +21,7 @@ auto-retry" (pinned ``dist/schemas/3.1.1/enums/error-code.json``
 enumMetadata, same grounding as ``tests/integration/test_creative_agent_egress.py``).
 
 The bug: ``_processing.py``'s ``_create_new_creative``/``_update_existing_creative``
-wrap the dial in a bare ``try`` whose only typed arm is
+wrap the dial in a bare ``try`` whose only typed branch is
 ``except AdCPConfigurationError`` (the GEMINI_API_KEY-missing case) — a
 refused seam call is not that class, falls through to the generic
 ``except Exception``, and is laundered into::
@@ -95,7 +95,7 @@ class TestOperatorDialRefusalIsTerminalNotTransient:
     """A refused OPERATOR creative-agent dial must be reported terminal, not transient.
 
     Today it surfaces as ``SERVICE_UNAVAILABLE``/transient with "Retry
-    recommended" (the generic ``except Exception`` arm's defaults) instead of
+    recommended" (the generic ``except Exception`` branch's defaults) instead of
     the seam's own ``CONFIGURATION_ERROR``/terminal classification.
     """
 
@@ -134,7 +134,7 @@ class TestOperatorDialRefusalIsTerminalNotTransient:
             )
             assert error.code == "CONFIGURATION_ERROR", (
                 f"errors[0].code={error.code!r} — this is the seam's OWN classification "
-                "(raise_mapped_outbound_error's operator arm), not the generic SERVICE_UNAVAILABLE "
+                "(raise_mapped_outbound_error's operator branch), not the generic SERVICE_UNAVAILABLE "
                 "default a laundered Exception falls back to"
             )
 

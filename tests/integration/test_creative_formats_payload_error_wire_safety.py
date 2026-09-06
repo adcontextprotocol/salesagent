@@ -70,7 +70,7 @@ _TRANSPORTS = [Transport.A2A, Transport.MCP, Transport.REST]
 
 @contextlib.contextmanager
 def _one_unreachable_agent(env):
-    """Fault ONLY the per-agent dial, leaving the aggregation arm under test real.
+    """Fault ONLY the per-agent dial, leaving the aggregation branch under test real.
 
     Both tests below need the identical injection, so it is spelled once
     (CLAUDE.md DRY invariant). Two things are patched and no more:
@@ -80,7 +80,7 @@ def _one_unreachable_agent(env):
     * ``_fetch_formats_operator`` — the DEEPEST production method on the
       operator dial, so ``get_formats_for_agent`` (provenance branch, testing
       short-circuit, cache) and ``list_all_formats_with_errors`` (the
-      ``except`` arm this module grades) both run for real.
+      ``except`` branch this module grades) both run for real.
 
     The fetch method used to be ``_fetch_formats_from_agent``, patched alongside
     a ``_build_adcp_client``. Neither name exists any more: the egress-seam
@@ -115,7 +115,7 @@ def _one_unreachable_agent(env):
 def test_unreachable_agent_yields_a_safe_payload_error(integration_db, transport, monkeypatch):
     """errors[0] names the failure in first-party terms and carries no raw text."""
     # ADCP_TESTING short-circuits list_all_formats_with_errors to the checked-in
-    # reference catalog, which never reaches the failure arm under test.
+    # reference catalog, which never reaches the failure branch under test.
     monkeypatch.setenv("ADCP_TESTING", "false")
 
     with CreativeFormatsEnv(tenant_id="fmt-wire-safety", principal_id="fmt-wire-principal") as env:

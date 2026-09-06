@@ -128,7 +128,7 @@ _BACKED_SPECIALISMS: dict[AdcpSpecialism, SupportedProtocol] = {
 
 
 # The type parameter is VALUE-restricted (not bounded), which is what makes mixing the two
-# arms a type error: passing protocols against the specialism backing map now fails with
+# branches a type error: passing protocols against the specialism backing map now fails with
 # `Value of type variable "_Declared" cannot be "StrEnum"`, which `Iterable[Any]` silently
 # accepted. Restricting here also means mypy.ini needs no new disallow_any_explicit entry
 # for this module (#1721 review F7).
@@ -255,7 +255,7 @@ class CapabilityDeclarations(BaseModel):
         the undeclared-tenant path is the one every scenario actually exercises
         and why "operator declares X, then a buyer sees X" cannot be graded end
         to end today. The write seam is #1856; when it lands, the round trip
-        becomes gradeable and the defaults above stop being the only covered arm.
+        becomes gradeable and the defaults above stop being the only covered branch.
         """
         from src.core.exceptions import AdCPConfigurationError
 

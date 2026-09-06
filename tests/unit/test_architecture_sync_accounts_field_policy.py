@@ -1,7 +1,7 @@
 """Guard: ONE field-policy table decides every ``sync_accounts`` entry field.
 
 The Core Invariant of salesagent-gcze: every field a ``sync_accounts`` entry can
-carry -- declared on the request arms OR arriving via ``extra="allow"`` -- has
+carry -- declared on the request branches OR arriving via ``extra="allow"`` -- has
 exactly ONE declared disposition per entry mode, recorded in a single field-policy
 table, and ALL THREE field-application sites (create, provisioning re-sync,
 settings-update) are driven by that table. A field cannot then be honored on one
@@ -10,7 +10,7 @@ site and silently discarded on another.
 **This guard REPLACES tests/unit/test_architecture_sync_accounts_handler_symmetry.py.**
 That guard detects an applied field by AST-matching ``changes["<literal>"] = ...``.
 Once application is a table walk (``changes[field] = value`` -- a non-Constant
-slice) its reader returns the EMPTY SET for both arms, so
+slice) its reader returns the EMPTY SET for both branches, so
 ``test_settable_fields_are_applied_by_both_entry_handlers`` would pass while
 proving nothing. The same change must therefore DELETE that file together with
 both of its allowlists (``_KNOWN_ASYMMETRIC``, ``_KNOWN_DROPPED_BY_BOTH``): the
@@ -66,7 +66,7 @@ _DISPOSITIONS = {
     "rejected",
 }
 
-#: Routing/identity keys, not settings: ``account`` selects the arm and
+#: Routing/identity keys, not settings: ``account`` selects the branch and
 #: brand/operator are the natural key.
 _ROUTING_KEYS = {"account", "brand", "operator"}
 
@@ -77,7 +77,7 @@ _ROUTING_KEYS = {"account", "brand", "operator"}
 
 
 def _declared_entry_fields() -> set[str]:
-    """Settable fields BOTH request arms declare, minus the routing keys."""
+    """Settable fields BOTH request branches declare, minus the routing keys."""
     from adcp.types.generated_poc.account.sync_accounts_request import Accounts, Accounts1
 
     return (set(Accounts.model_fields) & set(Accounts1.model_fields)) - _ROUTING_KEYS
@@ -86,7 +86,7 @@ def _declared_entry_fields() -> set[str]:
 def _extra_read_entry_fields() -> set[str]:
     """Field names ``accounts.py`` reads off an entry via ``getattr``.
 
-    Both request arms are ``extra="allow"``, so a buyer can send a field the
+    Both request branches are ``extra="allow"``, so a buyer can send a field the
     generated models never declare and production can still read it --
     ``governance_agents`` is exactly that, and it is why a table keyed only on
     ``model_fields`` would leave a live field with no disposition. The declared
@@ -146,7 +146,7 @@ def _disposition_for(entry: Any, mode: str) -> Any:
     raise AssertionError(
         f"table row {entry!r} declares no disposition for mode {mode!r} "
         f"(accepted keys/attributes: {_MODES[mode]}). Every field needs a disposition in BOTH modes -- "
-        "'we never thought about this arm' is the defect the table exists to make unrepresentable."
+        "'we never thought about this branch' is the defect the table exists to make unrepresentable."
     )
 
 
@@ -181,7 +181,7 @@ def test_field_policy_table_covers_every_in_scope_entry_field():
         fix_hint=(
             "The table IS the record — read 'new violations' as fields with NO disposition and 'stale "
             "entries' as rows for fields that left the request surface.\n"
-            "In-scope = fields both request arms declare, PLUS any name accounts.py reads off an entry via "
+            "In-scope = fields both request branches declare, PLUS any name accounts.py reads off an entry via "
             "getattr (extra='allow' means a buyer can send an undeclared field and production still reads it)."
         ),
     )
@@ -259,8 +259,8 @@ def test_no_handler_applies_a_field_by_hand_written_literal():
     This is the half the old symmetry guard could not express. As long as a
     handler writes ``changes["billing"] = ...`` by hand, the table is
     documentation sitting next to the real decision, and the next field added to
-    one arm only is still possible. When application is
-    ``changes[field] = value`` over the table, divergence between the arms is not
+    one branch only is still possible. When application is
+    ``changes[field] = value`` over the table, divergence between the branches is not
     expressible in the first place.
     """
     offenders = {
@@ -270,7 +270,7 @@ def test_no_handler_applies_a_field_by_hand_written_literal():
     offenders = {handler: fields for handler, fields in offenders.items() if fields}
     assert not offenders, (
         f"field application is still hand-written per handler: {offenders}.\n"
-        "Drive `changes` from the field-policy table (one walk, both arms) so a per-arm omission cannot "
+        "Drive `changes` from the field-policy table (one walk, both branches) so a per-branch omission cannot "
         "be written. The create site generalizes as the same walk with existing=None -- "
         "_resolve_notification_configs(entry, None) is already called that way."
     )
@@ -299,7 +299,7 @@ class TestMatcherModelsTheForm:
         """``governance_agents`` is in scope despite not being a declared field.
 
         The precise finding the old guard got backwards: its ``model_fields``
-        aperture concluded "dead code", while both arms are ``extra='allow'`` and
+        aperture concluded "dead code", while both branches are ``extra='allow'`` and
         the provisioning handler really does read the buyer's list.
         """
         assert "governance_agents" in _extra_read_entry_fields()

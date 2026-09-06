@@ -30,7 +30,7 @@ def _raising_env(exc: Exception):
     class _Env:
         # The entry points the dispatchers ACTUALLY call. Stubbing anything
         # else lets the dispatcher die on an AttributeError BEFORE it reaches
-        # the error arm under test, and the assertions below then hold for a
+        # the error branch under test, and the assertions below then hold for a
         # reason unrelated to what they claim to test -- both of the "no
         # envelope" ones pass by construction on a dispatch that never ran.
         #
@@ -40,7 +40,7 @@ def _raising_env(exc: Exception):
         # call_mcp/call_a2a are defined once on BaseTestEnv as
         # ``deliver_*(...).payload`` and are explicitly never overridden, so
         # stubbing the old names would let both dispatchers die on an
-        # AttributeError before the arm under test. There is no deliver_rest --
+        # AttributeError before the branch under test. There is no deliver_rest --
         # RestDispatcher reads ``REST_ENDPOINT`` and then calls
         # ``_run_rest_request`` -- and the IMPL leg still calls ``call_impl``.
         REST_ENDPOINT = "/stub"

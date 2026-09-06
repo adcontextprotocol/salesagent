@@ -518,7 +518,7 @@ def test_slack(tenant_id):
             )
 
             if not sent:
-                # Same contract the OutboundError arm used to serve: 400 with an
+                # Same contract the OutboundError branch used to serve: 400 with an
                 # opaque message. Slack's own response body is a counterparty
                 # response and is never echoed back to the operator.
                 return jsonify({"success": False, "error": "Slack webhook delivery failed"}), 400

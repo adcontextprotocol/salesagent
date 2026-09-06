@@ -2053,11 +2053,11 @@ def then_single_probe(ctx: dict) -> None:
     "A probe delivery was attempted" is a claim about a DELIVERY, so it is graded
     on the endpoint, the same way ``then_deliveries_resume`` below grades its own.
 
-    What stood here was a three-way branch whose last two arms could not run. It
+    What stood here was a three-way branch whose last two branches could not run. It
     looked for ``env.mock["httpx_post"]`` or ``env.mock["webhook_post"]``; a
     ``CircuitBreakerEnv`` holds neither, because it delivers over real HTTP to a
-    real origin rather than through a POST mock. So the second arm was dead, and
-    the third arm — a ``pytest.xfail("HARNESS GAP")`` guarded by
+    real origin rather than through a POST mock. So the second branch was dead, and
+    the third branch — a ``pytest.xfail("HARNESS GAP")`` guarded by
     ``ctx["cb_can_attempt"]``, a key no step in this module writes — was dead
     twice over. A dormant xfail on a branch that cannot execute grades nothing
     while reading, in the report, exactly like a scenario that does.

@@ -109,7 +109,7 @@ class TestSyncCreativesErrorHandling:
     THERE with ``creative_id`` bound. That premise is now inverted: every caller builds a
     SyncCreativesRequest first, and core/creative-asset.json makes both fields required, so
     such an item is refused at the request boundary and never reaches the loop. The branch it
-    graded -- the loop's ``except (ValidationError, ValueError)`` arm, and that it names the
+    graded -- the loop's ``except (ValidationError, ValueError)`` branch, and that it names the
     offending creative_id -- is still reached by a spec-legal item that fails
     ``_validate_creative_input``, and is graded by
     test_sync_creatives_format_validation.py::test_format_validation_unknown_format and

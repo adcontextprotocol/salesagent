@@ -2645,7 +2645,7 @@ Feature: BR-UC-002 Create Media Buy
 
   @T-UC-002-storyboard-async-submitted-envelope-task-id-roundtrip @schema-v3.1 @v3-1 @submitted-envelope @async @task-id-roundtrip
   Scenario: Async submitted envelope -- task_id matches deterministic value registered via comply_test_controller
-    Given a comply_test_controller directive registered force_create_media_buy_arm with arm "submitted" and task_id "task_async_signed_io_q2"
+    Given a comply_test_controller directive registered force_create_media_buy_arm with branch "submitted" and task_id "task_async_signed_io_q2"
     And the directive is keyed to the caller's authenticated sandbox account
     When the Buyer Agent sends create_media_buy under the registered sandbox account
     Then the response should carry status "submitted"

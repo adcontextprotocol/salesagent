@@ -770,7 +770,7 @@ class AdCPRequestHandler(RequestHandler):
             # to all downstream handlers. No handler should call resolve_identity().
             # Its `= None` initialisation used to live HERE, which is why a failure
             # in the push-config gate above reached the error handler with the name
-            # unbound; it now sits before the `try` so every arm can read it.
+            # unbound; it now sits before the `try` so every branch can read it.
             if auth_token:
                 # A PRESENTED token must always be validated, regardless of
                 # whether the requested skill itself requires auth — absent

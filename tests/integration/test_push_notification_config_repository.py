@@ -247,7 +247,7 @@ def test_upsert_records_and_replaces_the_registering_protocol(identity, factory_
     Only the transport that received the registration knows the dialect the buyer
     registered over, and a later delivery is scheduled from the stored value — so
     a passed ``protocol`` has to reach the column on both the insert and the
-    update arm, not merely be accepted by the signature.
+    update branch, not merely be accepted by the signature.
     """
     repo, _tenant, principal = identity
 

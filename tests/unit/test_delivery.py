@@ -1632,7 +1632,7 @@ class TestDeliveryAdapterError:
         EXPECTATION REVERSED by salesagent-tay20, on the strength of this test's own
         name. The advisory was SERVICE_UNAVAILABLE "mirroring the adapter handler" --
         the copied justification that ticket exists to remove -- and the adapter
-        handler cannot be the model here, because the adapter cannot reach this arm:
+        handler cannot be the model here, because the adapter cannot reach this branch:
         its call has its OWN try whose handler advises and `continue`s. What reaches
         here is a crash in our per-buy processing, exactly as this test's name says,
         and SERVICE_UNAVAILABLE is pinned transient -- it tells the buyer to retry

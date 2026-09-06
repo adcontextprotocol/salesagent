@@ -12,7 +12,7 @@ WHY THE SESSION TEARS. ``get_db_session()`` yields the THREAD-SCOPED session
 (``database_session.py``): the same ``Session`` object the outer unit already
 holds, with no nesting refcount. The inner unit's ``__exit__`` runs
 ``session.close(); scoped.remove()``, so the outer unit is left holding a closed
-session; on a preview arm the inner rollback discards the OUTER unit's writes too.
+session; on a preview branch the inner rollback discards the OUTER unit's writes too.
 That is salesagent-db4ci, a live P1 defect, and it is what this guard measures.
 
 WHAT COUNTS AS TRANSACTIONAL CONTEXT — measured, not assumed. This is the trap
@@ -439,7 +439,7 @@ def test_no_helper_opens_a_second_unit_of_work():
         fix_hint=(
             "get_db_session() hands back the THREAD-SCOPED session, with no nesting refcount. A "
             "second unit of work opened while one is already open commits the outer unit's "
-            "in-flight writes, then closes the session out from under it — and on a preview arm "
+            "in-flight writes, then closes the session out from under it — and on a preview branch "
             "its rollback discards the outer unit's writes too.\n"
             "  join the caller's unit:   def helper(..., uow: SomeUoW)      — the prkv.16 fix\n"
             "  optional join:            if uow is None: uow = stack.enter_context(SomeUoW(...))\n"

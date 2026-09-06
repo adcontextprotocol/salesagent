@@ -797,7 +797,7 @@ def unwrap_mcp_error(exc: Exception, transport: Transport = Transport.MCP) -> Tr
     wire = raw_tool_error_envelope or _wire_envelope_from_exception(exc)
     error = WireError(raw_tool_error_envelope) if raw_tool_error_envelope is not None else exc
     return TransportResult(
-        # This is the catch-all arm of an MCP dispatch: it wraps env.call_mcp
+        # This is the catch-all branch of an MCP dispatch: it wraps env.call_mcp
         # whole, so it can fire before any bytes moved and cannot tell which.
         # It declares False and still hands back the REAL envelope it recovered
         # from the ToolError above — see TransportResult.has_wire's SCOPE note.
@@ -839,7 +839,7 @@ def unwrap_a2a_error(exc: Exception, transport: Transport = Transport.A2A) -> Tr
     """
     wire = _wire_envelope_from_exception(exc)
     return TransportResult(
-        # Catch-all arm wrapping the whole A2A delivery — it may fire before
+        # Catch-all branch wrapping the whole A2A delivery — it may fire before
         # anything was sent, so it declares False while still exposing the real
         # envelope the WireError carries verbatim. This is the exact
         # case TransportResult.has_wire's SCOPE note names.

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def _resolve_creative_for_assignment(assignment_repo, creative_id: str, principal_id: str):
     """Resolve the creative state this assignment must be graded against.
 
-    One lookup for both arms. The creative writes this request made are visible
+    One lookup for both branches. The creative writes this request made are visible
     either way: live reads them as committed rows (the sync transaction closed
     before this stage), preview reads them as flushed rows in the shared,
     to-be-rolled-back transaction. Returns the DB row, or ``None`` when the
@@ -83,7 +83,7 @@ def _process_assignments(
     transitions.  Mutates *results* in-place to populate ``assigned_to``
     and ``assignment_errors`` on matching ``SyncCreativeResult`` entries.
 
-    ONE write path. There is no preview arm here: the same resolution,
+    ONE write path. There is no preview branch here: the same resolution,
     validation, strict-raise, upsert, weight normalization and media-buy status
     transition run for every caller.
 

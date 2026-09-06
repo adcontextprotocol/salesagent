@@ -727,7 +727,7 @@ class Kevel(AdServerAdapter):
                 from src.core.helpers.outbound_error_mapping import raise_mapped_outbound_error
 
                 self.log(f"Error updating Kevel flight: {e}")
-                # The same obligation the AdCPAdapterError(internal_detail=e) arm
+                # The same obligation the AdCPAdapterError(internal_detail=e) branch
                 # carried is met here, not dropped: ``requests``' text carried the ad
                 # server's URL/response body, which AdCP 3.1.1 transport-errors.mdx
                 # § Security Considerations keeps off the buyer wire. The mapper's

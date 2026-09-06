@@ -56,7 +56,7 @@ _DOCKER_STUB = """#!/usr/bin/env bash
 #
 # "As it would against a healthy stack" includes WRITING THE REPORTS. tox runs
 # inside the container, so its `.tox/<suite>.json` never reaches the host when
-# `docker` is stubbed -- and the runner's missing-report arm correctly fails a
+# `docker` is stubbed -- and the runner's missing-report branch correctly fails a
 # run that produced none ("a suite that produced none was not measured"). A stub
 # that swallows the tox call without leaving reports behind is simulating a
 # stack where every suite died, not a healthy one. Emit a minimal report per

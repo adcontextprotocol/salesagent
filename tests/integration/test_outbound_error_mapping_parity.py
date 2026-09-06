@@ -75,7 +75,7 @@ pytestmark = [pytest.mark.integration]
 _LOGGER = logging.getLogger(__name__)
 
 # A registered agent, not something the buyer supplied — the ONLY provenance
-# either mapper's operator arm is reachable with (design J1: CounterpartyUrl
+# either mapper's operator branch is reachable with (design J1: CounterpartyUrl
 # structurally never reaches either mapper's status-classification branch
 # today, so this table does not invent that taxonomy either).
 _PROVENANCE = OperatorEndpoint("the parity-test operator agent")
@@ -193,8 +193,8 @@ class TestOutboundExhaustionPreservesAttempts:
 
     Outbound-only (the MCP seam's failure surface carries no ``attempts`` to
     preserve — J2/J3 in tbrk.4's design). Exercises ONLY the already-correct
-    ``raise_mapped_outbound_error`` re-raise arm, so this is expected to PASS
-    today: it pins behavior tbrk.4's refactor (J3: routing this arm THROUGH
+    ``raise_mapped_outbound_error`` re-raise branch, so this is expected to PASS
+    today: it pins behavior tbrk.4's refactor (J3: routing this branch THROUGH
     ``adcp_error_for_status`` instead of short-circuiting before it) must not
     change, not new behavior this lane introduces.
     """

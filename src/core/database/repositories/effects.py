@@ -59,7 +59,7 @@ class _DeferredEffect:
     """One queued effect and what to do when it raises.
 
     ``fatal`` is per-effect on purpose. The three sites this seam generalizes
-    disagree today -- the Slack arm swallows, the webhook and the audit-log
+    disagree today -- the Slack branch swallows, the webhook and the audit-log
     write propagate -- and folding them into one uniform policy as a side effect
     of a refactor would silently lose an audit trail. The default is to swallow:
     an effect that runs AFTER a successful commit must not turn a request that
@@ -129,7 +129,7 @@ def effect_savepoint(session: Session) -> Iterator[None]:
     ``sync_creatives`` actually isolates at. It processes each creative inside
     ``begin_nested()``, and a savepoint rollback does not touch ``session.info``
     -- so an effect queued before the failure (the AI-review submit is the FIRST
-    thing the ai-powered arm registers) survived, the outer transaction committed
+    thing the ai-powered branch registers) survived, the outer transaction committed
     the OTHER creatives, and the background job then ran for a creative the buyer
     was told had ``action="failed"``, writing its status back onto the untouched
     row. Truncating to the entry mark makes "rolled back" mean the same thing for

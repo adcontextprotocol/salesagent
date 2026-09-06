@@ -667,7 +667,7 @@ def process_and_upload_package_creatives(
             # transport boundary turns it into INVALID_REQUEST carrying the field and the
             # issues (adcp_error_for tests ValidationError before ValueError, deliberately).
             # Reclassifying it below as AdCPAdapterError would tell the buyer the server is
-            # unavailable and to retry an unfixed request. This arm is what replaced the
+            # unavailable and to retry an unfixed request. This branch is what replaced the
             # adcp_validation_boundary that used to wrap the builder call: the boundary
             # produced the same envelope, one frame earlier, at the cost of a translation
             # this layer has no business performing.

@@ -271,9 +271,9 @@ class TestRefusedStashCostsTheWebhookNotTheTransition:
     state transition.
 
     Honest scope: this asserts the OUTCOME, and the outcome is defended twice —
-    by the per-webhook ``except AdCPValidationError: continue`` arm and by the
+    by the per-webhook ``except AdCPValidationError: continue`` branch and by the
     pre-existing outer ``except Exception`` net. So it does not redden if only
-    the arm is reverted; it reddens if BOTH nets go. The arm's marginal value
+    the branch is reverted; it reddens if BOTH nets go. The branch's marginal value
     over the outer net is that it refuses one webhook explicitly instead of
     unwinding out of both loops with a traceback, which is a logging and
     sibling-preservation property rather than a delivery-outcome one.

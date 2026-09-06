@@ -209,7 +209,7 @@ def test_wire_omits_unset_optional_fields(integration_db, case, transport):
 # ── The table's own two guardrails ──────────────────────────────────────────
 # __post_init__ is what makes this table safe to add rows to: it is the only
 # thing standing between a future row and the two failure modes that read as
-# coverage while grading nothing. Neither arm fires on any row above — that is
+# coverage while grading nothing. Neither branch fires on any row above — that is
 # the point of them — so without these two tests both are dead code, and
 # deleting either one leaves the whole file green. Construction only: no env,
 # no wire, no DB (the module-level requires_db mark is inherited, harmlessly).

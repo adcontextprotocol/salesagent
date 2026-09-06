@@ -151,9 +151,9 @@ def _assert_wire_field_rejection(ctx: dict, field: str, code: str = "INVALID_REQ
 
     INVALID_REQUEST, not VALIDATION_ERROR, and the distinction is the finding:
     the pinned ``sync-accounts-request`` declares ``accounts[]`` as an anyOf of
-    two arms requiring ``['brand','operator','billing']`` (provisioning) or
+    two branches requiring ``['brand','operator','billing']`` (provisioning) or
     ``['account']`` (settings-update). An entry missing one of those satisfies
-    NEITHER arm, so the REQUEST is malformed -- "Request is malformed, missing
+    NEITHER branch, so the REQUEST is malformed -- "Request is malformed, missing
     required fields, or violates schema constraints" -- rather than the ACCOUNT
     being unprovisionable, which is what a per-account ``action: "failed"`` result
     reports. VALIDATION_ERROR is for "business rules BEYOND schema validation".
@@ -521,7 +521,7 @@ def given_named_persisted_account_without_brand(ctx: dict, domain: str) -> None:
     Sibling of "the persisted account has no brand recorded", which clears the
     account the immediately-preceding Given created. This one names its target,
     so a scenario that seeded several accounts can put exactly one of them into
-    the brand-less state -- which is what the delete_missing arm needs, since it
+    the brand-less state -- which is what the delete_missing branch needs, since it
     walks accounts the request did NOT mention.
     """
     from src.core.database.models import Account
@@ -986,7 +986,7 @@ def then_response_outcome(ctx: dict, outcome: str) -> None:
             assert actual == expected_count, f"Expected {expected_count} accounts for outcome '{outcome}', got {actual}"
     else:
         # An outcome this step does not recognise must FAIL, not pass silently.
-        # Without this arm a typo in a feature file — or a new outcome phrase
+        # Without this branch a typo in a feature file — or a new outcome phrase
         # nobody wired — produced a green step that graded nothing.
         raise AssertionError(
             f"Unhandled outcome {outcome!r}: this step grades 'validation error' and 'success with ...' only"
@@ -1062,7 +1062,7 @@ def when_list_with_account_filter(ctx: dict, key_shape: str, domain: str) -> Non
     """Send list_accounts with an exact ``account`` filter (AccountRef).
 
     Spec: account/list-accounts-request.json#/properties/account (v3.1.1) →
-    core/account-ref.json#/oneOf — arm 0 is keyed by account_id, arm 1 by the
+    core/account-ref.json#/oneOf — branch 0 is keyed by account_id, branch 1 by the
     natural key (brand + operator).
     """
     from src.core.schemas.account import ListAccountsRequest
@@ -1262,11 +1262,11 @@ def _dispatch_sync_table(ctx: dict, datatable: Any, *, idempotency_key: str | No
         ctx["error"] = err
         return
 
-    # ONE dispatch shape for both branches. The idempotency arm already sent a raw
+    # ONE dispatch shape for both branches. The idempotency branch already sent a raw
     # bag while the other built SyncAccountsRequest here, so the SAME step graded the
     # seller or the model depending only on whether the scenario happened to carry an
     # idempotency key — and the rows that feed it invalid values (e.g. billing
-    # "prepaid", outside the enum) always took the model arm, so they never once
+    # "prepaid", outside the enum) always took the model branch, so they never once
     # reached production. Raw on both, and the swallowing try/except goes with it:
     # dispatch_request already returns transport failures as a TransportResult
     # carrying the real envelope.
@@ -1352,7 +1352,7 @@ def when_sync_with_governance_agents(ctx: dict, domain: str) -> None:
 #
 # Graduated: settings-update (AccountReference) mode implemented via
 # _process_settings_update_entry (both AccountReference1/account_id and
-# AccountReference2/natural-key arms), mode-exclusivity enforced in _impl before
+# AccountReference2/natural-key branches), mode-exclusivity enforced in _impl before
 # dispatch (VALIDATION_ERROR naming accounts[i]), unmatched references rejected
 # with UNSUPPORTED_PROVISIONING. The settings-update, no-provision, and
 # mode-exclusive tags are no longer xfailed (removed from conftest _XFAIL_TAGS).
@@ -1369,7 +1369,7 @@ def when_sync_settings_update_by_account_id(ctx: dict, pt: str) -> None:
     """Dispatch a SettingsUpdateMode entry (AccountReference by account_id) setting payment_terms.
 
     The entry carries only ``account`` + ``payment_terms`` (no brand/operator/billing
-    trio) — the SettingsUpdateMode arm of the item oneOf. The target account_id is
+    trio) — the SettingsUpdateMode branch of the item oneOf. The target account_id is
     the one the ``already exists`` Given captured via the real pre-create sync.
 
     Spec: account/sync-accounts-request.json#/properties/accounts/items/oneOf/1
@@ -1455,7 +1455,7 @@ def when_sync_settings_update_unknown_account(ctx: dict, account_id: str) -> Non
     "an account reference and the provisioning trio"
 )
 def when_sync_both_account_and_trio(ctx: dict) -> None:
-    """Dispatch an entry that satisfies BOTH item-oneOf arms (account AND the trio).
+    """Dispatch an entry that satisfies BOTH item-oneOf branches (account AND the trio).
 
     Such an entry violates oneOf(ProvisioningMode XOR SettingsUpdateMode) and is
     rejected as a request VALIDATION_ERROR naming accounts[i] (mode-exclusivity is
@@ -1621,7 +1621,7 @@ def then_operation_error_naming_field(ctx: dict, code: str, field: str) -> None:
     Uses the single sanctioned wire-error surface (TransportResult.assert_wire_error),
     which hard-fails on a non-canonical code and defaults recovery to the pinned
     v3.1.1 enum classification. For a oneOf structural violation the spec-correct
-    grade is the response error variant (oneOf arm 1) carrying VALIDATION_ERROR.
+    grade is the response error variant (oneOf branch 1) carrying VALIDATION_ERROR.
 
     Spec: account/sync-accounts-response.json#/oneOf/1 (error variant, top-level
     errors[]); core/error.json#/properties/field (JSONPath-lite);
@@ -4358,7 +4358,7 @@ def when_sync_brandless_entry(ctx: dict) -> None:
     """Send a sync_accounts request whose single entry omits 'brand'.
 
     SDK 5.7's SyncAccountsRequest.accounts is list[Accounts | Accounts3]; the
-    Accounts3 (account-reference / settings-update) arm makes 'brand' optional,
+    Accounts3 (account-reference / settings-update) branch makes 'brand' optional,
     so this entry parses with brand=None. The pinned 3.1 spec
     (sync-accounts-request.json) marks every entry required:[brand,operator,billing].
     """
@@ -4376,7 +4376,7 @@ def then_brandless_rejected_validation_error(ctx: dict) -> None:
     """The seller refuses a brandless entry as a correctable validation error.
 
     Two boundaries, one buyer contract (never accepted, never a 500):
-    - A2A/REST: the request reaches _sync_accounts_impl (Accounts3 arm,
+    - A2A/REST: the request reaches _sync_accounts_impl (Accounts3 branch,
       brand=None); _extract_natural_key raises AdCPValidationError, so the
       two-layer wire envelope carries code VALIDATION_ERROR with
       recovery=correctable. Graded through the canonical result surface;
@@ -4419,12 +4419,12 @@ def then_brandless_rejected_validation_error(ctx: dict) -> None:
 # Production trace (src/core/tools/accounts.py, verified in-process):
 #   - _account_fields_changed:418-424 compares
 #     _serialize_governance_agents(getattr(entry, "governance_agents", None))
-#     against the persisted value. Both request arms are extra="allow", so an
+#     against the persisted value. Both request branches are extra="allow", so an
 #     OMITTED field reads None, None != db_gov, and changes["governance_agents"]
 #     = None reaches repo.update_fields -> the binding is WIPED by a re-sync that
 #     never mentioned governance. check_governance keys off that binding.
 #   - _process_settings_update_entry:806-818 builds `changes` for payment_terms
-#     and notification_configs ONLY. Entry-root `sandbox` parses on that arm
+#     and notification_configs ONLY. Entry-root `sandbox` parses on that branch
 #     (Accounts1.model_validate({"account": {...}, "sandbox": True}) succeeds) and
 #     is then silently ignored.
 #   - billing_entity: no DB column, no application site, and SyncResponseAccount
@@ -4524,7 +4524,7 @@ def _wire_account(ctx: dict, index: int | None = None, *, domain: str | None = N
 def when_sync_settings_update_with_sandbox(ctx: dict) -> None:
     """Dispatch a settings-update entry carrying entry-root ``sandbox: true``.
 
-    Schema-legal on this arm (``sandbox`` is absent from the SettingsUpdateMode
+    Schema-legal on this branch (``sandbox`` is absent from the SettingsUpdateMode
     ``not:`` list) but scoped by its description to provisioning mode, and part of
     the buyer-declared natural key -- honoring it would re-key the account.
 
@@ -4543,7 +4543,7 @@ def when_sync_settings_update_with_sandbox(ctx: dict) -> None:
 def when_sync_settings_update_with_billing(ctx: dict, billing: str) -> None:
     """Dispatch a settings-update entry carrying ``billing`` and nothing else.
 
-    ``billing`` is MUST-be-absent on this arm ("billing is fixed at provisioning
+    ``billing`` is MUST-be-absent on this branch ("billing is fixed at provisioning
     time and cannot be changed via settings-update"), structurally enforced by the
     item oneOf's SettingsUpdateMode ``allOf: [... {not: {required: ["billing"]}}]``.
 
@@ -4594,7 +4594,7 @@ def when_sync_provision_with_billing_entity(ctx: dict, domain: str, legal_name: 
     )
 )
 def when_sync_settings_update_billing_entity(ctx: dict, legal_name: str) -> None:
-    """Refine ``billing_entity`` through the settings-update arm.
+    """Refine ``billing_entity`` through the settings-update branch.
 
     "Sellers MAY accept refinements in settings-update mode (e.g., updated bank
     details)" -- the field is permitted in BOTH modes, so the same value must be

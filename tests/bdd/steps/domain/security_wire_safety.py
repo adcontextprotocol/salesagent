@@ -67,7 +67,7 @@ def given_untyped_exception(ctx: dict, caplog) -> None:
     rather than a per-scenario mock.patch, so the same Given works unmodified
     across a2a/mcp/rest (and e2e-REST, where it declares itself unsupported).
 
-    Also arms log capture HERE rather than in the Then, because the boundary log is
+    Also branches log capture HERE rather than in the Then, because the boundary log is
     emitted during the When: by the time the Then runs the record must already have
     been captured. ``propagate=False`` is production-gated (src/core/logging_config.py),
     so the record reaches caplog's handler under test.

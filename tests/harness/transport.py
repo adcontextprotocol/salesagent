@@ -253,7 +253,7 @@ class E2EConfig:
 
 
 # Fields `_serialize_for_a2a` adds to an A2A artifact DataPart. They are
-# populated by the PROTOCOL layer (the pin's Protocol Envelope arm) and are not
+# populated by the PROTOCOL layer (the pin's Protocol Envelope branch) and are not
 # declared on any Pydantic response model, so they must come off before a body
 # is validated — under extra="forbid" they are a hard ValidationError. The
 # captured `wire_response` keeps them: siblings assert on the full envelope.
@@ -355,7 +355,7 @@ class TransportResult:
             Declared PER SITE, not per transport class: it is True only where
             the construction is downstream of an actual send/receive. A wire
             dispatcher's "missing config" guard constructs a result for a request
-            that never left. Its catch-all ``except`` arm is a STRADDLE — it may
+            that never left. Its catch-all ``except`` branch is a STRADDLE — it may
             fire before OR after bytes moved, and cannot tell which — so it
             declares False, because claiming a wire that may not exist is the
             failure mode that matters here: it would send a reader looking for a
@@ -369,7 +369,7 @@ class TransportResult:
             SCOPE — this predicate governs the SUCCESS path only, and
             deliberately does NOT feed ``assert_wire_error``'s no-envelope
             diagnostic (which the lane in #1802 originally specified).
-            The reason is concrete: a dispatcher's catch-all arm declares
+            The reason is concrete: a dispatcher's catch-all branch declares
             ``has_wire=False`` because it may fire before anything was sent, yet
             it can still derive a ``wire_error_envelope`` from the exception —
             ``A2ADispatcher``'s does exactly that. Wiring ``has_wire`` into that

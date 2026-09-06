@@ -231,7 +231,7 @@ def make_registry_mock(
     registry.get_format = get_format or _default_get_format
     # Both defaults are the INERT no-result case _processing already guards for
     # (``if build_result:`` / ``if preview_result and preview_result.get("previews")``),
-    # so a site that does not care about these arms sees no extra data written. The
+    # so a site that does not care about these branches sees no extra data written. The
     # preview default is spelled the way the agent actually answers with nothing --
     # a ``previews`` list -- not a bare ``preview_url``, which is a shape the
     # preview_creative response never has at the top level.

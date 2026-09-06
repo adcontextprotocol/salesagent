@@ -143,7 +143,7 @@ class CreateMediaBuyRequestFactory(_RequestFactory):
     ``start_time`` is an explicit timestamp rather than ``"asap"``, and that is
     NOT merely a taste: the pin models ``start_time`` as a ``oneOf`` over a
     ``date-time`` string and the constant ``"asap"``, and our validator asserts
-    no ``date-time`` format checker, so every string satisfies BOTH arms and
+    no ``date-time`` format checker, so every string satisfies BOTH branches and
     ``"asap"`` fails the ``oneOf`` as ambiguous. A baseline that cannot be
     validated is not a baseline; scenarios that specifically grade immediate
     start override it and accept that the schema assertion cannot grade them.
@@ -191,10 +191,10 @@ class SyncCreativesRequestFactory(_RequestFactory):
 class SyncAccountsRequestFactory(_RequestFactory):
     """A sync_accounts request conforming to ``account/sync-accounts-request.json``.
 
-    The entry is in PROVISIONING mode, whose ``oneOf`` arm requires all three of
+    The entry is in PROVISIONING mode, whose ``oneOf`` branch requires all three of
     ``brand`` + ``operator`` + ``billing`` — omitting ``billing`` (easy to do by
-    hand, since our DTO tolerates it) makes the entry match neither arm. The
-    settings-update mode is the other arm: override ``accounts`` with a single
+    hand, since our DTO tolerates it) makes the entry match neither branch. The
+    settings-update mode is the other branch: override ``accounts`` with a single
     ``{"account": ...}`` key.
     """
 

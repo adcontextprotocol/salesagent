@@ -303,7 +303,7 @@ class MediaBuyDualEnv(MediaBuyCreateEnv):
         # + task_id, no applied media_buy_id — a submitted envelope must not be
         # mis-reconstructed as Success, whose status is Literal completed), then
         # success (has media_buy_id; may carry NON-FATAL advisory errors, so an
-        # errors-first check would misclassify it), else error. The submitted arm
+        # errors-first check would misclassify it), else error. The submitted branch
         # serves the REST wire and the harness-synthesized A2A submitted dict —
         # production A2A has NO submitted reconstruction (Task early-return;
         # PR #1567 round-2 follow-up). The reconstructed union member is wrapped in

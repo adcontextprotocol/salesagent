@@ -259,7 +259,7 @@ async def call_mcp_tool(
                 # It has to be recovered from the chain rather than caught by
                 # type, because fastmcp re-raises it as a bare RuntimeError
                 # ("Client failed to connect: ..."). An `except OutboundError`
-                # arm here reads like it closes the case and catches nothing --
+                # branch here reads like it closes the case and catches nothing --
                 # the shape this epic exists to delete -- so the unwrap is the
                 # one mechanism, not a decoration in front of one.
                 #

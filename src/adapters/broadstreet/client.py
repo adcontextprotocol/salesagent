@@ -155,7 +155,7 @@ class BroadstreetClient:
         try:
             result = self._vendor.call(method, path, json=data if data else None, params=query_params)
         except OutboundError as e:
-            # One arm, not two: OutboundDeliveryFailed is an OutboundError, and
+            # One branch, not two: OutboundDeliveryFailed is an OutboundError, and
             # the status it carries is the only thing the classifier reads.
             _raise_broadstreet_error(e)
 

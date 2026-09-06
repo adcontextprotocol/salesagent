@@ -23,7 +23,7 @@ class TestCreativeSyncEnvContract:
         """CreativeSyncEnv patches registry, run_async, notifications, audit."""
         from tests.harness.creative_sync import CreativeSyncEnv
 
-        # ai_review_executor joined the set with #1721: the ai-powered arm hands a
+        # ai_review_executor joined the set with #1721: the ai-powered branch hands a
         # job to a real ThreadPoolExecutor that opens its OWN AdminCreativeUoW and
         # commits a review verdict, an effect that escapes the sync transaction
         # entirely. Patching it is what makes "a preview submitted no AI review" an

@@ -1,7 +1,7 @@
 """Guard: a pre-check against a unique index must handle the index's verdict.
 
 Disease (#1721, inverse of the narrowing guard): a handler SELECTs by a unique
-key, finds nothing, and writes — with no arm for the case where the index
+key, finds nothing, and writes — with no branch for the case where the index
 disagrees. The pre-check runs inside the caller's own transaction, so it cannot
 see a row a concurrent transaction has staged and not yet committed. The index is
 the only authority, and the loser of the race takes an ``IntegrityError`` out of
@@ -11,8 +11,8 @@ flush that nothing in the function was written to answer. Whatever the enclosing
 identical condition.
 
 The sibling guard (``test_guards_narrowed_integrity_recovery.py``) proves that a
-recovery arm, where one exists, names the constraint it recovers from. This one
-proves the arm EXISTS. That is the shape review missed six times over, which is
+recovery branch, where one exists, names the constraint it recovers from. This one
+proves the branch EXISTS. That is the shape review missed six times over, which is
 the argument for a guard rather than vigilance.
 
 The rule: when a function pre-checks a model against a full unique key and then
@@ -272,7 +272,7 @@ def test_every_precheck_handles_the_index_verdict():
     violations = scan_src()
     assert not violations, format_failure(
         summary=(
-            "Pre-check against a unique index with no arm for the index's verdict — the loser "
+            "Pre-check against a unique index with no branch for the index's verdict — the loser "
             "of the race gets whatever the enclosing `except` happens to do, not the polite "
             "answer the winner's own pre-check produces (#1721):"
         ),
@@ -466,7 +466,7 @@ class TestGuardMetaCases:
             "        tenant_id=tenant_id, publisher_domain=domain)).first():\n"
             "        return 'exists'\n"
             "    session.add(PublisherPartner(tenant_id=tenant_id))"
-            "  # structural-guard: uniqueness-index-verdict - caller owns the recovery arm\n"
+            "  # structural-guard: uniqueness-index-verdict - caller owns the recovery branch\n"
         )
         assert _find(source) == []
 

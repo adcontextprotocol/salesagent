@@ -174,7 +174,7 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   # Graded here rather than only in integration because the refusal's
   # classification — not merely its existence — is the obligation: before the
   # fix the connection WAS refused, but the registry reported it through its
-  # OPERATOR arm as CONFIGURATION_ERROR / terminal, telling the buyer a seller
+  # OPERATOR branch as CONFIGURATION_ERROR / terminal, telling the buyer a seller
   # was misconfigured about a URL the buyer themselves chose, with no field.
   #
   # Hatches OPEN, and a cloud-metadata address, for the reason the header gives:

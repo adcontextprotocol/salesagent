@@ -4,7 +4,7 @@
 #
 # Upstream gap: BR-UC-006-sync-creatives.feature carries NO dry_run scenario at
 # all (its only "preview" scenarios are agent-render ones), and every one of its
-# ai-powered rows (:506, :782, :1014) drives the LIVE arm. So the intersection
+# ai-powered rows (:506, :782, :1014) drives the LIVE branch. So the intersection
 # that matters here — dry_run ON an ai-powered tenant — is graded by nothing,
 # upstream or locally. The conformance storyboard cannot close it either:
 # `dry_run` appears nowhere in dist/compliance/3.1.1.
@@ -43,8 +43,8 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
       | partition_boundary                              | creative_state | format_kind | expected_action |
       | new_generative new creative, build_creative     | new            | generative  | created         |
       | new_static new creative, preview_creative       | new            | static      | created         |
-      | existing_generative update arm, build_creative  | existing       | generative  | updated         |
-      | existing_static update arm, preview_creative    | existing       | static      | updated         |
+      | existing_generative update branch, build_creative  | existing       | generative  | updated         |
+      | existing_static update branch, preview_creative    | existing       | static      | updated         |
 
   @T-UC-006-local-dryrun-ai-review-preview @dry-run @creative-approval @invariant
   Scenario Outline: a dry_run preview on an ai-powered tenant fires no effect the transaction cannot undo
@@ -83,8 +83,8 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
       | partition_boundary                              | creative_state | format_kind | expected_action |
       | new_generative new creative, build_creative     | new            | generative  | created         |
       | new_static new creative, preview_creative       | new            | static      | created         |
-      | existing_generative update arm, build_creative  | existing       | generative  | updated         |
-      | existing_static update arm, preview_creative    | existing       | static      | updated         |
+      | existing_generative update branch, build_creative  | existing       | generative  | updated         |
+      | existing_static update branch, preview_creative    | existing       | static      | updated         |
 
   # --- the workflow-step WRITE PATH (GH #2002) ---
   #
@@ -101,14 +101,14 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
   # (creative/sync-creatives-request.json#/properties/dry_run @ v3.1.1). "Without
   # applying them" is a claim about what SURVIVES the request, not about which
   # code runs: the correct shape is one transaction that executes the write on
-  # both arms and discards it on the preview arm.
+  # both branches and discards it on the preview branch.
   #
   # Why the pair, again: the live scenario is the non-vacuity control, and the
-  # two differ in exactly one input (dry_run). The preview arm's "zero rows"
+  # two differ in exactly one input (dry_run). The preview branch's "zero rows"
   # assertion is worth nothing on its own — it also holds for a preview that
-  # skipped the write, which is precisely today's behaviour — so the live arm
+  # skipped the write, which is precisely today's behaviour — so the live branch
   # must first prove that THIS payload, on THIS tenant, does produce steps,
-  # mappings and a context. The response-level Thens are bound by both arms on
+  # mappings and a context. The response-level Thens are bound by both branches on
   # the same field, so a preview that stopped reporting the creative reddens
   # here rather than passing "zero rows" for the wrong reason.
 

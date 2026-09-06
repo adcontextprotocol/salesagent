@@ -249,7 +249,7 @@ class Attempts:
             yield n
 
     def record_transport_failure(self) -> None:
-        """Absorbs the ``except _RETRYABLE_EXCEPTIONS`` arm's bookkeeping.
+        """Absorbs the ``except _RETRYABLE_EXCEPTIONS`` branch's bookkeeping.
 
         Resets ``last_status``/``last_retry_after`` to ``None`` — nothing to
         read off a transport exception. Logging stays at the call site: it

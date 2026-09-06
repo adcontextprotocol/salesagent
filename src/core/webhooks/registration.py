@@ -469,7 +469,7 @@ def _coerce_primitives_to_config(
     Uses the same funnel the transport wrappers use, so this path cannot drift
     into its own validation dialect, and a refusal names the same field path.
 
-    EVERY rule applies, including ``credentials`` ``minLength: 32``. An arm here
+    EVERY rule applies, including ``credentials`` ``minLength: 32``. An branch here
     used to exempt exactly that one, on the premise that an A2A
     ``params.configuration`` value is a transport-layer parameter outside
     request-body validation. The pinned schema draws no such distinction --

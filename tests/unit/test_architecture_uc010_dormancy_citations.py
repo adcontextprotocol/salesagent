@@ -13,7 +13,7 @@ Where the obligation lives NOW
 ------------------------------
 #1858 deleted ``_harness_env``'s ``elif`` chain and ``_detect_uc``. Routing is declarative:
 ``EnvRoute`` rows in ``ENV_ROUTES``, resolved by ``storyboard_spec.resolve_env_route`` over
-the marker set from ``derive_marker_names``. The UC-010 dormancy arm became
+the marker set from ``derive_marker_names``. The UC-010 dormancy branch became
 ``_uc010_dormancy_rows()`` — ONE row generated per ``_UC010_DORMANT_TRACKING`` entry, each
 carrying that tag's own ``xfail_reason``, plus a citation-free ``uc010-not-wired`` catch-all
 for a dormant tag with no established tracking home.

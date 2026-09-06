@@ -332,7 +332,7 @@ class TestApproximatedToken:
         # get_dns_token (src.services.approximated_client, imported into this
         # blueprint since salesagent-47n9.7) never catches OutboundError -- every
         # status it can receive is a genuine failure -- so the exception reaches
-        # this route's own except OutboundError arm unchanged.
+        # this route's own except OutboundError branch unchanged.
         from src.core.security.outbound_http import OutboundDeliveryFailed
 
         with patch(
@@ -352,7 +352,7 @@ class TestGeneralSettingsVirtualHostTaken:
     ``ix_tenants_virtual_host`` is the authority. This site's contested write is
     an UPDATE of an already dirty tenant, not an insert, and its pre-check
     predicate depends on the WINNER's identity (``existing.tenant_id !=
-    tenant_id``) — so the race arm has to re-run the predicate, not repeat a
+    tenant_id``) — so the race branch has to re-run the predicate, not repeat a
     canned message. The race is timed on ``begin_nested`` because the handler
     never calls ``add()``, and ``flush`` would fire on the pre-check's own
     autoflush — committing the winner BEFORE the pre-check reads, which would

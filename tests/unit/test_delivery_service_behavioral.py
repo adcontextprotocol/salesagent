@@ -623,7 +623,7 @@ class TestDeliverWithBackoffGenericException:
         # webhook_egress.py authors about an UNEXPECTED failure, so it contains the
         # word "unexpected" itself — making "the exception's own text is absent"
         # unwritable against the old stimulus. So the stimulus is now the realistic
-        # case the arm's own comment names: the pinned transport's wrong-host guard,
+        # case the branch's own comment names: the pinned transport's wrong-host guard,
         # whose message interpolates TWO hostnames (verbatim shape from
         # adcp/signing/ip_pinned_transport.py:150-154) into a field contracted
         # "never a URL, never a credential" and then persisted to
@@ -652,7 +652,7 @@ class TestDeliverWithBackoffGenericException:
         # The function concludes in an OUTCOME, not a bool: "it did not deliver"
         # and "why" used to collapse into False, which is how a refusal became
         # indistinguishable from three failed attempts. No kind covers a
-        # NON-transport failure, so the arm builds ``exhausted`` with the honest
+        # NON-transport failure, so the branch builds ``exhausted`` with the honest
         # attempt count — zero. Whole-object equality against the named
         # constructor keeps kind/attempts/http_status/reason/scheme pinned exactly
         # as they were, so fixing ``detail`` cannot quietly change anything else.
@@ -660,8 +660,8 @@ class TestDeliverWithBackoffGenericException:
 
         # The circuit breaker is NOT fed here any more, and that is the change,
         # not an oversight: _send_webhook_enhanced now feeds it from the outcome,
-        # once, for every kind — so no arm of this function can be the one that
-        # forgets. Asserting a failure tick here would pin the breaker to an arm
+        # once, for every kind — so no branch of this function can be the one that
+        # forgets. Asserting a failure tick here would pin the breaker to an branch
         # it no longer belongs to. The obligation is graded where it moved, over
         # the public surface: tests/integration/test_delivery_service_behavioral.py
         # asserts get_circuit_breaker_state()'s failure_count for a delivery that

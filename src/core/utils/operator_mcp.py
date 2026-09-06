@@ -3,8 +3,8 @@
 Four registry methods used to spell the same ladder: dial through
 :func:`~src.core.utils.mcp_client.call_mcp_tool`, extract the payload, and map
 BOTH failure vocabularies onto AdCP errors -- each constructing the same
-``OperatorEndpoint`` label twice, once per arm. Four copies is four chances to
-forget an arm, and the copies had already drifted in what they passed
+``OperatorEndpoint`` label twice, once per branch. Four copies is four chances to
+forget an branch, and the copies had already drifted in what they passed
 (``auth``/``auth_header`` on two of them, a literal ``30`` timeout on the other
 two).
 
@@ -14,7 +14,7 @@ function there and calling ``extract_tool_payload`` from it would close an
 import cycle. This module imports both and nothing imports it back.
 
 NOT for counterparty (buyer-supplied) URLs. Those dial through the egress seam's
-``asend`` with a ``CounterpartyUrl`` provenance and have their own single-arm
+``asend`` with a ``CounterpartyUrl`` provenance and have their own single-branch
 mapping; :func:`raise_mapped_mcp_error` asserts operator provenance and would
 fail on them.
 """
@@ -66,10 +66,10 @@ class ProbeResult:
 def _operator_cause(exc: Exception) -> str:
     """The most specific operator-readable cause *exc* carries.
 
-    ONE extraction for both of :func:`probe_failure`'s arms. They ask the same
+    ONE extraction for both of :func:`probe_failure`'s branches. They ask the same
     question -- "how do I get the operator-facing cause out of this exception?"
-    -- and answering it twice is how the configuration arm came to be fixed
-    while the unreachable arm stayed mute, which is a worse state than either
+    -- and answering it twice is how the configuration branch came to be fixed
+    while the unreachable branch stayed mute, which is a worse state than either
     consistent one because it reads as deliberate.
 
     ``internal_detail`` first. Post-ADR-010 an ``AdCPSalesAgentError``'s
@@ -122,14 +122,14 @@ def probe_failure(exc: Exception, *, logger: logging.Logger) -> ProbeResult:
     lever rather than presuming credentials -- an egress refusal has nothing to
     do with them, and :func:`_operator_cause` says which one it was.
 
-    BOTH arms read the cause the same way, through that one helper. Only the
-    ADVICE differs, and only because the configuration arm is the one where the
+    BOTH branches read the cause the same way, through that one helper. Only the
+    ADVICE differs, and only because the configuration branch is the one where the
     operator's levers are known to be the subject: every other failure -- an
     unreachable endpoint, a rate-limited one, an unclassified exception the seam
     did not wrap -- gets the cause with no advice attached, because none of the
-    levers is known to be the cause. Arm two used to interpolate ``str(exc)``,
+    levers is known to be the cause. Branch two used to interpolate ``str(exc)``,
     which was the authored sentence when it was written and became the generic
-    table text under ADR-010; it went mute for exactly the same reason arm one
+    table text under ADR-010; it went mute for exactly the same reason branch one
     did, and is fixed the same way rather than half-fixed.
     """
     cause = _operator_cause(exc)
@@ -159,9 +159,9 @@ async def call_operator_mcp_tool(
     """Call *tool* on an operator-configured MCP agent and return its payload.
 
     Owns the dial, the payload extraction and BOTH error mappings, so a caller
-    has one call to make and no arms to remember. ``label`` is the operator-facing
+    has one call to make and no branches to remember. ``label`` is the operator-facing
     name that rides out in a refusal message; it is built into an
-    ``OperatorEndpoint`` ONCE here rather than once per except arm.
+    ``OperatorEndpoint`` ONCE here rather than once per except branch.
 
     ``agent_url`` is passed EXACTLY as the caller supplies it. The creative
     registry resolves a connection alias before calling; the signals registry

@@ -160,7 +160,7 @@ class TestTheDowngradeRefusesRatherThanDestroys:
         )
 
     def test_it_narrows_the_constraint_when_no_account_needs_the_third_party(self, at_previous):
-        """The success arm: with nothing to destroy, the downgrade is faithful."""
+        """The success branch: with nothing to destroy, the downgrade is faithful."""
         engine, db_url = at_previous
         run_alembic_upgrade(db_url, _REVISION)
         _seed(engine, account_id="acc_survives", billing="operator")

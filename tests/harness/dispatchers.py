@@ -67,7 +67,7 @@ if TYPE_CHECKING:
 #     does below.
 #   - ``has_wire`` is declared PER CONSTRUCTION SITE (required and keyword-only
 #     on TransportResult), True only downstream of an actual send/receive; a
-#     catch-all arm that may fire before anything was sent declares False.
+#     catch-all branch that may fire before anything was sent declares False.
 
 
 class ImplDispatcher:

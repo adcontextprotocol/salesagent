@@ -32,7 +32,8 @@ it. What they do BEFORE reaching it is still three different programs.
 | bytes -> request | **no** | MCP derives a signature from the DTO; REST derives a body model from the DTO; A2A runs 11 hand-written skill handlers |
 
 R1 is that asymmetry. R2 is the type discipline the seam should have had from the start, and
-it deletes R1's worst symptom. R3-R5 are each one thing being done in the wrong place.
+it deletes R1's worst symptom. R3-R5 were each one thing being done in the wrong place; R3 and
+R5 are done, R4 is not.
 
 ---
 
@@ -75,7 +76,7 @@ five, unaided, on the plain dict a buyer sends:
 {"context":  {"conversation_id": "c1"}}  -> ContextObject
 ```
 
-`to_account_reference`, `coerce_creative_filters`, `to_context_object` and the dict arm of
+`to_account_reference`, `coerce_creative_filters`, `to_context_object` and the dict branch of
 `to_brand_reference` are therefore doing work the DTO does anyway. They DELETE. They are also
 worse than redundant: `_coerce_wire_object` returns `None` for a non-dict, so where pydantic
 would raise, A2A silently drops -- which is the finding above.
@@ -181,22 +182,65 @@ transport marker in the payload, where MCP puts the same string in a wrapper fie
 anything that must reach the body -- `replayed` being the immediate example -- has three places
 to be added and will be added to fewer.
 
+### `message`, measured: the same defect on a field that IS in the envelope
+
+`message` is one of the eleven `core/protocol-envelope.json` fields, so since R3 every response
+model declares it. Nothing sets it. Each transport still answers separately:
+
+| | what reaches the buyer |
+|---|---|
+| MCP (`src/core/tools/_mcp.py:27`) | `str(response)` in `ToolResult.content` -- a wrapper field, outside the body |
+| A2A (`src/a2a_server/adcp_a2a_server.py:1565`) | `str(response)` written INTO `response_data["message"]` |
+| REST (`src/routes/api_v1.py:89`) | `response.model_dump(mode="json")` and nothing else -- no `message` at all |
+
+**And `__str__` should not exist.** `adcp.types.base.AdCPBaseModel` ships `model_summary()`
+with a 19-entry formatter registry keyed by class name. Five of our response models keep the
+SDK's class name, so the registry already resolves for them -- and we override `__str__`
+anyway, 23 times across `src/core/schemas/`. Where both exist they can disagree, and one does:
+
+```
+ListCreativeFormatsResponse(formats=[])
+    __str__       'No creative formats are currently supported.'
+    model_summary 'Found 0 supported creative formats.'
+```
+
+Two summaries for one model, with no rule saying which the buyer gets.
+
+**How it is graded today, and why the REST gap is invisible.** By unit tests asserting the
+dunder -- `assert str(resp) == "Found 5 creative formats."` in
+`test_all_response_str_methods.py` and three siblings. That grades a Python method, not the
+wire, so nothing in the suite observes that one transport omits an envelope field entirely.
+The replacement is a BDD scenario reading `message` off `wire_response` on all transports.
+
 **The change.** One seam, on the response base R2 introduces:
 
 ```python
 def to_wire(self) -> dict[str, Any]:      # body + envelope stamping, once
 ```
 
-Each transport calls it and wraps the result in its own top-level shape. `success` and
-`message` become what they are -- A2A envelope fields, applied by A2A to its DataPart, not
-written into the payload. Version compat gets one home instead of two.
+Each transport calls it and wraps the result in its own top-level shape. `message` is stamped
+there, once, from `model_summary()`, and the 23 `__str__` overrides are deleted; `success`
+becomes what it is, an A2A envelope field applied by A2A to its DataPart rather than written
+into the payload. Version compat gets one home instead of two.
 
 ---
 
-## R3 — Type the protocol envelope on every response
+## R3 — DONE: type the protocol envelope on every response
 
-**The defect is not one field.** It is the whole envelope, and it is missing from exactly the
-tools that need it.
+**The defect was not one field.** It was the whole envelope, and it was missing from exactly
+the tools that need it.
+
+Every response model now inherits `adcp.types.ProtocolEnvelope`, so all eleven fields are typed
+on all fourteen. `_response_model_for` is annotated `type[ProtocolEnvelope] | None` and the
+boundary assigns `result.replayed = True` outright; the `model_fields` probe, the `setattr`
+and its `noqa` are gone. `CompletedTaskStatusMixin` went with them: it hand-declared
+`status: Literal["completed"]` on four models, and the SDK parent already declares that field
+AND fills it through its own `_normalize_legacy_status` before-validator, so removing the mixin
+changed no construction site. `test_architecture_dto_adds_no_field.py` grades that every
+registered tool keeps the base, so the annotation cannot quietly become a lie again.
+
+The rest of this section is the measurement that motivated the change, kept because it names
+what to look for if a response model ever loses the base.
 
 `core/protocol-envelope.json` declares eleven fields -- `status`, `task_id`, `message`,
 `context`, `context_id`, `timestamp`, `adcp_error`, `governance_context`, `payload`,
@@ -223,17 +267,14 @@ the gap with a locally declared `replayed` plus a pop-and-reset in its own seria
 goes out as `replayed: false` -- positively asserting a fresh execution. Two hand-rolled
 answers to a field that should have arrived with the envelope.
 
-**Upstream, for context, not as a blocker.** The Python SDK's generated success arms drop the
-whole composition: nine of eleven envelope fields are untyped on
-`SyncCreativesResponse1`, surviving only because that model is `extra="allow"`. The TypeScript
-SDK at the same 3.1.1 pin does not -- it intersects `ProtocolEnvelope` across every arm
-(`SyncCreativesResponse = AdCPVersionEnvelope & ProtocolEnvelope & (Success | Error | Submitted)`),
-so `replayed?: boolean` is typed on all of them. The cause is not the code generator: a
-hand-written post-generation step re-emits the `oneOf`-armed response modules and attaches
-`ProtocolEnvelope` only when the arm is the `submitted` one, never consulting the root `allOf`.
+**Upstream, for context, not as a blocker.** The Python SDK's generated success branches drop
+the whole composition. Measured against `adcp==6.6.0`: 19 of the 24 `*SuccessResponse` aliases
+do not inherit `ProtocolEnvelope`. The five that do are the ones whose response schema has no
+`oneOf`, so the alias resolves to the root class and picks the base up from the root `allOf`.
+Filed as adcontextprotocol/adcp-client-python#1136.
 
-We do not need to wait for that. `adcp.types.ProtocolEnvelope` is exported and correct; only
-the generated arms fail to inherit it.
+We do not wait for that. `adcp.types.ProtocolEnvelope` is exported and correct; only the
+generated branches fail to inherit it.
 
 **The change.** Our response models inherit `ProtocolEnvelope`, so all eleven fields are typed
 on all fourteen -- nine already are, by a route that happens to work. Then:
@@ -348,6 +389,6 @@ carries the scenario shape, so whoever picks it up writes the Given first.
 
 ## Order
 
-R1 first: it is the missing half of the thesis. R2 and R3 are one change and can go first if a
-buyer is watching, since R3 is a wire-visible falsehood today. R4 is small and deletes code. R5
-is independent. R6 last.
+R3 and R5 are done. What remains: R1 first -- it is the missing half of the thesis. R2 was the
+other half of R3's change and is what turns the boundary's remaining probes into attribute
+access. R4 is small and deletes code. R6 last.

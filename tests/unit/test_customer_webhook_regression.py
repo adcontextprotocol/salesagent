@@ -1,14 +1,12 @@
-"""Unit test to reproduce the exact customer webhook request.
+"""Every response type produces its buyer-facing summary through ``__str__``.
 
-This tests the specific code path that was causing:
-'CreateMediaBuyResponse' object has no attribute 'message'
-
-Regression test for: PR #339
-Customer: Damascus-v1 test agent
-Error: AttributeError when accessing response.message on CreateMediaBuyResponse
+Regression test for PR #339, where an A2A skill read ``response.message`` off a
+``CreateMediaBuySuccess`` and got an AttributeError. The AttributeError half of that
+story has expired -- ``create-media-buy-response.json`` @ 3.1.1 composes
+``core/protocol-envelope.json`` at its root, so ``message`` is a declared field now --
+but the fix is still the contract: the summary comes from ``__str__``, and a caller that
+reads the unfilled ``message`` field gets None rather than a sentence.
 """
-
-import pytest
 
 from src.core.schemas import (
     CreateMediaBuySuccess,
@@ -19,42 +17,11 @@ from src.core.schemas import (
 
 
 def test_create_media_buy_response_message_access():
-    """Test that we can safely extract messages from CreateMediaBuySuccess.
+    """``str()`` on a create success is the sentence an A2A skill sends, ``message`` is not."""
+    response = CreateMediaBuySuccess.carrier(media_buy_id="mb-12345", packages=[])
 
-    This reproduces the exact error the customer (Damascus-v1) was seeing:
-    AttributeError: 'CreateMediaBuyResponse' object has no attribute 'message'
-
-    The bug was on line 1382 in _handle_get_creatives_skill where we tried
-    to access response.message, but CreateMediaBuySuccess doesn't have that field.
-    """
-    # Create a response like the one from create_media_buy
-    response = CreateMediaBuySuccess.carrier(
-        media_buy_id="mb-12345",
-        packages=[],
-    )
-
-    # TEST 1: The OLD BROKEN pattern (what was causing the error)
-    with pytest.raises(AttributeError, match="has no attribute 'message'"):
-        # This is what line 1382 was doing - should raise AttributeError
-        _ = response.message or "Default message"
-
-    # TEST 2: The NEW SAFE pattern (our fix)
-    # This is our fix - uses __str__ method
-    message = str(response)
-    assert isinstance(message, str), "Message must be a string"
-    assert len(message) > 0, "Message must not be empty"
-    assert "mb-12345" in message, "Message should contain media_buy_id"
-
-    # TEST 3: Verify the A2A response dict construction works
-    # This is what _handle_create_media_buy_skill does
-    # Note: status is now a protocol field, not in domain response
-    a2a_response = {
-        "success": True,
-        "media_buy_id": response.media_buy_id,
-        # status would be added by protocol envelope wrapper
-        "message": str(response),  # The fix
-    }
-    assert a2a_response["message"] == "Media buy mb-12345 created successfully."
+    assert str(response) == "Media buy mb-12345 created successfully."
+    assert response.message is None
 
 
 def test_other_response_types():

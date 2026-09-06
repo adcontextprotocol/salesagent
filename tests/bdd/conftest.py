@@ -777,7 +777,7 @@ _XFAIL_TAGS: dict[str, str] = {
     # every row. T-UC-010-v31-version-unsupported-details-bounds removed.
     # ── UC-011 list wiring — graduated; provenance below ───────────────────
     # Graduated: _apply_list_account_filters honors req.account
-    # (AccountReference oneOf, both account_id and natural-key arms), forwarded by
+    # (AccountReference oneOf, both account_id and natural-key branches), forwarded by
     # all 3 transports. T-UC-011-list-account-filter removed.
     # T-UC-011-list-authorization: the Account schema carries no authorization
     # object (account-with-authorization item shape is new in 3.1.1), so the
@@ -790,7 +790,7 @@ _XFAIL_TAGS: dict[str, str] = {
     # rejecting it under extra=forbid. T-UC-011-list-read-idempotency-tolerance removed.
     # Graduated: settings-update (AccountReference) mode implemented
     # via _process_settings_update_entry (both AccountReference1/account_id and
-    # AccountReference2/natural-key arms), mode-exclusivity enforced in _impl before
+    # AccountReference2/natural-key branches), mode-exclusivity enforced in _impl before
     # dispatch (VALIDATION_ERROR naming accounts[i]), unmatched references rejected
     # with UNSUPPORTED_PROVISIONING. T-UC-011-sync-settings-update,
     # T-UC-011-sync-settings-update-no-provision, T-UC-011-sync-mode-exclusive removed.
@@ -1703,7 +1703,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         # no principal-role concept (roles live on the admin-UI User model, not
         # Principal). The fields-less ext-n request also short-circuits through the
         # empty-update INVALID_REQUEST path before any adapter call. The step now
-        # arms the real update adapter with a canonical PERMISSION_DENIED rejection,
+        # branches the real update adapter with a canonical PERMISSION_DENIED rejection,
         # so this strict xfail flips to a wire-asserted pass the moment production
         # gates admin-only update actions. Strict: fails loudly when that lands.
         if "T-UC-003-ext-n" in marker_names:
@@ -1722,7 +1722,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         # never reads it, has no state-based NOT_CANCELLABLE check, and
         # has_updatable_fields() omits canceled — so a media_buy_id+canceled
         # request trips the empty-update INVALID_REQUEST path instead of
-        # NOT_CANCELLABLE. The step arms the update adapter with the canonical
+        # NOT_CANCELLABLE. The step branches the update adapter with the canonical
         # NOT_CANCELLABLE refusal and dispatches the real cancel on the wire, so
         # this strict xfail flips to a pass when production wires the cancel path.
         if "T-UC-003-ext-v" in marker_names:
@@ -1814,7 +1814,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         # Tag-based xfail for all other scenarios
         for tag, reason in _XFAIL_TAGS.items():
             if tag in marker_names:
-                # DELETED (#1721 F14b): the e2e_rest arm of T-UC-005-main used to add a
+                # DELETED (#1721 F14b): the e2e_rest branch of T-UC-005-main used to add a
                 # SECOND, strict=False escape hatch here. It was redundant with the first
                 # one, by its own account: over e2e_rest the Given never reaches the graded
                 # gap because CreativeFormatsEnv._validate_registry_formats raises
@@ -3992,7 +3992,7 @@ _UC002_FULL_CREATE_WIRED: set[str] = {
 
 # The v3.1 sync-success envelope scenario. It was dormant because it had no step
 # definitions, not because the harness could not reach it — it needs exactly the full
-# create the manual-approval arm already runs. It grades revision / confirmed_at /
+# create the manual-approval branch already runs. It grades revision / confirmed_at /
 # valid_actions on the response the buyer meets first, which is the surface where
 # those three were being fabricated from schema defaults.
 _UC002_V31_SUCCESS_WIRED: set[str] = {
@@ -4040,7 +4040,7 @@ def _parametrize_ctx(
 ) -> None:
     """Parametrize ``ctx`` over the in-process transports, plus the e2e one when enabled.
 
-    Extracted so the AdCP arm and the admin arm share ONE copy of the
+    Extracted so the AdCP branch and the admin branch share ONE copy of the
     append-e2e-when-enabled tail. Duplicating it would be the
     same logical operation with substituted enum members — the R0801 shape the
     DRY invariant treats as a defect, against a duplication baseline that may
@@ -4990,7 +4990,7 @@ _UC003_MANUAL_APPROVAL_TAGS = frozenset(
 # The steps exist now, and these grade the obligation the whole revision surface
 # rests on — a mutating update advances the buyer's optimistic-concurrency token
 # and REPORTS the advanced value. They need the same seeded existing buy as the
-# manual-approval arm, so they share its row.
+# manual-approval branch, so they share its row.
 _UC003_REVISION_TAGS = frozenset(
     {
         "T-UC-003-revision-success-increments",
@@ -5009,7 +5009,7 @@ ENV_ROUTES: list[EnvRoute] = [
     # storyboard_spec.detect_uc returns None for them and no coarse bucket can
     # claim them. They are UNSCOPED `when` rows (no _uc(...) wrapper) declared
     # FIRST, which is exactly how the former elif chain expressed them: the
-    # egress tests checked before the shared UC arms and each borrowed one arm's
+    # egress tests checked before the shared UC branches and each borrowed one branch's
     # env. Two of them need an env that does NOT patch the surface under test —
     # a refusal manufactured by a mock proves nothing about the real egress seam.
     EnvRoute(
@@ -5048,7 +5048,7 @@ ENV_ROUTES: list[EnvRoute] = [
     EnvRoute(
         tag="egress-update",
         # Dispatches a real update_media_buy carrying a push_notification_config,
-        # so it needs the UC-003 ext arm: the update wrappers plus a seeded
+        # so it needs the UC-003 ext branch: the update wrappers plus a seeded
         # existing media buy for the update to target.
         when=lambda m: "egress_update" in m,
         env_builder=_env("tests.harness.media_buy_dual.MediaBuyDualEnv"),
@@ -5057,7 +5057,7 @@ ENV_ROUTES: list[EnvRoute] = [
     EnvRoute(
         tag="egress-create",
         # Ingest-time refusal of a buyer webhook URL — dispatches a real
-        # create_media_buy, so it needs the UC-004 "create" arm's env and the
+        # create_media_buy, so it needs the UC-004 "create" branch's env and the
         # full create dependency chain.
         when=lambda m: "egress_create" in m,
         env_builder=_env("tests.harness.media_buy_create.MediaBuyCreateEnv"),
@@ -5066,7 +5066,7 @@ ENV_ROUTES: list[EnvRoute] = [
     EnvRoute(
         tag="egress-get-products",
         # The remaining @egress scenarios dispatch get_products (and the A2A
-        # message/send envelope pair). They share the UC-GET-PRODUCTS arm and
+        # message/send envelope pair). They share the UC-GET-PRODUCTS branch and
         # differ only in the env: the refusal must come from the REAL
         # resolve_property_list, so ProductEnv's patch is not applied.
         when=lambda m: "egress" in m,
@@ -5079,7 +5079,7 @@ ENV_ROUTES: list[EnvRoute] = [
     EnvRoute(
         tag="security-wire-error-safety",
         # BR-SECURITY-001 grades that an UNTYPED exception cannot leak internals to
-        # the wire. It dispatches get_products, so it takes the UC-GET-PRODUCTS arm.
+        # the wire. It dispatches get_products, so it takes the UC-GET-PRODUCTS branch.
         when=lambda m: any(t.startswith("T-SECURITY-001") for t in m),
         env_builder=_build_product_env,
     ),
@@ -5088,7 +5088,7 @@ ENV_ROUTES: list[EnvRoute] = [
         # BR-CODES-001 (a declared error code reaches the buyer unrewritten) and
         # BR-CODES-002's bare-raise scenario both exercise their obligation through a
         # FULL create_media_buy — it is the cheapest bare, non-auth raise site already
-        # wired to every transport — so they need the UC-002 full-create arm rather
+        # wired to every transport — so they need the UC-002 full-create branch rather
         # than a harness of their own.
         when=lambda m: bool(m & _UC002_FULL_CREATE_WIRED),
         env_builder=_env("tests.harness.media_buy_create.MediaBuyCreateEnv"),
@@ -5117,7 +5117,7 @@ ENV_ROUTES: list[EnvRoute] = [
     EnvRoute(
         tag="uc002-manual-approval",
         # Also claims the v3.1 sync-success envelope scenario: it needs exactly the
-        # full create this arm already runs, so it shares the row rather than
+        # full create this branch already runs, so it shares the row rather than
         # duplicating the seed. The former chain expressed the same thing by OR-ing
         # _UC002_V31_SUCCESS_WIRED into the manual-approval full-create flag.
         when=_uc("UC-002", lambda m: bool(m & (_UC002_MANUAL_APPROVAL_ROW_TAGS | _UC002_V31_SUCCESS_WIRED))),
@@ -5189,7 +5189,7 @@ ENV_ROUTES: list[EnvRoute] = [
                     "webhook-ssrf",
                     "uc006-storyboard-routing",
                     "uc006-idempotency",
-                    # @creative-approval drives the approval_mode arms of
+                    # @creative-approval drives the approval_mode branches of
                     # _processing.py, whose ai-powered branch reaches the background
                     # AI-review executor — an effect that leaves the sync
                     # transaction. CreativeSyncEnv mocks that executor, which is what

@@ -26,7 +26,7 @@ from adcp.types.generated_poc.account.sync_accounts_request import (
     Accounts as SyncAccountInput,  # SDK 5.7: Account → Accounts
 )
 from adcp.types.generated_poc.account.sync_accounts_request import (
-    Accounts1 as SettingsUpdateAccountInput,  # the account-reference / settings-update arm
+    Accounts1 as SettingsUpdateAccountInput,  # the account-reference / settings-update branch
 )
 from adcp.types.generated_poc.core.account_ref import AccountReference1, AccountReference2
 from adcp.types.generated_poc.core.business_entity import BusinessEntity
@@ -63,8 +63,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 #: Either sync_accounts entry shape: the provisioning trio (brand/operator/
-#: billing) or the account-reference settings-update arm. Typed here (not
-#: Any) so a resolver written for one arm cannot silently accept the other's
+#: billing) or the account-reference settings-update branch. Typed here (not
+#: Any) so a resolver written for one branch cannot silently accept the other's
 #: entry -- exactly the class of bug _FIELD_POLICY exists to prevent.
 SyncEntry = SyncAccountInput | SettingsUpdateAccountInput
 
@@ -399,7 +399,7 @@ def _resolve_sandbox(entry: SyncEntry, existing: DBAccount | None) -> tuple[bool
     ``x or False``, so a matched account can never disagree with the submitted
     value. If that lookup ever stops filtering on sandbox (e.g. to detect
     ambiguous matches), this becomes a LIVE re-key and must be revisited here —
-    the settings-update arm already rejects it for exactly that hazard.
+    the settings-update branch already rejects it for exactly that hazard.
     """
     if existing is not None:
         return False, existing.sandbox
@@ -417,7 +417,7 @@ EntryMode = Literal["provisioning", "settings_update"]
 #: non-application and carries a citation:
 #:   applied            the buyer's value reaches persistence
 #:   rejected           schema-legal here, refused with a per-account error
-#:   spec_forbidden     the pinned request schema does not allow it on this arm
+#:   spec_forbidden     the pinned request schema does not allow it on this branch
 #:   local_extension    not a spec property at all; accepted only where declared
 #:   ignored_by_design  accepted and deliberately a no-op, per its citation
 DispositionKind = Literal["applied", "rejected", "spec_forbidden", "local_extension", "ignored_by_design"]
@@ -584,9 +584,9 @@ class ResolvedFields(TypedDict, total=False):
 #: This table replaces two hand-maintained allowlists (``_KNOWN_ASYMMETRIC`` and
 #: ``_KNOWN_DROPPED_BY_BOTH`` in the deleted handler-symmetry guard). Those
 #: encoded "undecided", which is what let a field sit in debt indefinitely and
-#: let ``billing``/``sandbox``/``governance_agents`` be honored on one arm and
+#: let ``billing``/``sandbox``/``governance_agents`` be honored on one branch and
 #: silently discarded on the other. Here every in-scope field — declared on the
-#: request arms OR arriving through ``extra="allow"`` — carries an explicit
+#: request branches OR arriving through ``extra="allow"`` — carries an explicit
 #: disposition in BOTH modes, and ALL THREE application sites (create,
 #: provisioning re-sync, settings-update) are driven by this one walk, so
 #: divergence between them is not expressible.
@@ -638,7 +638,7 @@ _FIELD_POLICY: dict[str, _FieldPolicy] = {
             "local_extension",
             "v3.1.1 sync-accounts-request.json#/properties/accounts/items/additionalProperties — "
             "not a sync_accounts property at all; the spec's governance surface is sync_governance "
-            "(dist/compliance/3.1.1/domains/governance/index.yaml). Accepted on the provisioning arm "
+            "(dist/compliance/3.1.1/domains/governance/index.yaml). Accepted on the provisioning branch "
             "only because that is how governed accounts are seeded today; retire with sync_governance.",
         ),
         resolve=_resolve_governance_agents,
@@ -680,7 +680,7 @@ def _resolve_entry_changes(entry: SyncEntry, existing: DBAccount | None, *, mode
 def _rejected_field_errors(entry: SyncEntry, *, mode: EntryMode) -> list[GateFailure] | None:
     """Per-account errors for fields the table marks ``rejected`` in ``mode``.
 
-    A ``rejected`` field is schema-LEGAL on this arm but cannot be honored, so
+    A ``rejected`` field is schema-LEGAL on this branch but cannot be honored, so
     the buyer must be TOLD rather than have it silently ignored (the project's
     no-quiet-failure rule). ``UNSUPPORTED_FEATURE`` over
     ``UNSUPPORTED_PROVISIONING``: the latter's enumMetadata suggestion is about
@@ -803,8 +803,8 @@ def _build_failed_result(
 def _first_gate_failure(gates: Iterable[Callable[[], list[GateFailure] | None]]) -> list["Error"] | None:
     """Run per-entry gate checks in order; return the first one's errors, or None.
 
-    Both the provisioning arm (domain/billing/sandbox/notification-configs) and
-    the settings-update arm (notification-configs/rejected-fields) are a list of
+    Both the provisioning branch (domain/billing/sandbox/notification-configs) and
+    the settings-update branch (notification-configs/rejected-fields) are a list of
     independent gate checks where the first failure short-circuits the rest --
     this is the ONE place that shape is expressed (#1721 M1; was 6
     duplicated check-then-build-then-continue blocks).
@@ -829,7 +829,7 @@ def _provisioning_gates(
     entry: SyncEntry,
     proof_failures: dict[int, list[GateFailure]],
 ) -> list[Callable[[], list[GateFailure] | None]]:
-    """The provisioning arm's gate list, in order: domain validity (reserved
+    """The provisioning branch's gate list, in order: domain validity (reserved
     TLDs) -> billing policy (BR-RULE-059) -> sandbox capability (BR-RULE-209
     INV-6) -> notification_configs. The first failure short-circuits the rest.
 
@@ -937,7 +937,7 @@ def _extract_natural_key(entry: SyncEntry) -> NaturalKey:
     entry that lands here with no ``brand`` carries neither the provisioning
     trio nor an account reference, a genuinely malformed request the pinned
     3.1 spec's ``required: ["brand", "operator", "billing"]`` (provisioning
-    arm) rejects as a buyer-correctable 400 (salesagent-5g8e; previously this
+    branch) rejects as a buyer-correctable 400 (salesagent-5g8e; previously this
     branch also caught settings-update entries before that mode was
     implemented — it no longer does).
 
@@ -946,7 +946,7 @@ def _extract_natural_key(entry: SyncEntry) -> NaturalKey:
             both REQUIRED for provisioning mode per the pinned spec. Only
             ``brand`` was checked before typing this function surfaced that
             ``operator`` is ``str | None`` on the ``SyncEntry`` union (it is
-            optional on the settings-update arm) with no matching runtime
+            optional on the settings-update branch) with no matching runtime
             guard here.
     """
     brand = entry.brand
@@ -996,7 +996,7 @@ def _check_notification_configs(configs: Iterable[NotificationConfig] | None) ->
 
     Same per-entry gate shape as ``_check_domain_validity`` / ``_check_billing_policy``
     / ``_check_sandbox_capability``, and called from BOTH entry handlers so the two
-    arms cannot drift.
+    branches cannot drift.
 
     Check ORDER is load-bearing: the first failure decides the reported
     ``error.field``, and the scenarios pin exact pointers. Duplicates are detected
@@ -1083,7 +1083,7 @@ def _check_notification_configs(configs: Iterable[NotificationConfig] | None) ->
 
 
 def _notification_configs_gate(entry: SyncEntry, proof_errors: list[GateFailure] | None) -> list[GateFailure] | None:
-    """The notification_configs gate, shared verbatim by both sync-accounts arms.
+    """The notification_configs gate, shared verbatim by both sync-accounts branches.
 
     Runs BEFORE any write so a rejected entry leaves the persisted array
     byte-identical. When the array itself is schema-valid, falls back to the
@@ -1151,7 +1151,7 @@ def _process_settings_update_entry(
 
     There is ONE write path. ``dry_run`` is handled at the UoW boundary
     (``AccountUoW(..., dry_run=...)`` rolls back instead of committing), so this
-    arm runs identically either way and a preview's reads see its own flushed
+    branch runs identically either way and a preview's reads see its own flushed
     writes (sync-accounts-request.json#/properties/dry_run: "preview what would
     change without applying").
     """
@@ -1167,7 +1167,7 @@ def _process_settings_update_entry(
     echo_operator = existing.operator
     # Account.brand/.operator are DB-nullable (defensive column typing) but
     # AccountRepository.build_row always sets both at creation -- an EXISTING,
-    # matched account (which is what this arm always operates on) cannot
+    # matched account (which is what this branch always operates on) cannot
     # actually have either unset.
     if echo_brand is None:
         # accounts.brand is a NULLABLE column, so a brand-less row is a state the
@@ -1180,8 +1180,8 @@ def _process_settings_update_entry(
             details=ConfigurationDetails(account_id=existing.account_id),
         )
 
-    # notification_configs (shared with the provisioning arm) -> rejected-field
-    # check (BR-RULE-209-family fields the table marks `rejected` on this arm --
+    # notification_configs (shared with the provisioning branch) -> rejected-field
+    # check (BR-RULE-209-family fields the table marks `rejected` on this branch --
     # schema-LEGAL, so per-account "failed", never an operation-level raise).
     gate_errors = _first_gate_failure(
         [
@@ -1198,7 +1198,7 @@ def _process_settings_update_entry(
             errors=gate_errors,
         )
 
-    # The SAME table walk the provisioning arm runs -- the two arms cannot
+    # The SAME table walk the provisioning branch runs -- the two branches cannot
     # disagree about which fields they apply, because neither names a field.
     resolved = _resolve_entry_changes(entry, existing, mode="settings_update")
     changes = {
@@ -1378,11 +1378,11 @@ def _build_update_result(
     it. Every reported value is read off it, so the result cannot describe a
     pre-write state.
 
-    Historical note: before #1721 a preview arm and a live arm each called one
+    Historical note: before #1721 a preview branch and a live branch each called one
     builder with a byte-identical argument list and STILL diverged, because the
     row they handed it meant different things. There is now a single write path
-    and a single arm — ``dry_run`` is disposed of at the UoW boundary — so the
-    two-arm drift this precondition guarded against no longer has a mechanism.
+    and a single branch — ``dry_run`` is disposed of at the UoW boundary — so the
+    two-branch drift this precondition guarded against no longer has a mechanism.
     """
     if entry.brand is None:
         raise AdCPConfigurationError()
@@ -1512,7 +1512,7 @@ async def _sync_accounts_impl(
     # outbound HTTP call is what the owner's carve-out explicitly does not cover.
     proof_failures = await _resolve_activation_proofs(req.accounts, tenant_id, dry_run=dry_run)
 
-    # ONE write path for both arms: dry_run rolls this transaction back on clean
+    # ONE write path for both branches: dry_run rolls this transaction back on clean
     # exit instead of committing it (BaseUoW). Every entry below therefore runs
     # the identical resolve/validate/write code, and each entry's reads see the
     # earlier entries' writes as flushed rows -- the in-request memory a preview
@@ -1528,7 +1528,7 @@ async def _sync_accounts_impl(
             # schema's item oneOf -- a structural, operation-level rejection,
             # not a per-account business-rule failure. Must run before any
             # dispatch; the SDK union has no real oneOf enforcement and would
-            # otherwise silently parse this as the provisioning arm.
+            # otherwise silently parse this as the provisioning branch.
             if entry.account is not None and (
                 entry.brand is not None or entry.operator is not None or entry.billing is not None
             ):
@@ -1673,7 +1673,7 @@ async def _sync_accounts_impl(
                 )
 
         # BR-RULE-061: delete_missing — close accounts not in payload.
-        # Runs identically on both arms: dry_run "returns what would be
+        # Runs identically on both branches: dry_run "returns what would be
         # created/updated/deactivated" (v3.1.1
         # sync-accounts-request.json#/properties/dry_run), so a preview that
         # walked nothing would tell the buyer none of their accounts close. The
@@ -1685,7 +1685,7 @@ async def _sync_accounts_impl(
                     repo.update_status(db_acct.account_id, "closed")
                     if db_acct.brand is None:
                         # Same seller-side inconsistency as the settings-update
-                        # arm: a NULLABLE column the buyer cannot fix.
+                        # branch: a NULLABLE column the buyer cannot fix.
                         raise AdCPConfigurationError(
                             details=ConfigurationDetails(account_id=db_acct.account_id),
                         )

@@ -308,7 +308,7 @@ class TestSyncAccountsDeleteMissing:
         Same boundary as failed provisioning entries, which never reach
         seen_account_ids either — and structurally forced here because a failed
         result carries no account_id. The entry fails via ``sandbox``, which the
-        field policy marks rejected on the settings-update arm.
+        field policy marks rejected on the settings-update branch.
         """
         with AccountSyncEnv(tenant_id="sync_dm_suf", principal_id="agent_dmsuf") as env:
             env.setup_default_data()
@@ -391,7 +391,7 @@ class TestSyncAccountsDryRun:
 
     @pytest.mark.asyncio
     async def test_settings_update_dry_run_matches_live_and_persists_nothing(self, integration_db):
-        """Live-run-as-oracle for the settings-update arm under dry_run.
+        """Live-run-as-oracle for the settings-update branch under dry_run.
 
         The settings-update dispatch used to route before any dry_run branch and
         call repo.update_fields unconditionally, so a preview PERSISTED the
@@ -487,7 +487,7 @@ class TestSyncAccountsDryRun:
         For a payload carrying TWO entries on the SAME natural key it did not. The
         live path creates on entry 1 and FLUSHES, so entry 2's lookup finds that
         row and reports it — the buyer sees created, then unchanged, both naming
-        one account. The dry_run arm appends its result and continues before any
+        one account. The dry_run branch appends its result and continues before any
         write, so entry 2's lookup still missed and the preview claimed created
         TWICE, under two different account_ids: an outcome a real run cannot
         produce, and precisely the one the buyer would use the preview to rule out.
@@ -531,7 +531,7 @@ class TestSyncAccountsDryRun:
 
         The obvious fix — remember which keys were previewed — reports 'unchanged'
         here and drops the difference from the preview entirely. Only carrying the
-        previewed STATE forward, and running the same field comparison the live arm
+        previewed STATE forward, and running the same field comparison the live branch
         runs against it, gets this right.
         """
         first = {"brand": {"domain": "acme.com"}, "operator": "example.com", "billing": "operator"}
@@ -569,7 +569,7 @@ class TestSyncAccountsDryRun:
     async def test_three_entries_on_one_key_resolve_against_the_running_state(self, integration_db):
         """The third entry is resolved against what the SECOND left, not the first.
 
-        The live arm updates the row, so entry 3 compares against the updated row.
+        The live branch updates the row, so entry 3 compares against the updated row.
         A preview that remembered only entry 1's state would report entry 3 against
         stale values — a case no two-entry payload can expose.
         """
@@ -971,7 +971,7 @@ class TestSyncAccountsBrandlessEntryRejected:
     must be rejected with a clean VALIDATION_ERROR (400, correctable), NOT a 500.
 
     SDK 5.7's ``SyncAccountsRequest.accounts`` is ``list[Accounts | Accounts3]``;
-    the ``Accounts3`` arm makes ``brand`` optional, so a payload like
+    the ``Accounts3`` branch makes ``brand`` optional, so a payload like
     ``{"account": {...}, "operator": "..."}`` validates with ``brand=None``.
     Before the fix, ``_extract_natural_key`` did ``brand.domain`` unguarded →
     ``AttributeError`` → INTERNAL_ERROR/500. The pinned 3.1 spec (tag
@@ -980,7 +980,7 @@ class TestSyncAccountsBrandlessEntryRejected:
     clean buyer-correctable 400.
     """
 
-    # A2A and REST parse the request into SyncAccountsRequest (Accounts3 arm,
+    # A2A and REST parse the request into SyncAccountsRequest (Accounts3 branch,
     # brand=None) and reach _impl — the transports that exercise the unguarded
     # _extract_natural_key path. MCP rejects earlier at the FastMCP TypeAdapter
     # (brand required on the tool signature), a distinct boundary not touched by
@@ -996,7 +996,7 @@ class TestSyncAccountsBrandlessEntryRejected:
         ) as env:
             env.setup_default_data()
 
-            # Accounts3 arm: omits brand entirely → parses with brand=None.
+            # Accounts3 branch: omits brand entirely → parses with brand=None.
             req = SyncAccountsRequest(
                 idempotency_key=fresh_idempotency_key(),
                 accounts=[{"account": {"account_id": "x"}, "operator": "example.com"}],

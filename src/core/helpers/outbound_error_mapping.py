@@ -105,7 +105,7 @@ def adcp_error_for_status(status: int | None, *, retry_after: float | None, prov
     BUILDS the error and returns it; it does not raise. A classifier that
     raised could only be consulted by CATCHING it, which is why both mappers
     used to wrap the call in a ``try`` and re-``raise`` from three ``except``
-    arms apiece just to attach one log line. Returning the value lets each
+    branches apiece just to attach one log line. Returning the value lets each
     mapper branch on it directly and decide what to log and what to raise.
 
     Deliberately takes no ``logger``/original exception: logging is each

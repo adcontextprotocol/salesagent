@@ -233,7 +233,7 @@ def _executes_an_assertion(stmts: list[ast.stmt], asserting_helpers: frozenset[s
     at any depth on the otherwise-silent path counts.
 
     An ``if`` without an ``else`` never terminates: that is precisely the shape
-    this rule exists to catch. An ``if``/``else`` terminates only when BOTH arms
+    this rule exists to catch. An ``if``/``else`` terminates only when BOTH branches
     do. A ``return`` reached before any assertion is a silent exit — it makes
     the whole list non-terminating, which is what turns an early ``return`` in a
     guard branch into a violation rather than a loophole.

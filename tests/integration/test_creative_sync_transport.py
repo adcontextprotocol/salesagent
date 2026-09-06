@@ -873,7 +873,7 @@ class TestTypedTransientSurvivesCreativeBuild:
         assert "RATE_LIMITED" in codes, (
             f"[{transport.value}] the agent's own code did not survive the build path: {codes}"
         )
-        # And the exact regression: this read SERVICE_UNAVAILABLE before the typed arm.
+        # And the exact regression: this read SERVICE_UNAVAILABLE before the typed branch.
         assert "SERVICE_UNAVAILABLE" not in codes, (
             f"[{transport.value}] a typed transient was degraded to a generic outage: {codes}"
         )

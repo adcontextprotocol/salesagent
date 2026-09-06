@@ -43,7 +43,7 @@ class TestAutoApproveList:
         assert result.estimated_approval_time is None
 
     def test_a_configured_format_bypasses_human_review_when_review_is_required(self):
-        """The documented bypass arm — auto-approve outranks human_review_required."""
+        """The documented bypass branch — auto-approve outranks human_review_required."""
         engine = MockCreativeEngine({"auto_approve_formats": ["display_300x250"], "human_review_required": True})
 
         [result] = engine.process_creatives([_creative()])

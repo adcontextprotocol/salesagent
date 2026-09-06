@@ -226,7 +226,7 @@ async def _list_tasks_impl(
     """
 
     # Map the spec shape onto the repository's own vocabulary. `statuses` is the plural
-    # arm; a single `status` is the singular one, and the repository takes one string.
+    # branch; a single `status` is the singular one, and the repository takes one string.
     status: str | None = None
     filtered_by_status = False
     if req.filters is not None:

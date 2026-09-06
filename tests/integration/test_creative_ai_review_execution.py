@@ -1,6 +1,6 @@
 """The AI review an ai-powered sync defers must actually RUN (GH #1972).
 
-Every existing scenario for the ai-powered arm grades the SUBMIT: the harness
+Every existing scenario for the ai-powered branch grades the SUBMIT: the harness
 replaces ``_ai_review_executor`` with a mock and the assertion is "submit() was
 called". That is true whether or not the submitted job ever executes a line of
 its body — which is precisely how a job that never executes stayed invisible
@@ -121,15 +121,15 @@ class TestAIReviewVerdictIsCommitted:
 
 
 @pytest.mark.requires_db
-class TestAIReviewSurvivesTheWebhookArm:
-    """The webhook arm does not destroy the verdict it just committed.
+class TestAIReviewSurvivesTheWebhookBranch:
+    """The webhook branch does not destroy the verdict it just committed.
 
     This scenario exists because the other two CANNOT reach the failure it
     grades. ``should_call_webhook = bool(webhook_url)`` and ``webhook_url``
     comes ONLY from ``push_notification_config`` -- never from the tenant --
     so a tenant-only fixture never executes the webhook call at all.
 
-    That matters because the webhook arm is where the reviewer's own
+    That matters because the webhook branch is where the reviewer's own
     ``except Exception`` handler can fire and REVERT a committed verdict:
     the handler opens a fresh unit of work, sets ``status='pending_review'``
     and writes ``data['ai_review_error']``, WITHOUT clearing
@@ -166,7 +166,7 @@ class TestAIReviewSurvivesTheWebhookArm:
             )
             assert committed.error is None, (
                 "the reviewer's error handler fired and rewrote the row: "
-                f"{committed.error!r}. The webhook arm must not blow up the review "
+                f"{committed.error!r}. The webhook branch must not blow up the review "
                 "that already succeeded."
             )
             assert committed.status == EXPECTED_DECISION, (

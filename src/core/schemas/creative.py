@@ -61,7 +61,6 @@ from pydantic_core import PydanticCustomError
 from src.core.config import get_pydantic_extra_mode
 from src.core.enum_helpers import enum_value
 from src.core.schemas._base import (
-    CompletedTaskStatusMixin,
     FormatId,
     NestedModelSerializerMixin,
     SalesAgentBaseModel,
@@ -571,7 +570,7 @@ class AssignmentResult(SalesAgentBaseModel):
     )
 
 
-class SyncCreativesResponse(CompletedTaskStatusMixin, LibrarySyncCreativesSuccess, ProtocolEnvelope):
+class SyncCreativesResponse(LibrarySyncCreativesSuccess, ProtocolEnvelope):
     """Extends library SyncCreativesResponse success variant.
 
     adcp 3.9: SyncCreativesResponse is now a union TypeAlias (not RootModel).
@@ -580,18 +579,17 @@ class SyncCreativesResponse(CompletedTaskStatusMixin, LibrarySyncCreativesSucces
 
     ``ProtocolEnvelope`` IS INHERITED HERE AS A LOCAL WORKAROUND, and it should not have to
     be. ``creative/sync-creatives-response.json`` composes the envelope into the whole
-    response with ``allOf``, so every arm carries its eleven fields -- but the SDK's generated
+    response with ``allOf``, so every branch carries its eleven fields -- but the SDK's generated
     ``SyncCreativesResponse1`` (this class's parent) inherits ``AdcpVersionEnvelope`` alone.
-    The cause is not the code generator: ``scripts/post_generate_fixes.py`` in
-    adcp-client-python re-emits the ``oneOf``-armed response modules by hand and attaches
-    ``ProtocolEnvelope`` only when the arm is the ``submitted`` one, never reading the root
-    ``allOf``. The TypeScript SDK at the same 3.1.1 pin gets it right, intersecting the
-    envelope across every arm.
+    At adcp 6.6 that is true of 19 of the 24 ``*SuccessResponse`` aliases: the five that DO
+    inherit are the ones whose response schema has no ``oneOf``, so the alias resolves to the
+    root class and picks the base up from the root ``allOf``. Filed upstream as
+    adcontextprotocol/adcp-client-python#1136.
 
     Without this base, nine of the eleven envelope fields are untyped here and reach the wire
     only as pydantic extras -- ``replayed`` among them, which is why a replayed sync used to
-    go out with no marker at all. Delete this base the day the SDK's success arms compose the
-    envelope; ``ProtocolEnvelope`` is exported and correct, only the arms fail to inherit it.
+    go out with no marker at all. Delete this base the day the SDK's success branches compose the
+    envelope; ``ProtocolEnvelope`` is exported and correct, only the branches fail to inherit it.
 
     adcp 6.6 restored the fields SDK 5.7 had collapsed off the success envelope:
     dry_run, context (ContextObject|None) and ext (ExtensionObject|None) are all
@@ -602,7 +600,7 @@ class SyncCreativesResponse(CompletedTaskStatusMixin, LibrarySyncCreativesSucces
     Design decision : error variant never constructed.
     """
 
-    # Protocol-envelope `status` comes from CompletedTaskStatusMixin (composed above):
+    # Protocol-envelope `status` comes from ProtocolEnvelope (composed above):
     # REQUIRED on every task response envelope, a sibling field at the MCP/REST wire
     # root (not nested under a "payload" key). This class only ever represents a
     # synchronously-completed sync (the error/submitted branches are never constructed

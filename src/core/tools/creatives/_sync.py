@@ -165,7 +165,7 @@ def sync_creatives(
     registry = get_creative_agent_registry()
     all_formats = run_async_in_sync_context(registry.list_all_formats(tenant_id=tenant["tenant_id"]))
 
-    # ONE write path for both arms: dry_run rolls this transaction back on clean
+    # ONE write path for both branches: dry_run rolls this transaction back on clean
     # exit instead of committing it (BaseUoW), so preview and live run identical
     # resolve/validate/write code and a preview's reads see its own flushed rows
     # (sync-creatives-request.json#/properties/dry_run @ v3.1.1).
@@ -437,7 +437,7 @@ def sync_creatives(
                     )
 
         # Approval workflow steps join THIS transaction.
-        # No dry_run condition: the identical write path runs on both arms and
+        # No dry_run condition: the identical write path runs on both branches and
         # a preview's rollback discards the steps with the creatives, so a
         # preview now exercises the step/mapping write instead of skipping it.
         # Ordering: BaseUoW.__exit__ commits and only THEN drains after_commit,
@@ -478,7 +478,7 @@ def sync_creatives(
             stack.close()
 
         # Process assignments (spec-compliant: creative_id → package_ids mapping).
-        # ONE mechanism, one call site, both arms: the same resolution,
+        # ONE mechanism, one call site, both branches: the same resolution,
         # validation, strict-raise, upsert, weight normalization and media-buy
         # status transition run either way — dry_run differs only in which
         # transaction they run in and that it is discarded.

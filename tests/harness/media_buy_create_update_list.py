@@ -15,8 +15,8 @@ create. Inheriting both linearizes to list -> update -> create, so a third copy 
 either discriminator would be duplication (CLAUDE.md DRY invariant).
 
 REST needs no routing logic here either, for the same reason: ``MediaBuyCreateListEnv``
-switches the endpoint, body builder and response parser for the list arm, and
-``MediaBuyDualEnv`` does the same for the update arm. The MRO below linearizes them in
+switches the endpoint, body builder and response parser for the list branch, and
+``MediaBuyDualEnv`` does the same for the update branch. The MRO below linearizes them in
 that order, so all three verbs reach their own route — which they must, now that
 ``_NO_REST_UC_TAG_PREFIXES`` is empty and every UC-019 scenario is parametrized on
 rest and e2e_rest.

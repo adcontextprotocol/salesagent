@@ -374,7 +374,7 @@ class TestCreativeActionEnumThroughSync:
         test_creative_validation_rest_obligations.py.
 
         What this obligation is about is the ACTION ENUM: that a creative the sync cannot
-        validate comes back as ``failed`` rather than being dropped. That arm is still
+        validate comes back as ``failed`` rather than being dropped. That branch is still
         reachable -- by a SPEC-LEGAL creative whose format the registry does not know -- so
         it is reached that way here. The assertion is also unconditional now; it was
         ``if failed: assert failed[0].action == "failed"``, which passed whether or not

@@ -358,7 +358,7 @@ def test_a_bearer_row_delivers_the_header_and_an_unsigned_body(seam_call, scheme
     """200 + Bearer: ``Authorization`` present, body UNSIGNED.
 
     Signing is gated by the SCHEME, never by "a credential is lying around" —
-    this row holds the very credential the HMAC arm signs with. A seam that asks
+    this row holds the very credential the HMAC branch signs with. A seam that asks
     the second question attaches HMAC headers to a receiver expecting a plain
     bearer POST.
 

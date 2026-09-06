@@ -609,7 +609,7 @@ def view_gam_line_item(tenant_id, line_item_id):
                 "gam_line_item_viewer.html",
                 tenant={"tenant_id": tenant_obj.tenant_id, "name": tenant_obj.name},
                 tenant_id=tenant_id,
-                # Prefills the viewer's input and arms its auto-load fetch —
+                # Prefills the viewer's input and branches its auto-load fetch —
                 # without it the page rendered permanently empty.
                 line_item_id=line_item_id,
                 line_item=line_item,

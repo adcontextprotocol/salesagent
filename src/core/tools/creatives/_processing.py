@@ -50,7 +50,7 @@ class PriorCreativeState:
     """The values an update is compared AGAINST: the persisted row, pre-update.
 
     Snapshotted before the row is mutated, so ``comparison_changes`` can report
-    what an update actually changed. There is one source and one arm --
+    what an update actually changed. There is one source and one branch --
     ``dry_run`` no longer builds a parallel "previewed" state (#1721: it is a
     transaction-disposal decision at the UoW boundary), so the second
     constructor this class used to carry is gone with it.
@@ -78,7 +78,7 @@ def comparison_changes(creative: CreativeAsset, prior: PriorCreativeState, forma
     with, which is what makes an update's reported ``changes`` derivable from a
     before/after pair rather than from the mutation code. The ``name`` quirk is preserved exactly as the live path had it: a
     ``None`` incoming name that differs from the prior one still reports ``name``
-    as changed even though the live arm assigns nothing (the assignment keeps its
+    as changed even though the live branch assigns nothing (the assignment keeps its
     ``is not None`` guard at the call site).
     """
     changes: list[str] = []
@@ -104,7 +104,7 @@ def build_update_sync_result(
     agent_derived_changes: Sequence[str] = (),
     internal_status: str | None = None,
 ) -> SyncCreativeResult:
-    """The ONE place an ``updated`` sync result is built, for both arms.
+    """The ONE place an ``updated`` sync result is built, for both branches.
 
     Order is load-bearing: ``[name?, format?] + agent-derived + always-changed``
     reproduces the live path's list byte for byte, duplicates included when the
@@ -175,13 +175,13 @@ def _defer_ai_review(
     The job opens its OWN AdminCreativeUoW, commits a review verdict, and then
     sends Slack and the push webhook -- none of it inside this transaction, so a
     rollback cannot reach any of it. Registering it on the unit of work instead
-    of calling it here means the preview arm needs no gate: a preview rolls back,
+    of calling it here means the preview branch needs no gate: a preview rolls back,
     the queue is discarded, and nothing was submitted.
 
     It also fixes an ordering bug that had nothing to do with previews. This used
     to flush and submit inline, but flush() is not commit() and the job reads
-    through its own session -- so on the create arm the row might not exist yet,
-    and on the update arm the job read PRE-update state and committed a verdict
+    through its own session -- so on the create branch the row might not exist yet,
+    and on the update branch the job read PRE-update state and committed a verdict
     over it. Deferring past the commit removes the race by construction.
 
     Captures scalars only. Holding the ORM row here would hand a detached
@@ -252,9 +252,9 @@ def _update_existing_creative(
     existing_creative.updated_at = now
 
     # Snapshot what this update is compared against BEFORE mutating the row, and
-    # derive the comparison-based part of `changes` from it. The dry_run arm runs
+    # derive the comparison-based part of `changes` from it. The dry_run branch runs
     # the identical comparison against the state an earlier entry previewed, which
-    # is the only way the two arms can agree — see build_update_sync_result.
+    # is the only way the two branches can agree — see build_update_sync_result.
     prior = PriorCreativeState.from_row(existing_creative)
 
     # `changes` here accumulates ONLY the agent-derived entries (generative build,
@@ -598,7 +598,7 @@ def _update_existing_creative(
         except OutboundError as outbound_error:
             # A refused/undeliverable egress request is already correctly classified
             # by the seam — delegate rather than laundering it into the generic
-            # transient arm below. This arm MUST precede the typed arm: both
+            # transient branch below. This branch MUST precede the typed branch: both
             # OutboundError subclasses are also AdCPSalesAgentError subclasses
             # (OutboundRequestBlocked/AdCPBlockedUrlError,
             # OutboundDeliveryFailed/AdCPServiceUnavailableError), so a typed catch
@@ -612,7 +612,7 @@ def _update_existing_creative(
                 logger=logger,
             )
         except AdCPSalesAgentError as typed_error:
-            # GENERALIZES the AdCPConfigurationError arm above. That arm was added so a
+            # GENERALIZES the AdCPConfigurationError branch above. That branch was added so a
             # missing GEMINI_API_KEY would not read as a transient creative-agent outage;
             # the same is true of every other typed error the registry raises. A
             # rate limit degraded to SERVICE_UNAVAILABLE tells the buyer to retry
@@ -958,7 +958,7 @@ def _create_new_creative(
         except OutboundError as outbound_error:
             # A refused/undeliverable egress request is already correctly classified
             # by the seam — delegate rather than laundering it into the generic
-            # transient arm below. This arm MUST precede the typed arm: both
+            # transient branch below. This branch MUST precede the typed branch: both
             # OutboundError subclasses are also AdCPSalesAgentError subclasses
             # (OutboundRequestBlocked/AdCPBlockedUrlError,
             # OutboundDeliveryFailed/AdCPServiceUnavailableError), so a typed catch

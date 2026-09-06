@@ -376,11 +376,11 @@ class GAMReportingService:
                     max_attempts=1,
                 )
             except OutboundError as e:
-                # `raise_for_status()` and the two `requests.exceptions` arms this
+                # `raise_for_status()` and the two `requests.exceptions` branches this
                 # replaces are subsumed, not dropped: the seam already raises
                 # OutboundError on a non-2xx terminal status and on a transport
                 # timeout, and the mapper below turns both into the same typed
-                # AdCP error those arms were migrated to raise -- with the status
+                # AdCP error those branches were migrated to raise -- with the status
                 # classification they could not carry.
                 # Delegates instead of rewrapping, the same way kevel.py:782 and
                 # triton_digital.py:707 did at this migration. The bare Exception
@@ -424,9 +424,9 @@ class GAMReportingService:
 
         except AdCPSalesAgentError:
             # The typed error IS the answer. Every typed error raised inside this
-            # body -- the job-failed and timeout arms above, the URL refusal, the
+            # body -- the job-failed and timeout branches above, the URL refusal, the
             # parse failure, and whatever `raise_mapped_outbound_error` just
-            # classified -- already names its own fault. Without this arm the
+            # classified -- already names its own fault. Without this branch the
             # catch-all below relabels them all AdCPAdapterError, and the download
             # branch's migration off `raise Exception(...)` buys nothing
             # observable: the buyer sees the same relabelled string either way,

@@ -19,7 +19,7 @@ fixture resolves ``e2e_stack``).
 
   1. ``pytest_generate_tests`` must parametrize every BR-ADMIN-ACCOUNTS
      scenario over ``admin_integration`` (always) plus ``e2e_admin`` (when
-     ``BDD_E2E_ENABLED=true``) — the same condition the AdCP arm uses for
+     ``BDD_E2E_ENABLED=true``) — the same condition the AdCP branch uses for
      ``e2e_rest``.
   2. ``_harness_env`` must never pin a branch's DB scope with a hardcoded
      ``getfixturevalue("integration_db")``. ``_db_scope_for`` is the single
@@ -142,7 +142,7 @@ def test_admin_scenario_parametrizes_both_transports_when_e2e_enabled(
 ) -> None:
     """With BDD_E2E_ENABLED=true, the same scenario also grades e2e_admin.
 
-    This is the condition the AdCP arm uses for e2e_rest, and it is decided at
+    This is the condition the AdCP branch uses for e2e_rest, and it is decided at
     collection — no live stack is needed to assert it.
     """
     monkeypatch.setenv("BDD_E2E_ENABLED", "true")

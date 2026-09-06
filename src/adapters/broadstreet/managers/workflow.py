@@ -86,7 +86,7 @@ class BroadstreetWorkflowManager(BaseWorkflowManager):
         # Build campaign name
         # Through the canonical accessor: `brand` is declared as the widened union
         # (BrandReference | dict | str), so reading `.domain` off it is wrong on two of
-        # the three arms.
+        # the three branches.
         brand_name = brand_key_parts(request.brand)[0] or "Unknown Brand"
         campaign_name = f"{brand_name} - {start_time.strftime('%Y%m%d')}"
         if request.po_number:

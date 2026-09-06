@@ -433,7 +433,7 @@ class WebhookDeliveryService:
         # ONE conclusion per config. The outcome arrives from the
         # delivery function; what to DO about it — write it down, feed
         # the breaker, count it — is decided here, once, for every kind.
-        # Splitting that across the delivery function's arms is how this
+        # Splitting that across the delivery function's branches is how this
         # sender ended up feeding a breaker but recording nothing.
         outcome = self._deliver_with_backoff(endpoint_key, queue)
         if outcome is None:
@@ -624,9 +624,9 @@ class WebhookDeliveryService:
             # The pinned transport's own wrong-host guard raises a bare RuntimeError,
             # which belongs here rather than escaping into the poller thread.
             logger.error("Unexpected error delivering to %s: %s", safe_url, e, exc_info=True)
-            # No outcome kind covers a NON-transport failure, so this arm builds
+            # No outcome kind covers a NON-transport failure, so this branch builds
             # the one it means. It no longer feeds the breaker itself — every kind
-            # reaches the caller's single conclusion, so no arm can be the one that
+            # reaches the caller's single conclusion, so no branch can be the one that
             # forgets.
             return WebhookDeliveryOutcome.unexpected(type(e).__name__)
 

@@ -7,7 +7,7 @@ commits a review verdict, and then sends Slack and the push webhook — so
 "the preview rolls back" is not an answer for it.
 
 BR-UC-006-sync-creatives.feature has no dry_run scenario at all and all of its
-ai-powered rows are live-arm, so nothing upstream covers this intersection.
+ai-powered rows are live-branch, so nothing upstream covers this intersection.
 Retire this file together with the local feature once adcp-req grows a
 dry_run x approval_mode partition.
 """

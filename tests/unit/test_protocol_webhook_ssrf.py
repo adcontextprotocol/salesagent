@@ -91,7 +91,7 @@ def _egress_hatches(*, private: bool) -> Iterator[None]:
     """Pin the private-range outbound escape hatch for the block.
 
     A refusal case that leaves it ambient is graded by whichever gate the
-    surrounding shell happened to arm, so a test meaning "production posture"
+    surrounding shell happened to branch, so a test meaning "production posture"
     would silently grade nothing. Same spelling as ``LocalOriginMixin`` and the
     seam's own suite. There is no ``insecure`` hatch anymore (salesagent-e6h0):
     the scheme gate is unconditional in production.
@@ -316,7 +316,7 @@ def test_reject_unsafe_webhook_registration_url_raises_validation_error(url: str
     reason it discards the computed cause.
     """
     # Posture pinned explicitly rather than left ambient: a refusal case that
-    # inherits whichever hatch the surrounding shell happened to arm is graded by
+    # inherits whichever hatch the surrounding shell happened to branch is graded by
     # a gate the case did not choose. Same spelling as the send-path cases above.
     with _egress_hatches(private=False), pytest.raises(AdCPUrlNotAllowedError) as exc_info:
         reject_unsafe_webhook_registration_url(url, field="reporting_webhook.url")

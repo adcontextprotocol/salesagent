@@ -73,9 +73,9 @@ def test_response_model_carries_the_protocol_envelope(tool_name: str) -> None:
     contract. Nine of our models inherit the class through their SDK parent. The other five
     had to name it:
 
-    * `sync_creatives`, `sync_accounts` -- the SDK's generated success ARM drops the
-      composition (a hand-written post-generation step attaches `ProtocolEnvelope` only to the
-      `submitted` arm), so they inherit it locally until that is fixed upstream;
+    * `sync_creatives`, `sync_accounts` -- the SDK's generated success BRANCH drops the
+      composition, as it does on 19 of the 24 `*SuccessResponse` aliases at adcp 6.6, so they
+      inherit it locally until adcontextprotocol/adcp-client-python#1136 is fixed;
     * `create_media_buy`, `update_media_buy` -- their wrapper `TaskResultEnvelope` is ours and
       descends from no SDK response, so it names the base directly;
     * `complete_task` -- the pin describes no such task, so there is no schema to inherit from.

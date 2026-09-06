@@ -68,11 +68,11 @@ Feature: BR-UC-019 Query Media Buys
     Then the response envelope carries status completed
     And the response should be schema-valid against media-buy/get-media-buys-response.json
     # core/protocol-envelope.json marks `status` REQUIRED on every task response
-    # envelope, and get-media-buys-response.json composes that arm via a top-level
+    # envelope, and get-media-buys-response.json composes that branch via a top-level
     # allOf — so the requirement reaches this response through composition rather
     # than by being spelled out on it. That is exactly how it went missing in a
     # real implementation: the response type declared no status at all and no
-    # transport noticed, because nothing graded the composed arm.
+    # transport noticed, because nothing graded the composed branch.
 
   @T-UC-019-main-filter-ids @main-flow @filtering
   Scenario: Query media buys by specific media_buy_ids

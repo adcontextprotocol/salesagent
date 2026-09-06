@@ -31,7 +31,6 @@ from pydantic import ConfigDict, model_validator
 from src.core.config import get_pydantic_extra_mode
 from src.core.schemas._base import (
     AlwaysIncludeFieldsMixin,
-    CompletedTaskStatusMixin,
     NestedModelSerializerMixin,
     SalesAgentBaseModel,
     validate_idempotency_key_shape,
@@ -203,7 +202,6 @@ class SyncResponseAccount(SalesAgentBaseModel):
 
 
 class SyncAccountsResponse(
-    CompletedTaskStatusMixin,
     NestedModelSerializerMixin,
     LibrarySyncAccountsSuccess,  # type: ignore[misc]
     ProtocolEnvelope,
@@ -215,9 +213,10 @@ class SyncAccountsResponse(
     we subclass the success variant directly.
 
     ``ProtocolEnvelope`` IS INHERITED HERE AS A LOCAL WORKAROUND, for the same reason and with
-    the same expiry as ``SyncCreativesResponse`` -- see that class. The pinned
+    the same expiry as ``SyncCreativesResponse`` -- see that class, and
+    adcontextprotocol/adcp-client-python#1136. The pinned
     ``account/sync-accounts-response.json`` composes the envelope with ``allOf``; the SDK's
-    generated success arm does not inherit it, so without this base nine of its eleven fields
+    generated success branch does not inherit it, so without this base nine of its eleven fields
     are untyped and reach the wire only as pydantic extras.
 
     SDK 5.7 had collapsed the success envelope to just `status`, and this class
@@ -228,15 +227,15 @@ class SyncAccountsResponse(
 
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
-    # Protocol-envelope `status` comes from CompletedTaskStatusMixin (composed above).
-    # account/sync-accounts-response.json composes the envelope arm via a top-level
+    # Protocol-envelope `status` comes from ProtocolEnvelope (composed above).
+    # account/sync-accounts-response.json composes the envelope branch via a top-level
     # allOf, and this class is a TEMPORARY adopter: at adcp 6.6
     # SyncAccountsSuccessResponse has no ProtocolEnvelope in its MRO and no status
     # field, so the mixin is ADDITIVE here and deletes as a no-op the day the SDK
     # ships the field.
     #
     # "completed" is invariant rather than a TaskStatus: the pinned response's oneOf
-    # arms are [['accounts'], ['errors']] with NO submitted arm, the error variant is
+    # branches are [['accounts'], ['errors']] with NO submitted branch, the error variant is
     # never constructed here, and sync_accounts models approval PER ACCOUNT
     # (src/core/tools/accounts.py) rather than per task — so the task itself always
     # completes. Same shape and same obsolescence condition as SyncCreativesResponse

@@ -730,7 +730,7 @@ def _partition_agent_asset_types(ctx: dict, partition: str) -> None:
         _call_raw(ctx, asset_types=[])
     else:
         # Valid asset types: image, video, audio, text, html, javascript, url.
-        # Still dispatched raw: this arm also receives the rows the Examples table
+        # Still dispatched raw: this branch also receives the rows the Examples table
         # marks invalid (e.g. "vast", valid in the media-buy variant but not for a
         # creative agent), so the model must not get to pre-judge them.
         _call_raw(ctx, asset_types=[partition])

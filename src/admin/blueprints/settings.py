@@ -207,7 +207,7 @@ def update_general(tenant_id):
 
                     # Check if virtual host is already in use by another tenant.
                     # The predicate depends on the winner's identity, so the race
-                    # arm re-runs it rather than repeating a canned message.
+                    # branch re-runs it rather than repeating a canned message.
                     def taken_by_another_tenant():
                         existing_tenant = TenantLookupRepository(db_session).find_by_virtual_host(virtual_host)
                         if existing_tenant and existing_tenant.tenant_id != tenant_id:
@@ -220,7 +220,7 @@ def update_general(tenant_id):
 
                     # On conflict this returns before the trailing commit, so the
                     # other form fields dirtied above are never written — exactly
-                    # what the pre-check arm has always done.
+                    # what the pre-check branch has always done.
                     conflict = resolve_or_write(
                         db_session,
                         conflict=taken_by_another_tenant,

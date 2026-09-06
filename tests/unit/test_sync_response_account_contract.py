@@ -23,7 +23,7 @@ from src.core.schemas import SyncResponseAccount
 # created/updated/unchanged results. billing_entity added salesagent-gcze: the
 # response account item carries it "echoed from the request ... Bank details are
 # omitted (write-only)" (v3.1.1 sync-accounts-response.json), and before that it was
-# accepted on the wire by both request arms and then silently dropped.
+# accepted on the wire by both request branches and then silently dropped.
 #
 # This set is an INVENTORY pin, not a behavioral assertion: it exists so a field
 # cannot be added to the model without someone deciding it belongs on the buyer

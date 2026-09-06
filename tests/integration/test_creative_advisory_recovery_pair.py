@@ -53,7 +53,7 @@ the wire contract on purpose-built receivers.
 What each class here grades:
 
 1. ``TestConfigurationErrorAdvisoryCarriesThePinnedPair`` — the two
-   ``except AdCPConfigurationError`` arms in ``_processing.py`` (update path and
+   ``except AdCPConfigurationError`` branches in ``_processing.py`` (update path and
    create path). Both intend TERMINAL — their own comment says "Surface it
    honestly so the buyer does not retry a misconfiguration" — and they say so by
    CHOOSING ``CONFIGURATION_ERROR``, whose pinned recovery is ``terminal``.
@@ -62,7 +62,7 @@ What each class here grades:
    the buyer read a self-contradicting pair, and a buyer classifying by code was
    told to retry a misconfiguration forever.
 2. ``TestNoPreviewsAdvisoryIsACorrectableRejection`` — the "creative agent
-   returned no previews and the creative carries no media_url" arm. This suite
+   returned no previews and the creative carries no media_url" branch. This suite
    used to demand ``SERVICE_UNAVAILABLE``/``transient`` here, because
    ``_failed_sync_result`` had a ``code`` parameter defaulting to that value and
    this site passed neither code nor recovery. That expectation pinned a
@@ -80,7 +80,7 @@ What each class here grades:
    ``correctable`` is what the buyer can act on — supply a ``media_url``, which
    is exactly what the sibling branch two lines above accepts.
 3. ``TestTypedErrorForwardingKeepsTheTriple`` — the ``except AdCPSalesAgentError``
-   arm in ``_sync.py``, which hands the EXCEPTION to ``_failed_sync_result`` so
+   branch in ``_sync.py``, which hands the EXCEPTION to ``_failed_sync_result`` so
    the advisory carries that error's own code and field.
 
    Nothing forwards a recovery any more — ``_sync.py`` says so at the call site
@@ -214,16 +214,16 @@ def _assert_suggestion(advisory: dict[str, Any], *, suggestion: str) -> None:
 
 
 def _assert_configuration_advisory(advisory: dict[str, Any], *, creative_id: str, absent: str) -> None:
-    """Grade a seller-misconfiguration advisory, identically on both arms.
+    """Grade a seller-misconfiguration advisory, identically on both branches.
 
     Shared rather than written twice because the obligation is that the two
-    ``except AdCPConfigurationError`` arms are INDISTINGUISHABLE on the wire:
+    ``except AdCPConfigurationError`` branches are INDISTINGUISHABLE on the wire:
     the same fault on the same tool cannot classify differently depending on
     whether the creative already existed. Two copies could drift apart and
     still both be green, which is the thing being prevented.
 
     ``details`` is asserted whole because it is what proves this scenario drove
-    a configuration arm and not a neighbouring one — those arms are the only
+    a configuration branch and not a neighbouring one — those branches are the only
     sites that attach ``ConfigurationDetails(creative_id=...)``, and no other
     per-item failure in ``_processing.py`` can produce that exact block.
 
@@ -243,8 +243,8 @@ def _assert_configuration_advisory(advisory: dict[str, Any], *, creative_id: str
     _assert_suggestion(advisory, suggestion=_PINNED_CONFIGURATION_ERROR_SUGGESTION)
     assert advisory.get("details") == {"creative_id": creative_id}, (
         f"advisory.details={advisory.get('details')!r}, expected {{'creative_id': {creative_id!r}}} — "
-        "the configuration arms attach ConfigurationDetails(creative_id=...) and nothing else does, "
-        "so this is what proves the scenario drove the arm it claims to grade"
+        "the configuration branches attach ConfigurationDetails(creative_id=...) and nothing else does, "
+        "so this is what proves the scenario drove the branch it claims to grade"
     )
     assert absent not in json.dumps(advisory), (
         f"operator diagnostic {absent!r} reached the buyer's wire in {advisory!r} — it belongs on "
@@ -255,7 +255,7 @@ def _assert_configuration_advisory(advisory: dict[str, Any], *, creative_id: str
 class TestConfigurationErrorAdvisoryCarriesThePinnedPair:
     """A seller misconfiguration must reach the buyer as CONFIGURATION_ERROR/terminal.
 
-    Both arms used to emit ``SERVICE_UNAVAILABLE`` (the ``_failed_sync_result``
+    Both branches used to emit ``SERVICE_UNAVAILABLE`` (the ``_failed_sync_result``
     default) with a hand-typed ``recovery="terminal"``. A buyer that classifies
     by code — which the pinned enum tells it to do for a code it recognizes —
     read "the seller is temporarily unavailable, retry with backoff" about a
@@ -269,12 +269,12 @@ class TestConfigurationErrorAdvisoryCarriesThePinnedPair:
         """The creative agent raises AdCPConfigurationError on the create-path dial.
 
         A registry that refuses its own configured endpoint raises exactly this
-        class (``raise_mapped_outbound_error``'s operator arm,
+        class (``raise_mapped_outbound_error``'s operator branch,
         ``src/core/helpers/outbound_error_mapping.py`` :171-178), so this is the
         shape a real dial failure has when it reaches ``_create_new_creative``'s
-        ``except AdCPConfigurationError`` arm (``_processing.py`` :941-955).
+        ``except AdCPConfigurationError`` branch (``_processing.py`` :941-955).
 
-        The injected instance is built the way that arm builds it — the endpoint
+        The injected instance is built the way that branch builds it — the endpoint
         sentence on ``internal_detail``, keyword-only, no positional message.
         ``AdCPSalesAgentError`` has no ``message`` parameter at all: the sentence
         is a read-only property over ``CODE_TABLE``, so a raise site cannot
@@ -303,13 +303,13 @@ class TestConfigurationErrorAdvisoryCarriesThePinnedPair:
 
     @pytest.mark.parametrize("transport", _ALL_TRANSPORTS, ids=lambda t: t.value)
     def test_update_path_missing_generative_key(self, integration_db, transport):
-        """Production's OWN AdCPConfigurationError raise, on the update-path arm.
+        """Production's OWN AdCPConfigurationError raise, on the update-path branch.
 
         No injection: a generative format with no GEMINI_API_KEY configured is
         the exact condition ``_update_existing_creative`` raises
         ``AdCPConfigurationError`` for (``_processing.py`` :348), and it is the
-        deployment misconfiguration the ``except`` arm's comment names
-        (:579-596). It must classify identically to the create-path arm
+        deployment misconfiguration the ``except`` branch's comment names
+        (:579-596). It must classify identically to the create-path branch
         (:943-957) — the same fault on the same tool cannot carry two different
         pairs depending on whether the creative already existed.
 
@@ -438,7 +438,7 @@ class TestNoPreviewsAdvisoryIsACorrectableRejection:
 class TestTypedErrorForwardingKeepsTheTriple:
     """A typed AdCPError's code, recovery AND field all reach the advisory.
 
-    ``_sync.py``'s ``except AdCPSalesAgentError`` arm (:430-461) is the advisory
+    ``_sync.py``'s ``except AdCPSalesAgentError`` branch (:430-461) is the advisory
     path whose values come from the raised error rather than from the call
     site's literals — it hands the EXCEPTION to ``_failed_sync_result``. All
     three travel together: without ``field``, a request carrying up to 100
@@ -447,7 +447,7 @@ class TestTypedErrorForwardingKeepsTheTriple:
     a fault in their own document.
 
     Nothing forwards a recovery on this path, and this docstring must not
-    pretend otherwise: the arm's own comment says "Nothing here forwards a
+    pretend otherwise: the branch's own comment says "Nothing here forwards a
     recovery: it follows from the code", and ``Error`` has no settable
     ``recovery`` for a caller to hand one to. What this class pins is that the
     triple ARRIVES on the wire — the code the exception class names, the pin's

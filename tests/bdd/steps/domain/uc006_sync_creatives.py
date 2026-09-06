@@ -2421,7 +2421,7 @@ def then_assignment_result_should_be(ctx: dict, outcome: str) -> None:
             f"Strict mode with non-existent package should abort with error, but production succeeded. Response: {resp}"
         )
         # Was isinstance(error, (AdCPSalesAgentError, Exception)) -- VACUOUS, since every
-        # exception satisfies the second arm. Graded on the wire code instead
+        # exception satisfies the second branch. Graded on the wire code instead
         # (salesagent-3dawm.18).
         result = ctx.get("result")
         wire_code = result.wire_error_code() if result is not None else None
@@ -3261,7 +3261,7 @@ def then_background_ai_review_submitted(ctx: dict) -> None:
 
 # --- local-uc006-dry-run-out-of-transaction-effects: the AI-review submit seam ---
 #
-# The ai-powered arm of _processing.py hands a job to `_ai_review_executor`; that
+# The ai-powered branch of _processing.py hands a job to `_ai_review_executor`; that
 # job opens its OWN AdminCreativeUoW, COMMITS `status` + `data["ai_review"]`, and
 # then sends Slack and the push webhook. None of it is inside the sync
 # transaction, so a preview cannot undo it by rolling back — the submit itself is
@@ -3293,7 +3293,7 @@ def when_preview_creative_dry_run(ctx: dict) -> None:
 
 @then("the AI review submissions name exactly the synced creative")
 def then_ai_review_submitted_for_synced_creative(ctx: dict) -> None:
-    """Control: the live ai-powered arm submits one review, for THIS creative.
+    """Control: the live ai-powered branch submits one review, for THIS creative.
 
     Naming the creative_id (rather than counting calls) is what makes the sibling
     preview scenario's empty-list assertion non-vacuous: a wrong patch target or a
@@ -3320,15 +3320,15 @@ def then_no_ai_review_submitted(ctx: dict) -> None:
 
 @then("each AI review submission observes the creative exactly as the sync committed it")
 def then_ai_review_observes_committed_creative(ctx: dict) -> None:
-    """The live-arm half of the seam: the effect runs AFTER its transaction commits.
+    """The live-branch half of the seam: the effect runs AFTER its transaction commits.
 
     The submitted job opens its own session, so committed state is the only
     state it can read. CreativeSyncEnv records, at each submit, what an
     INDEPENDENT connection sees; this compares that against what the finished
     request actually left on the row. They are the same read of the same row, so
-    equality is the whole invariant, and each arm fails it differently while the
-    submit stays inside the transaction: the create arm's row is not there at all
-    (``None``), the update arm's is there carrying its PRE-update state.
+    equality is the whole invariant, and each branch fails it differently while the
+    submit stays inside the transaction: the create branch's row is not there at all
+    (``None``), the update branch's is there carrying its PRE-update state.
     """
     _assert_success_response(ctx)
     observed = ctx["env"].ai_review_commit_observations
@@ -3408,7 +3408,7 @@ def _persisted_creative_fingerprints(ctx: dict) -> dict[str, tuple]:
 
     Not the id SET. An id set can only see a row being ADDED, so a preview that
     commits an in-place UPDATE to a row that already existed is invisible to it
-    -- and the update arm is exactly where that happens. Measured: with the
+    -- and the update branch is exactly where that happens. Measured: with the
     transaction disposal inverted, the seeded rows came back carrying
     generative_build_result / preview_response and an id-set oracle still passed.
     """
@@ -3430,10 +3430,10 @@ def given_creative_reaching_the_agent(ctx: dict, creative_state: str, format_kin
     _processing.py partition on two independent dimensions, and a payload only
     ever reaches one cell:
 
-        new      x generative  -> build_creative   (create arm)
-        new      x static      -> preview_creative (create arm)
-        existing x generative  -> build_creative   (update arm)
-        existing x static      -> preview_creative (update arm)
+        new      x generative  -> build_creative   (create branch)
+        new      x static      -> preview_creative (create branch)
+        existing x generative  -> build_creative   (update branch)
+        existing x static      -> preview_creative (update branch)
 
     Which is why one scenario cannot grade all four: an outline over both
     dimensions is the only shape that reaches every site. ``static`` here means
@@ -3462,7 +3462,7 @@ def given_creative_reaching_the_agent(ctx: dict, creative_state: str, format_kin
     ctx["expected_creative_ids"] = [creative_id]
 
     if creative_state == "existing":
-        # The update arm is unreachable for a creative that is not already on
+        # The update branch is unreachable for a creative that is not already on
         # file, so two of the four sites can only be graded from a seeded row.
         given_creative_already_exists(ctx)
 
@@ -3476,7 +3476,7 @@ def given_creative_reaching_the_agent(ctx: dict, creative_state: str, format_kin
 def then_no_creative_agent_request(ctx: dict) -> None:
     """A preview must not fire a request at a creative agent's endpoint.
 
-    Same rule the accounts arm states for activation proofs
+    Same rule the accounts branch states for activation proofs
     (src/core/tools/accounts.py: "a preview must not fire a request at a buyer's
     endpoint") and that plan section 6 keeps _resolve_activation_proofs' own
     dry_run branch for. An outbound HTTP call is not undone by the transaction's
@@ -3502,7 +3502,7 @@ def then_creative_agent_called(ctx: dict) -> None:
     _assert_success_response(ctx)
     calls = _creative_agent_calls(ctx)
     assert calls != [], (
-        "the live arm made no creative-agent call, so the preview scenario's 'no request' assertion proves nothing"
+        "the live branch made no creative-agent call, so the preview scenario's 'no request' assertion proves nothing"
     )
 
 
@@ -7371,7 +7371,7 @@ def then_committed_workflow_rows_name_synced_creatives(ctx: dict) -> None:
 
     Counts AND identities. A count alone would pass against a mapping that
     pointed at some other object, and an identity check alone would pass against
-    a second, duplicate step -- the two together are what the preview arm's
+    a second, duplicate step -- the two together are what the preview branch's
     "zero rows" assertion is measured against.
     """
     _assert_success_response(ctx)
@@ -7399,7 +7399,7 @@ def then_committed_workflow_rows_name_synced_creatives(ctx: dict) -> None:
 
 @then("no workflow step, mapping or context row is committed for the tenant")
 def then_no_committed_workflow_rows(ctx: dict) -> None:
-    """The preview arm: the write path ran, and the rollback took all of it.
+    """The preview branch: the write path ran, and the rollback took all of it.
 
     Measured against the live control above, which proves this exact payload on
     this exact tenant does produce all three rows.

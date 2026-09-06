@@ -53,7 +53,7 @@ class TestSetupDefaultAccount:
     def test_reference_is_the_account_id_form_of_the_oneOf(self, integration_db):
         """core/account-ref.json is oneOf[{account_id}, {brand, operator}].
 
-        The seeded row can satisfy the account_id arm exactly, so that is the arm the
+        The seeded row can satisfy the account_id branch exactly, so that is the branch the
         harness hands out -- a brand/operator pair would be reconstructed data the DB
         never agreed to.
         """

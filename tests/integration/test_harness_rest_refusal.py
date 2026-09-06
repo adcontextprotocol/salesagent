@@ -11,10 +11,10 @@ must never be dispatched as something else. While the route did not exist, the o
 to honour it was to refuse; the inherited create builder would otherwise have done one
 of two things with a list request, measured at the time:
 
-  * ``req=`` arm: ``AttributeError: 'GetMediaBuysRequest' object has no attribute
+  * ``req=`` branch: ``AttributeError: 'GetMediaBuysRequest' object has no attribute
     'packages'``, raised inside ``_restore_creative_ids`` (media_buy_create.py:54
     via :406) — an obscure crash in a create-only helper, not a refusal.
-  * flat-kwargs arm: builds ``{"media_buy_ids": [...], "idempotency_key": ...}`` and
+  * flat-kwargs branch: builds ``{"media_buy_ids": [...], "idempotency_key": ...}`` and
     POSTs it, create-SHAPED, to the create collection ``/api/v1/media-buys``.
 
 With the route landed, the way to honour it is to dispatch the list request AT THE LIST
@@ -59,7 +59,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 @pytest.mark.requires_db
 class TestListRestDispatchReachesTheListRoute:
-    """The REST arm of the create+list env dispatches get_media_buys, not create."""
+    """The REST branch of the create+list env dispatches get_media_buys, not create."""
 
     def test_rest_list_request_reaches_the_query_route(self, integration_db):
         """A REST get_media_buys call returns a list response, not a create-shaped call.
@@ -117,7 +117,7 @@ class TestRefusalDialectIsStillGraded:
         """The refusal type is outside the reach of both launderers on the dispatch path.
 
         This is the property the choice of ``pytest.fail`` rests on, pinned so a future
-        "simplification" back to ``NotImplementedError`` (which re-arms both) cannot pass
+        "simplification" back to ``NotImplementedError`` (which re-branches both) cannot pass
         silently. Launderer (b) is additionally demonstrated end-to-end against the real
         dispatcher in ``test_weaker_refusal_dialects_are_swallowed``.
         """
@@ -189,7 +189,7 @@ class TestRefusalDialectSurvivesTheDispatcher:
 
 @pytest.mark.requires_db
 class TestNonListRestRoutingIsPreserved:
-    """The non-list arm must delegate via ``super()``, not by naming a parent class.
+    """The non-list branch must delegate via ``super()``, not by naming a parent class.
 
     ``MediaBuyCreateUpdateListEnv.__mro__`` is [CreateUpdateList, CreateList,
     ListDispatchMixin, DualEnv, CreateEnv, IntegrationEnv, BaseTestEnv], so

@@ -380,7 +380,7 @@ class AccountRepository:
         """Build the Account row a provisioning entry would create.
 
         Pure, non-persisting factory -- no DB access. THE row-construction site
-        for every caller: sync_accounts' provisioning arm and the admin create
+        for every caller: sync_accounts' provisioning branch and the admin create
         form (src/admin/blueprints/accounts.py), which used to hand-build its own
         Account with its own id mint. Two independent definitions of what an
         account row is, is how they drift (#1721).
@@ -400,7 +400,7 @@ class AccountRepository:
             operator=operator,
             principal_id=principal_id,
             # Every settable field comes from the one walk in the caller -- naming
-            # them here is what let a field be added to the re-sync arm and
+            # them here is what let a field be added to the re-sync branch and
             # forgotten at create. Serialized HERE, so the caller hands over what
             # the buyer sent and this repository decides its stored shape.
             **{field: AccountRepository.serialize_field(field, value) for field, value in created_fields.items()},

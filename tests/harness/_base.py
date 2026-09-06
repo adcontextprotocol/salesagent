@@ -915,7 +915,7 @@ class BaseTestEnv:
         wire_response = dict(artifact_data)
         # Strip protocol fields added by _serialize_for_a2a (message, success).
         # These are populated by the protocol layer per the pin's Protocol
-        # Envelope arm (see tests/helpers/adcp_schema_validator.py) — not
+        # Envelope branch (see tests/helpers/adcp_schema_validator.py) — not
         # declared on the Pydantic response model — and cause ValidationError
         # under extra="forbid" in non-production mode.
         return DeliverResult(

@@ -387,7 +387,7 @@ def then_response_error_issue(ctx: dict, keyword: str, field: str) -> None:
 
     *field* is matched against the issue POINTER by trailing segment, so
     ``billing`` matches ``/accounts/0/Accounts/billing`` without the scenario
-    having to spell out pydantic's union-arm naming.
+    having to spell out pydantic's union-branch naming.
     """
     from tests.helpers.envelope_assertions import locate_envelope_error
 

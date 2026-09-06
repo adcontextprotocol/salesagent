@@ -4,10 +4,10 @@ Covers alembic revision b2e94f7c1a03 (salesagent-0njj).
 
 Two paths, both otherwise unexercised. The integration suite builds its schema
 with ``Base.metadata.create_all``, so nothing else runs this migration's SQL at
-all; and the survey-and-abort arm only fires against a database that already
+all; and the survey-and-abort branch only fires against a database that already
 holds a collision, which by construction no other test produces.
 
-The abort arm matters more than the happy one. Accounts are source-of-truth
+The abort branch matters more than the happy one. Accounts are source-of-truth
 rows, so the migration deliberately refuses to remediate: it reports the
 colliding keys and stops, leaving the operator to decide which account survives
 (owner decision, 2026-07-27). A regression that turned that into a silent

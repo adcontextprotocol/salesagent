@@ -187,7 +187,7 @@ class TestAdminEditDoesNotOrphanTheAccount:
     def test_changing_operator_in_the_admin_form_does_not_rekey(self, integration_db):
         """Same defect via the second natural-key component the form wrote.
 
-        Lower live severity than the sandbox arm: the template already rendered
+        Lower live severity than the sandbox branch: the template already rendered
         ``operator`` readonly in edit mode, so reaching this needed a crafted
         POST rather than ordinary UI use. Readonly is client-side only, and the
         handler accepted the field -- which is why the guard belongs server-side.

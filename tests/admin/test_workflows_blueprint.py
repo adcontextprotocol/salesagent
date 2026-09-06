@@ -238,7 +238,7 @@ class TestWorkflowApprovalMovesMediaBuy:
     """
 
     def test_approve_waiting_on_creatives_bumps_revision(self, client, factory_session):
-        """The pending_creatives arm: the buy moved, and the ad server was never contacted."""
+        """The pending_creatives branch: the buy moved, and the ad server was never contacted."""
         from tests.factories import CreativeAssignmentFactory, CreativeFactory
 
         seeded = seed_pending_buy(starts_in_days=7)
@@ -260,7 +260,7 @@ class TestWorkflowApprovalMovesMediaBuy:
 
         # The whole point of holding a buy is that nothing is created downstream. An
         # order in the ad server for a buy whose creatives are unapproved is the failure
-        # this arm exists to prevent, and only the boundary can testify to it.
+        # this branch exists to prevent, and only the boundary can testify to it.
         adapter_boundary.assert_not_called()
 
         after = read_media_buy_state(seeded.tenant_id, seeded.media_buy_id, session=factory_session)
@@ -285,7 +285,7 @@ class TestWorkflowApprovalMovesMediaBuy:
         # separately when the membership was corrected.
 
     def test_approve_schedules_buy_and_bumps_revision(self, client, factory_session):
-        """The scheduled arm: a buy approved BEFORE its flight window opens.
+        """The scheduled branch: a buy approved BEFORE its flight window opens.
 
         The status this write persists is the flight-window rule's answer, not a
         constant. The sibling test below grades the inside-window answer, and the two
@@ -325,7 +325,7 @@ class TestWorkflowApprovalMovesMediaBuy:
         )
 
     def test_approve_inside_the_flight_window_activates_rather_than_schedules(self, client, factory_session):
-        """The active arm: a buy approved INSIDE its window is serving, not scheduled.
+        """The active branch: a buy approved INSIDE its window is serving, not scheduled.
 
         This is the case the route got wrong when it wrote ``scheduled`` unconditionally.
         The wire projection and the sweep corrected it downstream, which is why nothing

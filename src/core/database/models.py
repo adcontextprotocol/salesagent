@@ -985,7 +985,7 @@ class AgentAccountAccess(Base):
 # carries no commitment instant for these — on get_media_buys it is serialized as
 # PRESENT-AND-NULL, because the pinned item schema types it {"type": ["string",
 # "null"]} AND lists it in `required`. "Absent" is only true of the create
-# response's not-yet-committed arms, which omit the field entirely.
+# response's not-yet-committed branches, which omit the field entirely.
 #
 # This is the SINGLE source of truth for "seller committed", consulted by both the
 # create path and the repository's write-once confirmation stamp

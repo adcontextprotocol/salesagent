@@ -227,7 +227,7 @@ class TestGuardMetaCases:
     def test_does_not_flag_a_join_over_root_unwrapped_elements(self):
         """A guard that flagged this would forbid the very fix it demands.
 
-        The join arm walks its whole argument, so it sees the ITERATOR
+        The join branch walks its whole argument, so it sees the ITERATOR
         (``overlay.geo_countries``) even though what is stringified is ``c.root``.
         """
         source = 'def build(overlay):\n    return ",".join(c.root for c in overlay.geo_countries)\n'
@@ -249,8 +249,8 @@ class TestGuardMetaCases:
         assert find_banned_stringification_linenos(ast.parse(source)) == []
 
 
-class TestDetectorJoinArm:
-    """The detector fix this guard depends on: ``.root`` elements exempt from the join arm."""
+class TestDetectorJoinBranch:
+    """The detector fix this guard depends on: ``.root`` elements exempt from the join branch."""
 
     def test_join_over_bare_field_is_still_a_hit(self):
         tree = ast.parse('def f(t):\n    return ",".join(t.geo_countries)\n')

@@ -287,17 +287,17 @@ class ProtocolWebhookService:
     ) -> bool:
         """Book one delivery: the row, the audit entry, and the bool the caller gets.
 
-        THE single conclusion for this sender. Every arm — refused destination,
+        THE single conclusion for this sender. Every branch — refused destination,
         client error, exhausted retries, an unexpected exception, and success —
         ends here, because a refusal, a failure and a delivery differ only in
         what they KNOW (attempts, status, wording), not in what they must record.
-        An arm that concludes on its own is an arm that can be written without
+        An branch that concludes on its own is an branch that can be written without
         recording anything, which for a refusal means a misconfigured destination
         leaving no trace at all — the absence lane salesagent-gra7.1 closes.
 
         The outcome IS the conclusion: the returned bool is derived from it, not
         decided here, and the row is written from it rather than from arguments
-        each arm re-derived.
+        each branch re-derived.
         """
         response_time_ms = int((time.time() - start_time) * 1000)
 
@@ -418,8 +418,8 @@ class ProtocolWebhookService:
             # bare RuntimeError, which belongs here.
             logger.error(f"Unexpected error sending webhook for task {ctx.task_id}: {e}", exc_info=True)
             # Nothing reached the wire, and no outcome kind covers a NON-transport
-            # failure — so this arm builds the one it means: exhausted with zero
-            # attempts. The arm no longer decides what gets recorded; it only says
+            # failure — so this branch builds the one it means: exhausted with zero
+            # attempts. The branch no longer decides what gets recorded; it only says
             # what became of the delivery, and the epilogue books it.
             return self._conclude(
                 ctx=ctx,
@@ -438,7 +438,7 @@ class ProtocolWebhookService:
             # refusal as a delivery that failed on the wire. The refusal a buyer can
             # act on already happened at ingest.
             #
-            # It still concludes through the epilogue, so this arm cannot be the one
+            # It still concludes through the epilogue, so this branch cannot be the one
             # that forgets to. Both absences survive the move and are the RULING,
             # not an oversight: record_outcome maps no status for ``refused_auth``
             # (so no row), and _conclude is passed no audit_logger (so no entry).
@@ -461,7 +461,7 @@ class ProtocolWebhookService:
             # Refused before a connection was opened. It still writes a row and an
             # audit entry — a misconfigured destination that leaves no trace is
             # indistinguishable from one nobody configured. The honest attempt count
-            # (0) and the ``refused`` spelling are the recorder's, not this arm's.
+            # (0) and the ``refused`` spelling are the recorder's, not this branch's.
             # Severity carried on the outcome, not chosen here (salesagent-pldmk.39).
             logger.log(outcome.log_level, f"Webhook for task {ctx.task_id} was refused by egress policy")
         elif outcome.kind != "delivered":

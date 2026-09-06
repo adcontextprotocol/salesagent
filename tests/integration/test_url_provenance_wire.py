@@ -33,7 +33,7 @@ the variant the proof: there is no field to omit, and ``OperatorEndpoint``
 refuses a name containing ``"://"`` at construction, so the label above becomes
 unconstructible rather than hand-corrected.
 
-Where the operator arm's SENTENCE lives moved under ADR-010, and this module was
+Where the operator branch's SENTENCE lives moved under ADR-010, and this module was
 re-pointed to follow it rather than to lower its bar. Buyer-facing ``message`` is
 now a read-only function of the code (``CODE_TABLE``), so the authored
 "The configured endpoint for … is not reachable …" text moved to
@@ -96,7 +96,7 @@ _ALL_TRANSPORTS = [Transport.IMPL, Transport.A2A, Transport.REST, Transport.MCP]
 
 _FORMAT_ID = "display_300x250"
 
-# The ROLE the operator arm of ``raise_mapped_outbound_error`` names once its
+# The ROLE the operator branch of ``raise_mapped_outbound_error`` names once its
 # label is an ``OperatorEndpoint("the creative agent")`` rather than an
 # interpolated attribute read — and the logger it names it through. Under
 # ADR-010 the sentence itself is no longer buyer-visible, so the operator's log
@@ -201,7 +201,7 @@ class TestAnOperatorRefusalNamesNoEndpoint:
 
     ``sync_creatives`` dials the tenant's own registered creative agent to
     validate a creative (``_processing.py``). When the seam refuses that dial the
-    per-item error the buyer reads is the operator arm of
+    per-item error the buyer reads is the operator branch of
     ``raise_mapped_outbound_error`` — CONFIGURATION_ERROR / terminal per the
     pinned ``enumMetadata`` — built from the label the call site passed. That
     label was ``f"creative agent {getattr(format_obj, 'agent_url', None)}"``: an
@@ -214,7 +214,7 @@ class TestAnOperatorRefusalNamesNoEndpoint:
 
     * the BUYER's ``message`` is a read-only function of the code, so it is
       asserted THROUGH ``CODE_TABLE`` rather than transcribed — a refusal
-      rendered under some other code's sentence (the counterparty arm's
+      rendered under some other code's sentence (the counterparty branch's
       VALIDATION_ERROR, say) fails here;
     * the ROLE is asserted on the operator's own log line, which is where
       ``raise_mapped_outbound_error`` names ``provenance.name``;
@@ -258,7 +258,7 @@ class TestAnOperatorRefusalNamesNoEndpoint:
 
             # Asserted through the table, and only discriminating while the two
             # codes in play resolve to different text — so that is asserted too
-            # rather than assumed. The counterparty arm's VALIDATION_ERROR is the
+            # rather than assumed. The counterparty branch's VALIDATION_ERROR is the
             # misclassification this equality has to be able to catch.
             assert CODE_TABLE[ErrorCode.CONFIGURATION_ERROR].message != CODE_TABLE[ErrorCode.VALIDATION_ERROR].message
             assert error.message == CODE_TABLE[ErrorCode.CONFIGURATION_ERROR].message, (

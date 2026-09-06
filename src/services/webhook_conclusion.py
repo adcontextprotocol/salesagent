@@ -1,6 +1,6 @@
 """The one place a webhook conclusion becomes a durable row.
 
-Both senders end every arm -- refused, client error, exhausted, unexpected,
+Both senders end every branch -- refused, client error, exhausted, unexpected,
 delivered -- by writing one ``webhook_delivery_log`` row and committing it, and
 both must swallow a failure to do so: persistence here is observability, and a
 DB error must not propagate out of a function contracted ``-> bool`` and turn a

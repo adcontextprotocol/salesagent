@@ -137,7 +137,7 @@ Feature: BR-UC-011 Manage Accounts
     Then the response contains an accounts array with 1 items
     And the returned account has brand domain "acme-corp.com" and operator "acme-corp.com"
     # Graduated: _apply_list_account_filters honors req.account (AccountReference oneOf, both
-    # account_id and natural-key arms), forwarded by all 3 transports.
+    # account_id and natural-key branches), forwarded by all 3 transports.
     # AccountRef oneOf: account_id XOR natural key (brand + operator, optionally sandbox)
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/account/list-accounts-request.json pointer=/properties/account
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/core/account-ref.json pointer=/oneOf
@@ -252,11 +252,11 @@ Feature: BR-UC-011 Manage Accounts
     Then the response should be schema-valid against sync-accounts-response.json
     And the response envelope carries status completed
     # core/protocol-envelope.json marks `status` REQUIRED on every task response
-    # envelope, and sync-accounts-response.json composes that arm through a
+    # envelope, and sync-accounts-response.json composes that branch through a
     # top-level allOf -- so the requirement reaches this response by composition
     # rather than by being spelled out on it. That is how it went missing in a
     # real implementation: the response type declared no status at all, and no
-    # transport noticed, because nothing graded the composed arm.
+    # transport noticed, because nothing graded the composed branch.
     # @source repo=adcp ref=v3.1-04f59d2d5 commit=04f59d2d5 path=static/schemas/source/account/list-accounts-request.json
 
   @T-UC-011-sync-multi-brand @sync @brand-identity @partition @boundary
@@ -461,7 +461,7 @@ Feature: BR-UC-011 Manage Accounts
     # pre-existing account. A second (provisioned) entry would surface with action "created".
     # Graduated: settings-update (AccountReference) mode implemented via
     # _process_settings_update_entry (both AccountReference1/account_id and
-    # AccountReference2/natural-key arms), mode-exclusivity enforced in _impl before dispatch.
+    # AccountReference2/natural-key branches), mode-exclusivity enforced in _impl before dispatch.
     # Settings-update entry carries `account` (AccountRef); trio fields MUST be absent;
     # the seller updates settable state with no provisioning side effects
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/account/sync-accounts-request.json pointer=/properties/accounts/items/properties/account
@@ -496,7 +496,7 @@ Feature: BR-UC-011 Manage Accounts
     | acme-corp.com   | acme-corp.com | operator |
     Then the response arrives
     And the response contains error code CONFIGURATION_ERROR
-    # The DEACTIVATION arm reads brand off every account the request did not mention,
+    # The DEACTIVATION branch reads brand off every account the request did not mention,
     # to report it as closed. That read has the same seller-side-inconsistency
     # exposure as the settings-update echo -- accounts.brand is NULLABLE -- and it is
     # a SEPARATE code path: the settings-update scenario never reaches it, because a
@@ -520,7 +520,7 @@ Feature: BR-UC-011 Manage Accounts
     Then the response arrives
     And the response contains error code CONFIGURATION_ERROR
     # accounts.brand is a NULLABLE column, so a brand-less persisted row is a state the
-    # seller's own storage permits. The settings-update arm reads that row's brand to echo it
+    # seller's own storage permits. The settings-update branch reads that row's brand to echo it
     # back, and today it guards the read with a bare `assert ... "should be unreachable"`
     # (src/core/tools/accounts.py) — an AssertionError, which is not an AdCP error at all:
     # the buyer gets an untyped 500 through the generic transport lane, with no code, no
@@ -545,12 +545,12 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with an entry carrying both an account reference and the provisioning trio
     Then the request is rejected at the operation level with error code "VALIDATION_ERROR" naming field "accounts[0]"
     # Graduated: mode-exclusivity enforced in _impl before dispatch (VALIDATION_ERROR naming accounts[i]).
-    # An entry satisfying BOTH arms violates the item oneOf (exactly one), which is a structural
+    # An entry satisfying BOTH branches violates the item oneOf (exactly one), which is a structural
     # request-schema violation — graded as an operation-level error variant (top-level errors[],
-    # response oneOf arm 1) carrying VALIDATION_ERROR (recovery "correctable" per the enum) with
-    # field pointing at the offending entry — NOT a per-account "failed" result (arm 0), which is
+    # response oneOf branch 1) carrying VALIDATION_ERROR (recovery "correctable" per the enum) with
+    # field pointing at the offending entry — NOT a per-account "failed" result (branch 0), which is
     # for semantically-valid entries that fail a business rule. Production currently validates the
-    # both-shapes entry as the ProvisioningMode arm and silently ignores the extra `account`, so it
+    # both-shapes entry as the ProvisioningMode branch and silently ignores the extra `account`, so it
     # provisions instead of rejecting.
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/account/sync-accounts-request.json pointer=/properties/accounts/items/oneOf
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/account/sync-accounts-response.json pointer=/oneOf/1
@@ -909,7 +909,7 @@ Feature: BR-UC-011 Manage Accounts
     And the per-account error field points at "sandbox"
     When the Buyer Agent sends a list_accounts request
     Then the listed account for brand domain "acme-corp.com" has sandbox false
-    # Schema-LEGAL on this arm (sandbox is absent from the settings-update `not:` list) but
+    # Schema-LEGAL on this branch (sandbox is absent from the settings-update `not:` list) but
     # scoped by its own description to provisioning mode, and today silently ignored.
     # It is the ONE mode-inapplicable field that escalates from declared no-op to explicit
     # rejection, because sandbox is part of the buyer-declared natural key: honoring it would
@@ -944,7 +944,7 @@ Feature: BR-UC-011 Manage Accounts
     # (e.g., updated bank details)", and the response account item carries it "echoed from
     # the request ... Bank details are omitted (write-only)". Rejecting is not an option:
     # the spec's own DACH B2B provisioning example sends billing_entity at provisioning time.
-    # Today NEITHER arm applies it and no response model carries it — accepted on the wire,
+    # Today NEITHER branch applies it and no response model carries it — accepted on the wire,
     # then dropped, with a success response. The bank leg has teeth because the request
     # DECLARES bank details, so an echo that returns them is a real write-only leak.
     # Storyboard: graded only NEGATIVELY (billing_entity MUST NOT leak through error.details,
@@ -1026,7 +1026,7 @@ Feature: BR-UC-011 Manage Accounts
     And the persisted account for brand domain "acme-corp.com" has no payment_terms set
     # Locally added (GH: settings-update entries ignored dry_run and persisted the write).
     # The provisioning-trio preview scenario above never reaches the settings-update
-    # dispatch, which routes BEFORE any dry_run branch — this grades that arm.
+    # dispatch, which routes BEFORE any dry_run branch — this grades that branch.
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/account/sync-accounts-request.json pointer=/properties/dry_run
     # ("When true, preview what would change without applying. Returns what would be
     # created/updated/deactivated.") Conformance storyboard: UNGRADED (dry_run absent
@@ -1172,10 +1172,10 @@ Feature: BR-UC-011 Manage Accounts
   # unprovisionable. This distinction decides the shape of the two scenarios below,
   # and it was invisible while the harness built the request in the test process.
   #
-  # sync-accounts-request declares accounts[] as an anyOf of TWO arms:
+  # sync-accounts-request declares accounts[] as an anyOf of TWO branches:
   #   provisioning     requires ['brand', 'operator', 'billing']
   #   settings-update  requires ['account']
-  # An entry missing brand.domain / operator / billing satisfies NEITHER arm, so the
+  # An entry missing brand.domain / operator / billing satisfies NEITHER branch, so the
   # request never becomes a well-formed list of entries the seller could evaluate
   # one by one. It is rejected whole, with INVALID_REQUEST -- "Request is malformed,
   # missing required fields, or violates schema constraints".

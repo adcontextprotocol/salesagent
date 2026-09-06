@@ -512,7 +512,7 @@ def _is_main_guard(node: ast.AST) -> bool:
 
 
 # Statement fields whose contents execute in the ENCLOSING scope at import time.
-# ``ast.Match`` keeps its arms under ``cases``, not ``body``.
+# ``ast.Match`` keeps its branches under ``cases``, not ``body``.
 _IMPORT_TIME_BODY_FIELDS = ("body", "orelse", "finalbody", "handlers", "cases")
 
 

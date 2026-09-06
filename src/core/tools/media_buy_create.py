@@ -814,7 +814,7 @@ def _mark_approval_failed(
 ) -> ApprovalResult:
     """Record that the adapter did not create the order, and report it.
 
-    Lives beside the single writer rather than in a route: the failure arm is a
+    Lives beside the single writer rather than in a route: the failure branch is a
     state transition like any other, and leaving it to callers is how one route
     came to write FAILED and two did not. Because nothing is written before the
     adapter runs, ``confirmed_at`` is still NULL here — the buy failed without
@@ -824,9 +824,9 @@ def _mark_approval_failed(
     than opening a second: ``get_db_session()`` hands back the thread-scoped
     session with no nesting refcount, so a second unit commits the caller's
     in-flight writes and then closes the session out from under it. The
-    creative-upload arm of ``execute_approved_media_buy`` calls this with unflushed
+    creative-upload branch of ``execute_approved_media_buy`` calls this with unflushed
     enrichment writes pending, which is exactly that shape. Passing nothing owns a
-    transaction for the duration — the live behaviour for the arms that run once
+    transaction for the duration — the live behaviour for the branches that run once
     the caller's unit has already closed.
     """
     from contextlib import ExitStack
@@ -3129,7 +3129,7 @@ async def _create_media_buy_impl(
                     # Generate defaults based on product delivery type and formats.
                     # delivery_type is a plain DeliveryType enum; normalize to its
                     # value ('guaranteed'/'non_guaranteed') so generate_default_config's
-                    # equality check selects the right config arm (str(enum) would
+                    # equality check selects the right config branch (str(enum) would
                     # yield 'DeliveryType.guaranteed' and silently mis-route — PR1399).
                     delivery_type_str = enum_value(schema_product.delivery_type) or "non_guaranteed"
                     # Extract format IDs as strings for config generation
@@ -3660,7 +3660,7 @@ async def _create_media_buy_impl(
                     # The adapter has already returned by this point (`response` is
                     # its reply), so the seller HAS committed -- including when the
                     # resolved status is pending_creatives because the buyer has not
-                    # supplied creatives yet. That is the auto-approval arm the v3.1
+                    # supplied creatives yet. That is the auto-approval branch the v3.1
                     # sync-success scenario grades.
                     seller_committed=True,
                     media_buy_id=response.media_buy_id,

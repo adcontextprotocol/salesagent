@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 # nothing declared and one transport quietly broke: the local ``FormatId``
 # subclass (schemas/_base.py, four convenience methods, zero extra fields) never
 # compares equal to the library value every other producer makes, so a lookup
-# keyed on ``==`` missed on A2A and the whole agent-dial arm was skipped in
+# keyed on ``==`` missed on A2A and the whole agent-dial branch was skipped in
 # silence.
 #
 # Identity is (agent_url, id) per the pinned core/format-id.json, and
@@ -374,7 +374,7 @@ def _get_product_format_override(
             base_format = get_format(format_id, agent_url=agent_url, tenant_id=tenant_id, product_id=None)
         except AdCPFormatNotFoundError:
             # The base format genuinely does not exist, so there is nothing to
-            # override. The only condition this arm was ever meant to handle.
+            # override. The only condition this branch was ever meant to handle.
             return None
         except AdCPSalesAgentError:
             # Anything else typed -- a rate limit, an unreachable agent -- is NOT

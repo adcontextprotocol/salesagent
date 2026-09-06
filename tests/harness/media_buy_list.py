@@ -37,7 +37,7 @@ class MediaBuyListDispatchMixin:
     A public builder on this mixin would shadow the CREATE builder for
     ``MediaBuyCreateListEnv`` — which is ``(MediaBuyListDispatchMixin,
     MediaBuyCreateEnv)``, so the mixin precedes the create env in its MRO — and
-    break the create REST arm that tests/integration/test_harness_rest_refusal.py
+    break the create REST branch that tests/integration/test_harness_rest_refusal.py
     pins.
 
     Both dispatch spellings exist for one reason each, and neither is a second
@@ -169,7 +169,7 @@ class MediaBuyListDispatchMixin:
             # type, so it inherits include_snapshot with a default of False rather than None
             # -- exclude_none stopped dropping it and the built body grew a key the caller
             # never set. exclude_unset is "send only what was set", which is also what the
-            # flat arm below does.
+            # flat branch below does.
             body = req.model_dump(mode="json", exclude_unset=True)
         else:
             body = {}
@@ -227,7 +227,7 @@ class MediaBuyListEnv(MediaBuyListDispatchMixin, IntegrationEnv):
     # absent from src/ was the defect that removal fixed — a REST parametrization
     # would have failed as if production were broken rather than as if the route
     # were missing. With the route landed, the opposite failure is the live one:
-    # dropping the endpoint silently deletes the REST arm of every UC-019 scenario,
+    # dropping the endpoint silently deletes the REST branch of every UC-019 scenario,
     # which then grades nothing instead of failing. The sibling composite env routes
     # the SAME endpoint behind its create/list discriminator
     # (`media_buy_create_list.py::REST_ENDPOINT`) — one constant, two envs.
