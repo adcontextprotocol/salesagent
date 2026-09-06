@@ -413,37 +413,67 @@ carries the scenario shape, so whoever picks it up writes the Given first.
 
 ---
 
-## R7 — One transport strips unknown request fields; the other two do not
+## R7 — Forward compatibility is one transport's private fix for a gap in the models
 
-**The defect.** `RequestCompatMiddleware` calls `strip_unknown_params` /
-`deep_strip_to_schema` against the tool's JSON Schema, in production only
-(`src/core/mcp_compat_middleware.py:140`). A2A and REST call neither. So an unknown field a
-buyer sends is REMOVED before validation on MCP and merely ignored by `extra="ignore"` on the
-other two -- and in dev, where `extra="forbid"`, MCP strips the field before the model can
-reject it while A2A and REST raise.
+**The defect, measured.** `RequestCompatMiddleware` deep-strips request fields absent from the
+tool's JSON Schema, in production only (`src/core/mcp_compat_middleware.py`). A2A and REST
+strip nothing. Its own docstring says why it exists: FastMCP's `TypeAdapter` validates the
+announced signature BEFORE our model does and rejects unknown fields, so "stripping bridges
+the gap".
 
-This is the same shape as the defect R1 removed from the response side, still live on the way
-in: one transport deciding what the model sees. It survived the compat deletion because it is
-FORWARD compatibility (tolerating a newer caller) rather than backward, so it was correctly
-kept when `normalize_request_params` went -- but keeping it on one transport is what makes it
-a divergence rather than a policy.
+That reads like an MCP-local concern. It is not, because the gap it bridges is real on the
+other two transports as well -- they just fail differently. Our DTO carries
+`extra="ignore"` in production, but the NESTED models are the SDK's and carry three different
+modes:
 
-**The question to settle first, because it decides the shape.** `extra="ignore"` in production
-already tolerates an unknown field: the model drops it. So what does the stripping ADD? Two
-candidates, and they want different answers:
+```
+GetProductsRequest    extra=ignore     (ours)
+BrandReference        extra=forbid
+ProductFilters        extra=allow
+ExtensionObject       extra=allow      (the `ext` field on all four keyed tools)
+```
 
-* if it exists because FastMCP's `TypeAdapter` validates against the announced signature
-  BEFORE our model does, and rejects there, then the stripping is compensating for a
-  transport-specific validator and belongs behind the MCP boundary as a documented
-  transport concern -- with a comment saying so, and a guard keeping it from spreading;
-* if it exists because the model's tolerance was not trusted, it is redundant with
-  `extra="ignore"` and deletes.
+So in production, one payload with an unknown field has three fates by nesting level, times
+two by transport:
 
-The dev/production split is the tell worth chasing: a rule that runs only in production is a
-rule nothing grades in CI.
+| unknown field at | MCP | A2A / REST |
+|---|---|---|
+| top level | stripped, then ignored | ignored |
+| inside a `forbid` model (`brand`) | stripped, accepted | **REJECTED** |
+| inside an `allow` model (`ext`, `filters`) | stripped, accepted | **kept, and it reaches `_impl`** |
 
-**Either answer removes the asymmetry.** What is not acceptable is the current state, where
-the same bytes mean two things depending on which port they arrive at.
+**The `allow` row breaks a documented boundary invariant.** `_boundary`'s module docstring
+states that equivalence is over the request as this seller understands it, because "a field the
+pinned schema does not define is dropped by `extra="ignore"` before hashing, so it cannot
+distinguish two requests either. That is deliberate." Measured on `sync_accounts`, a keyed
+tool, in production:
+
+```
+unknown field at top level     -> hash unchanged   (invariant holds)
+unknown field inside `ext`     -> hash DIFFERS     (invariant fails)
+```
+
+A buyer who retries with the same `idempotency_key` and an unknown field inside `ext` is
+answered `IDEMPOTENCY_CONFLICT` instead of being replayed -- on A2A and REST only, because on
+MCP the field was stripped before it could reach the digest.
+
+**So the fix is not "make the other two strip".** Three transports running the same stripping
+would still leave the models disagreeing with each other, and would leave the boundary
+docstring describing behaviour the models do not have. The question to settle is what the
+seller's forward-compatibility policy IS -- tolerate-and-drop is what the docstring assumes and
+what `extra="ignore"` implements -- and then to make the models express it, so no transport has
+to compensate and the hashing invariant is true by construction rather than at one nesting
+level.
+
+Whether MCP still needs its stripping after that is a separate and much smaller question: it
+depends only on whether FastMCP's `TypeAdapter` rejects before our model runs, which is a
+genuine property of that transport.
+
+**A note on scope.** The nested modes come from the SDK, so expressing the policy may mean
+overriding `model_config` on our own DTOs, or an upstream issue, or both -- the same shape as
+adcontextprotocol/adcp-client-python#1136 and #1137. Measure before choosing.
+
+---
 
 ## Order
 
@@ -451,9 +481,10 @@ R1, R3 and R5 are done, both halves of R1 included.
 
 What remains, in the order worth taking:
 
-1. **R7** -- MCP strips unknown request fields and the other two transports do not. A live
-   cross-transport divergence, and the last one; settle the question it opens before it grows
-   a second reason to exist.
+1. **R7** -- forward compatibility is one transport's private fix for a gap in the models,
+   and the gap breaks a documented idempotency invariant one nesting level down. The last
+   live cross-transport divergence, and the only remaining item with a buyer-visible bug in
+   it.
 2. **R2** -- the request half, turning the boundary's three remaining probes into attribute
    access.
 3. **R4** -- small, deletes code, and makes "a return IS a success" the only rule the boundary
