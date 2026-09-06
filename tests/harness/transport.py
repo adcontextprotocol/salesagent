@@ -252,25 +252,6 @@ class E2EConfig:
     ca_bundle: str | None = None
 
 
-# Fields `_serialize_for_a2a` adds to an A2A artifact DataPart. They are
-# populated by the PROTOCOL layer (the pin's Protocol Envelope branch) and are not
-# declared on any Pydantic response model, so they must come off before a body
-# is validated — under extra="forbid" they are a hard ValidationError. The
-# captured `wire_response` keeps them: siblings assert on the full envelope.
-A2A_PROTOCOL_ENVELOPE_FIELDS = ("message", "success")
-
-
-def strip_a2a_protocol_fields(data: dict[str, Any]) -> dict[str, Any]:
-    """A copy of *data* without the A2A protocol-envelope fields.
-
-    One definition, three call sites (``_run_a2a_handler``, the client's
-    ``_deliver_a2a``, and ``BaseTestEnv._deliver_via_client``). Each used to
-    spell the same two ``pop`` calls itself, so adding a third protocol field
-    would have needed finding all of them.
-    """
-    return {k: v for k, v in data.items() if k not in A2A_PROTOCOL_ENVELOPE_FIELDS}
-
-
 # The two values TransportResult.envelope["status"] may take. A DERIVED enum,
 # never a synthesized HTTP status_code: fabricating an integer for MCP/A2A would
 # turn today's silent no-op into a loud tautology — the harness asserting != 500

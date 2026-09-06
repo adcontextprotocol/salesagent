@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from adcp.types.base import AdCPBaseModel
+from adcp.types import ProtocolEnvelope
 from fastmcp.tools.tool import ToolResult
 
+from src.core.tools._wire import to_wire
 
-def mcp_result(response: AdCPBaseModel, content: str | None = None) -> ToolResult:
+
+def mcp_result(response: ProtocolEnvelope, content: str | None = None) -> ToolResult:
     """Build a ``ToolResult`` with a spec-compliant ``structured_content``.
 
     ``structured_content`` must be a plain dict via ``model_dump()``: FastMCP's
@@ -17,13 +19,14 @@ def mcp_result(response: AdCPBaseModel, content: str | None = None) -> ToolResul
     leaves unset would otherwise serialize as invalid wire ``null`` instead of
     being omitted.
 
-    The parameter is bound to ``AdCPBaseModel``, not ``pydantic.BaseModel``,
-    because that ``exclude_none=True`` default IS the contract this helper
-    exists to preserve. A plain pydantic model routed through here would
-    type-check, re-leak the nulls, and still satisfy every "did it go through
-    mcp_result?" structural check -- so the bound is where it has to be caught.
+    The parameter is bound to ``ProtocolEnvelope``, not ``pydantic.BaseModel``, because two
+    contracts ride on it: that class subclasses ``AdCPBaseModel``, whose ``exclude_none=True``
+    default this helper exists to preserve, and it carries the envelope fields ``content``
+    reads below. A plain pydantic model routed through here would type-check, re-leak the
+    nulls, have no ``message``, and still satisfy every "did it go through mcp_result?"
+    structural check -- so the bound is where it has to be caught.
     """
     return ToolResult(
         content=content if content is not None else (getattr(response, "message", None) or ""),
-        structured_content=response.model_dump(mode="json"),
+        structured_content=to_wire(response),
     )

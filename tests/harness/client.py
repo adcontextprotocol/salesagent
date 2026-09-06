@@ -67,7 +67,6 @@ from tests.harness.transport import (
     _envelope_from_mcp_error,
     _wire_envelope_from_exception,
     derive_error_status,
-    strip_a2a_protocol_fields,
 )
 
 if TYPE_CHECKING:
@@ -474,7 +473,7 @@ def _deliver_e2e_a2a(env: BaseTestEnv, address: ToolAddress, wrapped: dict[str, 
     # Real A2A wire, unstripped — captured BEFORE stripping (mirrors
     # _run_a2a_handler's own capture order).
     wire_response = dict(artifact_data)
-    return DeliverResult(payload=strip_a2a_protocol_fields(artifact_data), wire_response=wire_response)
+    return DeliverResult(payload=artifact_data, wire_response=wire_response)
 
 
 DELIVER: dict[Transport, Callable[[BaseTestEnv, ToolAddress, Any, Any], Any]] = {

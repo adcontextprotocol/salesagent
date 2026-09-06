@@ -49,7 +49,7 @@ from enum import Enum  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from tests.factories.account import DEFAULT_TEST_ACCOUNT_ID  # noqa: E402  (re-export)
-from tests.harness.transport import DeliverResult, strip_a2a_protocol_fields  # noqa: E402
+from tests.harness.transport import DeliverResult  # noqa: E402
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -723,7 +723,7 @@ class BaseTestEnv:
         (and the wire envelope stashed on it) flowing to the same handler.
         """
         from tests.harness.client import _dispatch_core
-        from tests.harness.transport import NO_IDENTITY_OVERRIDE, strip_a2a_protocol_fields
+        from tests.harness.transport import NO_IDENTITY_OVERRIDE
 
         payload = dict(kwargs)
         identity = payload.pop("identity", NO_IDENTITY_OVERRIDE)
@@ -737,7 +737,7 @@ class BaseTestEnv:
         # see message/success; the response model has not declared them, so they
         # come off before validation.
         parser = self.response_parser(tool)
-        return DeliverResult(payload=parser(**strip_a2a_protocol_fields(wire)), wire_response=wire)
+        return DeliverResult(payload=parser(**wire), wire_response=wire)
 
     def call_mcp(self, **kwargs: Any) -> Any:
         """The parsed MCP payload. Defined ONCE; never override — override
@@ -918,9 +918,7 @@ class BaseTestEnv:
         # Envelope branch (see tests/helpers/adcp_schema_validator.py) — not
         # declared on the Pydantic response model — and cause ValidationError
         # under extra="forbid" in non-production mode.
-        return DeliverResult(
-            payload=response_cls(**strip_a2a_protocol_fields(artifact_data)), wire_response=wire_response
-        )
+        return DeliverResult(payload=response_cls(**artifact_data), wire_response=wire_response)
 
     def _run_mcp_client(
         self,

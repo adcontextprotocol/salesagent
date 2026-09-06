@@ -49,8 +49,7 @@ from a2a.types import (
 )
 from a2a.utils.errors import A2AError
 from adcp.server.mcp_tools import ADCP_TOOL_DEFINITIONS
-from adcp.types import GeneratedTaskStatus
-from adcp.types.base import AdCPBaseModel
+from adcp.types import GeneratedTaskStatus, ProtocolEnvelope
 from google.protobuf import json_format, struct_pb2
 
 from src.core.audit_logger import get_audit_logger
@@ -76,6 +75,7 @@ from src.core.tool_error_logging import record_boundary_error
 
 # Signals tools removed - should come from dedicated signals agents, not sales agent
 from src.core.tools._boundary import invoke_tool
+from src.core.tools._wire import to_wire
 from src.core.tools.registry import TOOLS
 from src.core.version import get_version
 from src.core.webhook_validator import (
@@ -1521,7 +1521,7 @@ class AdCPRequestHandler(RequestHandler):
         raise UnsupportedOperationError(message="Extended agent card not supported")
 
     @staticmethod
-    def _serialize_for_a2a(response: AdCPBaseModel | dict) -> dict[str, Any]:
+    def _serialize_for_a2a(response: ProtocolEnvelope | dict) -> dict[str, Any]:
         """Serialize a tool's response for A2A at the framework boundary.
 
         The single serialization point for every A2A skill response: the model dump, then the
@@ -1545,12 +1545,7 @@ class AdCPRequestHandler(RequestHandler):
         if isinstance(response, dict):
             return response
 
-        response_data = response.model_dump(mode="json")
-        if "errors" in response_data:
-            response_data["success"] = not bool(response_data["errors"])
-        else:
-            response_data.setdefault("success", True)
-        return response_data
+        return to_wire(response)
 
     async def _dispatch_skill(
         self,

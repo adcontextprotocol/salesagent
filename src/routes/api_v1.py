@@ -18,6 +18,7 @@ from src.core.auth_context import require_auth, resolve_auth
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.tools._announced_shape import apply_signature
 from src.core.tools._boundary import invoke_tool
+from src.core.tools._wire import to_wire
 from src.core.tools.registry import TOOLS
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ def _rest_handler(tool_name: str, spec: Any, body_model: type[BaseModel]) -> Any
         # per call. A route that froze the callable at import could not be substituted -- the
         # registry row and the thing the route invoked were two different objects.
         response = await invoke_tool(tool_name, body, identity)
-        return response.model_dump(mode="json")
+        return to_wire(response)
 
     handler.__name__ = tool_name
     handler.__doc__ = (spec.impl.__doc__ or "").strip().split("\n")[0]
