@@ -64,3 +64,35 @@ by steps that assert nothing in particular.
 Skips near zero (rule inert), or the previously-live 8300 instances showing new
 failures that are not #2012/#1998. The latter would mean binding new files
 perturbed the files that already worked, which nothing in the change should do.
+
+---
+
+# Prediction for the post-revert run
+
+The collection experiment is reverted (`4f1f62f8d`); what remains is harness-only
+plus P01. Baseline for comparison is `innet_060926_1600`, the last run that
+completed (8324 collected, 8324 reported, exit 1).
+
+1. **Both BDD suites complete again.** exitcode 1, not 3, and `collected` equals
+   `reported` in each. The previous run left 13813 in-process tests collected and
+   never run; if that gap survives the revert, the cause was never the binding and
+   I have been wrong about it.
+
+2. **bdd_inprocess collects 8324 again**, within the ~19-instance transport-id
+   instability already measured.
+
+3. **The 345 "expected a success wire body" failures are GONE.** This is the
+   outcome-aware compliance fix, still never validated on a completed run. If they
+   persist, `_dispatch_errored` does not see what the transports stash and the fix
+   is wrong rather than incomplete.
+
+4. **The ~423 schema failures persist**, tracing to GH #2012 and #1998. Neither is
+   fixed. Movement here is weak evidence either way while the boundary refactor is
+   rewriting response shapes in the sibling worktree.
+
+5. **UC-011 shows 6 fewer failures**, the ones the P01 audit measured going
+   `failed -> passed` on an isolated database.
+
+Falsified if: any pre-existing test that was PASSING in the baseline is not
+passing now and is not explained by #3 or #5. That is the whole claim of the
+revert — the harness changes alone perturb nothing.
