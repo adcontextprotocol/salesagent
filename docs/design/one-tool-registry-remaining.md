@@ -147,70 +147,78 @@ a model field, so `model_dump`, `model_fields` and the announced shape are untou
 property with a real field.
 
 Then `invoke_tool(tool_name: str, req: BuyerRequest, identity: ResolvedIdentity | None) -> AdcpResponse`,
-and three of the four probes become attribute access. The fourth --
-`"replayed" in model.model_fields` -- does not become an attribute; it disappears, because
-`replayed` stops being a model field at all. See R3.
+and all four probes become attribute access -- the fourth,
+`"replayed" in model.model_fields`, once R3 makes `replayed` a field every response has.
 
-The response base is worth having for a second reason: it is the natural home for the one
-serialization seam R3 needs. `mcp_result`, `_serialize_for_a2a` and REST's
-`model_dump(mode="json")` are three separate answers to "how does a response become bytes",
-which is the same shape of divergence as R1's three answers to "how do bytes become a request".
+**Responses get the same treatment, and that is R3.** The response side of this is
+`ProtocolEnvelope` on every response model rather than a hand-written mixin, because the SDK
+already ships that class and the pinned schemas already compose it. Same principle either way:
+the boundary should be able to say `result.replayed = True` because a response IS a thing with
+that attribute, not because it probed for one.
 
 ---
 
-## R3 — `replayed` is stamped by the idempotency layer, on the way out
+## R3 — Type the protocol envelope on every response
 
-**The defect.** Three of the four keyed tools replay with no `replayed` marker, and
-`update_media_buy` is worse than silent: `UpdateMediaBuySubmitted` declares
-`replayed: bool = False` while `TaskResultEnvelope._serialize` lacks the pop-and-reset that
-`CreateMediaBuyResult._serialize` performs, so a replayed submitted update goes on the wire as
-`replayed: false` -- positively asserting a fresh execution to a buyer using the field for
-billing reconciliation and exactly-once routing.
+**The defect is not one field.** It is the whole envelope, and it is missing from exactly the
+tools that need it.
 
-**Where the field belongs, corrected.** An earlier draft of this section called the SDK
-defective for not declaring `replayed` on its generated success models, and proposed that our
-response models inherit `adcp.types.ProtocolEnvelope` to get it. Both halves were wrong. The
-spec says (`L1/security.mdx` rule 4):
+`core/protocol-envelope.json` declares eleven fields -- `status`, `task_id`, `message`,
+`context`, `context_id`, `timestamp`, `adcp_error`, `governance_context`, `payload`,
+`push_notification_config`, `replayed` -- and every pinned response schema composes it with
+`allOf`. Measured across our fourteen response models, how many of the eleven are TYPED:
 
-> The seller injects `replayed: true` onto the outgoing protocol envelope at response time --
-> `replayed` is an envelope-level field produced by the idempotency layer, NOT part of the
-> cached inner response.
-
-And the SDK implements exactly that. `adcp/server/idempotency/store.py` works on response
-DICTS and injects the marker at replay time, with a comment that states the reason:
-
-```python
-# The store owns this — sellers can't inject at the
-# right point (cache lookup happens here, wire
-# serialization happens later). The injection
-# lands on the cloned dict, not ``cached.response``,
-# so multiple replays of the same key all carry
-# exactly one ``replayed: true`` without compounding.
+```
+get_products, get_media_buys, list_creatives, list_accounts,
+list_creative_formats, list_tasks, get_task_status,
+get_media_buy_delivery, get_adcp_capabilities .................. 11/11
+complete_task ...................................................  3/11
+create_media_buy, sync_accounts, sync_creatives ..................  2/11
+update_media_buy .................................................  1/11
 ```
 
-So a generated success model has no business declaring the field, and neither do ours. Putting
-it on the model is what produced the `replayed: false` bug in the first place: a model-level
-default asserts something on every FRESH response too.
+The five short rows are `complete_task` plus **the four keyed tools** -- the only four that can
+ever need `replayed`. And three of them (`create_media_buy`, `update_media_buy`,
+`sync_accounts`) run `extra="forbid"` in dev and CI, so on those the field cannot even ride as
+an extra: setting it raises, and in production `extra="ignore"` drops it silently.
 
-**The change.** The boundary already knows a replay happened -- it is the only thing that does.
-It should carry that fact out as a property of the RESPONSE EVENT rather than of the response
-body, and the single place every transport serializes is where it lands. Two shapes are
-available and the choice depends on R2:
+That is why the bug this section opened with exists at all. `CreateMediaBuyResult` works around
+the gap with a locally declared `replayed` plus a pop-and-reset in its own serializer;
+`UpdateMediaBuySubmitted` declares the field without the pop, so a replayed submitted update
+goes out as `replayed: false` -- positively asserting a fresh execution. Two hand-rolled
+answers to a field that should have arrived with the envelope.
 
-* if the boundary returns a `(response, replayed)` pair or a small envelope wrapper, each
-  transport's existing `model_dump` site stamps it -- three sites, which is the per-transport
-  duplication this design exists to remove;
-* if `invoke_tool` gains one serialization seam (`to_wire(result) -> dict`) that every
-  transport calls instead of dumping the model itself, the stamp lands once. That seam is
-  worth having independently: `mcp_result`, `_serialize_for_a2a` and REST's `model_dump(mode="json")`
-  are three answers to "how does a response become bytes", and R2's response base is the natural
-  home for the fourth.
+**Upstream, for context, not as a blocker.** The Python SDK's generated success arms drop the
+whole composition: nine of eleven envelope fields are untyped on
+`SyncCreativesResponse1`, surviving only because that model is `extra="allow"`. The TypeScript
+SDK at the same 3.1.1 pin does not -- it intersects `ProtocolEnvelope` across every arm
+(`SyncCreativesResponse = AdCPVersionEnvelope & ProtocolEnvelope & (Success | Error | Submitted)`),
+so `replayed?: boolean` is typed on all of them. The cause is not the code generator: a
+hand-written post-generation step re-emits the `oneOf`-armed response modules and attaches
+`ProtocolEnvelope` only when the arm is the `submitted` one, never consulting the root `allOf`.
 
-Prefer the second. Either way the local `CreateMediaBuyResult.replayed` field and
-`TaskResultEnvelope`'s pop-and-reset are deleted, not extended -- they are the model-level
-approach this section is correcting.
+We do not need to wait for that. `adcp.types.ProtocolEnvelope` is exported and correct; only
+the generated arms fail to inherit it.
 
----
+**The change.** Our response models inherit `ProtocolEnvelope`, so all eleven fields are typed
+on all fourteen -- nine already are, by a route that happens to work. Then:
+
+* `replayed` is `bool | None`, absent unless set, matching the TS shape and the schema's own
+  "set to false (or omitted) when the request was executed fresh";
+* the boundary assigns it on replay, which is the spec's rule 4 -- "the seller injects
+  `replayed: true` ... at response time", the idempotency layer being the only thing that knows;
+* `CreateMediaBuyResult.replayed` and `TaskResultEnvelope`'s pop-and-reset are deleted, being
+  the per-class workarounds for the missing base;
+* `_deserializer_for`'s `"replayed" in model.model_fields` probe and its `setattr` with a
+  `noqa` go with them: the field is always there, so it is always assignable.
+
+A typed field is not the same as a serialized one. The reason the earlier draft of this
+section said "a model has no business declaring the field" was the `replayed: false` bug -- but
+that came from a NON-OPTIONAL field with a `False` default that always serializes, not from
+declaring it. TS declares it and the SDK's store still injects it; those are compatible, and
+the combination is what we want: typed so a buyer and a type checker can see it, absent unless
+the idempotency layer sets it.
+
 
 ## R4 — A failure is an exception; delete the status check
 
