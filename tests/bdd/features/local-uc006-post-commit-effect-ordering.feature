@@ -69,7 +69,7 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
   #     the Slack message exist, while the creatives were already committed at
   #     `if not dry_run: stack.close()`. That is the GH #1987 orphan: a creative
   #     sitting at pending_review that no workflow step and no human ever hears
-  #     about (salesagent-prkv.15).
+  #     about (#1987).
   #   * once the workflow-step write joins the creatives transaction, the
   #     notification becomes an after_commit effect and therefore fires BEFORE
   #     the assignment stage — the direct inverse of today's order.
@@ -122,7 +122,7 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
     # AdCPPackageNotFoundError declares (src/core/exceptions.py) and what
     # _assignments.py raises in strict mode.
     #
-    # Cross-reference salesagent-prkv.15 (GH #1987): the buyer still gets the
+    # Cross-reference GH #1987: the buyer still gets the
     # assignment error — that half is production's current, correct behaviour and
     # is asserted first so this scenario cannot be "fixed" by swallowing it. What
     # must change is the second half. _process_assignments raises out of the impl

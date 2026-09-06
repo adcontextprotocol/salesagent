@@ -136,7 +136,7 @@ class TestAIReviewSurvivesTheWebhookArm:
     ``data['ai_review']``. The result is a creative carrying
     ``verdict['decision'] == 'approved'`` AND ``status == 'pending_review'``
     at the same time -- internally contradictory, and invisible to any test
-    that only reads ``verdict`` (salesagent-prkv.14, HIGH-1).
+    that only reads ``verdict`` (#1972, HIGH-1).
     """
 
     def test_ai_powered_sync_with_a_push_config_keeps_its_verdict(self, integration_db):

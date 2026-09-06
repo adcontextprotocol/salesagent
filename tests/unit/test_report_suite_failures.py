@@ -3,7 +3,7 @@
 pytest counts an item that died in SETUP or TEARDOWN under ``summary.error``,
 never under ``summary.failed``. Two consecutive full in-network runs of bdd_e2e
 therefore reported ``failed 0`` while tox exited 1, and the rotating fixture
-deadlock behind it (salesagent-prkv.48) stayed invisible to anyone reading the
+deadlock behind it (#2048) stayed invisible to anyone reading the
 failure count. ``scripts/report_suite_failures.py`` is the predicate that names
 those suites; both runner paths call it.
 """

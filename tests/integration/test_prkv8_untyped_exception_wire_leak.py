@@ -1,4 +1,4 @@
-"""Reproduction for salesagent-prkv.8: raw exception text reaching the buyer-facing wire.
+"""Reproduction for #1587: raw exception text reaching the buyer-facing wire.
 
 An untyped exception raised inside a dispatched skill's business logic is
 normalized to a wire-safe ``AdCPSalesAgentError`` by ``adcp_error_for()``

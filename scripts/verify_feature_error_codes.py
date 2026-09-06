@@ -122,7 +122,7 @@ def load_enum() -> set[str]:
       salesagent-3dawm.16 deliberately KEPT after checking the pin.
 
     What the gate still catches -- and what it exists for -- is a scenario naming a
-    code NO raise site can emit, which is what salesagent-qzub9 is about.
+    code NO raise site can emit, which is what #1753 is about.
     """
     # The repo root, so `src.` resolves however this script is invoked (make
     # quality-ci runs it as `uv run python scripts/...`, which puts scripts/ on

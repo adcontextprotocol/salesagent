@@ -86,7 +86,7 @@ EXPECTED_XFAIL_ROUTES: tuple[str, ...] = (
     "'T-UC-004-boundary-ownership' in marker_names and is_e2e_rest and ('differs from owner' in nodeid)",
     "'T-UC-004-dim-sortby-fallback' in marker_names and is_e2e_rest",
     "(is_rest or is_e2e_rest) and 'T-UC-019-boundary-principal' in marker_names",
-    # NARROWED from "(is_rest or is_e2e_rest)" to e2e_rest only (salesagent-ma52s).
+    # NARROWED from "(is_rest or is_e2e_rest)" to e2e_rest only (#1762).
     # The route's reason was a REST-only auth suggestion string ("authenticate" vs
     # "authentication"), which cannot exist any more: suggestions derive from
     # CODE_TABLE[code], one source shared by every transport, so no transport can

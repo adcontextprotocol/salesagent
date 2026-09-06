@@ -1,6 +1,6 @@
 """The one place a webhook payload becomes signed bytes and those bytes go out.
 
-Core Invariant (salesagent-47n9.1): a webhook sender must never hold a signer
+Core Invariant (#1441): a webhook sender must never hold a signer
 and a body serializer as two independent decisions. One function serializes
 the body once, optionally signs those exact bytes, and transmits those exact
 bytes via ``content=`` through :mod:`src.core.security.outbound_http`. No

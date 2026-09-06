@@ -73,6 +73,8 @@ def dto(tool: str) -> type:
     announces, the REST body validates against, and A2A dispatches with.
     """
     return TOOLS[tool].dto
+
+
 from tests.factories.creative_asset import build_assets, image_spec
 from tests.factories.format import AGENT_URL
 from tests.helpers.sample_account import SAMPLE_ACCOUNT
@@ -277,7 +279,7 @@ class GetProductsRequestFactory(_RequestFactory):
     entry in that schema's ``/required``, typed as the enum
     ``[brief, wholesale, refine]``, and its description says "v3 clients MUST
     include buying_mode". Our DTO widened it to ``str | None`` and therefore does
-    not require it; that widening is a defect tracked as salesagent-vkt12. The
+    not require it; that widening is a defect tracked as #2117. The
     baseline follows the pin rather than the widening, so it stays valid when the
     widening is deleted.
 

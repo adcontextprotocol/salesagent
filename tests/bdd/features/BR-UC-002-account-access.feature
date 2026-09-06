@@ -27,7 +27,7 @@ Feature: BR-UC-002 Account access scoping
   # rejected with AUTH_MISSING at the account-resolution boundary — it must never reach
   # natural-key resolution, which would disclose the tenant-wide match count (info leak).
   # Absent credential (principal_id=None, not a rejected token) -> AUTH_MISSING per
-  # v3.1.1 error-code.json (salesagent-mkso).
+  # v3.1.1 error-code.json (#2092).
   @T-UC-002-fb2l-unauth-no-disclosure @account @error
   Scenario: Unauthenticated natural-key resolution discloses no account information
     Given a valid create_media_buy request with account natural key brand "leak-brand.com" operator "leak-agency.com"

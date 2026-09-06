@@ -178,7 +178,7 @@ class MediaBuyListDispatchMixin:
             # "account_id" silently dropped the filter on REST -- the request then
             # SUCCEEDED where MCP and A2A correctly rejected it with
             # UNSUPPORTED_FEATURE. Invisible until UC-019 regained REST
-            # parametrization (salesagent-ma52s); the same shape of harness gap as
+            # parametrization (#1762); the same shape of harness gap as
             # CreativeFormatsEnv.build_rest_body in salesagent-3dawm.16.
             for key in ("media_buy_ids", "status_filter", "account", "account_id", "context"):
                 if key in kwargs and kwargs[key] is not None:

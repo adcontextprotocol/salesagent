@@ -317,8 +317,6 @@ def when_sync_creative(ctx: dict) -> None:
         dispatch_request(ctx, **kwargs)
 
 
-
-
 def _action_str(action: object) -> str:
     """Normalize a SyncCreativeResult.action to a plain string.
 
@@ -1976,7 +1974,7 @@ def _assert_auth_rejection(ctx: dict, expected_code: str) -> None:
     ``then_error.py:340`` step. Production splits authentication failures
     into AUTH_MISSING (absent credential, correctable) / AUTH_INVALID
     (presented-but-rejected credential, terminal) per v3.1.1
-    error-code.json (salesagent-mkso).
+    error-code.json (#2092).
     """
     from tests.bdd.steps.generic.then_error import _wire_code
 
@@ -2011,7 +2009,7 @@ def then_rejected_with_auth_code(ctx: dict, expected_code: str) -> None:
     """Assert the sync was rejected with the given auth error code.
 
     Parametrized (was a fixed-text ``AUTH_REQUIRED`` step) to cover the
-    v3.1.1 AUTH_MISSING/AUTH_INVALID split (salesagent-mkso).
+    v3.1.1 AUTH_MISSING/AUTH_INVALID split (#2092).
     """
     _assert_auth_rejection(ctx, expected_code)
 
@@ -7486,7 +7484,7 @@ def then_assignment_is_committed(ctx: dict) -> None:
 
 @then("every committed creative awaiting approval has a committed workflow step")
 def then_no_orphan_creative_awaiting_approval(ctx: dict) -> None:
-    """GH #1987 / salesagent-prkv.15: no creative left in the queue unqueued.
+    """GH #1987: no creative left in the queue unqueued.
 
     A creative committed at ``pending_review`` is a promise that a human will be
     asked to review it, and the workflow step is the only thing that asks. When

@@ -400,7 +400,7 @@ Feature: BR-UC-005 Discover Creative Formats
     #   recovery. The old "message should indicate tenant context could not be
     #   determined" assertion cannot hold once the sentence is derived from the
     #   code, and it graded a copy of CODE_TABLE's own text anyway
-    #   (salesagent-qzub9).
+    #   (#1753).
     # POST-F3: Suggestion advises providing auth -- AUTH_MISSING's table entry is
     #   "provide credentials via the auth header and retry".
     # --- ext-b: Invalid Request Parameters ---

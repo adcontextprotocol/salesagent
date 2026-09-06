@@ -658,7 +658,7 @@ Feature: BR-UC-016 Sync Audiences
     # POST-F3: Context echoed when possible
     # No token -> AUTH_MISSING (absent credential); expired/malformed token ->
     # AUTH_INVALID (credential presented but rejected). Per v3.1.1
-    # error-code.json split (salesagent-mkso); previously all three
+    # error-code.json split (#2092); previously all three
     # partitions incorrectly pinned the same deprecated AUTH_REQUIRED code.
     # --- Extension I: RATE_LIMITED ---
 

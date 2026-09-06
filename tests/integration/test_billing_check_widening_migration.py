@@ -1,6 +1,6 @@
 """The billing CHECK widening admits the third party, and clears it on the way back down.
 
-Covers alembic revision e381618812f1 (salesagent-prkv.7).
+Covers alembic revision e381618812f1 (#1521).
 
 Nothing else runs this migration's SQL: the integration suite builds its schema
 with ``Base.metadata.create_all``, which reads the CHECK off the ORM model

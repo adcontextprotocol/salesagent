@@ -1942,7 +1942,7 @@ def then_outcome(ctx: dict, outcome: str) -> None:
     #
     # A scenario that does name one now fails loudly inside assert_wire_error with
     # "not an emittable error code ... Reconcile the feature", which is the correct
-    # outcome and the subject of salesagent-qzub9.
+    # outcome and the subject of #1753.
     result = ctx["result"]
     assert expected_code, f"Outcome names no error code: {outcome!r}"
     result.assert_wire_error(expected_code, require_suggestion=require_suggestion)

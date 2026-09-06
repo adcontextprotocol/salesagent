@@ -8,7 +8,7 @@ bytes as received — never a re-serialization of a parsed payload. Per AdCP
 captured before any JSON parse or re-serialize." A verifier that
 re-serializes a parsed dict (this module's own prior implementation)
 recreates, on the receive side, the exact signed-bytes-vs-wire-bytes
-divergence salesagent-47n9.1 fixes on the send side — and masks it, because
+divergence #1441 fixes on the send side — and masks it, because
 a re-serializing verifier and a re-serializing signer can agree with each
 other while both disagree with the real wire.
 

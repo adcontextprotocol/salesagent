@@ -11,7 +11,7 @@ CODE_TABLE. Its siblings in ``src/core/auth.py``
 raised with the hint only in message text, leaving the graded top-level
 ``suggestion`` field EMPTY (PR #1417 review round 8, item 4). Split from the
 single deprecated ``AUTH_REQUIRED`` code to ``AUTH_MISSING``/``AUTH_INVALID``
-per the v3.1.1 error-code enum split (salesagent-mkso). ``require_tenant``
+per the v3.1.1 error-code enum split (#2092). ``require_tenant``
 (tenant-axis gap, salesagent-40kk) now completes the split too
 (salesagent-otc5): no identity at all -> ``AUTH_MISSING``; identity
 present but its tenant unresolvable -> ``AUTH_INVALID`` (terminal).
@@ -61,7 +61,7 @@ class TestRequirePrincipalIdA2ASuggestion:
         """An identity with no principal_id rejected on the A2A wire must
         produce the AUTH_MISSING envelope WITH a top-level ``suggestion`` —
         parity with ``require_identity``. Absent credential -> AUTH_MISSING
-        per v3.1.1 error-code.json (salesagent-mkso).
+        per v3.1.1 error-code.json (#2092).
         """
         from tests.factories import PrincipalFactory, TenantFactory
         from tests.harness.media_buy_list import MediaBuyListEnv
@@ -109,7 +109,7 @@ class TestAuthHelperFamilySuggestion:
     def test_require_tenant_no_identity_at_all_is_auth_missing(self):
         """No identity presented at all -> AUTH_MISSING (salesagent-otc5).
 
-        Completes the AUTH_MISSING/AUTH_INVALID split (salesagent-mkso) for
+        Completes the AUTH_MISSING/AUTH_INVALID split (#2092) for
         the tenant-resolution axis: genuinely absent credentials must emit
         AUTH_MISSING like every other no-credential rejection, not the
         deprecated AUTH_REQUIRED alias.
@@ -124,7 +124,7 @@ class TestAuthHelperFamilySuggestion:
     def test_require_tenant_credential_presented_but_unresolvable_is_auth_invalid(self):
         """A token was presented but its tenant can't be resolved -> AUTH_INVALID (terminal) (salesagent-otc5).
 
-        Completes the AUTH_MISSING/AUTH_INVALID split (salesagent-mkso) for
+        Completes the AUTH_MISSING/AUTH_INVALID split (#2092) for
         the tenant-resolution axis: the signal is credential presence
         (``identity.auth_token``), not merely whether an identity object
         exists — resolve_identity() always builds one for discovery

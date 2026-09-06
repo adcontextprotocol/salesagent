@@ -75,7 +75,7 @@ logger = logging.getLogger(__name__)
 
 # webhook_signing / request_signing: agent-level facts (no RFC 9421 request/webhook
 # signing implemented today), not tenant config -- declared identically on every
-# response, in-process and no-tenant alike (salesagent-3s5a).
+# response, in-process and no-tenant alike (#1592).
 #
 # The must_equal_when invariant here is satisfied HONESTLY, not vacuously, and the
 # distinction matters. v3.1.1 get-adcp-capabilities-response.json requires that when
@@ -205,7 +205,7 @@ def _build_account_block(tenant: Mapping[str, object]) -> AccountCapabilities | 
     support is opted into, never assumed from an unset column). authorization_endpoint/
     required_for_products/account_financials stay omitted -- declaring them would be an
     aspirational capability the platform doesn't back yet, not an honest one
-    (salesagent-3s5a Core Invariant).
+    (#1592 Core Invariant).
     """
     supported_billing = resolve_supported_billing(tenant)
     if not supported_billing:

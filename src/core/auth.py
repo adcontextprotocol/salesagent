@@ -31,7 +31,7 @@ from src.core.database.models import Principal as ModelPrincipal
 from src.core.errors.details import EntityRefDetails
 
 # Buyer-facing correction hints, split per the v3.1.1 AUTH_MISSING/AUTH_INVALID
-# error-code split (dist/schemas/3.1.1/enums/error-code.json, salesagent-mkso).
+# error-code split (dist/schemas/3.1.1/enums/error-code.json, #2092).
 # Canonical hints owned by exceptions.py (class-level default suggestions on
 # AdCPAuthRequiredError / AdCPAuthenticationError); re-exported here for
 # existing importers.
@@ -352,7 +352,7 @@ def require_principal_id(
         # error-code.json. Was previously the base AdCPAuthenticationError
         # (AUTH_INVALID-shaped) with mixed absent/invalid wording ("Provide a
         # valid x-adcp-auth token" reads as invalid-framing) — de-conflicted
-        # per salesagent-mkso consistency-lens finding, while keeping the
+        # per #2092 consistency-lens finding, while keeping the
         # "Principal ID not found in identity" substring existing tests match on.
         raise AdCPAuthRequiredError(
             context=context,
@@ -376,7 +376,7 @@ def require_tenant(
 
     tenant = identity.tenant if identity else None
     if not tenant:
-        # AUTH_MISSING/AUTH_INVALID split (salesagent-mkso), completed for the
+        # AUTH_MISSING/AUTH_INVALID split (#2092), completed for the
         # tenant-resolution axis (salesagent-otc5). The signal is whether a
         # credential was PRESENTED, i.e. ``identity.auth_token`` — not merely
         # whether an identity object exists: resolve_identity() always builds

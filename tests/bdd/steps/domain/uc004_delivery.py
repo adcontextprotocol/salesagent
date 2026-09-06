@@ -1086,7 +1086,11 @@ def when_validate_webhook_config(ctx: dict) -> None:
 
     secret = ctx.get("webhook_secret", "")
     kwargs = harness_create_request_kwargs(ctx)
-    kwargs['reporting_webhook'] = ReportingWebhookRequestFactory.payload(url=_DECLARED_WEBHOOK_URL, reporting_frequency='daily', authentication={'schemes': ['Bearer'], 'credentials': secret})
+    kwargs["reporting_webhook"] = ReportingWebhookRequestFactory.payload(
+        url=_DECLARED_WEBHOOK_URL,
+        reporting_frequency="daily",
+        authentication={"schemes": ["Bearer"], "credentials": secret},
+    )
     # Dispatch the flat body (no typed construction) so a short credential reaches
     # the production transport boundary instead of being rejected in test code.
     dispatch_request(ctx, **kwargs)
@@ -2266,7 +2270,7 @@ def then_hmac_computation(ctx: dict) -> None:
       the prefix verified anyway;
     * it read the headers with ``.get(..., "")``, so a delivery that went out
       entirely unsigned failed on 'header present' rather than reporting that
-      nothing can attribute the request to us (salesagent-47n9.24).
+      nothing can attribute the request to us (#1894).
 
     The recompute-over-wire-bytes property this step exists for is the helper's
     property too: it signs ``f"{timestamp}." + request.body``, never a fresh dump
@@ -3416,7 +3420,11 @@ def _validate_reporting_webhook_credentials(ctx: dict, auth_scheme: str, credent
 
     from src.core.schemas import CreateMediaBuyRequest
 
-    reporting_webhook = ReportingWebhookRequestFactory.payload(url='https://buyer.example.com/reporting', authentication={'schemes': [auth_scheme], 'credentials': credentials}, reporting_frequency='daily')
+    reporting_webhook = ReportingWebhookRequestFactory.payload(
+        url="https://buyer.example.com/reporting",
+        authentication={"schemes": [auth_scheme], "credentials": credentials},
+        reporting_frequency="daily",
+    )
     ctx.pop("error", None)
     try:
         # NOT ctx["response"]: this is the constructed REQUEST, not a response.

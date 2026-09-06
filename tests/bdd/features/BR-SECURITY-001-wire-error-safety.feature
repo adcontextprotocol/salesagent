@@ -1,5 +1,5 @@
 # Hand-authored feature — not compiled from adcp-req
-# Cross-cutting wire-safety obligation for salesagent-prkv.8 (salesagent-prkv.18)
+# Cross-cutting wire-safety obligation for #1587 (salesagent-prkv.18)
 
 @security
 Feature: Wire error safety for untyped exceptions

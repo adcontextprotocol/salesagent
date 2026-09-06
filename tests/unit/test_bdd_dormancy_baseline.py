@@ -2,7 +2,7 @@
 
 A scenario whose step has no binding executes nothing and is reported as an xfail, so
 it is invisible in a green run. ``tests/bdd/dormant_scenarios.txt`` is what stops that
-set growing silently (salesagent-kp56h), which makes the parsing and key-normalization
+set growing silently (#1929), which makes the parsing and key-normalization
 below load-bearing: if the key does not match, a recorded gap reads as NEW dormancy and
 reddens a build, or worse, a genuinely new gap matches something and passes.
 """

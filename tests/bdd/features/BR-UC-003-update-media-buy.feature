@@ -511,7 +511,7 @@ Feature: BR-UC-003 Update Media Buy
     And the operation should fail
     And the error code should be "AUTH_MISSING"
     And the error should include "suggestion" field
-    # NOTE (salesagent-mkso, salesagent-otc5, salesagent-z9e0): a principal_id
+    # NOTE (#2092, salesagent-otc5, salesagent-z9e0): a principal_id
     # with no backing DB row resolves to identity.principal_id=None (the real
     # resolve_identity() nulls it on a failed token->principal lookup, and the
     # BDD harness's identity_for() now mirrors that — salesagent-z9e0). So
@@ -582,7 +582,7 @@ Feature: BR-UC-003 Update Media Buy
   # package-update.json declares budget as {"type": "number", "minimum": 0}, so the SDK model
   # rejects it before any minimum-budget rule can run. BUDGET_TOO_LOW is what a budget that is
   # schema-valid but below the tenant minimum earns; -5 never gets that far. (Whether a schema
-  # violation should surface as VALIDATION_ERROR or INVALID_REQUEST is salesagent-yq14n; the
+  # violation should surface as VALIDATION_ERROR or INVALID_REQUEST is #1604; the
   # spec's enum descriptions say INVALID_REQUEST, and we currently emit VALIDATION_ERROR on
   # mcp/a2a. This row records today's behavior, not an endorsement of the code.)
   Scenario: Budget validation -- package budget negative is rejected by the schema

@@ -209,9 +209,9 @@ class TestWebhookDelivery:
         Recomputes over ``env.last_delivery.body`` (the raw wire bytes), not a
         fresh serialization of the payload dict -- a recompute from the dict
         can silently agree with a sender that signed one serialization and
-        transmitted another, which is exactly the defect salesagent-47n9.1
+        transmitted another, which is exactly the defect #1441
         fixed. Spec header name (X-AdCP-Signature, from
-        adcp.sign_legacy_webhook) since salesagent-47n9.1 -- the non-spec
+        adcp.sign_legacy_webhook) since #1441 -- the non-spec
         X-Webhook-Signature no longer exists.
         """
         from tests.harness.delivery_webhook_unit import WebhookEnv

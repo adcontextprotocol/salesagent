@@ -67,7 +67,7 @@ def given_budget_below_minimum(ctx: dict) -> None:
 
 # The wire codes that mean "rejected for authentication". AUTH_MISSING and
 # AUTH_INVALID are the v3.1.1 split of the deprecated AUTH_REQUIRED
-# (salesagent-mkso); AUTH_REQUIRED itself stays listed because it remains
+# (#2092); AUTH_REQUIRED itself stays listed because it remains
 # emittable per CODE_TABLE and a scenario must not start passing merely because
 # production still emits the older alias.
 _AUTH_REJECTION_CODES = frozenset({"AUTH_MISSING", "AUTH_INVALID", "AUTH_REQUIRED"})
@@ -156,7 +156,7 @@ def then_auth_before_business_logic(ctx: dict) -> None:
     Per the Error Verification Policy (tests/CLAUDE.md), this asserts on the
     wire envelope, not a reconstructed exception. Split from the deprecated
     AUTH_REQUIRED to AUTH_MISSING/AUTH_INVALID per v3.1.1 error-code.json
-    (salesagent-mkso; a prior reversal flipped AUTH_TOKEN_INVALID ->
+    (#2092; a prior reversal flipped AUTH_TOKEN_INVALID ->
     AUTH_REQUIRED, now split again); the "Principal ID not found" message
     still holds.
     """

@@ -193,7 +193,7 @@ def _record_dormancy(item: pytest.Item, report: pytest.TestReport) -> bool:
     production gap when the cause is that classification. But the auto-convert's own
     reason claims nothing, so it sailed past the check written for it. This routes it
     through the same vocabulary instead of adding a third rule beside the two
-    (salesagent-kp56h).
+    (#1929).
 
     The key is published as a ``user_property`` because pytest-json-report does NOT
     serialize ``wasxfail``: the reason string is invisible in the JSON reports, so the
@@ -4535,7 +4535,7 @@ def _reset_e2e_db(e2e_config) -> None:
     two orders are opposite, and neither side knows about the other: a textbook
     ABBA cycle. Postgres broke it by killing whichever party it picked, which
     surfaced as one rotating ``DeadlockDetected`` per full in-network run, always
-    in scenario SETUP and never on an assertion (salesagent-prkv.48).
+    in scenario SETUP and never on an assertion (#2048).
 
     DELETE takes a RowExclusiveLock, which does not conflict with AccessShareLock
     at all, so the reset can neither block nor be blocked by a concurrent reader

@@ -4,7 +4,7 @@ WorkflowStep and ObjectWorkflowMapping have no tenant_id column. Isolation requi
 joining through Context (DBContext), which carries BOTH tenant_id and principal_id.
 
 TWO AXES, because grading one and staying silent on the other is how this guard certified
-a leak. Until salesagent-prkv.88 this module enforced the tenant join only, was green, and
+a leak. Until #1808 this module enforced the tenant join only, was green, and
 its own docstring held up ``get_by_step_id()`` as "a correct tenant-scoped" reference
 implementation others should copy -- while that method filtered tenant_id and NOTHING else.
 Any method written by imitating the blessed pattern inherited the omission, and three
@@ -33,7 +33,7 @@ for the presence of a filter, so it cannot tell a correct predicate from an inco
 and it cannot see which callers reach a method. It catches OMISSION, which is what both
 defects were.
 
-beads: salesagent-prkv.88 (principal axis), and the original tenant-join guard
+tracker: #1808 (principal axis), and the original tenant-join guard
 """
 
 import re
@@ -123,7 +123,7 @@ class TestWorkflowRepositoryTenantIsolation:
     way to enforce tenant isolation for these tables is to join through Context
     (DBContext) which has tenant_id. The reference implementation is
     get_by_step_id(), which joins DBContext and filters tenant_id — and, since
-    salesagent-prkv.88, principal_id when the caller passes one. It is cited here on
+    #1808, principal_id when the caller passes one. It is cited here on
     both axes deliberately: this docstring used to call it "correct" while it leaked
     across principals, and a method held up as exemplary gets copied.
 
@@ -150,7 +150,7 @@ class TestWorkflowRepositoryTenantIsolation:
 #: Methods that query WorkflowStep/ObjectWorkflowMapping and are deliberately NOT narrowed
 #: to a principal, each with the reason. Publisher-scoped access is a real requirement, so
 #: this axis needs an exemption list rather than a blanket rule -- but the exemption has to
-#: name itself. The leak salesagent-prkv.88 fixed was invisible precisely because there was
+#: name itself. The leak #1808 fixed was invisible precisely because there was
 #: no place where "this one is tenant-only" had to be written down and defended.
 #:
 #: A method serving BOTH a buyer and the publisher belongs here only if the buyer's path is
@@ -213,7 +213,7 @@ class TestWorkflowRepositoryPrincipalIsolation:
                 "principal_id and filter DBContext.principal_id on it, as get_by_step_id "
                 "does. If the method is publisher-scoped by design, add it to "
                 "WORKFLOW_PRINCIPAL_SCOPE_EXEMPT with the reason -- an exemption has to "
-                "name itself (salesagent-prkv.88)."
+                "name itself (#1808)."
             ),
         )
 

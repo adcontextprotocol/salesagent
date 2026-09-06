@@ -86,7 +86,7 @@ class TestWebhookDeliveryHappyPath:
 
             # Verify HMAC signature headers were added. Spec header names
             # (X-AdCP-Signature/X-AdCP-Timestamp, from adcp.sign_legacy_webhook
-            # via the shared deliver_webhook seam) since salesagent-47n9.1 —
+            # via the shared deliver_webhook seam) since #1441 —
             # the non-spec X-Webhook-* pair no longer exists.
             sent_headers = env.last_delivery.headers
             assert "X-AdCP-Signature" in sent_headers
@@ -102,7 +102,7 @@ class TestWebhookDeliveryHappyPath:
 # UC-004-ALT-WEBHOOK-PUSH-REPORTING-07
 #
 # Formerly TestWebhookHmacSha256Signing here, unit-testing the deleted
-# WebhookAuthenticator.sign_payload directly. salesagent-47n9.1 deleted that
+# WebhookAuthenticator.sign_payload directly. #1441 deleted that
 # class (dead in production; its only production caller path never set
 # signing_secret) and re-homed this obligation onto a byte-verifying test:
 # tests/integration/test_webhook_sender_signed_body_integrity.py::
@@ -457,7 +457,7 @@ class TestEXT_G_06_HmacAuthRejection:
 
         Recomputes over the raw received body rather than a re-serialization
         of the payload dict, so a sender that signs one serialization and
-        transmits another cannot pass this test vacuously (salesagent-47n9.1).
+        transmits another cannot pass this test vacuously (#1441).
 
         Covers: UC-004-EXT-G-06
         """
@@ -479,7 +479,7 @@ class TestEXT_G_06_HmacAuthRejection:
             )
 
             # Spec header names (X-AdCP-Signature/X-AdCP-Timestamp) since
-            # salesagent-47n9.1 -- the non-spec X-Webhook-* pair no longer exists.
+            # #1441 -- the non-spec X-Webhook-* pair no longer exists.
             assert_signature_verifies_over_wire_body(env.last_delivery, secret)
 
     def test_auth_rejection_vs_server_error_retry_behavior(self, integration_db):

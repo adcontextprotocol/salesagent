@@ -62,7 +62,7 @@ _CONTROL_PATH_RE = re.compile(r"^/control/(?P<key>[^/]+)/?$")
 class _CaptureStore:
     """Thread-safe, per-key capture storage — a dict-of-lists, never one global list.
 
-    Also holds each key's REJECTION PROGRAMME (salesagent-pldmk.41): how many of
+    Also holds each key's REJECTION PROGRAMME (#2060): how many of
     the next deliveries to that key answer a non-200 status. Nothing else in the
     compose stack can make the deployed server's delivery path fail, so without
     this the server's circuit breaker never records a real failure.

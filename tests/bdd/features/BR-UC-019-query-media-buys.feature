@@ -266,7 +266,7 @@ Feature: BR-UC-019 Query Media Buys
     # ("malformed, missing required fields, or violates schema constraints"),
     # not VALIDATION_ERROR (which is scoped to rules BEYOND schema validation).
     # WHICH parameter failed travels on error.field; the suggestion is derived
-    # from the code and cannot name the offending value (salesagent-qzub9).
+    # from the code and cannot name the offending value (#1753).
 
     Examples: Invalid partitions
       | partition              | invalid_filter                      | error_code       |
@@ -1171,7 +1171,7 @@ Feature: BR-UC-019 Query Media Buys
     # (UNSUPPORTED_FEATURE, correctable) before any DB read. The annotation used to say
     # AdCPValidationError while the step demanded ACCOUNT_FILTER_NOT_SUPPORTED and
     # production raised a third thing -- scenario, annotation and production were three
-    # different answers (salesagent-qzub9). UNSUPPORTED_FEATURE is the published member
+    # different answers (#1753). UNSUPPORTED_FEATURE is the published member
     # for "a requested feature or field is not supported by this seller".
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/get-media-buys-response.json
 
