@@ -88,7 +88,6 @@ class ProductEnv(ProductMixin, IntegrationEnv):
     REST_ENDPOINT = "/api/v1/products"
 
     #: Dotted path to the skill's _impl function, for inject_untyped_exception().
-    IMPL_TARGET = "src.core.tools.products._get_products_impl"
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)

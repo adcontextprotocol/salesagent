@@ -939,15 +939,21 @@ class TestCreativeLifecycleMCP:
 
     async def test_create_media_buy_with_creative_ids(self, mock_context, sample_creatives):
         """Test create_media_buy accepts creative_ids in packages."""
-        # First, sync creatives to have IDs to reference
-        core_sync_creatives_tool, _ = self._import_mcp_tools()
+        # First, sync creatives to have IDs to reference. Awaited directly rather than
+        # through this module's ``_sync_creatives`` seam: that seam wraps the boundary in
+        # asyncio.run for its many SYNC callers, and this is the one async test -- a second
+        # loop inside the running one raises.
+        from src.core.tools._boundary import invoke_tool
 
         identity = self._make_identity(tenant_overrides={"approval_mode": "require-human"})
-        sync_response = core_sync_creatives_tool(
-            creatives=sample_creatives,
-            idempotency_key=f"sync-{uuid4().hex}",
-            account=AccountReference(root={"account_id": ACCOUNT_ID}),
-            identity=identity,
+        sync_response = await invoke_tool(
+            "sync_creatives",
+            SyncCreativesRequest(
+                creatives=sample_creatives,
+                idempotency_key=f"sync-{uuid4().hex}",
+                account=AccountReference(root={"account_id": ACCOUNT_ID}),
+            ),
+            identity,
         )
         assert len(sync_response.creatives) == 3
 

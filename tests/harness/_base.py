@@ -333,9 +333,6 @@ class BaseTestEnv:
     ASYNC_PATCHES: set[str] = set()  # Names that need AsyncMock (for async functions)
     MODULE: str = ""  # Convenience for unit envs building patch paths
     REST_ENDPOINT: str = ""  # Override in subclass for REST dispatch
-    #: Dotted path to the skill's _impl function, for inject_untyped_exception().
-    #: Override in subclass (e.g. ProductEnv sets "src.core.tools.products._get_products_impl").
-    IMPL_TARGET: str = ""
     # The tool/skill this env dispatches. Declaring these is what lets the base
     # own call_mcp/call_a2a instead of every env re-implementing the same
     # one-line delegation. REST_METHOD's de-facto
@@ -404,17 +401,19 @@ class BaseTestEnv:
     def inject_untyped_exception(self, exception: Exception) -> None:
         """Make the skill's business logic raise *exception* directly (prkv.18).
 
-        Patches ``self.IMPL_TARGET`` (the skill's ``_impl`` function, set by
-        the subclass — e.g. ``ProductEnv.IMPL_TARGET =
-        "src.core.tools.products._get_products_impl"``) to raise *exception*
-        instead of running. Registers the patcher with the same ``_guard``
-        cleanup registry ``EXTERNAL_PATCHES`` uses, so both release paths (a
-        normal ``__exit__`` and a failed ``__enter__``) stop it and this needs
-        no new cleanup path.
+        Substitutes the implementation at its REGISTRY ROW, so every transport reaches the
+        raising stand-in. It used to patch a dotted path to the ``_impl`` function, declared
+        per env as ``IMPL_TARGET``; that stopped working the day the transports began
+        dispatching through ``TOOLS``, because the row holds the function OBJECT and a
+        module attribute is no longer what anything calls. The env already names its tool
+        (``MCP_TOOL``), so the second declaration is gone with the mechanism that needed it.
 
-        Skill-agnostic by design: any env that sets ``IMPL_TARGET`` gets this
-        capability for free, rather than each domain mixin hand-rolling its
-        own untyped-exception injector.
+        Registers the patcher with the same ``_guard`` cleanup registry ``EXTERNAL_PATCHES``
+        uses, so both release paths (a normal ``__exit__`` and a failed ``__enter__``) stop
+        it and this needs no new cleanup path.
+
+        Skill-agnostic by design: any env that declares ``MCP_TOOL`` gets this capability for
+        free, rather than each domain mixin hand-rolling its own untyped-exception injector.
 
         For a genuinely untyped exception, the REST boundary's catch-all
         handler is reachable only through Starlette's ``ServerErrorMiddleware``
@@ -426,13 +425,19 @@ class BaseTestEnv:
         call, on this env instance — ``get_rest_client()`` is lazy, so a
         Given-time set is honored at dispatch time.
         """
-        if not self.IMPL_TARGET:
+        from dataclasses import replace
+
+        from src.core.tools.registry import _TOOLS
+
+        if not self.MCP_TOOL:
             raise ValueError(
-                f"{type(self).__name__} has no IMPL_TARGET set — override it in the subclass "
-                "to the skill's _impl dotted path before calling inject_untyped_exception()"
+                f"{type(self).__name__} declares no MCP_TOOL — set it to the tool's registry "
+                "name before calling inject_untyped_exception()"
             )
-        patcher = patch(self.IMPL_TARGET, new_callable=AsyncMock, side_effect=exception)
-        self.mock["_untyped_exception"] = patcher.start()
+        raising = AsyncMock(side_effect=exception)
+        patcher = patch.dict(_TOOLS, {self.MCP_TOOL: replace(_TOOLS[self.MCP_TOOL], impl=raising)})
+        patcher.start()
+        self.mock["_untyped_exception"] = raising
         self._guard("patch:_untyped_exception", patcher.stop)
         self.REST_RAISE_SERVER_EXCEPTIONS = False
 

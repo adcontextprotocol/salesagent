@@ -178,20 +178,21 @@ def mb_creatives(integration_db, mb_identity):
 # ---------------------------------------------------------------------------
 
 
-def _sync_creatives(**kwargs):
+async def _sync_creatives(**kwargs):
     """Build a SyncCreativesRequest from flat fields, then dispatch it at the boundary.
 
     ``invoke_tool`` is the path every transport takes -- account resolution and the
     idempotency probe included -- so a call site here reaches production the way a buyer
     does. This module's call sites stay flat.
-    """
-    import asyncio
 
+    Async because the boundary is: the single caller sits inside an async test, so wrapping
+    this in ``asyncio.run`` would try to start a second loop inside the running one.
+    """
     from src.core.tools._boundary import invoke_tool
 
     identity = kwargs.pop("identity", None)
     kwargs.pop("ctx", None)
-    return asyncio.run(invoke_tool("sync_creatives", SyncCreativesRequest(**kwargs), identity))
+    return await invoke_tool("sync_creatives", SyncCreativesRequest(**kwargs), identity)
 
 
 class TestCreateMediaBuyCurrencyValidation:
@@ -696,7 +697,7 @@ class TestGetMediaBuysResponseFields:
             return_value=mock_format,
         ):
             # Sync a creative and assign it to the package
-            _sync_creatives(
+            await _sync_creatives(
                 creatives=[
                     {
                         "creative_id": "c_approval_test",
