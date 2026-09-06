@@ -37,7 +37,8 @@ from adcp.types import (
 
 # The BRANCH, named at its generated path. ``adcp.types.CreativeAsset`` binds to this same
 # class at RUNTIME, but mypy resolves the public alias to the RootModel UNION, so static and
-# runtime disagreed about what this model extends (salesagent-tr9xa).
+# runtime disagreed about what this model extends. Same adcp codegen defect as the pointer
+# problem documented on Creative below; unreported upstream.
 from adcp.types.generated_poc.core.creative_asset import CreativeAsset1 as LibraryCreativeAsset
 from adcp.types.generated_poc.core.provenance import AiTool  # TODO: no stable alias in adcp.types
 from adcp.types.generated_poc.creative.list_creatives_response import (
@@ -172,7 +173,7 @@ class CreativeAssetRequest(LibraryCreativeAsset):
     ``issues[].pointer`` to address the offending field IN THE REQUEST PAYLOAD, and
     ``CreativeAsset1`` names nothing the buyer sent: it is a codegen artifact that appears
     nowhere in AdCP. The SDK validates correctly and reports the failure unconformantly.
-    Reported upstream as salesagent-tr9xa.
+    NOT yet reported upstream -- searched adcontextprotocol/adcp and found no issue for it.
 
     Flattening onto one branch -- which already carries every field of both -- keeps the
     validation and fixes the pointer. ``format_id`` relaxes to optional, the constraint
