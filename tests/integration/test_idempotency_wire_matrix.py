@@ -260,16 +260,12 @@ class TestCaptureUniformity:
     across transports.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "#2214: the expectation is right and unmet. The impl hashes "
-            "raw_wire_payload when a transport threads it and the model dump when none "
-            "does, so REST and MCP disagree about what 'the same request' is. Belongs in "
-            "BDD once the capture point is uniform -- a cross-transport claim is the one "
-            "thing a per-transport-parametrized scenario cannot state today."
-        ),
-    )
+    # Graduated: this carried a strict xfail citing #2214 -- "the expectation is right and
+    # unmet", because the implementation hashed ``raw_wire_payload`` when a transport threaded
+    # it and the model dump when none did, so REST and MCP disagreed about what "the same
+    # request" is. The capture point is uniform now: ``src/core/tools/_boundary.py`` takes
+    # ``canonical_request_hash(req)`` for every transport, and no transport threads bytes into
+    # business logic at all. Verified by this test passing on the run that removed the marker.
     def test_cross_transport_identical_retry_replays(self, integration_db):
         """The same payload dict created via REST replays when retried via MCP."""
         key = f"wire-xport-{uuid.uuid4().hex}"
@@ -291,23 +287,34 @@ class TestCaptureUniformity:
         assert second.payload.response.media_buy_id == first.payload.response.media_buy_id
 
 
-class TestWireLevelHashInput:
-    """MCP ONLY: the payload hash is computed over the WIRE payload, not the model dump.
+class TestHashInputIsTheValidatedRequest:
+    """The digest is taken over the validated REQUEST MODEL, uniformly on every transport.
 
-    AdCP defines payload equivalence as RFC 8785 over the request AS SENT. Two encodings of
-    the same instant ("...Z" vs "...+00:00") normalize to the same value inside the request
-    model -- a model-level hash replays -- but they are different wire payloads, so the
-    retry must conflict.
+    This is a KNOWN DIVERGENCE from the pinned prose, recorded here rather than hidden.
+    L1/security.mdx ("Payload equivalence") says: "'Equivalent' means identical canonical
+    JSON form, not field-by-field semantic comparison. Sellers MUST determine equivalence by
+    hashing the canonical form and comparing hashes." Read strictly, the canonical form is
+    taken over the request body AS SENT, so two spellings of one instant ("...Z" versus
+    "...+00:00") are different JSON strings, different hashes, and a retry that changes only
+    the spelling is IDEMPOTENCY_CONFLICT.
 
-    MCP ONLY, and that is the finding rather than a scoping convenience. The impl computes
-    the digest over ``raw_wire_payload`` when a transport threads it and falls back to the
-    model dump when none does, so "is the hash over the wire" is answered per transport by
-    whether that transport remembered to plumb its bytes into business logic. MCP threads
-    them from ctx state; REST does not. The mechanism needs revising (#2214), and until it
-    is, this grades the one transport where the behaviour exists.
+    This seller hashes ``req.model_dump(mode="json")`` instead, so pydantic has already
+    normalised the datetime and the two spellings replay. The reason is that the strict
+    reading requires wire bytes inside business logic, and threading them there is what
+    produced the defect this test module was written around: each transport captured its own
+    bytes, MCP threaded them and REST did not, so "the same request" had a per-transport
+    answer and replay was silently dead on the transport that forgot (#2214). One digest
+    input, taken after validation, is what makes the four transports agree at all.
+
+    The divergence is in the SAFE direction. A replayed response for a semantically identical
+    request still executes the side effect at most once, which is the guarantee the key
+    carries; what is lost is the seller's ability to refuse a re-encoding it could have
+    served. Closing it properly means canonicalising the received body before validation, at
+    a seam that does not exist yet.
     """
 
-    def test_equivalent_but_differently_encoded_retry_conflicts(self, integration_db):
+    def test_a_re_encoded_but_equivalent_retry_replays(self, integration_db):
+        """Same instant, different spelling, same key: the retry replays rather than conflicting."""
         key = f"wire-enc-{uuid.uuid4().hex}"
 
         with MediaBuyCreateEnv() as env:
@@ -323,5 +330,32 @@ class TestWireLevelHashInput:
 
             second = env.call_via(Transport.MCP, **reencoded)
 
-        assert second.is_error, "a differently-encoded wire payload must not replay"
+        assert second.is_success, f"a re-encoded but equivalent retry must replay: {second.error}"
+        assert second.payload.replayed is True, (
+            "the digest is taken after validation, so the two spellings are one payload -- "
+            "see this class's docstring for the divergence from the strict wire reading"
+        )
+        assert second.payload.response.media_buy_id == first.payload.response.media_buy_id
+
+    def test_a_genuinely_different_payload_still_conflicts(self, integration_db):
+        """The permissive reading is about ENCODING only -- a real field change still conflicts.
+
+        Without this, the test above would be satisfied by a seller that had stopped
+        comparing payloads at all.
+        """
+        key = f"wire-diff-{uuid.uuid4().hex}"
+
+        with MediaBuyCreateEnv() as env:
+            _tenant, _principal, product, _pricing = env.setup_media_buy_data()
+            kwargs = _create_kwargs(product, idempotency_key=key)
+
+            first = env.call_via(Transport.MCP, **dict(kwargs))
+            assert first.is_success, f"fresh create failed: {first.error}"
+
+            mutated = dict(kwargs)
+            mutated["po_number"] = "A-DIFFERENT-PO"
+
+            second = env.call_via(Transport.MCP, **mutated)
+
+        assert second.is_error, "a changed field must not replay"
         second.assert_wire_error("IDEMPOTENCY_CONFLICT", recovery="correctable")

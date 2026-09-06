@@ -1,4 +1,4 @@
-"""Integration tests for verbatim SUCCESS replay through _create_media_buy_impl.
+"""Integration tests for verbatim SUCCESS replay at the transport boundary.
 
 AdCP 3.0.1 idempotency: retrying with the same idempotency_key replays the
 ORIGINAL success VERBATIM (top-level ``replayed: true``), never re-evaluating;
@@ -45,7 +45,10 @@ def _make_request(idempotency_key, *, po_number="REPLAY-1"):
     from src.core.schemas import CreateMediaBuyRequest
 
     return CreateMediaBuyRequest(
-        account={"account_id": "acct_test"},
+        # The account the seeds create. The boundary resolves this reference before probing,
+        # and the cache scope is (agent, account, key), so naming an unseeded account would
+        # fail resolution before any of these tests reached their subject.
+        account={"account_id": DEFAULT_TEST_ACCOUNT_ID},
         brand={"domain": "replay-test.example.com"},
         packages=[{"product_id": "prod_1", "budget": 1000, "pricing_option_id": "po_1"}],
         start_time=datetime(2026, 6, 1, tzinfo=UTC),
@@ -62,23 +65,21 @@ def _identity(tenant_id, principal_id):
     return PrincipalFactory.make_identity(
         principal_id=principal_id,
         tenant_id=tenant_id,
-        # The RESOLVED account, as the transport boundary would have left it. These tests
-        # call _impl directly, so nothing runs enrich_identity_with_account for them -- and
-        # the idempotency cache is scoped by (principal, account, key), so an identity
-        # carrying no account would look in a different scope from the one the request's
-        # own ``account`` puts the row in.
+        # The RESOLVED account. The boundary re-resolves it from the request and overwrites
+        # this with the same value; stating it here keeps the identity honest for the direct
+        # assertions below, which read the scope the seeded row sits in.
         account_id=DEFAULT_TEST_ACCOUNT_ID,
         testing_context=AdCPTestContext(test_session_id="replay_test"),
     )
 
 
 class TestImplReplaysCachedSuccess:
-    """_create_media_buy_impl replays the cached success verbatim on key match."""
+    """The boundary replays the cached success verbatim on key match."""
 
     async def test_cached_success_replayed_verbatim(self, integration_db):
         from src.core.idempotency_canonical import canonical_request_hash
         from src.core.schemas._base import CreateMediaBuyResult, CreateMediaBuySuccess
-        from src.core.tools.media_buy_create import _create_media_buy_impl
+        from src.core.tools._boundary import invoke_tool
 
         idem_key = f"replay-{uuid.uuid4().hex}"
         tenant_id = f"replay_t_{uuid.uuid4().hex[:6]}"
@@ -94,7 +95,7 @@ class TestImplReplaysCachedSuccess:
             media_buy_id="mb_original_123",
         )
 
-        result = await _create_media_buy_impl(req=_make_request(idem_key), identity=_identity(tenant_id, principal_id))
+        result = await invoke_tool("create_media_buy", _make_request(idem_key), _identity(tenant_id, principal_id))
 
         assert isinstance(result, CreateMediaBuyResult)
         assert isinstance(result.response, CreateMediaBuySuccess)
@@ -104,7 +105,7 @@ class TestImplReplaysCachedSuccess:
 
     async def test_different_payload_same_key_raises_conflict(self, integration_db):
         from src.core.exceptions import AdCPSalesAgentError
-        from src.core.tools.media_buy_create import _create_media_buy_impl
+        from src.core.tools._boundary import invoke_tool
 
         idem_key = f"conflict-{uuid.uuid4().hex}"
         tenant_id = f"conflict_t_{uuid.uuid4().hex[:6]}"
@@ -115,7 +116,7 @@ class TestImplReplaysCachedSuccess:
         _seed_success(tenant_id, principal_id, idem_key, media_buy_id="mb_first", payload_hash="non-matching-hash")
 
         with pytest.raises(AdCPSalesAgentError) as exc_info:
-            await _create_media_buy_impl(req=_make_request(idem_key), identity=_identity(tenant_id, principal_id))
+            await invoke_tool("create_media_buy", _make_request(idem_key), _identity(tenant_id, principal_id))
 
         exc = exc_info.value
         assert exc.error_code == "IDEMPOTENCY_CONFLICT"
@@ -134,7 +135,7 @@ class TestImplReplaysCachedSuccess:
 
         from src.core.exceptions import AdCPSalesAgentError
         from src.core.idempotency_canonical import canonical_request_hash
-        from src.core.tools.media_buy_create import _create_media_buy_impl
+        from src.core.tools._boundary import invoke_tool
         from tests.helpers import LegacyCachedShape, seed_cached_success
 
         idem_key = f"drift-{uuid.uuid4().hex}"
@@ -153,7 +154,7 @@ class TestImplReplaysCachedSuccess:
         )
 
         with pytest.raises(AdCPSalesAgentError) as exc_info:
-            await _create_media_buy_impl(req=_make_request(idem_key), identity=_identity(tenant_id, principal_id))
+            await invoke_tool("create_media_buy", _make_request(idem_key), _identity(tenant_id, principal_id))
 
         assert not isinstance(exc_info.value, PydanticValidationError)
         assert exc_info.value.error_code != "IDEMPOTENCY_CONFLICT"
@@ -204,7 +205,7 @@ class TestOpportunisticEviction:
 
     Eviction runs in its OWN transaction after the cache write commits (a
     DELETE deadlock can never roll back the just-cached success) and only on
-    ``_EVICTION_PROBABILITY`` of successes — the storage-growth bound for the
+    ``EVICTION_PROBABILITY`` of successes — the storage-growth bound for the
     cache without a scheduler (read-path TTL filtering already keeps replay
     correctness independent of eviction). The tests pin both sides: forced
     eviction deletes the row; suppressed eviction leaves it and the create
@@ -217,7 +218,7 @@ class TestOpportunisticEviction:
         from src.core.database.repositories import MediaBuyUoW
         from tests.helpers import make_active_cached_success, seed_cached_success
 
-        monkeypatch.setattr("src.core.tools.media_buy_create._EVICTION_PROBABILITY", 1.0)
+        monkeypatch.setattr("src.core.idempotency_replay.EVICTION_PROBABILITY", 1.0)
 
         expired_key = f"evict-{uuid.uuid4().hex}"
         fresh_key = f"fresh-{uuid.uuid4().hex}"
@@ -425,7 +426,7 @@ def test_suppressed_eviction_never_touches_the_create(integration_db, monkeypatc
     from tests.harness.media_buy_create import MediaBuyCreateEnv
     from tests.helpers import make_active_cached_success, seed_cached_success
 
-    monkeypatch.setattr("src.core.tools.media_buy_create._EVICTION_PROBABILITY", 0.0)
+    monkeypatch.setattr("src.core.idempotency_replay.EVICTION_PROBABILITY", 0.0)
     expired_key = f"keep-{uuid.uuid4().hex}"
     fresh_key = f"fresh-{uuid.uuid4().hex}"
     seeded_at = datetime(2020, 1, 1, tzinfo=UTC)

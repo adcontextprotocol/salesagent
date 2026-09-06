@@ -138,17 +138,18 @@ def cache_success(
         )
 
 
-def maybe_evict_expired(tenant_id: str, probability: float | None = None) -> None:
+def maybe_evict_expired(tenant_id: str) -> None:
     """Probabilistically reclaim expired cache rows in a separate short transaction.
 
     Runs OUTSIDE the cache-write transaction so a tenant-wide DELETE deadlock can never roll
     back a just-cached success, and only on ``EVICTION_PROBABILITY`` of keyed successes so
     the hot path almost never pays for housekeeping. Best-effort by design.
 
-    ``probability`` lets a caller pass its OWN threshold rather than this module's, so a
-    tool that exposes a patchable constant keeps that patch point when it delegates here.
+    There used to be a ``probability`` parameter, so a tool with its own patchable constant
+    could pass that instead of this module's. No tool has one: the boundary is the single
+    caller, and ``EVICTION_PROBABILITY`` here is the single patch point.
     """
-    if random.random() >= (EVICTION_PROBABILITY if probability is None else probability):
+    if random.random() >= EVICTION_PROBABILITY:
         return
 
     from src.core.database.repositories import MediaBuyUoW

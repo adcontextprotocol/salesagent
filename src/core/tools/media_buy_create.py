@@ -55,7 +55,9 @@ from src.core.exceptions import (
     AdCPValidationError,
 )
 from src.core.helpers import enum_value
+from src.core.idempotency_canonical import canonical_request_hash
 from src.core.idempotency_policy import DEFAULT_REPLAY_TTL
+from src.core.idempotency_replay import raise_on_payload_conflict
 
 
 class PackageAssignmentDict(TypedDict):
@@ -1869,6 +1871,7 @@ def _raise_degraded_replay_outcome(
     principal_id: str,
     *,
     account_id: str | None = None,
+    req: CreateMediaBuyRequest | None = None,
 ) -> NoReturn:
     """Fail closed when the dup-booking backstop fired.
 
@@ -1887,9 +1890,13 @@ def _raise_degraded_replay_outcome(
     - buy outlived the replay TTL: ``IDEMPOTENCY_EXPIRED`` (rule 6 fail-closed) -- the
       boundary's probe filters expired rows, so without this the buyer would silently
       re-derive a booking the seller can no longer replay,
+    - canonical payload differs from the buy's stored hash: ``IDEMPOTENCY_CONFLICT``
+      (rule 5). The boundary answers this for every request inside the replay window; the
+      buy's ``payload_hash`` column is the DURABLE signal that outlives the cache row, so
+      the answer survives eviction. Legacy rows without a stored hash carry no signal.
     - otherwise: transient ``SERVICE_UNAVAILABLE`` with a short ``retry_after`` -- the
       winner's cache write is in flight; the buyer's retry replays the verbatim envelope at
-      the boundary once it lands, or conflicts there if the payload differs.
+      the boundary once it lands.
     """
     # Lazy: tests patch src.core.database.repositories.MediaBuyUoW; the call-time import binds the patched object.
     from src.core.database.repositories import MediaBuyUoW
@@ -1926,6 +1933,12 @@ def _raise_degraded_replay_outcome(
         )
         if window_expired:
             raise AdCPIdempotencyExpiredError()
+
+        # Rule 5, from the durable signal. Canonicalised HERE rather than passed in: this is
+        # not an ``_impl``, so it may dump the request it was handed, and computing it at the
+        # one site that compares it is what keeps the hash from becoming plumbing again.
+        if req is not None:
+            raise_on_payload_conflict(existing.payload_hash, canonical_request_hash(req))
 
     raise AdCPServiceUnavailableError(
         retry_after=1,
@@ -1978,6 +1991,7 @@ def _resolve_idempotency_race_or_raise(
     idempotency_key: str | None,
     principal_id: str,
     account_id: str | None,
+    req: CreateMediaBuyRequest | None = None,
     media_buy_id: str | None = None,
 ) -> NoReturn:
     """Shared handler for the unique-index ``IntegrityError`` on both booking paths.
@@ -2003,6 +2017,7 @@ def _resolve_idempotency_race_or_raise(
         idempotency_key or "",
         principal_id,
         account_id=account_id,
+        req=req,
     )
 
 
@@ -2872,6 +2887,7 @@ async def _create_media_buy_impl(
                     idempotency_key=req.idempotency_key,
                     principal_id=principal.principal_id,
                     account_id=identity.account_id,
+                    req=req,
                     media_buy_id=media_buy_id,
                 )
 
@@ -3672,6 +3688,7 @@ async def _create_media_buy_impl(
                 idempotency_key=req.idempotency_key,
                 principal_id=principal_id,
                 account_id=identity.account_id,
+                req=req,
                 media_buy_id=response.media_buy_id,
             )
 

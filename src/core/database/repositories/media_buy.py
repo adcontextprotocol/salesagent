@@ -25,6 +25,7 @@ from src.core.database.models import (
     PersistedMediaBuyStatus,
 )
 from src.core.errors.details import EntityRefDetails
+from src.core.idempotency_canonical import canonical_request_hash
 
 if TYPE_CHECKING:
     from adcp.types import ContextObject
@@ -352,7 +353,6 @@ class MediaBuyRepository:
         by_alias: bool = False,
         created_at: datetime.datetime | None = None,
         account_id: str | None = None,
-        payload_hash: str | None = None,
     ) -> MediaBuy:
         """Create a MediaBuy from a request model, serializing raw_request at the DB boundary.
 
@@ -377,8 +377,6 @@ class MediaBuyRepository:
             by_alias: Whether to serialize with field aliases (e.g., content_uri).
             created_at: Optional explicit created_at timestamp.
             account_id: Resolved account scope (AdCP idempotency scope is agent+account+key).
-            payload_hash: Canonical request hash from the idempotency probe; the
-                degraded fallback's IDEMPOTENCY_CONFLICT signal.
 
         Returns:
             The created MediaBuy ORM object (added to session, not committed).
@@ -405,11 +403,17 @@ class MediaBuyRepository:
             "end_time": end_time,
             "status": PersistedMediaBuyStatus.parse(status, media_buy_id=media_buy_id),
             "raw_request": raw,
-            # Canonical request hash as computed by the idempotency probe —
-            # raw_request is not canonicalizable (injected package_ids,
-            # alias-dependent names), so the degraded idempotency fallback
-            # conflict-checks against this stored hash.
-            "payload_hash": payload_hash,
+            # The DURABLE conflict signal, computed HERE from the request this method already
+            # holds. It outlives the idempotency cache row: once that row is evicted, this
+            # column is all the seller has to tell a faithful retry from a key reused for a
+            # different request. ``raw_request`` above cannot serve -- it carries injected
+            # package_ids and alias-dependent names, so it is not canonicalizable.
+            #
+            # Computed rather than passed in. It used to be a parameter, threaded from a
+            # transport through the _impl, which is how the whole per-transport hash
+            # arrangement started; a repository is not an ``_impl``, so it may canonicalize
+            # the request it was handed.
+            "payload_hash": canonical_request_hash(req) if getattr(req, "idempotency_key", None) else None,
         }
         if campaign_objective is not None:
             kwargs["campaign_objective"] = campaign_objective

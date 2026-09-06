@@ -39,17 +39,28 @@ _OUTER_HASH = "0" * 64
 class TestNestedSyncBorrowsTheOuterKey:
     """A borrowed key reaches the cache from a transport and never from in-process."""
 
-    def _seed(self, env: CreativeSyncEnv) -> None:
+    def _seed(self, env: CreativeSyncEnv) -> str:
+        """Seed the outer media buy's cache row and return the account it sits under.
+
+        The row is scoped to the SEEDED account, not to no account: the outer create_media_buy
+        that wrote it carried one (``account`` is spec-required on that request), and the
+        boundary resolves the reference a request names before probing. A row under no
+        account would sit in a scope nothing looks in, and the conflict below would read as
+        absent rather than as not-reached.
+        """
         tenant = TenantFactory(tenant_id="test_tenant")
         PrincipalFactory(tenant=tenant, principal_id="test_principal")
         env._commit_factory_data()
+        account = env.default_account_reference()
         seed_cached_success(
             "test_tenant",
             "test_principal",
             _OUTER_KEY,
             response_model=make_active_cached_success(),
             payload_hash=_OUTER_HASH,
+            account_id=account.root.account_id,
         )
+        return account
 
     @pytest.mark.requires_db
     def test_in_process_sync_with_the_borrowed_key_executes(self, integration_db):
@@ -83,11 +94,11 @@ class TestNestedSyncBorrowsTheOuterKey:
         from src.core.tools._boundary import invoke_tool
 
         with CreativeSyncEnv() as env:
-            self._seed(env)
+            account = self._seed(env)
             req = SyncCreativesRequest(
                 creatives=[creative_payload(creative_id="c_nested")],
                 idempotency_key=_OUTER_KEY,
-                account=env.default_account_reference(),
+                account=account,
             )
 
             with pytest.raises(AdCPIdempotencyConflictError):

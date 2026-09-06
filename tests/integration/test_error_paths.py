@@ -34,6 +34,8 @@ would have made that whole best-effort identity path unobserved.
 
 import pytest
 
+from tests.helpers.capture_wrapper_req import registry_impl
+
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
 
@@ -42,7 +44,7 @@ class TestRestBoundaryAuditObservability:
 
     def test_rest_error_with_valid_token_writes_audit_row(self, factory_session, sample_tenant, sample_principal):
         """REST 4xx with a valid token writes an audit row scoped to the resolved principal."""
-        from unittest.mock import patch
+        from unittest.mock import AsyncMock
 
         from starlette.testclient import TestClient
 
@@ -52,10 +54,9 @@ class TestRestBoundaryAuditObservability:
 
         raised = AdCPMediaBuyNotFoundError()
 
-        with patch(
-            "src.core.tools.capabilities.get_adcp_capabilities_raw",
-            side_effect=raised,
-        ):
+        # Substituted at the REGISTRY ROW: the row holds the function object, so patching a
+        # module attribute renames something no transport consults.
+        with registry_impl("get_adcp_capabilities", AsyncMock(side_effect=raised)):
             client = TestClient(app, raise_server_exceptions=False)
             response = client.post(
                 "/api/v1/capabilities",

@@ -9,7 +9,7 @@ to ensure our A2A server properly handles the evolving AdCP spec.
 import json
 import logging
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from a2a.types import Message, Part, Role, SendMessageRequest, Task, TaskState
@@ -19,6 +19,7 @@ from adcp.types import AccountReference as LibraryAccountReference
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from tests.factories.creative_asset import build_assets, image_spec
 from tests.helpers.a2a_adcp_validation import validate_a2a_skill_payload
+from tests.helpers.capture_wrapper_req import registry_impl
 from tests.helpers.webhook_credential_refusal import (
     SHORT_CREDENTIAL,
     assert_credentials_refusal_envelope,
@@ -827,7 +828,9 @@ class TestA2ASkillInvocation:
                 # UpdateMediaBuyRequest stopped overriding them to optional. This payload
                 # was missed by that sweep, so the skill rejected it with VALIDATION_ERROR
                 # before reaching the wire assertions below.
-                "account": {"account_id": "acct_test"},
+                # The SEEDED account (sample_account), not a literal: the boundary resolves
+                # the reference before dispatching, so an unseeded id is ACCOUNT_NOT_FOUND.
+                "account": dict(sample_account),
                 "idempotency_key": f"int-key-{uuid.uuid4().hex}",
             }
             message = create_a2a_message_with_skill("update_media_buy", skill_params)
@@ -976,7 +979,7 @@ class TestA2ASkillInvocation:
 
     @pytest.mark.asyncio
     async def test_get_media_buy_delivery_skill_forwards_typed_account(
-        self, handler, sample_tenant, sample_principal, mock_identity, validator
+        self, handler, sample_tenant, sample_principal, mock_identity, validator, sample_account
     ):
         """A valid account survives the real on_message_send dispatch as a typed AccountReference.
 
@@ -988,18 +991,23 @@ class TestA2ASkillInvocation:
         resolve_account (account_ref.root on a dict).
         """
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+        mock_delivery = AsyncMock(return_value={"media_buys": []})
 
         with (
             patch("src.core.resolved_identity.resolve_identity", return_value=mock_identity),
-            patch("src.a2a_server.adcp_a2a_server.core_get_media_buy_delivery_tool") as mock_delivery,
+            # The REGISTRY ROW, not a module attribute: every transport calls the function
+            # the row holds, so a module-level patch would rename something nothing consults.
+            registry_impl("get_media_buy_delivery", mock_delivery),
         ):
-            mock_delivery.return_value = {"media_buys": []}
-
             from tests.a2a_helpers import make_a2a_context
 
             ctx = make_a2a_context(headers={"host": f"{sample_tenant['subdomain']}.example.com"})
 
-            skill_params = {"media_buy_ids": ["mb_test_123"], "account": {"account_id": "acct-1"}}
+            # The SEEDED account: the boundary resolves the reference a request names before
+            # dispatching, so a fabricated id earns ACCOUNT_NOT_FOUND rather than reaching
+            # the assertion below. This skill used to drop the field, which is why a
+            # fabricated id passed here.
+            skill_params = {"media_buy_ids": ["mb_test_123"], "account": dict(sample_account)}
             message = create_a2a_message_with_skill("get_media_buy_delivery", skill_params)
             params = SendMessageRequest(message=message)
 
@@ -1008,7 +1016,7 @@ class TestA2ASkillInvocation:
             assert isinstance(result, Task)
             assert result.artifacts is not None
 
-            expected = LibraryAccountReference.model_validate({"account_id": "acct-1"})
+            expected = LibraryAccountReference.model_validate(dict(sample_account))
             assert_delivery_forwarded_account(mock_delivery, expected, media_buy_ids=["mb_test_123"])
 
     @pytest.mark.asyncio

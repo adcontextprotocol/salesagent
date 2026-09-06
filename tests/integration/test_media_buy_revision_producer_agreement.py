@@ -60,6 +60,7 @@ import pytest
 from src.core.database.repositories.media_buy import MediaBuyRepository
 from src.core.schemas import UpdateMediaBuyRequest, UpdateMediaBuySuccess
 from src.core.schemas._base import GetMediaBuysRequest
+from tests.factories.request import fresh_idempotency_key
 from tests.harness.media_buy_create_update_list import MediaBuyCreateUpdateListEnv
 from tests.harness.transport import Transport
 
@@ -211,7 +212,7 @@ def test_update_responses_and_get_media_buys_report_the_same_revision(integratio
             transport,
             req=UpdateMediaBuyRequest(
                 account={"account_id": "acct_test"},
-                idempotency_key="test-idem-key-0001",
+                idempotency_key=fresh_idempotency_key(),
                 media_buy_id=media_buy_id,
                 end_time="2026-12-01T00:00:00Z",
             ),
@@ -220,7 +221,7 @@ def test_update_responses_and_get_media_buys_report_the_same_revision(integratio
             transport,
             req=UpdateMediaBuyRequest(
                 account={"account_id": "acct_test"},
-                idempotency_key="test-idem-key-0001",
+                idempotency_key=fresh_idempotency_key(),
                 media_buy_id=media_buy_id,
                 end_time="2026-12-15T00:00:00Z",
             ),
@@ -334,7 +335,7 @@ def test_dry_run_update_reports_the_current_revision_and_moves_nothing(integrati
         simulated = env.call_impl(
             req=UpdateMediaBuyRequest(
                 account={"account_id": "acct_test"},
-                idempotency_key="test-idem-key-0001",
+                idempotency_key=fresh_idempotency_key(),
                 media_buy_id=buy.media_buy_id,
                 end_time="2026-12-01T00:00:00Z",
             )
@@ -400,7 +401,7 @@ def test_update_raises_media_buy_not_found_when_the_row_vanishes_mid_transaction
                 transport,
                 req=UpdateMediaBuyRequest(
                     account={"account_id": "acct_test"},
-                    idempotency_key="test-idem-key-0001",
+                    idempotency_key=fresh_idempotency_key(),
                     media_buy_id=media_buy_id,
                     end_time="2026-12-01T00:00:00Z",
                 ),
@@ -445,7 +446,7 @@ def test_pause_resume_response_reports_the_rows_revision_and_agrees_with_get_med
             transport,
             req=UpdateMediaBuyRequest(
                 account={"account_id": "acct_test"},
-                idempotency_key="test-idem-key-0001",
+                idempotency_key=fresh_idempotency_key(),
                 media_buy_id=buy.media_buy_id,
                 end_time="2026-12-01T00:00:00Z",
             ),
@@ -454,7 +455,7 @@ def test_pause_resume_response_reports_the_rows_revision_and_agrees_with_get_med
             transport,
             req=UpdateMediaBuyRequest(
                 account={"account_id": "acct_test"},
-                idempotency_key="test-idem-key-0001",
+                idempotency_key=fresh_idempotency_key(),
                 media_buy_id=buy.media_buy_id,
                 paused=paused,
             ),
@@ -522,7 +523,7 @@ def test_pause_resume_reports_media_buy_not_found_when_the_row_vanishes_mid_tran
                 transport,
                 req=UpdateMediaBuyRequest(
                     account={"account_id": "acct_test"},
-                    idempotency_key="test-idem-key-0001",
+                    idempotency_key=fresh_idempotency_key(),
                     media_buy_id=buy.media_buy_id,
                     paused=paused,
                 ),

@@ -23,6 +23,7 @@ from src.core.schemas import (
     SyncCreativesResponse,
     UpdateMediaBuySuccess,
 )
+from tests.helpers.capture_wrapper_req import registry_impl
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -447,7 +448,7 @@ class TestA2ASuccessDerivedFromErrorsOnRealWire:
         an ``async def`` test would nest event loops and silently swallow the
         resulting RuntimeError.
         """
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock
 
         from src.core.schemas import Error, GetProductsResponse
         from tests.bdd.steps._outcome_helpers import wire_field
@@ -472,10 +473,9 @@ class TestA2ASuccessDerivedFromErrorsOnRealWire:
                 errors=[Error(code="UNSUPPORTED_FEATURE", message="property_list_filtering unavailable")],
             )
 
-            with patch(
-                "src.a2a_server.adcp_a2a_server.core_get_products_tool",
-                new=AsyncMock(return_value=errored_response),
-            ):
+            # Substituted at the REGISTRY ROW, which is what the A2A handler dispatches
+            # through; a module attribute is not consulted by any transport.
+            with registry_impl("get_products", AsyncMock(return_value=errored_response)):
                 ctx: dict = {"env": env, "transport": Transport.A2A}
                 dispatch_request(ctx, brief="display ads")
 

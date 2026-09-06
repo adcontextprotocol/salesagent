@@ -27,11 +27,14 @@ how the previous arrangement went wrong in three ways at once:
 ## The idempotency rule, entire
 
 Save a non-error response that carried a key. On a later request with the same key: same
-payload replays it verbatim, different payload is IDEMPOTENCY_CONFLICT. Errors are never
-saved, which needs no enforcement here -- an implementation that raises never reaches the
-save. The digest is ``canonical_request_hash``, which strips the spec's closed exclusion
-list (``idempotency_key``, ``context``, ``governance_context``), so a key never hashes
-itself and two requests differing only in field order are the same request.
+payload replays it verbatim, different payload is IDEMPOTENCY_CONFLICT. The digest is
+``canonical_request_hash``, which strips the spec's closed exclusion list
+(``idempotency_key``, ``context``, ``governance_context``), so a key never hashes itself and
+two requests differing only in field order are the same request.
+
+Errors are never saved. Most implementations raise, and a raise never reaches the save --
+but ``create_media_buy`` RETURNS a failure for an adapter rejection, so the save also checks
+the protocol status the response carries.
 
 Idempotency is scoped to (agent, account, key) per the spec, with no tool dimension.
 """
@@ -39,6 +42,7 @@ Idempotency is scoped to (agent, account, key) per the spec, with no tool dimens
 from __future__ import annotations
 
 import inspect
+import logging
 import typing
 from collections.abc import Callable
 from typing import Any
@@ -49,6 +53,8 @@ from src.core.idempotency_canonical import canonical_request_hash
 from src.core.idempotency_replay import cache_success, lookup_cached_replay, maybe_evict_expired
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.tools._announced_shape import sdk_grounding
+
+logger = logging.getLogger(__name__)
 
 
 def _response_model_for(impl: Callable[..., Any]) -> type[BaseModel] | None:
@@ -73,8 +79,40 @@ def _response_model_for(impl: Callable[..., Any]) -> type[BaseModel] | None:
     return None
 
 
+def _is_task_envelope(model: type[BaseModel]) -> bool:
+    """Whether this response model wraps a domain response in a protocol status.
+
+    ``CreateMediaBuyResult`` and its siblings declare ``status`` beside ``response``; a plain
+    response like ``SyncCreativesResponse`` declares neither. The distinction decides what
+    goes INTO the cache and what comes back out, and it is read off the model so the two
+    directions cannot disagree.
+
+    A class that is not a Pydantic model declares no fields and so is not an envelope. That
+    is not only a type guard: this runs on the success path of every keyed request, so a
+    raise here would lose the answer to work that already happened.
+    """
+    return (
+        isinstance(model, type) and issubclass(model, BaseModel) and {"status", "response"} <= set(model.model_fields)
+    )
+
+
+def _cacheable_body(result: Any) -> Any:
+    """The part of ``result`` the cache stores: the domain response, never the wrapper.
+
+    ``IdempotencyAttemptRepository.record_success`` documents the stored shape as
+    ``{"status": <protocol task status>, "response": <model dump>}`` -- the protocol status
+    beside the domain response, because a pending buy's ``submitted`` is not a valid DOMAIN
+    status and cannot ride inside the payload. Handing it the wrapper instead would store the
+    status twice, in two vocabularies.
+    """
+    return result.response if _is_task_envelope(type(result)) else result
+
+
 def _deserializer_for(impl: Callable[..., Any]) -> Callable[[dict[str, Any]], Any | None]:
     """Turn a stored envelope back into a typed response, or None if it no longer validates.
+
+    The exact inverse of :func:`_cacheable_body`: a task envelope is rebuilt from the stored
+    protocol status plus the stored domain response; a plain response is the stored response.
 
     None means "treat as a miss": a stored envelope that stopped validating -- because the
     response model changed between the deploy that wrote it and the one replaying it, inside
@@ -90,8 +128,12 @@ def _deserializer_for(impl: Callable[..., Any]) -> Callable[[dict[str, Any]], An
         if model is None:
             return None
         try:
-            result = model.model_validate(envelope)
+            if _is_task_envelope(model):
+                result = model.model_validate({"status": envelope["status"], "response": envelope["response"]})
+            else:
+                result = model.model_validate(envelope["response"])
         except Exception:
+            logger.warning("Cached %s envelope failed validation — treating as a miss", model.__name__, exc_info=True)
             return None
         if "replayed" in model.model_fields:
             # setattr, not attribute assignment: which model this is, is a per-row fact, so
@@ -100,6 +142,30 @@ def _deserializer_for(impl: Callable[..., Any]) -> Callable[[dict[str, Any]], An
         return result
 
     return deserialize
+
+
+#: Protocol task statuses that mean the work did NOT succeed, from the pinned
+#: ``GeneratedTaskStatus`` enum. An ALLOWLIST of cacheable statuses would be the safer shape
+#: if the enum's membership were the only risk, but it is not: a status the spec adds later
+#: is far more likely to be another non-terminal or another failure than a new success, and
+#: an allowlist would silently stop caching it. Naming the failures makes the omission loud.
+_FAILED_STATUSES: frozenset[str] = frozenset({"failed", "rejected", "canceled", "unknown"})
+
+
+def _is_error_result(result: Any) -> bool:
+    """Whether this response reports that the work did not succeed.
+
+    AdCP security.mdx#idempotency rule 3: an error is never cached, so a retry after one
+    re-executes rather than replaying the failure forever. An implementation that RAISES
+    never reaches the save, which covers most of them -- but ``create_media_buy`` returns a
+    ``CreateMediaBuyResult`` carrying ``status="failed"`` for an adapter rejection, and that
+    is a returned error, not a success.
+
+    Read off the protocol status the envelope already carries. A response with no ``status``
+    is not a task envelope at all and cannot report failure this way; if its work failed, it
+    raised.
+    """
+    return getattr(result, "status", None) in _FAILED_STATUSES
 
 
 async def _run(impl: Callable[..., Any], /, **kwargs: Any) -> Any:
@@ -123,6 +189,15 @@ def _spec_declares_idempotency_key(model: type[BaseModel]) -> bool:
     Answered by asking the SDK ancestor the DTO inherits its vocabulary from, so a field we
     added ourselves cannot enrol a tool in idempotency. ``sync_accounts`` is the contrast:
     its parent declares the key because a sync mutates.
+
+    The spec's rule 1 (L1/security.mdx, "Idempotency") says a pure-read task "may leave it
+    optional, but [sellers] MUST accept and apply the replay contract when a caller supplies
+    one" -- which reads at first like a duty to honour any key that arrives. It is not one
+    here. That clause governs a task whose schema DECLARES the field optional (3.2 names
+    ``list_products`` and ``get_products``); ``account/list-accounts-request.json`` declares
+    no such property and sets ``additionalProperties: true``, so an ``idempotency_key`` in
+    that body is an unknown property to TOLERATE, not a key to honour. The SDK's own
+    ``IDEMPOTENT_TASKS`` agrees: it lists exactly the four tools this predicate selects.
     """
     parent = sdk_grounding(model)
     return parent is not None and "idempotency_key" in parent.model_fields
@@ -188,6 +263,8 @@ async def invoke(tool_name: str, impl: Callable[..., Any], req: Any, identity: A
         return replay
 
     result = await _run(impl, req=req, identity=identity, **extra)
+    if _is_error_result(result):
+        return result
 
     cache_success(
         tenant_id=tenant_id,
@@ -195,8 +272,13 @@ async def invoke(tool_name: str, impl: Callable[..., Any], req: Any, identity: A
         account_id=account_id,
         tool_name=tool_name,
         idempotency_key=key,
-        response_model=result,
-        protocol_status="completed",
+        response_model=_cacheable_body(result),
+        # The result's OWN protocol status, not a constant. A create awaiting human approval
+        # is ``submitted``, and storing it as completed would make the replay reconstruct the
+        # wrong response variant -- the buyer would see a success where the original answer
+        # was a pending task. A response with no status is not a task envelope; it succeeded
+        # by having returned at all.
+        protocol_status=getattr(result, "status", None) or "completed",
         payload_hash=request_hash,
     )
     maybe_evict_expired(tenant_id)

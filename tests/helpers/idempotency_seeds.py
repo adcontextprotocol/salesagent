@@ -86,18 +86,28 @@ def seed_cached_success(
         )
 
 
-def seed_principal(tenant_id: str, principal_id: str) -> None:
-    """Commit a tenant + principal so the idempotency ``_impl`` auth/FK checks pass.
+def seed_principal(tenant_id: str, principal_id: str, *, account_id: str | None = None) -> None:
+    """Commit a tenant + principal + account so the boundary's auth/FK checks pass.
 
-    One home for the ``BareIntegrationEnv`` + factory seed shared by the
-    rate-limit and replay integration tests.
+    One home for the ``BareIntegrationEnv`` + factory seed shared by the rate-limit and
+    replay integration tests.
+
+    The ACCOUNT and the principal's GRANT on it are seeded too, because dispatch now goes
+    through ``src.core.tools._boundary.invoke_tool``, which resolves the reference the request
+    names before probing the cache. Resolution is real authorization: the account must exist
+    (else ACCOUNT_NOT_FOUND) and this principal must be granted access to it (else
+    PERMISSION_DENIED), and the cache scope is (agent, account, key), so without both the
+    probe never looks in the scope the seeded row sits in.
     """
-    from tests.factories import PrincipalFactory, TenantFactory
-    from tests.harness._base import BareIntegrationEnv
+    from tests.factories import AccountFactory, PrincipalFactory, TenantFactory
+    from tests.factories.account import AgentAccountAccessFactory
+    from tests.harness._base import DEFAULT_TEST_ACCOUNT_ID, BareIntegrationEnv
 
     with BareIntegrationEnv() as env:
         tenant = TenantFactory(tenant_id=tenant_id)
-        PrincipalFactory(tenant=tenant, principal_id=principal_id)
+        principal = PrincipalFactory(tenant=tenant, principal_id=principal_id)
+        account = AccountFactory(tenant_id=tenant.tenant_id, account_id=account_id or DEFAULT_TEST_ACCOUNT_ID)
+        AgentAccountAccessFactory(tenant_id=tenant.tenant_id, principal=principal, account=account)
         env._commit_factory_data()
 
 
