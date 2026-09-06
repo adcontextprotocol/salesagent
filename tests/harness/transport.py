@@ -561,6 +561,48 @@ class TransportResult:
         )
         return self.wire_response
 
+    def assert_wire_error_is_schema_conformant(self) -> None:
+        """Assert this result's wire rejection conforms to pinned ``core/error.json``.
+
+        The SHAPE half of an error assertion, where :meth:`assert_wire_error` is
+        the CODE half. A scenario that pins a code should use that one; this
+        exists for the general obligation every refusal carries regardless of
+        which code it names — required ``code`` and ``message``, ``code`` a
+        string, on every entry.
+
+        It lives HERE rather than in a step definition for the reason
+        ``test_no_hand_rolled_envelope_parsing`` enforces: ``TransportResult``
+        owns the normalized envelope, and a step reaching for
+        ``ctx["wire_error_envelope"]`` itself is a second parser free to drift
+        from this one. The guard caught exactly that in
+        ``then_schema.then_error_compliant``, which had reimplemented this
+        access; the fix is to move the parsing here, not to allowlist the step.
+
+        Reads ``errors[]``, falling back to the envelope-level ``adcp_error``
+        mirror, because ``build_two_layer_error_envelope`` emits both and an
+        emitter is free to carry only one.
+        """
+        from tests.helpers.pinned_schema import validator_for
+
+        envelope = self.wire_error_envelope
+        assert envelope is not None, (
+            f"expected a wire rejection to grade, but no wire_error_envelope was captured "
+            f"(is_error={self.is_error}, error="
+            f"{type(self.error).__name__ if self.error else None}). The call either succeeded "
+            f"or failed before reaching a transport, so there is no envelope to check."
+        )
+        entries = envelope.get("errors") or ([envelope["adcp_error"]] if "adcp_error" in envelope else [])
+        assert entries, f"the error envelope carries neither errors[] nor adcp_error: {sorted(envelope)}"
+
+        validator = validator_for("core/error.json")
+        for index, entry in enumerate(entries):
+            failures = sorted(validator.iter_errors(entry), key=lambda e: list(e.absolute_path))
+            if failures:
+                detail = "\n".join(
+                    f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in failures
+                )
+                raise AssertionError(f"errors[{index}] does not comply with core/error.json:\n{detail}")
+
     def assert_wire_error(
         self,
         code: str,

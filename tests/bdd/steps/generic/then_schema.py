@@ -102,25 +102,22 @@ def then_error_compliant(ctx: dict) -> None:
     a wire-typed string, published codes are documentary, and a receiver decodes
     an unknown one by reading ``recovery`` — so there is nothing per-tool to
     resolve. WHICH code was emitted is a different obligation, graded by
-    ``assert_envelope_shape``; this grades that the refusal is well-formed.
-    """
-    envelope = ctx.get("wire_error_envelope")
-    assert envelope is not None, (
-        "no wire error envelope: the dispatch did not refuse, so there is no error to "
-        "grade. A scenario that expected a response should assert compliance with its "
-        "tool's spec instead."
-    )
-    entries = envelope.get("errors") or ([envelope["adcp_error"]] if "adcp_error" in envelope else [])
-    assert entries, f"the error envelope carries neither errors[] nor adcp_error: {sorted(envelope)}"
+    ``assert_wire_error``; this grades that the refusal is well-formed.
 
-    validator = validator_for("core/error.json")
-    for index, entry in enumerate(entries):
-        failures = sorted(validator.iter_errors(entry), key=lambda e: list(e.absolute_path))
-        if failures:
-            detail = "\n".join(
-                f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in failures
-            )
-            raise AssertionError(f"errors[{index}] does not comply with core/error.json:\n{detail}")
+    DELEGATES the envelope parsing to ``TransportResult``, which owns the
+    normalized envelope. This step originally reached for
+    ``ctx["wire_error_envelope"]`` and reimplemented the entry extraction —
+    ``test_no_hand_rolled_envelope_parsing`` caught it, correctly: a second
+    parser in a step definition is free to drift from the one on the result
+    object, and the two disagreeing about what an envelope contains is precisely
+    how an error assertion goes quietly vacuous.
+    """
+    result = ctx.get("result")
+    assert result is not None, (
+        "no TransportResult on the context, so there is nothing to grade. This step "
+        "belongs after a When that dispatched through a transport."
+    )
+    result.assert_wire_error_is_schema_conformant()
 
 
 @then("the webhook payload is compliant with the AdCP delivery webhook spec")
