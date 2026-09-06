@@ -22,6 +22,7 @@ import dataclasses
 import os
 import re
 import ssl
+import time
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
@@ -4508,6 +4509,21 @@ def e2e_stack():
     )
 
 
+#: How many times the per-scenario reset may lose a lock race before it is a failure.
+#:
+#: TRUNCATE takes ACCESS EXCLUSIVE on ~43 tables while the LIVE SERVER — which never
+#: stops serving — takes ACCESS SHARE on its own tables in its own order. That is a
+#: lock-order inversion, so Postgres will occasionally pick one side and abort it with
+#: DeadlockDetected. Losing is normal and retrying wins; the bound is what keeps a
+#: genuinely stuck server (a held transaction, not a race) loud instead of slow.
+#:
+#: Observed once in 2630 scenarios (innet_060926_1707), as a SETUP error on
+#: T-UC-004-daily-breakdown-omitted. Distinct from the indefinite wedge fixed in the
+#: scheduler: this one Postgres detects and breaks, that one waited forever.
+_RESET_E2E_DB_ATTEMPTS = 3
+_RESET_E2E_DB_BACKOFF_SECONDS = 0.25
+
+
 def _reset_e2e_db(e2e_config) -> None:
     """Flush the live server DB to a clean baseline before an e2e scenario.
 
@@ -4519,21 +4535,43 @@ def _reset_e2e_db(e2e_config) -> None:
     observes the reset immediately. alembic_version is preserved (schema stays).
     """
     from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import OperationalError
 
     engine = create_engine(e2e_config.postgres_url)
     try:
-        with engine.begin() as conn:
-            tables = [
-                row[0]
-                for row in conn.execute(
-                    text(
-                        "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'"
-                    )
-                )
-            ]
-            if tables:
-                joined = ", ".join(f'"{t}"' for t in tables)
-                conn.execute(text(f"TRUNCATE TABLE {joined} RESTART IDENTITY CASCADE"))
+        for attempt in range(_RESET_E2E_DB_ATTEMPTS):
+            try:
+                with engine.begin() as conn:
+                    tables = [
+                        row[0]
+                        for row in conn.execute(
+                            text(
+                                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                                "AND tablename <> 'alembic_version'"
+                            )
+                        )
+                    ]
+                    if tables:
+                        joined = ", ".join(f'"{t}"' for t in tables)
+                        conn.execute(text(f"TRUNCATE TABLE {joined} RESTART IDENTITY CASCADE"))
+                return
+            except OperationalError as exc:
+                # ONLY a detected deadlock, and only up to the bound. Any other
+                # OperationalError (the server is gone, the DB is unreachable) is a real
+                # failure and must surface as one — a blanket retry here would turn a
+                # broken stack into a slow, silent one.
+                if "DeadlockDetected" not in str(exc) and "deadlock detected" not in str(exc):
+                    raise
+                if attempt == _RESET_E2E_DB_ATTEMPTS - 1:
+                    raise AssertionError(
+                        f"the e2e DB reset deadlocked against the live server "
+                        f"{_RESET_E2E_DB_ATTEMPTS} times running. One loss is a lock-order "
+                        "inversion and is expected; losing every time means the server is "
+                        "holding a transaction open rather than merely racing — check "
+                        "pg_stat_activity for a session 'idle in transaction' (that is what "
+                        "the #1757 violation in delivery_webhook_scheduler looked like)."
+                    ) from exc
+                time.sleep(_RESET_E2E_DB_BACKOFF_SECONDS * (attempt + 1))
     finally:
         engine.dispose()
 
