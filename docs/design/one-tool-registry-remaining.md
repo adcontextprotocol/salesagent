@@ -156,6 +156,41 @@ already ships that class and the pinned schemas already compose it. Same princip
 the boundary should be able to say `result.replayed = True` because a response IS a thing with
 that attribute, not because it probed for one.
 
+### The response half of R1: one body, three wrappers
+
+Serialization is the same shape of problem, measured the same way. What each transport does
+with the model the boundary returns:
+
+| | MCP (`mcp_result`) | A2A (`_stamp_a2a_protocol_fields`) | REST (`_rest_handler`) |
+|---|---|---|---|
+| body | `model_dump(mode="json")` | `model_dump(mode="json")` | `model_dump(mode="json")` |
+| human summary | `str(response)` | `str(response)` | -- |
+| where the summary goes | `ToolResult.content` | `["message"]`, INSIDE the body | -- |
+| adds | -- | `["success"]`, derived from `errors` | -- |
+| version compat | -- | per-handler, for get_products | inline, for get_products |
+| top-level shape | `ToolResult(content, structured_content)` | DataPart dict | bare dict |
+
+Three calls to `model_dump(mode="json")`, two to `str(response)`, and two places that decide
+whether `get_products` gets version compat. Only the LAST ROW is genuinely per-transport --
+MCP needs a `ToolResult`, A2A needs a DataPart, REST returns the body. Everything above it is
+one operation written three times.
+
+Two consequences are already visible. A2A stamps `message` and `success` INTO the response
+body, and its own docstring concedes they "are not spec fields on any response model" -- a
+transport marker in the payload, where MCP puts the same string in a wrapper field. And
+anything that must reach the body -- `replayed` being the immediate example -- has three places
+to be added and will be added to fewer.
+
+**The change.** One seam, on the response base R2 introduces:
+
+```python
+def to_wire(self) -> dict[str, Any]:      # body + envelope stamping, once
+```
+
+Each transport calls it and wraps the result in its own top-level shape. `success` and
+`message` become what they are -- A2A envelope fields, applied by A2A to its DataPart, not
+written into the payload. Version compat gets one home instead of two.
+
 ---
 
 ## R3 — Type the protocol envelope on every response
