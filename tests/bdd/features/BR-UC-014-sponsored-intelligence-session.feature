@@ -524,7 +524,7 @@ Feature: BR-UC-014 Sponsored Intelligence Session
       | session_id missing                          | error "INVALID_REQUEST" with suggestion "Provide the session_id from si_initiate_session"     |
 
   @T-UC-014-part-termination @partition @termination-handoff @br-rule-100
-  Scenario Outline: Termination reason partition validation - <partition>
+  Scenario Outline: Termination ACP handoff partition validation - <partition>
     Given an active SI session exists with session_id "sess-term"
     When the Buyer Agent sends si_terminate_session with session_id "sess-term" and reason matching <partition>
     Then <outcome>
@@ -544,7 +544,7 @@ Feature: BR-UC-014 Sponsored Intelligence Session
       | handoff_transaction_no_acp  | error "INVALID_REQUEST" with suggestion "Ensure the brand agent generates ACP checkout data"           |
 
   @T-UC-014-bound-termination @boundary @termination-handoff @br-rule-100
-  Scenario Outline: Termination reason boundary validation - <boundary_point>
+  Scenario Outline: Termination ACP handoff boundary validation - <boundary_point>
     Given an active SI session exists with session_id "sess-term"
     When the Buyer Agent sends si_terminate_session at boundary <boundary_point>
     Then <outcome>
