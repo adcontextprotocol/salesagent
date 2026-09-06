@@ -16,45 +16,57 @@ now WEDGES.** See §0.
 
 ---
 
-## 0. THE "BLOCKER" WAS THE BOX, NOT THIS BRANCH — retracted
+## 0. STATE — every known failure is root-caused and fixed; needs one quiet-box run
 
-Three `cassini run`s went quiet with `⚠ UNHEALTHY adcp-server`. I attributed that to this
-branch's changes on n=2 without checking for a co-tenant. **That attribution was wrong.**
-What the third run's own evidence says:
+Best evidence, `innet_060926_1735`, taken on a FREE box (load 0.47, 84 GB available):
 
-* `bdd_inprocess: exit -9` — SIGKILL, i.e. the **OOM killer**, not a test failure;
-* the box was running **two concurrent 26-container cassini runs**
-  (`sa-e80d3f9d` + `sa-0c74d963`) at **load average 72**, with **85 of 86 GB used and
-  zero swap**;
-* `run_all_tests.sh`'s own note measures ONE full 7-suite parallel run at ~35 GB peak.
-  Two do not fit.
+| suite | result |
+|---|---|
+| unit | 7734 passed, **1 failed** |
+| integration | 3511 passed, 0 failed |
+| bdd_inprocess | 2444 passed, 0 failed |
+| **bdd_e2e** | **588 passed, 0 failed, 0 errors** |
+| e2e / admin / ui | 161 / 138 / 5 passed, 0 failed |
+| security-audit | OK |
 
-Under that pressure the run still got `e2e`, `admin`, `ui` and `integration` to OK. The
-only genuine failures were two unit rows (below). **Check for a co-tenant before
-diagnosing a wedge:**
+That single failure was `test_guards_a2a_integer_restoration` — **fixed in `9b9a5a990`**. So
+no known failure remains. What is missing is one uncontended run to certify it.
+
+### The box is shared, and that is the whole difficulty
+
+Runs are only trustworthy when nothing else is on the machine. **Check first:**
 
 ```bash
 ssh hetzner2-vm "docker ps --format '{{.Names}}' | sed -E 's/^(sa-[a-z0-9]+).*/\1/' | sort -u; free -g | sed -n 2p; uptime"
 ```
 
-### What still needs a clean run
+Contended runs produced, at various times, all of: `bdd_inprocess exit -9` (OOM kill),
+`unit exit 3` (pytest INTERNALERROR, zero FAILED rows), and two `test_outbound_http.py`
+timing failures (`retry_after_lengthens_a_wait…`, `delivery_failure_envelope_hides…`)
+that are 0F on a free box. **None of these are real; do not chase them.** A run whose
+report directory "held no suite reports" is likewise not a verdict — cassini says so
+explicitly rather than publishing the previous run's numbers.
 
-Everything below is verified locally; what is missing is one uncontended full gate.
+### Four real defects were found and fixed here, in dependency order
 
-| suite | status |
-|---|---|
-| unit | 2 failures on the box, see below |
-| integration / e2e / admin / ui | OK on the box even under pressure |
-| bdd_inprocess | OOM-killed; 547 passed / 0 failed locally for the touched module |
-| bdd_e2e | **588 passed / 0 failed** in-network locally, totals reconciling at 2630 |
+Each was hidden by the one before it, and all four were latent until the first was fixed —
+before that, no webhook delivery ever left the server over `e2e_rest`.
 
-1. `test_architecture_harness_realize_e2e_coverage::test_unwrapped_given_step_methods_are_pinned`
-   — MINE, and the ratchet working correctly (a stale allowlist row once the method got
-   wrapped). Fixed in `f365415d6`; the run predates it.
-2. `test_guards_a2a_integer_restoration::test_dict_to_value_is_the_only_struct_value_construction_site`
-   — **passes clean locally**, and nothing on this branch touches A2A struct-value
-   construction. Unattributed: re-check it on an uncontended run before treating it as
-   real.
+1. **`868f9c06b`** — a gate reading a flag nothing set (merge regression: our gate + #1802's
+   new issuing path), two capture addresses for one endpoint, and a header-blind reader
+   over a service that was never header-blind. Mutation-verified on all three legs.
+2. **`0464a9504`** — the delivery-report sender omitted the required `idempotency_key`
+   (webhooks.mdx :195/:253, graded by `webhook-emission.yaml`), and the admin trigger
+   reported "Sent" for a webhook refused before any connection.
+3. **`721843f67`** — a DB transaction held open across the whole delivery including the
+   retry ladder, deadlocking the harness's per-scenario TRUNCATE. Violated the repo's own
+   #1757 rule, behind a comment claiming the opposite. Diagnosed from `pg_stat_activity`,
+   not guessed: `idle in transaction` + two `Lock/relation` waiters, server at 0.01% CPU.
+4. **`699a717a5`** — the same TRUNCATE could still lose a normal lock-order race; now
+   bounded-retries on a detected deadlock only.
+
+Plus `4fe71c41e`, which parks the circuit-breaker scenarios (they graded the runner's own
+process, and the e2e sender has no breaker at all) — see §0.5 for what replaces them.
 
 ---
 
