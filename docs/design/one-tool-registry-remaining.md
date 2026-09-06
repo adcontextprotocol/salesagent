@@ -127,10 +127,16 @@ as a double -- and pydantic's non-strict mode already coerces `2.0` to an `int` 
 
 ## R2 — Requests and responses each get one base, and the boundary stops probing
 
-**The defect.** `invoke_tool(tool_name: str, req: Any, identity: Any, **extra: Any) -> Any`.
-Because `req` is `Any`, the boundary asks four questions it should already know the answer to:
-`getattr(req, "account")`, `getattr(req, "idempotency_key")`, `getattr(result, "status")`,
-`"replayed" in model.model_fields`. Each probe is a place where a wrong object passes quietly.
+**The defect.** `invoke_tool(tool_name: str, req: Any, identity: Any = None, **extra: Any) -> Any`.
+Because `req` is `Any`, the boundary asks three questions it should already know the answer to:
+`getattr(req, "account")` (:233), `getattr(req, "idempotency_key")` (:207) and
+`getattr(result, "status")` (:187, :273). Each probe is a place where a wrong object passes
+quietly.
+
+There were four. `"replayed" in model.model_fields` went with R3, which is the evidence that
+this works: once every response inherited `ProtocolEnvelope`, the probe became an assignment
+and `_response_model_for` could be typed `type[ProtocolEnvelope]`. The three above are the same
+move on the REQUEST side, which R3 did not touch.
 
 **The change, and why it is not generics.** An earlier draft proposed making `ToolSpec` generic
 and casting at the registry literal. That is the wrong shape: it buys a static check and leaves
@@ -157,80 +163,55 @@ a model field, so `model_dump`, `model_fields` and the announced shape are untou
 property with a real field.
 
 Then `invoke_tool(tool_name: str, req: BuyerRequest, identity: ResolvedIdentity | None) -> AdcpResponse`,
-and all four probes become attribute access -- the fourth,
-`"replayed" in model.model_fields`, once R3 makes `replayed` a field every response has.
+and the three remaining probes become attribute access.
 
-**Responses get the same treatment, and that is R3.** The response side of this is
-`ProtocolEnvelope` on every response model rather than a hand-written mixin, because the SDK
-already ships that class and the pinned schemas already compose it. Same principle either way:
-the boundary should be able to say `result.replayed = True` because a response IS a thing with
-that attribute, not because it probed for one.
+**The response side is already done, by R3.** Every response model inherits `ProtocolEnvelope`
+rather than a hand-written mixin, because the SDK ships that class and the pinned schemas
+compose it. Same principle either way: the boundary says `result.replayed = True` because a
+response IS a thing with that attribute, not because it probed for one. `to_wire` is typed
+`ProtocolEnvelope` for the same reason. Only the request half is left.
 
-### The response half of R1: one body, three wrappers
+### The response half of R1: DONE -- one body, three wrappers
 
-Serialization is the same shape of problem, measured the same way. What each transport does
-with the model the boundary returns:
+`src/core/tools/_wire.py::to_wire` is the only place a response model becomes a body. MCP puts
+the result in `ToolResult.structured_content`, A2A in an artifact `DataPart`, REST returns it
+as the HTTP body. Those containers are the only thing that legitimately differs; what goes
+inside is the same bytes.
 
-| | MCP (`mcp_result`) | A2A (`_stamp_a2a_protocol_fields`) | REST (`_rest_handler`) |
+What it replaced, and what each row cost:
+
+| | MCP | A2A | REST |
 |---|---|---|---|
-| body | `model_dump(mode="json")` | `model_dump(mode="json")` | `model_dump(mode="json")` |
-| human summary | `str(response)` | `str(response)` | -- |
-| where the summary goes | `ToolResult.content` | `["message"]`, INSIDE the body | -- |
-| adds | -- | `["success"]`, derived from `errors` | -- |
-| version compat | -- | per-handler, for get_products | inline, for get_products |
-| top-level shape | `ToolResult(content, structured_content)` | DataPart dict | bare dict |
+| body | three separate `model_dump(mode="json")` calls | | |
+| human summary | `str(response)` -> `ToolResult.content`, OUTSIDE the body | `str(response)` -> `["message"]`, INSIDE the body | nothing |
+| adds | -- | `["success"]`, a key no pinned response schema of ours declares | -- |
+| version compat | -- | per-handler, and DEAD (it stamped first, then passed a dict to a function whose dict branch is a no-op) | inline |
+| top-level shape | `ToolResult` | DataPart | bare dict |
 
-Three calls to `model_dump(mode="json")`, two to `str(response)`, and two places that decide
-whether `get_products` gets version compat. Only the LAST ROW is genuinely per-transport --
-MCP needs a `ToolResult`, A2A needs a DataPart, REST returns the body. Everything above it is
-one operation written three times.
+Only the last row was ever per-transport. `message` became a declared field the implementation
+fills, so all three emit it -- REST had emitted none. `success` was deleted rather than moved:
+measured across the whole pinned 3.1 tree, only three response schemas declare a `success`
+property and none is one of our fourteen, and it had no consumers. Version compat went with the
+rest of v2 compat.
 
-Two consequences are already visible. A2A stamps `message` and `success` INTO the response
-body, and its own docstring concedes they "are not spec fields on any response model" -- a
-transport marker in the payload, where MCP puts the same string in a wrapper field. And
-anything that must reach the body -- `replayed` being the immediate example -- has three places
-to be added and will be added to fewer.
+That also removed the harness exception the stamping had forced.
+`strip_a2a_protocol_fields` popped `message` and `success` off an A2A body before validating
+it, justified as "neither is declared on any response model" -- true of `message` until it
+became a field, after which the harness was stripping a real envelope field before looking at
+it, so nothing graded that A2A's `message` matches REST's.
 
-### `message`, measured: the same defect on a field that IS in the envelope
+`test_architecture_one_wire_body.py` holds the line: each transport's response path must call
+`to_wire`, must not serialize the response itself, and must not assign into the body
+afterwards.
 
-`message` is one of the eleven `core/protocol-envelope.json` fields, so since R3 every response
-model declares it. Nothing sets it. Each transport still answers separately:
-
-| | what reaches the buyer |
-|---|---|
-| MCP (`src/core/tools/_mcp.py:27`) | `str(response)` in `ToolResult.content` -- a wrapper field, outside the body |
-| A2A (`src/a2a_server/adcp_a2a_server.py:1565`) | `str(response)` written INTO `response_data["message"]` |
-| REST (`src/routes/api_v1.py:89`) | `response.model_dump(mode="json")` and nothing else -- no `message` at all |
-
-**And `__str__` should not exist.** `adcp.types.base.AdCPBaseModel` ships `model_summary()`
-with a 19-entry formatter registry keyed by class name. Five of our response models keep the
-SDK's class name, so the registry already resolves for them -- and we override `__str__`
-anyway, 23 times across `src/core/schemas/`. Where both exist they can disagree, and one does:
-
-```
-ListCreativeFormatsResponse(formats=[])
-    __str__       'No creative formats are currently supported.'
-    model_summary 'Found 0 supported creative formats.'
-```
-
-Two summaries for one model, with no rule saying which the buyer gets.
-
-**How it is graded today, and why the REST gap is invisible.** By unit tests asserting the
-dunder -- `assert str(resp) == "Found 5 creative formats."` in
-`test_all_response_str_methods.py` and three siblings. That grades a Python method, not the
-wire, so nothing in the suite observes that one transport omits an envelope field entirely.
-The replacement is a BDD scenario reading `message` off `wire_response` on all transports.
-
-**The change.** One seam, on the response base R2 introduces:
-
-```python
-def to_wire(self) -> dict[str, Any]:      # body + envelope stamping, once
-```
-
-Each transport calls it and wraps the result in its own top-level shape. `message` is stamped
-there, once, from `model_summary()`, and the 23 `__str__` overrides are deleted; `success`
-becomes what it is, an A2A envelope field applied by A2A to its DataPart rather than written
-into the payload. Version compat gets one home instead of two.
+**`__str__` is gone too.** 23 methods across `src/core/schemas/` each produced one English
+sentence from fields the buyer already had, and each transport decided separately what to do
+with it. The summary is now the `message` field, set by the implementation --
+`sync_creatives` had been building a richer one and discarding it. The SDK's own
+`model_summary()` is NOT the producer and is not used: its lookup is
+`_RESPONSE_MESSAGE_REGISTRY.get(self.__class__.__name__)`, an exact class-name match that
+subclassing defeats, and its fallback is `f"{cls.__name__} response"` -- worse than our text on
+nine of fourteen.
 
 ### What is still not conformant BY CONSTRUCTION after that
 
@@ -259,9 +240,10 @@ branches and the nested item models need a hand-written sub-schema ref, and thos
 that already carry one. Deriving turns "did the author remember to opt in" into "does this
 class have an SDK ancestor", which every response model does.
 
-Two exceptions stay deliberate and stay subtractive: `apply_version_compat` rewrites
-`get_products` responses for pre-3.0 buyers on purpose, and `_INTERNAL_ONLY_FIELDS` /
-`exclude=True` strip our internal fields (`workflow_step_id`) from every protocol response.
+One exception stays, and it is subtractive: `_INTERNAL_ONLY_FIELDS` / `exclude=True` strip our
+internal fields (`workflow_step_id`) from every protocol response. The other used to be
+`apply_version_compat`, which was ADDITIVE -- it appended three properties the pinned schema
+does not define -- and is deleted.
 
 ---
 
@@ -343,10 +325,14 @@ decide whether to cache it. It exists for exactly one caller: `media_buy_create.
 an adapter error is wrapped in `CreateMediaBuyResult(status="failed")` and RETURNED. Every other
 tool raises.
 
-That check is also inert where it looks most useful: `SyncCreativesResponse.status` and
-`SyncAccountsResponse.status` are `Literal["completed"]`, so for two of the four keyed tools it
-can never fire. Those tools are protected by the raise, not by the check -- which the docstring
-does not say.
+No other tool can reach it. `sync_creatives` and `sync_accounts` type `status` as the eight-member
+`TaskStatus` and default it to `completed`; nothing in either implementation ever sets a failed
+value, because both raise. So for three of the four keyed tools the check is unreachable in
+practice, and they are protected by the raise rather than by the check -- which the docstring
+does not say. (This paragraph used to argue the check *cannot* fire on those two because their
+status was `Literal["completed"]`. That was true only while a local mixin declared it; the
+mixin is deleted and the field is the SDK's `TaskStatus` now. The conclusion is unchanged, the
+reason is weaker: unreachable by behaviour, not by type.)
 
 **The change.** Make that one site raise the typed `AdCPSalesAgentError` the adapter error
 already carries, like every other failure path in the tree. Then:
@@ -427,10 +413,52 @@ carries the scenario shape, so whoever picks it up writes the Given first.
 
 ---
 
+## R7 — One transport strips unknown request fields; the other two do not
+
+**The defect.** `RequestCompatMiddleware` calls `strip_unknown_params` /
+`deep_strip_to_schema` against the tool's JSON Schema, in production only
+(`src/core/mcp_compat_middleware.py:140`). A2A and REST call neither. So an unknown field a
+buyer sends is REMOVED before validation on MCP and merely ignored by `extra="ignore"` on the
+other two -- and in dev, where `extra="forbid"`, MCP strips the field before the model can
+reject it while A2A and REST raise.
+
+This is the same shape as the defect R1 removed from the response side, still live on the way
+in: one transport deciding what the model sees. It survived the compat deletion because it is
+FORWARD compatibility (tolerating a newer caller) rather than backward, so it was correctly
+kept when `normalize_request_params` went -- but keeping it on one transport is what makes it
+a divergence rather than a policy.
+
+**The question to settle first, because it decides the shape.** `extra="ignore"` in production
+already tolerates an unknown field: the model drops it. So what does the stripping ADD? Two
+candidates, and they want different answers:
+
+* if it exists because FastMCP's `TypeAdapter` validates against the announced signature
+  BEFORE our model does, and rejects there, then the stripping is compensating for a
+  transport-specific validator and belongs behind the MCP boundary as a documented
+  transport concern -- with a comment saying so, and a guard keeping it from spreading;
+* if it exists because the model's tolerance was not trusted, it is redundant with
+  `extra="ignore"` and deletes.
+
+The dev/production split is the tell worth chasing: a rule that runs only in production is a
+rule nothing grades in CI.
+
+**Either answer removes the asymmetry.** What is not acceptable is the current state, where
+the same bytes mean two things depending on which port they arrive at.
+
 ## Order
 
-R1, R3 and R5 are done. What remains: R2, which turns the boundary's last probes into
-attribute access; the RESPONSE half of R1's seam (`to_wire`), where `message` already landed
-but `success` is still written into the A2A payload and each transport still runs its own
-`model_dump`; R4, which is small and deletes code; and R6 last. Required-and-nullable
-retention rides on the response seam -- see the section under R1.
+R1, R3 and R5 are done, both halves of R1 included.
+
+What remains, in the order worth taking:
+
+1. **R7** -- MCP strips unknown request fields and the other two transports do not. A live
+   cross-transport divergence, and the last one; settle the question it opens before it grows
+   a second reason to exist.
+2. **R2** -- the request half, turning the boundary's three remaining probes into attribute
+   access.
+3. **R4** -- small, deletes code, and makes "a return IS a success" the only rule the boundary
+   needs.
+4. **Required-and-nullable retention** as a generic rule off `model_fields` (the section under
+   R1). Deletes `_PINNED_SCHEMA_REF`, `_pinned_fields.py`, `AlwaysIncludeFieldsMixin` and two
+   adopters that derive nothing.
+5. **R6** last, behind prebid/salesagent#2217.
