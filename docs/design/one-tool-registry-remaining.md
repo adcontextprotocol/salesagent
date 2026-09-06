@@ -1,10 +1,16 @@
 # One tool registry: what is left
 
 Companion to [One tool registry](one-tool-registry.md). Every step of that document's
-migration order has landed. This one says what still stands between the tree and the design's
-own sentence:
+migration order has landed, and so has every item in this one except R6. This says what the
+design's own sentence cost to make true:
 
 > A tool is declared ONCE. Everything else is derived.
+
+**Status: R1, R2, R3, R4, R5 and R7 are done.** R6 is deferred behind
+prebid/salesagent#2217. Each section keeps the defect it removed, because the measurement is
+the part worth reading later -- and two of them keep a design that was proposed here and turned
+out to be WRONG when measured (R2's property mixin, R7's two discarded mechanisms), so nobody
+rediscovers them.
 
 The target shape, entire:
 
