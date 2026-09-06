@@ -365,21 +365,29 @@ class TestP7RefResolution:
 class TestP8AdditionalPropertiesTrue:
     """P8: When additionalProperties is true (or absent), unknowns are preserved."""
 
-    def test_open_schema_preserves_unknowns(self):
+    def test_open_schema_still_strips_because_it_declares_a_shape(self):
+        """``additionalProperties: true`` no longer preserves unknowns on a declared shape.
+
+        The spec's permissiveness says what a buyer MAY SEND; this seller decides what it
+        PROCESSES, and it processes only what its schema declares. An object that declares
+        properties has a shape, so a key outside it is dropped whatever the schema permits.
+        Only a container declaring NO properties keeps its contents -- see
+        ``TestFreeFormContainer`` below.
+        """
         result = deep_strip_to_schema(
-            {"name": "Alice", "whatever": "kept"},
+            {"name": "Alice", "whatever": "dropped"},
             FLAT_OBJECT_OPEN,
         )
-        assert result == {"name": "Alice", "whatever": "kept"}
+        assert result == {"name": "Alice"}
 
-    def test_no_additional_properties_key_defaults_to_true(self):
-        """Schema without additionalProperties key defaults to allowing extras."""
+    def test_absent_additional_properties_key_still_strips_a_declared_shape(self):
+        """An omitted ``additionalProperties`` is as permissive as ``true``, and as irrelevant."""
         schema = {
             "type": "object",
             "properties": {"x": {"type": "integer"}},
         }
         result = deep_strip_to_schema({"x": 1, "y": 2}, schema)
-        assert result == {"x": 1, "y": 2}
+        assert result == {"x": 1}
 
 
 # ===========================================================================
@@ -824,12 +832,12 @@ class TestAdversarialFinding1MixedAdditionalProperties:
         Open should win because more declared properties match.
         """
         result = deep_strip_to_schema(
-            {"ref": {"name": "acme", "domain": "acme.com", "extra": "kept"}},
+            {"ref": {"name": "acme", "domain": "acme.com", "extra": "dropped"}},
             self.MIXED_AP_SCHEMA,
         )
-        # Open variant: name + domain match (score 2) > Strict: no match (score 0)
-        # additionalProperties: true → extra preserved
-        assert result == {"ref": {"name": "acme", "domain": "acme.com", "extra": "kept"}}
+        # Open variant still WINS the match (name + domain score 2 > Strict's 0); what changed
+        # is that winning no longer means keeping extras, because the variant declares a shape.
+        assert result == {"ref": {"name": "acme", "domain": "acme.com"}}
 
 
 class TestAdversarialFinding2AllOf:
@@ -881,16 +889,16 @@ class TestAdversarialFinding2AllOf:
         )
         assert result == {"base_field": "b", "extension": "e"}
 
-    def test_allof_preserves_extras_when_all_members_allow_additional(self):
-        """If all allOf members allow additionalProperties, extras preserved."""
+    def test_allof_strips_extras_against_the_merged_shape(self):
+        """The merged members declare a shape, so a key outside their union is dropped."""
         schema = {
             "allOf": [
                 {"type": "object", "properties": {"a": {"type": "string"}}},
                 {"type": "object", "properties": {"b": {"type": "string"}}},
             ],
         }
-        result = deep_strip_to_schema({"a": "1", "b": "2", "extra": "kept"}, schema)
-        assert result == {"a": "1", "b": "2", "extra": "kept"}
+        result = deep_strip_to_schema({"a": "1", "b": "2", "extra": "dropped"}, schema)
+        assert result == {"a": "1", "b": "2"}
 
 
 class TestAdversarialFinding5OneOf:
@@ -944,3 +952,32 @@ class TestAdversarialFinding5OneOf:
             self.ONEOF_SCHEMA,
         )
         assert result == {"signal": {"source": "segment", "segment_id": "seg-1"}}
+
+
+class TestFreeFormContainer:
+    """An object declaring NO properties keeps everything: it has no shape to strip against.
+
+    This is the ``ext`` and ``context`` case. AdCP uses an empty open object for "arbitrary
+    data lives here" -- ``core/context.json`` is echoed to the buyer verbatim and
+    ``ExtensionObject`` carries vendor-namespaced parameters. Stripping such an object does not
+    filter its contents, it deletes them.
+    """
+
+    CONTAINER = {"type": "object", "additionalProperties": True, "properties": {}}
+
+    def test_contents_survive(self):
+        payload = {"gam": {"line_item": 1}, "roku": "anything"}
+        assert deep_strip_to_schema(payload, self.CONTAINER) == payload
+
+    def test_a_container_nested_in_a_declared_shape_survives(self):
+        schema = {
+            "type": "object",
+            "properties": {"name": {"type": "string"}, "ext": self.CONTAINER},
+        }
+        result = deep_strip_to_schema({"name": "n", "ext": {"vendor": 1}, "junk": 2}, schema)
+        assert result == {"name": "n", "ext": {"vendor": 1}}
+
+    def test_the_exemption_ends_when_the_container_declares_a_field(self):
+        """A model that grows a real field stops being a container and starts stripping."""
+        shaped = {"type": "object", "additionalProperties": True, "properties": {"known": {"type": "string"}}}
+        assert deep_strip_to_schema({"known": "k", "other": 1}, shaped) == {"known": "k"}

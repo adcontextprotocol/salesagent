@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from functools import cache
 from types import MappingProxyType
 from typing import Any, Literal
 
@@ -83,6 +84,16 @@ class RestBinding:
     path_fields: frozenset[str] = frozenset()
 
 
+@cache
+def _announced_schema(dto: type[BaseModel]) -> dict[str, Any]:
+    """The DTO's JSON Schema, computed once per model.
+
+    Cached because ``model_json_schema()`` walks the whole model tree and this runs on every
+    request. Keyed by the class, so a row that changes DTO gets its own entry.
+    """
+    return dto.model_json_schema()
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     """One tool's wiring: what runs it, what shape it takes, and where it is reachable."""
@@ -100,14 +111,32 @@ class ToolSpec:
     auth: Literal["required", "optional"] = "required"
 
     def validate(self, parameters: Any) -> Any:
-        """Validate a parameter bag into this row's DTO.
+        """Validate a parameter bag into this row's DTO, seeing only declared fields.
 
         Returns ``Any`` deliberately: which model ``dto`` holds is a per-row fact, unknown
         statically, so ``dto.model_validate(...)`` is typed ``BaseModel`` and every caller
         handing the result to a typed ``*_raw`` was an arg-type error. One seam says it once
         instead of a cast at each of the ten A2A handlers.
+
+        A field this seller's schema does not declare is removed here, at every nesting depth,
+        before the DTO ever sees it -- and in development its presence is an error instead, so
+        a spec field we have not implemented is loud. ``extra="ignore"`` gave us that at the
+        TOP level only; everything nested is an SDK model that either forbids extras (rejecting
+        a newer buyer) or allows them (passing data we do not understand to an implementation,
+        and into the idempotency digest). See ``schemas/_accepted_shape.py``.
+
+        The schema is DERIVED from the DTO rather than stored on the row: ``ToolSpec`` is the
+        one declaration, and a second copy of the accepted shape is a second thing that can
+        disagree with it.
         """
-        return self.dto.model_validate(parameters)
+        from src.core.config import is_production
+        from src.core.exceptions import AdCPValidationError
+        from src.core.schemas._accepted_shape import deep_strip_to_schema
+
+        accepted = deep_strip_to_schema(parameters, _announced_schema(self.dto))
+        if accepted != parameters and not is_production():
+            raise AdCPValidationError()
+        return self.dto.model_validate(accepted)
 
 
 #: Every tool this seller implements, keyed by its AdCP tool name.
