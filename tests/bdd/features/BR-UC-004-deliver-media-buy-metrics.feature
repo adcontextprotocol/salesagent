@@ -265,7 +265,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     And the reporting_frequency is "daily"
     And the ad server adapter has delivery data for "mb-001"
     When the webhook scheduler fires for "mb-001"
-    Then the system should POST a delivery report to the configured webhook URL
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the system should POST a delivery report to the configured webhook URL
     And the payload should include delivery metrics for "mb-001"
     And the payload should include the reporting_period
     # POST-S7: Buyer's endpoint receives periodic delivery reports
@@ -275,7 +276,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     Given a media buy "mb-001" with webhook authentication scheme "HMAC-SHA256"
     And the shared secret is a valid 32+ character string
     When the system delivers a webhook report for "mb-001"
-    Then the request should include header "X-ADCP-Signature" with hex-encoded HMAC
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the request should include header "X-ADCP-Signature" with hex-encoded HMAC
     And the request should include header "X-ADCP-Timestamp" with unix timestamp
     And the HMAC should be computed over "timestamp.payload" concatenation
     # POST-S8: Buyer can verify report authenticity
@@ -287,14 +289,16 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     Given a media buy "mb-001" with webhook authentication scheme "Bearer"
     And the bearer token is a valid 32+ character string
     When the system delivers a webhook report for "mb-001"
-    Then the request should include header "Authorization" with the bearer token
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the request should include header "Authorization" with the bearer token
     # Webhook auth: traces to SR-NFR-005
 
   @T-UC-004-webhook-notification-type @alternative @webhook @invariant @BR-RULE-029 @post-s9
   Scenario Outline: Webhook notification type - <type>
     Given a media buy "mb-001" with an active reporting_webhook
     When the system delivers a "<type>" webhook report for "mb-001"
-    Then the payload notification_type should be "<type>"
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the payload notification_type should be "<type>"
     And the payload <next_expected> include next_expected_at
     # POST-S9: Buyer knows the notification type
     # BR-RULE-029 INV-2: final -> no next_expected_at
@@ -310,7 +314,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
   Scenario: Webhook sequence numbers are monotonically increasing
     Given a media buy "mb-001" with an active reporting_webhook
     When the system delivers three consecutive webhook reports for "mb-001"
-    Then each report should have a higher sequence_number than the previous
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And each report should have a higher sequence_number than the previous
     And the first sequence_number should be >= 1
     # POST-S10: Buyer knows the sequence number for ordering
     # BR-RULE-029 INV-1: monotonically increasing per media buy stream
@@ -319,7 +324,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
   Scenario: Webhook payload does not include aggregated totals
     Given a media buy "mb-001" with an active reporting_webhook
     When the system delivers a webhook report for "mb-001"
-    Then the payload should not include "aggregated_totals" field
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the payload should not include "aggregated_totals" field
     # UC-004 note: aggregated totals are polling-only (not webhook)
 
   @T-UC-004-webhook-retry-5xx @async @extension @ext-g @webhook-reliability @invariant @BR-RULE-029 @nfr @nfr-005
@@ -392,7 +398,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     Given a media buy "mb-001" with an active reporting_webhook
     And the webhook endpoint fails on first attempt but succeeds on second
     When the system delivers a webhook report with retry
-    Then the delivery should be recorded as successful
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the delivery should be recorded as successful
     And the circuit breaker state should remain healthy
     # POST-F3: System has recovery path (retry for transient)
 
@@ -1120,7 +1127,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     Given a media buy "mb-001" with an active reporting_webhook
     And a prior webhook report for "mb-001" used measurement_window "live"
     When the system delivers a "window_update" webhook report for "mb-001"
-    Then the payload notification_type should be "window_update"
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the payload notification_type should be "window_update"
     And the payload supersedes_window should be "live"
     And the payload measurement_window should be "c3"
     And buyers should replace stored data for the superseded window
@@ -1136,7 +1144,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     And the ad server adapter has delivery data for "mb-001"
     And the ad server adapter returns reporting_delayed for "mb-002"
     When the system delivers a "scheduled" webhook report for that batch
-    Then the payload partial_data should be true
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the payload partial_data should be true
     And the payload unavailable_count should equal 1
     And the entry for "mb-002" should have status "reporting_delayed"
     And the entry for "mb-002" should include expected_availability timestamp
@@ -1152,7 +1161,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     Given a media buy "mb-001" with an active reporting_webhook
     And a prior webhook report for "mb-001" covered reporting_period "2026-05-10" to "2026-05-10"
     When the system delivers an "adjusted" webhook report for "mb-001" covering the same period with corrected totals
-    Then the payload notification_type should be "adjusted"
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the payload notification_type should be "adjusted"
     And the entry for "mb-001" should include is_adjusted equals true
     And buyers should replace previous period data with the resent totals
     # v3.1: is_adjusted disambiguates resends from forward-only scheduled reports
@@ -1578,7 +1588,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
   Scenario: First report for a period carries no supersedes_window
     Given no prior report exists for media buy "mb-001" for the reporting period
     When the seller delivers the first report for the period
-    Then "supersedes_window" should be absent
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And "supersedes_window" should be absent
     # BR-RULE-221 INV-7: first report for a period -> supersedes_window absent (no prior window to replace)
     # --- Delayed Data Signaling (BR-RULE-222) ---
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/get-media-buy-delivery-request.json
@@ -1588,7 +1599,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     Given a webhook delivery covering media buys for "buyer-001"
     And "unavailable_count" is present
     When the seller delivers the webhook notification
-    Then "unavailable_count" MUST be an integer greater than or equal to 0
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And "unavailable_count" MUST be an integer greater than or equal to 0
     # BR-RULE-222 INV-4: unavailable_count >= 0 (integer)
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/get-media-buy-delivery-request.json
 
@@ -1597,7 +1609,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     Given a webhook delivery covering media buys for "buyer-001"
     And one media buy has missing or delayed data
     When the seller delivers the webhook notification
-    Then the seller MUST NOT present that data as complete (zeroed or final)
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And the seller MUST NOT present that data as complete (zeroed or final)
     And the buy MUST be flagged via "reporting_delayed" / "partial_data"
     # BR-RULE-222 INV-7: missing/delayed data must be flagged, never reported as complete
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/get-media-buy-delivery-request.json
@@ -1617,7 +1630,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     Given a webhook delivery covering three media buys for "buyer-001"
     And every media buy has available delivery data (no reporting_delayed or failed)
     When the seller delivers the webhook notification
-    Then "partial_data" should be false or absent
+    Then the webhook payload is compliant with the AdCP delivery webhook spec
+    And "partial_data" should be false or absent
     And "unavailable_count" should be 0 or absent
     # BR-RULE-222 INV-1 (counter): no delayed/failed buy -> partial_data not forced true
     # --- Missing Metrics Contract Accountability (BR-RULE-223) ---

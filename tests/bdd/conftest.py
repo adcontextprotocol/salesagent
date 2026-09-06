@@ -832,6 +832,38 @@ _XFAIL_TAGS: dict[str, str] = {
     # write transaction opens; a failed proof
     # rejects the entry with VALIDATION_ERROR at notification_configs[j].url and writes nothing,
     # so the prior array is untouched.
+    #
+    # ── Delivery webhooks POST the result document with no protocol envelope ──
+    # These seven were LIVE and passing. They now carry "the webhook payload is
+    # compliant with the AdCP delivery webhook spec" and fail on it, so xfailing
+    # them costs the assertions they already made. That price is recorded here
+    # deliberately rather than avoided by grading only the layer production
+    # happens to satisfy: the payload they were grading is not a conformant
+    # webhook body, so those assertions were checking the contents of an
+    # envelope that never existed.
+    #
+    # The pin composes a delivery webhook in two layers, and the chain is
+    # explicit, not inferred: core/mcp-webhook-payload.json is the POST body
+    # (required idempotency_key, operation_id, task_id, task_type, status,
+    # timestamp); its `result` is $ref async-response-data.json, which resolves
+    # per enums/task-type.json to media-buy/media-buy-delivery-webhook-result.json
+    # for media_buy_delivery. That inner schema states it in its own description:
+    # "carried under core/mcp-webhook-payload.json result ... This is not a
+    # top-level webhook POST body and does not include protocol envelope".
+    #
+    # WebhookDeliveryService builds the inner result document and posts it bare:
+    # src/services/webhook_delivery_service.py:295 assembles delivery_payload,
+    # and src/core/security/webhook_egress.py:188 (_canonical_body) serializes
+    # exactly that dict as the body. No envelope is added anywhere in the chain.
+    #
+    # Owned by salesagent-tkmle. Each graduates the moment the sender wraps.
+    "T-UC-004-webhook-window-update": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
+    "T-UC-004-webhook-partial-data": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
+    "T-UC-004-webhook-adjusted-resend": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
+    "T-UC-004-window-first-report": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
+    "T-UC-004-delayed-count-nonnegative": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
+    "T-UC-004-delayed-no-false-complete": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
+    "T-UC-004-delayed-all-available": "salesagent-tkmle: delivery webhook posts the result document with no core/mcp-webhook-payload.json envelope",
 }
 
 # Selective xfail for parametrized scenarios where only

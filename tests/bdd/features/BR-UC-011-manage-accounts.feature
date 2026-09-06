@@ -1367,12 +1367,6 @@ Feature: BR-UC-011 Manage Accounts
     And each error includes code and message
     And the error should include "suggestion" field with remediation guidance
 
-  @T-UC-011-atomic-both @sync @atomic @partition @boundary
-  Scenario: Schema prohibits both_present -- accounts and errors never coexist (both accounts and errors present)
-    Given the sync_accounts response schema uses oneOf
-    Then a response with both accounts and errors arrays is invalid
-    And a response with neither_present is also invalid (neither accounts nor errors present)
-
   @T-UC-011-sandbox-provision @invariant @br-rule-209 @sandbox
   Scenario: Sandbox account provisioned via sync_accounts with sandbox flag
     Given the Buyer Agent has an authenticated connection

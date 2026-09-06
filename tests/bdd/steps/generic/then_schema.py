@@ -86,6 +86,68 @@ def then_error_compliant(ctx: dict) -> None:
             raise AssertionError(f"errors[{index}] does not comply with core/error.json:\n{detail}")
 
 
+@then("the webhook payload is compliant with the AdCP delivery webhook spec")
+def then_webhook_payload_compliant(ctx: dict) -> None:
+    """Grade an OUTBOUND delivery webhook, the one wire a buyer sees that no tool returns.
+
+    A webhook is the seller SENDING, so there is no response document and none of
+    the response steps apply. That is exactly why it went ungraded, and why it is
+    worth grading: ``next_expected_at`` is a field where a hand-written obligation
+    once demanded an explicit ``null``, the pin says "Omitted on final
+    notifications", and production shipped a schema-invalid null to buyers. A
+    check here catches that class.
+
+    The pinned contract is TWO LAYERS, and the chain is explicit in the pin rather
+    than inferred: ``core/mcp-webhook-payload.json`` is the POST body; its
+    ``result`` is ``$ref: async-response-data.json``, which resolves per
+    ``task_type`` (``enums/task-type.json``) to
+    ``media-buy/media-buy-delivery-webhook-result.json`` for
+    ``media_buy_delivery``. That inner schema says so in its own description:
+    "Payload-only delivery report result carried under
+    core/mcp-webhook-payload.json result ... This is not a top-level webhook POST
+    body and does not include protocol envelope".
+
+    Both layers are graded, and the failure names WHICH layer broke — an envelope
+    that never arrived is a different defect from a malformed report inside a
+    correct envelope, and one message that cannot tell them apart sends the reader
+    to the wrong file.
+
+    Reads the body off the socket (``env.delivered_requests``), not a dict the
+    sender kept. Grading what the sender believes it sent cannot catch a
+    serialization that changes it.
+    """
+    deliveries = ctx["env"].delivered_requests
+    assert deliveries, "no webhook POST was made, so there is no payload to grade"
+    body = deliveries[-1].json()
+    assert body, f"the webhook POST carried no JSON body: {deliveries[-1].body!r}"
+
+    envelope_failures = sorted(
+        validator_for("core/mcp-webhook-payload.json").iter_errors(body),
+        key=lambda e: list(e.absolute_path),
+    )
+    if envelope_failures:
+        detail = "\n".join(
+            f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in envelope_failures
+        )
+        raise AssertionError(
+            f"the webhook POST body is not a core/mcp-webhook-payload.json envelope "
+            f"(it carries {sorted(body)}):\n{detail}"
+        )
+
+    result_failures = sorted(
+        validator_for("media-buy/media-buy-delivery-webhook-result.json").iter_errors(body.get("result")),
+        key=lambda e: list(e.absolute_path),
+    )
+    if result_failures:
+        detail = "\n".join(
+            f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in result_failures
+        )
+        raise AssertionError(
+            f"the webhook envelope is well-formed but its result does not comply with "
+            f"media-buy/media-buy-delivery-webhook-result.json:\n{detail}"
+        )
+
+
 @then(parsers.parse("the response is compliant with the {tool} spec"))
 def then_response_compliant(ctx: dict, tool: str) -> None:
     """Grade the response the buyer received against the tool's pinned schema.
