@@ -146,14 +146,19 @@ a model field, so `model_dump`, `model_fields` and the announced shape are untou
 `_spec_declares_idempotency_key` becomes what it always meant: does this DTO override the
 property with a real field.
 
-Responses are the same move and it is R3 as well -- see below.
-
 Then `invoke_tool(tool_name: str, req: BuyerRequest, identity: ResolvedIdentity | None) -> AdcpResponse`,
-and the four probes become attribute access.
+and three of the four probes become attribute access. The fourth --
+`"replayed" in model.model_fields` -- does not become an attribute; it disappears, because
+`replayed` stops being a model field at all. See R3.
+
+The response base is worth having for a second reason: it is the natural home for the one
+serialization seam R3 needs. `mcp_result`, `_serialize_for_a2a` and REST's
+`model_dump(mode="json")` are three separate answers to "how does a response become bytes",
+which is the same shape of divergence as R1's three answers to "how do bytes become a request".
 
 ---
 
-## R3 — `replayed` comes from the envelope, because the envelope is a base class
+## R3 — `replayed` is stamped by the idempotency layer, on the way out
 
 **The defect.** Three of the four keyed tools replay with no `replayed` marker, and
 `update_media_buy` is worse than silent: `UpdateMediaBuySubmitted` declares
@@ -162,17 +167,48 @@ and the four probes become attribute access.
 `replayed: false` -- positively asserting a fresh execution to a buyer using the field for
 billing reconciliation and exactly-once routing.
 
-**Why it is the same change as R2.** `replayed` is not a per-tool field to be added four times.
-It is a field of `core/protocol-envelope.json`, which every pinned response schema composes via
-`allOf`, and the SDK ships the class: `adcp.types.ProtocolEnvelope`, carrying `replayed`,
-`status`, `task_id`, `message`, `context`, `errors` and the rest.
-`GetAdcpCapabilitiesResponse` already inherits it. The other thirteen do not, because the SDK's
-codegen dropped the composition for them.
+**Where the field belongs, corrected.** An earlier draft of this section called the SDK
+defective for not declaring `replayed` on its generated success models, and proposed that our
+response models inherit `adcp.types.ProtocolEnvelope` to get it. Both halves were wrong. The
+spec says (`L1/security.mdx` rule 4):
 
-**The change.** Every response model inherits `ProtocolEnvelope`. The envelope has the field, so
-the derived models have it -- no per-tool declaration, no `model_fields` probe, no `setattr`
-with a `noqa`. The boundary assigns `result.replayed = True` on replay and that is the whole
-mechanism. `TaskResultEnvelope`'s duplicated pop-and-reset goes too.
+> The seller injects `replayed: true` onto the outgoing protocol envelope at response time --
+> `replayed` is an envelope-level field produced by the idempotency layer, NOT part of the
+> cached inner response.
+
+And the SDK implements exactly that. `adcp/server/idempotency/store.py` works on response
+DICTS and injects the marker at replay time, with a comment that states the reason:
+
+```python
+# The store owns this — sellers can't inject at the
+# right point (cache lookup happens here, wire
+# serialization happens later). The injection
+# lands on the cloned dict, not ``cached.response``,
+# so multiple replays of the same key all carry
+# exactly one ``replayed: true`` without compounding.
+```
+
+So a generated success model has no business declaring the field, and neither do ours. Putting
+it on the model is what produced the `replayed: false` bug in the first place: a model-level
+default asserts something on every FRESH response too.
+
+**The change.** The boundary already knows a replay happened -- it is the only thing that does.
+It should carry that fact out as a property of the RESPONSE EVENT rather than of the response
+body, and the single place every transport serializes is where it lands. Two shapes are
+available and the choice depends on R2:
+
+* if the boundary returns a `(response, replayed)` pair or a small envelope wrapper, each
+  transport's existing `model_dump` site stamps it -- three sites, which is the per-transport
+  duplication this design exists to remove;
+* if `invoke_tool` gains one serialization seam (`to_wire(result) -> dict`) that every
+  transport calls instead of dumping the model itself, the stamp lands once. That seam is
+  worth having independently: `mcp_result`, `_serialize_for_a2a` and REST's `model_dump(mode="json")`
+  are three answers to "how does a response become bytes", and R2's response base is the natural
+  home for the fourth.
+
+Prefer the second. Either way the local `CreateMediaBuyResult.replayed` field and
+`TaskResultEnvelope`'s pop-and-reset are deleted, not extended -- they are the model-level
+approach this section is correcting.
 
 ---
 
@@ -261,9 +297,9 @@ So the work is: write the attempt row before running, complete it after, answer
 `seed_incomplete_attempt` Given, wired to a bound feature, to grade it on all four
 transports.
 
-**Priority: lowest.** It needs concurrent same-key traffic to occur in production, and few
-sellers implement it. It is listed because the enum member exists, the gap should be known,
-and the grading cost turns out to be one Given.
+**Deferred, and filed: prebid/salesagent#2217.** It needs concurrent same-key traffic to occur
+in production and few sellers implement rule 9 at all, so it waits behind R1-R4. The issue
+carries the scenario shape, so whoever picks it up writes the Given first.
 
 ---
 
