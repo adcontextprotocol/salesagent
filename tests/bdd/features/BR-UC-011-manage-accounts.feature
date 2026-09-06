@@ -30,7 +30,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has 3 accessible accounts with statuses "active", "pending_approval", "suspended"
     When the Buyer Agent sends a list_accounts request
-    Then the response contains an accounts array with 3 items
+    Then the response is compliant with the list_accounts spec
+    And the response contains an accounts array with 3 items
     And each account includes account_id, name, status, advertiser, rate_card, and payment_terms
     And the accounts are only those accessible to the authenticated agent
     # @bva accounts (response): multiple accounts visible
@@ -44,7 +45,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has accounts with statuses "active", "pending_approval", "suspended", "closed"
     When the Buyer Agent sends a list_accounts request with status filter "<status>"
-    Then the response contains only accounts with status "<status>"
+    Then the response is compliant with the list_accounts spec
+    And the response contains only accounts with status "<status>"
     And accounts with other statuses are excluded
     # @bva status: active (first enum value), closed (last enum value)
     # @bva accounts (response): status filter = specific value with matches
@@ -67,7 +69,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has accounts with statuses "rejected", "active", "active"
     When the Buyer Agent sends a list_accounts request with status filter "rejected"
-    Then the response contains an accounts array with 1 items
+    Then the response is compliant with the list_accounts spec
+    And the response contains an accounts array with 1 items
     And every returned account has status "rejected"
     # @bva status: rejected — the one account-status enum value the filter outline never seeded
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/account/list-accounts-request.json pointer=/properties/status/enum
@@ -77,7 +80,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has no accessible accounts
     When the Buyer Agent sends a list_accounts request
-    Then the response contains an empty accounts array
+    Then the response is compliant with the list_accounts spec
+    And the response contains an empty accounts array
     And the response is not an error
     # @bva accounts (response): 0 accounts visible
 
@@ -85,7 +89,8 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: List accounts without authentication returns auth error (no token on list)
     Given the Buyer Agent has an unauthenticated connection
     When the Buyer Agent sends a list_accounts request without an authentication token
-    Then the response is an error variant with no accounts array
+    Then the error is compliant with the AdCP error spec
+    And the response is an error variant with no accounts array
     And the error code is "AUTH_MISSING"
     # @bva authentication (account operations): no token on list
 
@@ -94,7 +99,8 @@ Feature: BR-UC-011 Manage Accounts
     Given a tenant is resolvable from the request context
     And the Buyer has an invalid authentication token
     When the Buyer Agent sends a list_accounts skill request via A2A with the token
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code AUTH_INVALID
     # Coverage gap alongside salesagent-7moz (BR-UC-010 @T-UC-010-ext-c-a2a): A2A
     # always validates a presented token regardless of the requested DISCOVERY_SKILLS
@@ -108,7 +114,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has 120 accessible accounts
     When the Buyer Agent sends a list_accounts request with max_results 50
-    Then the response contains 50 accounts
+    Then the response is compliant with the list_accounts spec
+    And the response contains 50 accounts
     And the response includes pagination metadata with has_more true and a cursor
     When the Buyer Agent sends a list_accounts request with the returned cursor
     Then the response contains 50 more accounts
@@ -120,7 +127,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has 20 accessible accounts
     When the Buyer Agent sends a list_accounts request with max_results 50
-    Then the response contains 20 accounts
+    Then the response is compliant with the list_accounts spec
+    And the response contains 20 accounts
     And the response pagination has has_more false and no cursor
     # GRADED GREEN (salesagent-9if1): _apply_pagination emits cursor=None when has_more=false and
     # every transport pre-serializes via model_dump(mode="json") (exclude_none), so the cursor is
@@ -134,7 +142,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And accessible accounts exist for brand domains "acme-corp.com" and "nova-brands.com"
     When the Buyer Agent sends a list_accounts request with an account filter keyed by <key_shape> for brand domain "acme-corp.com"
-    Then the response contains an accounts array with 1 items
+    Then the response is compliant with the list_accounts spec
+    And the response contains an accounts array with 1 items
     And the returned account has brand domain "acme-corp.com" and operator "acme-corp.com"
     # Graduated: _apply_list_account_filters honors req.account (AccountReference oneOf, both
     # account_id and natural-key arms), forwarded by all 3 transports.
@@ -153,7 +162,8 @@ Feature: BR-UC-011 Manage Accounts
     And the seller supports scope introspection for the authenticated agent
     And the agent has 1 accessible accounts
     When the Buyer Agent sends a list_accounts request
-    Then each returned account includes an authorization object with required key "allowed_tasks"
+    Then the response is compliant with the list_accounts spec
+    And each returned account includes an authorization object with required key "allowed_tasks"
     And each allowed_tasks array is a non-empty list of unique snake_case task names
     # XFAIL-EXPECTED: production gap — GH #1615 (account-with-authorization item shape is NEW in
     # 3.1.1; production Account schema has no authorization field, list items are bare — out of
@@ -168,7 +178,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has 3 accessible accounts with statuses "active", "active", "active"
     When the Buyer Agent sends a list_accounts request carrying idempotency_key "read-tool-idem-key-0001", an ext object, and context {"correlation_id": "uc011-read-idem"}
-    Then the response contains an accounts array with 3 items
+    Then the response is compliant with the list_accounts spec
+    And the response contains an accounts array with 3 items
     And the response includes context {"correlation_id": "uc011-read-idem"}
     # Graduated: ListAccountsRequest.idempotency_key added -- the read wrapper now tolerates
     # the 3.1 idempotency envelope instead of rejecting it under extra=forbid.
@@ -182,7 +193,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has accounts with statuses "active", "active", "active"
     When the Buyer Agent sends a list_accounts request with status filter "suspended"
-    Then the response contains an empty accounts array
+    Then the response is compliant with the list_accounts spec
+    And the response contains an empty accounts array
     And the response is not an error
     # @bva accounts (response): status filter = specific value with no matches
 
@@ -197,7 +209,8 @@ Feature: BR-UC-011 Manage Accounts
     # dispatched, so the code was never checked against the seller (salesagent-prkv.65).
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json
     #   pointer=/INVALID_REQUEST
-    Then the response contains a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response contains a validation error
     And the error indicates the status value is not recognized
     # @bva status: Unknown string not in enum
 
@@ -206,7 +219,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has 200 accessible accounts
     When the Buyer Agent sends a list_accounts request with max_results <value>
-    Then the response has outcome "<outcome>"
+    Then the response is compliant with the list_accounts spec
+    And the response has outcome "<outcome>"
 
     Examples:
       | value | outcome                         |
@@ -221,7 +235,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the agent has accounts with statuses "active", "pending_approval", "suspended", "closed"
     When the Buyer Agent sends a list_accounts request without a status filter
-    Then the response contains accounts with all statuses
+    Then the response is compliant with the list_accounts spec
+    And the response contains accounts with all statuses
     And the result set is identical to requesting without any filter
     # @bva accounts (response): status filter = 'all'
 
@@ -266,7 +281,8 @@ Feature: BR-UC-011 Manage Accounts
     | brand.domain    | brand.brand_id | operator        | billing  |
     | nova-brands.com | spark          | pinnacle-media.com | operator |
     | nova-brands.com | glow           | pinnacle-media.com | agent    |
-    Then the response contains 2 account results
+    Then the response is compliant with the sync_accounts success spec
+    And the response contains 2 account results
     And the account for brand domain "nova-brands.com" brand_id "spark" has action "created"
     And the account for brand domain "nova-brands.com" brand_id "glow" has action "created"
     And each account echoes brand domain and brand_id from the request
@@ -279,7 +295,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator        | billing  |
     | acme-corp.com   | acme-corp.com   | operator |
-    Then the account for brand domain "acme-corp.com" has action "created"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "created"
     And the account operator is "acme-corp.com"
     And the account billing is "operator"
     # @bva brand (brand-ref): brand_direct -- brand operating own seat
@@ -291,7 +308,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing |
     | acme-corp.com   | acme-corp.com | agent   |
-    Then the account for brand domain "acme-corp.com" has action "updated"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "updated"
     And the account billing is "agent"
 
   @T-UC-011-sync-unchanged @sync @upsert @partition
@@ -301,7 +319,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the account for brand domain "acme-corp.com" has action "unchanged"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "unchanged"
 
   @T-UC-011-sync-idempotency-envelope @sync @idempotency @v3-1 @partition
   Scenario: sync_accounts accepts the buyer's client-generated idempotency_key
@@ -309,7 +328,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request carrying idempotency_key "buyer-sync-key-000001" and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the account for brand domain "acme-corp.com" has action "created"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "created"
     # sync-accounts-request.json 3.1.1 lists idempotency_key in /required and describes it
     # as "Client-generated" — the buyer mints it, the seller accepts it. A transport that
     # rejects the field as an unknown input (REST body model, MCP tool signature) or drops
@@ -325,7 +345,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request carrying idempotency_key "<key>" and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     # The value production validates MUST be the buyer's. A seller that substitutes a
     # server-minted uuid4 (or drops the field) would let both rows below succeed, so this
@@ -344,7 +365,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with no idempotency_key and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is idempotency_key
     # The sibling of the malformed outline above, and the one that proves the field is
@@ -366,7 +388,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing   |
     | acme-corp.com   | acme-corp.com | <billing> |
-    Then the account billing is "<billing>"
+    Then the response is compliant with the sync_accounts success spec
+    And the account billing is "<billing>"
     # @bva billing: operator (first enum value), advertiser (last enum value)
     # POST-S7: Buyer knows billing model for each account
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/billing-party.json pointer=/enum
@@ -405,7 +428,8 @@ Feature: BR-UC-011 Manage Accounts
     | brand.domain        | operator            | billing  |
     | new-brand.com       | new-brand.com       | operator |
     | existing-brand.com  | existing-brand.com  | agent    |
-    Then the account for brand domain "new-brand.com" has action "created"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "new-brand.com" has action "created"
     And the account for brand domain "existing-brand.com" has action "updated"
 
   @T-UC-011-sync-brand-echo @sync @invariant @partition
@@ -414,7 +438,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | brand.brand_id | operator        | billing  |
     | nova-brands.com | spark          | pinnacle-media.com | operator |
-    Then the per-account result echoes brand domain "nova-brands.com" and brand_id "spark"
+    Then the response is compliant with the sync_accounts success spec
+    And the per-account result echoes brand domain "nova-brands.com" and brand_id "spark"
     # BR-RULE-056 INV-4: Request includes brand for an account -> response echoes same brand value
     # BR-RULE-058 INV-3: Account is processed -> response echoes brand (brand-ref) from request
 
@@ -424,7 +449,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain | operator | billing  |
     | a.b          | a.b      | operator |
-    Then the account for brand domain "a.b" has action "created"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "a.b" has action "created"
     # @bva brand (brand-ref): shortest valid domain (e.g., 'a.b')
 
   @T-UC-011-sync-natural-key-acceptance @sync @invariant @partition
@@ -433,7 +459,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the account has a seller-assigned account_id
+    Then the response is compliant with the sync_accounts success spec
+    And the account has a seller-assigned account_id
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
@@ -452,7 +479,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And an account for brand domain "acme-corp.com" already exists with billing "operator"
     When the Buyer Agent sends a sync_accounts request with a settings-update entry keyed by the existing account's account_id setting payment_terms "net_45"
-    Then the account for brand domain "acme-corp.com" has action "updated"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "updated"
     And the account payment_terms is "net_45"
     When the Buyer Agent sends a list_accounts request
     Then the response contains an accounts array with 1 items
@@ -471,7 +499,8 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: Settings-update entry never provisions -- unknown account rejected with UNSUPPORTED_PROVISIONING
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request with a settings-update entry keyed by unknown account_id "acc_does_not_exist"
-    Then the settings-update entry has action "failed"
+    Then the response is compliant with the sync_accounts success spec
+    And the settings-update entry has action "failed"
     And the accounts entry carries error code "UNSUPPORTED_PROVISIONING"
     And the per-account error recovery is "correctable"
     And the per-account error with code "UNSUPPORTED_PROVISIONING" carries a non-empty suggestion
@@ -494,7 +523,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with delete_missing true and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code CONFIGURATION_ERROR
     # The DEACTIVATION arm reads brand off every account the request did not mention,
     # to report it as closed. That read has the same seller-side-inconsistency
@@ -517,7 +547,8 @@ Feature: BR-UC-011 Manage Accounts
     And an account for brand domain "acme-corp.com" already exists with billing "operator"
     And the persisted account has no brand recorded
     When the Buyer Agent sends a sync_accounts request with a settings-update entry keyed by the existing account's account_id setting payment_terms "net_45"
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code CONFIGURATION_ERROR
     # accounts.brand is a NULLABLE column, so a brand-less persisted row is a state the
     # seller's own storage permits. The settings-update arm reads that row's brand to echo it
@@ -543,7 +574,8 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: Entry carrying both an account reference and the provisioning trio is rejected
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request with an entry carrying both an account reference and the provisioning trio
-    Then the request is rejected at the operation level with error code "VALIDATION_ERROR" naming field "accounts[0]"
+    Then the error is compliant with the AdCP error spec
+    And the request is rejected at the operation level with error code "VALIDATION_ERROR" naming field "accounts[0]"
     # Graduated: mode-exclusivity enforced in _impl before dispatch (VALIDATION_ERROR naming accounts[i]).
     # An entry satisfying BOTH arms violates the item oneOf (exactly one), which is a structural
     # request-schema violation — graded as an operation-level error variant (top-level errors[],
@@ -563,7 +595,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response is an error variant with no accounts array
+    Then the error is compliant with the AdCP error spec
+    And the response is an error variant with no accounts array
     And the error code is "AUTH_MISSING"
     And the error should include "suggestion" field with remediation guidance
     And no accounts were modified on the seller
@@ -582,7 +615,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response is an error variant
+    Then the error is compliant with the AdCP error spec
+    And the response is an error variant
     And the response arrives
     And the response contains error code AUTH_INVALID
     And the error should include "suggestion" field with remediation guidance
@@ -609,7 +643,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the account for brand domain "acme-corp.com" has action "failed"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "failed"
     And the account has status "rejected"
     And the accounts entry carries error code "BILLING_NOT_SUPPORTED"
     And the error message explains the billing model is not available
@@ -630,7 +665,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the account for brand domain "acme-corp.com" has action "failed"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "failed"
     And the accounts entry carries error code "BILLING_NOT_SUPPORTED"
     When the Buyer Agent retries the sync_accounts request with billing "agent" and a fresh idempotency_key
     Then the account for brand domain "acme-corp.com" has action "created"
@@ -653,7 +689,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator           | billing  |
     | acme-corp.com   | pinnacle-media.com | agent    |
-    Then the account for brand domain "acme-corp.com" has action "failed"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "failed"
     And the account has status "rejected"
     And the accounts entry carries error code "BILLING_NOT_PERMITTED_FOR_AGENT"
     And the per-account error recovery is "correctable"
@@ -674,7 +711,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator           | billing  |
     | acme-corp.com   | pinnacle-media.com | agent    |
-    Then the accounts entry carries error code "BILLING_NOT_PERMITTED_FOR_AGENT"
+    Then the response is compliant with the sync_accounts success spec
+    And the accounts entry carries error code "BILLING_NOT_PERMITTED_FOR_AGENT"
     When the Buyer Agent retries the sync_accounts request with the seller's suggested_billing value and a fresh idempotency_key
     Then the account for brand domain "acme-corp.com" has action "created"
     And the account billing is "operator"
@@ -703,7 +741,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | prepaid  |
-    Then the account processing fails with a validation error for billing
+    Then the error is compliant with the AdCP error spec
+    And the account processing fails with a validation error for billing
     # @bva billing: billing = invalid string
 
   @T-UC-011-ext-d-pending-url @sync @approval @post-s8 @partition @boundary
@@ -713,7 +752,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the account has status "pending_approval"
+    Then the response is compliant with the sync_accounts success spec
+    And the account has status "pending_approval"
     And the account has action "created"
     And the account includes a setup object
     And the setup object includes a message describing the required action
@@ -728,7 +768,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the account has status "pending_approval"
+    Then the response is compliant with the sync_accounts success spec
+    And the account has status "pending_approval"
     And the setup object includes a message
     And the setup object does not include a URL
 
@@ -739,7 +780,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the account has status "active"
+    Then the response is compliant with the sync_accounts success spec
+    And the account has status "active"
     And the account does not include a setup object
 
   @T-UC-011-ext-d-push @sync @push-notification @partition
@@ -749,7 +791,8 @@ Feature: BR-UC-011 Manage Accounts
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
     And the request includes a push_notification_config with url "https://agent.com/webhooks"
-    Then the system registers the webhook for async account status notifications
+    Then the response is compliant with the sync_accounts success spec
+    And the system registers the webhook for async account status notifications
     And when the account transitions from "pending_approval" to "active"
     Then a push notification is sent to "https://agent.com/webhooks"
 
@@ -778,7 +821,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And an account for brand domain "acme-corp.com" exists with notification config subscriber "buyer-primary" for url "https://buyer.example/webhooks/adcp/creative"
     When the Buyer Agent sends a sync_accounts request re-sending subscriber "buyer-primary" as paused with url "https://buyer.example/webhooks/adcp/paused" and event_types "creative.purged"
-    Then the account notification_configs echo exactly 1 subscriber
+    Then the response is compliant with the sync_accounts success spec
+    And the account notification_configs echo exactly 1 subscriber
     And the echoed subscriber "buyer-primary" has url "https://buyer.example/webhooks/adcp/paused" and active false
     And the echoed subscriber has event_types "creative.purged"
     When the Buyer Agent sends a sync_accounts request with an empty notification_configs array for brand domain "acme-corp.com"
@@ -797,7 +841,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the account notification_configs echo exactly 1 subscriber
+    Then the response is compliant with the sync_accounts success spec
+    And the account notification_configs echo exactly 1 subscriber
     And the echoed subscriber "buyer-primary" has url "https://buyer.example/webhooks/adcp/creative" and active false
     # Graduated (T2 increment F4a): omitting notification_configs leaves persisted
     # subscribers unchanged.
@@ -811,7 +856,8 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: Media-buy-anchored event type on the account surface is rejected per entry
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request provisioning brand domain "acme-corp.com" with a paused notification config subscriber "delivery-reports" for url "https://buyer.example/webhooks/adcp/account" and event_types "scheduled"
-    Then the account for brand domain "acme-corp.com" has action "failed"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "failed"
     And the account has status "rejected"
     And the accounts entry carries error code "VALIDATION_ERROR"
     And the per-account error field points at "notification_configs[0].event_types[0]"
@@ -827,7 +873,8 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: Duplicate subscriber_id values within one submitted array are rejected
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request provisioning brand domain "acme-corp.com" with two notification config entries both using subscriber "buyer-primary"
-    Then the account for brand domain "acme-corp.com" has action "failed"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "failed"
     And the account has status "rejected"
     And the accounts entry carries error code "VALIDATION_ERROR"
     And the per-account error field points at "notification_configs[1].subscriber_id"
@@ -844,7 +891,8 @@ Feature: BR-UC-011 Manage Accounts
     And an account for brand domain "acme-corp.com" exists with notification config subscriber "buyer-primary" for url "https://buyer.example/webhooks/adcp/creative"
     And the webhook proof-of-control challenge for "https://buyer.example/webhooks/adcp/unreachable" fails
     When the Buyer Agent sends a sync_accounts request re-sending subscriber "buyer-primary" as active with url "https://buyer.example/webhooks/adcp/unreachable"
-    Then the account for brand domain "acme-corp.com" has action "failed"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "failed"
     And the accounts entry carries error code "VALIDATION_ERROR"
     And the per-account error field points at "notification_configs[0].url"
     And the account keeps its prior notification_configs set unchanged
@@ -875,7 +923,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  | payment_terms |
     | acme-corp.com   | acme-corp.com | operator | net_45        |
-    Then the account for brand domain "acme-corp.com" has action "updated"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "updated"
     When the Buyer Agent sends a list_accounts request
     Then the listed account for brand domain "acme-corp.com" binds governance agent "https://compliance.example.com/check"
     # LOCAL EXTENSION, not a spec surface: `governance_agents` is not a
@@ -903,7 +952,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And an account for brand domain "acme-corp.com" already exists with billing "operator"
     When the Buyer Agent sends a sync_accounts request with a settings-update entry keyed by the existing account's account_id carrying entry-root sandbox true
-    Then the settings-update entry has action "failed"
+    Then the response is compliant with the sync_accounts success spec
+    And the settings-update entry has action "failed"
     And the accounts entry carries error code "UNSUPPORTED_FEATURE"
     And the per-account error recovery is "correctable"
     And the per-account error field points at "sandbox"
@@ -931,7 +981,8 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: billing_entity is applied in both modes and echoed with bank details stripped
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request provisioning brand domain "acme-corp.com" with a billing_entity legal_name "Acme GmbH" and bank details
-    Then the account for brand domain "acme-corp.com" has action "created"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "created"
     And the echoed billing_entity legal_name is "Acme GmbH"
     And the echoed billing_entity omits "bank"
     When the Buyer Agent sends a sync_accounts request with a settings-update entry keyed by the existing account's account_id refining billing_entity legal_name to "Acme Holdings GmbH"
@@ -958,7 +1009,8 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: preferred_reporting_protocol is accepted as a declared no-op, never a rejection
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request provisioning brand domain "acme-corp.com" with preferred_reporting_protocol "s3"
-    Then the account for brand domain "acme-corp.com" has action "created"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "created"
     And the account has status "active"
     And the per-account result carries no errors
     And the response does not contain an operation-level errors field
@@ -985,7 +1037,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And an account for brand domain "acme-corp.com" already exists with billing "operator"
     When the Buyer Agent sends a sync_accounts request with a settings-update entry keyed by the existing account's account_id carrying billing "agent"
-    Then the request is rejected at the operation level with error code "VALIDATION_ERROR" naming field "accounts[0]"
+    Then the error is compliant with the AdCP error spec
+    And the request is rejected at the operation level with error code "VALIDATION_ERROR" naming field "accounts[0]"
     When the Buyer Agent sends a list_accounts request
     Then the listed account for brand domain "acme-corp.com" has billing "operator"
     # REGRESSION LOCK, not a gap. T-UC-011-sync-mode-exclusive already grades an entry
@@ -1038,7 +1091,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with dry_run false and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response does not include a dry_run field
+    Then the response is compliant with the sync_accounts success spec
+    And the response does not include a dry_run field
     And the account was actually created on the seller
 
   @T-UC-011-ext-e-omitted @sync @dry-run @partition @boundary
@@ -1047,7 +1101,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response does not include a dry_run field
+    Then the response is compliant with the sync_accounts success spec
+    And the response does not include a dry_run field
     And the account was actually created on the seller
 
   @T-UC-011-ext-f-deactivate @sync @delete-missing @post-s9 @partition @boundary
@@ -1057,7 +1112,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with delete_missing true and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response includes a result for brand domain "old-brand.com" showing deactivation
+    Then the response is compliant with the sync_accounts success spec
+    And the response includes a result for brand domain "old-brand.com" showing deactivation
     And the account for brand domain "acme-corp.com" has action "unchanged" or "updated"
     # POST-S9: Buyer knows which accounts were deactivated
 
@@ -1087,7 +1143,8 @@ Feature: BR-UC-011 Manage Accounts
     When agent A sends a sync_accounts request with delete_missing true and:
     | brand.domain    | operator      | billing  |
     | brand-a.com     | brand-a.com   | operator |
-    Then agent B's account for brand domain "brand-b.com" is not affected
+    Then the response is compliant with the sync_accounts success spec
+    And agent B's account for brand domain "brand-b.com" is not affected
     And only agent A's absent accounts are deactivated
 
   @T-UC-011-ext-f-false @sync @delete-missing @partition @boundary
@@ -1097,7 +1154,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with delete_missing false and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then brand domain "old-brand.com" remains in its current state
+    Then the response is compliant with the sync_accounts success spec
+    And brand domain "old-brand.com" remains in its current state
     And only the included accounts are processed
 
   @T-UC-011-ext-f-none-absent @sync @delete-missing @partition @boundary
@@ -1107,7 +1165,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with delete_missing true and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then no accounts are deactivated
+    Then the response is compliant with the sync_accounts success spec
+    And no accounts are deactivated
     And the account for brand domain "acme-corp.com" is processed normally
 
   @T-UC-011-ext-f-omitted @sync @delete-missing @partition @boundary
@@ -1117,14 +1176,16 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request without delete_missing and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then brand domain "old-brand.com" remains in its current state
+    Then the response is compliant with the sync_accounts success spec
+    And brand domain "old-brand.com" remains in its current state
     And only the included accounts are processed
 
   @T-UC-011-ext-g-echo @context-echo @post-f3 @partition @boundary
   Scenario Outline: context_provided -- context echoed in <operation> response (context with properties)
     Given the Buyer is authenticated with a valid principal_id
     When the Buyer Agent sends a <operation> request with context {"session_id": "abc-123", "trace": "xyz-789"}
-    Then the response includes context {"session_id": "abc-123", "trace": "xyz-789"}
+    Then the response is compliant with the <operation> spec
+    And the response includes context {"session_id": "abc-123", "trace": "xyz-789"}
     And the context is identical to what was sent
     # POST-F3: Application context echoed when possible
 
@@ -1137,7 +1198,8 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: Context echoed in sync error response
     Given the Buyer Agent has an unauthenticated connection
     When the Buyer Agent sends a sync_accounts request with context {"trace": "err-001"}
-    Then the response is an error variant with AUTH_MISSING
+    Then the error is compliant with the AdCP error spec
+    And the response is an error variant with AUTH_MISSING
     And the response includes context {"trace": "err-001"}
     And the error should include "suggestion" field with remediation guidance
     # POST-F3: Context echoed even on error path
@@ -1146,26 +1208,30 @@ Feature: BR-UC-011 Manage Accounts
   Scenario: context_absent -- context omitted from response (context absent)
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a list_accounts request without a context object
-    Then the response does not include a context field
+    Then the response is compliant with the list_accounts spec
+    And the response does not include a context field
 
   @T-UC-011-ext-g-empty @context-echo @partition @boundary
   Scenario: context_empty_object -- empty context echoed unchanged (context = {})
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request with context {}
-    Then the response includes context {}
+    Then the response is compliant with the sync_accounts success spec
+    And the response includes context {}
 
   @T-UC-011-ext-g-nested @context-echo @partition @boundary
   Scenario: context_nested -- deeply nested context echoed unchanged (context with properties)
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request with context {"deep": {"nested": {"level": 3}}, "array": [1, 2, 3]}
-    Then the response includes context {"deep": {"nested": {"level": 3}}, "array": [1, 2, 3]}
+    Then the response is compliant with the sync_accounts success spec
+    And the response includes context {"deep": {"nested": {"level": 3}}, "array": [1, 2, 3]}
     And the context is identical to what was sent
 
   @T-UC-011-sync-empty-accounts @sync @validation @partition @boundary
   Scenario: Sync with empty_accounts array rejected (0 accounts)
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request with an empty accounts array
-    Then the response is an error variant
+    Then the error is compliant with the AdCP error spec
+    And the response is an error variant
     And the error indicates accounts array must not be empty
 
   # ── A missing required member makes the REQUEST malformed, not the ACCOUNT
@@ -1207,26 +1273,30 @@ Feature: BR-UC-011 Manage Accounts
     # payload started reaching the seller. Asserting `brand` grades what is really
     # sent; making it genuinely test a missing DOMAIN means changing the When to send
     # `brand: {}`, which would be redefining the scenario rather than fixing it.
-    Then the account processing fails with a validation error for brand
+    Then the error is compliant with the AdCP error spec
+    And the account processing fails with a validation error for brand
     # @bva brand (brand-ref): missing domain in brand-ref
 
   @T-UC-011-sync-missing-operator @sync @validation @partition @boundary
   Scenario: Sync account with missing operator -- operator is required
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request with an account that has no operator field
-    Then the account processing fails with a validation error for operator
+    Then the error is compliant with the AdCP error spec
+    And the account processing fails with a validation error for operator
 
   @T-UC-011-sync-missing-billing @sync @validation @partition @boundary
   Scenario: Sync account with missing billing -- billing is required
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request with an account that has no billing field
-    Then the account processing fails with a validation error for billing
+    Then the error is compliant with the AdCP error spec
+    And the account processing fails with a validation error for billing
 
   @T-UC-011-sync-invalid-patterns @sync @validation @patterns @partition @boundary
   Scenario Outline: Sync with invalid pattern -- <field> "<value>" (<partition_name>)
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request with <field> set to "<value>"
-    Then the account processing fails with a validation error for <field>
+    Then the error is compliant with the AdCP error spec
+    And the account processing fails with a validation error for <field>
     # @bva brand (brand-ref): invalid patterns -- uppercase domain, invalid brand_id_pattern
 
     Examples:
@@ -1241,7 +1311,8 @@ Feature: BR-UC-011 Manage Accounts
   Scenario Outline: Sync accounts array boundary -- <count> accounts (<boundary_desc>)
     Given the Buyer Agent has an authenticated connection
     When the Buyer Agent sends a sync_accounts request with <count> accounts
-    Then the response has outcome "<outcome>"
+    Then the response is compliant with the sync_accounts spec
+    And the response has outcome "<outcome>"
 
     Examples:
       | count | outcome                              | boundary_desc                      |
@@ -1276,7 +1347,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response contains an errors array with at least 1 error
+    Then the error is compliant with the AdCP error spec
+    And the response contains an errors array with at least 1 error
     And the response does not contain an accounts array
     And the response does not contain a dry_run field
     And the response is the error variant of oneOf
@@ -1289,7 +1361,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response is an error variant
+    Then the error is compliant with the AdCP error spec
+    And the response is an error variant
     And the errors array may contain multiple errors
     And each error includes code and message
     And the error should include "suggestion" field with remediation guidance
@@ -1321,7 +1394,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And both sandbox and production accounts exist for the Buyer
     When the Buyer Agent sends a list_accounts request with sandbox equals true
-    Then the response contains an accounts array with 1 items
+    Then the response is compliant with the list_accounts spec
+    And the response contains an accounts array with 1 items
     And all returned accounts should have sandbox equals true
     And the response should not include production accounts
     # BR-RULE-209 INV-4: sandbox accounts identifiable via sandbox: true
@@ -1351,7 +1425,8 @@ Feature: BR-UC-011 Manage Accounts
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/enums/error-code.json
     #   pointer=/INVALID_REQUEST
     # BR-RULE-209 INV-1: BR-UC-001-discover-available-inventory.feature:1420
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error issues include keyword enum for field billing
     And the error should include a suggestion for how to fix the issue
@@ -1387,7 +1462,8 @@ Feature: BR-UC-011 Manage Accounts
     When the Buyer Agent sends a sync_accounts request with idempotency_key "sandbox-nocap-001" and:
     | brand.domain  | operator      | billing  | sandbox |
     | acme-corp.com | acme-corp.com | operator | true    |
-    Then the account for brand domain "acme-corp.com" has action "failed"
+    Then the response is compliant with the sync_accounts success spec
+    And the account for brand domain "acme-corp.com" has action "failed"
     And the accounts entry carries error code "UNSUPPORTED_FEATURE"
     And the per-account error recovery is "correctable"
     And the per-account error field points at "sandbox"
@@ -1405,7 +1481,8 @@ Feature: BR-UC-011 Manage Accounts
     Given the Buyer Agent has an authenticated connection
     And the tenant's account onboarding is incomplete (no billing entity attached)
     When the Buyer Agent sends a sync_accounts request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "ACCOUNT_SETUP_REQUIRED"
     And the error "details" object should include "setup_url" matching a URI format
     And the error "details" object should include "setup_steps" as a non-empty array of strings
@@ -1419,7 +1496,8 @@ Feature: BR-UC-011 Manage Accounts
     And account "acct-001" is at version 12
     And the Buyer Agent's last-read version of "acct-001" is 9
     When the Buyer Agent sends a sync_accounts request updating "acct-001"
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "CONFLICT"
     And the error "details" object should include "resource_id" with value "acct-001"
     And the error "details" object should include "expected_version" with value 9
@@ -1432,7 +1510,8 @@ Feature: BR-UC-011 Manage Accounts
     Given idempotency_key "sync-acct-20260521-001" was previously used with a different accounts array
     And the recorded ETag for that key is "W/\"etag-zzz\""
     When the Buyer Agent re-sends sync_accounts with idempotency_key "sync-acct-20260521-001" but a modified accounts array
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "IDEMPOTENCY_CONFLICT"
     And the error "details" object should include "current_version" with value "W/\"etag-zzz\""
     And the error should include "suggestion" field with remediation guidance

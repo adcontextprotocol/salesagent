@@ -35,7 +35,8 @@ Feature: BR-UC-026 Package Media Buy
     | budget             | 5000          |
     | pricing_option_id  | cpm-standard  |
     When the Buyer Agent invokes the create_media_buy MCP tool
-    Then the response should contain a package with a seller-assigned package_id
+    Then the response is compliant with the create_media_buy success spec
+    And the response should contain a package with a seller-assigned package_id
     And the package should contain budget 5000
     And the package should contain pricing_option_id "cpm-standard"
     And the package should contain format_ids defaulting to all product formats
@@ -55,7 +56,8 @@ Feature: BR-UC-026 Package Media Buy
     | budget             | 10000         |
     | pricing_option_id  | cpm-standard  |
     When the Buyer Agent sends the create_media_buy A2A task
-    Then the response should contain a package with a seller-assigned package_id
+    Then the response is compliant with the create_media_buy success spec
+    And the response should contain a package with a seller-assigned package_id
     And the package should contain budget 10000
     And the package should contain pricing_option_id "cpm-standard"
     And the package should contain format_ids defaulting to all product formats
@@ -76,7 +78,8 @@ Feature: BR-UC-026 Package Media Buy
     | pricing_option_id  | cpm-standard                         |
     | format_ids         | [banner-300x250]                     |
     When the Buyer Agent sends the create_media_buy request
-    Then the response should contain a package with format_ids ["banner-300x250"]
+    Then the response is compliant with the create_media_buy success spec
+    And the response should contain a package with format_ids ["banner-300x250"]
     And the package should contain format_ids_to_provide based on assigned creatives
     # POST-S3: format_ids echoed from request (explicit subset)
     # POST-S5: format_ids_to_provide shows outstanding creative needs
@@ -98,7 +101,8 @@ Feature: BR-UC-026 Package Media Buy
     | creative_assignments  | [{"creative_id": "cr-1", "weight": 1.0}] |
     | targeting_overlay     | {"audiences": [{"audience_id": "aud-1"}]} |
     When the Buyer Agent sends the create_media_buy request
-    Then the response should contain a package with all provided fields echoed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should contain a package with all provided fields echoed
     And the package should contain the seller-assigned package_id
     # POST-S2: Complete package state returned with all fields
 
@@ -110,7 +114,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id | pkg-001 |
     | budget     | 7500    |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should contain the updated package with budget 7500
+    Then the response is compliant with the update_media_buy success spec
+    And the response should contain the updated package with budget 7500
     And the package paused state should be unchanged
     # POST-S2: Updated package state reflects new budget
     # POST-S4: Paused state unchanged
@@ -123,7 +128,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id | pkg-001 |
     | paused     | true    |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should contain the package with paused=true
+    Then the response is compliant with the update_media_buy success spec
+    And the response should contain the package with paused=true
     And the package should not deliver impressions
     # POST-S4: Paused state updated to true
 
@@ -135,7 +141,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id | pkg-001 |
     | paused     | false   |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should contain the package with paused=false
+    Then the response is compliant with the update_media_buy success spec
+    And the response should contain the package with paused=false
     And the package should resume delivering impressions
     # POST-S4: Paused state updated to false
 
@@ -148,7 +155,8 @@ Feature: BR-UC-026 Package Media Buy
     | canceled            | true                   |
     | cancellation_reason | campaign pulled by client |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should contain the package with canceled=true
+    Then the response is compliant with the update_media_buy success spec
+    And the response should contain the package with canceled=true
     And the package should contain a cancellation object with canceled_at set
     And the package cancellation should contain canceled_by "buyer"
     And the package should stop delivering impressions
@@ -159,7 +167,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario: Reactivating a canceled package is impossible -- canceled is const:true
     Given the Buyer owns a media buy with a canceled package "pkg-001"
     When the Buyer Agent attempts to send an update_media_buy request setting canceled=false on "pkg-001"
-    Then the request should be rejected as schema-invalid because canceled accepts only the constant true
+    Then the error is compliant with the AdCP error spec
+    And the request should be rejected as schema-invalid because canceled accepts only the constant true
     # canceled is const:true in PackageUpdate -- un-cancellation cannot be expressed on the wire
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
@@ -171,7 +180,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id | pkg-001 |
     | canceled   | true    |
     When the Buyer Agent sends the update_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "NOT_CANCELLABLE"
     And the error should include "suggestion" field
     And the suggestion should explain the condition blocking cancellation
@@ -189,7 +199,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id          | pkg-001                                            |
     | keyword_targets_add | [{"keyword": "shoes", "match_type": "broad", "bid_price": 2.50}] |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should contain the package with keyword "shoes" in targeting_overlay
+    Then the response is compliant with the update_media_buy success spec
+    And the response should contain the package with keyword "shoes" in targeting_overlay
     # POST-S2: Updated targeting state reflects keyword addition
 
   @T-UC-026-alt-keyword-upsert @alt-flow @keyword @invariant @BR-RULE-199
@@ -200,7 +211,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id          | pkg-001                                            |
     | keyword_targets_add | [{"keyword": "shoes", "match_type": "broad", "bid_price": 3.50}] |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should contain keyword "shoes" with match_type "broad" and updated bid_price 3.50
+    Then the response is compliant with the update_media_buy success spec
+    And the response should contain keyword "shoes" with match_type "broad" and updated bid_price 3.50
     # BR-RULE-199 INV-2: Existing (keyword, match_type) pair gets bid_price updated
 
   @T-UC-026-alt-keyword-remove @alt-flow @keyword @invariant @BR-RULE-202
@@ -211,7 +223,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id             | pkg-001                                     |
     | keyword_targets_remove | [{"keyword": "shoes", "match_type": "broad"}] |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should not contain keyword "shoes" with match_type "broad" in targeting_overlay
+    Then the response is compliant with the update_media_buy success spec
+    And the response should not contain keyword "shoes" with match_type "broad" in targeting_overlay
     # BR-RULE-202 INV-1: Matching pair removed
 
   @T-UC-026-alt-keyword-remove-noop @alt-flow @keyword @invariant @BR-RULE-202
@@ -222,7 +235,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id             | pkg-001                                            |
     | keyword_targets_remove | [{"keyword": "nonexistent", "match_type": "exact"}] |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should succeed with package targeting unchanged
+    Then the response is compliant with the update_media_buy success spec
+    And the response should succeed with package targeting unchanged
     # BR-RULE-202 INV-2: Non-matching pair treated as no-op
 
   @T-UC-026-alt-negative-keyword-add @alt-flow @keyword @negative-keyword
@@ -233,7 +247,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id            | pkg-001                                            |
     | negative_keywords_add | [{"keyword": "free", "match_type": "exact"}]       |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should contain negative keyword "free" in targeting_overlay
+    Then the response is compliant with the update_media_buy success spec
+    And the response should contain negative keyword "free" in targeting_overlay
 
   @T-UC-026-alt-negative-keyword-remove-noop @alt-flow @keyword @negative-keyword @invariant @BR-RULE-202
   Scenario: Remove non-existent negative keyword -- no-op (INV-4 holds)
@@ -243,7 +258,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id               | pkg-001                                       |
     | negative_keywords_remove | [{"keyword": "absent", "match_type": "broad"}] |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should succeed with package negative keywords unchanged
+    Then the response is compliant with the update_media_buy success spec
+    And the response should succeed with package negative keywords unchanged
     # BR-RULE-202 INV-4: Non-matching negative keyword pair treated as no-op
 
   @T-UC-026-ext-a @extension @ext-a @error @post-f1 @post-f2 @post-f3
@@ -255,7 +271,8 @@ Feature: BR-UC-026 Package Media Buy
     | pricing_option_id  | cpm-standard      |
     And the product "nonexistent-prod" does not exist in seller inventory
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "PRODUCT_NOT_FOUND"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -267,7 +284,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Missing required package field -- INVALID_REQUEST (<missing_field>)
     Given a valid create_media_buy request with a package missing <missing_field>
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error field should contain "<missing_field>"
     And the error should include "suggestion" field
@@ -291,7 +309,8 @@ Feature: BR-UC-026 Package Media Buy
     | pricing_option_id  | nonexistent-option   |
     And the pricing_option_id "nonexistent-option" is not in product "prod-1" pricing_options
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -308,7 +327,8 @@ Feature: BR-UC-026 Package Media Buy
     | budget             | 500          |
     | pricing_option_id  | cpm-standard |
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "BUDGET_TOO_LOW"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -326,7 +346,8 @@ Feature: BR-UC-026 Package Media Buy
     | format_ids         | [video-unsupported]   |
     And the format_id "video-unsupported" is not supported by product "prod-1"
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -343,7 +364,8 @@ Feature: BR-UC-026 Package Media Buy
     | pricing_option_id  | cpm-standard                                                      |
     | catalogs           | [{"type": "product", "catalog_id": "c1"}, {"type": "product", "catalog_id": "c2"}] |
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -359,7 +381,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id | pkg-001     |
     | product_id | prod-2      |
     When the Buyer Agent sends the update_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -375,7 +398,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id | pkg-001            |
     | format_ids | [banner-728x90]    |
     When the Buyer Agent sends the update_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -391,7 +415,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id         | pkg-001     |
     | pricing_option_id  | cpm-auction |
     When the Buyer Agent sends the update_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -408,7 +433,8 @@ Feature: BR-UC-026 Package Media Buy
     | keyword_targets_add               | [{"keyword": "shoes", "match_type": "broad"}]    |
     | targeting_overlay.keyword_targets  | [{"keyword": "hats", "match_type": "exact"}]     |
     When the Buyer Agent sends the update_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -425,7 +451,8 @@ Feature: BR-UC-026 Package Media Buy
     | negative_keywords_add               | [{"keyword": "free", "match_type": "exact"}]     |
     | targeting_overlay.negative_keywords  | [{"keyword": "cheap", "match_type": "broad"}]    |
     When the Buyer Agent sends the update_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -442,7 +469,8 @@ Feature: BR-UC-026 Package Media Buy
     | keyword_targets_add                 | [{"keyword": "shoes", "match_type": "broad"}]    |
     | targeting_overlay.negative_keywords  | [{"keyword": "cheap", "match_type": "broad"}]    |
     When the Buyer Agent sends the update_media_buy request
-    Then the operation should succeed
+    Then the response is compliant with the update_media_buy success spec
+    And the operation should succeed
     And the response should contain updated keyword targets and negative keywords
     # BR-RULE-083 INV-3: Cross-dimension mixing is valid
 
@@ -455,7 +483,8 @@ Feature: BR-UC-026 Package Media Buy
     | negative_keywords_add             | [{"keyword": "free", "match_type": "exact"}]     |
     | targeting_overlay.keyword_targets  | [{"keyword": "shoes", "match_type": "broad"}]    |
     When the Buyer Agent sends the update_media_buy request
-    Then the operation should succeed
+    Then the response is compliant with the update_media_buy success spec
+    And the operation should succeed
     And the response should contain updated keyword targets and negative keywords
     # BR-RULE-083 INV-4: Cross-dimension reverse mixing is valid
 
@@ -466,7 +495,8 @@ Feature: BR-UC-026 Package Media Buy
     | budget | 7000  |
     And the package update contains no package_id
     When the Buyer Agent sends the update_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     And the error recovery should be "correctable"
@@ -479,7 +509,8 @@ Feature: BR-UC-026 Package Media Buy
     Given the product "prod-1" has pricing_option "cpm-standard" in its pricing_options array
     And a valid create_media_buy request with a package containing pricing_option_id "cpm-standard"
     When the Buyer Agent sends the create_media_buy request
-    Then the package should be created with pricing_option_id "cpm-standard"
+    Then the response is compliant with the create_media_buy success spec
+    And the package should be created with pricing_option_id "cpm-standard"
     # BR-RULE-195 INV-1: pricing_option_id matches entry in product
 
   @T-UC-026-inv-195-2 @invariant @BR-RULE-195 @error
@@ -487,7 +518,8 @@ Feature: BR-UC-026 Package Media Buy
     Given the product "prod-1" does not have pricing_option "nonexistent-option"
     And a valid create_media_buy request with a package containing pricing_option_id "nonexistent-option"
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     # BR-RULE-195 INV-2: pricing_option_id not found -> INVALID_REQUEST
@@ -500,7 +532,8 @@ Feature: BR-UC-026 Package Media Buy
     | pricing_option_id  | cpm-auction |
     | bid_price          | 5.00        |
     When the Buyer Agent sends the create_media_buy request
-    Then the package should be created with bid_price 5.00 interpreted as ceiling
+    Then the response is compliant with the create_media_buy success spec
+    And the package should be created with bid_price 5.00 interpreted as ceiling
     # BR-RULE-195 INV-3: max_bid=true, bid_price is ceiling
 
   @T-UC-026-inv-195-4 @invariant @BR-RULE-195
@@ -511,14 +544,16 @@ Feature: BR-UC-026 Package Media Buy
     | pricing_option_id  | cpm-standard |
     | bid_price          | 2.50         |
     When the Buyer Agent sends the create_media_buy request
-    Then the package should be created with bid_price 2.50 interpreted as exact bid
+    Then the response is compliant with the create_media_buy success spec
+    And the package should be created with bid_price 2.50 interpreted as exact bid
     # BR-RULE-195 INV-4: max_bid=false, bid_price is exact
 
   @T-UC-026-inv-196-3 @invariant @BR-RULE-196
   Scenario: INV-3 holds -- bid_price omitted uses pricing option defaults
     Given a valid create_media_buy request with a package containing no bid_price
     When the Buyer Agent sends the create_media_buy request
-    Then the package should be created without a bid_price
+    Then the response is compliant with the create_media_buy success spec
+    And the package should be created without a bid_price
     And pricing should be determined by pricing option defaults
     # BR-RULE-196 INV-3: No bid semantics when bid_price omitted
 
@@ -527,14 +562,16 @@ Feature: BR-UC-026 Package Media Buy
     Given the product "prod-1" supports format_ids ["banner-300x250", "banner-728x90"]
     And a valid create_media_buy request with a package containing no format_ids
     When the Buyer Agent sends the create_media_buy request
-    Then the package should be created with format_ids ["banner-300x250", "banner-728x90"]
+    Then the response is compliant with the create_media_buy success spec
+    And the package should be created with format_ids ["banner-300x250", "banner-728x90"]
     # BR-RULE-197 INV-3: format_ids omitted defaults to all product formats
 
   @T-UC-026-inv-197-4 @invariant @BR-RULE-197 @error
   Scenario: INV-4 violated -- empty format_ids array rejected
     Given a valid create_media_buy request with a package containing format_ids as empty array []
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error code should be "INVALID_REQUEST"
     And the error should include "suggestion" field
     # BR-RULE-197 INV-4: Empty array violates minItems: 1
@@ -548,7 +585,8 @@ Feature: BR-UC-026 Package Media Buy
     | budget     | 9000    |
     | pacing     | even    |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should contain the updated package with budget 9000 and pacing "even"
+    Then the response is compliant with the update_media_buy success spec
+    And the response should contain the updated package with budget 9000 and pacing "even"
     # BR-RULE-198 INV-4: Mutable-only update processed normally
 
   @T-UC-026-inv-199-3 @invariant @BR-RULE-199
@@ -559,7 +597,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id          | pkg-001                                                                          |
     | keyword_targets_add | [{"keyword": "shoes", "match_type": "broad"}, {"keyword": "shoes", "match_type": "exact"}] |
     When the Buyer Agent sends the update_media_buy request
-    Then the response should contain keyword "shoes" with match_type "broad"
+    Then the response is compliant with the update_media_buy success spec
+    And the response should contain keyword "shoes" with match_type "broad"
     And the response should contain keyword "shoes" with match_type "exact"
     # BR-RULE-199 INV-3: Each (keyword, match_type) pair treated independently
 
@@ -571,14 +610,16 @@ Feature: BR-UC-026 Package Media Buy
     | package_id          | pkg-001                                                     |
     | keyword_targets_add | [{"keyword": "shoes", "match_type": "broad", "bid_price": 4.00}] |
     When the Buyer Agent sends the update_media_buy request
-    Then the keyword bid_price 4.00 should be interpreted as ceiling (max_bid=true)
+    Then the response is compliant with the update_media_buy success spec
+    And the keyword bid_price 4.00 should be interpreted as ceiling (max_bid=true)
     # BR-RULE-199 INV-4: Per-keyword bid inherits max_bid semantics
 
   @T-UC-026-inv-200-1 @invariant @BR-RULE-200
   Scenario: INV-1 holds -- paused omitted on create defaults to false
     Given a valid create_media_buy request with a package containing no paused field
     When the Buyer Agent sends the create_media_buy request
-    Then the package should be created with paused=false
+    Then the response is compliant with the create_media_buy success spec
+    And the package should be created with paused=false
     And the package should deliver impressions
     # BR-RULE-200 INV-1: Defaults to active when omitted
 
@@ -586,7 +627,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario: INV-2 holds -- paused=true on create means no delivery
     Given a valid create_media_buy request with a package containing paused=true
     When the Buyer Agent sends the create_media_buy request
-    Then the package should be created with paused=true
+    Then the response is compliant with the create_media_buy success spec
+    And the package should be created with paused=true
     And the package should not deliver impressions
     # BR-RULE-200 INV-2: paused=true means no delivery
 
@@ -598,7 +640,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id | pkg-001                                        |
     | catalogs   | [{"type": "store", "catalog_id": "cat-2"}]     |
     When the Buyer Agent sends the update_media_buy request
-    Then the package catalogs should be [{"type": "store", "catalog_id": "cat-2"}]
+    Then the response is compliant with the update_media_buy success spec
+    And the package catalogs should be [{"type": "store", "catalog_id": "cat-2"}]
     And the old catalog "cat-1" should not be present
     # BR-RULE-201 INV-1: Catalogs replaced, not merged
 
@@ -610,7 +653,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id         | pkg-001                                  |
     | optimization_goals | [{"metric": "clicks", "priority": 1}]   |
     When the Buyer Agent sends the update_media_buy request
-    Then the package optimization_goals should be [{"metric": "clicks", "priority": 1}]
+    Then the response is compliant with the update_media_buy success spec
+    And the package optimization_goals should be [{"metric": "clicks", "priority": 1}]
     # BR-RULE-201 INV-2: optimization_goals replaced
 
   @T-UC-026-inv-201-3 @invariant @BR-RULE-201
@@ -621,7 +665,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id           | pkg-001                                  |
     | creative_assignments | [{"creative_id": "cr-2", "weight": 0.5}] |
     When the Buyer Agent sends the update_media_buy request
-    Then the package creative_assignments should be [{"creative_id": "cr-2", "weight": 0.5}]
+    Then the response is compliant with the update_media_buy success spec
+    And the package creative_assignments should be [{"creative_id": "cr-2", "weight": 0.5}]
     # BR-RULE-201 INV-3: creative_assignments replaced
 
   @T-UC-026-inv-201-4 @invariant @BR-RULE-201
@@ -632,7 +677,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id        | pkg-001                                              |
     | targeting_overlay | {"audiences": [{"audience_id": "aud-2"}]}            |
     When the Buyer Agent sends the update_media_buy request
-    Then the package targeting_overlay should contain only audience "aud-2"
+    Then the response is compliant with the update_media_buy success spec
+    And the package targeting_overlay should contain only audience "aud-2"
     And the old audience "aud-1" should not be present
     # BR-RULE-201 INV-4: targeting_overlay replaced
 
@@ -644,7 +690,8 @@ Feature: BR-UC-026 Package Media Buy
     | package_id | pkg-001 |
     | budget     | 8000    |
     When the Buyer Agent sends the update_media_buy request
-    Then the package budget should be 8000
+    Then the response is compliant with the update_media_buy success spec
+    And the package budget should be 8000
     And the package catalogs should be unchanged
     And the package optimization_goals should be unchanged
     # BR-RULE-201 INV-5: Omitted fields preserved (patch semantics)
@@ -655,21 +702,24 @@ Feature: BR-UC-026 Package Media Buy
     | field    | value                                                                        |
     | catalogs | [{"type": "product", "catalog_id": "c1"}, {"type": "store", "catalog_id": "c2"}] |
     When the Buyer Agent sends the create_media_buy request
-    Then the package should be created with both catalogs
+    Then the response is compliant with the create_media_buy success spec
+    And the package should be created with both catalogs
     # BR-RULE-089 INV-2: All distinct types -> accepted
 
   @T-UC-026-inv-089-3 @invariant @BR-RULE-089
   Scenario: INV-3 holds -- no catalogs means non-catalog-driven package
     Given a valid create_media_buy request with a package containing no catalogs field
     When the Buyer Agent sends the create_media_buy request
-    Then the package should be created without catalogs
+    Then the response is compliant with the create_media_buy success spec
+    And the package should be created without catalogs
     # BR-RULE-089 INV-3: No catalogs, no constraint applies
 
   @T-UC-026-partition-required-fields @partition @package_required_fields
   Scenario Outline: Package required fields partition validation -- <partition>
     Given a create_media_buy request with package fields per <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition          | outcome                          |
@@ -687,7 +737,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Package required fields boundary validation -- <boundary_point>
     Given a create_media_buy request per boundary <boundary_point>
     When the Buyer Agent sends the create_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                        | outcome                                                    |
@@ -702,7 +753,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Bid price partition validation -- <partition>
     Given a create_media_buy request with package bid_price per <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition     | outcome                                    |
@@ -719,7 +771,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Bid price boundary validation -- <boundary_point>
     Given a create_media_buy request with package bid_price per boundary <boundary_point>
     When the Buyer Agent sends the create_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                  | outcome                                    |
@@ -734,7 +787,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Format_ids partition validation -- <partition>
     Given a create_media_buy request with format_ids per <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition                  | outcome                                         |
@@ -752,7 +806,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Format_ids boundary validation -- <boundary_point>
     Given a create_media_buy request with format_ids per boundary <boundary_point>
     When the Buyer Agent sends the create_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                    | outcome                                    |
@@ -767,7 +822,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Pricing option partition validation -- <partition>
     Given a create_media_buy request with pricing_option_id per <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition              | outcome                                    |
@@ -783,7 +839,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Pricing option boundary validation -- <boundary_point>
     Given a create_media_buy request with pricing_option_id per boundary <boundary_point>
     When the Buyer Agent sends the create_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                      | outcome                                    |
@@ -798,7 +855,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Immutable fields partition validation -- <partition>
     Given a package update request per <partition>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition                     | outcome                                    |
@@ -815,7 +873,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Immutable fields boundary validation -- <boundary_point>
     Given a package update request per boundary <boundary_point>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                | outcome                                    |
@@ -829,7 +888,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Keyword targets add partition validation -- <partition>
     Given a package update request with keyword_targets_add per <partition>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition                    | outcome                                    |
@@ -849,7 +909,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Keyword targets add boundary validation -- <boundary_point>
     Given a package update request with keyword_targets_add per boundary <boundary_point>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                             | outcome                                    |
@@ -866,7 +927,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Keyword targets remove partition validation -- <partition>
     Given a package update request with keyword_targets_remove per <partition>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition                       | outcome                                    |
@@ -885,7 +947,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Keyword targets remove boundary validation -- <boundary_point>
     Given a package update request with keyword_targets_remove per boundary <boundary_point>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                 | outcome                                    |
@@ -901,7 +964,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Keyword targets add shared partition validation -- <partition>
     Given a package update request with keyword_targets_add per shared <partition>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition                | outcome                                    |
@@ -925,7 +989,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Keyword targets remove shared partition validation -- <partition>
     Given a package update request with keyword_targets_remove per shared <partition>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition                | outcome                                    |
@@ -946,7 +1011,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Negative keywords add shared partition validation -- <partition>
     Given a package update request with negative_keywords_add per shared <partition>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition                | outcome                                    |
@@ -967,7 +1033,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Negative keywords remove shared partition validation -- <partition>
     Given a package update request with negative_keywords_remove per shared <partition>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition                | outcome                                    |
@@ -988,7 +1055,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Keyword targets add shared boundary validation -- <boundary_point>
     Given a package update request with keyword_targets_add per boundary <boundary_point>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                                       | outcome                                    |
@@ -1008,7 +1076,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Keyword targets remove shared boundary validation -- <boundary_point>
     Given a package update request with keyword_targets_remove per boundary <boundary_point>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                                        | outcome                                    |
@@ -1029,7 +1098,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Negative keywords add boundary validation -- <boundary_point>
     Given a package update request with negative_keywords_add per boundary <boundary_point>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                                             | outcome                                    |
@@ -1050,7 +1120,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Negative keywords remove boundary validation -- <boundary_point>
     Given a package update request with negative_keywords_remove per boundary <boundary_point>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                                              | outcome                                    |
@@ -1100,7 +1171,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Update replacement semantics partition validation -- <partition>
     Given a package update request per replacement semantics <partition>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Valid partitions
       | partition                      | outcome                                    |
@@ -1114,7 +1186,8 @@ Feature: BR-UC-026 Package Media Buy
   Scenario Outline: Update replacement semantics boundary validation -- <boundary_point>
     Given a package update request per replacement boundary <boundary_point>
     When the Buyer Agent sends the update_media_buy request
-    Then the outcome should be <outcome>
+    Then the response is compliant with the update_media_buy spec
+    And the outcome should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                       | outcome                                    |

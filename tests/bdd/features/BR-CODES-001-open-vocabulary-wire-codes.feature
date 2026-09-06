@@ -32,5 +32,6 @@ Feature: A declared error code reaches the buyer as declared
   Scenario: A seller rejection reaches the buyer as the code the seller declared
     Given the buyer requests a media buy the seller will reject
     When the Buyer Agent sends the create_media_buy request
-    Then the response is an error carrying the seller's own code "MEDIA_BUY_REJECTED"
+    Then the error is compliant with the AdCP error spec
+    And the response is an error carrying the seller's own code "MEDIA_BUY_REJECTED"
     And the error recovery should be "terminal"

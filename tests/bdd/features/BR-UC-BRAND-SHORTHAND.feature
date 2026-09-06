@@ -16,7 +16,8 @@ Feature: Brand string shorthand coercion on _BRAND_TOOLS
     And an inventory profile with only domain "example.com"
     And a product linked to that inventory profile with pricing
     When the buyer requests products with brand <brand>
-    Then the response contains at least one product
+    Then the response is compliant with the get_products spec
+    And the response contains at least one product
 
     Examples:
       | brand                          |
@@ -35,7 +36,8 @@ Feature: Brand string shorthand coercion on _BRAND_TOOLS
     And an inventory profile with only domain "example.com"
     And a product linked to that inventory profile with pricing
     When the buyer requests products with brand <brand>
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is brand
 
@@ -52,7 +54,8 @@ Feature: Brand string shorthand coercion on _BRAND_TOOLS
   Scenario Outline: create_media_buy accepts valid brand shorthand
     Given a tenant is configured for media buy creation
     When the buyer sends create_media_buy with brand <brand>
-    Then the create_media_buy request succeeds
+    Then the response is compliant with the create_media_buy success spec
+    And the create_media_buy request succeeds
 
     Examples:
       | brand                          |
@@ -69,7 +72,8 @@ Feature: Brand string shorthand coercion on _BRAND_TOOLS
   Scenario Outline: create_media_buy rejects malformed brand
     Given a tenant is configured for media buy creation
     When the buyer sends create_media_buy with brand <brand>
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code INVALID_REQUEST
     And the response error field is brand
 

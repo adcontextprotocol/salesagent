@@ -19,7 +19,8 @@ Feature: BR-UC-002 Account access scoping
     Given a valid create_media_buy request with account natural key brand "shared-brand.com" operator "shared-agency.com"
     And the natural key matches 2 accounts but the agent can access 1
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be success
+    Then the response is compliant with the create_media_buy success spec
+    And the result should be success
     And the resolved account is the one the agent can access
 
   # salesagent-fb2l: an unauthenticated caller (tenant resolved, no principal) must be
@@ -33,4 +34,5 @@ Feature: BR-UC-002 Account access scoping
     And the natural key matches 2 accounts
     And the Buyer Agent's token resolves no principal
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be error "AUTH_MISSING"
+    Then the error is compliant with the AdCP error spec
+    And the result should be error "AUTH_MISSING"

@@ -32,7 +32,8 @@ Feature: BR-UC-002 NFR Enforcement (restructured)
     And the account exists and is active
     But the request has no valid authentication
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail with authentication error
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail with authentication error
     # Strict wire conformance (salesagent-b0kx): pin the canonical code and the
     # top-level error.json suggestion (POST-F3 — buyer knows how to recover),
     # matching the 13 sibling UCs that already assert the suggestion on auth
@@ -51,7 +52,8 @@ Feature: BR-UC-002 NFR Enforcement (restructured)
     And the tenant has minimum order size requirements
     But the package budget is below the minimum
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error should indicate minimum spend requirement
 
   # salesagent-wvry: get_total_budget() returns Decimal; the pending-approval
@@ -67,4 +69,5 @@ Feature: BR-UC-002 NFR Enforcement (restructured)
     And the account exists and is active
     And the Seller observes high-value audit alerts
     When the Buyer Agent sends the create_media_buy request
-    Then a high-value alert should be sent to the Seller
+    Then the response is compliant with the create_media_buy spec
+    And a high-value alert should be sent to the Seller

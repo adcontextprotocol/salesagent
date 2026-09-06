@@ -34,7 +34,8 @@ Feature: UC-011 sync_accounts — a dry_run preview describes an outcome a real 
     When the Buyer Agent sends a sync_accounts request with dry_run true and delete_missing true and:
     | brand.domain    | operator      | billing  |
     | acme-corp.com   | acme-corp.com | operator |
-    Then the response includes dry_run true
+    Then the response is compliant with the sync_accounts success spec
+    And the response includes dry_run true
     And the response includes a result for brand domain "old-brand.com" showing deactivation
     And brand domain "old-brand.com" remains in its current state
     # The buyer runs this exact combination to learn WHICH accounts would close
@@ -49,7 +50,8 @@ Feature: UC-011 sync_accounts — a dry_run preview describes an outcome a real 
     | brand.domain    | operator      | billing    |
     | acme-corp.com   | acme-corp.com | advertiser |
     | acme-corp.com   | acme-corp.com | advertiser |
-    Then the response includes dry_run true
+    Then the response is compliant with the sync_accounts success spec
+    And the response includes dry_run true
     And result 1 on the wire shows brand domain "acme-corp.com" with action "updated" and billing "advertiser"
     And result 2 on the wire shows brand domain "acme-corp.com" with action "unchanged" and billing "advertiser"
     And brand domain "acme-corp.com" remains in its current state

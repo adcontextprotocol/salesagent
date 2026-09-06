@@ -36,7 +36,8 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
     And the tenant has a slack_webhook_url configured
     And a <creative_state> creative on a static format served by a creative agent
     When the Buyer Agent syncs the creative
-    Then the response is the success variant carrying a creatives array
+    Then the response is compliant with the sync_creatives success spec
+    And the response is the success variant carrying a creatives array
     And every creative result has action "<expected_action>"
     And the AI review submissions name exactly the synced creative
     And each AI review submission observes the creative exactly as the sync committed it
@@ -87,7 +88,8 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
     And an assignment to a package that exists in the tenant
     And the effects escaping the sync transaction are observed as they fire
     When the Buyer Agent syncs the creative
-    Then the response is the success variant carrying a creatives array
+    Then the response is compliant with the sync_creatives success spec
+    And the response is the success variant carrying a creatives array
     And a Slack notification should be sent immediately
     And the workflow steps the request committed were already visible when Slack was notified
     And no creative assignment was committed when Slack was notified
@@ -107,7 +109,8 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
     And validation_mode is "strict"
     And assignments referencing a non-existent package_id
     When the Buyer Agent syncs the creative
-    Then the response arrives
+    Then the error is compliant with the AdCP error spec
+    And the response arrives
     And the response contains error code PACKAGE_NOT_FOUND
     And every committed creative awaiting approval has a committed workflow step
     # The buyer-facing half is graded on the real wire bytes, not on the

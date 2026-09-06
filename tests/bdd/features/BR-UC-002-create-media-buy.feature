@@ -99,7 +99,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the tenant is configured for auto-approval
     When the Buyer Agent sends the create_media_buy request
-    Then the system should resolve start_time to current UTC
+    Then the response is compliant with the create_media_buy spec
+    And the system should resolve start_time to current UTC
     And the campaign should be immediately activating
     And the response should include resolved start_time (not literal "asap")
     # POST-S1: Buyer knows their media buy has been created and is activating
@@ -114,7 +115,8 @@ Feature: BR-UC-002 Create Media Buy
     And each creative has a valid format_id, name, and assets with URL and dimensions
     And the creative agent has the referenced formats registered
     When the Buyer Agent sends the create_media_buy request
-    Then the system should upload the creatives to the creative library
+    Then the response is compliant with the create_media_buy spec
+    And the system should upload the creatives to the creative library
     And the system should assign the uploaded creatives to packages
     And the response should include the created media buy with creative assignments
     # POST-S1: Buyer knows their media buy has been created and is activating
@@ -134,7 +136,8 @@ Feature: BR-UC-002 Create Media Buy
     And proposal "prop-2026-001" exists and has not expired
     And the proposal has 3 product allocations
     When the Buyer Agent sends the create_media_buy request
-    Then the system should derive packages from proposal allocations
+    Then the response is compliant with the create_media_buy spec
+    And the system should derive packages from proposal allocations
     And the total_budget should be distributed per allocation percentages
     And the response should include the created media buy with derived packages
     # POST-S1: Buyer knows their media buy has been created and is activating
@@ -247,7 +250,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     But both packages reference the same product_id "prod-001"
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the wire error details should include duplicate_product_ids "prod-001"
     And the error should include "suggestion" field
     # POST-F1: System state is unchanged on failure
@@ -309,7 +313,8 @@ Feature: BR-UC-002 Create Media Buy
     But a creative is missing the required URL in assets
     And the creative format is not generative
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error should include "suggestion" field
     # POST-F1: System state is unchanged on failure
     # POST-F2: Buyer knows what failed
@@ -321,7 +326,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with an inline creative whose assets map value lacks an "asset_type" field
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a validation error
     And the error code should be "INVALID_REQUEST"
     And the error should reference the unresolvable asset_type discriminator
     And the error should include "suggestion" field
@@ -374,7 +380,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     But the ad server adapter returns an error
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And no media buy record should be persisted in the database
     And the response status should be "failed"
     And the error should include "suggestion" field
@@ -654,7 +661,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And a package pricing option has fixed_price set and floor_price null
     When the Buyer Agent sends the create_media_buy request
-    Then the pricing validation should pass
+    Then the response is compliant with the create_media_buy spec
+    And the pricing validation should pass
 
   @T-UC-002-inv-006-2 @invariant @BR-RULE-006
   Scenario: INV-2 holds -- floor_price set and fixed_price null (valid auction pricing)
@@ -663,7 +671,8 @@ Feature: BR-UC-002 Create Media Buy
     And a package pricing option has floor_price set and fixed_price null
     And the package has a bid_price above the floor
     When the Buyer Agent sends the create_media_buy request
-    Then the pricing validation should pass
+    Then the response is compliant with the create_media_buy spec
+    And the pricing validation should pass
 
   @T-UC-002-inv-006-3 @invariant @BR-RULE-006 @error
   Scenario: INV-3 violated -- both fixed_price and floor_price set
@@ -671,7 +680,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     But a package pricing option has both fixed_price and floor_price set
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error should include "suggestion" field
 
   @T-UC-002-inv-006-5 @invariant @BR-RULE-006 @v31
@@ -681,7 +691,8 @@ Feature: BR-UC-002 Create Media Buy
     And a package uses a bid-based auction pricing model with max_bid set to true
     And the buyer supplies a bid_price above the floor_price
     When the Buyer Agent sends the create_media_buy request
-    Then the pricing option should be accepted
+    Then the response is compliant with the create_media_buy spec
+    And the pricing option should be accepted
     And the buyer bid_price should be interpreted as a ceiling rather than an exact price
     And the seller may clear at any price between the floor_price and the bid_price
     # BR-RULE-006 INV-5 (v3.1): max_bid=true on cpm/cpc/cpcv/cpv/vcpm makes bid_price a ceiling
@@ -693,7 +704,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a valid create_media_buy request with total budget 5000
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the budget validation should pass
+    Then the response is compliant with the create_media_buy spec
+    And the budget validation should pass
 
   @T-UC-002-inv-008-2 @invariant @BR-RULE-008 @error
   Scenario: INV-2 violated -- total budget is zero or negative
@@ -713,7 +725,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the request supplies no buyer packages array
     When the Buyer Agent sends the create_media_buy request
-    Then the product-uniqueness check should have no applicable buyer input
+    Then the response is compliant with the create_media_buy spec
+    And the product-uniqueness check should have no applicable buyer input
     And the request should not be rejected on the product-uniqueness rule
     # BR-RULE-010 INV-3 (v3.1): uniqueness binds the buyer-supplied manual packages array, absent in proposal mode
     # --- BR-RULE-012: Maximum Daily Spend Cap ---
@@ -726,7 +739,8 @@ Feature: BR-UC-002 Create Media Buy
     And the request uses legacy mode with no per-package budgets
     And the tenant has max_daily_package_spend configured
     When the Buyer Agent sends the create_media_buy request
-    Then the media buy total budget should be validated against the daily cap as a single daily figure
+    Then the response is compliant with the create_media_buy spec
+    And the media buy total budget should be validated against the daily cap as a single daily figure
     # BR-RULE-012 INV-5 (v3.1): legacy (no per-package budgets) validates the total against the cap
     # --- BR-RULE-013: DateTime Validity ---
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
@@ -736,7 +750,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a valid create_media_buy request with start_time "asap"
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the system should resolve start_time to current UTC
+    Then the response is compliant with the create_media_buy spec
+    And the system should resolve start_time to current UTC
     And the date validation should pass
 
   @T-UC-002-inv-013-5 @invariant @BR-RULE-013 @error
@@ -757,7 +772,8 @@ Feature: BR-UC-002 Create Media Buy
     And tenant human_review_required is false
     And adapter manual_approval_required is false
     When the Buyer Agent sends the create_media_buy request
-    Then the approval path should be auto-approved
+    Then the response is compliant with the create_media_buy spec
+    And the approval path should be auto-approved
     And the media buy should proceed to adapter execution
 
   @T-UC-002-inv-017-2 @invariant @BR-RULE-017
@@ -766,7 +782,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And tenant human_review_required is true
     When the Buyer Agent sends the create_media_buy request
-    Then the approval path should be manual
+    Then the response is compliant with the create_media_buy spec
+    And the approval path should be manual
     And the media buy should enter pending state
 
   @T-UC-002-inv-017-3 @invariant @BR-RULE-017
@@ -775,7 +792,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And adapter manual_approval_required is true
     When the Buyer Agent sends the create_media_buy request
-    Then the approval path should be manual
+    Then the response is compliant with the create_media_buy spec
+    And the approval path should be manual
     And the media buy should enter pending state
     # --- BR-RULE-018: Atomic Response Semantics ---
 
@@ -784,7 +802,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request that requires manual approval
     And the response returned a submitted task envelope with a task_id
     When the approval task is paused awaiting the human decision
-    Then the task status should be "input-required"
+    Then the response is compliant with the create_media_buy submitted spec
+    And the task status should be "input-required"
     And on completion the task should resolve to "completed" with a media_buy_id on the completion artifact or to "rejected"
     And "pending_approval" should never be used as a MediaBuyStatus value
     # BR-RULE-017 INV-4 (v3.1): approval modeled at the task layer; pending_approval is not a MediaBuyStatus
@@ -796,7 +815,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a valid create_media_buy request that passes all validation
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should have success fields
+    Then the response is compliant with the create_media_buy success spec
+    And the response should have success fields
     And the response should NOT have an "errors" field
 
   @T-UC-002-inv-018-2 @invariant @BR-RULE-018 @error
@@ -804,7 +824,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request that fails validation
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should have an "errors" array
+    Then the error is compliant with the AdCP error spec
+    And the response should have an "errors" array
     And the response should NOT have success fields (media_buy_id, packages)
     And each error should include "suggestion" field
 
@@ -814,7 +835,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the system returns a transient error (RATE_LIMITED)
     When the Buyer Agent sends the create_media_buy request
-    Then the error recovery should be "transient"
+    Then the error is compliant with the AdCP error spec
+    And the error recovery should be "transient"
     And the error should include "retry_after" field
 
   @T-UC-002-inv-018-5 @invariant @BR-RULE-018
@@ -822,7 +844,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request that fails with a correctable error
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the error recovery should be "correctable"
+    Then the error is compliant with the AdCP error spec
+    And the error recovery should be "correctable"
     And the error should include "suggestion" field
     And the error should include "field" field
 
@@ -830,7 +853,8 @@ Feature: BR-UC-002 Create Media Buy
   Scenario: INV-6 holds -- terminal error signals agent to escalate
     Given a create_media_buy request with account_id that does not exist
     When the Buyer Agent sends the create_media_buy request
-    Then the error code should be "ACCOUNT_NOT_FOUND"
+    Then the error is compliant with the AdCP error spec
+    And the error code should be "ACCOUNT_NOT_FOUND"
     And the error recovery should be "terminal"
     # --- BR-RULE-020: Adapter Atomicity ---
 
@@ -838,7 +862,8 @@ Feature: BR-UC-002 Create Media Buy
   Scenario: INV-8 holds -- two-layer envelope and payload error model
     Given a create_media_buy request that produces a response
     When the task fails fatally
-    Then both the protocol envelope "adcp_error" field and the payload "errors" array should be populated
+    Then the error is compliant with the AdCP error spec
+    And both the protocol envelope "adcp_error" field and the payload "errors" array should be populated
     And when only a non-fatal warning occurs only the payload "errors" array should carry it with severity "warning"
     And a non-fatal warning should not set the envelope "adcp_error" field
     And the envelope should not emit the legacy "task_status" or "response_status" fields
@@ -852,7 +877,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the ad server adapter returns success
     When the Buyer Agent sends the create_media_buy request
-    Then the media buy record should be persisted in the database
+    Then the response is compliant with the create_media_buy spec
+    And the media buy record should be persisted in the database
     And the package records should be persisted
     And the creative assignment records should be persisted
 
@@ -862,7 +888,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     But the ad server adapter returns an error
     When the Buyer Agent sends the create_media_buy request
-    Then no media buy record should be persisted
+    Then the error is compliant with the AdCP error spec
+    And no media buy record should be persisted
     And no package records should be persisted
     And the error should include "suggestion" field
 
@@ -872,7 +899,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And approval path is manual
     When the Buyer Agent sends the create_media_buy request
-    Then the media buy record should be persisted with status "pending_approval"
+    Then the response is compliant with the create_media_buy spec
+    And the media buy record should be persisted with status "pending_approval"
     And the package records should be persisted
     # --- BR-RULE-026: Creative Assignment Validation ---
 
@@ -882,7 +910,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     But pre-adapter validation fails on creative completeness or adapter pricing/budget constraints
     When the Buyer Agent sends the create_media_buy request
-    Then the ad server adapter should never be invoked
+    Then the error is compliant with the AdCP error spec
+    And the ad server adapter should never be invoked
     And no database records should be created
     # BR-RULE-020 INV-4 (v3.1): validation precedes the adapter call; failure persists nothing
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
@@ -893,7 +922,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the request is sent in dry-run mode
     When the Buyer Agent sends the create_media_buy request
-    Then the ad server adapter should never be invoked
+    Then the response is compliant with the create_media_buy success spec
+    And the ad server adapter should never be invoked
     And a simulated success should be returned
     And no database records should be created
     # BR-RULE-020 INV-5 (v3.1): dry-run validates fully but never calls the adapter or persists
@@ -906,7 +936,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And all referenced creatives exist in valid state with compatible formats
     When the Buyer Agent sends the create_media_buy request
-    Then the creative assignment should proceed
+    Then the response is compliant with the create_media_buy spec
+    And the creative assignment should proceed
 
   @T-UC-002-inv-026-2 @invariant @BR-RULE-026 @error
   Scenario: INV-2 violated -- creative in error state rejected
@@ -914,7 +945,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     But a referenced creative is in "error" state
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error should include "suggestion" field
 
   @T-UC-002-inv-026-4 @invariant @BR-RULE-026 @error
@@ -923,7 +955,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     But a creative format is incompatible with the product's supported formats
     When the Buyer Agent sends the create_media_buy request
-    Then the operation should fail
+    Then the error is compliant with the AdCP error spec
+    And the operation should fail
     And the error should include "suggestion" field
     # --- BR-RULE-080: Account Resolution Validation ---
 
@@ -943,7 +976,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request
     But the resolved account has a terminal lifecycle status of "rejected" or "closed"
     When the Buyer Agent sends the create_media_buy request
-    Then the account should be treated as not operational and unable to create media buys
+    Then the error is compliant with the AdCP error spec
+    And the account should be treated as not operational and unable to create media buys
     And no dedicated error code exists in error-code.json for this state
     And the resolution outcome is unspecified by the protocol
     # BR-RULE-080 INV-11 (v3.1): account-status.json defines rejected/closed; no matching error code (open question G-acct-lifecycle)
@@ -992,7 +1026,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And a package budget is set to <value>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- pricing_option_xor partitions (BR-RULE-006) ---
 
     Examples: Valid partitions
@@ -1010,7 +1045,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the pricing option configuration is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- currency_consistency partitions (BR-RULE-009) ---
 
     Examples: Valid partitions
@@ -1030,7 +1066,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the currency scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- product_uniqueness partitions (BR-RULE-010) ---
 
     Examples: Valid partitions
@@ -1052,7 +1089,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the product scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- minimum_spend partitions (BR-RULE-011) ---
 
     Examples: Valid partitions
@@ -1070,7 +1108,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the minimum spend scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- daily_spend_cap partitions (BR-RULE-012) ---
 
     Examples: Valid partitions
@@ -1090,7 +1129,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the daily spend cap scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- start_time partitions (BR-RULE-013) ---
 
     Examples: Valid partitions
@@ -1109,7 +1149,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the start_time is <value>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- end_time partitions (BR-RULE-013) ---
 
     Examples: Valid partitions
@@ -1131,7 +1172,8 @@ Feature: BR-UC-002 Create Media Buy
     And start_time is "2026-04-01T00:00:00Z"
     And end_time is <value>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- targeting_overlay partitions (BR-RULE-014) ---
 
     Examples: Valid partitions
@@ -1150,7 +1192,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the targeting overlay scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- creative_asset partitions (BR-RULE-015) ---
 
     Examples: Valid partitions
@@ -1184,7 +1227,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the creative scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- approval_workflow partitions (BR-RULE-017) ---
 
     Examples: Valid partitions
@@ -1209,7 +1253,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the approval scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- account_ref partitions (BR-RULE-080) ---
 
     Examples: All partitions (no invalid -- all are valid workflow paths)
@@ -1222,7 +1267,8 @@ Feature: BR-UC-002 Create Media Buy
   Scenario Outline: Account reference partition validation - <partition>
     Given a create_media_buy request with account configuration <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- optimization_goals partitions (BR-RULE-087) ---
 
     Examples: Valid partitions
@@ -1252,7 +1298,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the optimization goal scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- catalog_distinct_type partitions (BR-RULE-089) ---
 
     Examples: Valid partitions
@@ -1290,7 +1337,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the catalog scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- format_id_structure partitions ---
 
     Examples: Valid partitions
@@ -1312,7 +1360,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the format ID scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- persistence_timing partitions (BR-RULE-020) ---
 
     Examples: Valid partitions
@@ -1333,7 +1382,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the persistence timing scenario is <partition>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- tasks_sort_field partitions ---
 
     Examples: Valid partitions
@@ -1351,7 +1401,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the task list sort field is <partition>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
     # --- sort_direction partitions ---
 
     Examples: Valid partitions
@@ -1373,7 +1424,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the sort direction is <partition>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
     # --- adcp_domain partitions ---
 
     Examples: Valid partitions
@@ -1392,7 +1444,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the domain filter is <partition>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
     # --- task_status partitions ---
 
     Examples: Valid partitions
@@ -1415,7 +1468,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the task status filter is <partition>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
     # --- task_type partitions ---
 
     Examples: Valid partitions
@@ -1443,7 +1497,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the task type filter is <partition>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
 
     Examples: Valid partitions
       | partition              | outcome                                 |
@@ -1475,7 +1530,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And a package budget is set to <value>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- pricing_option_xor boundaries (BR-RULE-006) ---
 
     Examples: Boundary values
@@ -1490,7 +1546,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the pricing option configuration is <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- currency_consistency boundaries (BR-RULE-009) ---
 
     Examples: Boundary values
@@ -1508,7 +1565,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the currency configuration is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- product_uniqueness boundaries (BR-RULE-010) ---
 
     Examples: Boundary values
@@ -1527,7 +1585,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the product configuration is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- minimum_spend boundaries (BR-RULE-011) ---
 
     Examples: Boundary values
@@ -1543,7 +1602,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the minimum spend configuration is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- daily_spend_cap boundaries (BR-RULE-012) ---
 
     Examples: Boundary values
@@ -1560,7 +1620,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the daily spend scenario is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- start_time boundaries (BR-RULE-013) ---
 
     Examples: Boundary values
@@ -1576,7 +1637,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And start_time is <value>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- end_time boundaries (BR-RULE-013) ---
 
     Examples: Boundary values
@@ -1593,7 +1655,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And a package in packages[] carries its own start_time of <value>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- end_time boundaries (BR-RULE-013) ---
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
@@ -1607,7 +1670,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And end_time is <value>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- targeting_overlay boundaries (BR-RULE-014) ---
 
     Examples: Boundary values
@@ -1623,7 +1687,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the targeting overlay scenario is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- creative_asset boundaries (BR-RULE-015) ---
 
     Examples: Boundary values
@@ -1651,7 +1716,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the creative scenario is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- approval_workflow boundaries (BR-RULE-017) ---
 
     Examples: Boundary values
@@ -1671,7 +1737,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the approval configuration is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- account_ref boundaries (BR-RULE-080) ---
 
     Examples: Boundary values
@@ -1684,7 +1751,8 @@ Feature: BR-UC-002 Create Media Buy
   Scenario Outline: Account reference boundary validation - <boundary_point>
     Given a create_media_buy request with account: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- optimization_goals boundaries (BR-RULE-087) ---
 
     Examples: Boundary values
@@ -1707,7 +1775,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the optimization goals scenario is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- catalog_distinct_type boundaries (BR-RULE-089) ---
 
     Examples: Boundary values
@@ -1739,7 +1808,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the catalog configuration is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- format_id_structure boundaries ---
 
     Examples: Boundary values
@@ -1761,7 +1831,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the format ID scenario is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- persistence_timing boundaries (BR-RULE-020) ---
 
     Examples: Boundary values
@@ -1778,7 +1849,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the persistence timing scenario is: <config>
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # --- tasks_sort_field boundaries ---
 
     Examples: Boundary values
@@ -1793,7 +1865,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the task list sort field boundary is: <config>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
     # --- sort_direction boundaries ---
 
     Examples: Boundary values
@@ -1809,7 +1882,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the sort direction boundary is: <config>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
     # --- adcp_domain boundaries ---
 
     Examples: Boundary values
@@ -1825,7 +1899,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the domain filter boundary is: <config>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
     # --- task_status boundaries ---
 
     Examples: Boundary values
@@ -1843,7 +1918,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the task status filter boundary is: <config>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
     # --- task_type boundaries ---
 
     Examples: Boundary values
@@ -1861,7 +1937,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the task type filter boundary is: <config>
     When the Buyer Agent queries the task list
-    Then the result should be <outcome>
+    Then the response is compliant with the list_tasks spec
+    And the result should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                                    | config                             | outcome                               |
@@ -1877,7 +1954,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a valid create_media_buy request
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the system should validate authentication before any business logic
+    Then the response is compliant with the create_media_buy spec
+    And the system should validate authentication before any business logic
     And the system should enforce rate limiting on the endpoint
     And the system should validate payload size limits
 
@@ -1886,7 +1964,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a valid create_media_buy request
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the system should log the protocol audit entry
+    Then the response is compliant with the create_media_buy spec
+    And the system should log the protocol audit entry
     And the approval decision should be logged
     And the adapter execution should be logged
 
@@ -1895,7 +1974,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a valid create_media_buy request
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should be returned within 15 seconds (p95)
+    Then the response is compliant with the create_media_buy spec
+    And the response should be returned within 15 seconds (p95)
 
   @T-UC-002-nfr-006 @nfr @nfr-006
   Scenario: Minimum order size enforcement
@@ -1903,14 +1983,16 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     And the tenant has minimum order size requirements
     When the Buyer Agent sends the create_media_buy request
-    Then the system should validate budget against minimum order requirements
+    Then the response is compliant with the create_media_buy spec
+    And the system should validate budget against minimum order requirements
 
   @T-UC-002-sandbox-happy @invariant @br-rule-209 @sandbox
   Scenario: Sandbox account creates simulated media buy with sandbox flag
     Given a valid create_media_buy request with packages
     And the request targets a sandbox account
     When the Buyer Agent sends the create_media_buy request
-    Then the response status should be "completed"
+    Then the response is compliant with the create_media_buy success spec
+    And the response status should be "completed"
     And the response should include sandbox equals true
     And no real ad platform orders should have been created
     And no real billing records should have been created
@@ -1924,7 +2006,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a valid create_media_buy request with packages
     And the request targets a production account
     When the Buyer Agent sends the create_media_buy request
-    Then the response status should be "completed"
+    Then the response is compliant with the create_media_buy success spec
+    And the response status should be "completed"
     And the response should not include a sandbox field
     # BR-RULE-209 INV-5: production account -> sandbox absent
 
@@ -1933,7 +2016,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with total_budget of 0
     And the request targets a sandbox account
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a validation error
     And the error should be a real validation error, not simulated
     And the error should include a suggestion for how to fix the issue
     # BR-RULE-209 INV-7: sandbox validation errors are real
@@ -1944,7 +2028,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a valid create_media_buy request with packages
     And the request uses a natural-key account reference with brand and operator and sandbox true
     When the Buyer Agent sends the create_media_buy request
-    Then the reference should resolve to the sandbox account for that brand and operator
+    Then the response is compliant with the create_media_buy spec
+    And the reference should resolve to the sandbox account for that brand and operator
     And the response should include sandbox equals true
     And no real ad platform orders should have been created
     # BR-RULE-209 INV-8 + BR-RULE-080 INV-10: natural-key (brand+operator+sandbox:true) resolves to sandbox account without prior sync_accounts provisioning
@@ -1957,7 +2042,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     And a media buy was already created for the same seller with that idempotency_key
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the response should include the previously created "media_buy_id"
     And no new ad platform order should have been created
@@ -1970,7 +2056,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with the idempotency_key field omitted
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the error code should be "INVALID_REQUEST"
+    Then the error is compliant with the AdCP error spec
+    And the error code should be "INVALID_REQUEST"
     And the error should reference the missing "idempotency_key" field
     And the error should include "suggestion" field
     # v3.1: idempotency_key is required on create-media-buy-request
@@ -1992,7 +2079,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with idempotency_key "<value>"
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a validation error
     And the error should reference idempotency_key constraint "<violation>"
     And the error should include "suggestion" field
     # v3.1: idempotency_key pattern ^[A-Za-z0-9_.:-]{16,255}$
@@ -2010,7 +2098,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with idempotency_key "buy-2026-q1-inflight-001"
     And a prior request for the same (seller, account, idempotency_key) pair is still in flight
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a terminal failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a terminal failure
     And the error code should be "IDEMPOTENCY_IN_FLIGHT"
     And the error should include "retry_after" field
     And the error should include "suggestion" field
@@ -2023,7 +2112,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with idempotency_key "buy-2026-q1-expired-001"
     And the (seller, account, idempotency_key) pair was recorded but its cached response expired past replay_ttl_seconds
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a correctable failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a correctable failure
     And the error code should be "IDEMPOTENCY_EXPIRED"
     And the error should include "suggestion" field
     And no new media buy should have been created
@@ -2035,7 +2125,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a media buy was already created for the same seller with idempotency_key "buy-2026-q1-canon-001"
     And a create_media_buy request with idempotency_key "buy-2026-q1-canon-001" whose payload differs only in field ordering and insignificant whitespace
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response should include the previously created "media_buy_id"
     And no new ad platform order should have been created
     # BR-RULE-211 INV-6: canonical comparison is semantic; field ordering / insignificant whitespace MUST NOT affect outcome
@@ -2048,7 +2139,8 @@ Feature: BR-UC-002 Create Media Buy
     And a valid create_media_buy request with account "acc-001"
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response status should be "submitted"
+    Then the response is compliant with the create_media_buy submitted spec
+    And the response status should be "submitted"
     And the response should include a "task_id"
     And the response should not include a media_buy_id at the envelope level
     And the response should not include a packages array at the envelope level
@@ -2063,7 +2155,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
     And the seller emits a submitted envelope with a human-readable message
-    Then the response status should be "submitted"
+    Then the response is compliant with the create_media_buy submitted spec
+    And the response status should be "submitted"
     And the buyer SHOULD treat the message field as untrusted input
     And the buyer SHOULD escape the message before rendering to HTML
     And the buyer SHOULD sanitize the message before passing to an LLM prompt context
@@ -2097,7 +2190,8 @@ Feature: BR-UC-002 Create Media Buy
     And a valid create_media_buy request producing the "<initial_state>" condition
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the response should include a "status" field with value "<media_buy_status>"
     And the response status field should not equal "submitted"
@@ -2118,7 +2212,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     And the account has governance_agents configured
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a validation error
     And the error should reference the missing "plan_id" field
     And the error should include "suggestion" field
     # v3.1: plan_id is required when governance_agents is non-empty on the account
@@ -2132,7 +2227,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account has governance_agents configured
     And the plan "plan-001" resolves and is accessible to the account
     When the Buyer Agent sends the create_media_buy request
-    Then the request should proceed past the governance gate
+    Then the response is compliant with the create_media_buy spec
+    And the request should proceed past the governance gate
     And the plan_id should be forwarded to check_governance
     # BR-RULE-212 INV-2: governance configured + plan_id resolves -> proceeds
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
@@ -2144,7 +2240,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account has governance_agents configured
     And the plan "plan-missing" does not exist or is not accessible to the account
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a correctable failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a correctable failure
     And the error code should be "PLAN_NOT_FOUND"
     And the error should include "suggestion" field
     # BR-RULE-212 INV-3: plan_id present but unresolvable -> PLAN_NOT_FOUND (uniform response to prevent enumeration)
@@ -2156,7 +2253,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     And the account has no governance_agents configured
     When the Buyer Agent sends the create_media_buy request
-    Then the request should proceed past the governance gate
+    Then the response is compliant with the create_media_buy spec
+    And the request should proceed past the governance gate
     And the governance path should be skipped
     # BR-RULE-212 INV-4: no governance agents -> plan_id optional, governance skipped
     # --- v3.1: invoice_recipient override ---
@@ -2169,7 +2267,8 @@ Feature: BR-UC-002 Create Media Buy
     And the invoice_recipient is authorized for the account
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the response should include an "invoice_recipient" matching the request
     And the response invoice_recipient should not include any bank-detail fields
@@ -2185,7 +2284,8 @@ Feature: BR-UC-002 Create Media Buy
     And the request does not include an io_acceptance field
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a correctable failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a correctable failure
     And the error code should be "IO_REQUIRED"
     And the error should include "suggestion" field
     # BR-RULE-213 INV-1: requires_signature true + io_acceptance absent -> IO_REQUIRED (correctable)
@@ -2220,7 +2320,8 @@ Feature: BR-UC-002 Create Media Buy
     And the proposal's insertion_order requires_signature is true
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a validation error
     And the error code should be "INVALID_REQUEST"
     And the error should reference the missing "<missing_member>" member
     And the error should include "suggestion" field
@@ -2239,7 +2340,8 @@ Feature: BR-UC-002 Create Media Buy
     And the proposal's insertion_order requires_signature is false
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the request should proceed to further validation
+    Then the response is compliant with the create_media_buy spec
+    And the request should proceed to further validation
     And the io_acceptance field should not affect processing
     # BR-RULE-213 INV-4: requires_signature false/absent -> io_acceptance optional, no effect
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
@@ -2251,7 +2353,8 @@ Feature: BR-UC-002 Create Media Buy
     And the request includes io_acceptance with io_id, accepted_at, signatory, and signature_id "sig-998"
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the IO acceptance gate should be satisfied
+    Then the response is compliant with the create_media_buy spec
+    And the IO acceptance gate should be satisfied
     And the signature_id should be recorded as a signing-service reference
     # BR-RULE-213 INV-5: optional signature_id recorded as reference, does not alter gate outcome
     # --- v3.1: advertiser_industry per buy ---
@@ -2264,7 +2367,8 @@ Feature: BR-UC-002 Create Media Buy
     And a valid create_media_buy request with advertiser_industry "healthcare.wellness"
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the seller should map advertiser_industry to its platform-native industry code
     # v3.1: a brand may operate across multiple industries; each media buy targets exactly one
@@ -2277,7 +2381,8 @@ Feature: BR-UC-002 Create Media Buy
     And a valid create_media_buy request with one package having paused set to true
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the paused package should be created in a paused state
     And the paused package should not deliver impressions until resumed
@@ -2293,7 +2398,8 @@ Feature: BR-UC-002 Create Media Buy
     And the proposed standard metric_id is present in the product's available_metrics
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the response package committed_metrics should echo the standard metric_id
     And the response package committed_metrics entry should include a "committed_at" timestamp
@@ -2306,7 +2412,8 @@ Feature: BR-UC-002 Create Media Buy
     And the request package includes committed_metrics with standard metric_id not in the product's available_metrics
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate an error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate an error
     And the error code should be "TERMS_REJECTED"
     And the error should reference the offending committed_metrics entry
     # v3.1: seller SHOULD reject with TERMS_REJECTED when the proposal exceeds product capability
@@ -2319,7 +2426,8 @@ Feature: BR-UC-002 Create Media Buy
     And a valid create_media_buy request with plan_id "plan-2026-q1"
     And the account "acc-001" has governance_agents configured
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the response should include a "planned_delivery" block
     # v3.1: planned_delivery describes what the seller will actually run (geo, channels, flight, freq caps, budget)
@@ -2335,7 +2443,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     And the tenant is configured for auto-approval
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the seller should accept the artifact_webhook configuration for governance content delivery
     # v3.1: artifact_webhook enables governance content-adjacency validation
@@ -2349,7 +2458,8 @@ Feature: BR-UC-002 Create Media Buy
     And a valid create_media_buy request with agency_estimate_number "AE-2026-Q1-12345"
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the agency_estimate_number should be persisted on the media buy
     # v3.1: primary financial reference for broadcast buys; maxLength 100
@@ -2363,7 +2473,8 @@ Feature: BR-UC-002 Create Media Buy
     And the product minimum spend is 500 USD
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a terminal failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a terminal failure
     And the error code should be "BUDGET_TOO_LOW"
     And the error details should include minimum_budget 500
     And the error details should include currency "USD"
@@ -2378,7 +2489,8 @@ Feature: BR-UC-002 Create Media Buy
     And a prior media buy "mb-789" exists for the same (seller, idempotency_key) pair with revision 1
     And the new request payload diverges from the prior request payload
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a correctable failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a correctable failure
     And the error code should be "IDEMPOTENCY_CONFLICT"
     And the error details should include resource_id "mb-789"
     And the error details should include current_version 1
@@ -2393,7 +2505,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request that violates the seller's editorial policy
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a terminal failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a terminal failure
     And the error code should be "POLICY_VIOLATION"
     And the error details should include a "policy_id" field
     And the error details should include a "violated_rules" array
@@ -2409,7 +2522,8 @@ Feature: BR-UC-002 Create Media Buy
     And the seller's supported_billing capability is ["operator", "advertiser"]
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a terminal failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a terminal failure
     And the error code should be "BILLING_NOT_SUPPORTED"
     And the error details scope should be "capability"
     And the error details supported_billing should equal ["operator", "advertiser"]
@@ -2425,7 +2539,8 @@ Feature: BR-UC-002 Create Media Buy
     And the seller does not accept "agent" billing on the account "acc-001" relationship
     And the caller's agent identity is established
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a terminal failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a terminal failure
     And the error code should be "BILLING_NOT_SUPPORTED"
     And the error details scope should be "account"
     And the error should include "suggestion" field
@@ -2438,7 +2553,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with billing value "agent"
     And the caller's agent identity is NOT established
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a terminal failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a terminal failure
     And the error code should be "BILLING_NOT_SUPPORTED"
     And the error details should NOT include a "scope" field
     And the error should include "suggestion" field
@@ -2452,7 +2568,8 @@ Feature: BR-UC-002 Create Media Buy
     And the seller's supported_billing capability includes "agent" generally
     And the calling agent's commercial relationship with the seller is passthrough-only
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a terminal failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a terminal failure
     And the error code should be "BILLING_NOT_PERMITTED_FOR_AGENT"
     And the error details rejected_billing should be "agent"
     And the error details suggested_billing should be "operator"
@@ -2466,7 +2583,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with billing value "advertiser"
     And the calling agent has no retryable billing value for this seller's commercial relationship
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a terminal failure
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a terminal failure
     And the error code should be "BILLING_NOT_PERMITTED_FOR_AGENT"
     And the error details rejected_billing should be "advertiser"
     And the error details should NOT include a "suggested_billing" field
@@ -2482,7 +2600,8 @@ Feature: BR-UC-002 Create Media Buy
     And the calling agent's commercial relationship permits "operator" billing
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the request should proceed past the billing eligibility gate
+    Then the response is compliant with the create_media_buy spec
+    And the request should proceed past the billing eligibility gate
     # BR-RULE-214 INV-1: eligible billing party -> proceeds to next validation
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
@@ -2492,7 +2611,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account exists and is active
     But the invoice_recipient is not authorized for the account
     When the Buyer Agent sends the create_media_buy request
-    Then the seller should validate the invoice_recipient authorization before the buy proceeds
+    Then the error is compliant with the AdCP error spec
+    And the seller should validate the invoice_recipient authorization before the buy proceeds
     And the buy should be rejected at the buy-time billing-eligibility gate
     And no dedicated error code is defined in v3.1 for this rejection
     # BR-RULE-214 INV-8 (v3.1): entity-level gate orthogonal to capability/per-account/per-agent gates; error code is an open question
@@ -2507,7 +2627,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     And the tenant is configured for auto-approval
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     And the package should be bound to the offering's asset groups for creative assembly
     # v3.1: core/offering.json — promotable brand offering with assets[] of core/offering-asset-group.json
@@ -2522,7 +2643,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     And the tenant is configured for auto-approval
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the catchment should be accepted as an isochrone definition
     # v3.1: core/catchment.json — oneOf travel_time+transport_mode XOR radius XOR geometry
     # v3.1: travel_time requires transport_mode
@@ -2535,7 +2657,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     And the tenant is configured for auto-approval
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the catchment should be accepted as a radius definition
     # v3.1: core/catchment.json — radius variant (exclusiveMinimum 0)
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
@@ -2546,7 +2669,8 @@ Feature: BR-UC-002 Create Media Buy
     And the targeting includes a store_catchments entry providing BOTH radius and geometry
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a validation error
     And the error should reference the catchment oneOf constraint
     # v3.1: core/catchment.json — oneOf enforces exactly one method per catchment
     # --- v3.1 wave A: price (catalog/proposal pricing surface) ---
@@ -2560,7 +2684,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     And the tenant is configured for auto-approval
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     And the response status should be "completed"
     # v3.1: core/price.json — amount >= 0, currency ^[A-Z]{3}$, optional period (night|month|year|one_time)
     # --- v3.1 wave A: frequency_cap.scope vocabulary ---
@@ -2573,7 +2698,8 @@ Feature: BR-UC-002 Create Media Buy
     And the account "acc-001" exists and is active
     And the tenant is configured for auto-approval
     When the Buyer Agent sends the create_media_buy request
-    Then the response should succeed
+    Then the response is compliant with the create_media_buy success spec
+    And the response should succeed
     # v3.1: enums/frequency-cap-scope.json — sole registered value is "package"
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
@@ -2583,7 +2709,8 @@ Feature: BR-UC-002 Create Media Buy
     And the targeting frequency_cap.scope is "campaign"
     And the account "acc-001" exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the response should indicate a validation error
+    Then the error is compliant with the AdCP error spec
+    And the response should indicate a validation error
     And the error should reference the frequency_cap.scope enum
     # v3.1: cross-package and cross-buy scoping NOT supported in this protocol release
 
@@ -2592,7 +2719,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request whose account resolution matches "<boundary_point>"
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
@@ -2609,7 +2737,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request whose resolved billing reflects "<boundary_point>"
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
@@ -2626,7 +2755,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request and account governance state matching "<boundary_point>"
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
@@ -2642,7 +2772,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a proposal-based create_media_buy request matching "<boundary_point>"
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
@@ -2661,7 +2792,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with an inline creative matching "<boundary_point>"
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/create-media-buy-request.json
 
     Examples: Boundary values
@@ -2674,7 +2806,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a create_media_buy request with package targeting matching "<boundary_point>"
     And the account exists and is active
     When the Buyer Agent sends the create_media_buy request
-    Then the result should be <outcome>
+    Then the response is compliant with the create_media_buy spec
+    And the result should be <outcome>
 
     Examples: Boundary values
       | boundary_point                                            | outcome                      |
@@ -2687,7 +2820,8 @@ Feature: BR-UC-002 Create Media Buy
     Given a comply_test_controller directive registered force_create_media_buy_arm with arm "submitted" and task_id "task_async_signed_io_q2"
     And the directive is keyed to the caller's authenticated sandbox account
     When the Buyer Agent sends create_media_buy under the registered sandbox account
-    Then the response should carry status "submitted"
+    Then the response is compliant with the create_media_buy submitted spec
+    And the response should carry status "submitted"
     And the response should carry task_id "task_async_signed_io_q2"
     And the response should NOT carry media_buy_id on the submitted envelope
     And the response should NOT carry packages on the submitted envelope
@@ -2706,7 +2840,8 @@ Feature: BR-UC-002 Create Media Buy
     Given the buyer's governance agent has returned decision "APPROVED" for the proposed buy
     And the buyer attaches the governance_decision payload to the create_media_buy request
     When the Buyer Agent sends create_media_buy with the governance_decision payload
-    Then the response should carry status "active" or "pending_start"
+    Then the response is compliant with the create_media_buy success spec
+    And the response should carry status "active" or "pending_start"
     And the response should carry the media_buy_id
     And the response should echo the governance_decision with decision "APPROVED"
     # governance_approved storyboard: the buyer's governance agent (orchestrator side)
@@ -2720,7 +2855,8 @@ Feature: BR-UC-002 Create Media Buy
     Given the buyer's governance agent has returned decision "APPROVED_WITH_CONDITIONS" with a non-empty conditions array
     And the buyer attaches the governance_decision payload to the create_media_buy request
     When the Buyer Agent sends create_media_buy with the governance_decision payload
-    Then the response should carry the media_buy_id
+    Then the response is compliant with the create_media_buy success spec
+    And the response should carry the media_buy_id
     And the response should echo the governance_decision with decision "APPROVED_WITH_CONDITIONS"
     And the response should carry the conditions array attached to the persisted buy
     # governance_conditions storyboard: governance returns APPROVED_WITH_CONDITIONS
@@ -2752,7 +2888,8 @@ Feature: BR-UC-002 Create Media Buy
     And the buyer reduces the proposed buy to within the governance agent's spending authority
     And the buyer obtains a new "APPROVED" decision from the governance agent
     When the Buyer Agent sends a corrected create_media_buy with the new APPROVED governance_decision
-    Then the response should carry the media_buy_id
+    Then the response is compliant with the create_media_buy success spec
+    And the response should carry the media_buy_id
     And the response should carry status "active" or "pending_start"
     # governance_denied_recovery storyboard: after GOVERNANCE_DENIED, the buyer
     # reduces the buy (typically budget or scope) to fit within the governance
@@ -2767,7 +2904,8 @@ Feature: BR-UC-002 Create Media Buy
     Given the buyer references a property_list whose entries do not match any seller inventory
     And the buyer references a collection_list whose entries do not match any seller inventory
     When the Buyer Agent sends create_media_buy with the no-match list references in targeting_overlay
-    Then the response should NOT be a silent success with normal forecast numbers
+    Then the response is compliant with the create_media_buy spec
+    And the response should NOT be a silent success with normal forecast numbers
     And one of the following two outcomes should be observed:
     | outcome              | required behavior                                                                       |
     | zero_forecast_accept | buy accepted with packages reporting zero deliverable inventory and a mismatch message  |
@@ -2786,7 +2924,8 @@ Feature: BR-UC-002 Create Media Buy
     Given the buyer holds a property_list (agent_url, list_id) that matches seller inventory
     And the buyer holds a collection_list (agent_url, list_id) that matches seller inventory
     When the Buyer Agent sends create_media_buy with property_list and collection_list in package targeting_overlay
-    Then the response should carry the media_buy_id
+    Then the response is compliant with the create_media_buy success spec
+    And the response should carry the media_buy_id
     And the persisted package targeting should reflect the property_list and collection_list references
     # inventory_list_targeting storyboard: the seller MUST accept
     # PropertyListReference (agent_url+list_id) and CollectionListReference
@@ -2817,7 +2956,8 @@ Feature: BR-UC-002 Create Media Buy
   Scenario: Media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start
     Given the buyer sends create_media_buy without inline creatives
     When the Buyer Agent sends the create_media_buy request
-    Then the response should carry status "pending_creatives"
+    Then the response is compliant with the create_media_buy success spec
+    And the response should carry status "pending_creatives"
     When the buyer subsequently completes sync_creatives for all required creatives
     Then the buy's status should transition to "pending_start"
     # pending_creatives_to_start storyboard: when a buy is created without inline
