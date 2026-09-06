@@ -285,3 +285,49 @@ at all rather than a generated property.
 
 Phases A and B are sequential and small. Only Phase C is large, and it does not
 start until the method exists.
+
+## Deferred: de-pinning the 81 transport-tagged scenarios
+
+`_TRANSPORT_SPECIFIC_TAGS = {"rest", "mcp", "a2a"}` (conftest.py:3972) makes a
+scenario carrying `@rest`, `@mcp` or `@a2a` SKIP PARAMETRIZATION ENTIRELY —
+`pytest_generate_tests` returns before parametrizing, so it runs ONCE, on
+whatever transport its When step hard-pins. **81 scenarios are in that state**
+(@rest 40, @mcp 32, @a2a 9), and the suite reads as covering three transports
+while they cover one. The repo has been bitten by this before and says so at
+conftest.py:4058 about a now-empty list: a UC sat there because it "genuinely had
+no REST route, which silently dropped 61 scenarios from REST while the suite read
+as covering three transports".
+
+**Attempted and reverted, deliberately.** Two reasons, and the second is the one
+that matters:
+
+1. The steps behind those scenarios SHOULD be transport-agnostic, but nothing has
+   ever proven it — they have only ever run on one transport. De-pinning would
+   produce new failures that are indistinguishable from a baseline that moved
+   under us (the boundary refactor is rewriting response shapes in a sibling
+   worktree). An unattributable result is not a measurement.
+2. Consolidation is the cheaper order. A scenario expressed in shared primitives
+   is transport-agnostic BY CONSTRUCTION, so de-pinning after consolidation is
+   mechanical and safe; de-pinning before it is a bet on 81 unproven step bodies.
+
+### The trap waiting for whoever does it
+
+**Twenty-one twin-sets exist**: scenarios whose names differ ONLY by transport —
+`Create package via REST -- all required fields provided` and `Create package via
+MCP -- ...`, across UC-007 (4), UC-008 (5), UC-009 (3), UC-014 (2), UC-020 (5),
+UC-024 (1) and UC-026 (1).
+
+pytest-bdd stores scenarios in a plain dict keyed by NAME:
+`feature.scenarios[scenario.name] = scenario` (parser.py:521 and :543, against
+`scenarios: OrderedDict[str, ScenarioTemplate]` at :75). No duplicate check, no
+warning. **Strip the transport phrase from both twins and one silently
+disappears** — the file still shows both, and the suite grades one fewer than it
+appears to contain. Exactly the class of silent coverage loss this document
+exists to remove.
+
+So a twin-set MERGES to a single parametrized scenario; it is never renamed
+twice. And the work must be sharded by FEATURE FILE, never by tag: a tag-sharded
+run gives the two halves of a twin to different agents, neither of which can see
+the collision it is half of. That is not hypothetical — it is what the aborted
+run did, and it was stopped one edit before the collision landed in BR-UC-026,
+which is a loaded file.
