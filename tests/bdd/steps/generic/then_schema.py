@@ -35,6 +35,7 @@ from __future__ import annotations
 from pytest_bdd import parsers, then
 
 from tests.bdd.steps._outcome_helpers import wire_dict
+from tests.helpers.pinned_schema import validator_for
 from tests.helpers.response_schemas import response_schema_ref, response_validator
 
 
@@ -45,9 +46,44 @@ def _assert_compliant(ctx: dict, tool: str, branch: str | None) -> None:
         where = f"{tool} {branch}" if branch else tool
         detail = "\n".join(f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in errors)
         raise AssertionError(
-            f"the response does not comply with the {where} spec "
-            f"({response_schema_ref(tool)}):\n{detail}"
+            f"the response does not comply with the {where} spec ({response_schema_ref(tool)}):\n{detail}"
         )
+
+
+@then("the error is compliant with the AdCP error spec")
+def then_error_compliant(ctx: dict) -> None:
+    """Grade a REFUSAL against ``core/error.json``, so an error path is not exempt.
+
+    THE RULE IS THAT EVERY SCENARIO CARRIES A COMPLIANCE CHECK. A scenario whose
+    dispatch is refused has no response document to grade, and leaving it with
+    none is how "the suite is schema-clean" comes to mean "the happy paths are".
+    A refusal is still a wire contract: ``build_two_layer_error_envelope`` emits
+    ``{adcp_error, errors[], context}`` and every entry in ``errors[]`` is a
+    ``core/error.json`` object, required ``code`` and ``message``.
+
+    Tool-independent on purpose. The AdCP error vocabulary is OPEN — ``code`` is
+    a wire-typed string, published codes are documentary, and a receiver decodes
+    an unknown one by reading ``recovery`` — so there is nothing per-tool to
+    resolve. WHICH code was emitted is a different obligation, graded by
+    ``assert_envelope_shape``; this grades that the refusal is well-formed.
+    """
+    envelope = ctx.get("wire_error_envelope")
+    assert envelope is not None, (
+        "no wire error envelope: the dispatch did not refuse, so there is no error to "
+        "grade. A scenario that expected a response should assert compliance with its "
+        "tool's spec instead."
+    )
+    entries = envelope.get("errors") or ([envelope["adcp_error"]] if "adcp_error" in envelope else [])
+    assert entries, f"the error envelope carries neither errors[] nor adcp_error: {sorted(envelope)}"
+
+    validator = validator_for("core/error.json")
+    for index, entry in enumerate(entries):
+        failures = sorted(validator.iter_errors(entry), key=lambda e: list(e.absolute_path))
+        if failures:
+            detail = "\n".join(
+                f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in failures
+            )
+            raise AssertionError(f"errors[{index}] does not comply with core/error.json:\n{detail}")
 
 
 @then(parsers.parse("the response is compliant with the {tool} spec"))
@@ -59,9 +95,23 @@ def then_response_compliant(ctx: dict, tool: str) -> None:
     the two drift silently — a scenario whose When changed keeps asserting the
     old contract and still passes.
 
-    For a tool whose response branches, this refuses and names the branches: a
-    whole-``oneOf`` check passes against the ERROR branch when the scenario
-    meant success, which grades the opposite of what it says.
+    For a tool whose response branches, this grades the whole ``oneOf`` — "one of
+    the legal shapes". That is weaker than naming a branch, and deliberately
+    allowed only because the SCENARIO OUTLINE cannot name one: 104 scenarios end
+    in ``the result should be <outcome>``, and a single outline carries both
+    ``Examples: Valid partitions`` and ``Examples: Invalid partitions``, so no
+    one line is right for every row. Refusing would leave those scenarios with
+    no compliance check at all.
+
+    Weaker is not vacuous, which was measured rather than assumed: against
+    ``create-media-buy-response.json`` it rejects an empty object, an object of
+    junk keys, a success document missing ``confirmed_at`` and ``revision``, a
+    submitted document missing ``task_id``, and a success document whose
+    ``status`` is misspelled.
+
+    Where a scenario pins ONE outcome, use the branch form — it is strictly
+    stronger, and this one would accept the branch the scenario says did NOT
+    happen.
     """
     _assert_compliant(ctx, tool, None)
 

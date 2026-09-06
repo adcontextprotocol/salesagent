@@ -96,22 +96,33 @@ def branch_names(tool: str) -> list[str]:
 def response_validator(tool: str, branch: str | None = None):
     """A validator for *tool*'s response, narrowed to one branch if named.
 
-    A branchless tool with a branch named, or a branching tool with none, is an
-    error rather than a silent full-document check: "compliant with the
-    create_media_buy spec" would pass against the ERROR branch when the scenario
-    meant success, which grades the opposite of what it says.
+    Naming a branch on a BRANCHLESS tool stays an error — there is no such
+    contract to narrow to, so the sentence is about a tool the author is
+    misremembering.
+
+    Omitting the branch on a BRANCHING tool is allowed, and validates the whole
+    ``oneOf``. That reads like a weaker check than it is, so it was measured
+    against ``create-media-buy-response.json`` before being permitted: an empty
+    object, an object of junk keys, a success document missing ``confirmed_at``
+    and ``revision``, a submitted document missing ``task_id``, and a success
+    document whose ``status`` is misspelled are ALL rejected. "One of the legal
+    shapes" excludes essentially every malformed response.
+
+    It exists for the SCENARIO OUTLINE, where the branch is a column: 104
+    scenarios end in ``the result should be <outcome>`` and a single outline
+    carries both ``Examples: Valid partitions`` and ``Examples: Invalid
+    partitions``. One line in that outline CANNOT name a branch that is right
+    for every row. Refusing here would leave those scenarios with no compliance
+    check at all, which is the outcome the rule exists to prevent.
+
+    Prefer the branch form wherever the scenario pins ONE outcome — it is
+    strictly stronger, and the general form would accept the branch the
+    scenario asserts did NOT happen.
     """
     ref = response_schema_ref(tool)
     available = branch_names(tool)
 
     if branch is None:
-        if available:
-            raise ValueError(
-                f"{tool} responds in one of {available} — name the branch, e.g. "
-                f'"the response is compliant with the {tool} {available[0]} spec". '
-                f"Validating against the whole oneOf would pass on any branch, "
-                f"including the one the scenario is asserting did NOT happen."
-            )
         return validator_for(ref)
 
     if branch not in available:
