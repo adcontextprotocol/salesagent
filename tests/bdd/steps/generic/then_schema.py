@@ -36,11 +36,55 @@ from pytest_bdd import parsers, then
 
 from tests.bdd.steps._outcome_helpers import wire_dict
 from tests.helpers.pinned_schema import validate_against_pinned_schema
+from tests.helpers.response_schemas import response_schema_ref, response_validator
+
+
+def _assert_compliant(ctx: dict, tool: str, branch: str | None) -> None:
+    wire = wire_dict(ctx)
+    errors = sorted(response_validator(tool, branch).iter_errors(wire), key=lambda e: list(e.absolute_path))
+    if errors:
+        where = f"{tool} {branch}" if branch else tool
+        detail = "\n".join(f"  at {'.'.join(str(p) for p in e.absolute_path) or '<root>'}: {e.message}" for e in errors)
+        raise AssertionError(
+            f"the response does not comply with the {where} spec "
+            f"({response_schema_ref(tool)}):\n{detail}"
+        )
+
+
+@then(parsers.parse("the response is compliant with the {tool} spec"))
+def then_response_compliant(ctx: dict, tool: str) -> None:
+    """Grade the response the buyer received against the tool's pinned schema.
+
+    The scenario names the TOOL, never a schema file. A filename in a feature
+    file is a second spelling of "which tool is this scenario exercising", and
+    the two drift silently — a scenario whose When changed keeps asserting the
+    old contract and still passes.
+
+    For a tool whose response branches, this refuses and names the branches: a
+    whole-``oneOf`` check passes against the ERROR branch when the scenario
+    meant success, which grades the opposite of what it says.
+    """
+    _assert_compliant(ctx, tool, None)
+
+
+@then(parsers.parse("the response is compliant with the {tool} {branch} spec"))
+def then_response_compliant_branch(ctx: dict, tool: str, branch: str) -> None:
+    """Grade the response against ONE branch of a branching response.
+
+    ``success``, ``error`` and ``submitted`` are the spec's own words, read from
+    the schema's ``oneOf`` titles (``CreateMediaBuySuccess`` -> ``success``), so
+    the vocabulary a scenario may use is the vocabulary the pin defines.
+    """
+    _assert_compliant(ctx, tool, branch)
 
 
 @then(parsers.parse("the response should be schema-valid against {schema_file}"))
 def then_response_schema_valid(ctx: dict, schema_file: str) -> None:
-    """Assert the response validates against the pinned AdCP schema."""
+    """Assert the response validates against the pinned AdCP schema.
+
+    Superseded by the two steps above, which name the tool rather than the file.
+    Kept while scenarios still name files; each migrated scenario deletes one use.
+    """
     validate_against_pinned_schema(schema_file, wire_dict(ctx))
 
 
