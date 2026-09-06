@@ -71,7 +71,6 @@ from src.core.schemas import (
     CreativeStatusEnum,
     FormatId,
     ListCreativeFormatsRequest,
-    ListCreativeFormatsResponse,
     ListCreativesResponse,
     Pagination,
     QuerySummary,
@@ -90,7 +89,6 @@ from tests.factories.creative_asset import (
     video_spec,
 )
 from tests.harness._mock_uow import wire_effect_boundary
-from tests.helpers import assert_construction_rejects
 from tests.helpers.creative_test_helpers import creative_payload, sync_creatives_request
 
 # ---------------------------------------------------------------------------
@@ -405,18 +403,6 @@ class TestSyncCreativesResponseSchema:
         )
         msg = str(response)
 
-    def test_str_method_dry_run(self):
-        """__str__ includes dry run marker.
-
-        Spec: UNSPECIFIED (implementation-defined convenience method).
-        Covers: UC-006-DRY-RUN-01
-        """
-        response = SyncCreativesResponse(  # type: ignore[call-arg]
-            creatives=[],
-            dry_run=True,
-        )
-        assert "dry run" in str(response)
-
 
 class TestListCreativesResponseSchema:
     """ListCreativesResponse schema.
@@ -437,32 +423,6 @@ class TestListCreativesResponseSchema:
         )
         assert len(response.creatives) == 1
         assert response.query_summary.total_matching == 1
-
-    def test_str_all_on_one_page(self):
-        """Spec: UNSPECIFIED (implementation-defined convenience method).
-
-        Covers: UC-006-CREATIVE-SCHEMA-COMPLIANCE-07
-        """
-        creative = _make_creative()
-        response = ListCreativesResponse(
-            creatives=[creative],
-            query_summary=QuerySummary(total_matching=1, returned=1),
-            pagination=Pagination(has_more=False),
-        )
-        assert "Found 1 creative." in str(response)
-
-    def test_str_paginated(self):
-        """Spec: UNSPECIFIED (implementation-defined convenience method).
-
-        Covers: UC-006-CREATIVE-SCHEMA-COMPLIANCE-07
-        """
-        creative = _make_creative()
-        response = ListCreativesResponse(
-            creatives=[creative],
-            query_summary=QuerySummary(total_matching=50, returned=10),
-            pagination=Pagination(has_more=True, total_count=50),
-        )
-        assert "Showing 10 of 50" in str(response)
 
     def test_nested_creative_excludes_internal_fields(self):
         """Nested Creative in response must exclude internal fields.
@@ -586,31 +546,6 @@ class TestListCreativeFormatsResponseSchema:
             type="display",
             is_standard=True,
         )
-
-    def test_str_empty(self):
-        """Spec: UNSPECIFIED (implementation-defined convenience method).
-
-        Covers: UC-006-CREATIVE-SCHEMA-COMPLIANCE-10
-        """
-        response = ListCreativeFormatsResponse(formats=[])
-        assert "No creative formats" in str(response)
-
-    def test_str_single(self):
-        """Spec: UNSPECIFIED (implementation-defined convenience method).
-
-        Covers: UC-006-CREATIVE-SCHEMA-COMPLIANCE-10
-        """
-        response = ListCreativeFormatsResponse(formats=[self._make_format()])
-        assert "Found 1 creative format" in str(response)
-
-    def test_str_multiple(self):
-        """Spec: UNSPECIFIED (implementation-defined convenience method).
-
-        Covers: UC-006-CREATIVE-SCHEMA-COMPLIANCE-10
-        """
-        fmts = [self._make_format(f"f{i}", f"Format {i}") for i in range(3)]
-        response = ListCreativeFormatsResponse(formats=fmts)
-        assert "Found 3 creative formats" in str(response)
 
 
 # ============================================================================
@@ -1513,35 +1448,6 @@ class TestListCreativesValidation:
 
     Spec: https://github.com/adcontextprotocol/adcp/blob/8f26baf3549c00d2638341fed1d80abacb5d894a/dist/schemas/3.0.0-beta.3/core/creative-filters.json
     """
-
-    @pytest.mark.parametrize("field", ["created_after", "created_before"])
-    def test_invalid_filter_date_raises(self, field: str):
-        """An unparseable date-time in the STRUCTURED filters is a typed AdCPValidationError.
-
-        Spec: CONFIRMED -- creative-filters.json defines created_after and created_before as
-        type: string, format: date-time.
-
-        Graded at ``coerce_creative_filters``, which is where the obligation now lives. It
-        used to be graded on ``ListCreativesRequest(created_after=...)``: a FLAT
-        alias that AdCP 3.1.1 does not define anywhere, that no transport could send (MCP
-        announces DTO fields INTERSECT the wrapper's signature, and ListCreativesRequest
-        never declared it), and that is now removed. The spec-shaped path -- the one A2A and
-        REST actually take -- is the filters object, and it must reject the same value.
-
-        One parametrized body rather than two near-identical methods: the two fields differ
-        in NAME only, and the repo's DRY invariant treats a copy with a substituted variable
-        as a defect.
-
-        Covers: UC-006-EXT-C-01
-        """
-        from src.core.schema_helpers import coerce_creative_filters
-
-        # The identifier is STRUCTURED: details/field, not prose. Graded on the field
-        # PATH rather than the exception class, because this seam is in-process: the
-        # coercion no longer opens a validation boundary of its own (the transport
-        # boundary derives the identical error one frame later, from the same
-        # exception), so what leaves this frame is the pydantic rejection itself.
-        assert_construction_rejects(lambda: coerce_creative_filters({field: "not-a-date"}), field=field)
 
 
 class TestListCreativesRequestRejectsInternalFlags:

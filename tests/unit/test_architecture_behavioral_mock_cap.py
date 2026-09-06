@@ -40,7 +40,7 @@ BEHAVIORAL_MOCK_CONSTRUCTION_CAP: dict[str, int] = {
     "tests/integration/test_delivery_webhook_behavioral.py": 0,
     "tests/integration/test_get_products_behavioral.py": 44,
     "tests/unit/test_creative_formats_behavioral.py": 17,
-    "tests/unit/test_delivery_poll_behavioral.py": 11,
+    "tests/unit/test_delivery_poll_behavioral.py": 9,
     "tests/unit/test_delivery_service_behavioral.py": 2,
     "tests/unit/test_sync_creatives_behavioral.py": 28,
     "tests/unit/test_update_media_buy_behavioral.py": 103,

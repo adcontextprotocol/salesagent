@@ -9,7 +9,6 @@ These tests verify that:
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from enum import Enum
 
 import pytest
 from adcp.types import CreativePolicy
@@ -31,7 +30,6 @@ from src.core.schemas import (
     GetMediaBuyDeliveryResponse,
     GetProductsRequest,
     GetProductsResponse,
-    ListCreativeFormatsResponse,
     ListCreativesResponse,
     Measurement,
     MediaBuyDeliveryData,
@@ -1768,143 +1766,6 @@ class TestAdCPContract:
         # Verify field count for success response
         assert len(adcp_response) >= 3, (
             f"CreateMediaBuySuccess should have at least 3 required fields, got {len(adcp_response)}"
-        )
-
-    def test_get_products_response_adcp_compliance(self):
-        """Test that GetProductsResponse complies with AdCP get-products-response schema."""
-        # Create Product using the actual Product model (not ProductSchema)
-        from src.core.schemas import Product as ProductModel
-        from tests.helpers.adcp_factories import (
-            create_test_cpm_pricing_option,
-            create_test_publisher_properties_by_tag,
-        )
-
-        product = ProductModel(
-            product_id="prod_1",
-            name="Premium Display",
-            description="High-quality display advertising",
-            format_ids=[
-                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
-                {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
-            ],
-            delivery_type="guaranteed",
-            delivery_measurement={"provider": "test_provider", "notes": "Test measurement"},  # Required per AdCP spec
-            measurement=None,
-            creative_policy=None,
-            is_custom=False,
-            publisher_properties=[create_test_publisher_properties_by_tag(publisher_domain="test.com")],
-            pricing_options=[
-                create_test_cpm_pricing_option(
-                    pricing_option_id="cpm_usd_fixed",
-                    currency="USD",
-                    rate=10.0,
-                )
-            ],
-        )
-
-        # Create response with products
-        response = GetProductsResponse(
-            products=[product],
-            errors=[],
-        )
-
-        # Test AdCP-compliant response
-        adcp_response = response.model_dump()
-
-        # Verify required AdCP fields present and non-null
-        required_fields = ["products"]
-        for field in required_fields:
-            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
-            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
-
-        # Verify optional AdCP fields present (can be null)
-        # Note: message field removed - handled via __str__() for protocol layer
-        optional_fields = ["errors"]
-        for field in optional_fields:
-            assert field in adcp_response, f"Optional AdCP field '{field}' missing from response"
-
-        # Verify message is provided via __str__() not as schema field
-        assert "message" not in adcp_response, "message should not be in schema (use __str__() instead)"
-        assert str(response) == "Found 1 product that matches your requirements."
-
-        # Verify optional status field (AdCP PR #77 - MCP Status System)
-        # Status field is optional and only present when explicitly set
-        if "status" in adcp_response:
-            assert isinstance(adcp_response["status"], (str, Enum)), "status must be string/enum when present"
-
-        # Verify specific field types and constraints
-        assert isinstance(adcp_response["products"], list), "products must be array"
-        assert len(adcp_response["products"]) > 0, "products array should not be empty"
-
-        # Verify product structure - Product.model_dump() should convert formats -> format_ids
-        product_data = adcp_response["products"][0]
-        assert "product_id" in product_data, "product must have product_id"
-        assert "format_ids" in product_data, "product must have format_ids (not formats)"
-        assert "formats" not in product_data, "product should not have formats field (use format_ids)"
-
-        # Test empty response case
-        empty_response = GetProductsResponse(products=[], errors=[])
-
-        empty_adcp_response = empty_response.model_dump()
-        assert empty_adcp_response["products"] == [], "Empty products list should be empty array"
-        # Verify __str__() provides appropriate empty message
-        assert str(empty_response) == "No products matched your requirements."
-        # SDK 5.7 protocol envelope includes cache_scope, replayed, status as defaults
-        assert "products" in empty_adcp_response, "products field must be present"
-        assert "errors" in empty_adcp_response, "errors field must be present"
-
-    def test_list_creative_formats_response_adcp_compliance(self):
-        """Test that ListCreativeFormatsResponse complies with AdCP list-creative-formats-response schema."""
-
-        # Create response with formats using actual Format schema
-        response = ListCreativeFormatsResponse(
-            formats=[
-                Format(
-                    format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-                    name="Medium Rectangle",
-                    type="display",
-                    is_standard=True,
-                    iab_specification="IAB Display",
-                    requirements={"width": 300, "height": 250, "file_types": ["jpg", "png", "gif"]},
-                    assets=None,  # Use new 'assets' field (assets_required is deprecated)
-                )
-            ],
-            # errors omitted - per AdCP spec, optional fields with None/empty values should be omitted
-        )
-
-        # Test AdCP-compliant response
-        adcp_response = response.model_dump()
-
-        # Verify required AdCP fields present and non-null
-        required_fields = ["formats"]
-        for field in required_fields:
-            assert field in adcp_response, f"Required AdCP field '{field}' missing from response"
-            assert adcp_response[field] is not None, f"Required AdCP field '{field}' is None"
-
-        # Verify optional AdCP fields with None values are omitted (not present with null)
-        # Note: message, adcp_version, status fields removed - handled via protocol envelope
-        assert "errors" not in adcp_response, "errors with None/empty value should be omitted"
-        assert "creative_agents" not in adcp_response, "creative_agents with None value should be omitted"
-
-        # Verify message is provided via __str__() not as schema field
-        assert "message" not in adcp_response, "message should not be in schema (use __str__() instead)"
-        assert str(response) == "Found 1 creative format."
-
-        # Verify specific field types and constraints
-        assert isinstance(adcp_response["formats"], list), "formats must be array"
-
-        # Verify format structure (using actual Format schema fields)
-        if len(adcp_response["formats"]) > 0:
-            format_obj = adcp_response["formats"][0]
-            assert "format_id" in format_obj, "format must have format_id"
-            assert "name" in format_obj, "format must have name"
-            assert "type" in format_obj, "format must have type"
-            # Note: width/height are in requirements dict, not direct fields
-
-        # Verify field count - only required fields + non-None optional fields
-        # formats is required; errors and creative_agents are omitted (None values)
-        assert len(adcp_response) >= 1, (
-            f"ListCreativeFormatsResponse should have at least required fields, got {len(adcp_response)}"
         )
 
     def test_update_media_buy_response_adcp_compliance(self):

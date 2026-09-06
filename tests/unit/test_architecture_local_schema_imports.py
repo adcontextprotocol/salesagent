@@ -94,7 +94,6 @@ ALLOWLIST: set[tuple[str, str]] = {
     ("src/core/creative_agent_registry.py", "ListCreativeFormatsRequest"),
     ("src/core/schema_helpers.py", "GetProductsResponse"),
     ("src/core/schema_helpers.py", "Product"),
-    ("src/core/schema_helpers.py", "ProductFilters"),
     # FIXME(#1388): tools import SDK types directly
     ("src/core/tools/products.py", "FormatId"),
     # FIXME(#1388): services import SDK types directly

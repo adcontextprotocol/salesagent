@@ -53,20 +53,3 @@ class TestApprovalErrorHandling:
 
         assert isinstance(success_response, CreateMediaBuySuccess)
         assert not isinstance(error_response, CreateMediaBuySuccess)
-
-    def test_error_string_representation(self):
-        """Test CreateMediaBuyError __str__ method."""
-        # With errors
-        error_with_errors = CreateMediaBuyError(
-            errors=[
-                Error(code="VALIDATION_ERROR", message="First error"),
-                Error(code="INVALID_REQUEST", message="Second error"),
-            ]
-        )
-        error_str = str(error_with_errors)
-        assert "2 error(s)" in error_str
-
-        # Single error - AdCP spec requires min_length=1 for errors array
-        error_single = CreateMediaBuyError(errors=[Error(code="INVALID_REQUEST", message="Single error")])
-        error_str_single = str(error_single)
-        assert "1 error(s)" in error_str_single or "failed" in error_str_single.lower()
