@@ -149,7 +149,12 @@ Feature: BR-UC-019 Query Media Buys
   @T-UC-019-ext-e @extension @ext-e @error
   Scenario: Account filter not supported - account_id provided but not implemented
     Given an authenticated Buyer with principal_id "buyer-001"
-    When the Buyer Agent sends a get_media_buys request with account_id "acc-001"
+    # The account must RESOLVE, or this scenario cannot grade what it names. The seller
+    # resolves the account a request carries before running the tool, so an unseeded id
+    # fails with ACCOUNT_NOT_FOUND -- a correct answer to a different question, and one
+    # that made "unknown account" and "unsupported filter" indistinguishable here.
+    And the Buyer has access to an account
+    When the Buyer Agent sends a get_media_buys request with that account_id
     Then the operation should fail with error code "UNSUPPORTED_FEATURE"
     And the error should include a "recovery" field indicating correctable failure
     And the error should include a "suggestion" field

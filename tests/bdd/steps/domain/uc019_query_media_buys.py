@@ -1275,10 +1275,31 @@ def when_query_invalid_params(ctx: dict) -> None:
     _dispatch_query(ctx, media_buy_ids="not-a-list")
 
 
+@given("the Buyer has access to an account")
+def given_buyer_has_an_account(ctx: dict) -> None:
+    """Seed an account this principal may act on, and remember the reference.
+
+    Through the shared harness capability, so the row and the principal's grant on it are
+    created the one way every env creates them. Without it the account a request names does
+    not resolve, and a scenario about an UNSUPPORTED filter is answered by ACCOUNT_NOT_FOUND.
+
+    Stored as the WIRE shape, not the typed model: the REST leg serializes this bag to JSON,
+    where an ``AccountReference`` is not encodable. The dict is what a buyer sends on every
+    transport anyway, and production validates it into the model at the boundary.
+    """
+    ctx["account_reference"] = {"account_id": ctx["env"].setup_default_account().account_id}
+
+
 @when(parsers.parse('the Buyer Agent sends a get_media_buys request with account_id "{account_id}"'))
 def when_query_with_account(ctx: dict, account_id: str) -> None:
     """Send get_media_buys with account_id filter (ext-e)."""
     _dispatch_query(ctx, account={"account_id": account_id})
+
+
+@when("the Buyer Agent sends a get_media_buys request with that account_id")
+def when_query_with_the_seeded_account(ctx: dict) -> None:
+    """Send get_media_buys filtered by the account the Given seeded."""
+    _dispatch_query(ctx, account=ctx["account_reference"])
 
 
 @when(parsers.parse("the Buyer Agent sends a get_media_buys request with invalid status filter"))
