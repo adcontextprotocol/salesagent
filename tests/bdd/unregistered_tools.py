@@ -78,6 +78,52 @@ _DISPATCHED = re.compile(
 )
 
 
+def _dispatched_in(steps: Any) -> set[str]:
+    """Tool names dispatched by *steps*, reading GIVEN and WHEN only.
+
+    A Then DESCRIBES an outcome, and describing a tool is not calling one:
+    "compliance_testing.scenarios should be a subset of the ids returned by the
+    seller's list_scenarios call" names a tool this seller lacks, inside a
+    scenario that dispatches ``get_adcp_capabilities`` and passes today. Reading
+    Thens skipped it — the exact harm this rule exists to prevent.
+    """
+    found: set[str] = set()
+    for step in steps:
+        if (getattr(step, "type", "") or "").lower() not in {"given", "when"}:
+            continue
+        text = getattr(step, "name", "") or ""
+        found.update(name for match in _DISPATCHED.finditer(text) for name in match.groups() if name)
+    return found
+
+
+def _feature_dispatches_nothing_we_have(feature: Any) -> frozenset[str]:
+    """The undispatchable tools of a feature that dispatches NOTHING we registered.
+
+    Empty when the feature dispatches at least one registered tool — such a file
+    is MIXED and must be judged scenario by scenario.
+
+    This exists because per-scenario detection under-skips badly on a file whose
+    whole subject is missing. Measured: BR-UC-009 is entirely about
+    ``update_performance_index``, which exists in neither the pin nor the
+    registry, yet 95% of its scenarios named it in prose the dispatch pattern
+    does not match — so they would have run and failed for no reason anyone can
+    act on. BR-UC-007 was 94% the same. Sixteen of the twenty unbound files
+    dispatch no registered tool at all; for those, the FEATURE is the honest unit.
+
+    The four mixed files (UC-010, UC-027, UC-030, UC-032) each dispatch a real
+    tool alongside an absent one, and fall through to the per-scenario rule --
+    skipping them wholesale would silence scenarios that genuinely exercise
+    ``create_media_buy`` or ``get_adcp_capabilities``.
+    """
+    registered: set[str] = set()
+    absent: set[str] = set()
+    for scenario in getattr(feature, "scenarios", {}).values():
+        steps = list(getattr(scenario, "all_background_steps", []) or []) + list(getattr(scenario, "steps", []) or [])
+        for name in _dispatched_in(steps):
+            (registered if name in TOOLS else absent).add(name)
+    return frozenset() if registered else frozenset(absent)
+
+
 def undispatchable_tools_in(scenario: Any) -> dict[str, str]:
     """Tools a scenario calls that this seller cannot dispatch, each with its reason.
 
@@ -101,18 +147,15 @@ def undispatchable_tools_in(scenario: Any) -> dict[str, str]:
     about a tool nobody is going to build.
     """
     steps = list(getattr(scenario, "all_background_steps", []) or []) + list(getattr(scenario, "steps", []) or [])
-    dispatched: set[str] = set()
-    for step in steps:
-        # GIVEN and WHEN only. A Then DESCRIBES an outcome, and describing a tool
-        # is not calling one: "compliance_testing.scenarios should be a subset of
-        # the ids returned by the seller's list_scenarios call" names a tool this
-        # seller does not have, in a scenario that dispatches get_adcp_capabilities
-        # and passes today. Scanning Thens skipped it, which is the exact harm
-        # this rule exists to avoid — a live scenario silently stops running.
-        if (getattr(step, "type", "") or "").lower() not in {"given", "when"}:
-            continue
-        text = getattr(step, "name", "") or ""
-        dispatched.update(name for match in _DISPATCHED.finditer(text) for name in match.groups() if name)
+    dispatched = set(_dispatched_in(steps))
+
+    # A feature that dispatches NOTHING this seller registered is unbuilt surface
+    # whole, so every scenario in it inherits the verdict — including the ones
+    # that name their tool only in prose. Without this, 95% of BR-UC-009 ran
+    # against a tool that exists nowhere.
+    feature = getattr(scenario, "feature", None)
+    if feature is not None:
+        dispatched |= _feature_dispatches_nothing_we_have(feature)
 
     known = spec_tools()
     verdict = {name: "unbuilt" for name in dispatched & known if name not in TOOLS}
