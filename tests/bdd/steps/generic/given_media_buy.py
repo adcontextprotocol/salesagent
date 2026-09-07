@@ -20,12 +20,12 @@ from tests.bdd.steps.generic._create_request import (
     build_create_request_kwargs,
     pricing_option_id,
 )
+from tests.bdd.steps.generic.given_config import attach_push_notification_config
 from tests.factories import (
     CurrencyLimitFactory,
     PricingOptionFactory,
     ProductFactory,
 )
-from tests.factories.webhook import PushNotificationConfigRequestFactory
 from tests.helpers.adcp_factories import valid_reporting_webhook
 from tests.helpers.egress_hatches import UNDIALLED_PUBLIC_HTTPS_ORIGIN
 
@@ -3289,11 +3289,12 @@ def given_webhook_configured(ctx: dict) -> None:
     # ``notification-config`` (subscriber_id + event_types) is for. The
     # ``events: ["status_change"]`` this used to carry was accepted by the model and
     # dropped on the way out, so it selected nothing and nothing asserted on it.
-    push_config = PushNotificationConfigRequestFactory.payload(url=webhook_url)
-    ctx["push_notification_config"] = push_config
-    # Also wire into request_kwargs if they exist (for create requests)
-    if "request_kwargs" in ctx:
-        ctx["request_kwargs"]["push_notification_config"] = push_config
+    # ONE writer for all three ctx keys. This used to set the config and
+    # request_kwargs but not push_notification_url, while given_config's sentence
+    # set the config and the url but not request_kwargs — so what a scenario ended
+    # up holding depended on which sentence it used, and a Then reading the key its
+    # sentence never wrote passed on a fallback instead of on the thing it names.
+    attach_push_notification_config(ctx, webhook_url)
 
 
 @given(parsers.parse('the request includes a reporting_webhook with url "{url}"'))
