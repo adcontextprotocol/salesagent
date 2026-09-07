@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 import os
 import re
+import ssl
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
@@ -77,6 +78,7 @@ pytest_plugins = [
     "tests.bdd.steps.domain.uc011_accounts",
     "tests.bdd.steps.domain.admin_accounts",
     "tests.bdd.steps.domain.uc_get_products_inventory",
+    "tests.bdd.steps.domain.egress_ssrf",
     "tests.bdd.steps.domain.uc_brand_shorthand",
     "tests.bdd.steps.domain.compat_normalization",
     "tests.bdd.steps.domain.local_constraint_relaxations",
@@ -742,20 +744,34 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
                 )
             )
 
-        # FIXME: E2E_REST — webhook/circuit assertions observe
-        # env.mock['post'] or CircuitBreaker state, neither of which is visible
-        # through the Docker HTTP path. Remove when an E2E webhook receiver or
-        # circuit-breaker introspection is available.
+        # FIXME(#2098): E2E_REST — webhook/circuit assertions observe
+        # the in-process local origin or CircuitBreaker state, neither of which
+        # is reachable from the Docker HTTP path (the origin listens on the
+        # runner's loopback, not the container's). Remove when an E2E webhook
+        # receiver or circuit-breaker introspection is available.
         _UC004_E2E_WEBHOOK_INTERNAL_TAGS: set[str] = {
             "T-UC-004-webhook-bearer",
             "T-UC-004-webhook-hmac",
             "T-UC-004-webhook-notification-type",
             "T-UC-004-webhook-no-aggregated",
+            # DEFERRED to prebid/salesagent#2060, which owns both halves of the
+            # breaker's missing coverage. These two were briefly un-routed by
+            # #2098's rewrite attempt; they are RESTORED here because #2060's
+            # Conditions are explicit that the routing stays until the scenario
+            # actually grades the live server. Un-routed, the leg reports a plain
+            # PASS, which reads as real coverage — strictly worse than an XPASS,
+            # which at least records that nothing is being graded.
+            #
+            # Measured, not assumed: deleting circuit_breaker.record_failure() from
+            # the server and re-running in-network leaves this leg passing
+            # (test-results/innet_260826_1216 vs _1221, byte-identical counts).
+            # Re-run it yourself with `make mutation-check-breaker`.
             "T-UC-004-webhook-circuit-open",
             "T-UC-004-webhook-circuit-recovery",
             "T-UC-004-webhook-retry-success",
-            # jdy1-M4: retry/sequence observability — assert on env.mock['post']
-            # call counts / args, not visible over the Docker HTTP path.
+            # #1873: retry/sequence observability — assert on the requests the
+            # in-process origin received, not visible over the Docker HTTP path.
+            # #1873 is the webhook-capture service that makes them observable.
             "T-UC-004-webhook-retry-5xx",
             "T-UC-004-webhook-retry-network",
             "T-UC-004-webhook-no-retry-4xx",
@@ -764,7 +780,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         if is_e2e_rest and (marker_names & _UC004_E2E_WEBHOOK_INTERNAL_TAGS):
             item.add_marker(
                 pytest.mark.xfail(
-                    reason="E2E: webhook POST mock + CircuitBreaker state not observable through Docker HTTP",
+                    reason="E2E: in-process webhook origin + CircuitBreaker state not observable through Docker HTTP",
                     strict=False,
                 )
             )
@@ -3112,6 +3128,30 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 # These scenarios must NOT be multiplied — they have explicit When steps.
 _TRANSPORT_SPECIFIC_TAGS = {"rest", "mcp", "a2a"}
 
+# Scenarios whose graded production is reachable on ONE wire transport only.
+#
+# @a2a_untyped_ingest: the two surviving scenarios are A2A PROTOCOL-ENVELOPE
+# surfaces — the ``message/send`` push config — which has no counterpart on MCP
+# or REST at all. That, and only that, is what makes them single-transport.
+#
+# It used to carry three tool-surface scenarios as well, on the stated grounds
+# that MCP and REST refuse the invalid document above the ingest gate "with a
+# field path relative to the sub-model they validated", so grading them would
+# grade the request model rather than the gate. MEASURED, that was false: every
+# transport reports the ABSOLUTE path
+# ``push_notification_config.authentication.credentials``, which is the literal
+# the scenarios assert. The three now run on all four transports, so the
+# agreement is a standing executable proof rather than a claim in a comment.
+#
+# The tag NAME is now a misnomer — neither survivor is an untyped ingest. It is
+# left for the rename that owns the registry.
+#
+# PARAMETRIZED on that one transport rather than dropped from parametrization:
+# an excluded transport is exactly as ungraded as an xfail but invisible to both
+# escape-hatch detectors (GH #1892), whereas this keeps a real ``[a2a]`` test id
+# that ``--collect-only`` shows.
+_SINGLE_TRANSPORT_TAGS = {"a2a_untyped_ingest": "A2A"}
+
 # UC + tag combinations that should run IMPL-only (no 4-way parametrization).
 # (UC-002 @account used to live here when it ran resolve_account() via IMPL on
 # MediaBuyAccountEnv; #1417 routed those scenarios through a full
@@ -3153,14 +3193,6 @@ _ADMIN_TAG_PREFIX = "T-ADMIN-"
 # variant would 404). get_media_buys (UC-019) is A2A/MCP-only.
 _NO_REST_UC_TAG_PREFIXES = ("T-UC-019-",)
 
-# Send-time webhook scenarios that assert in-process mock/circuit-breaker state.
-# Do NOT append e2e_rest (false-green) and do NOT grow _UC004_E2E_WEBHOOK_INTERNAL_TAGS.
-_NO_E2E_REST_TAGS: frozenset[str] = frozenset(
-    {
-        "T-UC-004-webhook-ssrf-blocked",
-    }
-)
-
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Parametrize BDD scenarios across the wire transports (a2a/mcp/rest).
@@ -3185,6 +3217,15 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     marker_names = {m.name for m in metafunc.definition.iter_markers()}
     if marker_names & _TRANSPORT_SPECIFIC_TAGS:
         # Transport-specific scenario — don't multiply
+        return
+
+    # Single-transport scenarios still get a real (one-element) parametrization,
+    # so the transport that grades them is visible at collection. See
+    # _SINGLE_TRANSPORT_TAGS.
+    single = marker_names & _SINGLE_TRANSPORT_TAGS.keys()
+    if single:
+        transport = Transport[_SINGLE_TRANSPORT_TAGS[next(iter(single))]]
+        metafunc.parametrize("ctx", [transport], ids=[transport.value], indirect=True)
         return
 
     # Admin scenarios use Flask test_client, not API transports
@@ -3216,13 +3257,39 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         ids = ["a2a", "mcp"]
 
     if os.environ.get("BDD_E2E_ENABLED") == "true" and not no_rest_uc:
-        # In-process-only webhook scenarios have no e2e-observable surface —
-        # skip e2e_rest rather than xfail (shrink-only ratchet / false-green).
-        if not (marker_names & _NO_E2E_REST_TAGS):
-            transports.append(Transport.E2E_REST)
-            ids.append("e2e_rest")
+        transports.append(Transport.E2E_REST)
+        ids.append("e2e_rest")
 
     metafunc.parametrize("ctx", transports, ids=ids, indirect=True)
+
+
+def _ssl_failure(exc: BaseException | None, depth: int = 0) -> ssl.SSLError | None:
+    """The ``ssl.SSLError`` reachable from *exc*, walking the exception chain.
+
+    httpx does not surface a certificate failure as an ``ssl`` exception: it
+    raises ``httpx.ConnectError`` **wrapping** one, which is indistinguishable
+    from "connection refused" by type alone. The chain is where the difference
+    lives, so that is where the probe looks. Depth-bounded — a malformed chain
+    must not hang the probe.
+    """
+    if exc is None or depth > 20:
+        return None
+    if isinstance(exc, ssl.SSLError):
+        return exc
+    return _ssl_failure(exc.__cause__ or exc.__context__, depth + 1)
+
+
+def _probe_verify(base_url: str, ca_bundle: str | None) -> dict[str, object]:
+    """``verify=`` kwargs for the health probe: the generated CA, when there is one.
+
+    Only for an https base URL, and only when the bundle is really on disk — a
+    missing file must reach the handshake and be reported as the TLS failure it
+    is, not raise a ``FileNotFoundError`` from context construction that would
+    read as a probe bug.
+    """
+    if not base_url.startswith("https://") or not ca_bundle or not Path(ca_bundle).is_file():
+        return {}
+    return {"verify": ssl.create_default_context(cafile=ca_bundle)}
 
 
 @pytest.fixture(scope="session")
@@ -3249,6 +3316,8 @@ def e2e_stack():
     # (network alias "server-gwN", port 8080) and its OWN database (adcp_gwN),
     # provisioned by run_all_tests.sh — so e2e_rest runs in parallel with no
     # shared-server/shared-DB contention. Falls back to the shared stack when off.
+    ca_bundle = os.environ.get("E2E_CA_BUNDLE")
+    tls_base_url = os.environ.get("E2E_TLS_BASE_URL")
     worker = os.environ.get("PYTEST_XDIST_WORKER")  # e.g. "gw3"
     if os.environ.get("E2E_PER_WORKER") == "1" and worker and worker.startswith("gw"):
         import re
@@ -3259,22 +3328,52 @@ def e2e_stack():
         proj = os.environ.get("COMPOSE_PROJECT_NAME", "")
         prefix = f"{proj}-" if proj else ""
         base_url = f"http://{prefix}server-{worker}:8080"
+        # Each worker's TLS sidecar carries its own DOTTED CONTAINER NAME for the
+        # same reason — `docker compose run` cannot give it a network alias.
+        if tls_base_url:
+            tls_base_url = f"https://{prefix}tls-{worker}.adcp.test:8443"
         if postgres_url:
             # swap the database name in the URL path -> adcp_<worker>
             postgres_url = re.sub(r"/[^/?]+(\?|$)", rf"/adcp_{worker}\1", postgres_url, count=1)
 
     if not base_url:
         return None
+
+    probe_url = f"{base_url}/health"
     try:
-        resp = httpx.get(f"{base_url}/health", timeout=5)
+        resp = httpx.get(probe_url, timeout=5, **_probe_verify(base_url, ca_bundle))
         resp.raise_for_status()
-    except Exception:
-        return None
+    except Exception as exc:
+        # THREE outcomes, and collapsing any two of them is a defect:
+        #   * a TLS/certificate failure is a BROKEN RIG -> raise. Reporting it as
+        #     "absent" would hand back the plaintext config below and let an https
+        #     scenario grade the http branch while reporting green — the exact
+        #     vacuity #1291's TLS front exists to remove.
+        #   * a transport/HTTP failure means nothing is listening -> None, so the
+        #     in-process transports still run on a machine with no Docker stack.
+        #   * anything else is a bug in this probe or in httpx -> propagate. A
+        #     bare `except Exception: return None` classified those as "no stack".
+        if _ssl_failure(exc) is not None:
+            raise RuntimeError(
+                f"TLS verification FAILED probing the e2e stack at {probe_url} "
+                f"(E2E_CA_BUNDLE={ca_bundle!r}). A certificate failure is a broken test rig, not an "
+                f"absent stack: reporting it as absent would silently fall back to the plaintext "
+                f"config and grade an https scenario on the http branch."
+            ) from exc
+        if isinstance(exc, httpx.TransportError | httpx.HTTPStatusError):
+            return None
+        raise
+
     if not postgres_url:
         postgres_url = (
             f"postgresql://adcp_user:secure_password_change_me@localhost:{os.environ.get('POSTGRES_PORT', '5435')}/adcp"
         )
-    return E2EConfig(base_url=base_url, postgres_url=postgres_url)
+    return E2EConfig(
+        base_url=base_url,
+        postgres_url=postgres_url,
+        tls_base_url=tls_base_url,
+        ca_bundle=ca_bundle,
+    )
 
 
 def _reset_e2e_db(e2e_config) -> None:
@@ -3752,6 +3851,57 @@ _UC003_STORYBOARD_CLIENT_TAGS = frozenset(
 )
 
 ENV_ROUTES: list[EnvRoute] = [
+    # ── @egress (local SSRF / webhook-credential refusal feature) ───────────
+    # These scenarios carry T-EGRESS-* identity tags, NOT T-UC-<n>, so
+    # storyboard_spec.detect_uc returns None for them and no coarse bucket can
+    # claim them. They are UNSCOPED `when` rows (no _uc(...) wrapper) declared
+    # FIRST, which is exactly how the former elif chain expressed them: the
+    # egress tests checked before the shared UC arms and each borrowed one arm's
+    # env. Two of them need an env that does NOT patch the surface under test —
+    # a refusal manufactured by a mock proves nothing about the real egress seam.
+    EnvRoute(
+        tag="egress-sync",
+        # sync_creatives leg: the buyer-supplied agent_url must be refused by the
+        # REAL registry plus the REAL egress seam, so it takes the unpatched
+        # registry variant rather than CreativeSyncEnv.
+        when=lambda m: "egress_sync" in m,
+        env_builder=_env("tests.harness.creative_sync.RealRegistryCreativeSyncEnv"),
+    ),
+    EnvRoute(
+        tag="egress-sync-creds",
+        # The CREDENTIAL half of the registration is refused before the
+        # per-creative loop is reached, so it wants the ordinary
+        # (registry-mocked) sync env, not the real-registry variant above.
+        when=lambda m: "egress_sync_creds" in m,
+        env_builder=_env("tests.harness.creative_sync.CreativeSyncEnv"),
+    ),
+    EnvRoute(
+        tag="egress-update",
+        # Dispatches a real update_media_buy carrying a push_notification_config,
+        # so it needs the UC-003 ext arm: the update wrappers plus a seeded
+        # existing media buy for the update to target.
+        when=lambda m: "egress_update" in m,
+        env_builder=_env("tests.harness.media_buy_dual.MediaBuyDualEnv"),
+        seed=_seed_update_with_existing_buy,
+    ),
+    EnvRoute(
+        tag="egress-create",
+        # Ingest-time refusal of a buyer webhook URL — dispatches a real
+        # create_media_buy, so it needs the UC-004 "create" arm's env and the
+        # full create dependency chain.
+        when=lambda m: "egress_create" in m,
+        env_builder=_env("tests.harness.media_buy_create.MediaBuyCreateEnv"),
+        seed=_seed_media_buy_chain,
+    ),
+    EnvRoute(
+        tag="egress-get-products",
+        # The remaining @egress scenarios dispatch get_products (and the A2A
+        # message/send envelope pair). They share the UC-GET-PRODUCTS arm and
+        # differ only in the env: the refusal must come from the REAL
+        # resolve_property_list, so ProductEnv's patch is not applied.
+        when=lambda m: "egress" in m,
+        env_builder=_env("tests.harness.product.RealResolverProductEnv"),
+    ),
     # ── UC-002 ──────────────────────────────────────────────────────────────
     EnvRoute(
         tag="uc002-account",

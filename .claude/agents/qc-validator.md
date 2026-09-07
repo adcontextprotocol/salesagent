@@ -93,4 +93,3 @@ Runs everything above plus:
 1. `make quality-full` (includes integration and e2e tests)
 2. Verifies all open beads tasks are either completed or have clear follow-up issues
 3. Checks `bd list --status=in_progress` for abandoned work
-4. Verifies `bd sync --from-main` has been run

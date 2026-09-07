@@ -32,7 +32,6 @@ Close all beads tasks that were fully completed this session.
 ### Step 5: Commit and Sync
 ```bash
 git add <specific-files>
-bd sync --from-main
 git commit -m "feat/fix/refactor: description"
 ```
 
@@ -53,5 +52,9 @@ Confirm:
 This project uses ephemeral branches:
 - Work happens on feature branches
 - Branches are merged to main **locally** (not pushed)
-- `bd sync --from-main` pulls beads updates from main before final commit
+- Beads need no sync step: since 2026-08-11 every worktree shares ONE Dolt
+  server, so filing is globally visible the moment it happens. `bd sync` and
+  every sync variant are FORBIDDEN — on older bd they overwrote the shared
+  JSONL and destroyed tickets across worktrees (see `.claude/agents/executor.md`
+  and `.claude/commands/team.md`, which carry this as a hard rule).
 - No upstream tracking — don't run `git push`

@@ -254,7 +254,7 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     And the shared secret is a valid 32+ character string
     When the system delivers a webhook report for "mb-001"
     Then the request should include header "X-ADCP-Signature" with hex-encoded HMAC
-    And the request should include header "X-ADCP-Timestamp" with ISO timestamp
+    And the request should include header "X-ADCP-Timestamp" with unix timestamp
     And the HMAC should be computed over "timestamp.payload" concatenation
     # POST-S8: Buyer can verify report authenticity
     # BR-RULE-029 INV-1: monotonically increasing sequence (signing is precondition)
@@ -337,9 +337,19 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
     And subsequent scheduled deliveries should be suppressed
     # POST-F2: System knows the webhook is persistently failing
 
+  # LOCALLY CORRECTED (salesagent-sq8ib.10): the first Given was missing, so this
+  # scenario asserted a DELIVERY claim with no webhook registered. Without a
+  # PushNotificationConfig the sender returns False before the breaker is ever
+  # consulted, so "the system should attempt a single probe delivery" could only
+  # ever be graded against a test double -- which is what it was, via a
+  # pytest.xfail on a branch that could not execute. Both siblings
+  # (@T-UC-004-webhook-circuit-open, @T-UC-004-webhook-circuit-recovery) already
+  # carry this Given verbatim; this one was the odd scenario out. Reconcile
+  # upstream in adcp-req.
   @T-UC-004-webhook-circuit-halfopen @async @extension @ext-g @webhook-reliability
   Scenario: Circuit breaker half-open probe attempts recovery
-    Given a media buy "mb-001" with circuit breaker in "OPEN" state
+    Given a media buy "mb-001" with an active reporting_webhook
+    And a media buy "mb-001" with circuit breaker in "OPEN" state
     And the circuit breaker timeout (60s) has elapsed
     When the system evaluates the circuit breaker state
     Then the circuit breaker should transition to "HALF_OPEN"
@@ -347,7 +357,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
 
   @T-UC-004-webhook-circuit-recovery @async @extension @ext-g @webhook-reliability
   Scenario: Circuit breaker closes after successful recovery probes
-    Given a media buy "mb-001" with circuit breaker in "HALF_OPEN" state
+    Given a media buy "mb-001" with an active reporting_webhook
+    And a media buy "mb-001" with circuit breaker in "HALF_OPEN" state
     And the webhook endpoint has recovered and returns 200
     When the system delivers 2 successful probe reports
     Then the circuit breaker should transition to "CLOSED"
@@ -643,7 +654,7 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
   Scenario: Campaign unit with interval != 1 - rejected
     # HAND-EDITED: Then asserts the buyer-facing WIRE envelope
     # via the existing wire-assertion path (attribution_window in _WIRE_ASSERTED_FIELDS
-    # -> _assert_error_outcome -> assert_envelope_shape on ctx["wire_error_envelope"]),
+    # -> _assert_error_outcome -> assert_envelope_shape on ctx["result"].error_envelope()),
     # not the lossy reconstructed ctx["error"] generic then_error.py steps.
     Given a media buy "mb-001" owned by "buyer-001" with status "active"
     When the Buyer Agent requests delivery metrics for "mb-001" with attribution_window {"post_click": {"interval": 2, "unit": "campaign"}}
@@ -896,6 +907,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
       | credentials_at_minimum  | valid    |
       | credentials_too_short   | invalid  |
       | unknown_scheme          | invalid  |
+      | lowercase_scheme        | invalid  |
+      | basic_scheme            | invalid  |
 
   @T-UC-004-boundary-credentials @boundary @reporting_webhook @BR-RULE-029
   Scenario Outline: Webhook credentials boundary - <boundary_point>
@@ -910,6 +923,8 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
       | credentials = 32 chars (minimum)            | valid    |
       | credentials = 31 chars (rejected)           | invalid  |
       | Unknown auth scheme not in enum             | invalid  |
+      | hmac-sha256 lowercase spelling              | invalid  |
+      | Basic scheme not in enum                    | invalid  |
 
   @T-UC-004-partition-resolution @partition @media_buy_resolution @BR-RULE-030 @schema-v3.1
   Scenario Outline: Media buy resolution partition - <partition>

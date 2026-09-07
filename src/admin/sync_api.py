@@ -493,10 +493,9 @@ def sync_tenant_orders(tenant_id: str) -> tuple[Response, int]:
 
         try:
             # Initialize GAM client
-            from gam_orders_service import GAMOrdersService
-
             from src.adapters.google_ad_manager import GoogleAdManager
             from src.core.schemas import Principal
+            from src.services.gam_orders_service import GAMOrdersService
 
             # Create dummy principal for sync (no advertiser needed for order discovery)
             principal = Principal(
@@ -520,7 +519,7 @@ def sync_tenant_orders(tenant_id: str) -> tuple[Response, int]:
             )
 
             # Perform sync
-            service = GAMOrdersService(db_session)
+            service = GAMOrdersService(db_session())
             summary = service.sync_tenant_orders(tenant_id, adapter.client)
 
             # Update sync job with results
@@ -559,7 +558,7 @@ def get_tenant_orders(tenant_id: str) -> tuple[Response, int]:
     try:
         db_session.remove()  # Start fresh
 
-        from gam_orders_service import GAMOrdersService
+        from src.services.gam_orders_service import GAMOrdersService
 
         # Validate tenant_id
         if not tenant_id or len(tenant_id) > 50:
@@ -597,7 +596,7 @@ def get_tenant_orders(tenant_id: str) -> tuple[Response, int]:
                 return jsonify({"error": 'has_line_items must be "true" or "false"'}), 400
             filters["has_line_items"] = has_line_items
 
-        service = GAMOrdersService(db_session)
+        service = GAMOrdersService(db_session())
         orders = service.get_orders(tenant_id, filters)
 
         return jsonify({"total": len(orders), "orders": orders}), 200
@@ -622,9 +621,9 @@ def get_order_details(tenant_id: str, order_id: str) -> tuple[Response, int]:
         if not order_id or len(order_id) > 50:
             return jsonify({"error": "Invalid order_id"}), 400
 
-        from gam_orders_service import GAMOrdersService
+        from src.services.gam_orders_service import GAMOrdersService
 
-        service = GAMOrdersService(db_session)
+        service = GAMOrdersService(db_session())
         order_details = service.get_order_details(tenant_id, order_id)
 
         if not order_details:
@@ -646,7 +645,7 @@ def get_tenant_line_items(tenant_id: str) -> tuple[Response, int]:
     try:
         db_session.remove()  # Start fresh
 
-        from gam_orders_service import GAMOrdersService
+        from src.services.gam_orders_service import GAMOrdersService
 
         # Parse filters from query params
         filters = {}
@@ -659,7 +658,7 @@ def get_tenant_line_items(tenant_id: str) -> tuple[Response, int]:
 
         order_id = request.args.get("order_id")
 
-        service = GAMOrdersService(db_session)
+        service = GAMOrdersService(db_session())
         line_items = service.get_line_items(tenant_id, order_id, filters)
 
         return jsonify({"total": len(line_items), "line_items": line_items}), 200

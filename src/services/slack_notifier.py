@@ -72,7 +72,14 @@ class SlackNotifier:
             else:
                 logger.info("Slack audit logging enabled")
 
-    def send_message(self, text: str, blocks: list[dict[str, Any]] | None = None, tenant_id: str | None = None) -> bool:
+    def send_message(
+        self,
+        text: str,
+        blocks: list[dict[str, Any]] | None = None,
+        tenant_id: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+        max_retries: int = 3,
+    ) -> bool:
         """
         Send a message to Slack with retry logic.
 
@@ -80,6 +87,15 @@ class SlackNotifier:
             text: Plain text message (fallback for notifications)
             blocks: Rich Block Kit blocks for formatted messages
             tenant_id: Optional tenant ID for tracking delivery
+            attachments: Slack's LEGACY attachment format. Accepted alongside
+                ``blocks`` because a caller that already renders attachments should
+                move onto this notifier WITHOUT its Slack output changing shape —
+                converting an operator's notification to Block Kit changes what they
+                see, which is a product decision, not a refactor's to make.
+            max_retries: Delivery attempts. Defaults to 3, but a caller may pin it to
+                1: a "test your webhook" button that silently succeeds on the third
+                try is worse than one that fails visibly, and that decision belongs to
+                the caller that knows which kind of message it is sending.
 
         Returns:
             True if successful, False otherwise
@@ -90,6 +106,8 @@ class SlackNotifier:
         payload: dict[str, Any] = {"text": text}
         if blocks:
             payload["blocks"] = blocks
+        if attachments:
+            payload["attachments"] = attachments
 
         # Use webhook delivery service with retry logic
         from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
@@ -102,7 +120,7 @@ class SlackNotifier:
             webhook_url=self.webhook_url,
             payload=payload,
             headers={"Content-Type": "application/json"},
-            max_retries=3,
+            max_retries=max_retries,
             timeout=10,
             event_type="slack.notification",
             tenant_id=tenant_id,

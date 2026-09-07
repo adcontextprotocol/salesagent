@@ -1,16 +1,23 @@
-"""Unit tests for creative agent TextContent fallback.
+"""Unit tests for the creative agent's MCP tool-result parser.
 
-Tests the fallback path when the adcp SDK 3.6.0 rejects TextContent
-responses from creative agents that don't return structuredContent.
-
+The fallback classes that used to live here (``TestStructuredContentFallbackTrigger``,
+``TestSchemaValidationFailureTriggersFallback``) tested a mechanism that no
+longer exists: the adcp SDK's own strict Pydantic parsing of
+``list_creative_formats`` responses, which sometimes rejected a TextContent-only
+reply and triggered a fallback to the raw-MCP path. The SDK client
+(``ADCPMultiAgentClient``) has been removed from the OPERATOR agent path
+entirely — it is routed through the guarded MCP seam instead — so there is no SDK-side
+strict parser left to reject anything, and therefore nothing left to trigger a
+fallback FROM. ``_parse_mcp_tool_result``'s own tolerant, per-format validation
+(covered below) is now the ONLY ingestion path, for both the operator method
+and the counterparty raw-MCP method.
 """
-
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.core.creative_agent_registry import CreativeAgent, CreativeAgentRegistry
-from src.core.exceptions import AdCPAdapterError, AdCPRateLimitError, AdCPServiceUnavailableError
+from src.core.creative_agent_registry import CreativeAgentRegistry
+from src.core.exceptions import AdCPValidationError
+from src.core.security.outbound_http import CounterpartyUrl
 
 
 @pytest.fixture
@@ -18,234 +25,7 @@ def registry():
     return CreativeAgentRegistry()
 
 
-@pytest.fixture
-def agent():
-    return CreativeAgent(
-        agent_url="https://creative.example.com",
-        name="test-agent",
-        auth={"type": "token", "credentials": "test-token"},
-        auth_header="x-test-auth",
-    )
-
-
 SAMPLE_FORMATS_JSON = '{"formats": [{"format_id": {"agent_url": "https://creative.example.com", "id": "display_image"}, "name": "Display Image", "type": "display"}]}'
-
-
-class TestStructuredContentFallbackTrigger:
-    """Test that the structuredContent error triggers the fallback."""
-
-    @pytest.mark.asyncio
-    async def test_failed_status_with_structured_content_error_triggers_fallback(self, registry, agent):
-        """SDK returns TaskResult(status='failed', error='...structuredContent...') → triggers fallback."""
-        mock_result = MagicMock()
-        mock_result.status = "failed"
-        mock_result.error = "MCP tool list_creative_formats did not return structuredContent. This SDK requires..."
-
-        mock_agent_proxy = MagicMock()
-        mock_agent_proxy.list_creative_formats = AsyncMock(return_value=mock_result)
-        mock_client = MagicMock()
-        mock_client.agent.return_value = mock_agent_proxy
-
-        with (
-            patch.object(registry, "_build_adcp_client", return_value=mock_client),
-            patch.object(registry, "_fetch_formats_raw_mcp", new_callable=AsyncMock, return_value=[]) as mock_fallback,
-        ):
-            await registry._fetch_formats_from_agent(mock_client, agent)
-            mock_fallback.assert_called_once_with(agent)
-
-    @pytest.mark.asyncio
-    async def test_failed_status_with_other_error_raises_value_error(self, registry, agent):
-        """SDK returns TaskResult(status='failed', error='some other error') → raises AdCPAdapterError."""
-        mock_result = MagicMock()
-        mock_result.status = "failed"
-        mock_result.error = "Connection refused"
-        mock_result.message = None
-
-        mock_agent_proxy = MagicMock()
-        mock_agent_proxy.list_creative_formats = AsyncMock(return_value=mock_result)
-        mock_client = MagicMock()
-        mock_client.agent.return_value = mock_agent_proxy
-
-        with patch.object(registry, "_build_adcp_client", return_value=mock_client):
-            with pytest.raises(AdCPAdapterError, match="Creative agent format fetch failed"):
-                await registry._fetch_formats_from_agent(mock_client, agent)
-
-
-class TestFetchFormatsRawMcp:
-    """Test the raw HTTP fallback method."""
-
-    @pytest.mark.asyncio
-    async def test_json_response_parses_formats(self, registry, agent):
-        """Raw HTTP returns JSON with result.content[].text → formats parsed."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.json.return_value = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {
-                "content": [{"type": "text", "text": SAMPLE_FORMATS_JSON}],
-            },
-        }
-
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            formats = await registry._fetch_formats_raw_mcp(agent)
-            assert len(formats) == 1
-            assert formats[0].format_id.id == "display_image"
-
-    @pytest.mark.asyncio
-    async def test_sse_response_parses_formats(self, registry, agent):
-        """Raw HTTP returns SSE with data: {...} → formats parsed."""
-        import json
-
-        sse_payload = json.dumps(
-            {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": SAMPLE_FORMATS_JSON}]}}
-        )
-        sse_text = f"data: {sse_payload}\n\n"
-
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.headers = {"content-type": "text/event-stream"}
-        mock_response.text = sse_text
-
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            formats = await registry._fetch_formats_raw_mcp(agent)
-            assert len(formats) == 1
-            assert formats[0].format_id.id == "display_image"
-
-    @pytest.mark.asyncio
-    async def test_unexpected_format_raises_runtime_error(self, registry, agent):
-        """Raw HTTP returns unexpected format (no 'result' key) → raises AdCPAdapterError.
-
-        Fix for : silent return [] masked failures as 'no formats'.
-        """
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.json.return_value = {"jsonrpc": "2.0", "id": 1, "error": {"code": -32600}}
-
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPAdapterError, match="No parseable result"):
-                await registry._fetch_formats_raw_mcp(agent)
-
-    @pytest.mark.asyncio
-    async def test_auth_headers_forwarded(self, registry, agent):
-        """Verify auth credentials are included in the HTTP request."""
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.json.return_value = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": {"content": [{"type": "text", "text": '{"formats": []}'}]},
-        }
-
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            await registry._fetch_formats_raw_mcp(agent)
-            call_kwargs = mock_http.post.call_args
-            headers = call_kwargs.kwargs.get("headers", {})
-            assert headers.get("x-test-auth") == "test-token"
-
-
-class TestFetchFormatsRawMcpErrorHandling:
-    """Test error handling in the raw HTTP fallback."""
-
-    @pytest.mark.asyncio
-    async def test_timeout_raises_service_unavailable(self, registry, agent):
-        """httpx timeout → AdCPServiceUnavailableError (SERVICE_UNAVAILABLE, transient)."""
-        import httpx
-
-        mock_http = AsyncMock()
-        mock_http.post.side_effect = httpx.ReadTimeout("timed out")
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPServiceUnavailableError, match="Request timed out"):
-                await registry._fetch_formats_raw_mcp(agent)
-
-    @pytest.mark.asyncio
-    async def test_connection_error_raises_service_unavailable(self, registry, agent):
-        """httpx connection error → AdCPServiceUnavailableError (SERVICE_UNAVAILABLE, transient)."""
-        import httpx
-
-        mock_http = AsyncMock()
-        mock_http.post.side_effect = httpx.ConnectError("connection refused")
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPServiceUnavailableError, match="Connection failed"):
-                await registry._fetch_formats_raw_mcp(agent)
-
-    @pytest.mark.asyncio
-    async def test_http_5xx_raises_service_unavailable(self, registry, agent):
-        """httpx HTTP 500 → AdCPServiceUnavailableError (SERVICE_UNAVAILABLE, transient).
-
-        5xx responses from a creative agent are treated as transient — the agent
-        is up but failing. AdCPServiceUnavailableError is the correct typed wrap.
-        """
-        import httpx
-
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Server Error", request=MagicMock(), response=mock_response
-        )
-
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPServiceUnavailableError, match="HTTP 500"):
-                await registry._fetch_formats_raw_mcp(agent)
-
-    @pytest.mark.asyncio
-    async def test_http_429_raises_rate_limited(self, registry, agent):
-        """httpx HTTP 429 → AdCPRateLimitError (RATE_LIMITED, transient).
-
-        After the inner-retry loop exhausts on repeated 429s, the boundary
-        raises the typed rate-limit error carrying Retry-After in details.
-        """
-        import httpx
-
-        mock_response = MagicMock()
-        mock_response.status_code = 429
-        mock_response.headers = {"Retry-After": "1"}
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Too Many Requests", request=MagicMock(), response=mock_response
-        )
-
-        mock_http = AsyncMock()
-        mock_http.post.return_value = mock_response
-        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_http.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_http):
-            with pytest.raises(AdCPRateLimitError, match="rate-limited"):
-                await registry._fetch_formats_raw_mcp(agent)
 
 
 class TestParseMcpToolResult:
@@ -263,24 +43,154 @@ class TestParseMcpToolResult:
     def test_no_text_content_raises(self, registry):
         """Content with no text items → raises AdCPAdapterError.
 
-        Fix for : silent return [] masked failures as 'no formats'.
+        A silent ``return []`` used to mask failures as 'no formats'.
         """
         import logging
 
         result = {"content": [{"type": "image", "data": "..."}]}
-        with pytest.raises(AdCPAdapterError, match="No text content"):
+        with pytest.raises(AdCPValidationError, match="No text content") as excinfo:
             registry._parse_mcp_tool_result(result, logging.getLogger())
+        # The agent_url came from the BUYER (this helper is only reached on the
+        # counterparty branch), so an unusable answer is their correctable input —
+        # not a seller misconfiguration, and not a transient outage.
+        assert excinfo.value.error_code == "VALIDATION_ERROR"
+        assert excinfo.value.recovery == "correctable"
+
+    async def test_the_fetch_threads_field_down_to_the_refusal(self, registry, monkeypatch):
+        """``_fetch_formats_raw_mcp`` passes its ``field`` into the parse step.
+
+        The helper-level test below proves the raise CARRIES a field it is given;
+        this proves the caller actually GIVES it one. Both halves are needed: the
+        threading lives at two call sites inside the fetch, and deleting it leaves
+        every other test green because no other caller passes a field.
+        """
+        import json as _json
+        from unittest.mock import MagicMock
+
+        from src.core.creative_agent_registry import CreativeAgent
+
+        buyer_field = "creatives[0].format_id.agent_url"
+
+        response = MagicMock()
+        response.headers = {"content-type": "application/json"}
+        # A well-formed JSON-RPC envelope whose result carries no text content —
+        # the condition the parse step refuses on.
+        response.json.return_value = {"result": {"content": [{"type": "image", "data": "..."}]}}
+        response.text = _json.dumps(response.json.return_value)
+
+        async def fake_asend(*args, **kwargs):
+            assert kwargs.get("provenance") == CounterpartyUrl(field=buyer_field), "the seam call lost the buyer field"
+            return MagicMock(response=response)
+
+        monkeypatch.setattr("src.core.creative_agent_registry.asend", fake_asend)
+
+        agent = CreativeAgent(agent_url="https://buyer-agent.test", name="buyer-agent")
+        with pytest.raises(AdCPValidationError) as excinfo:
+            await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=buyer_field))
+
+        assert excinfo.value.field == buyer_field, (
+            "the refusal reached the buyer without naming which input to fix — the fetch "
+            "dropped the field on its way to the parse step"
+        )
+
+    async def test_a_response_with_no_result_is_a_correctable_buyer_error(self, registry, monkeypatch):
+        """A JSON body carrying no ``result`` refuses as VALIDATION_ERROR / correctable.
+
+        This is the fetch's OWN raise, distinct from the parse step's: the agent
+        answered, but with nothing that is a tools/call result at all. It is graded
+        separately because mutating both raises together lets the parse step's
+        grader mask this one — the mistake round 1 of test-verify made.
+
+        The agent_url is the BUYER's (this method is only reached on the
+        counterparty branch), so the refusal is their correctable input, not a
+        seller misconfiguration and not a transient outage.
+        """
+        from unittest.mock import MagicMock
+
+        from src.core.creative_agent_registry import CreativeAgent
+
+        buyer_field = "creatives[0].format_id.agent_url"
+        response = MagicMock()
+        response.headers = {"content-type": "application/json"}
+        response.json.return_value = {"jsonrpc": "2.0", "id": 1}  # no "result"
+
+        async def fake_asend(*args, **kwargs):
+            return MagicMock(response=response)
+
+        monkeypatch.setattr("src.core.creative_agent_registry.asend", fake_asend)
+
+        agent = CreativeAgent(agent_url="https://buyer-agent.test", name="buyer-agent")
+        with pytest.raises(AdCPValidationError) as excinfo:
+            await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=buyer_field))
+
+        exc = excinfo.value
+        assert exc.error_code == "VALIDATION_ERROR"
+        assert exc.recovery == "correctable"
+        assert exc.field == buyer_field
+
+    async def test_the_sse_branch_threads_field_into_the_parse_step(self, registry, monkeypatch):
+        """The SSE path threads ``field`` at its OWN call site.
+
+        The fetch has two content-type branches and each calls the parse step
+        separately, so grading only the JSON one leaves the SSE threading free to
+        rot. This body therefore carries a real ``result`` — reaching the parse
+        step through SSE — whose content has no text, which is what that step
+        refuses on. (A body with no ``result`` would stop at the fetch's own raise
+        and never exercise the threading at all.)
+        """
+        from unittest.mock import MagicMock
+
+        from src.core.creative_agent_registry import CreativeAgent
+
+        buyer_field = "creatives[3].format_id.agent_url"
+        response = MagicMock()
+        response.headers = {"content-type": "text/event-stream"}
+        response.text = 'data: {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "image"}]}}\n'
+
+        async def fake_asend(*args, **kwargs):
+            return MagicMock(response=response)
+
+        monkeypatch.setattr("src.core.creative_agent_registry.asend", fake_asend)
+
+        agent = CreativeAgent(agent_url="https://buyer-agent.test", name="buyer-agent")
+        with pytest.raises(AdCPValidationError) as excinfo:
+            await registry._fetch_formats_raw_mcp(agent, provenance=CounterpartyUrl(field=buyer_field))
+
+        assert excinfo.value.error_code == "VALIDATION_ERROR"
+        assert excinfo.value.field == buyer_field, "the SSE branch dropped the buyer field on its way to the parse step"
+
+    def test_field_names_the_buyer_input_when_the_caller_has_one(self, registry):
+        """A refusal carries the ``field`` that says WHICH buyer input to fix.
+
+        The only production caller reaches here on the counterparty branch, where
+        it holds the buyer's ``creatives[].format_id.agent_url`` path. A sync
+        request carries up to 100 creatives, so without ``field`` the buyer is
+        told their input is correctable but not which one — the same channel
+        lanes 2 and 3 established as the only non-disclosing way to say it.
+
+        Graded directly because every current caller happens to pass ``None``:
+        dropping the threading would otherwise be invisible.
+        """
+        import logging
+
+        result = {"content": [{"type": "image", "data": "..."}]}
+        with pytest.raises(AdCPValidationError) as excinfo:
+            registry._parse_mcp_tool_result(result, logging.getLogger(), field="creatives[0].format_id.agent_url")
+
+        assert excinfo.value.field == "creatives[0].format_id.agent_url"
 
     def test_empty_content_raises(self, registry):
         """Empty content list → raises AdCPAdapterError.
 
-        Fix for : silent return [] masked failures as 'no formats'.
+        A silent ``return []`` used to mask failures as 'no formats'.
         """
         import logging
 
         result = {"content": []}
-        with pytest.raises(AdCPAdapterError, match="No text content"):
+        with pytest.raises(AdCPValidationError, match="No text content") as excinfo:
             registry._parse_mcp_tool_result(result, logging.getLogger())
+        assert excinfo.value.error_code == "VALIDATION_ERROR"
+        assert excinfo.value.recovery == "correctable"
 
 
 def _mcp_text_result(payload: dict) -> dict:
@@ -303,7 +213,7 @@ _KNOWN_FORMAT_B = {
 }
 # AdCP-additive asset_type the canonical reference agent serves but the pinned
 # (and latest) adcp closed Literal union does NOT model. This is the exact
-# production defect class from .
+# production defect class.
 _ADDITIVE_FORMAT = {
     "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "tracking_pixel"},
     "name": "Tracking Pixel",
@@ -312,7 +222,7 @@ _ADDITIVE_FORMAT = {
 
 
 class TestTolerantPerFormatIngestion:
-    """Hermetic regression for (Postel / asymmetric strictness).
+    """Hermetic regression (Postel / asymmetric strictness).
 
     One unknown AdCP-additive asset_type must NOT nuke the whole
     list_creative_formats response. Fully-understood formats are returned;
@@ -387,48 +297,3 @@ class TestTolerantPerFormatIngestion:
             formats = registry._parse_mcp_tool_result(result, logging.getLogger())
         assert len(formats) == 1
         assert formats[0].format_id.id == "tracking_pixel"
-
-
-class TestSchemaValidationFailureTriggersFallback:
-    """: a wholesale schema-parse FAILED from the adcp client must
-    fall back to the raw-MCP path (where per-format tolerance applies), not only
-    transport-class errors."""
-
-    async def _assert_routes_to_fallback(self, registry, agent, error_text):
-        """Drive a status='failed' result with the given error and assert the raw-MCP fallback is taken."""
-        mock_result = MagicMock()
-        mock_result.status = "failed"
-        mock_result.error = error_text
-        mock_result.message = None
-
-        mock_agent_proxy = MagicMock()
-        mock_agent_proxy.list_creative_formats = AsyncMock(return_value=mock_result)
-        mock_client = MagicMock()
-        mock_client.agent.return_value = mock_agent_proxy
-
-        with (
-            patch.object(registry, "_build_adcp_client", return_value=mock_client),
-            patch.object(registry, "_fetch_formats_raw_mcp", new_callable=AsyncMock, return_value=[]) as mock_fallback,
-        ):
-            await registry._fetch_formats_from_agent(mock_client, agent)
-            mock_fallback.assert_called_once_with(agent)
-
-    @pytest.mark.asyncio
-    async def test_schema_mismatch_failed_status_triggers_raw_fallback(self, registry, agent):
-        """SDK returns status='failed' with a schema-validation error → raw-MCP fallback."""
-        # The exact wholesale-validation signature observed live (2700 errors).
-        await self._assert_routes_to_fallback(
-            registry, agent, "Response doesn't match expected schema ListCreativeFormatsResponse"
-        )
-
-    @pytest.mark.asyncio
-    async def test_sdk66_schema_validation_phrasing_triggers_raw_fallback(self, registry, agent):
-        """adcp 6.6 rephrased wholesale-validation errors to 'Schema validation failed
-        for <tool>: ...' — observed live against the v3.1.1-pinned reference agent,
-        whose catalog carries post-3.1.1 additive asset_types (pixel_tracker).
-        Must route to the raw-MCP fallback (per-format tolerance), not raise."""
-        await self._assert_routes_to_fallback(
-            registry,
-            agent,
-            "Schema validation failed for list_creative_formats: /formats/0/assets/1 oneOf composition failed (+47 more)",
-        )

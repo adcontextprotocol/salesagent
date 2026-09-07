@@ -58,7 +58,7 @@ def test_get_webhook_service_or_none_does_not_construct(reset_webhook_singleton)
 
     This is the whole point of the accessor existing separately from
     ``get_protocol_webhook_service()``: a shutdown hook must not resurrect a
-    never-used service (and its ``requests.Session`` connection pool) just to
+    never-used service just to
     close it.
     """
     protocol_webhook_service._webhook_service = None

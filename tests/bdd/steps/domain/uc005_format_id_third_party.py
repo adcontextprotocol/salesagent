@@ -27,7 +27,7 @@ from __future__ import annotations
 from pytest_bdd import given, then, when
 
 from src.core.schemas import FormatId, ListCreativeFormatsRequest, format_id_identity
-from tests.bdd.steps._outcome_helpers import _require_response
+from tests.bdd.steps._outcome_helpers import require_payload
 from tests.bdd.steps.generic.when_request import _call
 from tests.factories import FormatFactory
 
@@ -70,7 +70,7 @@ def when_send_list_with_third_party_format_id(ctx: dict) -> None:
 @then("the seller should NOT fabricate a local format entry to satisfy the third-party reference")
 def then_no_fabricated_local_entry(ctx: dict) -> None:
     """No returned format is the third-party reference, nor a substituted local same-id format."""
-    response = _require_response(ctx)
+    response = require_payload(ctx)
     returned = {format_id_identity(f.format_id) for f in response.formats}
 
     third_party = format_id_identity(ctx["third_party_format_id"])
@@ -93,7 +93,7 @@ def then_reported_as_observation(ctx: dict) -> None:
     assert ctx.get("error") is None, (
         f"out-of-scope third-party reference raised an error instead of an observation: {ctx.get('error')!r}"
     )
-    response = _require_response(ctx)
+    response = require_payload(ctx)
     # The foreign reference resolves to nothing locally — that empty match is the
     # observation (on_out_of_scope: warn), distinct from a graded failure/error.
     third_party = format_id_identity(ctx["third_party_format_id"])

@@ -7,9 +7,9 @@ from sqlalchemy import select
 
 from src.admin.utils import require_tenant_access
 from src.admin.utils.audit_decorator import log_admin_action
+from src.admin.utils.url_policy import json_error_if_url_blocked, redirect_if_url_blocked
 from src.core.database.database_session import get_db_session
 from src.core.database.models import SignalsAgent, Tenant
-from src.core.security.url_validator import check_url_ssrf
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +106,14 @@ def add_signals_agent(tenant_id):
                 flash("Agent URL is required", "error")
                 return redirect(url_for("signals_agents.add_signals_agent", tenant_id=tenant_id))
 
-            is_safe, ssrf_error = check_url_ssrf(agent_url)
-            if not is_safe:
-                logger.warning("[SECURITY] Signals agent add rejected unsafe URL %r: %s", agent_url, ssrf_error)
-                flash(f"Agent URL is not allowed: {ssrf_error}", "error")
-                return redirect(url_for("signals_agents.add_signals_agent", tenant_id=tenant_id))
+            # The agent URL is stored now and fetched later, so egress policy is
+            # applied at ingest — see src.admin.utils.url_policy.
+            if blocked := redirect_if_url_blocked(
+                agent_url,
+                "Agent URL",
+                url_for("signals_agents.add_signals_agent", tenant_id=tenant_id),
+            ):
+                return blocked
 
             if not name:
                 flash("Agent name is required", "error")
@@ -208,11 +211,14 @@ def edit_signals_agent(tenant_id, agent_id):
                 return redirect(url_for("signals_agents.edit_signals_agent", tenant_id=tenant_id, agent_id=agent_id))
 
             # Validate the newly submitted URL — agent.agent_url is the form value set above.
-            is_safe, ssrf_error = check_url_ssrf(agent.agent_url)
-            if not is_safe:
-                logger.warning("[SECURITY] Signals agent edit rejected unsafe URL %r: %s", agent.agent_url, ssrf_error)
-                flash(f"Agent URL is not allowed: {ssrf_error}", "error")
-                return redirect(url_for("signals_agents.edit_signals_agent", tenant_id=tenant_id, agent_id=agent_id))
+            # Returning here leaves the assignment uncommitted: get_db_session() closes
+            # without committing, so the rejected URL never reaches the row.
+            if blocked := redirect_if_url_blocked(
+                agent.agent_url,
+                "Agent URL",
+                url_for("signals_agents.edit_signals_agent", tenant_id=tenant_id, agent_id=agent_id),
+            ):
+                return blocked
 
             if not agent.name:
                 flash("Agent name is required", "error")
@@ -270,35 +276,33 @@ def test_signals_agent(tenant_id, agent_id):
 
             registry = SignalsAgentRegistry()
 
-            # Build agent config
-            auth = None
-            if agent.auth_type and agent.auth_credentials:
-                auth = {
-                    "type": agent.auth_type,
-                    "credentials": agent.auth_credentials,
-                }
-
-            # Validate URL before making outbound request (defence-in-depth: stored URLs
-            # may pre-date the add/edit SSRF checks)
-            is_safe, ssrf_error = check_url_ssrf(agent.agent_url)
-            if not is_safe:
-                logger.warning(
-                    "[SECURITY] Signals agent test-connection rejected unsafe URL %r: %s",
-                    agent.agent_url,
-                    ssrf_error,
-                )
-                return jsonify({"success": False, "error": f"Agent URL is not allowed: {ssrf_error}"}), 400
+            # Re-validate the stored URL at send time: a row written while the
+            # egress-policy escape hatches were open must not become an outbound
+            # request once they are closed. This is NOT the validate-then-dial
+            # TOCTOU the epic removes — the underlying dial is guarded regardless
+            # (call_mcp_tool's own validate_url) — it exists because policy
+            # can change between ingest and test, and this route's obligation is
+            # "ask again, using CURRENT policy" (tests/integration/test_admin_ingest_url_policy.py).
+            if blocked := json_error_if_url_blocked(agent.agent_url, "Agent URL", success=False):
+                return blocked
 
             # Test connection
             # Use asyncio.run() instead of new_event_loop() for better compatibility with adcp library
-            result = asyncio.run(registry.test_connection(agent.agent_url, auth=auth, auth_header=agent.auth_header))
+            # The registry owns the row -> dial-config mapping, so the probe uses
+            # the stored timeout rather than a hard-coded one and dials exactly as
+            # production does.
+            result = asyncio.run(registry.probe_agent(agent))
 
-            if result.get("success"):
+            # The JSON keys are the template's contract (templates/signals_agents.html
+            # reads data.signal_count / data.message / data.error), so they stay put.
+            # What changed is that they are now projected from a typed result instead
+            # of read out of a dict with a default standing in for a missing key.
+            if result.ok:
                 return jsonify(
                     {
                         "success": True,
-                        "message": result.get("message", "Successfully connected"),
-                        "signal_count": result.get("signal_count", 0),
+                        "message": result.message,
+                        "signal_count": result.count,
                     }
                 )
             else:
@@ -306,7 +310,9 @@ def test_signals_agent(tenant_id, agent_id):
                     jsonify(
                         {
                             "success": False,
-                            "error": result.get("error", "Connection failed"),
+                            # ProbeResult.message is a required field, not an AdCP
+                            # response attribute -- the hook regex cannot tell.
+                            "error": result.message,  # noqa: response-attribute
                         }
                     ),
                     400,

@@ -51,6 +51,8 @@ from src.core.exceptions import (
     AdCPValidationError,
 )
 from src.core.tool_context import ToolContext
+from src.core.webhook_validator import reject_unsafe_webhook_registration_url, webhook_url_for_log
+from src.core.webhooks.registration import accept_push_notification_config
 
 logger = logging.getLogger(__name__)
 
@@ -372,6 +374,41 @@ def _update_media_buy_impl(
     # Tenant is resolved at the transport boundary (resolve_identity_from_context)
     tenant = require_tenant(identity, context=req.context)
 
+    # SSRF gate at registration — after auth so unauthenticated callers get AUTH
+    # first, and ABOVE the UoW so no DB transaction is held and a refused URL is
+    # VALIDATION_ERROR regardless of buy state: the buyer must fix the request
+    # before state questions are reachable, so this outranks the terminal-state
+    # refusal. The stored copy this guards is the workflow step's request_data,
+    # which context_manager later reads back and dials.
+    #
+    # Deliberately the no-DNS registration gate (gh-#1697), NOT the outbound seam's
+    # validate_url (gh-#1589): validate_url always resolves, so at registration it
+    # would reject a buyer whose hostname has not yet propagated — and would answer
+    # the same input differently from create_media_buy / sync_creatives. The seam
+    # stays the SEND-time gate and re-checks with DNS when the URL is actually dialed.
+    # Use str(url): library PushNotificationConfig/ReportingWebhook.url is pydantic
+    # AnyUrl, not str.
+    if req.push_notification_config:
+        registration = accept_push_notification_config(
+            req.push_notification_config,
+            field_prefix="push_notification_config",
+            context=req.context,
+        )
+        pnc_url = registration.url
+        if pnc_url is not None and str(pnc_url).strip():
+            # Log scheme+host+path only — never credentials / full auth blob.
+            logger.info(
+                "[update_media_buy] Push notification webhook URL: %s",
+                webhook_url_for_log(str(pnc_url)),
+            )
+    if req.reporting_webhook:
+        rw_url = getattr(req.reporting_webhook, "url", None)
+        reject_unsafe_webhook_registration_url(
+            str(rw_url) if rw_url is not None else None,
+            field="reporting_webhook.url",
+            context=req.context,
+        )
+
     # ── Workflow-step bookkeeping fence ──────────────────────────────────
     # Hoist ``ctx_manager`` and ``step`` out of the try below so the
     # AdCPError / Exception handlers at the function end can mark the step
@@ -379,8 +416,9 @@ def _update_media_buy_impl(
     # (property_targeting, geo, budget, …) leaves the workflow step
     # orphaned in ``in_progress`` forever, which suppresses the
     # buyer-facing ``status="failed"`` push notification fired from
-    # ``context_manager.update_workflow_step:330-332``.
-    # Mirrors ``media_buy_create.py:3688-3697`` exactly.
+    # ``context_manager.update_workflow_step``, which fires it through
+    # ``_send_push_notifications``.
+    # Mirrors ``media_buy_create``'s own workflow-step construction exactly.
     ctx_manager = get_context_manager()
     step = None
 

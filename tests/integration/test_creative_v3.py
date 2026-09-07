@@ -105,7 +105,7 @@ def mock_format_registry():
 
     with patch("src.core.creative_agent_registry.CreativeAgentRegistry.get_format") as mock_get:
 
-        def get_format_side_effect(agent_url, format_id):
+        def get_format_side_effect(agent_url, format_id, **_kwargs):
             return mock_formats.get(format_id)
 
         mock_get.side_effect = get_format_side_effect

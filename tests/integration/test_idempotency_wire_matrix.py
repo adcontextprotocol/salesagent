@@ -109,15 +109,11 @@ class TestIdempotencyWireMatrix:
             second = env.call_via(transport, **mutated)
 
         assert second.is_error, f"conflicting payload must reject on {transport.value}"
-        if transport is Transport.IMPL:
-            # IMPL has no wire by definition — its leg grades the synthesized
-            # envelope (what production WOULD emit at the boundary). The three
-            # wire legs below assert REAL wire bytes strictly: an `or` fallback
-            # here would let a dead wire path pass on the synthesized shape.
-            envelope = second.synthesized_error_envelope
-        else:
-            envelope = second.wire_error_envelope
-        assert envelope is not None, f"conflict must carry the two-layer envelope on {transport.value}"
+        # One reader for every transport. It returns REAL wire bytes wherever a
+        # wire exists and the builder's envelope only on IMPL, which has no wire
+        # by definition — so the strictness the hand-written branch protected is
+        # now the reader's own contract rather than this test's.
+        envelope = second.error_envelope()
         assert_envelope_shape(envelope, "IDEMPOTENCY_CONFLICT", recovery="correctable")
 
     def test_fresh_key_identical_payload_creates_new_buy(self, integration_db, transport):
@@ -176,13 +172,11 @@ class TestIdempotencyWireMatrix:
             second = env.call_via(transport, **dict(kwargs))
 
         assert second.is_error, f"an expired replay window must reject on {transport.value}"
-        if transport is Transport.IMPL:
-            # IMPL has no wire — grade the synthesized envelope (what production
-            # WOULD emit), exactly as the conflict leg does.
-            envelope = second.synthesized_error_envelope
-        else:
-            envelope = second.wire_error_envelope
-        assert envelope is not None, f"EXPIRED must carry the two-layer envelope on {transport.value}"
+        # One reader for every transport. It returns REAL wire bytes wherever a
+        # wire exists and the builder's envelope only on IMPL, which has no wire
+        # by definition — so the strictness the hand-written branch protected is
+        # now the reader's own contract rather than this test's.
+        envelope = second.error_envelope()
         assert_envelope_shape(envelope, "IDEMPOTENCY_EXPIRED", recovery="correctable")
         # The spec's buyer-recovery guidance (the natural-key check that MAKES
         # EXPIRED correctable) must ride the WIRE on both envelope layers — not
