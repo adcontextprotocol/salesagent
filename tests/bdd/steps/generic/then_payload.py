@@ -191,6 +191,22 @@ def then_format_id_fields(ctx: dict) -> None:
         assert getattr(fid, "id", None), f"Format '{_fmt_name(f)}' format_id missing id"
 
 
+@then("each format should include a name")
+def then_format_name(ctx: dict) -> None:
+    """Every returned format carries a non-empty string name.
+
+    The `type category` half of this step's predecessor is gone with the field: adcp 3.12
+    removed `type` from Format, so the valid_types set below grades a vocabulary the pin no
+    longer has.
+    """
+    formats = _get_formats(ctx)
+    assert formats, "No formats in response -- cannot verify names"
+    for f in formats:
+        name = _fmt_name(f)
+        assert name, f"Format missing name: {f}"
+        assert isinstance(name, str), f"Format name is not a string: {type(name)}"
+
+
 @then("each format should include a name and type category")
 def then_format_name_type(ctx: dict) -> None:
     valid_types = {
@@ -269,9 +285,17 @@ def then_sorted_type_name(ctx: dict) -> None:
 
 @then("the results should be ordered:")
 def then_results_ordered(ctx: dict, datatable: Sequence[Sequence[object]]) -> None:
-    formats = _get_formats(ctx)
+    """Assert the response's format order matches the table, column by column.
+
+    Reads whatever columns the table declares instead of a fixed {name, type} pair. The
+    fixed pair could not work at the pin: adcp 3.12 removed ``type`` from ``Format``, so
+    ``_fmt_type_str`` raises ``AttributeError`` on every row rather than failing an
+    assertion.
+    """
     expected = table_rows(datatable)
-    actual = [{"name": _fmt_name(f), "type": _fmt_type_str(f)} for f in formats]
+    columns = list(expected[0]) if expected else ["name"]
+    readers = {"name": _fmt_name, "type": _fmt_type_str}
+    actual = [{c: readers.get(c, _fmt_name)(f) for c in columns} for f in _get_formats(ctx)]
     assert actual == expected, f"Expected order {expected}, got {actual}"
 
 

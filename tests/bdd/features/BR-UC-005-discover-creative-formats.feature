@@ -29,11 +29,14 @@ Feature: BR-UC-005 Discover Creative Formats
     Then the response is compliant with the list_creative_formats spec
     And the response should include all registered formats
     And each format should include a format_id with agent_url and id
-    And each format should include a name and type category
+    And each format should include a name
     And each format should include asset requirements with type and dimensions
-    And the results should be sorted by format type then name
     # POST-S1: Complete catalog returned
     # POST-S2: Asset requirements included per format
+    # Two Thens were dropped here, both grading `type`, which adcp 3.12 removed from
+    # Format: "a name and type category" and "sorted by format type then name". Sorting is
+    # graded on its own by @T-UC-005-inv-031-2-holds, so it is no longer hostage to this
+    # scenario's remaining gap.
 
   @T-UC-005-main-filtered @UC-005-MAIN-MCP-05 @main-flow @post-s3
   Scenario: Discover filtered format catalog
@@ -99,22 +102,28 @@ Feature: BR-UC-005 Discover Creative Formats
     # BR-RULE-031 INV-1: type=display excludes video-type format despite matching asset_types
 
   @T-UC-005-inv-031-2-holds @UC-005-MAIN-MCP-04 @invariant @BR-RULE-031
-  Scenario: BR-RULE-031 INV-2 holds - Results sorted by type then name
+  Scenario: BR-RULE-031 INV-2 holds - Results sorted by name
     Given the registry has formats:
-    | name            | type    |
-    | Zebra Banner    | display |
-    | Alpha Banner    | display |
-    | Pre-Roll        | video   |
-    | Audio Spot      | audio   |
+    | name            |
+    | Zebra Banner    |
+    | Alpha Banner    |
+    | Pre-Roll        |
+    | Audio Spot      |
     When the Buyer Agent requests all formats with no filters
     Then the response is compliant with the list_creative_formats spec
     And the results should be ordered:
-    | name            | type    |
-    | Audio Spot      | audio   |
-    | Alpha Banner    | display |
-    | Zebra Banner    | display |
-    | Pre-Roll        | video   |
-    # BR-RULE-031 INV-2: sorted by type value then name
+    | name            |
+    | Alpha Banner    |
+    | Audio Spot      |
+    | Pre-Roll        |
+    | Zebra Banner    |
+    # BR-RULE-031 INV-2: sorted by name.
+    # Was "sorted by type value then name". adcp 3.12 removed `type` from Format
+    # (Format.model_fields has no `type`; `category` is standard|custom|generative, a
+    # different concept), and production sorts on name alone --
+    # src/core/tools/creative_formats.py:386 `formats.sort(key=lambda f: f.name or "")`.
+    # The scenario graded a field the spec deleted, so it was xfailed as a gap; it was
+    # obsolete, not failing.
 
   @T-UC-005-inv-049-2-holds @UC-005-MAIN-MCP-06 @invariant @BR-RULE-049
   Scenario: BR-RULE-049 INV-2 holds - Format IDs filter matches on the (agent_url, id) pair

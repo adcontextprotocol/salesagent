@@ -458,7 +458,13 @@ _XFAIL_TAGS: dict[str, str] = {
     "T-UC-005-main-filtered": "adcp 3.12: type filter removed from ListCreativeFormatsRequest",
     "T-UC-005-inv-031-1-holds": "adcp 3.12: type filter removed — combined type+asset_types AND filter not possible",
     "T-UC-005-inv-031-1-violated": "adcp 3.12: type filter removed — combined type+asset_types AND filter not possible",
-    "T-UC-005-inv-031-2-holds": "adcp 3.12: type field removed — sort by type then name not possible",
+    # T-UC-005-inv-031-2-holds GRADUATED. It was xfailed as "adcp 3.12: type field removed —
+    # sort by type then name not possible", which described an OBSOLETE SCENARIO, not a
+    # production gap: the rule it graded no longer exists. The scenario now grades the rule
+    # that does -- sorted by name, which is what production does
+    # (src/core/tools/creative_formats.py:386). It stays xfailed on e2e_rest alone, via
+    # _UC005_E2E_FIXTURE_INJECTION_TAGS, because that stack cannot be told to serve
+    # specific format fixtures.
     "T-UC-005-inv-049-1-holds": "adcp 3.12: type filter removed from ListCreativeFormatsRequest",
     "T-UC-005-inv-049-1-violated": "adcp 3.12: type filter removed from ListCreativeFormatsRequest",
     # Un-graduated: T-UC-005-sandbox-happy — sandbox=True not set on response (all transports)
@@ -468,10 +474,30 @@ _XFAIL_TAGS: dict[str, str] = {
     # T-UC-005-main-referrals: in-process ONLY (the registry is mocked and returns no agents).
     # GRADUATED for e2e_rest in the apply loop below (#1417) — with a seeded tenant
     # the live server populates creative_agents (>=DEFAULT_AGENT). NOT a spec-production gap.
+    # Two independent reasons, and the second was briefly added as a SECOND dict entry with
+    # this same key -- which a dict literal silently resolves to the last one, erasing the
+    # first. ruff B035 catches it; the reasons belong merged, not duplicated.
     "T-UC-005-main-referrals": "creative agent referrals empty — in-process registry mock returns no agents; "
-    "production populates >=DEFAULT_AGENT over real transports (mock limitation, not a spec-production gap)",
-    # FIXME: T-UC-005-main — format 'audio-spot' has no assets or renders (all transports)
-    "T-UC-005-main": "some formats (e.g. audio-spot) lack asset_requirements and render_capabilities — spec-production gap",
+    "production populates >=DEFAULT_AGENT over real transports (mock limitation, not a spec-production gap). "
+    "ALSO upstream adcp#7338 on e2e_rest: the response asset oneOf omits pixel_tracker, which the reference "
+    "formats declare -- see the _SELECTIVE_XFAIL block for the evidence",
+    # T-UC-005-main: TWO different failures under one tag, and the reason used to name only
+    # the first. In-process it is a real spec-production gap (some formats, e.g. audio-spot,
+    # carry no asset_requirements or render_capabilities). On e2e_rest it is DORMANCY, not a
+    # gap: the Given "the creative agent registry has formats across multiple categories" asks
+    # for fmt_47/fmt_48/fmt_49, none of which is among the 57 in
+    # tests/fixtures/creative_formats/reference_formats.json, so the env raises
+    # E2EUnsupportedSetup before anything is graded. The strict-xfail misclassification
+    # detector caught exactly that and said so; recording it as a production gap would have
+    # been the lie it refused. Fixing it means registering those three in the creative agent
+    # and running `make creative-formats-refresh` -- test wiring, not production work.
+    # ONE obligation now, and it is a real production gap. The scenario used to carry two
+    # more Thens that graded `type` -- "a name and type category" and "sorted by format type
+    # then name" -- a field adcp 3.12 removed from Format. Sorting has its own scenario
+    # (@T-UC-005-inv-031-2-holds, graduated above), so it is no longer suppressed by this tag.
+    "T-UC-005-main": "in-process: some formats (e.g. audio-spot) lack asset_requirements and "
+    "render_capabilities — spec-production gap. e2e_rest: DORMANT — the Given requests "
+    "fmt_47/48/49, which are not in the reference fixture, so the scenario grades nothing",
     # Partially graduated: dispatch fix landed; error code mismatch remains
     # FIXME: production raises AUTH_REQUIRED, spec expects TENANT_REQUIRED
     "T-UC-005-ext-a": "error code AUTH_REQUIRED instead of TENANT_REQUIRED — spec-production gap",
@@ -883,12 +909,71 @@ _XFAIL_TAGS: dict[str, str] = {
     "T-UC-004-delayed-count-nonnegative": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
     "T-UC-004-delayed-no-false-complete": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
     "T-UC-004-delayed-all-available": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
+    # adcp#7338, whole-scenario form. These three are plain Scenarios, not Outlines: every
+    # transport builds a success response and validates assets, so there is no passing row
+    # to protect and the tag is the right granularity. The four Scenario OUTLINES affected
+    # by the same bug are row-level in _SELECTIVE_XFAIL, which carries the evidence.
+    "T-UC-005-storyboard-baseline-format-id-object-shape": "upstream adcp#7338: the response asset oneOf omits pixel_tracker, which the reference formats declare -- see the _SELECTIVE_XFAIL block for the full evidence",
+    "T-UC-005-sandbox-production": "upstream adcp#7338: the response asset oneOf omits pixel_tracker, which the reference formats declare -- see the _SELECTIVE_XFAIL block for the full evidence",
 }
 
 # Selective xfail for parametrized scenarios where only
 # some examples exercise unimplemented features. Each entry: (tag, node_id
 # substrings that should xfail, reason).
 _SELECTIVE_XFAIL: list[tuple[str, set[str], str]] = [
+    # ── UPSTREAM SPEC BUG: adcontextprotocol/adcp#7338 ──
+    # Row-level, not tag-level, and that distinction was MEASURED. Only the "-valid" rows
+    # build a success response and therefore validate assets against the pinned schema; the
+    # "-INVALID_REQUEST" rows are rejected before any response is serialized. Ledgering the
+    # whole tag turned all 16 error rows into XPASS(strict) failures -- an xfail that hides
+    # working behavior is worse than the bug it parks. Split measured from run
+    # innet_070926_0757: 68 failing rows, every one ending "-valid"; 16 others, every one
+    # ending "-INVALID_REQUEST".
+    #
+    # NOT our formats. tests/fixtures/creative_formats/reference_formats.json records its
+    # provenance as {'image': 'adcp-creative-agent', 'pin': '467fd93d7711'} -- captured from
+    # the REFERENCE creative agent at the v3.1.1 tag -- and 4 of the 16 files under the
+    # spec's own formats/canonical/ declare pixel_tracker assets. The spec's reference
+    # catalogue emits what the spec's response schema rejects.
+    #
+    # Checked against the newest upstream before ledgering, not assumed: v3.1.20 (latest
+    # stable) still admits the same 15, and v3.2.0-rc.1 restructures the oneOf into a nested
+    # item_type/asset_type discriminator and still admits the same 15 while its asset-union
+    # grows to 21. Refreshing the fixture or bumping the pin does not fix it.
+    #
+    # Graduates when #7338 lands and the pin moves past it.
+    (
+        "T-UC-005-partition-agent-type",
+        {"-valid"},
+        "upstream adcp#7338: list-creative-formats-response inlines an assets.items.oneOf that has "
+        "drifted from core/assets/asset-union.json -- the union declares 20 asset types, the "
+        "response admits 15, and pixel_tracker/vast_tracker/daast_tracker/card/published_post "
+        "are in the union only. The reference formats we serve declare pixel_tracker.",
+    ),
+    (
+        "T-UC-005-partition-agent-asset",
+        {"-valid"},
+        "upstream adcp#7338: list-creative-formats-response inlines an assets.items.oneOf that has "
+        "drifted from core/assets/asset-union.json -- the union declares 20 asset types, the "
+        "response admits 15, and pixel_tracker/vast_tracker/daast_tracker/card/published_post "
+        "are in the union only. The reference formats we serve declare pixel_tracker.",
+    ),
+    (
+        "T-UC-005-boundary-agent-type",
+        {"-valid"},
+        "upstream adcp#7338: list-creative-formats-response inlines an assets.items.oneOf that has "
+        "drifted from core/assets/asset-union.json -- the union declares 20 asset types, the "
+        "response admits 15, and pixel_tracker/vast_tracker/daast_tracker/card/published_post "
+        "are in the union only. The reference formats we serve declare pixel_tracker.",
+    ),
+    (
+        "T-UC-005-boundary-agent-asset",
+        {"-valid"},
+        "upstream adcp#7338: list-creative-formats-response inlines an assets.items.oneOf that has "
+        "drifted from core/assets/asset-union.json -- the union declares 20 asset types, the "
+        "response admits 15, and pixel_tracker/vast_tracker/daast_tracker/card/published_post "
+        "are in the union only. The reference formats we serve declare pixel_tracker.",
+    ),
     # #1721 M4: @T-UC-010-v31-account-sandbox newly wired. The true/false rows
     # pass for real; the "absent" row expects the wire to OMIT account.sandbox
     # (buyer applies the schema default) but _build_account_block

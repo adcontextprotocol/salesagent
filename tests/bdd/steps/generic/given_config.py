@@ -238,9 +238,17 @@ def given_registry_format_no_input_ids(ctx: dict, name: str) -> None:
 
 @given("the registry has formats:")
 def given_registry_formats_table(ctx: dict, datatable: Sequence[Sequence[object]]) -> None:
-    """Register multiple formats from a data table with name and type columns."""
+    """Register formats from a data table whose only required column is ``name``.
+
+    ``type`` is optional because adcp 3.12 removed it from ``Format``. A table that still
+    declares the column keeps working; one that does not no longer dies on ``KeyError:
+    'type'`` before the scenario runs.
+    """
     rows = _datatable_to_dicts(datatable)
-    formats = [FormatFactory.build(name=row["name"], type=CATEGORY_MAP.get(row["type"])) for row in rows]
+    formats = [
+        FormatFactory.build(name=row["name"], **({"type": CATEGORY_MAP.get(row["type"])} if "type" in row else {}))
+        for row in rows
+    ]
     ctx["registry_formats"] = formats
     _sync_registry(ctx)
 
