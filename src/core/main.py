@@ -3,6 +3,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.server.context import Context
+from fastmcp.tools.tool import Tool, ToolResult
 from rich.console import Console
 from sqlalchemy import select
 
@@ -336,8 +337,7 @@ from adcp.types.generated_poc.core.version_envelope import AdcpVersionEnvelope
 # not optional -- _register_tool refuses a tool without one.
 from mcp.types import ToolAnnotations
 
-from src.core.tool_error_logging import with_error_logging
-from src.core.tools._announced_shape import apply_dto_announced_shape, request_model_for, sdk_grounding
+from src.core.tools._announced_shape import sdk_grounding
 from src.core.tools.registry import TOOLS
 
 _sdk_tool_defs = {td["name"]: td for td in ADCP_TOOL_DEFINITIONS}
@@ -358,7 +358,7 @@ _sdk_tool_defs = {td["name"]: td for td in ADCP_TOOL_DEFINITIONS}
 #:     inline. Cosmetic, tracked separately; it never affected what buyers may send.
 
 
-def _register_tool(fn: Any) -> None:
+def _register_tool(tool_name: str, spec: Any) -> None:
     """Register an MCP tool with SDK description, annotations and ADVERTISED SHAPE.
 
     The request DTO is RESOLVED FROM THE REGISTRY ROW. There is no parameter to pass one
@@ -387,21 +387,8 @@ def _register_tool(fn: Any) -> None:
     state today cannot be registered at all: this refusal runs at import, so the tree
     cannot start carrying an ungrounded spec tool.
     """
-    tool_name = fn.__name__
     sdk_def = _sdk_tool_defs.get(tool_name)
-    kwargs: dict[str, Any] = {}
-    if sdk_def:
-        kwargs["description"] = sdk_def["description"]
-        if sdk_def.get("annotations"):
-            kwargs["annotations"] = ToolAnnotations(**sdk_def["annotations"])
-    registered = with_error_logging(fn)
-    if not apply_dto_announced_shape(registered, fn):
-        raise RuntimeError(
-            f"{tool_name} cannot be registered: no request DTO. Its advertised shape IS the "
-            f"DTO, so without one there is nothing to derive from. Name it in the tool's "
-            f"registry row (src/core/tools/registry.py) -- that is the only way to name a DTO."
-        )
-    model = request_model_for(fn)
+    model = spec.dto
     if model is not None and not issubclass(model, AdcpVersionEnvelope):
         raise RuntimeError(
             f"{tool_name} cannot be registered: {model.__name__} does not descend from "
@@ -429,7 +416,14 @@ def _register_tool(fn: Any) -> None:
             f"authority on the spelling -- per the Library* alias convention (critical "
             f"pattern #1), instead of redeclaring its fields."
         )
-    mcp.tool(**kwargs)(registered)
+    mcp.add_tool(
+        RegistryTool(
+            name=tool_name,
+            parameters=model.model_json_schema(),
+            description=sdk_def["description"] if sdk_def else None,
+            annotations=ToolAnnotations(**sdk_def["annotations"]) if sdk_def and sdk_def.get("annotations") else None,
+        )
+    )
 
 
 # MCP registration is DERIVED from the registry: TOOLS decides which tools exist, and this
@@ -441,67 +435,44 @@ def _register_tool(fn: Any) -> None:
 # module as the row's ``impl``, so ``TOOLS`` supplies the address and this file needs no
 # sixteen imports whose only purpose was to be passed to the call below. A name that does not
 # resolve is a defect in the row, not an optional registration.
-async def _call_tool(tool_name: str, spec: Any, kwargs: dict[str, Any]) -> Any:
-    """The one call path: build the request, resolve identity, call the implementation.
+class RegistryTool(Tool):
+    """One registry row, served over MCP.
 
-    Every hand-written MCP wrapper did exactly this. They differed only in WHICH
-    transport-derived values they forwarded, and that is derivable -- ``accepted_kwargs``
-    reports what the implementation declares, so the generic call passes only that. An open
-    ``**kwargs`` at this seam would let a transport hand an implementation anything at all,
-    which is the accept-and-ignore hazard one layer below the one this design removes.
-    """
-    from src.core.schema_helpers import accepted_kwargs
-    from src.core.tools._boundary import invoke
+    ``run`` receives the buyer's argument object and validates it the way every other
+    transport does -- ``dto.model_validate(arguments)``, the same call REST makes at
+    api_v1.py and A2A makes at adcp_a2a_server.py. So the accepted-shape strip on
+    ``BuyerRequest`` decides what reaches an implementation here too.
 
-    ctx = kwargs.pop("ctx", None)
-    identity = kwargs.pop("identity", None)
+    A ``Tool`` subclass rather than a function, because FastMCP validates a FUNCTION tool
+    against a TypeAdapter built from its annotations (``FunctionTool.run`` ->
+    ``get_cached_typeadapter``). With the DTO's fields as parameters, that adapter reached
+    the SDK's nested models first and refused or coerced the payload before any of our code
+    ran -- so the strip was a no-op on MCP, dev rejection came from pydantic and production
+    tolerance from a retry in the compat middleware. Two programs for one policy.
 
-    # Populate the DTO and let it throw: the boundary names the error from the exception
-    # CLASS, so a ValidationError keeps its ``field`` and its ``issues``.
-    req = spec.dto(**kwargs)
-
-    if identity is None and isinstance(ctx, Context):
-        identity = await ctx.get_state("identity")
-
-    # What the transport supplies and a buyer never can. Account resolution and idempotency
-    # used to be here too, per-transport; they live in ``invoke`` now, so this is the one
-    # value MCP genuinely knows that the shared path cannot derive.
-    declared = accepted_kwargs(spec.impl)
-    extra: dict[str, Any] = {}
-    if declared and isinstance(ctx, Context) and "context_id" in declared:
-        extra["context_id"] = await ctx.get_state("context_id")
-
-    return await invoke(tool_name, spec.impl, req, identity, **extra)
-
-
-def _tool_callable(tool_name: str, spec: Any) -> Any:
-    """The registered MCP callable for one registry row.
-
-    There is no hand-written wrapper to keep in step with the DTO. The advertised signature
-    is applied by ``_register_tool`` from the DTO itself, and FastMCP calls this with those
-    names, so the parameter list cannot fall behind the shape it announces -- which is what
-    a wrapper's own parameter list used to do, silently narrowing what a buyer could send.
-
-    ``spec`` is used for REGISTRATION only (the advertised shape, the description). What runs
-    is read from ``TOOLS`` per call -- see the note inside.
+    ``parameters`` is the DTO's own JSON Schema, so the advertised shape is the model rather
+    than a signature reconstructed from it.
     """
 
-    async def tool(ctx: Context | None = None, **kwargs: Any) -> Any:
+    async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        from fastmcp.server.dependencies import get_context
+
+        from src.core.tool_error_logging import _handle_tool_exception
+        from src.core.tools._boundary import invoke
         from src.core.tools._mcp import mcp_result
 
-        # ctx is declared, not swept into kwargs: _is_injected detects it by ANNOTATION,
-        # and it must survive into the advertised signature for FastMCP to inject it.
-        kwargs["ctx"] = ctx
-        # The ROW is read per call, not frozen into this closure at registration. TOOLS is
-        # the declaration; a registration holding a snapshot of it is a second one, and it
-        # diverges the moment the registry changes -- which also made a registered tool
-        # impossible to substitute, since the row and the thing the server invoked were two
-        # different objects. Costs one dict lookup.
-        return mcp_result(await _call_tool(tool_name, TOOLS[tool_name], kwargs))
-
-    tool.__name__ = tool_name
-    return tool
+        spec = TOOLS[self.name]
+        ctx = get_context()
+        try:
+            req = spec.dto.model_validate(arguments)
+            identity = await ctx.get_state("identity")
+            return mcp_result(await invoke(self.name, spec.impl, req, identity))
+        except Exception as exc:
+            # Records to the activity feed and audit log, then raises AdCPToolError carrying
+            # the two-layer envelope. Validation raises inside the try because the buyer's
+            # error is as much a tool outcome as the implementation's.
+            _handle_tool_exception(spec.impl, exc, (ctx,), {})
 
 
 for _tool_name, _spec in TOOLS.items():
-    _register_tool(_tool_callable(_tool_name, _spec))
+    _register_tool(_tool_name, _spec)
