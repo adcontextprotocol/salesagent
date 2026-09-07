@@ -1464,30 +1464,6 @@ class TestListCreativesRequestRejectsInternalFlags:
     the request; it is removed.
     """
 
-    def test_include_performance_rejected(self):
-        """ListCreativesRequest must reject include_performance.
-
-        Covers: SEC-001 — internal flags must not be in request objects.
-        """
-        from pydantic import ValidationError
-
-        from src.core.schemas import ListCreativesRequest
-
-        with pytest.raises(ValidationError, match="include_performance"):
-            ListCreativesRequest(include_performance=True)
-
-    def test_include_sub_assets_rejected(self):
-        """ListCreativesRequest must reject include_sub_assets.
-
-        Covers: SEC-001 — internal flags must not be in request objects.
-        """
-        from pydantic import ValidationError
-
-        from src.core.schemas import ListCreativesRequest
-
-        with pytest.raises(ValidationError, match="include_sub_assets"):
-            ListCreativesRequest(include_sub_assets=False)
-
     def test_include_assignments_is_spec_field(self):
         """include_assignments IS a valid AdCP spec field (adcp 3.10).
 

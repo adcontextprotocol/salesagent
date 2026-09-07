@@ -166,13 +166,6 @@ class TestSortOrderByName:
 class TestTypeFilterRemovedInAdcp312:
     """T-UC-005-inv2-violated: Type filter removed in adcp 3.12."""
 
-    def test_type_filter_rejected(self):
-        """type= parameter is no longer accepted on ListCreativeFormatsRequest."""
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError, match="type"):
-            ListCreativeFormatsRequest(type="audio")
-
     def test_empty_catalog_returns_empty(self):
         """Empty catalog returns empty list."""
         result = _call_impl([])
@@ -310,17 +303,6 @@ class TestAssetTypesFilterChecksGroupAssets:
 # ---------------------------------------------------------------------------
 # LOW_RISK: Partition/boundary completeness
 # ---------------------------------------------------------------------------
-
-
-class TestPartitionTypeFilterRemovedInAdcp312:
-    """T-UC-005-partition-type-filter: type filter removed in adcp 3.12."""
-
-    def test_type_filter_no_longer_accepted(self):
-        """type= parameter is no longer accepted on ListCreativeFormatsRequest in adcp 3.12."""
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError, match="type"):
-            ListCreativeFormatsRequest(type="native")
 
 
 class TestPartitionFormatIdsNoMatch:

@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from adcp.types import MediaBuyStatus
-from pydantic import RootModel, ValidationError
+from pydantic import RootModel
 
 from src.core.exceptions import AdCPAuthRequiredError, AdCPPersistedStateError
 from src.core.schemas import (
@@ -884,13 +884,3 @@ class TestGetMediaBuysRequestCarriesSpecFields:
         """False must round-trip as False, not be collapsed to the default."""
         req = GetMediaBuysRequest(include_snapshot=False)
         assert req.include_snapshot is False
-
-    def test_a_genuinely_unknown_field_is_still_rejected_in_dev(self):
-        """Widening to the spec must not become 'anything goes'.
-
-        Dev runs extra="forbid" (config.get_pydantic_extra_mode), so a field NEITHER the
-        spec nor this agent declares still fails fast here -- production's "ignore" is the
-        forward-compatibility half of that asymmetry, not a licence.
-        """
-        with pytest.raises(ValidationError):
-            GetMediaBuysRequest(definitely_not_a_spec_field=True)

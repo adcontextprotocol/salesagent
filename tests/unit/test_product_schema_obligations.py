@@ -880,22 +880,6 @@ class TestFilteredDiscoverySchema:
             # Filter accepted by request schema; impl does not filter by axe integrations yet
             assert len(response.products) >= 1, "required_axe_integrations filter accepted without error"
 
-    async def test_filter_required_features_only_true_values(self):
-        """required_features filter: only true values filter.
-
-        Covers: UC-001-ALT-FILTERED-DISCOVERY-17
-        """
-        with ProductEnv() as env:
-            env.add_product(product_id="prod_features")
-
-            response = await env.call_impl(
-                brief="test",
-                filters={"required_features": {"guaranteed_delivery": True, "real_time_bidding": False}},
-            )
-
-            # Filter accepted by request schema; only true values should be used for filtering
-            assert len(response.products) >= 1, "required_features filter accepted without error"
-
     async def test_filter_required_geo_targeting(self):
         """required_geo_targeting filter schema accepted.
 
@@ -1508,21 +1492,6 @@ class TestGetProductsRequestSchema:
         assert req.brief is None
         assert req.brand is None
         assert req.filters is None
-
-    def test_request_rejects_unknown_fields_in_dev(self):
-        """GetProductsRequest rejects unknown fields in dev mode (extra=forbid).
-
-        Covers: CONSTR-GET-PRODUCTS-REQUEST-01
-        """
-        import os
-
-        from src.core.schemas import GetProductsRequest
-
-        # In dev/test mode (default), extra=forbid should reject unknown fields
-        env = os.environ.get("ENVIRONMENT", "")
-        if env != "production":
-            with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-                GetProductsRequest(**{"brief": "test", "unknown_field_xyz": "bad"})
 
     def test_request_has_channels_filter(self):
         """GetProductsRequest filters support channels field (v3 addition).

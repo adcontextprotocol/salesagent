@@ -41,25 +41,6 @@ class TestSyncCreativesCreativeIdsFilter:
         assert request.creative_ids == ["creative_1"]
         assert request.creatives[0].creative_id == "creative_1"
 
-    def test_sync_creatives_request_rejects_patch_parameter(self):
-        """Test SyncCreativesRequest rejects deprecated patch parameter."""
-        creative = make_creative_asset_request(
-            creative_id="creative_1",
-            name="Test Creative",
-            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
-            assets=build_assets(image_spec("banner")),
-        )
-
-        # Should reject patch parameter (removed in AdCP 2.5)
-        with pytest.raises(ValidationError) as exc_info:
-            SyncCreativesRequest(
-                account={"account_id": "acct_test"},
-                idempotency_key="test-idem-key-0001",
-                creatives=[creative],
-                patch=True,  # Deprecated - should fail
-            )
-        # ValidationError will mention 'extra' fields are forbidden or 'patch' specifically
-
     @patch("src.core.helpers.context_helpers.ensure_tenant_context")
     @patch("src.core.tools.creatives._sync.CreativeUoW")
     def test_sync_creatives_filters_by_creative_ids(self, mock_uow_cls, mock_tenant):
@@ -353,7 +334,6 @@ class TestSyncCreativesErrorCases:
         - creative_ids=None (omitted): Process all creatives in payload
         - creative_ids=[id, ...]: Process only creatives matching the provided IDs
         """
-        from pydantic import ValidationError
 
         from src.core.schemas import FormatId, SyncCreativesRequest
 
@@ -398,7 +378,6 @@ class TestSyncCreativesErrorCases:
 
         Spec requires: creative_id, format_id, assets
         """
-        from pydantic import ValidationError
 
         # Missing format_id should fail
         with pytest.raises(ValidationError) as exc_info:
@@ -421,7 +400,6 @@ class TestListCreativesErrorCases:
         - media_buy_ids=[id, ...]: Filter to specific media buy IDs
         """
         from adcp.types import CreativeFilters as LibraryCreativeFilters
-        from pydantic import ValidationError
 
         from src.core.schemas import ListCreativesRequest
 

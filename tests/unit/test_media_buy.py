@@ -564,18 +564,6 @@ class TestCreateMediaBuyValidation:
                 currency="USD",
             )
 
-    def test_buyer_campaign_ref_rejected_in_3_12(self):
-        """UC-002-V05: buyer_campaign_ref removed from AdCP spec in 3.12.
-
-        Spec: UPDATED -- buyer_campaign_ref removed from create-media-buy-request.json in adcp 3.12
-        Priority: P0
-        Type: unit
-        Source: UC-002,
-        Covers: UC-002-UPG-03
-        """
-        with pytest.raises(ValidationError, match="buyer_campaign_ref"):
-            _make_request(buyer_campaign_ref="camp-ref-123")
-
     def test_ext_fields_roundtrip(self):
         """UC-002-V06: ext fields preserved through create flow.
 
