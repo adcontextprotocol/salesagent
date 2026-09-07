@@ -595,20 +595,49 @@ def then_all_returned_have_status(ctx: dict, status: str) -> None:
     assert not wrong, f"expected all returned creatives to have status {status!r}, found: {wrong}"
 
 
-@then(parsers.parse("only {status} creatives are returned"))
+@then(parsers.re(r"only (?P<status>\w+) creatives are returned"))
 def then_only_status_creatives_returned(ctx: dict, status: str) -> None:
     """Assert the returned set is exactly the requested single status (positive + negative in one).
 
     Binds the ``Then only <status> creatives are returned`` outcome of the @creative-status /
     @default-query single-status rows (post-substitution ``only approved creatives are
     returned`` etc.). Non-empty, every returned creative has *status*, and (since the Given
-    seeds one creative per status) nothing of another status leaked. The multi-status boundary
-    row's outcome (``only approved and rejected creatives are returned``) is a distinct phrasing,
-    not this single-status binding — its wiring is tracked in the F1 follow-up."""
+    seeds one creative per status) nothing of another status leaked.
+
+    ``parsers.re`` with a single-word ``\\w+`` (not ``parsers.parse``'s greedy ``{status}``):
+    the multi-status boundary outcome ``only approved and rejected creatives are returned`` must
+    NOT match here — it has its own binding below. A greedy ``{status}`` would capture
+    ``approved and rejected`` and shadow that row, filtering by a status no creative carries."""
     creatives = wire_field(ctx, "creatives")
     assert creatives, f"list_creatives returned no creatives for status {status!r}"
+    # Subscript ``status`` (not .get): a returned creative that omits status on the wire is a
+    # bug the KeyError must surface, not a fail-open pass (Creative.status is exclude_none).
     wrong = [(c.get("creative_id"), c["status"]) for c in creatives if c["status"] != status]
     assert not wrong, f"expected only status {status!r} creatives, found others: {wrong}"
+
+
+@then(parsers.re(r"only (?P<first>\w+) and (?P<second>\w+) creatives are returned"))
+def then_only_two_statuses_returned(ctx: dict, first: str, second: str) -> None:
+    """Assert a match-any statuses filter returns exactly the two requested statuses.
+
+    Binds the multi-status boundary outcome ``only approved and rejected creatives are
+    returned`` (@creative-status boundary, ``statuses filter ["approved", "rejected"]``). The
+    Given seeds one creative per status across the full enum, so this grades match-any on the
+    wire: the returned set must be non-empty, contain BOTH requested statuses (a filter that
+    dropped either — e.g. narrowed the array to ``statuses[0]``, the #1502 bug — reddens here),
+    and carry no other status (the decoys for the three unrequested statuses must not leak)."""
+    expected = {first, second}
+    creatives = wire_field(ctx, "creatives")
+    assert creatives, f"list_creatives returned no creatives for statuses {sorted(expected)}"
+    # Subscript ``status`` (not .get): an omitted status on the wire is a bug to surface loudly.
+    returned_statuses = {c["status"] for c in creatives}
+    leaked = returned_statuses - expected
+    assert not leaked, f"statuses filter leaked creatives outside {sorted(expected)}: {sorted(leaked)}"
+    missing = expected - returned_statuses
+    assert not missing, (
+        f"match-any statuses filter dropped requested statuses {sorted(missing)} "
+        f"(returned only {sorted(returned_statuses)}) — a narrowing to a single status"
+    )
 
 
 @then(parsers.parse('none of the returned creatives have status "{status}"'))

@@ -63,18 +63,20 @@ class TestRequireWireGuardsWireAbsence:
     """
 
     def test_wire_absent_raises_naming_the_transport(self):
-        result = TransportResult(transport=Transport.A2A, error=RuntimeError("boom"))
+        # Error path: no bytes crossed the wire, so has_wire=False.
+        result = TransportResult(transport=Transport.A2A, error=RuntimeError("boom"), has_wire=False)
         with pytest.raises(AssertionError, match="^a2a:"):
             result.require_wire()
 
     def test_wire_absent_without_stamp_falls_back_to_unknown(self):
         # A TransportResult built directly (never through call_via) has no transport
         # stamp and no envelope — the fallback keeps the message non-crashing.
-        result = TransportResult(wire_response=None)
+        result = TransportResult(wire_response=None, has_wire=False)
         with pytest.raises(AssertionError, match="unknown transport"):
             result.require_wire()
 
     def test_wire_present_returns_the_wire_dict(self):
+        # Success path with a captured wire body: has_wire=True.
         wire = {"creatives": []}
-        result = TransportResult(transport=Transport.REST, wire_response=wire)
+        result = TransportResult(transport=Transport.REST, wire_response=wire, has_wire=True)
         assert result.require_wire() is wire

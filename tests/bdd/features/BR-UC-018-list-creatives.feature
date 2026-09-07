@@ -820,19 +820,39 @@ Feature: BR-UC-018 List Creatives
       | has_served    | true  | only creatives that have served at least one impression are returned |
       | has_served    | false | only creatives that have never served are returned                |
 
-  @T-UC-018-boundary-creative-status @boundary @creative-status
+  # HAND-EDITED (#2067): the @creative-status boundary outline is split locally so the
+  # implementable match-any success rows (single- and multi-status filters) execute now,
+  # while the archival-default (#1738) and invalid-status (#1652) rows stay dormant in the
+  # separate outline below. The @hand-edited marker keeps `compile_bdd.py --merge` from
+  # reverting the split (it desynchronises the tag set from upstream, so the pair classifies
+  # NEEDS-SEMANTIC-MERGE and this LEGACY gherkin is preserved) until the split is mirrored
+  # upstream in adcp-req; that upstream mirror is tracked in #2067.
+  @T-UC-018-boundary-creative-status @hand-edited @boundary @creative-status
   Scenario Outline: Creative status filter boundary -- <boundary_point>
     Given the authenticated principal has creatives in statuses "processing", "approved", "rejected", "pending_review", "archived"
     When the Buyer Agent sends a list_creatives request with <request_params>
     Then <outcome>
 
-    Examples: Boundary values
-      | boundary_point                                                                  | request_params                          | outcome                                                          |
-      | processing (first enum value)                                                   | statuses filter ["processing"]          | only processing creatives are returned                            |
-      | archived (last enum value)                                                      | statuses filter ["archived"]            | only archived creatives are returned                              |
-      | ["approved", "rejected"] (multi-status array)                                   | statuses filter ["approved", "rejected"] | only approved and rejected creatives are returned                 |
-      | Not provided (default excludes archived; or seller has no review lifecycle)     | no statuses filter                      | all non-archived creatives are returned (archived excluded by default) |
-      | deleted (not in CreativeStatus enum)                                            | statuses filter ["deleted"]             | error "VALIDATION_ERROR" with suggestion                          |
+    Examples: Match-any status boundary values
+      | boundary_point                                | request_params                           | outcome                                            |
+      | processing (first enum value)                 | statuses filter ["processing"]           | only processing creatives are returned             |
+      | archived (last enum value)                    | statuses filter ["archived"]             | only archived creatives are returned               |
+      | ["approved", "rejected"] (multi-status array) | statuses filter ["approved", "rejected"] | only approved and rejected creatives are returned  |
+
+  # HAND-EDITED (#2067): the archival-default (#1738) and invalid-status (#1652) boundary
+  # rows, split out of the @creative-status outline above so the implementable rows can run.
+  # Both stay dormant (routed to xfail in tests/bdd/conftest.py) pending their production
+  # features; the @hand-edited marker preserves this split through `compile_bdd.py --merge`.
+  @T-UC-018-boundary-creative-status-dormant @hand-edited @boundary @creative-status
+  Scenario Outline: Creative status filter boundary (dormant) -- <boundary_point>
+    Given the authenticated principal has creatives in statuses "processing", "approved", "rejected", "pending_review", "archived"
+    When the Buyer Agent sends a list_creatives request with <request_params>
+    Then <outcome>
+
+    Examples: Dormant boundary values
+      | boundary_point                                                              | request_params              | outcome                                                                |
+      | Not provided (default excludes archived; or seller has no review lifecycle) | no statuses filter          | all non-archived creatives are returned (archived excluded by default) |
+      | deleted (not in CreativeStatus enum)                                        | statuses filter ["deleted"] | error "VALIDATION_ERROR" with suggestion                               |
 
   @T-UC-018-boundary-sandbox-response @boundary @sandbox @br-rule-209
   Scenario Outline: Sandbox response semantics boundary -- <boundary_point>

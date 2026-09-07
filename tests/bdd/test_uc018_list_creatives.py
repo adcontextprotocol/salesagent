@@ -44,18 +44,25 @@ anchor the harness no longer resolves.
   it is specifically the count that grades this). The other two pin single-status match-any
   (archived returned when requested; excluded when not) and would pass on the unfixed code,
   where a single-element filter was already applied. Source: adcp
-  ``core/creative-filters.json`` (statuses). The @creative-status boundary
-  ``["approved", "rejected"] (multi-status array)`` row and the @default-query partition
-  ``mixed_statuses`` / ``all_statuses_explicit`` / explicit-status rows are the SAME match-any
-  behavior under different phrasings — implementable but not yet wired (they sit in Scenario
-  Outlines mixed with rows that genuinely need #1738/#1652; wiring them means splitting those
-  generated outlines by tag and adding the multi-status Then bindings, tracked in #2067).
-  Genuinely dormant: ``inv-146-1-holds`` and the @default-query ``empty_request`` /
-  ``filters_no_status`` rows depend on the no-filter archival-DEFAULT exclusion, a separate
-  unimplemented production feature (#1738); the validation-error rows — the @creative-status
-  ``["deleted"]`` row and the ``[]`` (empty-array) rows — need dict-passthrough
-  validation-error wiring (#1652). The conftest dormancy comment carries the full row-by-row
-  account.
+  ``core/creative-filters.json`` (statuses).
+
+- ``T-UC-018-boundary-creative-status`` (#1502): the @creative-status boundary outline's
+  match-any SUCCESS rows — ``["processing"]``, ``["archived"]``, and the
+  ``["approved", "rejected"] (multi-status array)`` row the feature file pins for this PR's
+  behavior. Wired here by splitting the mixed generated outline locally (@hand-edited) into
+  this success outline plus a dormant sibling, and admitting the success outline by the
+  @creative-status TAG (not by scenario id — so a future match-any boundary row lands wired
+  by default). The multi-status row grades the exact #1502 bug on the wire: narrowing the
+  array to ``statuses[0]`` reddens ``then_only_two_statuses_returned`` on a2a/mcp/rest. The
+  upstream adcp-req mirror of the outline split is tracked in #2067, as is the still-mixed
+  @default-query partition (``mixed_statuses`` / ``all_statuses_explicit`` / explicit-status)
+  rows, the SAME match-any behavior under a different phrasing.
+  Genuinely dormant: ``inv-146-1-holds``, the @default-query ``empty_request`` /
+  ``filters_no_status`` rows, and the @creative-status-dormant ``no statuses filter`` row all
+  depend on the no-filter archival-DEFAULT exclusion, a separate unimplemented production
+  feature (#1738); the validation-error rows — the @creative-status-dormant ``["deleted"]``
+  row and the ``[]`` (empty-array) rows — need dict-passthrough validation-error wiring
+  (#1652). The conftest dormancy comment carries the full row-by-row account.
 
 Wired to real production across all wire transports (auto-parametrized; UC-018
 -> CreativeListEnv via conftest ``_detect_uc`` / ``_harness_env``). The repo

@@ -4009,17 +4009,37 @@ ENV_ROUTES: list[EnvRoute] = [
         xfail_reason="UC-006 harness not yet wired for non-account scenarios",
     ),
     # ── UC-018 ──────────────────────────────────────────────────────────────
-    # The @BR-RULE-146 explicit-statuses success invariants (#1502, statuses
-    # match-any) are admitted by EXACT scenario id, not the shared @BR-RULE-146
-    # tag, because the tag also covers rows that are still dormant. The dormant
-    # statuses siblings fall through to uc018-not-wired below:
+    # The @BR-RULE-146 explicit-statuses success invariants (#1502, statuses match-any)
+    # are admitted by EXACT scenario id, not the shared @BR-RULE-146 tag, because that
+    # tag also covers the dormant inv-146-1-holds row. The @creative-status boundary
+    # SUCCESS outline (single- and multi-status match-any rows) is admitted by the
+    # @creative-status TAG — so a future match-any boundary row lands wired by default,
+    # not dormant by default. Its dormant siblings are split into their OWN outline
+    # (@T-UC-018-boundary-creative-status-dormant) and routed to xfail just below, BEFORE
+    # this tag admission, so the shared @creative-status tag does not admit them:
     #   Genuinely blocked (need unimplemented work): inv-146-1-holds + the
-    #     @default-query `empty_request`/`filters_no_status` rows (no-filter
-    #     archival-DEFAULT exclusion is unimplemented — #1738; inv-146-1-holds has
-    #     its own named xfail row) and the validation-error rows (`[]`/`["unknown"]`/
-    #     `["deleted"]`) needing dict-passthrough validation wiring (#1652).
+    #     @creative-status-dormant no-filter row and the @default-query
+    #     `empty_request`/`filters_no_status` rows (no-filter archival-DEFAULT exclusion
+    #     is unimplemented — #1738; inv-146-1-holds has its own named xfail row) and the
+    #     validation-error rows (`[]`/`["unknown"]`/`["deleted"]`, incl. the
+    #     @creative-status-dormant deleted row) needing dict-passthrough validation
+    #     wiring (#1652).
     #   Implementable but not yet split out of their generated outlines (#2067):
-    #     the `processing`/`archived`/multi-status and explicit-status default-query rows.
+    #     the explicit-status @default-query partition/boundary rows. (The @creative-status
+    #     boundary rows are now split out locally — @hand-edited, pending the upstream
+    #     adcp-req mirror tracked in #2067.)
+    EnvRoute(
+        tag="uc018-boundary-creative-status-dormant",
+        when=_uc("UC-018", lambda m: "T-UC-018-boundary-creative-status-dormant" in m),
+        env_builder=_env("tests.harness.creative_list.CreativeListEnv"),
+        xfail_reason=(
+            "The @creative-status boundary rows for the no-filter archival-DEFAULT exclusion "
+            "(#1738) and the invalid-status validation error (#1652) are dormant pending those "
+            "production features; split out of the match-any success outline so the "
+            "implementable rows run (#2067). Routed BEFORE uc018-list so the shared "
+            "@creative-status tag admission does not pick them up."
+        ),
+    ),
     EnvRoute(
         tag="uc018-list",
         when=_uc(
@@ -4030,6 +4050,7 @@ ENV_ROUTES: list[EnvRoute] = [
                     "list-after-sync",
                     "concept-id",
                     "BR-RULE-034",
+                    "creative-status",
                     "T-UC-018-inv-146-2-holds",
                     "T-UC-018-inv-146-2-violated",
                     "T-UC-018-inv-146-3-holds",
@@ -4067,7 +4088,8 @@ ENV_ROUTES: list[EnvRoute] = [
         env_builder=_env("tests.harness.creative_list.CreativeListEnv"),
         xfail_reason=(
             "UC-018 harness wired only for the @list-after-sync (#1405), @concept-id (#1407), "
-            "@BR-RULE-034 isolation (#1503), and @BR-RULE-146 statuses invariants (#1502) scenarios"
+            "@BR-RULE-034 isolation (#1503), @BR-RULE-146 statuses invariants and the "
+            "@creative-status match-any boundary (#1502) scenarios"
         ),
     ),
     # ── UC-011 ──────────────────────────────────────────────────────────────
