@@ -29,7 +29,7 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
 
   @T-UC-006-local-dryrun-ai-review-live @dry-run @creative-approval @invariant
   Scenario Outline: a live sync on an ai-powered tenant submits the AI review and calls the agent (control)
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "ai-powered"
     And the tenant has a slack_webhook_url configured
     And a <creative_state> creative on a <format_kind> format served by a creative agent
@@ -49,7 +49,7 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
 
   @T-UC-006-local-dryrun-ai-review-preview @dry-run @creative-approval @invariant
   Scenario Outline: a dry_run preview on an ai-powered tenant fires no effect the transaction cannot undo
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "ai-powered"
     And the tenant has a slack_webhook_url configured
     And a <creative_state> creative on a <format_kind> format served by a creative agent
@@ -116,7 +116,7 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
 
   @T-UC-006-local-dryrun-workflow-step-write-live @dry-run @creative-approval @invariant
   Scenario: a live sync on a require-human tenant commits the workflow-step write path (control)
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "require-human"
     And the tenant has a slack_webhook_url configured
     And a creative with a known format_id
@@ -128,7 +128,7 @@ Feature: UC-006 sync_creatives — a dry_run preview fires no effect the transac
 
   @T-UC-006-local-dryrun-workflow-step-write-preview @dry-run @creative-approval @invariant
   Scenario: a dry_run preview leaves no workflow step, mapping or context behind
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "require-human"
     And the tenant has a slack_webhook_url configured
     And a creative with a known format_id

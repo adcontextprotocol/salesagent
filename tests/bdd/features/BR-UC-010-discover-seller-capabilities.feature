@@ -209,7 +209,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
   @T-UC-010-pricing @main-flow @post-s10
   Scenario: Capabilities response includes supported pricing models
     Given a tenant is resolvable from the request context
-    And the tenant uses the mock adapter with full capabilities configured
+    And the tenant has full capabilities configured
     When the Buyer Agent calls get_adcp_capabilities
     Then the response is compliant with the get_adcp_capabilities spec
     And media_buy.supported_pricing_models should be a non-empty unique array of pricing-model enum values
@@ -661,7 +661,7 @@ Feature: BR-UC-010 Discover Seller Capabilities
   Scenario: context_absent — no context in request means no context in response
     Given a tenant is resolvable from the request context
     And the tenant has full capabilities configured
-    When the Buyer Agent calls get_adcp_capabilities without context
+    When the Buyer Agent calls get_adcp_capabilities
     Then the response is compliant with the get_adcp_capabilities spec
     And the wire response should not contain a context field
     # Implied by echo semantics (context is defined purely as caller-supplied echo; optional

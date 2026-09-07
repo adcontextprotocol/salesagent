@@ -65,20 +65,39 @@ def given_no_tenant_resolved(ctx: dict) -> None:
 # ── Sandbox / production account ─────────────────────────────────────
 
 
+def _seed_account_for_principal(ctx: dict, *, sandbox: bool) -> None:
+    """Seed an Account with the given sandbox flag, reachable by the scenario principal.
+
+    Writes the Account and AgentAccountAccess rows and commits them, so the
+    identity resolves to an account carrying that flag.
+
+    Seeds rather than setting a request field because the scenarios using this
+    Given do not send one; the account reaches the tool through the principal.
+    A scenario that means "send account X on the request" wants a different
+    Given — ``account`` IS a request field (optional on get_media_buys and
+    get_products, REQUIRED on create_media_buy and update_media_buy).
+    """
+    from tests.factories.account import AccountFactory, AgentAccountAccessFactory
+
+    env = ctx["env"]
+    account = AccountFactory(tenant=ctx["tenant"], sandbox=sandbox)
+    AgentAccountAccessFactory(tenant=ctx["tenant"], principal=ctx["principal"], account=account)
+    env._commit_factory_data()
+    ctx["sandbox"] = sandbox
+    ctx["account"] = account
+    ctx.setdefault("tenant_id", "sandbox_tenant" if sandbox else "prod_tenant")
+
+
 @given("the request targets a sandbox account")
 def given_sandbox_account(ctx: dict) -> None:
-    """Request is for a sandbox (dry_run) account."""
-    ctx["sandbox"] = True
-    ctx["has_tenant"] = True
-    ctx.setdefault("tenant_id", "sandbox_tenant")
+    """Seed a sandbox account for the principal (the token infers the account)."""
+    _seed_account_for_principal(ctx, sandbox=True)
 
 
 @given("the request targets a production account")
 def given_production_account(ctx: dict) -> None:
-    """Request is for a production (non-sandbox) account."""
-    ctx["sandbox"] = False
-    ctx["has_tenant"] = True
-    ctx.setdefault("tenant_id", "prod_tenant")
+    """Seed a production (non-sandbox) account for the principal."""
+    _seed_account_for_principal(ctx, sandbox=False)
 
 
 @given("the Buyer is authenticated")

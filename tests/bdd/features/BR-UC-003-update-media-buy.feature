@@ -23,7 +23,7 @@ Feature: BR-UC-003 Update Media Buy
   Background:
     Given a Seller Agent is operational and accepting requests
     And a tenant exists with completed setup checklist
-    And the Buyer is authenticated with a valid principal_id
+    And the Buyer is authenticated
     And the Buyer owns an existing media buy with media_buy_id "mb_existing"
     And the media buy is in "active" status
 
@@ -2331,7 +2331,7 @@ Feature: BR-UC-003 Update Media Buy
 
   @T-UC-003-ext-t @extension @ext-t @error @schema-v3.1 @post-f1 @post-f2 @post-f3
   Scenario: Invoice recipient not authorized for the account is rejected (ext-t)
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a valid update_media_buy request with:
     | field             | value                  |
     | media_buy_id      | mb_existing            |
@@ -2349,7 +2349,7 @@ Feature: BR-UC-003 Update Media Buy
 
   @T-UC-003-billing-not-supported @invariant @BR-RULE-214 @billing @error @schema-v3.1 @post-f2 @post-f3
   Scenario Outline: Billing party not supported is rejected with scope - <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the resolved billing party is "<billing_party>"
     And the seller's supported_billing is <supported>
     And the seller's account billing relationship is "<acct_relationship>"

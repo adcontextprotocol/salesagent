@@ -29,7 +29,7 @@ Feature: UC-011 sync_accounts — a dry_run preview describes an outcome a real 
 
   @T-UC-011-local-dryrun-delete-missing @sync @dry-run @delete-missing @invariant
   Scenario: delete_missing under dry_run previews the closures it would perform
-    Given the Buyer Agent has an authenticated connection
+    Given the Buyer is authenticated
     And the agent previously synced accounts for brand domain "acme-corp.com" and "old-brand.com"
     When the Buyer Agent sends a sync_accounts request with dry_run true and delete_missing true and:
     | brand.domain    | operator      | billing  |
@@ -44,7 +44,7 @@ Feature: UC-011 sync_accounts — a dry_run preview describes an outcome a real 
 
   @T-UC-011-local-dryrun-repeat-key @sync @dry-run @invariant
   Scenario: a repeated entry under dry_run is graded against what the earlier entry would leave
-    Given the Buyer Agent has an authenticated connection
+    Given the Buyer is authenticated
     And the agent previously synced accounts for brand domain "acme-corp.com" only
     When the Buyer Agent sends a sync_accounts request with dry_run true and:
     | brand.domain    | operator      | billing    |

@@ -27,7 +27,7 @@ Feature: BR-UC-002 Create Media Buy
   Background:
     Given a Seller Agent is operational and accepting requests
     And a tenant exists with completed setup checklist
-    And the Buyer is authenticated with a valid principal_id
+    And the Buyer is authenticated
 
 
 

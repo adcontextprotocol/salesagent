@@ -41,7 +41,6 @@ def given_tenant_has_min_order(ctx: dict) -> None:
 
 
 @given("the package budget is below the minimum")
-@given("But the package budget is below the minimum")
 def given_budget_below_minimum(ctx: dict) -> None:
     """Set each package budget to 1 cent below min_package_budget.
 

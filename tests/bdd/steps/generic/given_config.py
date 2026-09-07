@@ -293,5 +293,34 @@ def push_notification_config_with_url(ctx: dict, url: str) -> None:
     that checks "the system registered the webhook" fell back to the url key and
     passed anyway.
     """
-    ctx["push_notification_config"] = PushNotificationConfigRequestFactory.payload(url=url)
+    attach_push_notification_config(ctx, url)
+
+
+def attach_push_notification_config(ctx: dict, url: str) -> dict:
+    """Put a push_notification_config on the context, ONE way, and return it.
+
+    THE OWNER OF THE CTX PROTOCOL, not just of the payload shape. The factory
+    already deduplicated what a config LOOKS like; this deduplicates what
+    attaching one MEANS, which is where the copies actually diverged:
+
+      * this module set ``push_notification_config`` and ``push_notification_url``
+        but never ``request_kwargs``;
+      * ``given_media_buy.given_media_buy_with_push_config`` set the config and
+        ``request_kwargs["push_notification_config"]`` but never the url.
+
+    So which keys a scenario ended up with depended on which sentence it happened
+    to use, and a Then step reading a key the other sentence never wrote passed on
+    a fallback rather than on the thing it names. That is the same defect the
+    docstring above describes between the @given and @when copies, one level up:
+    the sentences were unified and the STATE THEY LEAVE was not.
+
+    Writes all three. ``request_kwargs`` only when the scenario has one, because
+    creating it here would hand a create-shaped bag to a scenario that dispatches
+    something else.
+    """
+    config = PushNotificationConfigRequestFactory.payload(url=url)
+    ctx["push_notification_config"] = config
     ctx["push_notification_url"] = url
+    if "request_kwargs" in ctx:
+        ctx["request_kwargs"]["push_notification_config"] = config
+    return config

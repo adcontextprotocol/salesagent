@@ -21,7 +21,7 @@ Feature: BR-UC-026 Package Media Buy
   Background:
     Given a Seller Agent is operational and accepting requests
     And a tenant exists with completed setup checklist
-    And the Buyer is authenticated with a valid principal_id
+    And the Buyer is authenticated
     And the seller has a product "prod-1" in inventory with pricing_options ["cpm-standard", "cpm-auction"]
     And the product "prod-1" supports format_ids ["banner-300x250", "banner-728x90"]
 
