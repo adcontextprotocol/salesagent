@@ -363,15 +363,18 @@ class TestErrorsAreNeverCached:
         so a retry with the same key re-executes to a FRESH success (replayed is
         False) — not a replay, not IDEMPOTENCY_CONFLICT.
 
-        What this pins (mutation-verified): the error path returns ``failed`` and
-        the same-key retry books a fresh buy; it reddens if an error result is
-        ever routed through ``_cache_and_return`` (the fail-loud precondition
-        fires). The complementary "no cache row is written on error" invariant is
-        pinned directly by ``test_adapter_rejection_not_cached`` — that is the
-        oracle for a cache-the-error regression; this is the fresh-re-execution half.
+        What this pins: the error path RAISES and the same-key retry books a fresh
+        buy. The rejection used to return a result carrying ``status="failed"``,
+        which is why the boundary once inspected a returned status before caching;
+        that site raises ``AdCPAdapterError`` now, so "an error caches nothing"
+        holds because a raise never reaches the save. The complementary "no cache
+        row is written on error" invariant is pinned directly by
+        ``test_adapter_rejection_not_cached`` — that is the oracle for a
+        cache-the-error regression; this is the fresh-re-execution half.
         """
         from datetime import timedelta
 
+        from src.core.exceptions import AdCPAdapterError
         from src.core.schemas import CreateMediaBuyError, Error
         from src.core.schemas._base import CreateMediaBuySuccess
 
@@ -392,15 +395,15 @@ class TestErrorsAreNeverCached:
             }
             adapter = env.mock["adapter"].return_value
 
-            # First attempt: adapter rejects -> failed result, nothing cached, no
-            # MediaBuy backstop (the rejection returns before the persist).
+            # First attempt: adapter rejects -> RAISES, nothing cached, no MediaBuy
+            # backstop (the rejection raises before the persist).
             adapter.create_media_buy.side_effect = None
             adapter.create_media_buy.return_value = CreateMediaBuyError(
                 errors=[Error(code="SERVICE_UNAVAILABLE", message="adapter failure", recovery="terminal")],
                 context=None,
             )
-            first = env.call_impl(**dict(kwargs))
-            assert first.status == "failed"
+            with pytest.raises(AdCPAdapterError):
+                env.call_impl(**dict(kwargs))
 
             # Restore the happy-path adapter and retry the SAME key + same payload.
             adapter.create_media_buy.return_value = None

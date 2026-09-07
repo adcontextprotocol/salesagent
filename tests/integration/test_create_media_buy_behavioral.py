@@ -1740,9 +1740,12 @@ class TestExtensionObligations:
         Covers: UC-002-EXT-J-02
 
         Note: In the auto-approval path, adapter execution happens BEFORE
-        database persistence. If the adapter returns an error, the function
-        returns an error result and no persistence occurs.
+        database persistence. An adapter error RAISES, so no persistence occurs.
+        It used to return a result carrying status="failed", which is why the
+        boundary once inspected a returned status before caching; raising says the
+        same thing through control flow.
         """
+        from src.core.exceptions import AdCPAdapterError
         from src.core.schemas import Error
 
         req = _make_request()
@@ -1755,11 +1758,8 @@ class TestExtensionObligations:
             env.mock["adapter"].return_value.create_media_buy.return_value = CreateMediaBuyError(
                 errors=[Error(code="SERVICE_UNAVAILABLE", message="GAM API error")]
             )
-            result = env.call_impl(req=req)
-
-        # Adapter returned error -> result is error, no persistence
-        assert isinstance(result.response, CreateMediaBuyError)
-        assert result.status == "failed"
+            with pytest.raises(AdCPAdapterError):
+                env.call_impl(req=req)
 
     def test_no_max_daily_spend_configured_check_skipped(self, integration_db):
         """No max_daily_package_spend -> daily spend check is skipped.
