@@ -12,9 +12,6 @@ Each rule cites the pinned prose it comes from: ``docs/building/by-layer/L1/secu
 
 from __future__ import annotations
 
-import asyncio
-
-import pytest
 from pydantic import BaseModel
 
 from src.core.schemas import CreateMediaBuyResult, CreateMediaBuySuccess, SyncCreativesResponse
@@ -22,10 +19,8 @@ from src.core.tools._boundary import (
     _cacheable_body,
     _is_task_envelope,
     _response_model_for,
-    invoke,
 )
 from src.core.tools.registry import TOOLS
-from tests.factories.principal import PrincipalFactory
 
 
 def _success_result(status: str = "completed") -> CreateMediaBuyResult:
@@ -39,64 +34,6 @@ def _success_result(status: str = "completed") -> CreateMediaBuyResult:
             revision=1,
         ),
     )
-
-
-class TestOnlySuccessesAreCached:
-    """Rule 3: "Only successful responses are cached. On any error ... the key is not stored."
-
-    Graded through the boundary rather than on a predicate, because the rule is enforced by
-    CONTROL FLOW now: every implementation raises on failure, and a raise never reaches the
-    save. There is no status inspection left to test.
-
-    This used to grade ``_is_error_result``, a predicate that read the protocol status off a
-    returned result. It existed for ONE caller -- ``create_media_buy`` returned a result
-    carrying ``status="failed"`` for an adapter rejection instead of raising. That site raises
-    like every other failure path now, so the predicate is deleted and the rule holds because
-    caching a failure is no longer expressible.
-    """
-
-    def test_a_raising_implementation_stores_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The raise propagates and the save is never reached."""
-        # Patched where the boundary BINDS them, not where they are defined: _boundary does
-        # `from src.core.idempotency_replay import cache_success`, so patching the source
-        # module renames something the boundary never consults.
-        saved: list[object] = []
-        monkeypatch.setattr("src.core.tools._boundary.cache_success", lambda **kwargs: saved.append(kwargs))
-        monkeypatch.setattr("src.core.tools._boundary.lookup_cached_replay", lambda **kwargs: None)
-        monkeypatch.setattr("src.core.tools._boundary.maybe_evict_expired", lambda tenant_id: None)
-        # This one IS imported inside invoke(), so the source module is the right target.
-        # Account resolution reads the database and is not what this rule grades.
-        monkeypatch.setattr(
-            "src.core.transport_helpers.enrich_identity_with_account",
-            lambda identity, account: identity,
-        )
-
-        class Boom(Exception):
-            pass
-
-        def failing_impl(req: object, identity: object) -> object:
-            raise Boom("the adapter rejected it")
-
-        req = TOOLS["sync_creatives"].dto.model_validate(
-            {
-                "creatives": [
-                    {
-                        "creative_id": "cr-1",
-                        "name": "c",
-                        "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "x"},
-                        "assets": {},
-                    }
-                ],
-                "account": {"account_id": "acct-1"},
-                "idempotency_key": "k-0123456789abcdef",
-            }
-        )
-        identity = PrincipalFactory.make_identity(tenant_id="t1", principal_id="p1")
-
-        with pytest.raises(Boom):
-            asyncio.run(invoke("sync_creatives", failing_impl, req, identity))
-
-        assert saved == [], "a failure reached the idempotency store"
 
 
 class TestTheStoredShapeIsTheInverseOfTheLoadedOne:

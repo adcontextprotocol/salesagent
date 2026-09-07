@@ -142,7 +142,10 @@ class TestTypedAdCPErrorRaises:
             principal_id="any_principal",
             protocol="mcp",
         )
-        req = GetMediaBuysRequest(account_id="acc_123")
+        # ``account``, not the deleted ``account_id``: b490a5aa1 removed the non-spec field,
+        # and media_buy_list.py:168 has always guarded on ``req.account``. The old spelling
+        # made this test die on extra_forbidden before it could reach the guard it grades.
+        req = GetMediaBuysRequest(account={"account_id": "acc_123"})
 
         with pytest.raises(AdCPCapabilityNotSupportedError) as exc_info:
             _get_media_buys_impl(req, identity=identity)

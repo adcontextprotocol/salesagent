@@ -205,11 +205,16 @@ async def test_schema_path_rejects_embedded_traversal():
     """A ref that normalizes clean but traverses mid-path is contained.
 
     '_normalize_ref' only rejects '..' prefixes; the containment check in
-    'tests.helpers.pinned_schema._resolve_filename' must stop
+    'tests/helpers/adcp_pinned_schema.py' must stop
     'media-buy/../../../../etc/hosts' before any filesystem read.
+
+    Matches the message's STABLE half only. The raiser (adcp_pinned_schema.py:139)
+    interpolates the resolved path, which is the runner's absolute path -- '/app/.tox/etc/hosts'
+    in-network, something else on a laptop -- so pinning the whole sentence makes this test
+    fail on where it runs rather than on what it grades.
     """
     validator = AdCPSchemaValidator()
-    with pytest.raises(SchemaError, match="escapes the pinned SDK schema tree"):
+    with pytest.raises(SchemaError, match="escapes the schema trees"):
         await validator.get_schema("media-buy/" + "../" * 8 + "etc/hosts")
 
 
