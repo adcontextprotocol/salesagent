@@ -461,10 +461,13 @@ class TransportResult:
         """
         if self.wire_response is None:
             transport = self.transport or self.envelope.get("transport", "unknown transport")
+            # Message keeps the "wire_response missing" phrasing the wire-grading graders match
+            # on (tests/integration/test_uc006_storyboard_wire_grading.py) while leading with the
+            # transport name (test_transport_conformance.py pins ``^a2a:`` / "unknown transport").
             raise AssertionError(
-                f"{transport}: no success-path wire_response captured "
-                f"(is_error={self.is_error}, payload={self.payload!r}). The env did not "
-                "stash the serialized wire for this transport, or the operation errored."
+                f"{transport}: wire_response missing — no success-path wire body was stashed "
+                f"(is_error={self.is_error}, payload={self.payload!r}). The env did not stash the "
+                "serialized wire for this transport, or the operation errored."
             )
         return self.wire_response
 

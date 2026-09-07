@@ -274,6 +274,10 @@ class TestHasWireIsDeclaredAtEveryConstructionSite:
             "mutation grader: fabricates the ctx an injected REST 500 leaves behind (has_wire=True — that "
             "body did come back over HTTP) and drives every UC-006 storyboard Then step through it"
         ),
+        "tests/harness/test_transport_conformance.py": (
+            "conformance fixture: constructs results directly to exercise require_wire's transport-named "
+            "raising branch (and its wire-present return) in isolation, off any dispatch"
+        ),
     }
 
     def test_the_seam_is_still_the_only_constructor(self):
