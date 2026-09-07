@@ -45,7 +45,7 @@ from src.core.tools.media_buy_create import _create_media_buy_impl
 # Suite reports this script may publish. Named once so the pre-run purge and the
 # copy below cannot drift apart — a report present in one list and absent from
 # the other is how a stale file survives.
-_REPORT_SUITES="unit integration e2e admin bdd ui quality"
+_REPORT_SUITES="unit integration e2e admin bdd ui quality storyboard"
 
 purge_stale_reports() {
     # `.tox/` persists between invocations, so a suite that dies before writing

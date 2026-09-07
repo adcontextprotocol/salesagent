@@ -116,8 +116,28 @@ def _webhook_port(protocol: str) -> str:
     return str(base + _PROTOCOLS.index(protocol))
 
 
-def _missing_env() -> list[str]:
-    return [name for name in (_COMPLIANCE_DIR_ENV, _SCHEMA_ROOT_ENV) if not os.environ.get(name)]
+def _unresolvable_bundle_paths() -> list[str]:
+    """The bundle paths that do not resolve to a directory on disk.
+
+    Asks the FILESYSTEM, not the environment. The two env vars are OVERRIDES; when one is
+    unset :func:`_bundle_path` derives the location from ``storyboard_spec.adcp_home()``,
+    and that derivation is the normal case rather than the exception -- nothing sets them,
+    not CI (the storyboard job runs ``./run_all_tests.sh storyboard`` after extracting the
+    bundle and sets neither) and not a developer.
+
+    This used to read ``os.environ.get(name)`` and call an absent var missing. tox.ini
+    declares both as ``{env:NAME:}``, which sets them to the EMPTY STRING on every run, so
+    the check reported both missing every time, parametrized the single
+    ``environment-not-configured`` skip below, and returned before the derivation could run.
+    The branch :func:`_bundle_path` documents as "Unset: derive it" was therefore
+    unreachable, and every storyboard run graded nothing -- 1 passed, 1 skipped, exit 0.
+    That is the false green ``_no_graded_checks`` exists to refuse, arriving one layer above
+    it where that guard cannot see it (measured: cassini run 097b0091, storyboard.json
+    summary {'passed': 1, 'skipped': 1}).
+
+    A skip here now means the bundle is genuinely absent, and the reason names the path.
+    """
+    return [name for name in (_COMPLIANCE_DIR_ENV, _SCHEMA_ROOT_ENV) if not Path(_bundle_path(name)).is_dir()]
 
 
 def _bundle_path(env_name: str) -> str:
@@ -344,12 +364,13 @@ def _stale_ledger_entries(collected_ids: list[str]) -> list[str]:
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     if "storyboard_check" not in metafunc.fixturenames:
         return
-    missing = _missing_env()
+    missing = _unresolvable_bundle_paths()
     if missing:
+        detail = ", ".join(f"{name}={_bundle_path(name)}" for name in missing)
         metafunc.parametrize(
             "storyboard_check",
-            [{"status": "skip", "reason": f"missing env: {', '.join(missing)}", "reason_kind": "config"}],
-            ids=["environment-not-configured"],
+            [{"status": "skip", "reason": f"pinned AdCP bundle not found: {detail}", "reason_kind": "config"}],
+            ids=["bundle-not-present"],
         )
         return
     checks = [check for protocol in _PROTOCOLS for check in _collect_checks(protocol)]

@@ -130,7 +130,7 @@ echo "Parallelism: docker_mem=${_docker_mem_gb}GB cores=${_cores} -> unit=$UNIT_
 # The in-network path always builds the full compose stack, so it can't honor
 # the "quick == no Docker" or the targeted contracts — those delegate to the
 # verbatim host runner that already implements them (DRY, single source).
-ALL_SUITES="unit,integration,bdd,admin,e2e,ui,quality"
+ALL_SUITES="unit,integration,bdd,admin,e2e,ui,quality,storyboard"
 DELEGATE=0
 case "${1:-ci}" in
     quick) DELEGATE=1 ;;

@@ -166,3 +166,9 @@ manifest.json
 /schemas/
 # Session working notes — scratch, never a deliverable. The PR is their home.
 .claude/notes/
+
+# The pinned AdCP compliance bundle: a downloaded GitHub release asset, not source.
+# .github/actions/_adcp-bundle fetches and sha256-verifies it; the extracted tree is
+# already ignored by tests/storyboard/runner/.gitignore.
+tests/storyboard/runner/*.tgz
+tests/storyboard/runner/*.tgz.sha256
