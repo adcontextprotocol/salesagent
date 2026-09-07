@@ -738,7 +738,6 @@ def given_package_budget_set_to(ctx: dict, value: str) -> None:
 
 
 @given(parsers.parse('a package references product_id "{product_id}" which does not exist'))
-@given(parsers.parse('a package references product_id "{product_id}" which does not exist'))
 def given_nonexistent_product(ctx: dict, product_id: str) -> None:
     """Override first package to reference a nonexistent product."""
     kwargs = _ensure_request_defaults(ctx)
@@ -749,7 +748,6 @@ def given_nonexistent_product(ctx: dict, product_id: str) -> None:
     kwargs["packages"][0]["product_id"] = product_id
 
 
-@given(parsers.parse('start_time is "{value}" (in the past)'))
 @given(parsers.parse('start_time is "{value}" (in the past)'))
 def given_past_start_time(ctx: dict, value: str) -> None:
     """Set start_time to a past datetime."""
@@ -807,7 +805,6 @@ def given_end_time_value(ctx: dict, value: str) -> None:
 
 
 @given(parsers.parse('the packages use currency "{currency}" which is not in the tenant\'s CurrencyLimit table'))
-@given(parsers.parse('the packages use currency "{currency}" which is not in the tenant\'s CurrencyLimit table'))
 def given_unsupported_currency(ctx: dict, currency: str) -> None:
     """Create a pricing option with unsupported currency."""
     env = ctx["env"]
@@ -824,7 +821,6 @@ def given_unsupported_currency(ctx: dict, currency: str) -> None:
         kwargs["packages"][0]["pricing_option_id"] = pricing_option_id(po)
 
 
-@given(parsers.parse('both packages reference the same product_id "{product_id}"'))
 @given(parsers.parse('both packages reference the same product_id "{product_id}"'))
 def given_duplicate_product(ctx: dict, product_id: str) -> None:
     """Set both packages to reference the same product_id."""
@@ -847,7 +843,6 @@ def given_duplicate_product(ctx: dict, product_id: str) -> None:
         pkg["product_id"] = product_id
 
 
-@given(parsers.parse('a package targeting_overlay contains unknown field "{field_name}"'))
 @given(parsers.parse('a package targeting_overlay contains unknown field "{field_name}"'))
 def given_unknown_targeting_field(ctx: dict, field_name: str) -> None:
     """Add unknown field to package targeting_overlay."""
@@ -874,7 +869,6 @@ def given_managed_targeting_dimension(ctx: dict) -> None:
     kwargs["packages"][0]["targeting_overlay"] = {"key_value_pairs": {"section": "sports"}}
 
 
-@given(parsers.parse('a package targeting_overlay includes "{value}" in both geo_countries and geo_countries_exclude'))
 @given(parsers.parse('a package targeting_overlay includes "{value}" in both geo_countries and geo_countries_exclude'))
 def given_geo_overlap(ctx: dict, value: str) -> None:
     """Create geo include/exclude overlap."""
@@ -913,7 +907,6 @@ def given_high_daily_spend(ctx: dict, budget: int, days: int, daily: int) -> Non
     kwargs["packages"][0]["budget"] = float(budget)
 
 
-@given(parsers.parse('a package references pricing_option_id "{po_id}" not found on the product'))
 @given(parsers.parse('a package references pricing_option_id "{po_id}" not found on the product'))
 def given_nonexistent_pricing_option(ctx: dict, po_id: str) -> None:
     """Override first package pricing_option_id to a non-existent value."""
@@ -2235,7 +2228,6 @@ def given_creative_boundary(ctx: dict, config: str) -> None:
 
 
 @given(parsers.parse('a package creative_assignment references creative_id "{creative_id}"'))
-@given(parsers.parse('a package creative_assignment references creative_id "{creative_id}"'))
 def given_package_references_missing_creative(ctx: dict, creative_id: str) -> None:
     """ext-o: reference a creative_id with no matching library row.
 
@@ -2252,7 +2244,6 @@ def given_package_references_missing_creative(ctx: dict, creative_id: str) -> No
     _seed_auto_approval(ctx)
 
 
-@given("a creative's format_id does not match any of the product's supported format_ids")
 @given("a creative's format_id does not match any of the product's supported format_ids")
 def given_creative_format_mismatch(ctx: dict) -> None:
     """ext-p: seed an approved creative whose format is absent from the product.
@@ -2789,7 +2780,6 @@ def given_request_proposal_mode(ctx: dict) -> None:
 
 
 @given(parsers.parse('proposal "{proposal_id}" does not exist or has expired'))
-@given(parsers.parse('proposal "{proposal_id}" does not exist or has expired'))
 def given_proposal_not_exists(ctx: dict, proposal_id: str) -> None:
     """Mark that the referenced proposal does not exist.
 
@@ -2813,7 +2803,6 @@ def given_proposal_not_exists(ctx: dict, proposal_id: str) -> None:
     )
 
 
-@given(parsers.parse("the proposal's total_budget_guidance.min is {amount:d}"))
 @given(parsers.parse("the proposal's total_budget_guidance.min is {amount:d}"))
 def given_proposal_budget_guidance_min(ctx: dict, amount: int) -> None:
     """Set expected proposal budget guidance minimum.

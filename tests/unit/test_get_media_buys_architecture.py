@@ -12,9 +12,7 @@ import pytest
 
 from src.core.exceptions import (
     AdCPAuthenticationError,
-    AdCPCapabilityNotSupportedError,
 )
-from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas import GetMediaBuysRequest
 
 
@@ -53,22 +51,13 @@ class TestGetMediaBuysImplRaisesAdCPError:
         with pytest.raises(AdCPAuthenticationError):
             _get_media_buys_impl(req, identity=None)
 
-    def test_unsupported_account_raises_adcp_error(self):
-        """Passing account (nested, AdCP 3.x) should raise AdCPCapabilityNotSupportedError.
-
-        The wire code ``UNSUPPORTED_FEATURE`` lets buyers retry without the
-        unsupported parameter; a generic ``VALIDATION_ERROR`` would not.
-        """
-        from src.core.tools.media_buy_list import _get_media_buys_impl
-
-        identity = ResolvedIdentity(
-            principal_id="test_principal",
-            tenant_id="test_tenant",
-            tenant={"tenant_id": "test_tenant"},
-        )
-        req = GetMediaBuysRequest(account={"account_id": "some_account"})
-        with pytest.raises(AdCPCapabilityNotSupportedError):
-            _get_media_buys_impl(req, identity=identity)
+    # RETIRED: test_unsupported_account_raises_adcp_error. It asserted that a request
+    # carrying `account` is refused with UNSUPPORTED_FEATURE. That refusal was a stopgap
+    # and is gone (#2219): get-media-buys-request.json declares `account` -- "Account to
+    # retrieve media buys for. When omitted, returns data across all accessible accounts"
+    # -- and the tool now scopes the listing to it. The two BR-UC-019 scenarios that
+    # graded the refusal went with it in 7d629320a; the acceptance is graded on the wire
+    # by their replacements.
 
     # No issubclass test here: "errors raised by _impl are AdCPSalesAgentError, never
     # ToolError" is enforced for EVERY _impl by the AST guard

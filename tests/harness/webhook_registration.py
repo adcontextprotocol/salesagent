@@ -30,7 +30,6 @@ from unittest.mock import patch
 from tests.factories.webhook import PushNotificationConfigRequestFactory
 from tests.harness._mixins import LocalOriginMixin
 from tests.harness.media_buy_dual import MediaBuyDualEnv
-from tests.harness.product import ProductEnv
 from tests.helpers.adcp_factories import create_test_media_buy_request_dict
 
 if TYPE_CHECKING:
@@ -72,45 +71,6 @@ class _AuthDroppingStash(dict):
 
     def __setitem__(self, key: Any, value: Any) -> None:
         super().__setitem__(key, _drop_registered_auth(value))
-
-
-class A2APushRegistrationEnv(LocalOriginMixin, ProductEnv):
-    """``message/send`` registers the webhook in the PROTOCOL envelope.
-
-    ``on_message_send`` reads ``params.configuration.task_push_notification_config``
-    before any skill routing, stashes it under the task id, and
-    ``_send_protocol_webhook`` reads that stash back when the task reaches a
-    terminal state. The skill the registration rides on (``get_products``) is
-    incidental — it exists only to give the task something to complete.
-    """
-
-    def call_a2a_with_push_config(self, push_config: dict[str, Any], **kwargs: Any) -> Any:
-        """Dispatch ``message/send`` carrying a protocol-level push registration.
-
-        ``push_config`` is the A2A protobuf shape (SINGULAR ``scheme``), not the
-        AdCP tool shape — see ``_a2a_send_message_configuration``.
-        """
-        return self.call_a2a(a2a_push_notification_config=push_config, **kwargs)
-
-    @contextmanager
-    def stash_drops_the_credential_half(self) -> Iterator[None]:
-        """Make the task stash lose the auth fields — the reverse-TDD mutation.
-
-        Patches ``__init__`` rather than an instance because the handler is
-        constructed inside ``_run_a2a_handler``; the stash is replaced right
-        after production installs it, so everything up to and including the
-        ingest gate runs untouched and only what SURVIVES the stash differs.
-        """
-        from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
-
-        original_init = AdCPRequestHandler.__init__
-
-        def _init_with_dropping_stash(handler: Any, *args: Any, **kwargs: Any) -> None:
-            original_init(handler, *args, **kwargs)
-            handler._task_push_configs = _AuthDroppingStash(handler._task_push_configs)
-
-        with patch.object(AdCPRequestHandler, "__init__", _init_with_dropping_stash):
-            yield
 
 
 class MediaBuyPushRegistrationEnv(LocalOriginMixin, MediaBuyDualEnv):

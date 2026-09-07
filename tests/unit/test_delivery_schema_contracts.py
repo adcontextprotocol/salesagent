@@ -65,25 +65,22 @@ class TestDeliveryTypeEnum:
 # ---------------------------------------------------------------------------
 
 
+# The four ``test_field_names`` cases are RETIRED, and the EXPECTED_FIELDS sets with them.
+#
+# Each asserted that a local model's field set equals a hand-written literal. Those models
+# now EXTEND the SDK's (critical pattern #1) instead of redeclaring a subset of it, so the
+# set is whatever the pinned schema declares -- 41 fields on DeliveryTotals where the
+# literal named 9 -- and re-listing it here only asks whether someone retyped the pin
+# correctly. CLAUDE.md rules that out by name: "There is deliberately no suite comparing a
+# model's field set to the pinned schema ... a comparison would assert that Python
+# inheritance works."
+#
+# What those sets stood in for is graded where it can fail: the inheritance guard
+# (tests/unit/test_architecture_schema_inheritance.py) grades every REDECLARATION against
+# its library parent, and the round-trip and construction cases below still exercise values.
+
+
 class TestDeliveryTotalsFields:
-    EXPECTED_FIELDS = {
-        "impressions",
-        "spend",
-        "clicks",
-        "ctr",
-        "completed_views",
-        "completion_rate",
-        "conversions",
-        # conversion_value: spec core/delivery-metrics.json declares it per buy;
-        # feeds the aggregated_totals.roas quotient defined by
-        # media-buy/get-media-buy-delivery-response.json (pin 04f59d2d5).
-        "conversion_value",
-        "viewability",
-    }
-
-    def test_field_names(self):
-        assert set(DeliveryTotals.model_fields.keys()) == self.EXPECTED_FIELDS
-
     def test_round_trip(self):
         data = {"impressions": 1000, "spend": 5.0, "conversions": 12, "viewability": 0.85}
         obj = DeliveryTotals(**data)
@@ -99,27 +96,6 @@ class TestDeliveryTotalsFields:
 
 
 class TestPackageDeliveryFields:
-    EXPECTED_FIELDS = {
-        "package_id",
-        "impressions",
-        "spend",
-        "clicks",
-        "completed_views",
-        "pacing_index",
-        "pricing_model",
-        "rate",
-        "currency",
-        "by_placement",
-        "by_placement_truncated",
-        "by_geo",
-        "by_geo_truncated",
-        "by_device_type",
-        "by_device_type_truncated",
-    }
-
-    def test_field_names(self):
-        assert set(PackageDelivery.model_fields.keys()) == self.EXPECTED_FIELDS
-
     def test_round_trip(self):
         data = {
             "package_id": "pkg_1",
@@ -135,11 +111,6 @@ class TestPackageDeliveryFields:
 
 
 class TestDailyBreakdownFields:
-    EXPECTED_FIELDS = {"date", "impressions", "spend"}
-
-    def test_field_names(self):
-        assert set(DailyBreakdown.model_fields.keys()) == self.EXPECTED_FIELDS
-
     def test_round_trip(self):
         data = {"date": "2025-01-15", "impressions": 100, "spend": 0.5}
         obj = DailyBreakdown(**data)
@@ -148,22 +119,6 @@ class TestDailyBreakdownFields:
 
 
 class TestMediaBuyDeliveryDataFields:
-    EXPECTED_FIELDS = {
-        "media_buy_id",
-        "status",
-        "expected_availability",
-        "is_adjusted",
-        "pricing_model",
-        "pricing_options",
-        "totals",
-        "by_package",
-        "daily_breakdown",
-        "ext",
-    }
-
-    def test_field_names(self):
-        assert set(MediaBuyDeliveryData.model_fields.keys()) == self.EXPECTED_FIELDS
-
     def test_ext_defaults_to_empty_dict(self):
         obj = MediaBuyDeliveryData(
             media_buy_id="buy_1",

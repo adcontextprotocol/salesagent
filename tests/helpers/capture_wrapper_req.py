@@ -1,11 +1,11 @@
 """The seam a transport-boundary test substitutes at: the registry row.
 
 There is no per-tool MCP wrapper left to patch. ``TOOLS`` is the one declaration all three
-transports derive from, and ``main._tool_callable`` builds the registered MCP callable from
-a row -- so a test that wants a stub implementation replaces the ROW, and gets it on every
-transport at once. Patching ``src.core.tools.<mod>._<tool>_impl`` does nothing: the row
-captured the function object at import, so the module attribute and the thing the transports
-invoke are two different names for what used to be one.
+transports derive from, and the registered ``RegistryTool`` reads its row on every call --
+so a test that wants a stub implementation replaces the ROW, and gets it on every transport
+at once. Patching ``src.core.tools.<mod>._<tool>_impl`` does nothing: the row captured the
+function object at import, so the module attribute and the thing the transports invoke are
+two different names for what used to be one.
 """
 
 from __future__ import annotations
@@ -39,14 +39,31 @@ def registry_impl(tool_name: str, impl: Any) -> Any:
 
 
 def mcp_tool(tool_name: str) -> Any:
-    """The generated MCP callable for ``tool_name``, built from the row as registered.
+    """``await mcp_tool(name)(ctx=..., **arguments)`` -> the REGISTERED tool's ``ToolResult``.
 
-    Built on each call, so calling it inside a :func:`registry_impl` block yields a callable
-    bound to the substituted row.
+    Runs the tool object the server actually serves, not a reconstruction of it, so a test
+    exercises the same validate-invoke-serialize path a buyer reaches. ``RegistryTool.run``
+    reads its row per call, so this picks up a :func:`registry_impl` substitution without
+    being rebuilt.
+
+    ``ctx`` stands in for the FastMCP request context the middleware would have populated;
+    it is supplied by patching the dependency ``run`` resolves rather than passed as an
+    argument, because a buyer sends arguments only. Omit it to run as an unauthenticated
+    caller -- a context whose ``identity`` state is unset, which is what the middleware
+    leaves behind for an auth-optional tool called without a token.
     """
-    from src.core.main import _tool_callable
+    from src.core import main
 
-    return _tool_callable(tool_name, TOOLS[tool_name])
+    async def _run(ctx: Any = None, **arguments: Any) -> Any:
+        if ctx is None:
+            ctx = MagicMock(spec=Context)
+            ctx.get_state = AsyncMock(return_value=None)
+        tool = await main.mcp.get_tool(tool_name)
+        assert tool is not None, f"{tool_name} is not registered"
+        with patch("fastmcp.server.dependencies.get_context", return_value=ctx):
+            return await tool.run(arguments)
+
+    return _run
 
 
 def capture_req_via_wrapper(
@@ -65,7 +82,7 @@ def capture_req_via_wrapper(
     mock_ctx = MagicMock(spec=Context)
     mock_ctx.get_state = AsyncMock(return_value=None)
     with registry_impl(tool_name, _impl):
-        asyncio.run(mcp_tool(tool_name)(**wrapper_kwargs, ctx=mock_ctx))
+        asyncio.run(mcp_tool(tool_name)(ctx=mock_ctx, **wrapper_kwargs))
     return captured["req"]
 
 

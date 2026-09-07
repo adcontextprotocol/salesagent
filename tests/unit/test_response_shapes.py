@@ -369,6 +369,9 @@ class TestGetMediaBuyDeliveryResponseShape:
                             impressions=50000.0,
                             spend=500.0,
                             clicks=250.0,
+                            pricing_model=PricingModel.cpm,
+                            rate=10.0,
+                            currency="USD",
                         )
                     ],
                 )
@@ -821,7 +824,19 @@ class TestSerializationConsistency:
                     status="active",
                     pricing_model=PricingModel.cpm,
                     totals=DeliveryTotals(impressions=1000.0, spend=10.0),
-                    by_package=[PackageDelivery(package_id="pkg_1", impressions=1000.0, spend=10.0)],
+                    by_package=[
+                        # pricing_model / rate / currency are `required` on the pinned
+                        # by-package item, so a package built without them is not a
+                        # response this seller could serialize.
+                        PackageDelivery(
+                            package_id="pkg_1",
+                            impressions=1000.0,
+                            spend=10.0,
+                            pricing_model=PricingModel.cpm,
+                            rate=10.0,
+                            currency="USD",
+                        )
+                    ],
                 )
             ],
         )

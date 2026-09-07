@@ -45,8 +45,6 @@ def make_pending_media_buy(integration_db):
 
     ``request_data_context``: optional dict stored as ``request_data["context"]`` on
     the workflow step — drives the approve webhook's context-echo branch.
-    ``protocol``: the workflow step's originating protocol ("mcp" default; "a2a"
-    drives the create_a2a_webhook_payload branch).
     """
     from datetime import UTC, datetime, timedelta
 
@@ -68,7 +66,7 @@ def make_pending_media_buy(integration_db):
     engine = get_engine()
     session = SASession(bind=engine)
 
-    def _make(request_data_context: dict | None = None, protocol: str = "mcp"):
+    def _make(request_data_context: dict | None = None):
         tenant = TenantFactory(tenant_id="reject_wh_tenant")
         PropertyTagFactory(tenant=tenant, tag_id="all_inventory", name="All Inventory")
         principal = PrincipalFactory(
@@ -121,7 +119,6 @@ def make_pending_media_buy(integration_db):
         # Tenant-scoped approval workflow step + object mapping (production API).
         request_data = {
             "push_notification_config": {"url": WEBHOOK_URL},
-            "protocol": protocol,
         }
         if request_data_context is not None:
             request_data["context"] = request_data_context
@@ -478,59 +475,6 @@ class TestAdminMediaBuyRejectWebhook:
             expected_status="scheduled",
             confirms=True,
             subject="admin approval (pending_approval -> scheduled)",
-        )
-
-    def test_a2a_reject_webhook_carries_policy_violation_task(
-        self, authenticated_admin_session, make_pending_media_buy, webhook_capture
-    ):
-        """An A2A-originated reject fires a protobuf Task carrying POLICY_VIOLATION, not a Success.
-
-        Regression for PR #1567 round-3 (ChrisHuie review): the protocol=="a2a"
-        branch of the reject webhook (create_a2a_webhook_payload) had ZERO test
-        references — the reject fixture hardcoded protocol "mcp", so what this PR
-        changed inside that branch (the typed CreateMediaBuyError carrying the
-        wire code POLICY_VIOLATION) was unpinned on A2A. The A2A envelope framing
-        (protobuf Task with artifacts[].parts[].data) differs from the MCP
-        payload, so the passing MCP test does not cover it. Asserts on the actual
-        protobuf Task create_a2a_webhook_payload emits.
-        """
-        from google.protobuf.json_format import MessageToDict
-
-        ids = make_pending_media_buy(protocol="a2a")
-
-        _post_approval_action(authenticated_admin_session, ids, {"action": "reject", "reason": "Budget too low"})
-        assert "payload" in webhook_capture, "A2A reject route did not send a webhook payload"
-        task = webhook_capture["payload"]
-        # Terminated statuses produce a protobuf a2a Task (create_a2a_webhook_payload contract).
-        body = MessageToDict(task, preserving_proto_field_name=True)
-
-        assert body.get("status", {}).get("state") == "TASK_STATE_REJECTED", (
-            f"A2A reject Task must carry the rejected state, got {body.get('status')!r}"
-        )
-        artifacts = body.get("artifacts") or []
-        assert artifacts, f"A2A reject Task must embed the result artifact, got {body!r}"
-        datas = [part.get("data", {}).get("data", part.get("data", {})) for part in artifacts[0].get("parts", [])]
-        result_data = next((d for d in datas if isinstance(d, dict) and "errors" in d), None)
-        assert result_data is not None, f"A2A reject artifact must carry the errors payload, got {artifacts!r}"
-        errors = result_data["errors"]
-        assert errors and errors[0].get("code") == "MEDIA_BUY_REJECTED", (
-            f"A2A reject artifact emitted {errors and errors[0].get('code')!r} — a seller rejection "
-            "reaches the buyer as declared, same contract the MCP sibling pins"
-        )
-        assert errors[0].get("recovery") == "terminal", (
-            f"A2A recovery={errors[0].get('recovery')!r}; MEDIA_BUY_REJECTED is terminal in CODE_TABLE"
-        )
-        assert (errors[0].get("details") or {}).get("rejection_reason") == "Budget too low", (
-            "the seller's typed rejection reason must reach the buyer on A2A too — operator data "
-            "travels in details, not in the CODE_TABLE-derived message"
-        )
-        # A rejection must not embed a completed-Success shape in the artifact.
-        assert result_data.get("status") != "completed", (
-            f"A2A reject artifact claims status={result_data.get('status')!r} — a rejection "
-            "must not carry a completed-success envelope"
-        )
-        assert not result_data.get("confirmed_at"), (
-            "A2A reject artifact embeds confirmed_at — the buy was rejected, not confirmed"
         )
 
     def test_approve_webhook_echoes_buyer_request_context(

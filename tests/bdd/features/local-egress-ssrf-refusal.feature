@@ -310,9 +310,6 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   # proves the agreement instead of asserting it here: if any transport re-forks
   # the field path, a scenario reddens.
   #
-  # The message/send scenarios below keep @a2a_untyped_ingest: their surface is
-  # the A2A protocol envelope, which has no counterpart on MCP or REST at all.
-  #
   # Every URL below is public and passes the registration SSRF gate that runs
   # immediately before this one, so the ONLY thing that can refuse these requests
   # is the credential half — a green here cannot be the URL gate firing by luck.
@@ -386,15 +383,15 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   # SINGULAR and free-form (no enum guards the value here), which is why the
   # scheme below is the exact pinned spelling and the refusal must still name the
   # credential.
-  @T-EGRESS-CREDS-a2a-message-send @egress @a2a_untyped_ingest @invariant
-  Scenario: a credential-less HMAC-SHA256 registration is refused at A2A message/send
-    Given a tenant is configured for product discovery
-    When the buyer sends a request registering HMAC-SHA256 with no credentials in the protocol envelope
-    Then the error is compliant with the AdCP error spec
-    And the response arrives
-    And the response contains error code INVALID_REQUEST
-    And the response error field is push_notification_config.authentication.credentials
-    And the refusal names the missing shared secret and not the URL
+  # RETIRED: the two "at A2A message/send" scenarios. Their surface was the A2A
+  # protocol envelope's own push registration (`configuration.taskPushNotificationConfig`),
+  # which this agent no longer implements -- it advertises `push_notifications=false` and
+  # declines all four `tasks/pushNotificationConfig/*` methods, because AdCP 3.1.1
+  # L3/webhooks.mdx :308 makes that a SEPARATE registration channel with a separate (A2A
+  # `Task`) envelope. Both obligations they carried are graded above on the channel this
+  # seller does implement: "refused at create ingest" / "at update ingest" / "at sync
+  # ingest" for the credential-less case, and "refused at sync ingest" for the sub-32 one.
+
 
   # ── The CARDINALITY half, and the credential MINIMUM ───────────────
   #
@@ -494,12 +491,3 @@ Feature: Egress refusal of a buyer-supplied URL (local, L1 SSRF)
   # green here can never be the SSRF gate firing by luck, and the exact-field
   # assertion is what rules out the A2A `_invalid_params_from_ssrf_error` funnel
   # re-enveloping this as a URL refusal.
-  @T-EGRESS-CREDS-short-a2a-message-send @egress @a2a_untyped_ingest @invariant
-  Scenario: a shared secret shorter than the pinned minimum is refused at A2A message/send
-    Given a tenant is configured for product discovery
-    When the buyer sends a request registering HMAC-SHA256 with a 31-character secret in the protocol envelope
-    Then the error is compliant with the AdCP error spec
-    And the response arrives
-    And the response contains error code INVALID_REQUEST
-    And the response error field is push_notification_config.authentication.credentials
-    And the refusal names the too-short shared secret and not the URL

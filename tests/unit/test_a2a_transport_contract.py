@@ -18,6 +18,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from src.app import app
+from src.core.tools.registry import TOOLS
 from tests.factories.principal import PrincipalFactory
 
 _MOCK_IDENTITY = PrincipalFactory.make_identity(
@@ -45,19 +46,16 @@ def _advertised_skills() -> list[str]:
 
 ALL_SKILLS = _advertised_skills()
 
-DISCOVERY_SKILLS = [
-    "get_adcp_capabilities",
-    "list_creative_formats",
-    "get_products",
-    # list_accounts only. Auth is OPTIONAL there per BR-RULE-055 -- an unauthenticated
-    # call returns an empty account list rather than a rejection. sync_accounts is NOT in
-    # this set: it writes, and it rejects an unauthenticated caller. Both were absent from
-    # the old hand-copied ALL_SKILLS, which is why deriving the list from the agent card
-    # surfaced the distinction at all.
-    "list_accounts",
-]
+# Derived, not hand-kept. ``ToolSpec.auth`` is the one place a tool says whether it needs a
+# caller, and the A2A gate reads that same field -- so a list written here could only ever
+# agree with the gate by coincidence, and this one did not: it claimed ``list_accounts`` was
+# auth-optional, while tests/integration/test_list_accounts.py graded the opposite behaviour
+# ("unauthenticated list_accounts raises AUTH_REQUIRED") from the same BR-RULE-055. The pin
+# settles it -- account/list-accounts-request.json describes "accounts accessible to the
+# authenticated agent" -- and the registry row already said ``auth="required"``.
+DISCOVERY_SKILLS = [s for s in ALL_SKILLS if TOOLS[s].auth == "optional"]
 
-AUTH_REQUIRED_SKILLS = [s for s in ALL_SKILLS if s not in DISCOVERY_SKILLS]
+AUTH_REQUIRED_SKILLS = [s for s in ALL_SKILLS if TOOLS[s].auth == "required"]
 
 # ---------------------------------------------------------------------------
 # Helpers

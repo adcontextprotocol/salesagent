@@ -331,12 +331,6 @@ class TestGetAdcpCapabilitiesWithTenant:
 class TestGetAdcpCapabilitiesA2AIntegration:
     """Test A2A integration for get_adcp_capabilities."""
 
-    def test_skill_in_discovery_skills(self):
-        """Test that get_adcp_capabilities is in DISCOVERY_SKILLS."""
-        from src.a2a_server.adcp_a2a_server import DISCOVERY_SKILLS
-
-        assert "get_adcp_capabilities" in DISCOVERY_SKILLS
-
     def test_the_registry_row_makes_the_skill_dispatchable(self):
         """A2A serves this tool because the registry row says so, not because a method exists.
 

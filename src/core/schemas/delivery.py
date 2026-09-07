@@ -149,6 +149,20 @@ class DeviceTypeBreakdown(LibraryByDeviceTypeItem):
     pass  # All fields inherited from library ByDeviceTypeItem
 
 
+# Why the six ``# type: ignore[assignment]`` below, and why they are not suppression.
+#
+# Each one redeclares an inherited field with a SUBCLASS of the SDK's element type, so the
+# local model's own ``model_dump`` runs for nested children (critical pattern #4) and a
+# response rebuilt from a replay cache comes back as the local class rather than the parent.
+# ``list`` is invariant, so ``list[PlacementBreakdown]`` is not assignable to
+# ``list[ByPlacementItem]`` even though every element is one -- a limitation of the
+# annotation, not a defect in the value.
+#
+# Widening the annotations back to the parent types is not the alternative: pydantic would
+# then construct PARENT instances when validating a dict, and the replay path does exactly
+# that. The narrowing is load-bearing; the ignore is the only part that is cosmetic.
+
+
 class PackageDelivery(LibraryByPackageItem):
     """Metrics broken down by package, extending the pinned ``by_package`` item.
 
@@ -166,16 +180,16 @@ class PackageDelivery(LibraryByPackageItem):
     parent, and required -> optional needs an allowlist row naming the weakened axis.
     """
 
-    by_placement: list[PlacementBreakdown] | None = Field(
+    by_placement: list[PlacementBreakdown] | None = Field(  # type: ignore[assignment]  # covariant narrowing; see _NARROWED_LIST_NOTE
         None,
         description="Placement-level delivery breakdown (populated when reporting_dimensions includes 'placement')",
     )
-    by_geo: list[GeoBreakdown] | None = Field(
+    by_geo: list[GeoBreakdown] | None = Field(  # type: ignore[assignment]  # covariant narrowing; see _NARROWED_LIST_NOTE
         None,
         description="Geographic delivery breakdown (populated when reporting_dimensions includes 'geo'). "
         "For metro/postal_area levels each entry declares the classification 'system' used.",
     )
-    by_device_type: list[DeviceTypeBreakdown] | None = Field(
+    by_device_type: list[DeviceTypeBreakdown] | None = Field(  # type: ignore[assignment]  # covariant narrowing; see _NARROWED_LIST_NOTE
         None,
         description="Device-type delivery breakdown (populated when reporting_dimensions includes 'device_type')",
     )
@@ -219,9 +233,9 @@ class MediaBuyDeliveryData(LibraryMediaBuyDelivery):
     # ``status == "completed"`` comparisons and JSON serialization stay string-native.
     model_config = ConfigDict(extra=get_pydantic_extra_mode(), use_enum_values=True)
 
-    totals: DeliveryTotals = Field(description="Aggregate metrics for this media buy across all packages")
-    by_package: list[PackageDelivery] = Field(description="Metrics broken down by package")
-    daily_breakdown: list[DailyBreakdown] | None = Field(None, description="Day-by-day delivery")
+    totals: DeliveryTotals = Field(description="Aggregate metrics for this media buy across all packages")  # type: ignore[assignment]  # covariant narrowing; see _NARROWED_LIST_NOTE
+    by_package: list[PackageDelivery] = Field(description="Metrics broken down by package")  # type: ignore[assignment]  # covariant narrowing; see _NARROWED_LIST_NOTE
+    daily_breakdown: list[DailyBreakdown] | None = Field(None, description="Day-by-day delivery")  # type: ignore[assignment]  # covariant narrowing; see _NARROWED_LIST_NOTE
 
 
 class ReportingPeriod(LibraryReportingPeriod):
@@ -263,7 +277,7 @@ class GetMediaBuyDeliveryResponse(NestedModelSerializerMixin, LibraryGetMediaBuy
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
     aggregated_totals: AggregatedTotals = Field(..., description="Combined metrics across all returned media buys")
-    media_buy_deliveries: list[MediaBuyDeliveryData] = Field(  # type: ignore[assignment]
+    media_buy_deliveries: list[MediaBuyDeliveryData] = Field(
         ..., description="Array of delivery data for each media buy"
     )
 

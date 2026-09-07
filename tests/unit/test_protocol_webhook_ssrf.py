@@ -2,14 +2,23 @@
 
 Pins that ProtocolWebhookService refuses unsafe URLs before any outbound POST,
 mirrors application-level WebhookURLValidator usage in webhook_delivery, and
-covers registration wiring: create_media_buy, sync_creatives, A2A message/send,
-and A2A set_push_notification_config handler.
+covers registration wiring for the two surfaces that accept a webhook: the
+``push_notification_config`` and ``reporting_webhook`` arguments on
+create_media_buy and sync_creatives.
 
 Wire-level VALIDATION_ERROR / recovery=correctable + suggestion for
 create_media_buy and sync_creatives is graded by transport-blind BDD scenarios
-(BR-UC-002-ext-webhook-ssrf, BR-UC-006-ext-webhook-ssrf). A2A-native push-config
-endpoints translate the same registration gate to InvalidParamsError with the
-AdCP VALIDATION_ERROR envelope in ``data`` — pinned below.
+(BR-UC-002-ext-webhook-ssrf, BR-UC-006-ext-webhook-ssrf).
+
+The A2A-native ``TaskPushNotificationConfig`` endpoints used to translate the
+same gate to InvalidParamsError, and three cases here graded that. They are
+retired with their subject: this agent advertises ``push_notifications=False``
+and declines all four ``tasks/pushNotificationConfig/*`` methods, because AdCP
+3.1.1 L3/webhooks.mdx :308 makes the A2A-native channel a separate registration
+mechanism with a separate (A2A ``Task``) envelope, and this seller implements
+only the AdCP channel. The obligation those cases stood for -- an SSRF URL is
+refused before any push config is persisted -- is graded below at the two
+surfaces that still accept one.
 """
 
 from __future__ import annotations
@@ -21,18 +30,10 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from a2a.types import (
-    InvalidParamsError,
-    Message,
-    Part,
-    Role,
-    SendMessageConfiguration,
-    SendMessageRequest,
-    TaskPushNotificationConfig,
-)
+from adcp import create_mcp_webhook_payload
 from adcp.types import ReportingWebhook
+from adcp.webhooks import GeneratedTaskStatus
 
-from src.a2a_server.adcp_a2a_server import AdCPRequestHandler, _accept_a2a_push_config
 from src.core.database.models import PushNotificationConfig
 from src.core.exceptions import AdCPUrlNotAllowedError
 from src.core.resolved_identity import ResolvedIdentity
@@ -46,7 +47,6 @@ from src.services.protocol_webhook_service import ProtocolWebhookService
 from tests.factories import WebhookTaskContextFactory
 from tests.factories.principal import PrincipalFactory
 from tests.factories.webhook import PushNotificationConfigRequestFactory
-from tests.helpers import assert_envelope_shape
 from tests.helpers.adcp_factories import create_test_media_buy_request_dict, valid_reporting_webhook
 from tests.helpers.creative_test_helpers import sync_creatives_request
 from tests.helpers.egress_hatches import egress_hatch_env
@@ -64,7 +64,15 @@ _METADATA_URL = "http://169.254.169.254/latest/meta-data/"
 # once because all four send-path cases below pass the same pair and none of
 # them is about the payload: ``task_type`` deliberately stays outside the
 # delivery-report pair so no case touches the database.
-_PAYLOAD = {"task_id": "t1", "status": "completed"}
+# The real envelope, built by the SDK exactly as ``notify`` builds it. It used to be a
+# two-key dict, which only reached the sender's Mapping passthrough -- a branch that no
+# longer exists, because there is one envelope and the sender takes it typed.
+_PAYLOAD = create_mcp_webhook_payload(
+    task_id="t1",
+    status=GeneratedTaskStatus.completed,
+    task_type="update_media_buy",
+    result={},
+)
 # The delivery's task identity, typed. `send_notification` used to take a loose
 # four-key dict and rebuild a context from it downstream; the rebuild reset
 # sequence_number to 1 and notification_type to None, and those were the values
@@ -243,7 +251,7 @@ async def test_send_notification_posts_when_url_is_public(monkeypatch) -> None:
         request = origin.last_request
         assert request.method == "POST"
         assert request.path == "/webhook"
-        assert request.json() == _PAYLOAD
+        assert request.json() == _PAYLOAD.model_dump(mode="json", exclude_none=True)
         assert request.headers["Content-Type"] == "application/json"
         assert request.headers["User-Agent"] == "AdCP-Sales-Agent/1.0"
 
@@ -374,11 +382,9 @@ def test_reject_unsafe_webhook_registration_url_allows_unresolvable_public_hostn
 # away.
 #
 # The obligation it stood for (an SSRF URL is refused before a push config is persisted)
-# remains graded, on this same file, at the surface where the refusal actually happens:
-#   * test_accept_a2a_push_config_rejects_metadata_url (the A2A translation seam)
-#   * test_a2a_set_push_handler_rejects_metadata_url (the setTaskPushNotificationConfig
-#     handler, which reaches the gate BEFORE the try, so this lane's deletion of the
-#     ValueError funnel does not touch it)
+# remains graded, on this same file, at the two surfaces where the refusal happens:
+#   * test_create_media_buy_rejects_push_config_before_workflow
+#   * test_sync_creatives_rejects_unsafe_push_config_url
 
 
 @pytest.mark.asyncio
@@ -423,75 +429,3 @@ def test_sync_creatives_rejects_unsafe_push_config_url() -> None:
             identity=_identity(),
         )
     assert exc_info.value.field == "push_notification_config.url"
-
-
-def test_accept_a2a_push_config_rejects_metadata_url() -> None:
-    """A2A registration helper maps SSRF to InvalidParamsError + AdCP envelope in data."""
-    with pytest.raises(InvalidParamsError) as exc_info:
-        # ``_reject_unsafe_a2a_webhook_url`` (this branch's spelling) no longer
-        # exists: origin/main folded the URL gate and the credential precondition
-        # into ONE A2A translation seam, so the helper takes the whole primitive
-        # triple. Same subject, same refusal — only the entry point moved.
-        _accept_a2a_push_config(_METADATA_URL, None, None)
-    assert_envelope_shape(exc_info.value.data, "VALIDATION_ERROR", recovery="correctable")
-    assert exc_info.value.data["errors"][0]["field"] == "push_notification_config.url"
-    assert exc_info.value.data["errors"][0].get("suggestion")
-
-
-@pytest.mark.asyncio
-async def test_a2a_message_send_rejects_unsafe_push_config_url() -> None:
-    """message/send must reject metadata URL before stash."""
-    handler = AdCPRequestHandler()
-    text_part = Part()
-    text_part.text = "list products"
-    message = Message(message_id="m-ssrf", role=Role.ROLE_USER, parts=[text_part])
-    push = TaskPushNotificationConfig(url=_METADATA_URL)
-    params = SendMessageRequest(
-        message=message,
-        configuration=SendMessageConfiguration(task_push_notification_config=push),
-    )
-
-    with pytest.raises(InvalidParamsError) as exc_info:
-        await handler.on_message_send(params, context=MagicMock())
-
-    assert_envelope_shape(exc_info.value.data, "VALIDATION_ERROR", recovery="correctable")
-    # Restores what origin/main's ``match="Invalid push_notification_config.url"``
-    # graded. That regex cannot hold in the merged tree -- ``_invalid_params_from_
-    # ssrf_error`` builds the InvalidParamsError from ``adcp_err.message``, which is
-    # now the CODE_TABLE sentence ("Request validation failed") and not a per-raise-
-    # site string -- but the property the regex stood for, that the refusal names the
-    # URL field rather than some other one, is still true on the envelope. Asserted
-    # there, so the case is not weakened by the message becoming generic.
-    assert exc_info.value.data["errors"][0]["field"] == "push_notification_config.url"
-    assert handler._task_push_configs == {}
-
-
-@pytest.mark.asyncio
-async def test_a2a_set_push_handler_rejects_metadata_url() -> None:
-    """Handler on_create_task_push_notification_config must reject before upsert."""
-    handler = AdCPRequestHandler()
-    identity = _identity()
-    tool_context = MagicMock()
-    tool_context.tenant_id = identity.tenant_id
-    tool_context.principal_id = identity.principal_id
-    params = TaskPushNotificationConfig(url=_METADATA_URL, task_id="task-1", id="pnc-1")
-
-    with (
-        patch.object(handler, "_get_auth_token", return_value="tok"),
-        patch.object(handler, "_resolve_a2a_identity", return_value=identity),
-        patch.object(handler, "_make_tool_context", return_value=tool_context),
-        patch("src.a2a_server.adcp_a2a_server.PushNotificationConfigUoW") as mock_uow,
-        pytest.raises(InvalidParamsError) as exc_info,
-    ):
-        await handler.on_create_task_push_notification_config(params, context=MagicMock())
-
-    assert_envelope_shape(exc_info.value.data, "VALIDATION_ERROR", recovery="correctable")
-    # Restores what origin/main's ``match="Invalid push_notification_config.url"``
-    # graded. That regex cannot hold in the merged tree -- ``_invalid_params_from_
-    # ssrf_error`` builds the InvalidParamsError from ``adcp_err.message``, which is
-    # now the CODE_TABLE sentence ("Request validation failed") and not a per-raise-
-    # site string -- but the property the regex stood for, that the refusal names the
-    # URL field rather than some other one, is still true on the envelope. Asserted
-    # there, so the case is not weakened by the message becoming generic.
-    assert exc_info.value.data["errors"][0]["field"] == "push_notification_config.url"
-    mock_uow.assert_not_called()

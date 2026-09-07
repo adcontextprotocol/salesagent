@@ -51,19 +51,6 @@ class TestMCPAuthMiddlewareExists:
         # Check it's overridden (not just inherited)
         assert "on_call_tool" in MCPAuthMiddleware.__dict__, "MCPAuthMiddleware must override on_call_tool"
 
-    def test_auth_optional_tools_defined(self):
-        """AUTH_OPTIONAL_TOOLS set must be defined with discovery tools."""
-        from src.core.mcp_auth_middleware import AUTH_OPTIONAL_TOOLS
-
-        expected_discovery = {
-            "get_adcp_capabilities",
-            "get_products",
-            "list_creative_formats",
-        }
-        assert expected_discovery.issubset(AUTH_OPTIONAL_TOOLS), (
-            f"AUTH_OPTIONAL_TOOLS missing discovery tools: {expected_discovery - AUTH_OPTIONAL_TOOLS}"
-        )
-
 
 class TestMCPAuthMiddlewareBehavior:
     """Verify middleware resolves identity and stores on context state."""

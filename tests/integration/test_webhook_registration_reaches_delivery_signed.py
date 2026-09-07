@@ -6,10 +6,10 @@ already grades what a sender does with a STORED row, and
 ingest does with an unusable registration. Between them sits the gap this file
 grades: a registration that was accepted, and a sender that would have signed
 it, still deliver UNSIGNED if the credential half is lost in the HANDOFF — the
-protocol stash on the A2A path, the workflow-step stash on the media-buy paths.
-Nothing on either side can see that, because each end is individually correct.
+workflow-step stash on the media-buy paths. Nothing on either side can see that,
+because each end is individually correct.
 
-Three producers reach that handoff; each gets a case, and each case gets a
+Two producers reach that handoff; each gets a case, and each case gets a
 reverse-TDD control that drops the credential half from the stash and shows the
 delivery arrives unsigned. The control is what makes the primary case a grader
 rather than a green mark: a case that cannot go red under the exact damage it
@@ -42,7 +42,7 @@ from typing import Any
 import pytest
 
 from tests.factories.webhook import PushNotificationConfigRequestFactory
-from tests.harness import A2APushRegistrationEnv, MediaBuyPushRegistrationEnv, Transport
+from tests.harness import MediaBuyPushRegistrationEnv, Transport
 from tests.helpers import assert_delivered_unsigned, assert_signature_verifies_over_wire_body
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -128,54 +128,12 @@ def _bare_update_req(media_buy_id: str) -> Any:
     )
 
 
-class TestA2AProtocolRegistrationDeliversSigned:
-    """``message/send`` registers in the PROTOCOL envelope; the task webhook is signed.
-
-    The A2A handler holds this registration in memory for the life of the task
-    (``_task_push_configs``) and hands it to ``ProtocolWebhookService`` when the
-    task completes. Today it hands over a fabricated detached ORM row built from
-    the raw protobuf — the laundering this lane deletes.
-    """
-
-    def test_completed_task_webhook_carries_the_registered_signature(self, integration_db):
-        with A2APushRegistrationEnv() as env:
-            env.setup_default_data()
-            env.set_http_status(200)
-
-            env.call_a2a_with_push_config(
-                {"url": env.webhook_url, "authentication": _a2a_auth_block()},
-                brief="a registration made in the protocol envelope",
-            )
-
-            _assert_delivered_signed(env)
-
-    def test_control_the_delivery_goes_unsigned_when_the_stash_loses_the_credentials(self, integration_db):
-        """Reverse-TDD: damage only the stash, and the case above must go red.
-
-        Asserts an UNSIGNED delivery, not a refusal, and the distinction is the
-        spec's own: this mutation removes the ENTIRE ``authentication`` block, and
-        the pinned schema says "absence selects 9421" — an absent block is a
-        deliberate choice of the default profile, not a malformed one. So the row
-        still delivers, just without a signature, which is precisely what makes it a
-        control for the signed case above.
-
-        Contrast the refusals Epic D lane C4 introduced: those are blocks that are
-        PRESENT but do not conform (a scheme outside the pinned enum, a missing or
-        sub-32 credential, more than one scheme). Present-and-broken refuses;
-        absent-by-choice delivers plain. Conflating the two would have made this
-        control assert the wrong thing.
-        """
-        with A2APushRegistrationEnv() as env:
-            env.setup_default_data()
-            env.set_http_status(200)
-
-            with env.stash_drops_the_credential_half():
-                env.call_a2a_with_push_config(
-                    {"url": env.webhook_url, "authentication": _a2a_auth_block()},
-                    brief="a registration made in the protocol envelope",
-                )
-
-            assert_delivered_unsigned(env)
+# RETIRED: TestA2AProtocolRegistrationDeliversSigned. Its producer was the A2A protocol
+# envelope's own push registration, which this agent no longer implements -- it advertises
+# `push_notifications=false` and declines all four `tasks/pushNotificationConfig/*` methods,
+# because AdCP 3.1.1 L3/webhooks.mdx :308 makes that a separate registration channel with a
+# separate (A2A `Task`) envelope. The two producers below are the AdCP-channel ones, and
+# they still grade the handoff this file exists for.
 
 
 class TestCreateMediaBuyRegistrationDeliversSigned:

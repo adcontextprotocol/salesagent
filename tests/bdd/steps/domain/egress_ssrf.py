@@ -372,56 +372,6 @@ def when_sync_creatives_short_credentials(ctx: dict) -> None:
     _dispatch_sync_registering(ctx, _HMAC_WITH_SHORT_CREDENTIALS)
 
 
-@when("the buyer sends a request registering HMAC-SHA256 with no credentials in the protocol envelope")
-def when_a2a_message_send_hmac_without_credentials(ctx: dict) -> None:
-    """Dispatch an A2A message/send whose PROTOCOL envelope registers the webhook.
-
-    Not a tool parameter: ``on_message_send`` reads
-    ``params.configuration.task_push_notification_config`` before any skill
-    routing, so this registration is made by a buyer who has invoked no tool at
-    all. The harness carries it through
-    ``_run_a2a_handler(a2a_push_notification_config=...)``; the skill it rides
-    on (get_products) is incidental and is never reached when the registration
-    is refused.
-
-    The protobuf ``AuthenticationInfo`` is a SINGULAR free-form ``scheme`` with
-    no enum behind it, so ``credentials`` is simply the empty proto3 default —
-    which is precisely the state no sender can serve.
-    """
-    dispatch_request(
-        ctx,
-        brief="credential refusal test",
-        a2a_push_notification_config={
-            "url": _SAFE_WEBHOOK_URL,
-            "authentication": {"scheme": _HMAC_SCHEME},
-        },
-    )
-
-
-@when("the buyer sends a request registering HMAC-SHA256 with a 31-character secret in the protocol envelope")
-def when_a2a_message_send_short_credentials(ctx: dict) -> None:
-    """Dispatch an A2A message/send whose protocol envelope registers a SHORT secret.
-
-    The same surface as the step above, one character under the pinned
-    ``credentials`` ``minLength: 32``. This document used to be waved through --
-    re-validated with a padded secret, then the buyer's short one restored -- so
-    the registration was stored and refused only later, inside the sender. It is
-    refused at ingest now, and this step is what keeps it that way.
-
-    31 rather than a token like ``"x"``: a boundary value is refused by the
-    pinned minimum itself, where a 5-character secret would also satisfy a
-    hand-written "looks too short" rule that has nothing to do with the pin.
-    """
-    dispatch_request(
-        ctx,
-        brief="credential refusal test",
-        a2a_push_notification_config={
-            "url": _SAFE_WEBHOOK_URL,
-            "authentication": {"scheme": _HMAC_SCHEME, "credentials": _SHORT_SECRET},
-        },
-    )
-
-
 # ── Then steps ──────────────────────────────────────────────────────
 
 

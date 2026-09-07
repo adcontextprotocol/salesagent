@@ -502,13 +502,6 @@ class AdCPRequestHandler(RequestHandler):
         msg_id = params.message.message_id or None
         context_id = params.message.context_id or msg_id or f"ctx_{task_id}"
 
-        # Extract push notification config from protocol layer (A2A SendMessageConfiguration).
-        # SSRF gate runs after auth resolution below (defense-in-depth: AUTH_REQUIRED
-        # before scheme/blocked-host checks when the request requires credentials).
-        push_notification_config: TaskPushNotificationConfig | None = None
-        if params.HasField("configuration") and params.configuration.HasField("task_push_notification_config"):
-            push_notification_config = params.configuration.task_push_notification_config
-
         # Prepare task metadata (JSON-serializable only — protobuf Struct)
         task_metadata: dict[str, Any] = {
             "request_text": combined_text,
@@ -703,12 +696,6 @@ class AdCPRequestHandler(RequestHandler):
                 if failed_skills and not successful_skills:
                     # All skills failed - mark task as failed
                     task.status.CopyFrom(TaskStatus(state=TaskState.TASK_STATE_FAILED))
-
-                    # Send protocol-level webhook notification for failure
-                    error_messages = [
-                        res["error_envelope"]["errors"][0]["message"] for res in results if not res["success"]
-                    ]
-
                     return task
                 elif successful_skills:
                     # Log successful skill invocations with rich context
@@ -879,7 +866,6 @@ class AdCPRequestHandler(RequestHandler):
             # Determine task status based on operation result
             # For sync_creatives, check if any creatives are pending review
             task_state = TaskState.TASK_STATE_COMPLETED
-            task_status_str = "completed"
 
             result_data = {}
             if task.artifacts:
@@ -900,18 +886,13 @@ class AdCPRequestHandler(RequestHandler):
                                         if isinstance(c, dict)
                                     ):
                                         task_state = TaskState.TASK_STATE_SUBMITTED
-                                        task_status_str = "submitted"
 
                                     # Check for explicit status field (e.g., create_media_buy returns this)
-                                    result_status = data_dict.get("status")
-                                    if result_status == "submitted":
+                                    if data_dict.get("status") == "submitted":
                                         task_state = TaskState.TASK_STATE_SUBMITTED
-                                        task_status_str = "submitted"
 
             # Mark task with appropriate status
             task.status.CopyFrom(TaskStatus(state=task_state))
-
-            # Send protocol-level webhook notification if configured
 
         except A2AError:
             # Re-raise A2AError as-is (will be caught by JSON-RPC handler)

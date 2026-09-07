@@ -39,13 +39,17 @@ _GENERIC_STEPS = _REPO / "tests" / "bdd" / "steps" / "generic"
 # and "field" appear in almost any message. The day someone added that sentence to
 # BR-UC-019 they would have silently got the weaker grader. Removing it means they
 # get the strict one.
+# The two account-targeting overrides ("the request targets a production account" /
+# "... a sandbox account") are GONE with the scenarios that used them: 7d629320a deleted
+# the pair asserting get_media_buys REFUSES `account` with UNSUPPORTED_FEATURE, because
+# get-media-buys-request.json declares the field and the tool now honours it. UC-019 uses
+# the generic steps for the sentence again, which is the direction this pin is allowed to
+# move in.
 INTENTIONAL_OVERRIDES = frozenset(
     {
         "the error should be a real validation error, not simulated",
         'the error should include a "suggestion" field',
         "the error should include a suggestion for how to fix the issue",
-        "the request targets a production account",
-        "the request targets a sandbox account",
         "the response should include sandbox equals true",
         "the response should not include a sandbox field",
     }
