@@ -751,6 +751,23 @@ class CircuitBreakerMixin(LocalOriginMixin):
 
     _service: WebhookDeliveryService | None
 
+    @staticmethod
+    def delivered_result(request: Any) -> dict[str, Any]:
+        """The delivery REPORT inside one webhook POST, not the envelope around it.
+
+        AdCP 3.1.1 L3/webhooks.mdx :217 puts the report under ``result`` and says it "is not
+        valid as the top-level POST body by itself", so a test reading ``notification_type``
+        or ``sequence_number`` off the body finds nothing. One accessor, so no case
+        re-decides where a report field lives.
+        """
+        body = request.json()
+        result = body.get("result")
+        assert isinstance(result, dict), (
+            f"the webhook envelope carries no `result` object: got {type(result).__name__} "
+            f"at `result`, envelope keys {sorted(body)}"
+        )
+        return result
+
     def call_send_enhanced(
         self,
         result: dict[str, Any] | None = None,

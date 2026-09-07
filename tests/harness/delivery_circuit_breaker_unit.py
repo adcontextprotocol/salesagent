@@ -103,6 +103,8 @@ class CircuitBreakerEnv(CircuitBreakerMixin, BaseTestEnv):
         url: str | None = None,
         auth_type: str | None = None,
         auth_token: str | None = None,
+        operation_id: str | None = "op_harness_0001",
+        token: str | None = None,
     ) -> MagicMock:
         """Create a mock webhook config object.
 
@@ -114,9 +116,18 @@ class CircuitBreakerEnv(CircuitBreakerMixin, BaseTestEnv):
         attribute, so leaving it set would let this mock keep feeding a column
         production no longer reads -- the failure mode a mock-based harness is
         worst at surfacing.
+
+        ``operation_id`` and ``token`` are set for the same reason, from the other
+        direction: the sender echoes both into the payload, and a MagicMock would hand
+        it a Mock object that the pinned envelope refuses -- so the delivery would fail
+        for a reason no production registration can produce. ``operation_id`` defaults to
+        a value because a conformant registration carries one and the envelope REQUIRES
+        it; pass ``None`` to model a buyer that sent none.
         """
         config = MagicMock()
         config.url = url if url is not None else self.webhook_url
         config.authentication_type = auth_type
         config.authentication_token = auth_token
+        config.operation_id = operation_id
+        config.token = token
         return config

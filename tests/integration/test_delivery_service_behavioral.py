@@ -416,7 +416,7 @@ class TestSendWebhookEnhancedHappyPath:
             assert result is True
             assert env.delivery_attempts == 1
             assert env.last_delivery.path == "/webhook"
-            assert env.last_delivery.json() == payload
+            assert env.delivered_result(env.last_delivery) == payload
 
     def test_no_configs_returns_false(self, integration_db):
         """When no PushNotificationConfig exists, _send_webhook_enhanced returns False.
@@ -897,7 +897,7 @@ class TestIsAdjustedNotificationType:
             )
 
             assert result is True
-            sent_payload = env.last_delivery.json()
+            sent_payload = env.delivered_result(env.last_delivery)
             assert sent_payload["notification_type"] == "adjusted"
             assert sent_payload["is_adjusted"] is True
 
@@ -941,7 +941,7 @@ class TestIsAdjustedNotificationType:
             )
 
             assert result is True
-            sent_payload = env.last_delivery.json()
+            sent_payload = env.delivered_result(env.last_delivery)
             assert sent_payload["notification_type"] == "scheduled"
             assert sent_payload["is_adjusted"] is False
 
@@ -1007,7 +1007,7 @@ class TestDeliveredPayloadAdcpVersion:
             )
 
             assert result is True
-            sent_payload = env.last_delivery.json()
+            sent_payload = env.delivered_result(env.last_delivery)
             assert sent_payload["adcp_version"] == get_adcp_spec_version()
 
 
@@ -1130,7 +1130,9 @@ class TestSequenceNumberUnderConcurrency:
             assert sent_results == [True] * self.THREADS
             assert env.delivery_attempts == self.THREADS
 
-            delivered_sequence_numbers = sorted(request.json()["sequence_number"] for request in env.delivered_requests)
+            delivered_sequence_numbers = sorted(
+                env.delivered_result(request)["sequence_number"] for request in env.delivered_requests
+            )
             assert delivered_sequence_numbers == list(range(1, self.THREADS + 1)), (
                 f"{self.THREADS} concurrent reports for one media buy were numbered "
                 f"{delivered_sequence_numbers} — a repeated sequence_number makes one "

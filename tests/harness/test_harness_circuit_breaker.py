@@ -57,7 +57,7 @@ class TestCircuitBreakerEnvContract:
 
             assert delivered is True
             assert env.delivery_attempts == 1
-            assert env.last_delivery.json()["media_buy_deliveries"][0]["media_buy_id"] == "mb_001"
+            assert env.delivered_result(env.last_delivery)["media_buy_deliveries"][0]["media_buy_id"] == "mb_001"
 
     def test_mock_access(self):
         """env.mock[name] provides access to all patch targets — timing only, no transport.
