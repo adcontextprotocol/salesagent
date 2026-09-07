@@ -895,13 +895,9 @@ _XFAIL_TAGS: dict[str, str] = {
     # a dict is checked by asking the dict.
     #
     # Each graduates when #2058 lands, whichever way it is resolved.
-    # get_media_buys refuses a spec-legal `account` (GH #2219). The two scenarios
-    # below now assert the CONFORMANT behaviour — the request is accepted — so they
-    # fail until the refusal at media_buy_list.py:168 is deleted. They previously
-    # asserted the refusal itself, which is how a "for now" stopgap from 0b7a695d9
-    # came to be defended by a passing test.
-    "T-UC-019-ext-e": "#2219: get_media_buys refuses a spec-legal account; scenario asserts acceptance",
-    "T-UC-019-inv-293-2": "#2219: get_media_buys refuses a spec-legal account; scenario asserts acceptance",
+    # Graduated: T-UC-019-ext-e and T-UC-019-inv-293-2. They asserted the conformant
+    # behaviour and were ledgered against #2219; get_media_buys now accepts `account` and
+    # scopes the listing to it, so both grade live.
     "T-UC-004-webhook-scheduled": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
     "T-UC-004-webhook-hmac": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
     "T-UC-004-webhook-bearer": "#2058 violation 2: WebhookDeliveryService posts the flat result document, not the envelope",
