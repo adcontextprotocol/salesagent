@@ -20,15 +20,12 @@ exactly as it does today. ``_RAW_STRING_PARAMS`` is therefore asserted ABSENT,
 not merely "a registration parameter is present" — an added overload fails this
 case.
 
-**Preserve-if-not-passed.** The four kwargs that are NOT value fields
-(``validation_token``, ``session_id``, ``webhook_secret``, ``protocol``) are each
-owned by a different registration surface, and those surfaces share config ids.
-The A2A ``setTaskPushNotificationConfig`` handler passes ``validation_token``;
-the create-media-buy and admin-registration paths do not. Omitting a field must
-keep the existing row's value — otherwise create-media-buy silently nulls a
-``validation_token`` the buyer set through A2A for the same config id, or an
-admin re-registration clears the ``protocol`` a later scheduler-driven delivery
-still needs — while an explicit ``None`` must still clear.
+**Preserve-if-not-passed.** The three kwargs that are NOT value fields
+(``validation_token``, ``session_id``, ``webhook_secret``) are each owned by a
+different registration surface, and those surfaces share config ids. Omitting a
+field must keep the existing row's value — otherwise one path silently nulls a
+``validation_token`` another set for the same config id — while an explicit
+``None`` must still clear.
 
 Integration rather than unit because both claims are about COLUMNS: what a
 subsequent read of the row returns. A mocked session would grade the call, not
@@ -123,7 +120,6 @@ def seeded(identity):
         validation_token="vtok",
         session_id="sess-1",
         webhook_secret=_WEBHOOK_SECRET,
-        protocol="a2a",
     )
     return repo, principal, cfg
 
@@ -192,7 +188,7 @@ def test_upsert_insert_defaults_unpassed_fields_to_none(identity, factory_sessio
 
     assert created is True
     row = _refreshed(factory_session, config.id)
-    assert (row.validation_token, row.session_id, row.webhook_secret, row.protocol) == (None, None, None, None)
+    assert (row.validation_token, row.session_id, row.webhook_secret) == (None, None, None)
     assert row.is_active is True
 
 
@@ -214,11 +210,10 @@ def test_upsert_preserves_unpassed_token_fields(seeded, factory_session):
         _BEARER_SCHEME,
         _ROTATED_CREDENTIAL,
     )
-    assert (row.validation_token, row.session_id, row.webhook_secret, row.protocol) == (
+    assert (row.validation_token, row.session_id, row.webhook_secret) == (
         "vtok",
         "sess-1",
         _WEBHOOK_SECRET,
-        "a2a",
     )
     assert updated.id == row.id
 
@@ -234,37 +229,7 @@ def test_upsert_explicit_none_still_clears(seeded, factory_session):
         validation_token=None,
         session_id=None,
         webhook_secret=None,
-        protocol=None,
     )
 
     row = _refreshed(factory_session, cfg.id)
-    assert (row.validation_token, row.session_id, row.webhook_secret, row.protocol) == (None, None, None, None)
-
-
-def test_upsert_records_and_replaces_the_registering_protocol(identity, factory_session):
-    """``protocol`` is written on insert and REPLACED when a later caller passes one.
-
-    Only the transport that received the registration knows the dialect the buyer
-    registered over, and a later delivery is scheduled from the stored value — so
-    a passed ``protocol`` has to reach the column on both the insert and the
-    update branch, not merely be accepted by the signature.
-    """
-    repo, _tenant, principal = identity
-
-    config, created = repo.upsert(
-        _registration(),
-        config_id="pnc_proto",
-        principal_id=principal.principal_id,
-        protocol="a2a",
-    )
-    assert created is True
-    assert _refreshed(factory_session, config.id).protocol == "a2a"
-
-    _, created_again = repo.upsert(
-        _registration(),
-        config_id="pnc_proto",
-        principal_id=principal.principal_id,
-        protocol="mcp",
-    )
-    assert created_again is False
-    assert _refreshed(factory_session, config.id).protocol == "mcp"
+    assert (row.validation_token, row.session_id, row.webhook_secret) == (None, None, None)

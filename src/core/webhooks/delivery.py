@@ -25,7 +25,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from adcp.types import McpWebhookPayload
+    from adcp.webhooks import GeneratedTaskStatus
+    from pydantic import BaseModel as PydanticBaseModel
 
 RefusalReason = Literal[
     "no_credentials",
@@ -151,3 +156,50 @@ class WebhookTaskContext:
             and bool(self.tenant_id)
             and bool(self.principal_id)
         )
+
+
+def build_webhook_envelope(
+    *,
+    task: WebhookTaskContext,
+    status: GeneratedTaskStatus,
+    result: PydanticBaseModel | dict[str, Any],
+    operation_id: str | None = None,
+    token: str | None = None,
+) -> McpWebhookPayload:
+    """THE shape of every AdCP webhook this seller POSTs.
+
+    One builder for both senders. AdCP 3.1.1 ``L3/webhooks.mdx`` :217 separates the wire
+    ENVELOPE from the task-specific ``result`` and says the result "is not valid as the
+    top-level POST body by itself"; :308 makes the envelope a function of the registration
+    CHANNEL, and every registration this seller accepts arrives through the AdCP one. So
+    there is exactly one body shape, and this is where it is decided.
+
+    It had been decided in two places, and they disagreed:
+    ``WebhookDeliveryService.send_delivery_webhook`` posted the flat delivery report --
+    the page's own counter-example (:254) -- while ``delivery_webhook_scheduler`` posted
+    the envelope, so an in-process test and a live receiver graded different shapes and
+    an assertion true of one was vacuous against the other (prebid/salesagent#2058).
+
+    ``task.task_type`` is the INTERNAL label ("delivery_report", "media_buy_delivery"),
+    kept for the delivery-log column and the guards that key on it;
+    ``validate_webhook_task_type`` coerces the wire value to the pinned ``TaskType`` enum.
+
+    ``operation_id`` and ``token`` come off the REGISTRATION the delivery is going to, and
+    both carry echo obligations: core/push-notification-config.json says the seller "MUST
+    echo this value verbatim into every webhook payload", and ``operation_id`` is a
+    REQUIRED property of the envelope, so omitting it makes the body schema-invalid. The
+    spec also forbids recovering ``operation_id`` by parsing the receiver URL, so a
+    registration that did not carry one leaves nothing to echo.
+    """
+    from adcp import create_mcp_webhook_payload
+
+    from src.core.webhook_validator import validate_webhook_task_type
+
+    return create_mcp_webhook_payload(
+        task_id=task.task_id,
+        status=status,
+        task_type=validate_webhook_task_type(task.task_type or ""),
+        result=result,
+        operation_id=operation_id,
+        token=token,
+    )

@@ -479,7 +479,6 @@ class ContextManager(DatabaseManager):
             request_data={
                 "reason": reason,
                 "details": clarification_details,
-                "protocol": "mcp",  # Default to MCP for internal system actions
             },
             initial_comment=reason,
         )
@@ -879,17 +878,14 @@ class ContextManager(DatabaseManager):
                     # by the SDK fallback . wire_task_type is the
                     # validated COPY passed to the SDK payload builder.
                     task_type_str = step.tool_name or mapping.action or "unknown"
-                    protocol = (step.request_data or {}).get("protocol", "mcp")  # Default to MCP
                     try:
                         status_enum = GeneratedTaskStatus(new_status)
                     except ValueError:
                         status_enum = GeneratedTaskStatus.unknown
 
-                    # The dialect fork and the metadata dict both moved into
-                    # notify() (salesagent-pldmk.39). It keeps this site's
-                    # salesagent-yi3s invariant intact: the ORIGINAL task_type_str
-                    # reaches the metadata and the guards that key on it, while the
-                    # SDK payload gets validate_webhook_task_type's coerced COPY.
+                    # The ORIGINAL task_type_str reaches the context and the guards
+                    # that key on it; the SDK payload gets validate_webhook_task_type's
+                    # coerced COPY, inside notify() (salesagent-yi3s).
                     webhook_task = WebhookTaskContext(
                         task_id=step.step_id,
                         task_type=task_type_str,
@@ -910,8 +906,6 @@ class ContextManager(DatabaseManager):
                                     task=webhook_task,
                                     status=status_enum,
                                     result=step.response_data or {},
-                                    protocol=protocol,
-                                    context_id=step.context_id or "",
                                 )
                             )
 
@@ -940,8 +934,6 @@ class ContextManager(DatabaseManager):
                                     task=webhook_task,
                                     status=status_enum,
                                     result=step.response_data or {},
-                                    protocol=protocol,
-                                    context_id=step.context_id or "",
                                 )
                             )
                             _log_webhook_send_outcome(push_notification_config.url, sent)

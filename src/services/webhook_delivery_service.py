@@ -21,11 +21,12 @@ from typing import Any
 from uuid import uuid4
 
 from adcp import get_adcp_spec_version
+from adcp.webhooks import GeneratedTaskStatus
 
 from src.core.security.egress.attempts import env_float
 from src.core.security.webhook_egress import deliver_webhook
 from src.core.webhook_validator import webhook_url_for_log
-from src.core.webhooks.delivery import WebhookDeliveryOutcome, WebhookTaskContext
+from src.core.webhooks.delivery import WebhookDeliveryOutcome, WebhookTaskContext, build_webhook_envelope
 from src.services.webhook_conclusion import record_conclusion
 
 logger = logging.getLogger(__name__)
@@ -291,8 +292,10 @@ class WebhookDeliveryService:
             if not is_final and next_expected_interval_seconds:
                 next_expected_at = (datetime.now(UTC) + timedelta(seconds=next_expected_interval_seconds)).isoformat()
 
-            # Build AdCP compliant payload with new fields
-            delivery_payload = {
+            # The delivery REPORT -- the inner ``result``, shaped by
+            # media-buy-delivery-webhook-result.json. It is not the POST body: the envelope
+            # below is (AdCP 3.1.1 L3/webhooks.mdx :217, ":254 is the counter-example").
+            delivery_result = {
                 "adcp_version": get_adcp_spec_version(),
                 "notification_type": notification_type,
                 "is_adjusted": is_adjusted,  # New field for late data
@@ -317,11 +320,11 @@ class WebhookDeliveryService:
 
             # Add optional fields
             if next_expected_at:
-                delivery_payload["next_expected_at"] = next_expected_at
+                delivery_result["next_expected_at"] = next_expected_at
 
             # Add optional metrics to totals dict
             # We know structure is valid as we just created it above
-            media_buy_delivery = delivery_payload["media_buy_deliveries"][0]  # type: ignore[index]
+            media_buy_delivery = delivery_result["media_buy_deliveries"][0]  # type: ignore[index]
             totals: dict[str, Any] = media_buy_delivery["totals"]
             if clicks is not None:
                 totals["clicks"] = clicks
@@ -334,15 +337,21 @@ class WebhookDeliveryService:
                 f"[{notification_type}{'|adjusted' if is_adjusted else ''}]"
             )
 
-            # Send webhook with enhanced security and reliability
-            success = self._send_webhook_enhanced(
+            # The values this function COMPUTED, named on the context rather than left for a
+            # downstream re-derivation off the payload. That re-derivation is what silently
+            # persisted sequence_number=1 / notification_type=None on the sibling sender.
+            ctx = WebhookTaskContext(
+                task_id=media_buy_id,
+                task_type=DELIVERY_REPORT_TASK_TYPE,
                 tenant_id=tenant_id,
                 principal_id=principal_id,
                 media_buy_id=media_buy_id,
-                delivery_payload=delivery_payload,
+                sequence_number=sequence_number,
+                notification_type=notification_type,
             )
 
-            return success
+            # Send webhook with enhanced security and reliability
+            return self._send_webhook_enhanced(ctx=ctx, result=delivery_result)
 
         except Exception as e:
             logger.error(
@@ -356,10 +365,8 @@ class WebhookDeliveryService:
         db: Any,
         config: Any,
         *,
-        tenant_id: str,
-        principal_id: str,
-        media_buy_id: str,
-        delivery_payload: dict[str, Any],
+        ctx: WebhookTaskContext,
+        result: dict[str, Any],
     ) -> bool:
         """Deliver one webhook to one configured endpoint and record the outcome.
 
@@ -383,7 +390,7 @@ class WebhookDeliveryService:
             )
             return False
 
-        endpoint_key = f"{tenant_id}:{config.url}"
+        endpoint_key = f"{ctx.tenant_id}:{config.url}"
 
         # Get or create circuit breaker for this endpoint
         if endpoint_key not in self._circuit_breakers:
@@ -418,9 +425,18 @@ class WebhookDeliveryService:
         # still lives in src/core/webhook_validator.py.)
 
         # Add to queue (bounded)
+        # The body, built HERE because its echo fields belong to THIS registration, and
+        # serialized once so the queue carries a plain dict the signer can hash.
+        payload = build_webhook_envelope(
+            task=ctx,
+            status=GeneratedTaskStatus.completed,
+            result=result,
+            operation_id=config.operation_id,
+            token=config.token,
+        )
         webhook_data = {
             "config": config,
-            "payload": delivery_payload,
+            "payload": payload.model_dump(mode="json", exclude_none=True),
             "timestamp": datetime.now(UTC),
         }
 
@@ -441,15 +457,6 @@ class WebhookDeliveryService:
             # outcome to record and no signal to give the breaker.
             return False
 
-        ctx = WebhookTaskContext(
-            task_id=media_buy_id,
-            task_type=DELIVERY_REPORT_TASK_TYPE,
-            tenant_id=tenant_id,
-            principal_id=principal_id,
-            media_buy_id=media_buy_id,
-            sequence_number=delivery_payload.get("sequence_number", 1),
-            notification_type=delivery_payload.get("notification_type"),
-        )
         # Persistence is observability; it does not get a vote on
         # delivery. Without this swallow a DB error would be caught by
         # this method's outer bare ``except`` and turn a webhook that WAS
@@ -459,9 +466,10 @@ class WebhookDeliveryService:
         # (expire_on_commit is True, so `config` re-loads after this — safe,
         # the session is still open, and safe_url was computed above.)
         try:
+            assert ctx.tenant_id
             record_conclusion(
                 db,
-                tenant_id=tenant_id,
+                tenant_id=ctx.tenant_id,
                 ctx=ctx,
                 log_id=str(uuid4()),
                 webhook_url=config.url,
@@ -483,18 +491,19 @@ class WebhookDeliveryService:
 
     def _send_webhook_enhanced(
         self,
-        tenant_id: str,
-        principal_id: str,
-        media_buy_id: str,
-        delivery_payload: dict[str, Any],
+        ctx: WebhookTaskContext,
+        result: dict[str, Any],
     ) -> bool:
-        """Send webhook with enhanced security and reliability features.
+        """Send one delivery report to every endpoint this principal registered.
+
+        Takes the REPORT, not a finished body, because the envelope is per-registration:
+        ``operation_id`` and ``token`` are echoed from the config being delivered to, so two
+        endpoints registered by the same principal receive the same report inside two
+        different envelopes.
 
         Args:
-            tenant_id: Tenant identifier
-            principal_id: Principal identifier
-            media_buy_id: Media buy identifier
-            delivery_payload: AdCP delivery payload
+            ctx: The delivery's task identity, from the caller that computed it.
+            result: The delivery report, shaped by media-buy-delivery-webhook-result.json.
 
         Returns:
             True if sent successfully, False otherwise
@@ -507,24 +516,18 @@ class WebhookDeliveryService:
                 PushNotificationConfigRepository,
             )
 
+            assert ctx.tenant_id and ctx.principal_id
             with get_db_session() as db:
-                configs = PushNotificationConfigRepository(db, tenant_id).list_active_by_principal(principal_id)
+                configs = PushNotificationConfigRepository(db, ctx.tenant_id).list_active_by_principal(ctx.principal_id)
 
                 if not configs:
-                    logger.debug(f"⚠️ No webhooks configured for {tenant_id}/{principal_id}")
+                    logger.debug(f"⚠️ No webhooks configured for {ctx.tenant_id}/{ctx.principal_id}")
                     return False
 
                 # Send to all configured webhooks
                 sent_count = 0
                 for config in configs:
-                    if self._deliver_to_config(
-                        db,
-                        config,
-                        tenant_id=tenant_id,
-                        principal_id=principal_id,
-                        media_buy_id=media_buy_id,
-                        delivery_payload=delivery_payload,
-                    ):
+                    if self._deliver_to_config(db, config, ctx=ctx, result=result):
                         sent_count += 1
 
                 if sent_count > 0:

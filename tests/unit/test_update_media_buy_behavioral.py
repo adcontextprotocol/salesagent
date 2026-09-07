@@ -100,8 +100,14 @@ def test_principal_not_found_returns_error():
         assert len(audit_calls) == 1
 
 
-def test_workflow_step_receives_request_model_with_protocol_metadata():
-    """Workflow persistence should serialize at the ContextManager boundary, not in _impl."""
+def test_workflow_step_receives_the_request_model():
+    """Workflow persistence should serialize at the ContextManager boundary, not in _impl.
+
+    The call also used to carry ``request_metadata={"protocol": ...}``. That key had no
+    reader left once the webhook payload stopped forking on the buyer's sync transport --
+    the envelope is the same one for every transport -- so it was removed with the fork
+    rather than kept as provenance nothing consults.
+    """
     with MediaBuyUpdateEnv(principal_id="principal_test", tenant_id="tenant_test") as env:
         # Direct _impl call (not env.call_impl) to keep the ``req`` reference the
         # assert_called_once_with(request_data=req) check below needs.
@@ -118,7 +124,6 @@ def test_workflow_step_receives_request_model_with_protocol_metadata():
             status="in_progress",
             tool_name="update_media_buy",
             request_data=req,
-            request_metadata={"protocol": "mcp"},
         )
 
 
@@ -1920,7 +1925,6 @@ class TestUC003ManualApproval:
                 status="in_progress",
                 tool_name="update_media_buy",
                 request_data=req,
-                request_metadata={"protocol": "mcp"},
             )
 
 

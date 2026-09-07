@@ -2128,7 +2128,7 @@ async def _create_media_buy_impl(
 
         # Create workflow step for tracking this operation
         # Pass model directly — ContextManager serializes at the DB boundary
-        workflow_metadata: dict[str, Any] = {"protocol": identity.protocol}
+        workflow_metadata: dict[str, Any] = {}
         if req.push_notification_config:
             # The VALUE's canonical dump, not the buyer's raw dict: what
             # context_manager reads back at delivery time is then gate-receipted
@@ -2185,10 +2185,6 @@ async def _create_media_buy_impl(
                     registration,
                     config_id=row_id,
                     principal_id=principal_id,
-                    # Recorded so a later delivery knows which dialect to speak.
-                    # The scheduler fires long after this request and has no
-                    # identity of its own (salesagent-pldmk.39).
-                    protocol=identity.protocol if identity else None,
                 )
                 logger.info(
                     "[MCP/A2A] Push notification config %s: %s",

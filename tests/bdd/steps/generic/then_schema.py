@@ -148,12 +148,13 @@ def then_webhook_payload_compliant(ctx: dict) -> None:
     it is not valid as the top-level POST body by itself" — and ``:254`` prints
     the bare report as a LABELLED COUNTER-EXAMPLE: "This inner result object is
     valid delivery-report content, but it is not valid as the top-level webhook
-    POST body". The counter-example is byte-for-byte what this seller sends.
+    POST body".
 
-    What #2058 has open is only WHERE the fix goes — the sender wraps, or the
-    harness stops routing through a builder a buyer never reaches. Neither
-    resolution makes the flat body conformant, so the assertion stands either way
-    and the scenarios stay ledgered against it until one lands.
+    That counter-example WAS byte-for-byte what one of this seller's two senders
+    posted, which is why fourteen scenarios carrying this line were ledgered.
+    Both senders now build the body through ``build_webhook_envelope``
+    (``src/core/webhooks/delivery.py``), so there is one shape, it is the
+    envelope, and these scenarios grade it live.
 
     Both layers are graded, and the failure names WHICH layer broke — an envelope
     that never arrived is a different defect from a malformed report inside a
@@ -168,9 +169,8 @@ def then_webhook_payload_compliant(ctx: dict) -> None:
     ``additionalProperties: true``, so it ACCEPTS a result carrying
     ``aggregated_totals`` — which webhooks.mdx:253 forbids ("API-only for
     get_media_buy_delivery responses and must not be emitted in reporting
-    webhook result payloads"), and which GH #2058 violation 1 reports as live.
-    A prose MUST NOT that the schema does not encode is invisible to any
-    schema check.
+    webhook result payloads"). A prose MUST NOT that the schema does not encode
+    is invisible to any schema check.
 
     That gap is upstream, not ours, and is now asked about there:
     adcontextprotocol/adcp#7329. The schema does not encode it at 3.1, at 3.1.20

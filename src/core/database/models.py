@@ -2388,10 +2388,12 @@ class PushNotificationConfig(Base, JSONValidatorMixin):
     authentication_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     validation_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     webhook_secret: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    # Which protocol the buyer registered over. NULL means a row written before
-    # this column existed; readers fall back to MCP, which is what every sender
-    # did unconditionally before (salesagent-pldmk.39).
-    protocol: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # The two values core/push-notification-config.json says the seller MUST echo
+    # VERBATIM into every webhook payload built against this registration. Stored
+    # because the sender that echoes them runs long after the request that carried
+    # them, and the spec forbids recovering operation_id from the URL.
+    operation_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    token: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()

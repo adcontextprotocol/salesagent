@@ -53,12 +53,48 @@ def _webhook_deliveries(ctx: dict) -> list[Any]:
 
 
 def _get_last_webhook_payload(ctx: dict) -> dict[str, Any]:
-    """The JSON body of the most recent webhook delivery, as it crossed the socket."""
+    """The JSON body of the most recent webhook delivery, as it crossed the socket.
+
+    This is the ENVELOPE (``core/mcp-webhook-payload.json``). Delivery-report fields are
+    not here -- read them through :func:`_webhook_result` -- because AdCP 3.1.1
+    ``L3/webhooks.mdx`` :217 puts the report under ``result`` and says it "is not valid as
+    the top-level POST body by itself".
+    """
     deliveries = _webhook_deliveries(ctx)
     assert deliveries, "No webhook POST was made"
     payload = deliveries[-1].json()
     assert payload, f"Webhook POST had no JSON payload: {deliveries[-1].body!r}"
     return payload
+
+
+def _webhook_result(body: dict[str, Any]) -> dict[str, Any]:
+    """The delivery report carried by one webhook envelope.
+
+    THE one place the two layers are separated, so no step re-decides where a report field
+    lives. A step that read the envelope for ``notification_type`` or ``media_buy_id``
+    found neither and said the payload was missing them -- which is what fourteen scenarios
+    could not tell you while they were ledgered.
+    """
+    result = body.get("result")
+    assert isinstance(result, dict), (
+        f"the webhook envelope carries no `result` object, so there is no delivery report to "
+        f"grade: got {type(result).__name__} at `result`, envelope keys {sorted(body)}"
+    )
+    return result
+
+
+def _get_last_webhook_result(ctx: dict) -> dict[str, Any]:
+    """The delivery report inside the most recent webhook POST."""
+    return _webhook_result(_get_last_webhook_payload(ctx))
+
+
+def _delivery_entries(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """``media_buy_deliveries[]`` off one delivery report, which the pin makes required."""
+    entries = result.get("media_buy_deliveries")
+    assert isinstance(entries, list) and entries, (
+        f"the delivery report carries no media_buy_deliveries[]: got {entries!r}"
+    )
+    return entries
 
 
 def _get_last_webhook_headers(ctx: dict) -> Any:
@@ -1722,47 +1758,37 @@ def then_webhook_payload_has_metrics(ctx: dict, mb_id: str) -> None:
     values (impressions, spend) — not just structural presence.  The
     reporting_period check is left to its dedicated Then step.
     """
-    payload = _get_last_webhook_payload(ctx)
+    result = _get_last_webhook_result(ctx)
     real_id = _resolve_media_buy_id(ctx, mb_id)
-    # ID mapping: payload media_buy_id must match the requested buy
-    assert payload.get("media_buy_id") == real_id, (
-        f"Expected payload media_buy_id == {real_id!r}, got {payload.get('media_buy_id')!r}"
+    entries = _delivery_entries(result)
+
+    # ID mapping, at the nesting media-buy-delivery-webhook-result.json declares it:
+    # media_buy_id is a property of a media_buy_deliveries[] ENTRY, never of the report.
+    entry = next((e for e in entries if e.get("media_buy_id") == real_id), None)
+    assert entry is not None, (
+        f"no media_buy_deliveries[] entry for {real_id!r}: got {[e.get('media_buy_id') for e in entries]!r}"
     )
 
-    # Metrics: the payload must carry concrete numeric delivery data.
-    # Look in totals, then by_package, then top-level — whatever the payload shape.
-    totals = payload.get("totals") or payload.get("aggregated_totals") or {}
-    impressions = totals.get("impressions") if isinstance(totals, dict) else None
-    spend = totals.get("spend") if isinstance(totals, dict) else None
+    # Metrics live in the entry's `totals`. There is no fallback chain: the pin gives one
+    # location, and an "or wherever else it might be" search passes against a shape the
+    # buyer's own schema validation would reject.
+    totals = entry.get("totals")
+    assert isinstance(totals, dict), f"delivery entry for {real_id!r} carries no totals object: got {totals!r}"
+    impressions = totals.get("impressions")
+    spend = totals.get("spend")
 
-    # Fallback: check by_package or top-level keys
-    if impressions is None:
-        pkgs = payload.get("by_package") or []
-        if pkgs:
-            impressions = sum(p.get("impressions", 0) for p in pkgs if isinstance(p, dict))
-            spend = sum(p.get("spend", 0) for p in pkgs if isinstance(p, dict))
-        else:
-            impressions = payload.get("impressions")
-            spend = payload.get("spend")
-
-    assert impressions is not None, (
-        f"Webhook payload for {real_id!r} missing delivery metric 'impressions': payload keys={list(payload.keys())}"
-    )
     assert isinstance(impressions, (int, float)) and impressions > 0, (
-        f"Expected positive numeric impressions for {real_id!r}, got {impressions!r}"
-    )
-    assert spend is not None, (
-        f"Webhook payload for {real_id!r} missing delivery metric 'spend': payload keys={list(payload.keys())}"
+        f"Expected positive numeric totals.impressions for {real_id!r}, got {impressions!r}"
     )
     assert isinstance(spend, (int, float)) and spend > 0, (
-        f"Expected positive numeric spend for {real_id!r}, got {spend!r}"
+        f"Expected positive numeric totals.spend for {real_id!r}, got {spend!r}"
     )
 
 
 @then("the payload should include the reporting_period")
 def then_webhook_payload_has_period(ctx: dict) -> None:
     """Assert webhook payload includes a reporting_period with start and end."""
-    payload = _get_last_webhook_payload(ctx)
+    payload = _get_last_webhook_result(ctx)
     period = payload.get("reporting_period")
     assert period is not None, f"Webhook payload missing 'reporting_period': {list(payload.keys())}"
     assert period.get("start") is not None and period.get("end") is not None, (
@@ -1773,7 +1799,7 @@ def then_webhook_payload_has_period(ctx: dict) -> None:
 @then(parsers.parse('the payload notification_type should be "{ntype}"'))
 def then_notification_type(ctx: dict, ntype: str) -> None:
     """Assert notification type matches expected value."""
-    payload = _get_last_webhook_payload(ctx)
+    payload = _get_last_webhook_result(ctx)
     assert payload.get("notification_type") == ntype, (
         f"Expected notification_type={ntype!r}, got {payload.get('notification_type')!r}"
     )
@@ -1782,7 +1808,7 @@ def then_notification_type(ctx: dict, ntype: str) -> None:
 @then(parsers.re(r"the payload (?P<next_expected>.+) include next_expected_at"))
 def then_next_expected(ctx: dict, next_expected: str) -> None:
     """Assert next_expected_at is present or absent based on 'should'/'should not'."""
-    payload = _get_last_webhook_payload(ctx)
+    payload = _get_last_webhook_result(ctx)
     should_include = "should not" not in next_expected
     has_key = "next_expected_at" in payload
     if should_include:
@@ -1798,7 +1824,7 @@ def then_sequence_ascending(ctx: dict) -> None:
     """Assert sequence numbers are strictly increasing across consecutive deliveries."""
     deliveries = _webhook_deliveries(ctx)
     assert len(deliveries) >= 2, f"Expected at least 2 webhook POSTs for sequence check, got {len(deliveries)}"
-    seq_nums = [req.json().get("sequence_number") for req in deliveries]
+    seq_nums = [_webhook_result(req.json()).get("sequence_number") for req in deliveries]
     for i in range(1, len(seq_nums)):
         assert seq_nums[i] is not None, f"POST call {i} payload missing sequence_number"
         assert seq_nums[i] > seq_nums[i - 1], (
@@ -1811,7 +1837,7 @@ def then_first_sequence(ctx: dict) -> None:
     """Assert first webhook POST has sequence_number >= 1."""
     deliveries = _webhook_deliveries(ctx)
     assert deliveries, "No webhook POSTs were made"
-    first_payload = deliveries[0].json()
+    first_payload = _webhook_result(deliveries[0].json())
     seq = first_payload.get("sequence_number")
     assert seq is not None, f"First webhook POST payload missing sequence_number: {list(first_payload.keys())}"
     assert seq >= 1, f"Expected sequence_number >= 1, got {seq}"
@@ -1819,10 +1845,24 @@ def then_first_sequence(ctx: dict) -> None:
 
 @then('the payload should not include "aggregated_totals" field')
 def then_no_aggregated_in_payload(ctx: dict) -> None:
-    """Assert webhook payload excludes aggregated_totals (polling-only field)."""
-    payload = _get_last_webhook_payload(ctx)
-    assert "aggregated_totals" not in payload, (
-        f"Webhook payload should not contain 'aggregated_totals' (polling-only field): got keys {list(payload.keys())}"
+    """Assert the delivery REPORT excludes aggregated_totals (polling-only field).
+
+    Graded on ``result``, not on the envelope. The envelope's field set is fixed by
+    ``core/mcp-webhook-payload.json``, so ``aggregated_totals`` is structurally impossible
+    there and an assertion against the POST body could not fail whatever production did --
+    which is exactly how this read while the scenario was ledgered.
+
+    The result layer is where the field could actually appear:
+    ``media-buy-delivery-webhook-result.json`` sets ``additionalProperties: true`` and does
+    not declare it, so an emitted value is schema-VALID and no schema check can catch it.
+    The obligation is prose only -- ``L3/webhooks.mdx`` :253, "API-only for
+    get_media_buy_delivery responses and must not be emitted in reporting webhook result
+    payloads" -- which is why it needs a named-field assertion here.
+    """
+    result = _get_last_webhook_result(ctx)
+    assert "aggregated_totals" not in result, (
+        f"the delivery report carries 'aggregated_totals', which L3/webhooks.mdx :253 forbids "
+        f"in a reporting webhook result: got keys {sorted(result)}"
     )
 
 
@@ -2414,7 +2454,11 @@ def then_skip_no_webhook(ctx: dict, mb_id: str) -> None:
     """
     real_id = _resolve_media_buy_id(ctx, mb_id)
     # Collect all media_buy_ids that received webhook POSTs
-    posted_mb_ids = [req.json().get("media_buy_id") for req in _webhook_deliveries(ctx)]
+    posted_mb_ids = [
+        e.get("media_buy_id")
+        for req in _webhook_deliveries(ctx)
+        for e in _delivery_entries(_webhook_result(req.json()))
+    ]
     assert real_id not in posted_mb_ids, (
         f"Webhook POST was made for '{real_id}' but it should have been skipped "
         f"(no webhook configured). All posted IDs: {posted_mb_ids}"

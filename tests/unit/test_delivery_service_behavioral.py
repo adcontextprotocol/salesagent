@@ -463,12 +463,7 @@ class TestWebhookEnhancedDBErrorHandling:
             env.mock["db"].side_effect = Exception("DB connection refused")
 
             service = env.get_service()
-            result = service._send_webhook_enhanced(
-                tenant_id="t1",
-                principal_id="p1",
-                media_buy_id="mb_001",
-                delivery_payload={"test": "data"},
-            )
+            result = env.call_send_enhanced({"test": "data"}, tenant_id="t1", principal_id="p1", media_buy_id="mb_001")
 
         assert result is False
 

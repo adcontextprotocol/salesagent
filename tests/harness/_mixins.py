@@ -751,6 +751,39 @@ class CircuitBreakerMixin(LocalOriginMixin):
 
     _service: WebhookDeliveryService | None
 
+    def call_send_enhanced(
+        self,
+        result: dict[str, Any] | None = None,
+        *,
+        tenant_id: str = "t1",
+        principal_id: str = "p1",
+        media_buy_id: str = "mb_001",
+        notification_type: str | None = "scheduled",
+        sequence_number: int = 1,
+    ) -> bool:
+        """Call ``_send_webhook_enhanced`` with a task context built from these values.
+
+        The sender takes the delivery REPORT and a typed context, and builds the AdCP
+        envelope per registration. Constructing that context is seven fields; doing it at
+        each of sixteen call sites is the copy-paste shape the duplication ratchet refuses,
+        and it is also how a site ends up naming the wrong sequence number without saying so.
+        """
+        from src.core.webhooks.delivery import WebhookTaskContext
+
+        service = self.get_service()
+        return service._send_webhook_enhanced(
+            ctx=WebhookTaskContext(
+                task_id=media_buy_id,
+                task_type="delivery_report",
+                tenant_id=tenant_id,
+                principal_id=principal_id,
+                media_buy_id=media_buy_id,
+                sequence_number=sequence_number,
+                notification_type=notification_type,
+            ),
+            result=result if result is not None else {"test": "data"},
+        )
+
     def get_service(self) -> WebhookDeliveryService:
         """Return a WebhookDeliveryService instance (cached per env)."""
         if self._service is None:

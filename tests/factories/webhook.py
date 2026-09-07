@@ -29,6 +29,12 @@ class PushNotificationConfigFactory(factory.alchemy.SQLAlchemyModelFactory):
     principal_id = LazyAttribute(lambda o: o.principal.principal_id)
     url = factory.LazyFunction(lambda: "https://example.com/webhook")
     is_active = True
+    # A conformant buyer supplies one at registration, and it is what makes the seller's
+    # envelope valid: `operation_id` is REQUIRED on core/mcp-webhook-payload.json, the
+    # seller MUST echo the registered value verbatim, and the spec forbids recovering it
+    # from the URL. Defaulted here so a fixture that omits it is not silently registering a
+    # webhook no conformant body can be built for.
+    operation_id = Sequence(lambda n: f"op_{n:04d}")
 
 
 class WebhookTaskContextFactory(factory.Factory):

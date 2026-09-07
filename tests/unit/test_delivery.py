@@ -1807,37 +1807,22 @@ class TestDeliveryWebhookHappyPath:
             )
 
         # Verify the payload passed to _send_webhook_enhanced includes next_expected_at
-        call_kwargs = mock_send.call_args[1]
-        payload = call_kwargs["delivery_payload"]
+        # The delivery REPORT, which is what this case grades. The sender takes it and
+        # wraps it per registration, so the report is the argument and the envelope is
+        # built one layer down (AdCP 3.1.1 L3/webhooks.mdx :217).
+        payload = mock_send.call_args[1]["result"]
         assert "next_expected_at" in payload
         assert payload["notification_type"] == "scheduled"
 
-    def test_webhook_excludes_aggregated_totals(self):
-        """UC-004-WH-09: webhook does NOT include aggregated_totals.
-
-        Spec: https://github.com/adcontextprotocol/adcp/blob/8f26baf3549c00d2638341fed1d80abacb5d894a/dist/schemas/3.0.0-beta.3/media-buy/get-media-buy-delivery-response.json
-        CONFIRMED: aggregated_totals description says "Only included in API responses
-        (get_media_buy_delivery), not in webhook notifications."
-        Tests that the webhook payload built by send_delivery_webhook does not include
-        aggregated_totals.
-        Covers: UC-004-ALT-WEBHOOK-PUSH-REPORTING-09
-        """
-        service = WebhookDeliveryService()
-
-        with patch.object(service, "_send_webhook_enhanced", return_value=True) as mock_send:
-            service.send_delivery_webhook(
-                media_buy_id="mb_wh09",
-                tenant_id="t1",
-                principal_id="p1",
-                reporting_period_start=datetime(2025, 1, 1, tzinfo=UTC),
-                reporting_period_end=datetime(2025, 6, 30, tzinfo=UTC),
-                impressions=5000,
-                spend=250.0,
-            )
-
-        payload = mock_send.call_args[1]["delivery_payload"]
-        # Webhook payload must NOT contain aggregated_totals
-        assert "aggregated_totals" not in payload
+    # UC-004-WH-09 (webhook excludes aggregated_totals) is RETIRED, not moved. It asserted
+    # `"aggregated_totals" not in payload` against a dict this function builds key by key
+    # from its own parameters -- a dict that has never had the key and structurally cannot
+    # grow one, so the assertion could not fail whatever production did. The prohibition it
+    # cited is also not in the pinned contract: 3.1/media-buy/media-buy-delivery-webhook
+    # -result.json sets `additionalProperties: true` and does not declare the field, so an
+    # emitted `aggregated_totals` is schema-VALID. What replaced it is the shape assertion
+    # one level up -- the POST body is the mcp-webhook-payload envelope, graded by the
+    # UC-004 webhook-compliance scenarios against the pinned schema.
 
     def test_webhook_filters_requested_metrics(self):
         """UC-004-WH-10: webhook totals only include metrics actually provided.
@@ -1864,7 +1849,7 @@ class TestDeliveryWebhookHappyPath:
                 # clicks and ctr not provided
             )
 
-        payload_no_clicks = mock_send.call_args[1]["delivery_payload"]
+        payload_no_clicks = mock_send.call_args[1]["result"]
         totals = payload_no_clicks["media_buy_deliveries"][0]["totals"]
         # Without explicit clicks/ctr, they should not be in totals
         assert "clicks" not in totals
@@ -1884,7 +1869,7 @@ class TestDeliveryWebhookHappyPath:
                 ctr=0.1,
             )
 
-        payload_with_clicks = mock_send.call_args[1]["delivery_payload"]
+        payload_with_clicks = mock_send.call_args[1]["result"]
         totals_with = payload_with_clicks["media_buy_deliveries"][0]["totals"]
         assert totals_with["clicks"] == 100
         assert totals_with["ctr"] == 0.1
@@ -1912,7 +1897,7 @@ class TestDeliveryWebhookHappyPath:
                 status="active",
             )
 
-        payload = mock_send.call_args[1]["delivery_payload"]
+        payload = mock_send.call_args[1]["result"]
         assert payload["media_buy_deliveries"][0]["status"] == "active"
 
 

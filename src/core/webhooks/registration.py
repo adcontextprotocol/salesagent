@@ -69,6 +69,8 @@ class WebhookConfigColumns(TypedDict):
     url: str
     authentication_type: str | None
     authentication_token: str | None
+    operation_id: str | None
+    token: str | None
 
 
 def _construct_stored_config(document: dict[str, Any]) -> PushNotificationConfig:
@@ -345,6 +347,8 @@ class ValidatedWebhookRegistration:
             url=self.url,
             authentication_type=self.authentication_type,
             authentication_token=self.authentication_token,
+            operation_id=self.operation_id,
+            token=self.token,
         )
 
     def to_stash(self) -> dict[str, Any]:

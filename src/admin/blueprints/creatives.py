@@ -107,16 +107,11 @@ async def _deliver_sync_creatives_webhook(
     service = get_protocol_webhook_service()
     try:
         # Determine protocol type from workflow step request_data
-        protocol = step_request_data.get("protocol", "mcp")  # Default to MCP for backward compatibility
-
-        # Create appropriate webhook payload based on protocol
-        # Convert result to dict for webhook payload functions
         result_dict = complete_result.model_dump(mode="json")
 
-        # The dialect fork used to live here, and the metadata was a hand-built
-        # dict carrying task_type alone. Both are now notify()'s job: it selects
-        # the builder from `protocol` once, and it takes a typed context whose
-        # fields have to be named.
+        # The payload build used to live here, and the metadata was a hand-built
+        # dict carrying task_type alone. Both are now notify()'s job: it builds the
+        # one envelope, and it takes a typed context whose fields have to be named.
         #
         # tenant_id and principal_id are the two that used to go missing. Both were
         # in scope all along -- the caller raises without tenant_id, and the
@@ -136,8 +131,6 @@ async def _deliver_sync_creatives_webhook(
             ),
             status=GeneratedTaskStatus.completed,
             result=result_dict,
-            protocol=protocol,
-            context_id=step_context_id or "",
         )
 
         logger.info(

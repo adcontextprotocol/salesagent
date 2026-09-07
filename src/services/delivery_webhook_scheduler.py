@@ -357,18 +357,6 @@ class DeliveryWebhookScheduler:
                 else None,
             )
 
-            # The dialect comes from the REGISTRATION, not from a hardcoded builder.
-            # This job used to call create_mcp_webhook_payload unconditionally, so a
-            # buyer that registered over A2A received an MCP-shaped delivery report.
-            # It had no way to do better until push_notification_configs recorded the
-            # protocol: this job fires long after the request and carries no identity
-            # (salesagent-pldmk.39).
-            #
-            # NULL means a row written before that column existed. Falling back to
-            # "mcp" reproduces exactly the previous behaviour for those rows rather
-            # than guessing a dialect the data never stated.
-            protocol = getattr(push_notification_config, "protocol", None) or "mcp"
-
             # Send webhook notification OUTSIDE the session context
             # This ensures the session is closed before async webhook call
             await self.webhook_service.notify(
@@ -380,7 +368,6 @@ class DeliveryWebhookScheduler:
                 # delivery-log column.
                 status=AdcpTaskStatus.completed,
                 result=delivery_response,
-                protocol=protocol,
             )
 
             logger.info(f"Sent delivery report webhook for media buy {media_buy.media_buy_id}")

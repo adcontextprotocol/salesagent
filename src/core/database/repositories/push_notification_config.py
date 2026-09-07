@@ -126,7 +126,6 @@ class PushNotificationConfigRepository:
         validation_token: str | None = _UNSET,
         session_id: str | None = _UNSET,
         webhook_secret: str | None = _UNSET,
-        protocol: str | None = _UNSET,
     ) -> tuple[PushNotificationConfig, bool]:
         """Insert or update a config within the (tenant, principal) scope.
 
@@ -145,18 +144,15 @@ class PushNotificationConfigRepository:
         seam (``src.core.security.outbound_http``), which re-resolves and re-judges
         the URL when it is actually dialled.
 
-        The four kwargs are deliberately NOT value fields, and every one of them
+        The three kwargs are deliberately NOT value fields, and every one of them
         is preserve-if-not-passed: omitting one keeps the existing row's value
         (``None`` on insert), passing ``None`` explicitly clears it.
         ``validation_token`` is sender-side ``X-Webhook-Token`` material, outside
-        the auth resolver, and only the A2A ``setTaskPushNotificationConfig`` path
-        stores one; ``webhook_secret`` is the admin-registered HMAC secret;
-        ``protocol`` is the dialect the buyer registered over, which only the
-        transport that received the registration knows. Callers share config ids
-        across paths, so a caller that does not OWN a field must not null it —
-        an unconditional write would let the create-media-buy path silently clear
-        a ``validation_token`` set through A2A, or an admin re-registration clear
-        the recorded dialect a later scheduler-driven delivery still needs.
+        the auth resolver; ``webhook_secret`` is the admin-registered HMAC secret.
+        Callers share config ids across paths, so a caller that does not OWN a
+        field must not null it — an unconditional write would let the
+        create-media-buy path silently clear a ``validation_token`` another path
+        set.
 
         Returns:
             (config, created): ``created`` is True if a new row was inserted,
@@ -171,14 +167,14 @@ class PushNotificationConfigRepository:
             existing.url = columns["url"]
             existing.authentication_type = columns["authentication_type"]
             existing.authentication_token = columns["authentication_token"]
+            existing.operation_id = columns["operation_id"]
+            existing.token = columns["token"]
             if validation_token is not _UNSET:
                 existing.validation_token = validation_token
             if session_id is not _UNSET:
                 existing.session_id = session_id
             if webhook_secret is not _UNSET:
                 existing.webhook_secret = webhook_secret
-            if protocol is not _UNSET:
-                existing.protocol = protocol
             existing.updated_at = now
             existing.is_active = True
             self._session.flush()
@@ -192,9 +188,10 @@ class PushNotificationConfigRepository:
             url=columns["url"],
             authentication_type=columns["authentication_type"],
             authentication_token=columns["authentication_token"],
+            operation_id=columns["operation_id"],
+            token=columns["token"],
             validation_token=None if validation_token is _UNSET else validation_token,
             webhook_secret=None if webhook_secret is _UNSET else webhook_secret,
-            protocol=None if protocol is _UNSET else protocol,
             is_active=True,
         )
         self._session.add(config)

@@ -452,9 +452,6 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                             context=approve_context,
                         )
                         webhook_task = _media_buy_webhook_task(step_data, tenant_id, media_buy_id, media_buy_data)
-                        # The dialect fork moved into notify(); this site passes the protocol it
-                        # already read from the workflow step (salesagent-pldmk.39).
-                        protocol = step_data["request_data"].get("protocol", "mcp")
 
                         try:
                             service = get_protocol_webhook_service()
@@ -464,8 +461,6 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                                     task=webhook_task,
                                     status=AdcpTaskStatus.completed,
                                     result=create_media_buy_approved_result,
-                                    protocol=protocol,
-                                    context_id=step_data["context_id"] or "",
                                 )
                             )
                             logger.info(f"Sent webhook notification for approved media buy {media_buy_id}")
@@ -543,9 +538,6 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                         message="Media buy creation encountered 1 error(s).",
                     )
                     webhook_task = _media_buy_webhook_task(step_data, tenant_id, media_buy_id, media_buy_data)
-                    # The dialect fork moved into notify(); this site passes the protocol it
-                    # already read from the workflow step (salesagent-pldmk.39).
-                    protocol = step_data["request_data"].get("protocol", "mcp")
 
                     try:
                         service = get_protocol_webhook_service()
@@ -555,8 +547,6 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                                 task=webhook_task,
                                 status=AdcpTaskStatus.rejected,
                                 result=create_media_buy_rejected_result,
-                                protocol=protocol,
-                                context_id=step_data["context_id"] or "",
                             )
                         )
                         logger.info(f"Sent webhook notification for rejected media buy {media_buy_id}")
