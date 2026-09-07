@@ -198,20 +198,43 @@ async def test_genuine_transport_fault_still_raises_json_rpc_error():
 
 
 @pytest.mark.asyncio
-async def test_send_protocol_webhook_skips_inline_terminal_state():
-    """A terminal task is the inline response — the sender must not deliver a webhook.
+async def test_send_protocol_webhook_skips_inline_terminal_failure():
+    """An inline terminal FAILURE returns before the service is even resolved.
 
-    Pinned AdCP 3.1.1 webhooks.mdx:160 (MUST NOT). The guard returns before the service
-    is even resolved, so an inline completed/failed/rejected/canceled task never notifies.
+    Pinned AdCP 3.1.1 webhooks.mdx:160: the failed Task is returned on the synchronous
+    response, so a webhook would duplicate it. Failed/canceled/rejected are skipped;
+    completed is NOT (see test_send_protocol_webhook_delivers_for_completed_state).
     """
     handler = AdCPRequestHandler()
-    task = Task(id="task_term", status=TaskStatus(state=TaskState.TASK_STATE_FAILED))
+    task = Task(id="task_fail", status=TaskStatus(state=TaskState.TASK_STATE_FAILED))
     handler._task_push_configs[task.id] = MagicMock(url="https://buyer.example.com/webhook")
 
     with patch("src.a2a_server.adcp_a2a_server.get_protocol_webhook_service") as mock_get_service:
         await handler._send_protocol_webhook(task, status="failed")
 
     mock_get_service.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_protocol_webhook_delivers_for_completed_state():
+    """A completed task delivers its webhook — the server's only delivery to the endpoint.
+
+    COMPLETED is deliberately excluded from the failure-skip guard: there is no async
+    completion worker, so this inline completion webhook is how a registered endpoint
+    receives the result (graded end-to-end by test_webhook_registration_reaches_delivery_signed).
+    """
+    handler = AdCPRequestHandler()
+    task = Task(id="task_done", status=TaskStatus(state=TaskState.TASK_STATE_COMPLETED))
+    handler._task_push_configs[task.id] = MagicMock(url="https://buyer.example.com/webhook")
+    notify = AsyncMock(return_value=True)
+
+    with patch(
+        "src.a2a_server.adcp_a2a_server.get_protocol_webhook_service",
+        return_value=MagicMock(notify=notify),
+    ):
+        await handler._send_protocol_webhook(task, status="completed")
+
+    notify.assert_awaited_once()
 
 
 @pytest.mark.asyncio

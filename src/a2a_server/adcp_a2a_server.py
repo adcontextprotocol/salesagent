@@ -220,12 +220,16 @@ DISCOVERY_SKILLS = frozenset(
 )
 
 
-# Terminal A2A task states. `_send_protocol_webhook` notifies on the INITIAL synchronous
-# response only; an inline terminal response must not emit a webhook (pinned AdCP 3.1.1
-# webhooks.mdx:160 — the buyer already has the result).
-_TERMINAL_TASK_STATES = frozenset(
+# Inline terminal FAILURE states. `_send_protocol_webhook` skips these: a task that failed
+# on the initial synchronous response is returned inline, so a webhook would duplicate the
+# failed Task the buyer already holds (pinned AdCP 3.1.1 webhooks.mdx:160). COMPLETED is NOT
+# here on purpose — a completed task's webhook is this server's only delivery of the result to
+# a registered endpoint (there is no async completion worker), and suppressing it would remove
+# webhook delivery entirely (graded by test_webhook_registration_reaches_delivery_signed).
+# The strict-spec goal (deliver completions from an async worker AFTER a non-terminal initial
+# response, so no inline terminal ever webhooks) is a separate architecture change.
+_TERMINAL_FAILURE_STATES = frozenset(
     {
-        TaskState.TASK_STATE_COMPLETED,
         TaskState.TASK_STATE_FAILED,
         TaskState.TASK_STATE_CANCELED,
         TaskState.TASK_STATE_REJECTED,
@@ -479,12 +483,11 @@ class AdCPRequestHandler(RequestHandler):
         worker, which does not exist yet and would need its own entry point (see the guard).
         For the non-terminal states that reach ``notify``, it sends a TaskStatusUpdateEvent.
         """
-        # This sender notifies on the INITIAL synchronous response only. Per pinned AdCP
-        # 3.1.1 webhooks.mdx:160, an inline terminal response MUST NOT emit a webhook — the
-        # buyer already has the result. No async completion-delivery path exists today; if
-        # one is added it MUST use a distinct entry point, because this guard would
-        # otherwise suppress its legitimate terminal completion webhook.
-        if task.status.state in _TERMINAL_TASK_STATES:
+        # Skip a webhook for an inline terminal FAILURE: the failed Task is returned on the
+        # synchronous response, so a webhook would duplicate what the buyer already holds
+        # (pinned AdCP 3.1.1 webhooks.mdx:160). A COMPLETED task is deliberately NOT skipped —
+        # its webhook is this server's only delivery of the result to the registered endpoint.
+        if task.status.state in _TERMINAL_FAILURE_STATES:
             return
 
         try:
