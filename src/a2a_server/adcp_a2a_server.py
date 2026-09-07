@@ -1583,7 +1583,7 @@ class AdCPRequestHandler(RequestHandler):
         artifact is that it has no integer type, and pydantic's non-strict mode already coerces
         ``2.0`` to an ``int`` field.
         """
-        response = await invoke_tool(skill_name, TOOLS[skill_name].validate(parameters), identity)
+        response = await invoke_tool(skill_name, TOOLS[skill_name].dto.model_validate(parameters), identity)
         return self._serialize_for_a2a(response)
 
     async def _handle_explicit_skill(

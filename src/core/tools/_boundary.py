@@ -64,6 +64,7 @@ from pydantic import BaseModel
 from src.core.idempotency_canonical import canonical_request_hash
 from src.core.idempotency_replay import cache_success, lookup_cached_replay, maybe_evict_expired
 from src.core.resolved_identity import ResolvedIdentity
+from src.core.schemas._base import BuyerRequest
 
 logger = logging.getLogger(__name__)
 
@@ -174,32 +175,7 @@ async def _run(impl: Callable[..., Any], /, **kwargs: Any) -> Any:
     return await result if inspect.isawaitable(result) else result
 
 
-def _declared(req: BaseModel, name: str) -> Any:
-    """The value of ``name`` on ``req``, or None when its schema does not declare the field.
-
-    The conditional is REAL and stays: ``account`` is declared by 10 of the 14 pinned request
-    schemas and ``idempotency_key`` by 4, so "does this request carry one" is a per-tool fact
-    rather than something the boundary should assume either way.
-
-    What changed is WHERE the question is asked. ``getattr(req, name, None)`` asks the
-    INSTANCE and answers None for anything that lacks the attribute -- including an object
-    that is not a request at all, which then runs unscoped: no authorization against an
-    account, and no idempotency key. Asking ``model_fields`` puts the question to the
-    DECLARATION, and a non-model raises here instead of proceeding silently.
-
-    An earlier plan proposed a ``BuyerRequest`` base declaring ``account`` and
-    ``idempotency_key`` as properties returning None, so a DTO whose schema declares the field
-    would shadow the property with a real one. Measured, pydantic shadows the other way: the
-    value is stored and ``model_dump`` shows it, but attribute access returns the PROPERTY.
-    Every tool that declares an account would have resolved none, silently -- so that design
-    is recorded here as rejected rather than left for someone to rediscover.
-    """
-    if name not in type(req).model_fields:
-        return None
-    return getattr(req, name)
-
-
-def _keyed_scope(req: BaseModel, identity: ResolvedIdentity | None) -> tuple[str, str, str | None, str] | None:
+def _keyed_scope(req: BuyerRequest, identity: ResolvedIdentity | None) -> tuple[str, str, str | None, str] | None:
     """``(tenant_id, principal_id, account_id, idempotency_key)`` when this request is cacheable.
 
     None whenever any part is absent: a request whose schema declares no key, one carrying
@@ -207,7 +183,7 @@ def _keyed_scope(req: BaseModel, identity: ResolvedIdentity | None) -> tuple[str
     scope to be cached under. A DTO that declares no ``idempotency_key`` cannot carry one --
     every request model is the pinned schema and nothing else.
     """
-    key = _declared(req, "idempotency_key")
+    key = req.get_idempotency_key()
     if not key or identity is None:
         return None
     if identity.tenant_id is None or identity.principal_id is None:
@@ -216,7 +192,7 @@ def _keyed_scope(req: BaseModel, identity: ResolvedIdentity | None) -> tuple[str
 
 
 async def invoke_tool(
-    tool_name: str, req: BaseModel, identity: ResolvedIdentity | None = None, **extra: Any
+    tool_name: str, req: BuyerRequest, identity: ResolvedIdentity | None = None, **extra: Any
 ) -> ProtocolEnvelope:
     """Run the registry's tool named ``tool_name``.
 
@@ -232,7 +208,7 @@ async def invoke_tool(
 async def invoke(
     tool_name: str,
     impl: Callable[..., Any],
-    req: BaseModel,
+    req: BuyerRequest,
     identity: ResolvedIdentity | None = None,
     **extra: Any,
 ) -> ProtocolEnvelope:
@@ -241,7 +217,7 @@ async def invoke(
     ``extra`` carries anything a particular implementation declares beyond req/identity
     (``context_id``), forwarded untouched.
     """
-    account = _declared(req, "account")
+    account = req.get_account()
     if account is not None and identity is not None:
         from src.core.transport_helpers import enrich_identity_with_account
 

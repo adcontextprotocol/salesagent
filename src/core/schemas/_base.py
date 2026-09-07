@@ -14,6 +14,7 @@ from decimal import Decimal
 # --- V2.3 Pydantic Models (Bearer Auth, Restored & Complete) ---
 # --- MCP Status System (AdCP PR #77) ---
 from enum import StrEnum
+from functools import cache
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, TypeAlias, cast, get_args
 
 from src.core.enum_helpers import enum_value
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from src.core.schemas.creative import Creative
 
 from adcp import Error as _LibraryError
+from adcp.types import AccountReference as LibraryAccountReference
 from adcp.types import BrandReference as LibraryBrandReference
 from adcp.types import (
     ContextObject,
@@ -586,6 +588,80 @@ class AlwaysIncludeFieldsMixin(WireSerializerMixin):
     ever re-inserted, so an explicit ``exclude=`` is honoured and no raw Python
     value can reach a ``mode="json"`` dump.
     """
+
+
+@cache
+def _announced_schema(dto: type[BaseModel]) -> dict[str, Any]:
+    """The DTO's JSON Schema, computed once per model.
+
+    Cached because ``model_json_schema()`` walks the whole model tree and this runs on every
+    request. Keyed by the class, so a subclass gets its own entry.
+    """
+    return dto.model_json_schema()
+
+
+class BuyerRequest:
+    """Accessors for ``account`` and ``idempotency_key``, on every request whether it declares them.
+
+    The boundary needs both for every tool -- ``account`` to scope authorization,
+    ``idempotency_key`` to decide at-most-once -- but only 10 of the 14 pinned request schemas
+    declare an account and only 4 declare a key. Mixed in, these answer None for the rest, so
+    the boundary asks the request instead of writing ``getattr(req, "account", None)``.
+
+    METHODS, not properties: pydantic does not let a DTO's field shadow a property of the same
+    name. The value is stored and ``model_dump`` shows it, but attribute access returns the
+    property, so every tool that declares an account resolves None -- silently.
+    """
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_only_declared_fields(cls, data: Any) -> Any:
+        """Reduce the incoming bag to the fields this request's schema declares.
+
+        THE POLICY, in the one place every transport already passes through. A field our
+        models do not declare never reaches an implementation: in development its presence is
+        an error, so a spec field we have not implemented is loud; in production it is dropped,
+        so a newer buyer is served instead of refused.
+
+        A ``mode="before"`` validator on a mixin, not a call site. Every transport CONSTRUCTS
+        the DTO -- A2A through the registry, REST through ``model_validate``, MCP through
+        FastMCP's TypeAdapter -- so every transport gets this, and there is no call to forget.
+        The previous home was ``ToolSpec.validate``, a method added to collapse ten mypy casts
+        on the A2A handlers; hanging the policy off it meant only A2A ever ran it, and the same
+        bytes still had three meanings.
+
+        BEFORE, and that is what reaches the nesting. Field validation has not run yet, so the
+        strip pre-empts the SDK's own nested ``extra="forbid"`` -- which in PRODUCTION was
+        rejecting a buyer who sent an unknown field inside ``account``, the exact
+        forward-incompatibility ``extra="ignore"`` exists to prevent. ``extra="ignore"`` only
+        ever covered the top level, because everything nested is a library model whose config
+        our environment override does not reach.
+
+        ``AdCPInvalidRequestError``, not ``AdCPValidationError``. An undeclared property is an
+        ``additionalProperties`` violation, and the pin puts that in the first bucket:
+        ``INVALID_REQUEST`` is "malformed, missing required fields, or violates schema
+        constraints" while ``VALIDATION_ERROR`` is "invalid field values or business rules
+        BEYOND schema validation" (enums/error-code.json), and L1/security.mdx states "Schema
+        validation runs first ... A malformed request returns INVALID_REQUEST".
+        """
+        if not isinstance(data, dict):
+            return data
+        from src.core.config import is_production
+        from src.core.exceptions import AdCPInvalidRequestError
+        from src.core.schemas._accepted_shape import deep_strip_to_schema
+
+        accepted = deep_strip_to_schema(data, _announced_schema(cls))
+        if accepted != data and not is_production():
+            raise AdCPInvalidRequestError()
+        return accepted
+
+    def get_account(self) -> LibraryAccountReference | None:
+        """The account this request names, or None when its schema declares no ``account``."""
+        return self.__dict__.get("account")
+
+    def get_idempotency_key(self) -> str | None:
+        """The at-most-once key this request carries, or None when its schema declares none."""
+        return self.__dict__.get("idempotency_key")
 
 
 class SalesAgentBaseModel(LibraryAdCPBaseModel):
@@ -2117,7 +2193,7 @@ class Package(LibraryPackage):
 
 
 # --- Media Buy Lifecycle ---
-class CreateMediaBuyRequest(LibraryCreateMediaBuyRequest):
+class CreateMediaBuyRequest(BuyerRequest, LibraryCreateMediaBuyRequest):
     """Extends library CreateMediaBuyRequest from AdCP spec.
 
     Per AdCP spec, the required fields are:
@@ -2463,7 +2539,7 @@ def validate_idempotency_key_shape(key: str | None) -> None:
         )
 
 
-class UpdateMediaBuyRequest(LibraryUpdateMediaBuyRequest):
+class UpdateMediaBuyRequest(BuyerRequest, LibraryUpdateMediaBuyRequest):
     """Update media buy request extending library type.
 
     Inherits all AdCP fields from library (paused, start_time, end_time,
@@ -3161,7 +3237,7 @@ class GetMediaBuysMediaBuy(AlwaysIncludeFieldsMixin, LibraryGetMediaBuysMediaBuy
         return result
 
 
-class CompleteTaskRequest(AdcpVersionEnvelope):
+class CompleteTaskRequest(BuyerRequest, AdcpVersionEnvelope):
     """Request to complete a task.
 
     There used to be TWO models for this one tool: this one, and a legacy
@@ -3220,7 +3296,7 @@ class CompleteTaskResponse(AdcpVersionEnvelope, ProtocolEnvelope):
     completed_by: str = Field(..., description="Principal that completed it")
 
 
-class GetTaskStatusRequest(LibraryGetTaskStatusRequest):
+class GetTaskStatusRequest(BuyerRequest, LibraryGetTaskStatusRequest):
     """Request to retrieve one task.
 
     Extends the SDK's model rather than restating it. The previous docstring recorded an
@@ -3271,7 +3347,7 @@ class TaskSummary(LibraryTaskSummary):
     summary: dict[str, Any] | None = Field(default=None, description="Non-spec: request highlights")
 
 
-class GetAdcpCapabilitiesRequest(LibraryGetAdcpCapabilitiesRequest):
+class GetAdcpCapabilitiesRequest(BuyerRequest, LibraryGetAdcpCapabilitiesRequest):
     """Extends the pinned GetAdcpCapabilitiesRequest.
 
     Adds nothing, and that is the point. The tool registry names the class WE own, never
@@ -3292,7 +3368,7 @@ class GetAdcpCapabilitiesResponse(LibraryGetAdcpCapabilitiesResponse):
     """The get_adcp_capabilities response."""
 
 
-class ListTasksRequest(LibraryListTasksRequest):
+class ListTasksRequest(BuyerRequest, LibraryListTasksRequest):
     """Extends the pinned ListTasksRequest.
 
     Adds nothing, for the same reason as :class:`GetAdcpCapabilitiesRequest` above.
@@ -3350,7 +3426,7 @@ class GetTaskStatusResponse(LibraryGetTaskStatusResponse):
     request_data: dict[str, Any] | None = Field(default=None, description="Non-spec: the request that opened the task")
 
 
-class GetMediaBuysRequest(LibraryGetMediaBuysRequest):
+class GetMediaBuysRequest(BuyerRequest, LibraryGetMediaBuysRequest):
     """Extends the library GetMediaBuysRequest.
 
     Was hand-defined against SalesAgentBaseModel "because adcp 3.6.0 is not yet required" --

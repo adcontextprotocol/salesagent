@@ -19,6 +19,7 @@ from pydantic import ConfigDict, Field, model_validator
 
 from src.core.config import get_pydantic_extra_mode
 from src.core.schemas._base import (
+    BuyerRequest,
     FormatId,
     NestedModelSerializerMixin,
     SalesAgentBaseModel,
@@ -265,7 +266,7 @@ class ProductFilters(LibraryFilters):
         return _upgrade_legacy_format_ids(values)
 
 
-class GetProductsRequest(LibraryGetProductsRequest):
+class GetProductsRequest(BuyerRequest, LibraryGetProductsRequest):
     """Extends library GetProductsWholesaleRequest (adcp 3.9: GetProductsRequest is a union alias).
 
     Base class: GetProductsWholesaleRequest (brief optional, buying_mode='wholesale').
