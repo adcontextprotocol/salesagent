@@ -22,7 +22,6 @@ from a2a.types import (
     AgentInterface,
     AgentSkill,
     Artifact,
-    AuthenticationInfo,
     CancelTaskRequest,
     DeleteTaskPushNotificationConfigRequest,
     GetExtendedAgentCardRequest,
@@ -38,6 +37,7 @@ from a2a.types import (
     Message,
     MethodNotFoundError,
     Part,
+    PushNotificationNotSupportedError,
     SendMessageRequest,
     SubscribeToTaskRequest,
     Task,
@@ -49,12 +49,11 @@ from a2a.types import (
 )
 from a2a.utils.errors import A2AError
 from adcp.server.mcp_tools import ADCP_TOOL_DEFINITIONS
-from adcp.types import GeneratedTaskStatus, ProtocolEnvelope
+from adcp.types import ProtocolEnvelope
 from google.protobuf import json_format, struct_pb2
 
 from src.core.audit_logger import get_audit_logger
 from src.core.auth_context import AUTH_CONTEXT_STATE_KEY
-from src.core.database.repositories import PushNotificationConfigUoW
 from src.core.domain_config import get_a2a_server_url
 from src.core.errors.codes import AppErrorCode
 from src.core.errors.issues import ErrorIssue, JsonPointer
@@ -78,15 +77,6 @@ from src.core.tools._boundary import invoke_tool
 from src.core.tools._wire import to_wire
 from src.core.tools.registry import TOOLS
 from src.core.version import get_version
-from src.core.webhook_validator import (
-    webhook_url_for_log,
-)
-from src.core.webhooks.delivery import WebhookTaskContext
-from src.core.webhooks.registration import (
-    ValidatedWebhookRegistration,
-    accept_push_notification_primitives,
-)
-from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 logger = logging.getLogger(__name__)
 
@@ -127,60 +117,6 @@ def _invalid_params_from_ssrf_error(exc: Exception) -> InvalidParamsError:
         message=adcp_err.message,
         data=build_two_layer_error_envelope(adcp_err),
     )
-
-
-def _a2a_push_config_auth(config: Any) -> tuple[str | None, str | None]:
-    """Pull ``(scheme, credentials)`` out of an A2A push-config protobuf.
-
-    Both A2A surfaces that carry a push config -- ``setTaskPushNotificationConfig``
-    and the protocol-level ``message/send`` configuration -- hold the same flat
-    protobuf whose ``authentication`` is an optional submessage with a SINGULAR
-    free-form ``scheme`` string. Read in one place so the two surfaces cannot
-    disagree about which field the credential half lives in.
-    """
-    if not config.HasField("authentication"):
-        return None, None
-    return (config.authentication.scheme or None, config.authentication.credentials or None)
-
-
-def _accept_a2a_push_config(url: str, scheme: str | None, credentials: str | None) -> ValidatedWebhookRegistration:
-    """Accept an A2A push-config registration, or raise ``InvalidParamsError``.
-
-    The ONE A2A translation seam for push-config ingest, shared by BOTH surfaces
-    that carry one: ``setTaskPushNotificationConfig`` and the protocol-level
-    ``message/send`` configuration. Delegates to
-    :func:`~src.core.webhooks.registration.accept_push_notification_primitives`
-    (the A2A ``authentication`` carries a SINGULAR free-form ``scheme`` string,
-    not the tool path's ``schemes`` list) so this transport cannot drift from the
-    tool path on either precondition.
-
-    Why both surfaces must come through here rather than call the constructor
-    directly: ``on_message_send``'s body runs inside a ``try`` whose handlers are
-    ``except A2AError: raise`` / ``except Exception`` -> ``_internal_error_for``.
-    ``AdCPValidationError`` is not an ``A2AError``, so a raw constructor call
-    there would surface a buyer's correctable credential refusal as
-    ``INTERNAL_ERROR``. The translation below preserves the raised error
-    verbatim (see :func:`_invalid_params_from_ssrf_error`'s isinstance branch),
-    which is what keeps a credential refusal naming the credentials field
-    instead of being re-labelled as a URL problem.
-
-    BOTH typed rejections are caught, because the gate now raises two classes:
-    ``reject_unsafe_webhook_registration_url`` refuses the URL with the dedicated
-    ``AdCPUrlNotAllowedError`` (a direct ``AdCPSalesAgentError`` subclass, NOT an
-    ``AdCPValidationError``), while the credential precondition still raises
-    ``AdCPValidationError``. Catching only the latter would let a refused URL
-    escape to ``on_message_send``'s ``except Exception`` and reach the buyer as
-    ``INTERNAL_ERROR`` instead of a correctable -32602.
-    """
-    try:
-        return accept_push_notification_primitives(
-            url,
-            scheme,
-            credentials,
-            field_prefix="push_notification_config",
-        )
-    except (AdCPValidationError, AdCPUrlNotAllowedError) as e:
-        raise _invalid_params_from_ssrf_error(e) from e
 
 
 def _dict_to_value(d: dict) -> struct_pb2.Value:
@@ -324,7 +260,6 @@ class AdCPRequestHandler(RequestHandler):
         self.tasks: dict[str, Task] = {}  # In-memory task storage
         # The VALUE, not the raw protobuf: what is stashed here is handed straight
         # to the sender, so it must carry the gate's receipt.
-        self._task_push_configs: dict[str, ValidatedWebhookRegistration] = {}
         logger.info("AdCP Request Handler initialized for direct function calls")
 
     @staticmethod
@@ -515,99 +450,6 @@ class AdCPRequestHandler(RequestHandler):
         except Exception as e:
             logger.warning("Failed to log A2A operation: %s", e)
 
-    async def _send_protocol_webhook(
-        self,
-        task: Task,
-        status: str,
-        result: dict[str, Any] | None = None,
-        error: str | None = None,
-    ):
-        """Send protocol-level push notification if configured.
-
-        Per AdCP A2A spec (https://docs.adcontextprotocol.org/docs/protocols/a2a-guide#push-notifications-a2a-specific):
-        - Final states (completed, failed, canceled): Send full Task object with artifacts
-        - Intermediate states (working, input-required, submitted): Send TaskStatusUpdateEvent
-
-        ``notify`` selects the payload type from the status: Task for final states,
-        TaskStatusUpdateEvent for intermediate ones.
-        """
-        try:
-            # Check if task has push notification config stored
-            webhook_config = self._task_push_configs.get(task.id)
-            if not webhook_config:
-                return
-
-            push_notification_service = get_protocol_webhook_service()
-
-            if not webhook_config.url.strip():
-                logger.info("[red]No push notification URL present; skipping webhook[/red]")
-                return
-
-            # The stashed VALUE is handed to the sender directly. There is nothing to
-            # fabricate: send_notification reads exactly .url / .authentication_type /
-            # .authentication_token, which is precisely what the value carries. The
-            # detached DBPushNotificationConfig(tenant_id="", principal_id="") that
-            # used to stand in here was a config-shaped object with empty scope ids,
-            # built purely to satisfy a type — i.e. a way to hand a sender a config
-            # that no repository ever receipted.
-            push_notification_config = webhook_config
-
-            # Convert status string to GeneratedTaskStatus enum
-            try:
-                status_enum = GeneratedTaskStatus(status)
-            except ValueError:
-                # Fallback for unknown status values
-                logger.warning("Unknown status '%s', defaulting to 'working'", status)
-                status_enum = GeneratedTaskStatus.working
-
-            # Build result data for the webhook payload
-            # Include error information in result if status is failed
-            result_data: dict[str, Any] = result or {}
-            if error and status == "failed":
-                result_data["error"] = error
-
-            # Extract skills_requested from protobuf Struct metadata
-            meta_dict = json_format.MessageToDict(task.metadata) if task.metadata.ByteSize() > 0 else {}
-            skills = list(meta_dict.get("skills_requested", []))
-
-            # tenant_id / principal_id are None here, and that is a decision rather
-            # than an omission. This path delivers PROTOCOL task updates, whose
-            # task_type is a skill name; records_delivery_log only fires for
-            # "delivery_report" / "media_buy_delivery", so no webhook_delivery_log
-            # row is expected and the registration this sender holds
-            # (ValidatedWebhookRegistration) carries no scope ids to give it.
-            # Stating them as None is what makes that visible -- the dict this
-            # replaced simply had no such keys (salesagent-pldmk.39).
-            webhook_task = WebhookTaskContext(
-                task_id=task.id,
-                task_type=skills[0] if skills else "unknown",
-                tenant_id=None,
-                principal_id=None,
-                media_buy_id=None,
-                sequence_number=1,
-                notification_type=None,
-            )
-
-            # notify() picks the payload type: Task for final states,
-            # TaskStatusUpdateEvent for intermediate ones. protocol is "a2a"
-            # unconditionally -- this IS the A2A server.
-            sent = await push_notification_service.notify(
-                push_notification_config,
-                task=webhook_task,
-                status=status_enum,
-                result=result_data,
-                protocol="a2a",
-                context_id=task.context_id or "",
-            )
-            if not sent:
-                logger.warning(
-                    "Protocol webhook not delivered for task %s (send_notification returned False)",
-                    task.id,
-                )
-        except Exception as e:
-            # Don't fail the task if webhook fails
-            logger.warning("Failed to send protocol-level webhook for task %s: %s", task.id, e)
-
     async def on_message_send(
         self,
         params: SendMessageRequest,
@@ -714,24 +556,6 @@ class AdCPRequestHandler(RequestHandler):
                     data=build_two_layer_error_envelope(AdCPAuthRequiredError()),
                 )
 
-            # SSRF-reject unsafe push URLs after the auth-required gate so callers
-            # that need credentials see AUTH_REQUIRED before scheme/blocked-host checks.
-            # ONE branch: stash iff a registration was built. Previously the gate ran
-            # under `config and config.url` while the stash ran under `config` alone,
-            # so a blank-url config was stashed ungated (the reader then early-returned
-            # on it). Observably equivalent, minus the ungated stash.
-            if push_notification_config and push_notification_config.url:
-                registration = _accept_a2a_push_config(
-                    push_notification_config.url,
-                    *_a2a_push_config_auth(push_notification_config),
-                )
-                logger.info(
-                    "Protocol-level push notification config provided for task %s: %s",
-                    task_id,
-                    webhook_url_for_log(push_notification_config.url),
-                )
-                self._task_push_configs[task_id] = registration
-
             # ── Transport boundary: resolve identity ONCE ──
             # Like REST's _resolve_auth(), identity is resolved here and passed
             # to all downstream handlers. No handler should call resolve_identity().
@@ -767,7 +591,6 @@ class AdCPRequestHandler(RequestHandler):
                             skill_name,
                             parameters,
                             identity,
-                            push_config_registration=self._task_push_configs.get(task_id),
                         )
                         results.append({"skill": skill_name, "result": result, "success": True})
                     except A2AError:
@@ -819,7 +642,6 @@ class AdCPRequestHandler(RequestHandler):
                                 f"Task {task_id} requires manual approval, returning status=submitted with no artifacts"
                             )
                             # Send protocol-level webhook notification
-                            await self._send_protocol_webhook(task, status="submitted")
                             self.tasks[task_id] = task
                             return task
 
@@ -886,7 +708,6 @@ class AdCPRequestHandler(RequestHandler):
                     error_messages = [
                         res["error_envelope"]["errors"][0]["message"] for res in results if not res["success"]
                     ]
-                    await self._send_protocol_webhook(task, status="failed", error="; ".join(error_messages))
 
                     return task
                 elif successful_skills:
@@ -1091,7 +912,6 @@ class AdCPRequestHandler(RequestHandler):
             task.status.CopyFrom(TaskStatus(state=task_state))
 
             # Send protocol-level webhook notification if configured
-            await self._send_protocol_webhook(task, status=task_status_str)
 
         except A2AError:
             # Re-raise A2AError as-is (will be caught by JSON-RPC handler)
@@ -1127,8 +947,6 @@ class AdCPRequestHandler(RequestHandler):
                     parts=[Part(data=_dict_to_value(self._build_error_envelope(e)))],
                 )
             )
-
-            await self._send_protocol_webhook(task, status="failed")
 
             # Raise A2A error instead of creating failed task
             raise _internal_error_for("message processing", e)
@@ -1244,253 +1062,32 @@ class AdCPRequestHandler(RequestHandler):
         params: GetTaskPushNotificationConfigRequest,
         context: ServerCallContext,
     ) -> TaskPushNotificationConfig:
-        """Handle get push notification config requests.
-
-        Retrieves the push notification configuration for a specific config ID.
-        """
-        tool_context = None
-        try:
-            auth_token = self._get_auth_token(context)
-            if not auth_token:
-                raise InvalidRequestError(message="Missing authentication token")
-            identity = self._resolve_a2a_identity(auth_token, context=context)
-            tool_context = self._make_tool_context(identity, "get_push_notification_config")
-
-            config_id = params.get("id") if isinstance(params, dict) else getattr(params, "id", None)
-            if not config_id:
-                raise InvalidParamsError(message="Missing required parameter: id")
-
-            with PushNotificationConfigUoW(tool_context.tenant_id) as uow:
-                assert uow.push_notification_configs is not None
-                config = uow.push_notification_configs.get_by_id(
-                    config_id,
-                    principal_id=tool_context.principal_id,
-                )
-
-                if not config:
-                    raise TaskNotFoundError(message=f"Push notification config not found: {config_id}")
-
-                response_id = config.id
-                response_url = config.url
-                response_validation_token = config.validation_token or ""
-                # Read-BACK, not sender-side auth resolution: this echoes the
-                # buyer's own registration to them. The egress seam has nothing
-                # to offer here — there is no outbound request being
-                # authenticated — so this file is a justified false positive in
-                # test_architecture_no_inline_webhook_auth_resolution's allowlist,
-                # not deferred debt. Deliberately no FIXME.
-                auth_scheme = config.authentication_type
-                auth_credentials = config.authentication_token
-
-            auth_info = (
-                AuthenticationInfo(scheme=auth_scheme, credentials=auth_credentials)
-                if auth_scheme and auth_credentials
-                else None
-            )
-            return TaskPushNotificationConfig(
-                id=response_id,
-                task_id=params.task_id,
-                url=response_url,
-                authentication=auth_info,
-                token=response_validation_token,
-            )
-
-        except A2AError:
-            raise
-        except Exception as e:
-            record_boundary_error(
-                "a2a",
-                "get_push_notification_config",
-                e,
-                tenant_id=tool_context.tenant_id if tool_context else None,
-                principal_id=tool_context.principal_id if tool_context else None,
-            )
-            raise _internal_error_for("get push notification config", e) from e
+        """Handle 'tasks/pushNotificationConfig/get'. Declined: this agent advertises push_notifications=False."""
+        raise PushNotificationNotSupportedError()
 
     async def on_create_task_push_notification_config(
         self,
         params: TaskPushNotificationConfig,
         context: ServerCallContext,
     ) -> TaskPushNotificationConfig:
-        """Handle set push notification config requests.
-
-        Creates or updates a push notification configuration for async operation callbacks.
-        Buyers use this to register webhook URLs where they want to receive status updates.
-        """
-        tool_context = None
-        try:
-            auth_token = self._get_auth_token(context)
-            if not auth_token:
-                raise InvalidRequestError(message="Missing authentication token")
-            identity = self._resolve_a2a_identity(auth_token, context=context)
-            tool_context = self._make_tool_context(identity, "set_push_notification_config")
-
-            # In a2a-sdk 1.0, TaskPushNotificationConfig is a flat protobuf message
-            # with fields: tenant, id, task_id, url, token, authentication
-            task_id = params.task_id
-            url = params.url
-            config_id = params.id or f"pnc_{uuid.uuid4().hex[:16]}"
-            validation_token = params.token
-
-            if not url:
-                raise InvalidParamsError(message="Missing required parameter: url")
-
-            auth_type, auth_token_value = _a2a_push_config_auth(params)
-
-            # Both registration preconditions, BEFORE the try. The except below
-            # funnels every ValueError into _invalid_params_from_ssrf_error, which
-            # manufactures field="push_notification_config.url" plus the https SSRF
-            # wording for a non-AdCP error -- so a credential refusal raised from
-            # inside the repository would reach the buyer as "fix your URL" about a
-            # URL that is fine (salesagent-47n9.20).
-            registration = _accept_a2a_push_config(url, auth_type, auth_token_value)
-
-            # No ValueError funnel around upsert any more: the repository no longer
-            # re-validates, because the value it now takes IS the receipt that the
-            # gate above ran. The funnel existed only to catch that second gate, and
-            # its own comment (above) documents how it mislabelled what it caught.
-            with PushNotificationConfigUoW(tool_context.tenant_id) as uow:
-                assert uow.push_notification_configs is not None
-                _config, created = uow.push_notification_configs.upsert(
-                    registration,
-                    config_id=config_id,
-                    principal_id=tool_context.principal_id,
-                    validation_token=validation_token,
-                    # This IS the A2A server, so the dialect is not in doubt here.
-                    protocol="a2a",
-                )
-
-            logger.info(
-                f"Push notification config {'created' if created else 'updated'}: {config_id} for tenant {tool_context.tenant_id}"
-            )
-
-            auth_info = (
-                AuthenticationInfo(scheme=auth_type, credentials=auth_token_value)
-                if auth_type and auth_token_value
-                else None
-            )
-            return TaskPushNotificationConfig(
-                task_id=task_id or "*",
-                url=url,
-                authentication=auth_info,
-                id=config_id,
-                token=validation_token or "",
-            )
-
-        except A2AError:
-            raise
-        except Exception as e:
-            record_boundary_error(
-                "a2a",
-                "create_push_notification_config",
-                e,
-                tenant_id=tool_context.tenant_id if tool_context else None,
-                principal_id=tool_context.principal_id if tool_context else None,
-            )
-            raise _internal_error_for("set push notification config", e) from e
+        """Handle 'tasks/pushNotificationConfig/set'. Declined: this agent advertises push_notifications=False."""
+        raise PushNotificationNotSupportedError()
 
     async def on_list_task_push_notification_configs(
         self,
         params: ListTaskPushNotificationConfigsRequest,
         context: ServerCallContext,
     ) -> ListTaskPushNotificationConfigsResponse:
-        """Handle list push notification config requests.
-
-        Returns all active push notification configurations for the authenticated principal.
-        """
-        tool_context = None
-        try:
-            auth_token = self._get_auth_token(context)
-            if not auth_token:
-                raise InvalidRequestError(message="Missing authentication token")
-            identity = self._resolve_a2a_identity(auth_token, context=context)
-            tool_context = self._make_tool_context(identity, "list_push_notification_configs")
-
-            with PushNotificationConfigUoW(tool_context.tenant_id) as uow:
-                assert uow.push_notification_configs is not None
-                configs = uow.push_notification_configs.list_active_by_principal(
-                    principal_id=tool_context.principal_id,
-                )
-                config_snapshots = [
-                    (c.id, c.url, c.authentication_type, c.authentication_token, c.validation_token or "")
-                    for c in configs
-                ]
-
-            configs_list = [
-                TaskPushNotificationConfig(
-                    id=snap_id,
-                    task_id=params.task_id,
-                    url=snap_url,
-                    authentication=(
-                        AuthenticationInfo(scheme=snap_auth_type, credentials=snap_auth_token)
-                        if snap_auth_type and snap_auth_token
-                        else None
-                    ),
-                    token=snap_validation_token,
-                )
-                for snap_id, snap_url, snap_auth_type, snap_auth_token, snap_validation_token in config_snapshots
-            ]
-
-            logger.info("Listed %s push notification configs for tenant %s", len(configs_list), tool_context.tenant_id)
-
-            return ListTaskPushNotificationConfigsResponse(configs=configs_list)
-
-        except A2AError:
-            raise
-        except Exception as e:
-            record_boundary_error(
-                "a2a",
-                "list_push_notification_configs",
-                e,
-                tenant_id=tool_context.tenant_id if tool_context else None,
-                principal_id=tool_context.principal_id if tool_context else None,
-            )
-            raise _internal_error_for("list push notification configs", e) from e
+        """Handle 'tasks/pushNotificationConfig/list'. Declined: this agent advertises push_notifications=False."""
+        raise PushNotificationNotSupportedError()
 
     async def on_delete_task_push_notification_config(
         self,
         params: DeleteTaskPushNotificationConfigRequest,
         context: ServerCallContext,
     ) -> None:
-        """Handle delete push notification config requests.
-
-        Marks a push notification configuration as inactive (soft delete).
-        """
-        tool_context = None
-        try:
-            auth_token = self._get_auth_token(context)
-            if not auth_token:
-                raise InvalidRequestError(message="Missing authentication token")
-            identity = self._resolve_a2a_identity(auth_token, context=context)
-            tool_context = self._make_tool_context(identity, "delete_push_notification_config")
-
-            config_id = params.id
-            if not config_id:
-                raise InvalidParamsError(message="Missing required parameter: id")
-
-            with PushNotificationConfigUoW(tool_context.tenant_id) as uow:
-                assert uow.push_notification_configs is not None
-                deleted = uow.push_notification_configs.soft_delete(
-                    config_id,
-                    principal_id=tool_context.principal_id,
-                )
-                if not deleted:
-                    raise TaskNotFoundError(message=f"Push notification config not found: {config_id}")
-
-            logger.info("Deleted push notification config: %s for tenant %s", config_id, tool_context.tenant_id)
-            return None
-
-        except A2AError:
-            raise
-        except Exception as e:
-            record_boundary_error(
-                "a2a",
-                "delete_push_notification_config",
-                e,
-                tenant_id=tool_context.tenant_id if tool_context else None,
-                principal_id=tool_context.principal_id if tool_context else None,
-            )
-            raise _internal_error_for("delete push notification config", e) from e
+        """Handle 'tasks/pushNotificationConfig/delete'. Declined: this agent advertises push_notifications=False."""
+        raise PushNotificationNotSupportedError()
 
     async def on_get_extended_agent_card(
         self,
@@ -1571,7 +1168,6 @@ class AdCPRequestHandler(RequestHandler):
         skill_name: str,
         parameters: dict,
         identity: ResolvedIdentity | None,
-        push_config_registration: ValidatedWebhookRegistration | None = None,
     ) -> dict:
         """Handle explicit AdCP skill invocations.
 
@@ -1582,7 +1178,6 @@ class AdCPRequestHandler(RequestHandler):
             skill_name: The AdCP skill name (e.g., "get_products")
             parameters: Dictionary of skill-specific parameters
             identity: Pre-resolved identity from transport boundary
-            push_config_registration: the ALREADY-ACCEPTED protocol-layer push config
 
         Returns:
             Dictionary containing the skill result
@@ -1590,19 +1185,6 @@ class AdCPRequestHandler(RequestHandler):
         Raises:
             ValueError: For unknown skills or invalid parameters
         """
-        # Inject the protocol-layer push config into parameters for skills that need it.
-        #
-        # The TYPED model the seam already accepted, not a dict re-derived from the
-        # protobuf. This used to re-serialize with MessageToDict and re-translate
-        # A2A's singular ``scheme`` into AdCP's ``schemes`` array — a second dialect
-        # for a config ``_accept_a2a_push_config`` had accepted moments earlier, and
-        # the reason gh-#1299's exemption leaked: the dict was re-validated by the
-        # skill's request body, where ``credentials`` minLength 32 applies and
-        # DIVERTED THE CREATE. Passing the model means ``to_push_notification_config``
-        # returns it unchanged (isinstance short-circuit), so the transport-layer
-        # config is validated exactly once, at the transport boundary that owns it.
-        if push_config_registration and skill_name in ("create_media_buy", "sync_creatives"):
-            parameters = {**parameters, "push_notification_config": push_config_registration.config}
         # Deprecated wire shapes are normalized in ``_dispatch_skill``, which is the one
         # place every A2A request passes through -- the NL entry points reach it too.
         logger.info("Handling explicit skill: %s with parameters: %s", skill_name, list(parameters.keys()))
@@ -1791,7 +1373,7 @@ def create_agent_card() -> AgentCard:
             AgentInterface(url=server_url, protocol_version="1.0"),
         ],
         capabilities=AgentCapabilities(
-            push_notifications=True,
+            push_notifications=False,
             extensions=[adcp_extension],
         ),
         default_input_modes=["message"],
