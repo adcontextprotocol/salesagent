@@ -57,13 +57,11 @@ import inspect
 import re
 import sys
 import typing
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import Annotated, Any
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
-
-from src.core.schema_helpers import accepted_kwargs, select_request_fields
 
 
 def _is_injected(parameter: inspect.Parameter) -> bool:
@@ -102,14 +100,12 @@ def _is_injected(parameter: inspect.Parameter) -> bool:
 #: ``_build_update_request`` returns ``UpdateMediaBuyRequest``. Reading ``co_names``
 #: rather than source text also keeps this out of reach of the source-scanning ban
 #: (a bytecode reference is the call itself, not a string that resembles one).
-_BUILDER_NAME = re.compile(r"^(_?build_\w+_request|create_\w+_request)$")
 
 #: Names a step in a tool's DISPATCH chain: the ``*_raw`` pass-through a wrapper may hop
 #: through, and the ``*_impl`` the chain terminates at. Same artifact-not-name rule as
 #: :data:`_BUILDER_NAME` -- ``get_media_buy_delivery`` reaches
 #: ``_get_media_buy_delivery_impl`` only via ``get_media_buy_delivery_raw``, and no name
 #: join could know that.
-_DISPATCH_NAME = re.compile(r"^\w+_raw$|^_\w+_impl$")
 
 
 def _referenced_callables(fn: Callable[..., Any], pattern: re.Pattern[str]) -> list[Callable[..., Any]]:
@@ -138,56 +134,6 @@ def _referenced_callables(fn: Callable[..., Any], pattern: re.Pattern[str]) -> l
     return found
 
 
-def builder_for(fn: Callable[..., Any]) -> Callable[..., Any] | None:
-    """The ONE builder a tool constructs its request through, or None when it has none.
-
-    This is the tool -> builder edge, and every transport reads it rather than re-deriving
-    "params to request" for itself. That is the whole point: a transport that looks the
-    builder up cannot pick a different spelling, because there is nothing to pick.
-
-    Resolved from the ARTIFACT -- the builder named in the wrapper's BYTECODE -- never from
-    the tool's name. Name-joining would be fooled by the real cases: ``_build_update_request``
-    returns ``UpdateMediaBuyRequest``.
-    """
-    builders = _referenced_callables(fn, _BUILDER_NAME)
-    return builders[0] if builders else None
-
-
-def impl_for(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """The callable that IMPLEMENTS the tool ``fn`` registers -- the registry's ``impl`` edge.
-
-    Walks the dispatch chain from the wrapper: through any ``*_raw`` pass-through, stopping
-    at the ``*_impl`` it reaches. A tool whose chain reaches no ``*_impl`` implements itself,
-    which is not a special case for three named tools but the walk terminating -- the three
-    task tools have no separate implementation to reach.
-
-    Stopping AT the first ``_impl`` rather than following the chain to exhaustion is
-    load-bearing: ``_update_media_buy_impl`` calls ``_sync_creatives_impl`` internally, so a
-    walk that kept going would report ``update_media_buy``'s implementation as creative sync.
-
-    Refuses a frame that names more than one dispatch step. Picking one by ``co_names``
-    order would make the answer depend on the order the compiler happened to emit, and the
-    tool's implementation would rebind silently the day a wrapper mentioned a second.
-    """
-    current = fn
-    seen: set[Any] = {fn}
-    while True:
-        steps = [c for c in _referenced_callables(current, _DISPATCH_NAME) if c not in seen]
-        if not steps:
-            return current
-        if len(steps) > 1:
-            raise RuntimeError(
-                f"{getattr(current, '__name__', current)!r} names {len(steps)} dispatch steps "
-                f"({sorted(getattr(c, '__name__', str(c)) for c in steps)}), so which one "
-                f"implements the tool depends on bytecode order. A wrapper must reach its "
-                f"implementation through exactly one ``*_raw``/``*_impl`` step."
-            )
-        current = steps[0]
-        seen.add(current)
-        if current.__name__.endswith("_impl"):
-            return current
-
-
 def request_model_for(fn: Callable[..., Any]) -> type[BaseModel] | None:
     """The request DTO a tool builds, or None when it builds none.
 
@@ -206,50 +152,6 @@ def request_model_for(fn: Callable[..., Any]) -> type[BaseModel] | None:
 
     spec = TOOLS.get(fn.__name__)
     return spec.dto if spec is not None else None
-
-
-def request_seam_for(fn: Callable[..., Any]) -> tuple[type[BaseModel], Callable[..., Any]]:
-    """The ``(DTO, builder)`` pair ``fn`` constructs its request through. Refuses when it has none.
-
-    This is the ONE lookup, and it exists so that a transport names the TOOL and nothing
-    else. Before it, MCP derived the pair here while REST and A2A wrote both halves out by
-    hand at every site -- ``derived_body_model("ListAccountsBody", ListAccountsRequest,
-    build_list_accounts_request)`` and ``select_request_fields(ListAccountsRequest, params,
-    accepted_kwargs(build_list_accounts_request))``. Two hand-written names per transport per
-    tool is two places to name a DIFFERENT model or a DIFFERENT builder than the tool
-    actually uses, and the disagreement is silent: the transport goes on accepting a field
-    set nothing else accepts.
-
-    Refusing rather than returning ``None``: a caller that cannot resolve the seam has no
-    correct fallback -- selecting against "no DTO" forwards nothing and derives an empty body
-    -- so the failure must arrive at the derivation, not as a tool that quietly accepts
-    nothing. This mirrors ``_register_tool``, which refuses a tool whose DTO cannot be
-    resolved instead of registering a hand-written shape.
-    """
-    builder = builder_for(fn)
-    model = request_model_for(fn)
-    if builder is None or model is None:
-        raise RuntimeError(
-            f"{getattr(fn, '__name__', fn)!r} has no request seam: a tool's DTO and builder "
-            f"are read from the build_*_request it calls, and this one resolves "
-            f"{'no builder' if builder is None else 'no DTO from its builder'}. Every "
-            f"transport derives its accepted field set from that pair, so without it there "
-            f"is nothing to derive from. Give the tool a build_*_request builder whose "
-            f"return annotation is its request model."
-        )
-    return model, builder
-
-
-def select_request_fields_for(fn: Callable[..., Any], source: BaseModel | Mapping[str, Any]) -> dict[str, Any]:
-    """``select_request_fields`` with the DTO and the accepted set READ OFF THE TOOL.
-
-    The selection RULE is unchanged -- it still lives in ``schema_helpers`` and is still
-    "DTO fields INTERSECT the builder's parameters". What changes is that the caller no
-    longer states which DTO and which builder that is: a skill handler names its tool, and
-    the pair comes from the same lookup MCP registers with.
-    """
-    model, builder = request_seam_for(fn)
-    return select_request_fields(model, source, accepted_kwargs(builder))
 
 
 #: Contributed by version-envelope.json to every SDK request model. An ancestor that carries

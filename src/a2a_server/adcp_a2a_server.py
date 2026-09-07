@@ -274,24 +274,6 @@ def restore_a2a_integer_types(data: Any, integer_field_names: frozenset[str] = A
     return data
 
 
-# ADCP Discovery Skills: Skills that don't require authentication
-# Per AdCP spec section 3.2, these endpoints allow optional authentication for public discovery.
-# IMPORTANT: This is the single source of truth for auth-optional skills in A2A.
-# Add new skills here ONLY if they meet AdCP discovery endpoint requirements:
-#   1. Return only public/non-sensitive data
-#   2. Support tenant-level access control (e.g., brand_manifest_policy)
-#   3. Never expose user-specific or transactional data
-#   4. Must be safe to call without authentication
-DISCOVERY_SKILLS = frozenset(
-    {
-        "get_adcp_capabilities",  # Agent capabilities (always public per AdCP spec)
-        "list_accounts",  # Account discovery (public, returns empty for unauthed per BR-RULE-055)
-        "list_creative_formats",  # Creative specifications (always public)
-        "get_products",  # Conditional: depends on tenant brand_manifest_policy setting
-    }
-)
-
-
 def _internal_error_for(operation: str, exc: Exception) -> InternalError:
     """Canonical InternalError shape for non-skill A2A boundary failures.
 
@@ -717,9 +699,7 @@ class AdCPRequestHandler(RequestHandler):
             if skill_invocations:
                 # If ANY skill requires auth (not in discovery set), then require auth
                 requested_skills = {inv["skill"] for inv in skill_invocations}
-                non_discovery_skills = requested_skills - DISCOVERY_SKILLS
-                if non_discovery_skills:
-                    requires_auth = True
+                requires_auth = any(s not in TOOLS or TOOLS[s].auth == "required" for s in requested_skills)
 
             # Require authentication for non-public skills. Stay a JSON-RPC
             # InvalidRequestError (protocol-level rejection, top-level error), but
@@ -1644,12 +1624,6 @@ class AdCPRequestHandler(RequestHandler):
         # message/suggestion override (ADR-010) — which is why nothing is passed
         # to the constructor here. Same layering fix as the :282-283/:286-287
         # sites above, which were bare InvalidRequestErrors with no wire code at all.
-        if skill_name not in DISCOVERY_SKILLS and (identity is None or not identity.principal_id):
-            raise InvalidRequestError(
-                message="Authentication required for skill invocation",
-                data=build_two_layer_error_envelope(AdCPAuthRequiredError()),
-            )
-
         # A row with ``a2a=True`` IS dispatchable. There is no second list and no per-tool
         # method: the registry says which tools this transport serves, and the card is derived
         # from the same rows, so the two cannot disagree. They used to -- a ``hasattr`` filter
@@ -1659,6 +1633,12 @@ class AdCPRequestHandler(RequestHandler):
         if skill_name not in TOOLS or not TOOLS[skill_name].a2a:
             available_skills = [name for name, spec in TOOLS.items() if spec.a2a]
             raise MethodNotFoundError(message=f"Unknown skill '{skill_name}'. Available skills: {available_skills}")
+
+        if TOOLS[skill_name].auth == "required" and (identity is None or not identity.principal_id):
+            raise InvalidRequestError(
+                message="Authentication required for skill invocation",
+                data=build_two_layer_error_envelope(AdCPAuthRequiredError()),
+            )
 
         try:
             return await self._dispatch_skill(skill_name, parameters, identity)

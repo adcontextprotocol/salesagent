@@ -93,10 +93,7 @@ class ToolSpec:
     a2a: bool = True
     #: Whether a request reaches the implementation without an authenticated caller. A
     #: property of the TOOL, not of a transport: it cannot be true that a tool needs a
-    #: caller over REST and not over MCP. Today it is declared four times -- the REST
-    #: route's auth dependency, ``require_valid_token`` in the raw wrapper,
-    #: ``AUTH_OPTIONAL_TOOLS`` and ``DISCOVERY_SKILLS`` -- and for ``list_accounts`` they
-    #: disagree; see the divergence pin in the agreement test.
+    #: caller over REST and not over MCP. All three gates read this field.
     auth: Literal["required", "optional"] = "required"
 
 

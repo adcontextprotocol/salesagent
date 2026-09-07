@@ -17,17 +17,6 @@ from src.core.transport_helpers import resolve_identity_from_context
 
 logger = logging.getLogger(__name__)
 
-# Discovery tools that work without authentication.
-# All other tools require a valid auth token.
-AUTH_OPTIONAL_TOOLS = frozenset(
-    {
-        "get_adcp_capabilities",
-        "get_products",
-        "list_accounts",
-        "list_creative_formats",
-    }
-)
-
 
 class MCPAuthMiddleware(Middleware):
     """Resolve identity before tool execution and store on context state.
@@ -42,8 +31,10 @@ class MCPAuthMiddleware(Middleware):
         context: MiddlewareContext,
         call_next,
     ) -> ToolResult:
+        from src.core.tools.registry import TOOLS
+
         tool_name = context.message.name
-        require_auth = tool_name not in AUTH_OPTIONAL_TOOLS
+        require_auth = TOOLS[tool_name].auth == "required"
 
         try:
             identity = resolve_identity_from_context(
