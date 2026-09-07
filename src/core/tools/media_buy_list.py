@@ -129,7 +129,6 @@ from src.core.database.models import CreativeAssignment, MediaBuy
 from src.core.database.repositories import MediaBuyUoW
 from src.core.database.repositories.creative import CreativeRepository
 from src.core.exceptions import (
-    AdCPCapabilityNotSupportedError,
     AdCPPersistedStateError,
     AdCPValidationError,
 )
@@ -165,8 +164,13 @@ def _get_media_buys_impl(
     """
     identity = require_identity(identity, context=req.context)
 
-    if req.account is not None:
-        raise AdCPCapabilityNotSupportedError()
+    # get-media-buys-request.json, `account`: "Account to retrieve media buys for. When
+    # omitted, returns data across all accessible accounts."
+    #
+    # Keyed on the REQUEST, not the identity: identity.account_id can hold a default the buyer
+    # never sent, and filtering on that would narrow a listing the spec says spans all
+    # accessible accounts.
+    account_filter = identity.account_id if req.account is not None else None
 
     testing_ctx = identity.testing_context
     # Both guards RAISE rather than degrading to an empty list plus a payload
@@ -205,7 +209,9 @@ def _get_media_buys_impl(
     with MediaBuyUoW(tenant_id) as uow:
         assert uow.media_buys is not None
         # Resolve which media buys to return
-        target_media_buys = _fetch_target_media_buys(req, principal_id, uow, today, row_advisories)
+        target_media_buys = _fetch_target_media_buys(
+            req, principal_id, uow, today, row_advisories, account_id=account_filter
+        )
 
         # Resolve creative approvals for all packages in one batch query
         all_media_buy_ids = [buy.media_buy_id for buy in target_media_buys]
@@ -524,6 +530,7 @@ def _fetch_target_media_buys(
     uow: MediaBuyUoW,
     today: date,
     row_advisories: list[Error],
+    account_id: str | None = None,
 ) -> list[_MediaBuyData]:
     """Fetch media buys from database matching the request filters.
 
@@ -543,9 +550,14 @@ def _fetch_target_media_buys(
     buyer_named_rows = _buyer_named_rows(req)
     filter_statuses = _resolve_status_filter(req.status_filter, skip_default=buyer_named_rows)
 
+    # ``account_id`` is the RESOLVED account, not the reference the buyer sent: the boundary
+    # turns an AccountReference -- id, or a natural key of brand + operator -- into one id on
+    # the identity, once, for every tool. Filtering here on the raw reference would re-do that
+    # resolution in a read path and get a different answer for the natural-key form.
     buys = uow.media_buys.get_by_principal(
         principal_id,
         media_buy_ids=req.media_buy_ids,
+        account_id=account_id,
     )
 
     renderable: list[_MediaBuyData] = []

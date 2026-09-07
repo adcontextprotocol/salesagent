@@ -143,6 +143,7 @@ class MediaBuyRepository:
         *,
         media_buy_ids: list[str] | None = None,
         statuses: list[PersistedMediaBuyStatus] | None = None,
+        account_id: str | None = None,
     ) -> list[MediaBuy]:
         """Get media buys for a principal within the tenant.
 
@@ -156,6 +157,8 @@ class MediaBuyRepository:
             stmt = stmt.where(MediaBuy.media_buy_id.in_(media_buy_ids))
         if statuses is not None:
             stmt = stmt.where(MediaBuy.status.in_(statuses))
+        if account_id is not None:
+            stmt = stmt.where(MediaBuy.account_id == account_id)
         return list(self._session.scalars(stmt).all())
 
     def get_active(self) -> list[MediaBuy]:
