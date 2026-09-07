@@ -120,7 +120,7 @@ class TestTypedAdCPErrorRaises:
         )
 
         with pytest.raises(AdCPMediaBuyNotFoundError) as exc_info:
-            _update_media_buy_impl(req=req, identity=identity, context_id=None)
+            _update_media_buy_impl(req=req, identity=identity)
 
         assert exc_info.value.error_code == "MEDIA_BUY_NOT_FOUND"
         # AdCPMediaBuyNotFoundError overrides AdCPNotFoundError's terminal default

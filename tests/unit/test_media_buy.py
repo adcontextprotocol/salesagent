@@ -16,7 +16,6 @@ Maps to test-obligations files:
 Coverage: 47/130 obligations implemented, 83 stubs remaining.
 """
 
-from contextlib import nullcontext
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import ANY, MagicMock, patch
@@ -30,7 +29,6 @@ from src.core.exceptions import (
     AdCPAuthorizationError,
     AdCPBudgetExceededError,
     AdCPConfigurationError,
-    AdCPContextNotFoundError,
     AdCPCreativeRejectedError,
     AdCPProductNotFoundError,
     AdCPValidationError,
@@ -3328,55 +3326,6 @@ class TestUpdateMediaBuyAdapterFailure:
         ctx_mgr.audit_workflow_step_result.assert_called_once_with(
             "step_1", ANY, status="failed", error_message=CODE_TABLE["SERVICE_UNAVAILABLE"].message
         )
-
-    def test_unknown_context_id_raises_context_not_found(self):
-        """A buyer-supplied context_id that does not resolve raises AdCPContextNotFoundError.
-
-        get_or_create_context returns None only when the referenced context_id is
-        absent (create_context never returns None). An unresolvable context_id is a
-        not-found condition, so it surfaces as a correctable SESSION_NOT_FOUND (the
-        standard SDK code for an unresolvable session/context) carrying
-        field="context_id" — not a VALIDATION_ERROR.
-        """
-        from src.core.schemas import AdCPPackageUpdate
-        from src.core.tools.media_buy_update import _update_media_buy_impl
-
-        req = UpdateMediaBuyRequest(
-            account={"account_id": "acct_test"},
-            idempotency_key="test-idem-key-0001",
-            media_buy_id="mb_1",
-            packages=[AdCPPackageUpdate(package_id="pkg_1", budget=3000.0)],
-        )
-        identity = _make_identity()
-
-        mock_buy = _mock_media_buy(media_buy_id="mb_1")
-        mock_buy.principal_id = "test_principal"
-
-        with (
-            patch("src.core.tools.media_buy_update.get_context_manager") as mock_ctx_mgr,
-            patch("src.core.tools.media_buy_update.MediaBuyUoW") as mock_uow_cls,
-            patch("src.core.tools.media_buy_update._verify_principal"),
-        ):
-            ctx_mgr = MagicMock()
-            ctx_mgr.get_or_create_context.return_value = None
-            # Real CM so the raise propagates (a bare MagicMock __exit__ is truthy and would suppress it).
-            ctx_mgr.audit_workflow_step_failure_ctx.return_value = nullcontext()
-            mock_ctx_mgr.return_value = ctx_mgr
-
-            mock_uow = MagicMock()
-            mock_uow.idempotency_attempts.find_by_key.return_value = None  # keyed create probe -> miss
-            mock_uow.idempotency_attempts.count_inserts_since.return_value = (0, None)
-            mock_uow.idempotency_attempts.count_active.return_value = (0, None)
-            mock_uow.media_buys = MagicMock()
-            _stub_media_buy_reads(mock_uow.media_buys, mock_buy)
-            mock_uow.__enter__ = MagicMock(return_value=mock_uow)
-            mock_uow.__exit__ = MagicMock(return_value=False)
-            mock_uow_cls.return_value = mock_uow
-
-            with pytest.raises(AdCPContextNotFoundError) as exc_info:
-                _update_media_buy_impl(req=req, identity=identity, context_id="ctx_missing")
-            assert exc_info.value.field == "context_id"
-            assert exc_info.value.error_code == "SESSION_NOT_FOUND"
 
 
 # ===========================================================================

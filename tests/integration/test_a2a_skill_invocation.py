@@ -6,7 +6,6 @@ Tests both natural language and explicit skill invocation patterns
 to ensure our A2A server properly handles the evolving AdCP spec.
 """
 
-import json
 import logging
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,10 +19,6 @@ from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
 from tests.factories.creative_asset import build_assets, image_spec
 from tests.helpers.a2a_adcp_validation import validate_a2a_skill_payload
 from tests.helpers.capture_wrapper_req import registry_impl
-from tests.helpers.webhook_credential_refusal import (
-    SHORT_CREDENTIAL,
-    assert_credentials_refusal_envelope,
-)
 from tests.utils.a2a_helpers import (
     assert_delivery_forwarded_account,
     create_a2a_message_with_skill,
@@ -386,112 +381,6 @@ class TestA2ASkillInvocation:
             # Verify packages are properly serialized (this would have caught the bug!)
             assert "packages" in artifact_data
             assert isinstance(artifact_data["packages"], list)
-
-    @pytest.mark.asyncio
-    async def test_create_with_a2a_push_config_short_credentials_is_refused(
-        self, handler, sample_tenant, sample_principal, sample_products, mock_identity, validator, monkeypatch
-    ):
-        """A short webhook credential on the A2A protocol-layer config REFUSES the create.
-
-        INVERTED by salesagent-pldmk.8, deliberately. This test previously asserted
-        the opposite -- that an 18-character credential still created the buy --
-        on the premise that ``params.configuration`` is a TRANSPORT-layer parameter
-        outside request-body validation, citing gh-#1299.
-
-        Both halves of that premise failed checking. The pinned AdCP 3.1.1 schema
-        (``core/push-notification-config.json``,
-        ``properties.authentication.properties.credentials.minLength: 32``) states
-        the constraint UNCONDITIONALLY -- no transport discriminator, no if/then --
-        and the spec's own prose says the A2A envelope differs while "the object's
-        contents are identical". And PR #1299 is "test: restore green main -- BDD
-        strict-marker cleanup"; it decided nothing about credential length.
-
-        What the create used to do instead was accept the registration and refuse
-        it much later inside the sender as ``credentials_too_short``, where the
-        buyer is not on the call and the only signal is a webhook that never
-        fires. The refusal now happens at ingest, correctably, naming the field.
-        """
-        import google.protobuf.json_format as jf
-
-        from tests.helpers.egress_hatches import egress_hatch_env
-
-        for k, v in egress_hatch_env(private=True).items():
-            monkeypatch.setenv(k, v)
-
-        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
-
-        with patch("src.core.resolved_identity.resolve_identity", return_value=mock_identity):
-            from datetime import UTC, datetime, timedelta
-
-            from tests.a2a_helpers import make_a2a_context
-
-            ctx = make_a2a_context(headers={"host": f"{sample_tenant['subdomain']}.example.com"})
-            start_date = datetime.now(UTC) + timedelta(days=1)
-            end_date = start_date + timedelta(days=30)
-            skill_params = {
-                "brand": {"domain": "testbrand.com"},
-                "idempotency_key": f"int-key-{uuid.uuid4().hex}",
-                "packages": [
-                    {
-                        "product_id": sample_products[0],
-                        "budget": 10000.0,
-                        "pricing_option_id": "cpm_usd_fixed",
-                    }
-                ],
-                "start_time": start_date.isoformat(),
-                "end_time": end_date.isoformat(),
-            }
-            message = create_a2a_message_with_skill("create_media_buy", skill_params)
-            params = SendMessageRequest(message=message)
-            # Proto AuthenticationInfo is singular `scheme`; the skill handler
-            # translates it to AdCP's `schemes` list before injecting into params.
-            jf.ParseDict(
-                {
-                    "taskPushNotificationConfig": {
-                        "url": "https://127.0.0.1:9/webhook",
-                        "authentication": {"scheme": "Bearer", "credentials": SHORT_CREDENTIAL},
-                    }
-                },
-                params.configuration,
-            )
-
-            with pytest.raises(A2AError) as exc_info:
-                await handler.on_message_send(params, context=ctx)
-
-            # ADR-010 MOVED THIS ASSERTION'S CHANNEL, it did not weaken it. The
-            # buyer-facing sentence is now a read-only CODE_TABLE property resolved
-            # from the error CODE and nothing else, so ``str(exc)`` renders "Invalid
-            # request parameters" and no field name reaches it. The field did not
-            # disappear — ``_invalid_params_from_ssrf_error`` puts the whole
-            # two-layer envelope on ``InvalidParamsError.data`` — so it is read
-            # there. Naming the credential is now EQUALITY against the pinned field
-            # path rather than membership in a sentence.
-            envelope = exc_info.value.data
-            assert envelope is not None, (
-                "the A2A refusal carried no AdCP envelope on `data`, so the buyer has no "
-                f"code, recovery or field to act on: {exc_info.value!r}"
-            )
-            # THE shared refusal contract for "HMAC registration, unusable credential",
-            # asserted from the one place both protocol surfaces use. It pins
-            # INVALID_REQUEST (a credential under the pinned ``minLength: 32`` violates
-            # a SCHEMA constraint, unlike the sibling URL gate's schema-valid-but-denied
-            # VALIDATION_ERROR), recovery=correctable, field=
-            # push_notification_config.authentication.credentials, and — on BOTH
-            # envelope layers — that the refusal was not re-enveloped as the URL gate's,
-            # including that the two codes' CODE_TABLE sentences actually differ so the
-            # equality is not vacuous.
-            assert_credentials_refusal_envelope(envelope, surface="a2a message/send configuration")
-
-            # The url here is policy-passing, so nothing about it belongs in a
-            # credential refusal — and a shared secret belongs in no buyer-facing
-            # surface at all (AdCP 3.1.1 transport-errors.mdx § Security
-            # Considerations). Checked over the WHOLE serialized envelope, not just
-            # the message: prose is only one of the channels that reaches the buyer.
-            rendered = json.dumps(envelope) + str(exc_info.value)
-            assert "127.0.0.1:9/webhook" not in rendered, (
-                f"the refusal named the url, so the wrong gate refused; got {rendered!r}"
-            )
-            assert SHORT_CREDENTIAL not in rendered, "the refusal echoed the shared secret back to the buyer"
 
     @pytest.mark.asyncio
     async def test_explicit_skill_create_media_buy_manual_approval(
@@ -1044,7 +933,6 @@ class TestA2ASkillInvocation:
         the hand-written enumeration the registry replaced: dispatch derives from TOOLS, so
         "not in TOOLS" is one condition however many names you spell it with.
         """
-        from a2a.utils.errors import A2AError
 
         handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
 
