@@ -15,7 +15,7 @@ from decimal import Decimal
 # --- MCP Status System (AdCP PR #77) ---
 from enum import StrEnum
 from functools import cache
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, TypeAlias, cast, get_args
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Self, TypeAlias, cast, get_args
 
 from src.core.enum_helpers import enum_value
 
@@ -613,6 +613,18 @@ class BuyerRequest:
     property, so every tool that declares an account resolves None -- silently.
     """
 
+    if TYPE_CHECKING:
+        # DECLARED, not inherited. Every concrete BuyerRequest is a pydantic model -- the
+        # mixin is only ever combined with one -- so these members always exist, and the
+        # registry can type ``dto`` as ``type[BuyerRequest]`` and still validate through it.
+        # Inheriting ``BaseModel`` to say the same thing would make the mixin a model in its
+        # own right, which is exactly what it must not be: it declares no fields, and a bare
+        # ``BaseModel`` base put an empty model in every DTO's MRO.
+        @classmethod
+        def model_validate(cls, obj: Any, **kwargs: Any) -> Self: ...
+
+        def model_dump(self, **kwargs: Any) -> dict[str, Any]: ...
+
     @model_validator(mode="before")
     @classmethod
     def _accept_only_declared_fields(cls, data: Any) -> Any:
@@ -643,16 +655,31 @@ class BuyerRequest:
         constraints" while ``VALIDATION_ERROR`` is "invalid field values or business rules
         BEYOND schema validation" (enums/error-code.json), and L1/security.mdx states "Schema
         validation runs first ... A malformed request returns INVALID_REQUEST".
+
+        The rejection NAMES what it rejected, in the two channels core/error.json defines for
+        it: one ``issues[]`` entry per removed key -- RFC 6901 ``pointer``, ``keyword``
+        ``additionalProperties`` -- and ``field``, which the exception derives from
+        ``issues[0].pointer`` in JSONPath-lite because the pin makes that dual-write a MUST
+        for pre-3.1 consumers. Without them a buyer was told only "Invalid request
+        parameters", with nothing saying which of thirty fields to remove -- and REST already
+        named the field for a schema rejection through its own handler, so the same payload
+        got a useful answer over REST and a useless one over MCP.
         """
         if not isinstance(data, dict):
             return data
         from src.core.config import is_production
+        from src.core.errors.issues import ErrorIssue
         from src.core.exceptions import AdCPInvalidRequestError
         from src.core.schemas._accepted_shape import deep_strip_to_schema
 
-        accepted = deep_strip_to_schema(data, _announced_schema(cls))
-        if accepted != data and not is_production():
-            raise AdCPInvalidRequestError()
+        rejected: list[str] = []
+        # ``cls`` is the DTO class: a BuyerRequest AND the pydantic model it is mixed into.
+        # Python has no intersection type, so the cast states the half this call needs.
+        accepted = deep_strip_to_schema(data, _announced_schema(cast("type[BaseModel]", cls)), rejected=rejected)
+        if rejected and not is_production():
+            raise AdCPInvalidRequestError(
+                issues=[ErrorIssue.of(pointer=p, keyword="additionalProperties") for p in rejected]
+            )
         return accepted
 
     def get_account(self) -> LibraryAccountReference | None:

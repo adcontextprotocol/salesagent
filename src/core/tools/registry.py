@@ -30,8 +30,6 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Literal
 
-from pydantic import BaseModel
-
 from src.core.schemas import (
     CompleteTaskRequest,
     CreateMediaBuyRequest,
@@ -48,6 +46,7 @@ from src.core.schemas import (
     SyncCreativesRequest,
     UpdateMediaBuyRequest,
 )
+from src.core.schemas._base import BuyerRequest
 from src.core.tools.accounts import _list_accounts_impl, _sync_accounts_impl
 from src.core.tools.capabilities import _get_adcp_capabilities_impl
 from src.core.tools.creative_formats import _list_creative_formats_impl
@@ -87,7 +86,7 @@ class RestBinding:
 class ToolSpec:
     """One tool's wiring: what runs it, what shape it takes, and where it is reachable."""
 
-    dto: type[BaseModel]
+    dto: type[BuyerRequest]
     impl: Callable[..., Any]
     rest: RestBinding | None
     a2a: bool = True

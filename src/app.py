@@ -288,7 +288,6 @@ async def request_validation_error_handler(request: Request, exc: RequestValidat
     # here while mcp and a2a produced 'packages[0].package_id' for the identical rejection
     # -- one buyer-facing pointer per transport, from a formatting detail.
     field = _jsonpath_lite(loc) or None
-    message = first.get("msg") or "Request failed schema validation"
     # A rejection raised by request-schema validation is, by construction, a
     # SCHEMA-constraint violation: FastAPI only ever raises it for what the
     # pinned JSON Schema declares (3.1/core/duration.json gives interval

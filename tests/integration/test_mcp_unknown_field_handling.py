@@ -55,6 +55,13 @@ class TestMcpDevMode:
         VALIDATION_ERROR is for business rules "beyond schema validation". A field the
         schema does not declare is rejected BY the schema (extra="forbid" in dev), so it is
         the former -- there is no business rule involved to be beyond.
+
+        Both channels core/error.json defines for "which field", not ``field`` alone.
+        ``issues[]`` is the primary one (RFC 6901 ``pointer`` plus the JSON Schema
+        ``keyword`` that rejected the payload), and ``field`` is the JSONPath-lite
+        dual-write the pin makes a MUST when ``issues`` is present. Grading ``field`` by
+        itself would pass against a hand-set string with no issue behind it, which is the
+        shape a buyer cannot machine-read.
         """
         from tests.harness.product import ProductEnv
 
@@ -67,7 +74,9 @@ class TestMcpDevMode:
                 "INVALID_REQUEST",
                 recovery="correctable",
                 field="nonsense_field",
+                issues=[{"pointer": "/nonsense_field", "keyword": "additionalProperties"}],
             )
+            result.assert_wire_error_is_schema_conformant()
 
     @pytest.mark.xfail(
         reason="#2218: v2-compat request normalization was deleted with the per-tool wrappers, "

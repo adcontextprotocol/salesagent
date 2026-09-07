@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.core.mcp_compat_middleware import deep_strip_to_schema
+from src.core.schemas._accepted_shape import deep_strip_to_schema
 
 # ---------------------------------------------------------------------------
 # Shared schemas
@@ -981,3 +981,58 @@ class TestFreeFormContainer:
         """A model that grows a real field stops being a container and starts stripping."""
         shaped = {"type": "object", "additionalProperties": True, "properties": {"known": {"type": "string"}}}
         assert deep_strip_to_schema({"known": "k", "other": 1}, shaped) == {"known": "k"}
+
+
+class TestRejectedPointers:
+    """``rejected=`` collects the RFC 6901 pointer of every removed key.
+
+    This is what lets the strip's REFUSAL name what it refused (``issues[].pointer`` and
+    the ``field`` derived from it). A bare key name would be ambiguous the moment the
+    offending key is nested or inside an array element, which is why the walk reports a
+    pointer rather than the name it happens to have at its own level.
+    """
+
+    def test_top_level_key_reports_its_pointer(self):
+        rejected: list[str] = []
+        result = deep_strip_to_schema({"name": "n", "junk": 1}, FLAT_OBJECT_STRICT, rejected=rejected)
+        assert result == {"name": "n"}
+        assert rejected == ["/junk"]
+
+    def test_nested_and_indexed_keys_report_full_pointers(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "inner": {
+                    "type": "object",
+                    "properties": {"kept": {"type": "string"}},
+                    "additionalProperties": False,
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"kept": {"type": "string"}},
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "additionalProperties": False,
+        }
+        rejected: list[str] = []
+        result = deep_strip_to_schema(
+            {"inner": {"kept": "a", "junk": 1}, "items": [{"kept": "b"}, {"kept": "c", "junk": 2}]},
+            schema,
+            rejected=rejected,
+        )
+        assert result == {"inner": {"kept": "a"}, "items": [{"kept": "b"}, {"kept": "c"}]}
+        assert rejected == ["/inner/junk", "/items/1/junk"]
+
+    def test_reserved_characters_are_escaped_per_rfc_6901(self):
+        rejected: list[str] = []
+        deep_strip_to_schema({"name": "n", "a/b": 1, "c~d": 2}, FLAT_OBJECT_STRICT, rejected=rejected)
+        assert sorted(rejected) == ["/a~1b", "/c~0d"]
+
+    def test_nothing_removed_reports_nothing(self):
+        rejected: list[str] = []
+        deep_strip_to_schema({"name": "n"}, FLAT_OBJECT_STRICT, rejected=rejected)
+        assert rejected == []

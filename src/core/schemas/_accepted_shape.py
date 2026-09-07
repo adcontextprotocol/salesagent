@@ -58,6 +58,7 @@ def deep_strip_to_schema(
     value: Any,
     schema: dict[str, Any],
     defs: dict[str, Any] | None = None,
+    rejected: list[str] | None = None,
 ) -> Any:
     """Recursively strip fields not declared in a JSON Schema.
 
@@ -70,6 +71,11 @@ def deep_strip_to_schema(
         value: The argument value (dict, list, or primitive).
         schema: JSON Schema for this value (from tool.parameters or a nested property).
         defs: The $defs dict from the root schema (for resolving $ref).
+        rejected: Optional list to collect the RFC 6901 pointer of every key removed.
+            Pass one when the caller REFUSES on a strip rather than tolerating it: a
+            rejection has to name what it rejected, and the walk is the only place that
+            knows. Omit it and the walk reports nothing, which is what a production
+            (tolerant) strip wants.
 
     Returns:
         Cleaned value with unknown properties removed at strict levels.
@@ -77,7 +83,12 @@ def deep_strip_to_schema(
     if defs is None:
         defs = schema.get("$defs", {})
 
-    return _strip_node(value, schema, defs)
+    return _strip_node(value, schema, defs, "", rejected)
+
+
+def _child(path: str, key: str) -> str:
+    """The RFC 6901 pointer of ``key`` inside ``path``, escaping ``~`` and ``/`` per §3."""
+    return f"{path}/{key.replace('~', '~0').replace('/', '~1')}"
 
 
 def _resolve_ref(schema: dict[str, Any], defs: dict[str, Any]) -> dict[str, Any]:
@@ -92,8 +103,18 @@ def _resolve_ref(schema: dict[str, Any], defs: dict[str, Any]) -> dict[str, Any]
     return schema
 
 
-def _strip_node(value: Any, schema: dict[str, Any], defs: dict[str, Any]) -> Any:
-    """Recursive worker for deep_strip_to_schema."""
+def _strip_node(
+    value: Any,
+    schema: dict[str, Any],
+    defs: dict[str, Any],
+    path: str = "",
+    rejected: list[str] | None = None,
+) -> Any:
+    """Recursive worker for deep_strip_to_schema.
+
+    ``path`` is the RFC 6901 pointer of ``value`` within the whole document, so a removal
+    can be reported where it happened rather than as a bare key name.
+    """
     # Follow $ref
     if "$ref" in schema:
         schema = _resolve_ref(schema, defs)
@@ -111,21 +132,29 @@ def _strip_node(value: Any, schema: dict[str, Any], defs: dict[str, Any]) -> Any
             # additionalProperties: true inflating the score via unknown fields.
             best_result = value
             best_score = -1
+            best_rejected: list[str] = []
             for variant in real_variants:
                 try:
                     resolved = variant
                     if "$ref" in resolved:
                         resolved = _resolve_ref(resolved, defs)
-                    candidate = _strip_node(value, variant, defs)
+                    # Each candidate collects its OWN removals: only the winning variant's
+                    # are the buyer's, and appending to the shared list would report keys
+                    # dropped by variants this value was never matched against.
+                    candidate_rejected: list[str] = []
+                    candidate = _strip_node(value, variant, defs, path, candidate_rejected)
                     # Score by how many input keys match declared properties
                     declared = set(resolved.get("properties", {}).keys())
                     score = len(declared & value.keys()) if isinstance(value, dict) else 0
                     if score > best_score:
                         best_score = score
                         best_result = candidate
+                        best_rejected = candidate_rejected
                 except Exception:
                     logger.debug("Schema candidate matching failed", exc_info=True)
                     continue
+            if rejected is not None:
+                rejected.extend(best_rejected)
             return best_result
 
     # allOf: value must satisfy ALL schemas. Merge declared properties from
@@ -145,7 +174,7 @@ def _strip_node(value: Any, schema: dict[str, Any], defs: dict[str, Any]) -> Any
             "properties": merged_props,
             "additionalProperties": allows_additional,
         }
-        return _strip_node(value, merged_schema, defs)
+        return _strip_node(value, merged_schema, defs, path, rejected)
 
     # Object: strip unknown properties, recurse into known ones
     if isinstance(value, dict):
@@ -154,7 +183,7 @@ def _strip_node(value: Any, schema: dict[str, Any], defs: dict[str, Any]) -> Any
         result = {}
         for k, v in value.items():
             if k in props:
-                result[k] = _strip_node(v, props[k], defs)
+                result[k] = _strip_node(v, props[k], defs, _child(path, k), rejected)
             elif allows_additional and not props:
                 # A free-form container: the schema declares no properties here, so there is
                 # nothing undeclared to remove -- only contents to lose. This is `ext` and
@@ -163,12 +192,14 @@ def _strip_node(value: Any, schema: dict[str, Any], defs: dict[str, Any]) -> Any
             # else: the object declares a shape and this key is not part of it. Dropped,
             # whatever `additionalProperties` says: the spec decides what a buyer MAY SEND,
             # this seller decides what it PROCESSES.
+            elif rejected is not None:
+                rejected.append(_child(path, k))
         return result
 
     # Array: recurse into items
     if isinstance(value, list) and "items" in schema:
         items_schema = schema["items"]
-        return [_strip_node(item, items_schema, defs) for item in value]
+        return [_strip_node(item, items_schema, defs, _child(path, str(i)), rejected) for i, item in enumerate(value)]
 
     # Primitives (str, int, float, bool, None): pass through
     return value
