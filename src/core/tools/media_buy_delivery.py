@@ -19,6 +19,7 @@ from rich.console import Console
 from src.core.errors.codes import AppErrorCode, ErrorCode
 from src.core.errors.details import EntityRefDetails
 from src.core.exceptions import (
+    AdCPInternalError,
     AdCPSalesAgentError,
     AdCPValidationError,
 )
@@ -459,14 +460,7 @@ def _get_media_buy_delivery_impl(
                                 clicks=package_clicks,
                                 completed_views=None,  # Optional field, not calculated in this implementation
                                 pacing_index=1.0 if status == "active" else 0.0,
-                                # Add pricing fields from package_config
-                                pricing_model=pricing_info.get("pricing_model") if pricing_info else None,
-                                rate=(
-                                    float(pricing_info.get("rate"))
-                                    if pricing_info and pricing_info.get("rate") is not None
-                                    else None
-                                ),
-                                currency=pricing_info.get("currency") if pricing_info else None,
+                                **_package_pricing(package_id, pricing_info, pricing_option),
                                 by_placement=placement_breakdown,
                                 by_placement_truncated=placement_truncated,
                                 by_geo=geo_breakdown,
@@ -475,21 +469,6 @@ def _get_media_buy_delivery_impl(
                                 by_device_type_truncated=device_type_truncated,
                             )
                         )
-
-                # Collect pricing options for this media buy
-                buy_pricing_options: list[dict[str, Any]] = []
-                if buy.raw_request and isinstance(buy.raw_request, dict):
-                    # Collect from per-package pricing_option_ids
-                    for pkg_data in buy.raw_request.get("packages", []):
-                        pkg_po_id = pkg_data.get("pricing_option_id")
-                        if pkg_po_id and pkg_po_id not in {p["pricing_option_id"] for p in buy_pricing_options}:
-                            if pkg_po_id in pricing_options:
-                                po = pricing_options[pkg_po_id]
-                                buy_pricing_options.append(
-                                    {"pricing_option_id": pkg_po_id, "pricing_model": po.pricing_model}
-                                )
-                            else:
-                                buy_pricing_options.append({"pricing_option_id": pkg_po_id})
 
                 # Calculate clicks and CTR (click-through rate) where applicable
 
@@ -508,7 +487,6 @@ def _get_media_buy_delivery_impl(
                     pricing_model=PricingModel(
                         "cpm"
                     ),  # TODO: @yusuf - remove this from adcp protocol. MediaBuy itself doesn't have pricing model. It is in package level
-                    pricing_options=buy_pricing_options or None,
                     totals=DeliveryTotals(
                         impressions=impressions,
                         spend=spend,
@@ -522,7 +500,6 @@ def _get_media_buy_delivery_impl(
                     ),
                     by_package=package_deliveries,
                     daily_breakdown=None,  # Optional field, not calculated in this implementation
-                    ext=adapter_ext,
                 )
 
                 deliveries.append(delivery_data)
@@ -1021,6 +998,37 @@ def _build_device_type_breakdown(
 
     limited, truncated = _apply_breakdown_limit(entries, device_type_dim)
     return limited, truncated
+
+
+def _package_pricing(
+    package_id: str, pricing_info: dict[str, Any] | None, pricing_option: PricingOption | None
+) -> dict[str, Any]:
+    """The three pricing fields the pin REQUIRES on every ``by_package`` entry.
+
+    ``get-media-buy-delivery-response.json`` lists ``pricing_model``, ``rate`` and
+    ``currency`` in the item's ``required`` set and types all three non-nullable, so a
+    delivery report that cannot state them is not a delivery report. This resolves them from
+    the two sources the caller has already looked up, in order of specificity:
+
+    1. ``MediaPackage.package_config["pricing_info"]`` -- what was agreed for THIS package;
+    2. the ``PricingOption`` row the package's ``pricing_option_id`` names -- the product's
+       terms, which the same block already trusts for ``pricing_option.rate`` when it
+       derives clicks from spend.
+
+    Raises rather than defaulting. The call site used to read only source 1 and pass ``None``
+    for all three when it was absent; the model widened them to accept it, the SDK base's
+    ``exclude_none=True`` then dropped the keys, and every buyer got a schema-invalid
+    document. A seller that cannot say what a package cost must say so (GH #2130,
+    salesagent-ioxoc), not emit a report that looks complete.
+    """
+    for source in (pricing_info, pricing_option):
+        if source is None:
+            continue
+        get = source.get if isinstance(source, dict) else lambda k, _s=source: getattr(_s, k, None)
+        model, rate, currency = get("pricing_model"), get("rate"), get("currency")
+        if model is not None and rate is not None and currency is not None:
+            return {"pricing_model": model, "rate": float(rate), "currency": currency}
+    raise AdCPInternalError(details=EntityRefDetails(package_id=package_id))
 
 
 def _get_pricing_options(

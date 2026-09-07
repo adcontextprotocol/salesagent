@@ -300,20 +300,6 @@ class TestGetMediaBuyDeliveryResponseMethods:
         assert resp.notification_type is None
         assert "next_expected_at" not in dumped
 
-    def test_webhook_payload_excludes_aggregated_totals(self):
-        resp = _make_delivery_response()
-        payload = resp.webhook_payload()
-        assert "aggregated_totals" not in payload
-        assert "media_buy_deliveries" in payload
-
-    def test_webhook_payload_filters_metrics(self):
-        resp = _make_delivery_response()
-        payload = resp.webhook_payload(requested_metrics=["impressions"])
-        for delivery in payload["media_buy_deliveries"]:
-            totals = delivery["totals"]
-            assert "impressions" in totals
-            assert "spend" not in totals
-
     def test_round_trip_serialization(self):
         resp = _make_delivery_response()
         dumped = resp.model_dump()

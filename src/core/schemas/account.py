@@ -16,22 +16,20 @@ SDK 5.7 type:ignore tracking (adcontextprotocol/adcp-client-python#913):
 from typing import ClassVar
 
 from adcp.types import Account as LibraryAccountDomain
-from adcp.types import Error as LibraryError
 from adcp.types import ListAccountsRequest as LibraryListAccountsRequest
 from adcp.types import ListAccountsResponse as LibraryListAccountsResponse
-from adcp.types import NotificationConfig as LibraryNotificationConfig
 from adcp.types import ProtocolEnvelope
-from adcp.types import Setup as LibrarySetup
 from adcp.types import SyncAccountsRequest as LibrarySyncAccountsRequest
 from adcp.types.aliases import SyncAccountsSuccessResponse as LibrarySyncAccountsSuccess
-from adcp.types.generated_poc.core.brand_ref import BrandReference as LibraryBrandReference
-from adcp.types.generated_poc.core.business_entity import BusinessEntity as LibraryBusinessEntity
+from adcp.types.generated_poc.account.sync_accounts_response import (
+    Account as LibraryAccount,
+)  # TODO: no stable alias in adcp.types
 from pydantic import ConfigDict, model_validator
 
 from src.core.config import get_pydantic_extra_mode
 from src.core.schemas._base import (
+    BuyerRequest,
     NestedModelSerializerMixin,
-    SalesAgentBaseModel,
     validate_idempotency_key_shape,
 )
 
@@ -68,7 +66,7 @@ class Account(LibraryAccountDomain):
 # ---------------------------------------------------------------------------
 
 
-class ListAccountsRequest(LibraryListAccountsRequest):
+class ListAccountsRequest(BuyerRequest, LibraryListAccountsRequest):
     """Extends library ListAccountsRequest.
 
     Library provides: account, status, pagination, sandbox, context, ext. Nothing is added:
@@ -98,7 +96,7 @@ class ListAccountsRequest(LibraryListAccountsRequest):
     model_config = ConfigDict(extra=get_pydantic_extra_mode())
 
 
-class SyncAccountsRequest(LibrarySyncAccountsRequest):
+class SyncAccountsRequest(BuyerRequest, LibrarySyncAccountsRequest):
     """Extends library SyncAccountsRequest.
 
     Library provides: idempotency_key, accounts, delete_missing, dry_run,
@@ -159,45 +157,22 @@ class ListAccountsResponse(NestedModelSerializerMixin, LibraryListAccountsRespon
     accounts: list[Account]  # type: ignore[assignment]
 
 
-class SyncResponseAccount(SalesAgentBaseModel):
-    """Per-account result in a sync_accounts response.
+class SyncResponseAccount(LibraryAccount):
+    """Per-account result in a sync_accounts response (extends the pinned item).
 
-    SDK 4.3 provided this as adcp.types.generated_poc.account.sync_accounts_response.Account.
-    SDK 5.7 restructured the response; we now own this model.
+    Every field is inherited, including the ``account_scope``, ``rate_card``,
+    ``credit_limit``, ``warnings`` and ``authorization`` the hand-written version could not
+    express. It also restores the pin's own typing: ``action`` and ``status`` are Literals,
+    ``billing`` a BillingParty and ``payment_terms`` a PaymentTerms, where the copy had bare
+    ``str`` for all four.
 
-    Fields are typed with adcp library models (Error, Setup) so Pydantic
-    reconstructs them properly on transport roundtrip (A2A/MCP/REST).
-
-    brand/operator/action/status are REQUIRED per the pinned AdCP schema
-    (adcontextprotocol/adcp@04f59d2d5, sync-accounts-response success variant,
-    accounts.items.required) — the model enforces them rather than relying on every
-    call site. billing stays optional (not in the schema's required set).
+    Two behaviours live at the call site, not here. ``notification_configs`` distinguishes
+    None ("never configured") from [] ("cleared"), and ``authentication.credentials`` is
+    write-only and stripped by ``_scrub_notification_credentials``. ``billing_entity`` is
+    echoed from the request with bank details removed by ``_scrub_business_entity`` -- "Bank
+    details are omitted (write-only)" (v3.1.1 sync-accounts-response.json,
+    accounts.items.billing_entity). Both scrubs are in src/core/tools/accounts.py.
     """
-
-    brand: LibraryBrandReference
-    operator: str
-    action: str
-    status: str
-    account_id: str | None = None
-    name: str | None = None
-    billing: str | None = None
-    payment_terms: str | None = None
-    sandbox: bool | None = None
-    errors: list[LibraryError] | None = None
-    setup: LibrarySetup | None = None
-    # #1592 T2: the applied notification subscriber set, echoed on created/updated/
-    # unchanged. None omits the field ("never configured"); [] is emitted as an
-    # empty array ("cleared") -- the two are different states to the buyer.
-    # authentication.credentials is write-only and is stripped before this is built
-    # (see _scrub_notification_credentials in src/core/tools/accounts.py).
-    notification_configs: list[LibraryNotificationConfig] | None = None
-    # "Echoed from the request. Sellers MAY add fields the agent omitted ... but
-    # MUST NOT return data from a different entity. Bank details are omitted
-    # (write-only)" (v3.1.1 sync-accounts-response.json, accounts.items.
-    # billing_entity). The bank strip happens in _build_sync_result via
-    # _scrub_business_entity, the single place a persisted entity becomes a
-    # response object.
-    billing_entity: LibraryBusinessEntity | None = None
 
 
 class SyncAccountsResponse(

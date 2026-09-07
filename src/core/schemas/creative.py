@@ -41,6 +41,7 @@ from adcp.types import (
 # problem documented on Creative below; unreported upstream.
 from adcp.types.generated_poc.core.creative_asset import CreativeAsset1 as LibraryCreativeAsset
 from adcp.types.generated_poc.core.provenance import AiTool  # TODO: no stable alias in adcp.types
+from adcp.types.generated_poc.core.provenance import Provenance as LibraryProvenance
 from adcp.types.generated_poc.creative.list_creatives_response import (
     Creative as LibraryCreative,
 )
@@ -62,6 +63,7 @@ from pydantic_core import PydanticCustomError
 from src.core.config import get_pydantic_extra_mode
 from src.core.enum_helpers import enum_value
 from src.core.schemas._base import (
+    BuyerRequest,
     FormatId,
     NestedModelSerializerMixin,
     SalesAgentBaseModel,
@@ -90,45 +92,27 @@ class DigitalSourceType(StrEnum):
     minor_human_edits = "minor_human_edits"
 
 
-class Provenance(SalesAgentBaseModel):
-    """AI provenance metadata for creative assets.
+class Provenance(LibraryProvenance):
+    """AI provenance metadata for creative assets (extends the pinned ``core/provenance.json``).
 
-    Tracks the origin, AI involvement, and disclosure status of creative content
-    per EU AI Act Article 50 requirements (enforcement Aug 2026).
+    Tracks the origin, AI involvement, and disclosure status of creative content per EU AI
+    Act Article 50 (enforcement Aug 2026). The sales agent is pass-through: it stores and
+    forwards what buyers and creative agents declare, it does not generate it.
 
-    The sales agent is pass-through: it stores and forwards provenance metadata
-    from buyers/creative agents, it does not generate it.
+    Every field is inherited. The hand-written version declared eight of the pin's twelve --
+    missing ``declared_at``, ``embedded_provenance``, ``watermarks`` and ``ext`` entirely --
+    and typed four of the eight as scalars where the pin declares objects: ``c2pa``,
+    ``disclosure``, ``declared_by`` and ``human_oversight`` are models, and ``verification``
+    is a list of them, not a free dict.
     """
-
-    digital_source_type: DigitalSourceType = Field(
-        ..., description="IPTC Digital Source Type indicating how the content was created"
-    )
-    ai_tool: AiTool | None = Field(
-        default=None, description="AI tool used to create or modify the content (adcp 3.9 AiTool model)"
-    )
 
     @field_validator("ai_tool", mode="before")
     @classmethod
     def _coerce_ai_tool(cls, v: Any) -> Any:
-        """Accept a plain string for backward compatibility, wrapping it as AiTool(name=v)."""
+        """Accept a plain string, wrapping it as ``AiTool(name=v)``."""
         if isinstance(v, str):
             return AiTool(name=v)
         return v
-
-    human_oversight: bool | None = Field(
-        default=None, description="Whether a human reviewed/approved the AI-generated content"
-    )
-    declared_by: str | None = Field(
-        default=None, description="Entity that declared the provenance metadata (e.g., advertiser, agency)"
-    )
-    created_time: datetime | None = Field(default=None, description="When the provenance declaration was created")
-    c2pa: str | None = Field(
-        default=None, description="URL to C2PA (Coalition for Content Provenance and Authenticity) manifest store"
-    )
-    disclosure: str | None = Field(default=None, description="Human-readable disclosure statement about AI involvement")
-    verification: dict[str, Any] | None = Field(
-        default=None, description="Verification metadata (e.g., C2PA validation results, signature info)"
-    )
 
 
 class CreativeStatusEnum(Enum):
@@ -415,7 +399,7 @@ SubmitCreativesRequest = AddCreativeAssetsRequest
 SubmitCreativesResponse = AddCreativeAssetsResponse
 
 
-class SyncCreativesRequest(LibrarySyncCreativesRequest):
+class SyncCreativesRequest(BuyerRequest, LibrarySyncCreativesRequest):
     """Extends library SyncCreativesRequest with local Creative type.
 
     Library provides: account_id, assignments, context, creative_ids, creatives,
@@ -625,7 +609,7 @@ class SyncCreativesResponse(LibrarySyncCreativesSuccess, ProtocolEnvelope):
         return result
 
 
-class ListCreativeFormatsRequest(LibraryListCreativeFormatsRequest):
+class ListCreativeFormatsRequest(BuyerRequest, LibraryListCreativeFormatsRequest):
     """Extends library ListCreativeFormatsRequest from AdCP spec.
 
     Inherits all AdCP-compliant fields from adcp library,
@@ -664,7 +648,7 @@ class ListCreativeFormatsResponse(NestedModelSerializerMixin, LibraryListCreativ
     """
 
 
-class ListCreativesRequest(LibraryListCreativesRequest):
+class ListCreativesRequest(BuyerRequest, LibraryListCreativesRequest):
     """Extends library ListCreativesRequest from AdCP spec.
 
     Every spec field is inherited from the library parent and none is redeclared;

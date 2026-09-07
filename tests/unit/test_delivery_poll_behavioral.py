@@ -249,30 +249,16 @@ class TestWebhookPayloadNotificationType:
 # ---------------------------------------------------------------------------
 
 
-class TestWebhookExcludesAggregatedTotals:
-    """Webhook payload does NOT include aggregated_totals.
-
-    Covers: UC-004-ALT-WEBHOOK-PUSH-REPORTING-09
-    """
-
-    def test_aggregated_totals_excluded_from_webhook_payload(self):
-        """Webhook delivery payload should NOT contain aggregated_totals (polling only).
-
-        Covers: UC-004-ALT-WEBHOOK-PUSH-REPORTING-09
-        """
-        from tests.harness.delivery_poll_unit import DeliveryPollEnv
-
-        with DeliveryPollEnv() as env:
-            env.add_buy(media_buy_id="mb_001")
-            env.set_adapter_response("mb_001", impressions=5000, spend=250.0)
-
-            response = env.call_impl(media_buy_ids=["mb_001"])
-
-            # Act — dump as webhook payload
-            payload = response.webhook_payload()
-
-            # Assert — aggregated_totals should NOT be in webhook payload
-            assert "aggregated_totals" not in payload
+# TestWebhookExcludesAggregatedTotals and TestWebhookRequestedMetricsFiltering are DELETED
+# with GetMediaBuyDeliveryResponse.webhook_payload(), the method they exercised. It had zero
+# production callers: a webhook body is built by src/services/protocol_webhook_service.py:176,183
+# through create_a2a_webhook_payload / create_mcp_webhook_payload, and neither excludes
+# aggregated_totals nor filters requested_metrics.
+#
+# So these two tests were the only thing that made the obligation look covered while nothing
+# a buyer receives implemented it. Both obligations (UC-004-ALT-WEBHOOK-PUSH-REPORTING-09 and
+# -10) are recorded on GH #2058, which already owns the divergence between the flat document
+# the service posts and the envelope the spec defines.
 
 
 # ---------------------------------------------------------------------------
@@ -292,33 +278,6 @@ class TestWebhookExcludesAggregatedTotals:
 # ---------------------------------------------------------------------------
 # UC-004-ALT-WEBHOOK-PUSH-REPORTING-10
 # ---------------------------------------------------------------------------
-
-
-class TestWebhookRequestedMetricsFiltering:
-    """Webhook filters to requested_metrics.
-
-    Covers: UC-004-ALT-WEBHOOK-PUSH-REPORTING-10
-    """
-
-    def test_only_requested_metrics_in_payload(self):
-        """Webhook payload should only include metrics specified in requested_metrics.
-
-        Covers: UC-004-ALT-WEBHOOK-PUSH-REPORTING-10
-        """
-        from tests.harness.delivery_poll_unit import DeliveryPollEnv
-
-        with DeliveryPollEnv() as env:
-            env.add_buy(media_buy_id="mb_001")
-            env.set_adapter_response("mb_001", impressions=5000, spend=250.0, clicks=100)
-
-            response = env.call_impl(media_buy_ids=["mb_001"])
-
-            # Act — dump payload filtering to [impressions, clicks]
-            payload = response.webhook_payload(requested_metrics=["impressions", "clicks"])
-            totals = payload["media_buy_deliveries"][0]["totals"]
-
-            # Assert — only requested metrics should be present (spend excluded)
-            assert "spend" not in totals, "spend should be excluded when not in requested_metrics"
 
 
 # ---------------------------------------------------------------------------
