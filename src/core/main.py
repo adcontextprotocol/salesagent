@@ -170,10 +170,8 @@ mcp = FastMCP(
 # Tools read identity via ctx.get_state('identity') instead of calling
 # resolve_identity_from_context() directly.
 from src.core.mcp_auth_middleware import MCPAuthMiddleware
-from src.core.mcp_compat_middleware import RequestCompatMiddleware
 
 mcp.add_middleware(MCPAuthMiddleware())
-mcp.add_middleware(RequestCompatMiddleware())
 
 # Initialize creative engine with minimal config (will be tenant-specific later)
 creative_engine_config: dict[str, Any] = {}
@@ -370,12 +368,6 @@ def _register_tool(tool_name: str, spec: Any) -> None:
     users, and a zero-user escape hatch is one refactor away from being used again -- so it
     is deleted rather than documented as discouraged. A tool that cannot name its request
     DTO still cannot be registered; it just has exactly one way to name it now.
-
-    This used to fall back silently: ``apply_dto_announced_shape`` returned False and
-    registration proceeded with the hand-written signature, so five tools quietly kept an
-    underived shape and nothing said so. A guard listing them would only have recorded the
-    violation; refusing to register is what makes the underived state unreachable. The cost
-    is that adding a tool now forces the DTO decision up front, which is the point.
 
     RESOLVABLE IS NOT ENOUGH, so there is a second refusal. A DTO authored FROM the
     wrapper's signature satisfies the intersection by construction and grades nothing -- the

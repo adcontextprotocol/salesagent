@@ -296,7 +296,6 @@ class GetProductsRequest(BuyerRequest, LibraryGetProductsRequest):
 
     # The spec's type, matching the library parent. This field used to be declared WIDER
     # (``| dict | str``) so the announced shape would admit the brand shorthand -- a bare
-    # domain, a URL, or a dict -- because ``apply_dto_announced_shape`` copies THIS type
     # onto the tool's ``__annotations__`` and FastMCP validates against it. Narrowing it
     # without a replacement is what broke the shorthand twice (18 mcp scenarios, then 16).
     #

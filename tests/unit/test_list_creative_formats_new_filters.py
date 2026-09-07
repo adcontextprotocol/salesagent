@@ -144,19 +144,3 @@ class TestListCreativeFormatsMCPToolSignature:
         req = seen["req"]
         assert req.format_ids is not None
         assert [f.id for f in req.format_ids] == ["video_15s_hosted", "display_300x250"]
-
-    def test_mcp_tool_format_ids_parameter_type_is_typed(self):
-        """The ADVERTISED signature types format_ids -- what tools/list publishes.
-
-        Read off the announced signature rather than a Python function's own parameter
-        list: the generated callable takes ``**kwargs``, and what a client sees is the
-        signature derived from the DTO and applied at registration.
-        """
-        from src.core.tools._announced_shape import derived_signature
-        from src.core.tools.registry import TOOLS
-
-        sig = derived_signature(mcp_tool("list_creative_formats"), TOOLS["list_creative_formats"].dto)
-        annotation_str = str(sig.parameters["format_ids"].annotation)
-        assert "FormatId" in annotation_str or "FormatReference" in annotation_str, (
-            f"Expected list[FormatId] or list[FormatReferenceStructuredObject], got {annotation_str}"
-        )

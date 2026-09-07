@@ -43,8 +43,8 @@ it. What they do BEFORE reaching it is still three different programs.
 | bytes -> request | yes | all three derive the accepted shape from the row's DTO |
 
 That asymmetry was R1, and it is closed. R2 is the type discipline the seam should have had
-from the start. R3-R5 were each one thing being done in the wrong place. R1, R3 and R5 are
-done; R2 and R4 are not.
+from the start. R3-R5 were each one thing being done in the wrong place. All of them have
+landed; R6 is the only item still open, and it is filed as prebid/salesagent#2217.
 
 ---
 
@@ -430,18 +430,34 @@ carries the scenario shape, so whoever picks it up writes the Given first.
 
 ## R7 — DONE: forward compatibility was one transport's private fix for a gap in the models
 
-**Landed.** `ToolSpec.validate` reduces a parameter bag to the fields the schema declares, at
-every nesting depth, before the DTO sees it -- rejected in development, dropped in production,
-on all three transports. `deep_strip_to_schema` moved to `src/core/schemas/_accepted_shape.py`
-and is called from the one seam every transport passes through; the schema is derived from the
-row's DTO rather than stored on the row. One rule changed: an unknown key is kept only where
-the object declares NO properties (`ext`, `context` -- AdCP's shape for "arbitrary data lives
-here"), not wherever `additionalProperties` allows it.
+**Landed.** `BuyerRequest._accept_only_declared_fields`, a `model_validator(mode="before")` on
+the mixin all fourteen registry DTOs inherit, reduces a parameter bag to the fields the schema
+declares, at every nesting depth, before field validation runs -- refused in development,
+dropped in production. `deep_strip_to_schema` lives in `src/core/schemas/_accepted_shape.py`
+and the schema is derived from the DTO rather than stored on the row. One rule changed: an
+unknown key is kept only where the object declares NO properties (`ext`, `context` -- AdCP's
+shape for "arbitrary data lives here"), not wherever `additionalProperties` allows it.
 
-Two other mechanisms were built and thrown away, and `_accepted_shape.py` records why: a
-`model_validator` walking the data against the model tree deleted every `account.account_id`
-and every creative asset on its first run, and setting `extra` on the 255 reachable SDK classes
-made pydantic's `__eq__` time-dependent.
+**Why a validator and not a seam, which this section originally proposed.** It first landed on
+`ToolSpec.validate`, described here as "the one seam every transport passes a parameter bag
+through". It was not: it had a single caller, `adcp_a2a_server.py`. REST called
+`dto.model_validate` directly and MCP stripped only as a production-only retry after FastMCP's
+TypeAdapter had already rejected -- so the policy ran on one transport and the same bytes still
+had three meanings. A seam has to be REACHED; a validator on the model cannot be missed,
+because constructing the DTO is the one thing all three transports already do.
+
+`mode="before"` is what reaches the nesting, and it closed a live production bug on the way:
+`get_pydantic_extra_mode()` only reaches models this repo declares, so `AccountReference` and
+`BrandReference` kept the SDK's `extra="forbid"` and a buyer sending an unknown field inside
+`account` was REFUSED in production -- the forward-incompatibility `extra="ignore"` exists to
+prevent. Stripping before field validation pre-empts it.
+
+An earlier `model_validator` WAS built and thrown away, and the difference is what it walked:
+that one walked the data against the MODEL TREE and deleted every `account.account_id` and
+every creative asset on its first run. This one walks it against the DTO's JSON SCHEMA, where
+a `RootModel` union and a mapping-keyed asset are just objects. Setting `extra` on the 255
+reachable SDK classes was the other discarded mechanism; it made pydantic's `__eq__`
+time-dependent.
 
 **The defect, as it stood.** `RequestCompatMiddleware` deep-stripped request fields absent from
 the tool's JSON Schema, in production only (`src/core/mcp_compat_middleware.py`). A2A and REST

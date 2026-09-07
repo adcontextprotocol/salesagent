@@ -6,9 +6,8 @@ HERE rather than from a dict of tool names it keeps itself: a tool absent from a
 hand-kept dict is graded by nothing and reads as green, which is the failure mode two
 separate tables in this repo were created to prevent and one of them then reintroduced.
 
-The DTO comes from ``request_model_for`` — the same lookup MCP registers the tool's
-announced shape with — so no consumer can resolve a DIFFERENT model for a tool than the
-one production actually builds.
+The DTO comes from the registry row, which is what the tool serves, so no consumer can
+resolve a DIFFERENT model for a tool than the one production actually builds.
 """
 
 from __future__ import annotations
@@ -28,15 +27,12 @@ def registered_tool_shapes() -> dict[str, tuple[type[BaseModel], frozenset[str]]
     import asyncio
 
     from src.core import main
-    from src.core.tools._announced_shape import request_model_for
+    from src.core.tools.registry import TOOLS
 
-    shapes: dict[str, tuple[type[BaseModel], frozenset[str]]] = {}
-    for tool in asyncio.run(main.mcp.list_tools()):
-        source_fn = getattr(tool.fn, "__wrapped__", tool.fn)
-        model = request_model_for(source_fn)
-        if model is not None:
-            shapes[tool.name] = (model, frozenset(tool.parameters.get("properties", {})))
-    return shapes
+    return {
+        tool.name: (TOOLS[tool.name].dto, frozenset(tool.parameters.get("properties", {})))
+        for tool in asyncio.run(main.mcp.list_tools())
+    }
 
 
 def registered_request_dtos() -> dict[str, type[BaseModel]]:
