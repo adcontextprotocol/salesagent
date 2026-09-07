@@ -21,7 +21,7 @@ Feature: AdCP 3.1 media_buy_status on create/update responses
   Background:
     Given a Seller Agent is operational and accepting requests
     And a tenant exists with completed setup checklist
-    And the Buyer is authenticated with a valid principal_id
+    And the Buyer is authenticated
 
   # @T-UC-002-ext-dual-emit routes through MediaBuyCreateEnv (dispatch_mode=create),
   # exercising the real _create_media_buy_impl flow on every transport (conftest _harness_env).

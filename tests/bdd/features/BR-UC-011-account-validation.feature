@@ -23,7 +23,7 @@ Feature: BR-UC-011 Account Validation (hand-authored companion)
 
   @T-UC-011-sync-brandless @sync @validation @post-f1 @post-f2
   Scenario: Sync rejects an account entry that omits brand
-    Given the Buyer Agent has an authenticated connection
+    Given the Buyer is authenticated
     When the Buyer Agent sends a sync_accounts request with a brandless account entry
     Then the error is compliant with the AdCP error spec
     And the brandless entry is rejected with a correctable VALIDATION_ERROR

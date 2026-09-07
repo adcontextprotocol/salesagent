@@ -21,7 +21,7 @@ Feature: BR-UC-002 NFR Enforcement (restructured)
   Background:
     Given a Seller Agent is operational and accepting requests
     And a tenant exists with completed setup checklist
-    And the Buyer is authenticated with a valid principal_id
+    And the Buyer is authenticated
 
   # Replaces nfr-001 "Then the system should validate authentication before any business logic"
   # Original scenario sent a valid request then probed with bad creds in Then.

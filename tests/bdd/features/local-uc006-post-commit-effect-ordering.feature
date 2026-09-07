@@ -31,7 +31,7 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
 
   @T-UC-006-local-post-commit-ai-review-ordering @creative-approval @invariant
   Scenario Outline: the AI review job cannot observe a creative the sync has not committed
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "ai-powered"
     And the tenant has a slack_webhook_url configured
     And a <creative_state> creative on a static format served by a creative agent
@@ -81,7 +81,7 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
 
   @T-UC-006-local-post-commit-workflow-step-ordering @creative-approval @invariant
   Scenario: the approval notification names workflow steps that are already committed, and precedes the assignment stage
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "require-human"
     And the tenant has a slack_webhook_url configured
     And a creative with a known format_id
@@ -102,7 +102,7 @@ Feature: UC-006 sync_creatives — an effect that leaves the transaction runs on
 
   @T-UC-006-local-post-commit-no-orphan-pending-creative @creative-approval @invariant
   Scenario: a strict-mode assignment failure leaves no committed creative without its workflow step
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "require-human"
     And the tenant has a slack_webhook_url configured
     And a creative with a known format_id
