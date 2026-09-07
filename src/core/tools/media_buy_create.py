@@ -2025,7 +2025,6 @@ def _resolve_idempotency_race_or_raise(
 async def _create_media_buy_impl(
     req: CreateMediaBuyRequest,
     identity: ResolvedIdentity | None = None,
-    context_id: str | None = None,
 ) -> CreateMediaBuyResult:
     """Create a media buy with the specified parameters.
 
@@ -2112,7 +2111,7 @@ async def _create_media_buy_impl(
     # Context management and workflow step creation - create workflow step FIRST
     # Skip for dry_run mode (no side effects, no database writes)
     ctx_manager = get_context_manager()
-    ctx_id = context_id  # Extracted at transport boundary, passed in
+    ctx_id = None
     persistent_ctx = None
     step = None
 

@@ -337,7 +337,6 @@ def _verify_principal(
 def _update_media_buy_impl(
     req: UpdateMediaBuyRequest,
     identity: ResolvedIdentity | None = None,
-    context_id: str | None = None,
 ) -> UpdateMediaBuyResult:
     """Shared implementation for update_media_buy (used by both MCP and A2A).
 
@@ -349,7 +348,6 @@ def _update_media_buy_impl(
     Args:
         req: Validated UpdateMediaBuyRequest with all protocol fields
         identity: ResolvedIdentity with principal/tenant info (transport-agnostic)
-        context_id: Optional workflow context ID
 
     Returns:
         UpdateMediaBuyResponse with updated media buy details
@@ -461,7 +459,7 @@ def _update_media_buy_impl(
             # Create or get persistent context and workflow step
             # (ctx_manager + step were hoisted before the try block so the
             # AdCPSalesAgentError / Exception handlers can mark the step as failed)
-            ctx_id = context_id  # Extracted at transport boundary, passed in
+            ctx_id = None
             persistent_ctx = None
 
             if not testing_ctx.dry_run:

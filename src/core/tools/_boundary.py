@@ -191,9 +191,7 @@ def _keyed_scope(req: BuyerRequest, identity: ResolvedIdentity | None) -> tuple[
     return identity.tenant_id, identity.principal_id, identity.account_id, key
 
 
-async def invoke_tool(
-    tool_name: str, req: BuyerRequest, identity: ResolvedIdentity | None = None, **extra: Any
-) -> ProtocolEnvelope:
+async def invoke_tool(tool_name: str, req: BuyerRequest, identity: ResolvedIdentity | None = None) -> ProtocolEnvelope:
     """Run the registry's tool named ``tool_name``.
 
     The form every transport calls. A transport names the TOOL and hands over the request it
@@ -202,7 +200,7 @@ async def invoke_tool(
     """
     from src.core.tools.registry import TOOLS
 
-    return await invoke(tool_name, TOOLS[tool_name].impl, req, identity, **extra)
+    return await invoke(tool_name, TOOLS[tool_name].impl, req, identity)
 
 
 async def invoke(
@@ -210,12 +208,12 @@ async def invoke(
     impl: Callable[..., Any],
     req: BuyerRequest,
     identity: ResolvedIdentity | None = None,
-    **extra: Any,
 ) -> ProtocolEnvelope:
     """Run ``tool_name`` for a request that arrived over a transport.
 
-    ``extra`` carries anything a particular implementation declares beyond req/identity
-    (``context_id``), forwarded untouched.
+    An implementation is called with the request and the caller, and nothing else. There is
+    no per-transport channel here, so no transport can hand an implementation a value the
+    others cannot.
     """
     account = req.get_account()
     if account is not None and identity is not None:
@@ -225,7 +223,7 @@ async def invoke(
 
     scope = _keyed_scope(req, identity)
     if scope is None:
-        return await _run(impl, req=req, identity=identity, **extra)
+        return await _run(impl, req=req, identity=identity)
 
     tenant_id, principal_id, account_id, key = scope
     request_hash = canonical_request_hash(req)
@@ -241,7 +239,7 @@ async def invoke(
     if replay is not None:
         return replay
 
-    result = await _run(impl, req=req, identity=identity, **extra)
+    result = await _run(impl, req=req, identity=identity)
     cache_success(
         tenant_id=tenant_id,
         principal_id=principal_id,

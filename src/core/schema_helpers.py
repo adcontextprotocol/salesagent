@@ -10,9 +10,7 @@ Philosophy:
 - Custom logic (validators, conversions) lives here, not in wrapper classes
 """
 
-import inspect
 import logging
-from collections.abc import Collection, Mapping
 from typing import Any
 
 # FIXME(#1388): GetProductsResponse, Product have local subclasses; import from src.core.schemas.
@@ -127,113 +125,9 @@ def require_push_notification_config(
 # Re-export commonly used generated types for convenience
 
 
-def accepted_kwargs(callee: Any) -> frozenset[str] | None:
-    """The keyword names ``callee`` accepts, or ``None`` when it accepts any.
-
-    The INTERSECT half of the rule, expressed ONCE. It used to be re-derived at every
-    forwarding site in four different spellings -- import-time frozensets, call-time
-    ``inspect.signature(...).parameters``, and simply omitted -- which is how the rule came
-    to be enforced at some boundaries and not others.
-
-    ``None`` means UNBOUNDED, and it is a real answer rather than a failure: a callee
-    declaring ``**kwargs`` genuinely accepts every keyword, so the intersection is the
-    identity and the DTO alone decides.
-
-    That semantics also dissolves a hazard that used to need per-site mitigation. Tests patch
-    transport-module attributes with ``Mock``s, whose signature is ``(*args, **kwargs)``.
-    Read as a NAME LIST that is the empty set, so a call-time read silently dropped every
-    field the buyer sent -- the two import-time frozensets existed only to dodge that, and
-    only two of the four signature-reading sites had them. Read as ``**kwargs``, a Mock
-    correctly reports "accepts anything", so timing stops mattering and the frozensets are
-    unnecessary. The hazard was a property of the RULE, so the cure belongs with the rule.
-    """
-    try:
-        parameters = inspect.signature(callee).parameters
-    except (TypeError, ValueError):
-        return None
-    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
-        return None
-    return frozenset(
-        name
-        for name, p in parameters.items()
-        if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-    )
-
-
-def select_request_fields(
-    model: type[BaseModel],
-    source: BaseModel | Mapping[str, Any],
-    accepted: "Collection[str] | None",
-) -> dict[str, Any]:
-    """The DTO's fields, out of a transport's raw bag, narrowed to what the callee accepts.
-
-    ONE rule, everywhere: the request DTO is the vocabulary, and ``accepted`` (the callee's
-    parameter names, when it takes fewer) removes what is declared but NOT IMPLEMENTED. So
-    the set a transport forwards is ``DTO fields INTERSECT _impl arguments`` -- which is the
-    same set the MCP tool advertises (see ``tools/_announced_shape.py``). Announcement and
-    acceptance cannot drift because they are computed from the same two artifacts.
-
-    Two consequences worth stating, because both replaced earlier machinery:
-
-    * There is no plumbing denylist. ``ctx``/``identity``/``self``/``req`` are not DTO
-      fields, so buyer input can never be selected into them. A previous signature-keyed
-      selector needed an explicit denylist precisely because it keyed off the wrong
-      artifact; keying off the DTO makes the exclusion structural.
-    * A key the DTO does not declare is simply not forwarded -- no allowlist, no ledger.
-      Non-spec input stops at the boundary instead of being quietly honoured.
-
-    ``accepted`` is REQUIRED, and deliberately has no default. It defaulted to ``None`` once,
-    which made the UNNARROWED form the easiest to write and left seven of ten sites silently
-    taking it -- forwarding fields the callee had no parameter for, whose only outcome is a
-    ``TypeError`` on a spec-conformant payload. Pass ``accepted_kwargs(callee)``; it returns
-    ``None`` for a genuinely unbounded callee, so the unnarrowed case is still expressible but
-    must now be DERIVED rather than defaulted into. This mirrors ``_register_tool``, which
-    refuses to register a tool whose DTO cannot be resolved instead of falling back quietly.
-
-    The version envelope flows like any other field. Every DTO inherits it from the SDK
-    request model, so ``adcp_version`` and ``adcp_major_version`` are ordinary declared
-    fields rather than something the boundary negotiates away.
-    ``None`` values are dropped so the model's own defaults apply.
-    """
-    values = source.model_dump(exclude_none=True) if isinstance(source, BaseModel) else source
-    names = set(model.model_fields)
-    # INTERNAL fields are not buyer input. ``exclude=True`` is how this codebase says "never
-    # reaches a buyer", and the other two derivations of the same rule already honour it:
-    # ``derived_body_model`` from the REST body. This was the third derivation and the only
-    # one that did not, so an internal field a builder happened to accept was settable over
-    # A2A alone -- one transport quietly wider than the other two, which is the exact
-    # single-transport hole these derivations exist to close.
-    names -= {name for name, field in model.model_fields.items() if field.exclude}
-    if accepted is not None:
-        names &= set(accepted)
-    selected = {name: value for name, value in values.items() if name in names and value is not None}
-
-    # Say what we did not carry. Dropping is the right BEHAVIOUR -- production runs
-    # extra="ignore" so a buyer on a newer spec version is tolerated rather than refused
-    # (critical pattern #7) -- but doing it in silence is not: a filter the buyer asked for
-    # that is quietly not applied returns 200 OK having done something other than what was
-    # asked. Measured instance: list_creatives with the retired flat `status` answered
-    # VALIDATION_ERROR on MCP and 200-with-the-filter-ignored on A2A and REST.
-    #
-    # This does not close the transport divergence itself (MCP's refusal is structural --
-    # FastMCP cannot accept a keyword the tool never advertised), only the silence on the
-    # other two. See salesagent-prkv.26.
-    dropped = sorted(k for k in values if k not in names)
-    if dropped:
-        logger.info(
-            "%s: ignoring %d field(s) it does not define: %s",
-            model.__name__,
-            len(dropped),
-            ", ".join(dropped),
-        )
-    return selected
-
-
 __all__ = [
-    "accepted_kwargs",
     "require_push_notification_config",
     "to_push_notification_config",
-    "select_request_fields",
     # Re-export types for type hints
     "BrandReference",
     "CreativeFilters",
