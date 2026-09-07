@@ -969,40 +969,6 @@ def given_principal_owns_mb_simple(ctx: dict, principal_id: str, mb_id: str) -> 
 # then_status_handles_missing_date are removed with them.
 
 
-def _seed_account_for_principal(ctx: dict, *, sandbox: bool) -> None:
-    """Seed a real Account (sandbox or production) reachable by the scenario principal.
-
-    get_media_buys carries no account parameter on the request (production
-    rejects account filtering with ACCOUNT_FILTER_NOT_SUPPORTED and instructs
-    "the seller infers the account from the auth token"), so "the request
-    targets a <kind> account" means: the account the identity resolves to has
-    that sandbox flag. Seeding the Account + AgentAccountAccess rows makes the
-    premise real at the data layer — a future sandbox short-circuit keyed off
-    the principal's account (BR-RULE-209) is then actually exercised, instead
-    of the Given being an inert ctx flag (6szx graduation inspection).
-    """
-    from tests.factories.account import AccountFactory, AgentAccountAccessFactory
-
-    env = ctx["env"]
-    account = AccountFactory(tenant=ctx["tenant"], sandbox=sandbox)
-    AgentAccountAccessFactory(tenant=ctx["tenant"], principal=ctx["principal"], account=account)
-    env._commit_factory_data()
-    ctx["sandbox"] = sandbox
-    ctx["account"] = account
-
-
-@given(parsers.parse("the request targets a sandbox account"))
-def given_sandbox_account(ctx: dict) -> None:
-    """Seed a sandbox account for the principal (the token infers the account)."""
-    _seed_account_for_principal(ctx, sandbox=True)
-
-
-@given(parsers.parse("the request targets a production account"))
-def given_production_account(ctx: dict) -> None:
-    """Seed a production (non-sandbox) account for the principal."""
-    _seed_account_for_principal(ctx, sandbox=False)
-
-
 @given("an authenticated identity with no principal_id")
 def given_identity_no_principal(ctx: dict) -> None:
     """Simulate an identity resolved but with no principal_id.

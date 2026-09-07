@@ -23,7 +23,7 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
 
   Background:
     Given a Seller Agent is operational and accepting requests
-    And a tenant has completed setup checklist
+    And a tenant exists with completed setup checklist
     And an authenticated Buyer with principal_id "buyer-001"
     And the principal "buyer-001" exists in the tenant database
 
@@ -450,7 +450,7 @@ Feature: BR-UC-004 Deliver Media Buy Metrics
 
   @T-UC-004-ext-b @extension @ext-b @error
   Scenario: Principal not found in tenant database
-    Given an authenticated request with principal_id "unknown-buyer"
+    Given an authenticated Buyer with principal_id "unknown-buyer"
     And no principal "unknown-buyer" exists in the tenant database
     When the Buyer Agent requests delivery metrics
     Then the error is compliant with the AdCP error spec

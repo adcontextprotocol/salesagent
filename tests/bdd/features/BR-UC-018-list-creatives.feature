@@ -118,7 +118,7 @@ Feature: BR-UC-018 List Creatives
 
   @T-UC-018-ext-c @extension @ext-c @error
   Scenario Outline: Validation failure -- <description>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     When the Buyer Agent sends a list_creatives request with <invalid_param>
     Then the error is compliant with the AdCP error spec
     And the operation should fail with error code "INVALID_REQUEST"
@@ -142,7 +142,7 @@ Feature: BR-UC-018 List Creatives
 
   @T-UC-018-ext-d @extension @ext-d @error
   Scenario Outline: Invalid date format -- <date_field> with value "<value>"
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     When the Buyer Agent sends a list_creatives request with <date_field> as "<value>"
     Then the error is compliant with the AdCP error spec
     And the operation should fail with error code "VALIDATION_ERROR"
@@ -443,7 +443,7 @@ Feature: BR-UC-018 List Creatives
 
   @T-UC-018-inv-148-6-holds @invariant @BR-RULE-148
   Scenario: BR-RULE-148 INV-6 holds -- invalid date format raises validation error
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     When the Buyer Agent sends a list_creatives request with created_after "not-a-date"
     Then the error is compliant with the AdCP error spec
     And the operation should fail with error code "INVALID_REQUEST"
@@ -665,7 +665,7 @@ Feature: BR-UC-018 List Creatives
 
   @T-UC-018-inv-225-1-holds @invariant @BR-RULE-225 @error
   Scenario: BR-RULE-225 INV-1 holds -- include_pricing without account is rejected
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     When the Buyer Agent sends a list_creatives request with include_pricing true and no account reference
     Then the error is compliant with the AdCP error spec
     And the operation should fail with error code "INVALID_REQUEST"

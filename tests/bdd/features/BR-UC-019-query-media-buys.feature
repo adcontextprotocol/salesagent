@@ -78,7 +78,7 @@ Feature: BR-UC-019 Query Media Buys
   @T-UC-019-main-filter-ids @main-flow @filtering
   Scenario: Query media buys by specific media_buy_ids
     Given the principal "buyer-001" owns media buys "mb-001", "mb-002", and "mb-003"
-    When the Buyer Agent sends a get_media_buys request with media_buy_ids ["mb-001", "mb-003"]
+    When the Buyer Agent sends a get_media_buys request for media_buy_ids ["mb-001", "mb-003"]
     Then the response is compliant with the get_media_buys spec
     And the response should include media buys "mb-001" and "mb-003"
     And the response should not include media buy "mb-002"
@@ -154,22 +154,22 @@ Feature: BR-UC-019 Query Media Buys
     # POST-F2: Error identifies which fields failed validation
     # POST-F3: Per-field details enable targeted correction
 
-  @T-UC-019-ext-e @extension @ext-e @error
-  Scenario: Account filter not supported - account_id provided but not implemented
+  @T-UC-019-ext-e @extension @ext-e
+  Scenario: A request carrying an account is accepted and scoped to it
     Given an authenticated Buyer with principal_id "buyer-001"
     # The account must RESOLVE, or this scenario cannot grade what it names. The seller
     # resolves the account a request carries before running the tool, so an unseeded id
-    # fails with ACCOUNT_NOT_FOUND -- a correct answer to a different question, and one
-    # that made "unknown account" and "unsupported filter" indistinguishable here.
+    # fails with ACCOUNT_NOT_FOUND -- a correct answer to a different question.
     And the Buyer has access to an account
     When the Buyer Agent sends a get_media_buys request with that account_id
-    Then the error is compliant with the AdCP error spec
-    And the operation should fail with error code "UNSUPPORTED_FEATURE"
-    And the error should include a "recovery" field indicating correctable failure
-    And the error should include a "suggestion" field
-    # POST-F1: Buyer knows the operation failed
-    # POST-F2: Error explains account filtering is not supported
-    # POST-F3: Recovery is correctable -- omit account_id and retry
+    Then the response is compliant with the get_media_buys spec
+    And the response should succeed
+    # get-media-buys-request.json declares `account` as an optional property, so a
+    # buyer sending one is conformant and the seller must accept it. Every other tool
+    # that declares the field accepts it -- it is REQUIRED on create_media_buy,
+    # update_media_buy and sync_creatives, and optional-and-accepted on
+    # get_media_buy_delivery, get_products, get_task_status, list_tasks,
+    # list_creatives and list_accounts. get_media_buys was the only refusal.
 
   @T-UC-019-partition-status @partition @status
   Scenario Outline: Status computation from flight dates - <partition>
@@ -1166,18 +1166,18 @@ Feature: BR-UC-019 Query Media Buys
   Scenario: INV-2 holds - v3.x account (AccountReference) triggers UNSUPPORTED_FEATURE before any DB read
     Given an authenticated Buyer with principal_id "buyer-001"
     When the Buyer Agent sends a get_media_buys request with account {brand:"brand-x", operator:"op-y"}
-    Then the error is compliant with the AdCP error spec
-    And the operation should fail with error code "UNSUPPORTED_FEATURE"
-    And the error code should be "UNSUPPORTED_FEATURE"
-    And the error recovery classification should be "correctable"
-    And no database query should have been executed
-    And the error should include a "suggestion" field
-    # BR-RULE-293 INV-2: v3.x AccountReference -> AdCPCapabilityNotSupportedError
-    # (UNSUPPORTED_FEATURE, correctable) before any DB read. The annotation used to say
-    # AdCPValidationError while the step demanded ACCOUNT_FILTER_NOT_SUPPORTED and
-    # production raised a third thing -- scenario, annotation and production were three
-    # different answers (#1753). UNSUPPORTED_FEATURE is the published member
-    # for "a requested feature or field is not supported by this seller".
+    Then the response is compliant with the get_media_buys spec
+    And the response should succeed
+    # BR-RULE-293 INV-2 said a v3.x AccountReference must raise UNSUPPORTED_FEATURE
+    # before any DB read. That invariant ratified a stopgap rather than a decision:
+    # 0b7a695d9 ("address PR1175 review round 2") added the `account` field to
+    # unbreak the A2A handler, which was reading a key normalization had renamed,
+    # and rejected it "for now" instead of implementing the filter. The refusal then
+    # acquired a rule number and this scenario.
+    #
+    # UNSUPPORTED_FEATURE also misdescribes it. It means the seller does not do
+    # accounts; this seller requires them on create_media_buy, update_media_buy and
+    # sync_creatives, and resolves them centrally at the boundary for every tool.
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/get-media-buys-response.json
 
   @T-UC-019-inv-293-5 @invariant @BR-RULE-293 @error @schema-v3.1

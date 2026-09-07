@@ -18,13 +18,13 @@ Feature: BR-UC-006 Sync Creative Assets
 
   Background:
     Given a Seller Agent is operational and accepting requests
-    And a valid tenant context exists
+    And a tenant is resolvable from the request context
 
 
 
   @T-UC-006-main @main-flow
   Scenario: Sync creatives — successful create
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "Summer Banner" and a known format_id
     And the creative does not exist in the Seller's library
     When the Buyer Agent syncs the creative
@@ -36,7 +36,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-update @main-flow
   Scenario: Sync creatives — successful update
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "Summer Banner" and a known format_id
     And the creative already exists in the Seller's library for this principal
     When the Buyer Agent syncs the creative
@@ -47,7 +47,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-unchanged @main-flow
   Scenario: Sync creatives — creative unchanged
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "Summer Banner" and a known format_id
     And the creative already exists with identical data
     When the Buyer Agent syncs the creative
@@ -57,7 +57,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-assign @main-flow
   Scenario: Sync creatives — with package assignments
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And assignments mapping the creative to valid package_ids
     When the Buyer Agent syncs the creative
@@ -68,7 +68,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-warnings @main-flow
   Scenario: Sync creatives — partial success with warnings
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And two creatives: one valid and one with an empty name
     When the Buyer Agent syncs both creatives
     Then the response is compliant with the sync_creatives success spec
@@ -78,7 +78,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-approval @main-flow
   Scenario: Sync creatives — approval workflow routing
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And the tenant has approval_mode set to "require-human"
     When the Buyer Agent syncs the creative
@@ -89,7 +89,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-lenient-warnings @main-flow
   Scenario: Sync creatives — lenient mode with mixed assignment results
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And assignments to three packages: two valid, one non-existent
     And validation_mode is "lenient"
@@ -103,7 +103,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-provenance-warning @main-flow
   Scenario: Sync creatives — provenance warning when policy requires it
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has a product with creative_policy.provenance_required = true
     And a creative with a known format_id but no provenance metadata
     When the Buyer Agent syncs the creative
@@ -115,7 +115,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-weight @main-flow
   Scenario: Sync creatives — assignment with explicit weight
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And an assignment with package_id "pkg-1" and weight 50
     When the Buyer Agent syncs the creative
@@ -125,7 +125,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-async-submitted @main-flow @async
   Scenario: Sync creatives — async submitted task envelope
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a batch sync that the Seller cannot confirm within the request window
     When the Buyer Agent syncs the creatives
     Then the response is compliant with the sync_creatives submitted spec
@@ -137,7 +137,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-main-delete-missing-conflict @main-flow @error
   Scenario: Sync creatives — delete_missing rejected when creative_ids filter provided
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a sync request with both creative_ids filter and delete_missing set to true
     When the Buyer Agent syncs the creatives
     Then the error is compliant with the AdCP error spec
@@ -171,7 +171,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-webhook-ssrf @extension @ext-webhook-ssrf @webhook-ssrf @error @post-f1 @post-f2 @post-f3
   Scenario: Push notification webhook URL targeting a blocked host is rejected
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "Summer Banner" and a known format_id
     And the request includes a push_notification_config with url "http://169.254.169.254/latest/meta-data/"
     When the Buyer Agent syncs the creative
@@ -197,7 +197,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-b @extension @ext-b @error
   Scenario: Tenant not found — principal has no tenant
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     But the principal has no associated tenant
     And a creative with a known format_id
     When the Buyer Agent syncs the creative
@@ -210,7 +210,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-c @extension @ext-c @error
   Scenario: Creative validation failed — schema violation
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with invalid schema structure
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -223,7 +223,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-d @extension @ext-d @error
   Scenario: Creative name empty
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "" and a known format_id
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -234,7 +234,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-d-whitespace @extension @ext-d @error
   Scenario: Creative name whitespace-only
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "   " and a known format_id
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -246,7 +246,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-e @extension @ext-e @error
   Scenario: Creative format required — missing format_id
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "Banner" but no format_id
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -258,7 +258,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-f @extension @ext-f @error
   Scenario: Creative format unknown — not in agent registry
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a format_id that does not exist in any agent registry
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -270,7 +270,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-g @extension @ext-g @error
   Scenario: Creative agent unreachable
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a format_id whose agent_url is unreachable
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -282,7 +282,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-h @extension @ext-h @error
   Scenario: Creative preview failed — no previews generated
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id but no media_url
     And the creative agent returns no preview URLs
     When the Buyer Agent syncs the creative
@@ -295,7 +295,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-i @extension @ext-i @error
   Scenario: Gemini key missing — generative creative without config
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a generative format (output_format_ids present)
     And the Seller Agent does not have GEMINI_API_KEY configured
     When the Buyer Agent syncs the creative
@@ -308,7 +308,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-j @extension @ext-j @error
   Scenario: Package not found — strict mode aborts
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And assignments referencing a non-existent package_id
     And validation_mode is "strict"
@@ -322,7 +322,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-ext-k @extension @ext-k @error
   Scenario: Format mismatch — creative format incompatible with product
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with format_id "agent1/banner-300x250"
     And assignments to a package whose product only accepts "agent1/video-pre-roll"
     And validation_mode is "strict"
@@ -342,7 +342,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-033-inv1 @invariant @BR-RULE-033
   Scenario: INV-1 — per-creative failure does not abort other creatives
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And two creatives: one valid and one with an empty name
     When the Buyer Agent syncs both creatives
     Then the response is compliant with the sync_creatives success spec
@@ -352,7 +352,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-033-inv2 @invariant @BR-RULE-033 @error
   Scenario: INV-2 — assignment error in strict mode aborts all assignments
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And assignments to two packages: one valid and one non-existent
     And validation_mode is "strict"
@@ -365,7 +365,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-033-inv3 @invariant @BR-RULE-033
   Scenario: INV-3 — assignment error in lenient mode skips and continues
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And assignments to two packages: one valid and one non-existent
     And validation_mode is "lenient"
@@ -377,7 +377,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-033-inv4 @invariant @BR-RULE-033
   Scenario: INV-4 — assignment errors always recorded in response
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And assignments to a non-existent package
     And validation_mode is "lenient"
@@ -388,7 +388,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-033-inv5 @invariant @BR-RULE-033
   Scenario: INV-5 — default validation_mode is strict
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And assignments to a non-existent package
     And no validation_mode is specified
@@ -426,7 +426,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-035-static @invariant @BR-RULE-035
   Scenario: Static creative validated by creative agent
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known HTTP-based format_id
     And the creative agent is reachable
     When the Buyer Agent syncs the creative
@@ -437,7 +437,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-035-inv2 @invariant @BR-RULE-035
   Scenario: INV-2 — adapter format skips external validation
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a non-HTTP adapter format_id
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -447,7 +447,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-036-inv1 @invariant @BR-RULE-036
   Scenario: INV-1 — generative detection via output_format_ids
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a format that has output_format_ids defined
     And GEMINI_API_KEY is configured
     When the Buyer Agent syncs the creative
@@ -457,7 +457,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-036-inv2 @invariant @BR-RULE-036
   Scenario: INV-2 — prompt from assets (message role)
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a generative creative with an asset of role "message" containing "Create summer vibes"
     And GEMINI_API_KEY is configured
     When the Buyer Agent syncs the creative
@@ -466,7 +466,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-036-inv3 @invariant @BR-RULE-036
   Scenario: INV-3 — prompt fallback to inputs context_description
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a generative creative with no prompt assets but inputs[0].context_description = "Holiday theme"
     And GEMINI_API_KEY is configured
     When the Buyer Agent syncs the creative
@@ -475,7 +475,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-036-inv4 @invariant @BR-RULE-036
   Scenario: INV-4 — create fallback to creative name as prompt
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a generative creative named "Summer Sale Banner" with no prompt assets or inputs
     And GEMINI_API_KEY is configured
     When the Buyer Agent creates the creative
@@ -484,7 +484,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-036-inv5 @invariant @BR-RULE-036
   Scenario: INV-5 — update without prompt preserves existing data
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a generative creative that already exists with generated content
     And the update has no prompt assets or inputs
     And GEMINI_API_KEY is configured
@@ -495,7 +495,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-036-inv6 @invariant @BR-RULE-036
   Scenario: INV-6 — user assets take priority over generative output
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a generative creative with both user-provided assets and generative prompt
     And GEMINI_API_KEY is configured
     When the Buyer Agent syncs the creative
@@ -506,7 +506,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-037-inv1 @invariant @BR-RULE-037
   Scenario: INV-1 — default approval mode is require-human
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has no approval_mode configured
     And a creative with a known format_id
     When the Buyer Agent syncs the creative
@@ -516,7 +516,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-037-inv2 @invariant @BR-RULE-037
   Scenario: INV-2 — auto-approve sets status directly
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "auto-approve"
     And a creative with a known format_id
     When the Buyer Agent syncs the creative
@@ -527,7 +527,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-037-inv3 @invariant @BR-RULE-037
   Scenario: INV-3 — require-human creates workflow and sends Slack
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "require-human"
     And the tenant has a slack_webhook_url configured
     And a creative with a known format_id
@@ -539,7 +539,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-037-inv4 @invariant @BR-RULE-037
   Scenario: INV-4 — ai-powered creates workflow and submits AI review
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "ai-powered"
     And a creative with a known format_id
     When the Buyer Agent syncs the creative
@@ -551,7 +551,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-037-inv5 @invariant @BR-RULE-037
   Scenario: INV-5 — workflow step attributes
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "require-human"
     And a creative with a known format_id
     When the Buyer Agent syncs the creative
@@ -562,7 +562,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-037-inv6 @invariant @BR-RULE-037
   Scenario: INV-6 — Slack only sent when webhook configured and creatives need approval
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "require-human"
     And the tenant has no slack_webhook_url configured
     And a creative with a known format_id
@@ -574,7 +574,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-038-inv1 @invariant @BR-RULE-038
   Scenario: INV-1 — package lookup is tenant-scoped
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a package exists in a different tenant
     And assignments referencing that package_id
     And validation_mode is "strict"
@@ -585,7 +585,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-038-inv3 @invariant @BR-RULE-038
   Scenario: INV-3 — idempotent assignment upsert
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative already assigned to a package
     And assignments referencing the same package_id
     When the Buyer Agent syncs the creative
@@ -594,7 +594,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-038-inv4 @invariant @BR-RULE-038
   Scenario: INV-4 — draft media buy with approved_at transitions to pending_creatives
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a media buy with status "draft" and approved_at set
     And a creative with a known format_id
     And assignments to a package in that media buy
@@ -604,7 +604,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-038-inv4-violated @invariant @BR-RULE-038
   Scenario: INV-4 violated — draft media buy without approved_at does not transition
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a media buy with status "draft" and approved_at null
     And a creative with a known format_id
     And assignments to a package in that media buy
@@ -614,7 +614,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-038-inv5 @invariant @BR-RULE-038
   Scenario: INV-5 — non-draft media buy does not transition
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a media buy with status "active" (non-draft)
     And a creative with a known format_id
     And assignments to a package in that media buy
@@ -625,7 +625,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-039-inv1 @invariant @BR-RULE-039
   Scenario: INV-1 — URL normalization strips trailing slash and /mcp
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with format agent_url "https://agent.example.com/mcp/"
     And a product with format agent_url "https://agent.example.com"
     And matching format_id strings
@@ -635,7 +635,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-039-inv2 @invariant @BR-RULE-039 @error
   Scenario: INV-2 — match requires both normalized agent_url AND exact format_id
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with format agent_url "https://agent.example.com" and format_id "banner-300x250"
     And a product with format agent_url "https://agent.example.com" and format_id "video-pre-roll"
     And validation_mode is "strict"
@@ -647,7 +647,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-039-inv3 @invariant @BR-RULE-039
   Scenario: INV-3 — empty product format_ids allows all formats
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with any format_id
     And assignments to a package whose product has empty format_ids
     When the Buyer Agent syncs the creative
@@ -657,7 +657,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-039-inv4 @invariant @BR-RULE-039
   Scenario: INV-4 — product format_ids accepts both id and format_id keys
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a product with format_ids using "format_id" key
     And a creative with a matching format
     When format compatibility is checked
@@ -666,7 +666,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-039-inv6 @invariant @BR-RULE-039
   Scenario: INV-6 — no product_id on package skips format check
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with any format_id
     And assignments to a package that has no product_id
     When the Buyer Agent syncs the creative
@@ -676,7 +676,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-039-inv5-lenient @invariant @BR-RULE-039
   Scenario: INV-5 — format mismatch in lenient mode skips assignment
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with format_id "agent/banner-300x250"
     And assignments to two packages: one with compatible format and one incompatible
     And validation_mode is "lenient"
@@ -689,7 +689,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-040-inv1 @invariant @BR-RULE-040
   Scenario: INV-1 — draft with approved_at transitions to pending_creatives
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a media buy with status "draft" and approved_at set
     And assignments to a package in that media buy
     When the Buyer Agent syncs the creative with assignments
@@ -698,7 +698,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-040-inv2 @invariant @BR-RULE-040
   Scenario: INV-2 — draft without approved_at stays draft
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a media buy with status "draft" and approved_at null
     And assignments to a package in that media buy
     When the Buyer Agent syncs the creative with assignments
@@ -707,7 +707,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-040-inv3 @invariant @BR-RULE-040
   Scenario: INV-3 — non-draft status unchanged
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a media buy with status "active" (non-draft)
     And assignments to a package in that media buy
     When the Buyer Agent syncs the creative with assignments
@@ -716,7 +716,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-040-inv4 @invariant @BR-RULE-040
   Scenario: INV-4 — both new and updated assignments trigger transition check
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a media buy with status "draft" and approved_at set
     And an existing assignment to a package in that media buy
     And a new assignment to another package in the same media buy
@@ -727,7 +727,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-093-inv1 @invariant @BR-RULE-093
   Scenario: INV-1 — weight 0 means paused (assigned but no delivery)
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And an assignment with package_id "pkg-1" and weight 0
     When the Buyer Agent syncs the creative
@@ -737,7 +737,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-093-inv2 @invariant @BR-RULE-093
   Scenario: INV-2 — weight omitted means equal rotation
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And an assignment with package_id "pkg-1" and no weight specified
     When the Buyer Agent syncs the creative
@@ -747,7 +747,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-093-inv3 @invariant @BR-RULE-093
   Scenario: INV-3 — proportional delivery with different weights
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And creative "creative-A" assigned to "pkg-1" with weight 80
     And creative "creative-B" assigned to "pkg-1" with weight 20
     When the Buyer Agent syncs the creatives
@@ -758,7 +758,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-094-inv1 @invariant @BR-RULE-094
   Scenario: INV-1 — provenance absent when required triggers warning
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has a product with creative_policy.provenance_required = true
     And a creative with a known format_id but no provenance metadata
     When the Buyer Agent syncs the creative
@@ -769,7 +769,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-094-inv2 @invariant @BR-RULE-094
   Scenario: INV-2 — provenance present when required passes normally
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has a product with creative_policy.provenance_required = true
     And a creative with a known format_id and valid provenance metadata
     When the Buyer Agent syncs the creative
@@ -779,7 +779,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-094-inv3 @invariant @BR-RULE-094
   Scenario: INV-3 — no provenance policy means check skipped
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And no product in the tenant has provenance_required set
     And a creative with no provenance metadata
     When the Buyer Agent syncs the creative
@@ -789,7 +789,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-094-inv4 @invariant @BR-RULE-094
   Scenario: INV-4 — creative_policy null on product means check skipped
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has a product with creative_policy = null
     And a creative with no provenance metadata
     When the Buyer Agent syncs the creative
@@ -799,7 +799,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-rule-094-inv5 @invariant @BR-RULE-094
   Scenario: INV-5 — asset-level provenance replaces creative-level entirely
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with provenance declaring digital_source_type "digital_capture"
     And an asset within the creative declaring digital_source_type "trained_algorithmic_media"
     When the Buyer Agent syncs the creative
@@ -809,7 +809,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-validation-mode @partition @validation-mode
   Scenario Outline: Validation mode behavior — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And assignments to a non-existent package
     And validation_mode is "<mode>"
@@ -829,7 +829,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-approval-mode @partition @approval-mode
   Scenario Outline: Approval mode routing — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the tenant has approval_mode "<mode>"
     And a creative with a known format_id
     When the Buyer Agent syncs the creative
@@ -862,7 +862,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-format-id @partition @format-id
   Scenario Outline: Format validation — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with <format_setup>
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives spec
@@ -880,7 +880,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-generative @partition @generative
   Scenario Outline: Generative build detection — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with <format_type>
     And <prompt_source>
     When the Buyer Agent syncs the creative
@@ -897,7 +897,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-assignment-pkg @partition @assignment-package
   Scenario Outline: Assignment package validation — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And <package_setup>
     And validation_mode is "strict"
@@ -914,7 +914,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-assignment-fmt @partition @assignment-format
   Scenario Outline: Assignment format compatibility — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with format_id "<creative_format>"
     And assignments to a package with <product_setup>
     And validation_mode is "strict"
@@ -932,7 +932,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-mb-status @partition @media-buy-status
   Scenario Outline: Media buy status transition on assignment — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a media buy with status "<mb_status>" and approved_at <approved_at>
     And assignments to a package in that media buy
     When the Buyer Agent syncs the creative
@@ -948,7 +948,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-provenance @partition @provenance
   Scenario Outline: Provenance policy enforcement — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And <provenance_setup>
     And <policy_setup>
     When the Buyer Agent syncs the creative
@@ -965,7 +965,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-assignments-structure @partition @assignments-structure
   Scenario Outline: Assignments array structure — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And <assignment_setup>
     When the Buyer Agent syncs the creative
@@ -989,7 +989,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-assignment-weight @partition @assignment-weight
   Scenario Outline: Assignment weight validation — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And an assignment with package_id "pkg-1" and weight <weight>
     When the Buyer Agent syncs the creative
@@ -1020,13 +1020,13 @@ Feature: BR-UC-006 Sync Creative Assets
 
     Examples:
       | partition | auth_state                                          | expected                                           |
-      | typical   | the Buyer is authenticated with a valid principal_id | the creative should be processed successfully      |
+      | typical   | the Buyer is authenticated                          | the creative should be processed successfully      |
       | missing   | the Buyer has no authentication credentials             | the request should be rejected with AUTH_MISSING    |
       | empty     | the request has an empty principal_id                | the request should be rejected with AUTH_MISSING    |
 
   @T-UC-006-partition-account @partition @account
   Scenario Outline: Account resolution — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And account is <account_setup>
     When the Buyer Agent syncs the creative
@@ -1052,7 +1052,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-idempotency-key @partition @idempotency-key
   Scenario Outline: Idempotency key validation — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And idempotency_key is <key_value>
     When the Buyer Agent syncs the creative
@@ -1089,7 +1089,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-idempotency-replay @uc006-idempotency @idempotency-key @happy-path
   Scenario: Retrying a sync with the same idempotency_key does not re-execute the write
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And that creative was already synced with idempotency_key "sync-retry-0001-abcd"
     When the Buyer Agent syncs the creative
@@ -1100,7 +1100,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-idempotency-conflict @uc006-idempotency @idempotency-key @error-details
   Scenario: Reusing an idempotency_key with a materially different payload conflicts
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And that creative was already synced with idempotency_key "sync-conflict-01-abcd"
     And the creative name is changed to "Materially Different Creative"
@@ -1112,7 +1112,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-approval @boundary @approval-mode
   Scenario Outline: Approval mode boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "Banner" and a known format_id
     And the tenant approval mode is <mode>
     When the Buyer Agent syncs the creative
@@ -1129,7 +1129,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-validation-mode @boundary @validation-mode
   Scenario Outline: Validation mode boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "Banner" and a known format_id
     And validation_mode is <mode>
     And an assignment with a package that does not exist
@@ -1147,7 +1147,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-format-id @boundary @format-id
   Scenario Outline: Format validation boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And <creative_state>
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives spec
@@ -1165,7 +1165,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-generative @boundary @generative
   Scenario Outline: Generative build boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And <creative_state>
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives spec
@@ -1196,7 +1196,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-media-buy @boundary @media-buy-status
   Scenario Outline: Media buy status transition boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "Banner" and a known format_id
     And an assignment to a package in a media buy with <buy_state>
     When the Buyer Agent syncs the creative
@@ -1212,7 +1212,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-assignment-package @boundary @assignment-package
   Scenario Outline: Assignment package boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with name "Banner" and a known format_id
     And <assignment_state>
     When the Buyer Agent syncs the creative
@@ -1228,7 +1228,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-assignment-format @boundary @assignment-format
   Scenario Outline: Assignment format compatibility boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And <assignment_state>
     When the Buyer Agent syncs the creative
@@ -1255,13 +1255,13 @@ Feature: BR-UC-006 Sync Creative Assets
 
     Examples:
       | boundary_point        | auth_state                                          | expected                                             |
-      | typical principal_id  | the Buyer is authenticated with a valid principal_id | the creative should be processed successfully       |
+      | typical principal_id  | the Buyer is authenticated                          | the creative should be processed successfully       |
       | missing (null)        | the Buyer has no authentication credentials             | the request should be rejected with AUTH_MISSING     |
       | empty string          | the request has an empty principal_id                | the request should be rejected with AUTH_MISSING     |
 
   @T-UC-006-boundary-provenance @boundary @provenance
   Scenario Outline: Provenance policy boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And <provenance_state>
     And <policy_state>
     When the Buyer Agent syncs the creative
@@ -1280,7 +1280,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-assignments-structure @boundary @assignments-structure
   Scenario Outline: Assignments structure boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And <assignment_setup>
     When the Buyer Agent syncs the creative
@@ -1301,7 +1301,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-assignment-weight @boundary @assignment-weight
   Scenario Outline: Assignment weight boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And an assignment with package_id "pkg-1" and weight <weight_value>
     When the Buyer Agent syncs the creative
@@ -1322,7 +1322,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-account @boundary @account
   Scenario Outline: Account resolution boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And account is <account_setup>
     When the Buyer Agent syncs the creative
@@ -1345,7 +1345,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-delete-missing @boundary @delete-missing
   Scenario Outline: delete_missing scope boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a sync request whose scope is <scope_setup>
     When the Buyer Agent syncs the creatives
     Then the response is compliant with the sync_creatives spec
@@ -1371,7 +1371,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-creative-status @boundary @creative-status @response-shape @v3-1
   Scenario Outline: Per-creative advisory status value boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative whose sync resolves to a non-terminal per-creative action "<action>" carrying advisory status <status_value>
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives spec
@@ -1390,7 +1390,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-creative-status-response @boundary @creative-status @response-shape @v3-1
   Scenario Outline: Per-creative status omission on terminal action — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative whose sync resolves to <result_shape>
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives spec
@@ -1406,7 +1406,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-sandbox-happy @invariant @br-rule-209 @sandbox
   Scenario: Sandbox account sync creatives produces simulated results with sandbox flag
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And the request targets a sandbox account
     When the Buyer Agent sends a sync_creatives request
@@ -1422,7 +1422,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-sandbox-production @invariant @br-rule-209 @sandbox
   Scenario: Production account sync creatives response does not include sandbox flag
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And the request targets a production account
     When the Buyer Agent sends a sync_creatives request
@@ -1433,7 +1433,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-sandbox-validation @invariant @br-rule-209 @sandbox
   Scenario: Sandbox account with invalid creative returns real validation error
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with an invalid format_id
     And the request targets a sandbox account
     When the Buyer Agent sends a sync_creatives request
@@ -1446,7 +1446,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-sandbox-submitted-no-flag @invariant @br-rule-209 @sandbox @async @v3-1
   Scenario: Sandbox account async submitted sync_creatives envelope omits the sandbox flag
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the request targets a sandbox account
     And a batch sync that the Seller cannot confirm within the request window
     When the Buyer Agent sends a sync_creatives request
@@ -1460,7 +1460,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-sandbox-errors-no-flag @invariant @br-rule-209 @sandbox @error @v3-1
   Scenario: Sandbox account terminal-failure sync_creatives response omits the sandbox flag
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And the request targets a sandbox account
     And a sync request that fails operation-level validation
     When the Buyer Agent sends a sync_creatives request
@@ -1475,7 +1475,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-boundary-sandbox @boundary @sandbox @v3-1
   Scenario Outline: Sandbox flag response-shape boundary — <boundary_point>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And <account_kind>
     When the Buyer Agent sends a <response_shape>
@@ -1497,7 +1497,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-partition-creative-status-terminal @partition @creative-status @v3-1
   Scenario Outline: Per-creative result omits advisory status on a terminal action — <partition>
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative whose sync resolves to per-creative action "<action>"
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives spec
@@ -1514,7 +1514,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-creative-item-multi-asset @v3-1 @creative-item
   Scenario: Sync creative with multi-asset composition (carousel) succeeds
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id that requires a multi-asset composition
     And the creative's assets include CreativeItems with asset_kind "media" and asset_kind "text"
     And each CreativeItem carries asset_type, asset_id, and the discriminator-required content field
@@ -1528,7 +1528,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-creative-item-text-array @v3-1 @creative-item
   Scenario: CreativeItem text content accepts array for A/B variants
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And a CreativeItem with asset_kind "text" whose content is an array of strings
     When the Buyer Agent syncs the creative
@@ -1540,7 +1540,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-creative-item-missing-content @v3-1 @creative-item @ext-c
   Scenario: CreativeItem missing discriminator-required field is rejected
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative whose assets contain a CreativeItem with asset_kind "media" but no content_uri
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -1553,7 +1553,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-creative-variable-declared @v3-1 @creative-variable @dco
   Scenario: Sync creative that declares DCO variables persists every variable slot
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative with a known format_id
     And the creative declares CreativeVariables with variable_id, name, and variable_type set
     When the Buyer Agent syncs the creative
@@ -1566,7 +1566,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-creative-variable-required-flag @v3-1 @creative-variable @dco
   Scenario: CreativeVariable required flag is preserved on persisted creative
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative that declares a CreativeVariable with required true and a default_value
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -1577,7 +1577,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-creative-variable-invalid-type @v3-1 @creative-variable @dco @ext-c
   Scenario: CreativeVariable with unsupported variable_type is rejected
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative that declares a CreativeVariable whose variable_type is not in the v3.1 enum
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -1590,7 +1590,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-vast-tracker-asset @v3-1 @vast-tracker
   Scenario: Sync video creative with decomposed VAST trackers succeeds
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a video creative with a known format_id
     And the creative's assets include a VAST tracker with vast_event "start" and a tracker URL
     And the creative's assets include a VAST tracker with vast_event "complete" and a tracker URL
@@ -1604,7 +1604,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-vast-tracker-progress-requires-offset @v3-1 @vast-tracker @ext-c
   Scenario: VAST tracker with vast_event "progress" without offset is rejected
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a video creative with a known format_id
     And a VAST tracker asset with vast_event "progress" but no offset field
     When the Buyer Agent syncs the creative
@@ -1619,7 +1619,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-vast-tracker-forbidden-event @v3-1 @vast-tracker @ext-c
   Scenario: VAST tracker with forbidden vast_event "impression" is rejected
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a video creative with a known format_id
     And a VAST tracker asset whose vast_event is "impression"
     When the Buyer Agent syncs the creative
@@ -1634,7 +1634,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-daast-tracker-asset @v3-1 @daast-tracker
   Scenario: Sync audio creative with decomposed DAAST trackers succeeds
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And an audio creative with a known format_id
     And the creative's assets include a DAAST tracker with daast_event "start" and a tracker URL
     And the creative's assets include a DAAST tracker with daast_event "complete" and a tracker URL
@@ -1647,7 +1647,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-daast-tracker-no-non-linear-target @v3-1 @daast-tracker @ext-c
   Scenario: DAAST tracker with target "non_linear" is rejected
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And an audio creative with a known format_id
     And a DAAST tracker asset whose target is "non_linear"
     When the Buyer Agent syncs the creative
@@ -1661,7 +1661,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-error-details-conflict @v3-1 @error-details @conflict
   Scenario: CONFLICT error returns version details so buyer can re-read and retry
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative whose creative_id collides with a concurrently-updated server-side creative
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -1675,7 +1675,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-error-details-policy-violation @v3-1 @error-details @policy-violation
   Scenario: POLICY_VIOLATION error returns policy reference and violated rules
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative whose content breaches a referenced governance policy
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec
@@ -1689,7 +1689,7 @@ Feature: BR-UC-006 Sync Creative Assets
 
   @T-UC-006-error-details-creative-rejected @v3-1 @error-details @creative-rejected
   Scenario: CREATIVE_REJECTED error returns policy reference and rejection reasons
-    Given the Buyer is authenticated with a valid principal_id
+    Given the Buyer is authenticated
     And a creative that is rejected by the Seller's review workflow
     When the Buyer Agent syncs the creative
     Then the response is compliant with the sync_creatives success spec

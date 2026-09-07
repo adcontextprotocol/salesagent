@@ -407,7 +407,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Invalid request parameters
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with type "not_a_category"
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -421,7 +421,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-disclosure-invalid @UC-005-EXT-B-10 @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Invalid disclosure position value
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with disclosure_positions filter ["sidebar"]
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -434,7 +434,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-disclosure-empty @UC-005-EXT-B-11 @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Empty disclosure positions array
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with disclosure_positions filter []
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -447,7 +447,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-disclosure-dupes @UC-005-EXT-B-12 @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Duplicate disclosure positions
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with disclosure_positions filter ["prominent", "prominent"]
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -461,7 +461,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-persistence-invalid @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Invalid disclosure persistence value
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with disclosure_persistence filter ["permanent"]
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -475,7 +475,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-persistence-empty @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Empty disclosure persistence array
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with disclosure_persistence filter []
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -489,7 +489,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-persistence-dupes @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Duplicate disclosure persistence modes
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with disclosure_persistence filter ["continuous", "continuous"]
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -504,7 +504,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-output-empty @UC-005-EXT-B-13 @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Empty output format IDs array
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with output_format_ids filter []
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -517,7 +517,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-output-invalid @UC-005-EXT-B-14 @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Invalid output format ID structure - missing agent_url
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with output_format_ids filter [{"id": "display_static"}]
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -530,7 +530,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-output-noid @UC-005-EXT-B-14 @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Invalid output format ID structure - missing id
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with output_format_ids filter [{"agent_url": "https://example.com"}]
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -544,7 +544,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-input-empty @UC-005-EXT-B-15 @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Empty input format IDs array
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with input_format_ids filter []
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -557,7 +557,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-input-invalid @UC-005-EXT-B-16 @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Invalid input format ID structure - missing agent_url
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with input_format_ids filter [{"id": "display_static"}]
     Then the error is compliant with the AdCP error spec
     And the operation should fail
@@ -570,7 +570,7 @@ Feature: BR-UC-005 Discover Creative Formats
 
   @T-UC-005-ext-b-input-noid @UC-005-EXT-B-16 @extension @ext-b @error @post-f1 @post-f2 @post-f3
   Scenario: Invalid input format ID structure - missing id
-    Given the Buyer has tenant context
+    Given a tenant is resolvable from the request context
     When the Buyer Agent requests formats with input_format_ids filter [{"agent_url": "https://example.com"}]
     Then the error is compliant with the AdCP error spec
     And the operation should fail

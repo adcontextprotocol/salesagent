@@ -720,7 +720,6 @@ def given_request_2_packages_simple(ctx: dict) -> None:
 
 
 @given("all package budgets sum to 0")
-@given("But all package budgets sum to 0")
 def given_zero_budget(ctx: dict) -> None:
     """Override all package budgets to 0."""
     kwargs = _ensure_request_defaults(ctx)
@@ -739,7 +738,7 @@ def given_package_budget_set_to(ctx: dict, value: str) -> None:
 
 
 @given(parsers.parse('a package references product_id "{product_id}" which does not exist'))
-@given(parsers.parse('But a package references product_id "{product_id}" which does not exist'))
+@given(parsers.parse('a package references product_id "{product_id}" which does not exist'))
 def given_nonexistent_product(ctx: dict, product_id: str) -> None:
     """Override first package to reference a nonexistent product."""
     kwargs = _ensure_request_defaults(ctx)
@@ -751,7 +750,7 @@ def given_nonexistent_product(ctx: dict, product_id: str) -> None:
 
 
 @given(parsers.parse('start_time is "{value}" (in the past)'))
-@given(parsers.parse('But start_time is "{value}" (in the past)'))
+@given(parsers.parse('start_time is "{value}" (in the past)'))
 def given_past_start_time(ctx: dict, value: str) -> None:
     """Set start_time to a past datetime."""
     kwargs = _ensure_request_defaults(ctx)
@@ -759,7 +758,6 @@ def given_past_start_time(ctx: dict, value: str) -> None:
 
 
 @given("end_time is before start_time")
-@given("But end_time is before start_time")
 def given_end_before_start(ctx: dict) -> None:
     """Set end_time before start_time."""
     kwargs = _ensure_request_defaults(ctx)
@@ -809,7 +807,7 @@ def given_end_time_value(ctx: dict, value: str) -> None:
 
 
 @given(parsers.parse('the packages use currency "{currency}" which is not in the tenant\'s CurrencyLimit table'))
-@given(parsers.parse('But the packages use currency "{currency}" which is not in the tenant\'s CurrencyLimit table'))
+@given(parsers.parse('the packages use currency "{currency}" which is not in the tenant\'s CurrencyLimit table'))
 def given_unsupported_currency(ctx: dict, currency: str) -> None:
     """Create a pricing option with unsupported currency."""
     env = ctx["env"]
@@ -827,7 +825,7 @@ def given_unsupported_currency(ctx: dict, currency: str) -> None:
 
 
 @given(parsers.parse('both packages reference the same product_id "{product_id}"'))
-@given(parsers.parse('But both packages reference the same product_id "{product_id}"'))
+@given(parsers.parse('both packages reference the same product_id "{product_id}"'))
 def given_duplicate_product(ctx: dict, product_id: str) -> None:
     """Set both packages to reference the same product_id."""
     kwargs = _ensure_request_defaults(ctx)
@@ -850,7 +848,7 @@ def given_duplicate_product(ctx: dict, product_id: str) -> None:
 
 
 @given(parsers.parse('a package targeting_overlay contains unknown field "{field_name}"'))
-@given(parsers.parse('But a package targeting_overlay contains unknown field "{field_name}"'))
+@given(parsers.parse('a package targeting_overlay contains unknown field "{field_name}"'))
 def given_unknown_targeting_field(ctx: dict, field_name: str) -> None:
     """Add unknown field to package targeting_overlay."""
     kwargs = _ensure_request_defaults(ctx)
@@ -862,7 +860,6 @@ def given_unknown_targeting_field(ctx: dict, field_name: str) -> None:
 
 
 @given("a package targeting_overlay sets a managed-only dimension")
-@given("But a package targeting_overlay sets a managed-only dimension")
 def given_managed_targeting_dimension(ctx: dict) -> None:
     """Set a managed-only targeting dimension.
 
@@ -878,9 +875,7 @@ def given_managed_targeting_dimension(ctx: dict) -> None:
 
 
 @given(parsers.parse('a package targeting_overlay includes "{value}" in both geo_countries and geo_countries_exclude'))
-@given(
-    parsers.parse('But a package targeting_overlay includes "{value}" in both geo_countries and geo_countries_exclude')
-)
+@given(parsers.parse('a package targeting_overlay includes "{value}" in both geo_countries and geo_countries_exclude'))
 def given_geo_overlap(ctx: dict, value: str) -> None:
     """Create geo include/exclude overlap."""
     kwargs = _ensure_request_defaults(ctx)
@@ -895,7 +890,6 @@ def given_geo_overlap(ctx: dict, value: str) -> None:
 
 
 @given(parsers.parse("a package has budget {budget:d} over a {days:d}-day flight (daily = {daily:d})"))
-@given(parsers.parse("But a package has budget {budget:d} over a {days:d}-day flight (daily = {daily:d})"))
 def given_high_daily_spend(ctx: dict, budget: int, days: int, daily: int) -> None:
     """Set package with high daily spend exceeding cap.
 
@@ -920,7 +914,7 @@ def given_high_daily_spend(ctx: dict, budget: int, days: int, daily: int) -> Non
 
 
 @given(parsers.parse('a package references pricing_option_id "{po_id}" not found on the product'))
-@given(parsers.parse('But a package references pricing_option_id "{po_id}" not found on the product'))
+@given(parsers.parse('a package references pricing_option_id "{po_id}" not found on the product'))
 def given_nonexistent_pricing_option(ctx: dict, po_id: str) -> None:
     """Override first package pricing_option_id to a non-existent value."""
     kwargs = _ensure_request_defaults(ctx)
@@ -932,7 +926,6 @@ def given_nonexistent_pricing_option(ctx: dict, po_id: str) -> None:
 
 
 @given("a package selects an auction pricing option but provides no bid_price")
-@given("But a package selects an auction pricing option but provides no bid_price")
 def given_auction_no_bid_price(ctx: dict) -> None:
     """Create an auction pricing option on the product and omit bid_price."""
     env = ctx["env"]
@@ -954,7 +947,6 @@ def given_auction_no_bid_price(ctx: dict) -> None:
 
 
 @given(parsers.parse("a package has bid_price {bid:g} but floor_price is {floor:g}"))
-@given(parsers.parse("But a package has bid_price {bid:g} but floor_price is {floor:g}"))
 def given_bid_below_floor(ctx: dict, bid: float, floor: float) -> None:
     """Create an auction pricing option with floor and set bid below it."""
     env = ctx["env"]
@@ -1047,7 +1039,6 @@ def given_bid_above_floor(ctx: dict) -> None:
 
 
 @given("a package pricing option has both fixed_price and floor_price set")
-@given("But a package pricing option has both fixed_price and floor_price set")
 def given_both_fixed_and_floor(ctx: dict) -> None:
     """Create a malformed pricing option with both fixed and auction characteristics.
 
@@ -1062,7 +1053,6 @@ def given_both_fixed_and_floor(ctx: dict) -> None:
 
 
 @given("a package pricing option has neither fixed_price nor floor_price")
-@given("But a package pricing option has neither fixed_price nor floor_price")
 def given_neither_fixed_nor_floor(ctx: dict) -> None:
     """Create a malformed pricing option with no fixed_price and no floor_price.
 
@@ -2244,7 +2234,7 @@ def given_creative_boundary(ctx: dict, config: str) -> None:
 # They reuse the creative-seeding helpers above; each step text is defined once.
 
 
-@given(parsers.parse('But a package creative_assignment references creative_id "{creative_id}"'))
+@given(parsers.parse('a package creative_assignment references creative_id "{creative_id}"'))
 @given(parsers.parse('a package creative_assignment references creative_id "{creative_id}"'))
 def given_package_references_missing_creative(ctx: dict, creative_id: str) -> None:
     """ext-o: reference a creative_id with no matching library row.
@@ -2262,7 +2252,7 @@ def given_package_references_missing_creative(ctx: dict, creative_id: str) -> No
     _seed_auto_approval(ctx)
 
 
-@given("But a creative's format_id does not match any of the product's supported format_ids")
+@given("a creative's format_id does not match any of the product's supported format_ids")
 @given("a creative's format_id does not match any of the product's supported format_ids")
 def given_creative_format_mismatch(ctx: dict) -> None:
     """ext-p: seed an approved creative whose format is absent from the product.
@@ -2287,7 +2277,6 @@ def given_request_with_inline_creatives(ctx: dict) -> None:
     _add_inline_creatives(ctx, count=1)
 
 
-@given("But a creative is missing the required URL in assets")
 @given("a creative is missing the required URL in assets")
 def given_inline_creative_missing_url(ctx: dict) -> None:
     """ext-g: strip the content URL from the inline creative's primary asset.
@@ -2309,7 +2298,6 @@ def given_inline_creative_missing_url(ctx: dict) -> None:
         primary["url"] = ""
 
 
-@given("And the creative format is not generative")
 @given("the creative format is not generative")
 def given_creative_format_not_generative(ctx: dict) -> None:
     """ext-g: assert the inline creative uses a non-generative reference format.
@@ -2329,7 +2317,6 @@ def given_creative_format_not_generative(ctx: dict) -> None:
             )
 
 
-@given("Given a valid create_media_buy request with inline creatives that passes all validation")
 @given("a valid create_media_buy request with inline creatives that passes all validation")
 def given_request_inline_creatives_valid(ctx: dict) -> None:
     """ext-q: attach a valid, approved creative whose format/URL pass all validation.
@@ -2363,7 +2350,6 @@ def given_request_inline_creatives_valid(ctx: dict) -> None:
     _seed_auto_approval(ctx)
 
 
-@given("But the ad server rejects the creative upload")
 @given("the ad server rejects the creative upload")
 def given_ad_server_rejects_creative_upload(ctx: dict) -> None:
     """ext-q: make the adapter raise on the creative-upload call.
@@ -2803,7 +2789,7 @@ def given_request_proposal_mode(ctx: dict) -> None:
 
 
 @given(parsers.parse('proposal "{proposal_id}" does not exist or has expired'))
-@given(parsers.parse('But proposal "{proposal_id}" does not exist or has expired'))
+@given(parsers.parse('proposal "{proposal_id}" does not exist or has expired'))
 def given_proposal_not_exists(ctx: dict, proposal_id: str) -> None:
     """Mark that the referenced proposal does not exist.
 
@@ -2828,7 +2814,7 @@ def given_proposal_not_exists(ctx: dict, proposal_id: str) -> None:
 
 
 @given(parsers.parse("the proposal's total_budget_guidance.min is {amount:d}"))
-@given(parsers.parse("But the proposal's total_budget_guidance.min is {amount:d}"))
+@given(parsers.parse("the proposal's total_budget_guidance.min is {amount:d}"))
 def given_proposal_budget_guidance_min(ctx: dict, amount: int) -> None:
     """Set expected proposal budget guidance minimum.
 
@@ -2861,7 +2847,6 @@ def given_proposal_budget_guidance_min(ctx: dict, amount: int) -> None:
 
 
 @given("the ad server adapter returns an error")
-@given("But the ad server adapter returns an error")
 def given_adapter_error(ctx: dict) -> None:
     """Configure the mock adapter to return an error on any operation."""
     from src.core.exceptions import AdCPAdapterError
