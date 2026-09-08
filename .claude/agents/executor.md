@@ -113,8 +113,8 @@ auto-select via `bd show <id>` (bug → `bug-triage.yaml`; research/TDD →
 `task-execute.yaml`; well-defined → `task-single.yaml`).
 
 ```bash
-python3 /Users/konst/projects/pi-agentic-coding/plugins/dev-practices/skills/execute/scripts/cook_formula.py \
-  --formula /Users/konst/projects/pi-agentic-coding/plugins/dev-practices/skills/execute/formulas/<formula> \
+python3 .claude/scripts/cook_formula.py \
+  --formula .claude/formulas/<formula> \
   --var "<TASK_IDS|BUG_IDS>=<ids>" --epic-title "Execute: <ids>"
 ```
 

@@ -103,8 +103,8 @@ Make every edit via paths inside your worktree so the commit captures them.
 
 ## Task work
 Cook:
-python3 /Users/konst/projects/pi-agentic-coding/plugins/dev-practices/skills/execute/scripts/cook_formula.py \
-  --formula /Users/konst/projects/pi-agentic-coding/plugins/dev-practices/skills/execute/formulas/<FORMULA> \
+python3 .claude/scripts/cook_formula.py \
+  --formula .claude/formulas/<FORMULA> \
   --var "<VAR>=<TASK_IDS>" --epic-title "Execute: <TASK_IDS>"
 Then walk atoms: bd ready → bd show <atom> → execute → bd close <atom> → repeat.
 Your files (stay in scope): <FILES>

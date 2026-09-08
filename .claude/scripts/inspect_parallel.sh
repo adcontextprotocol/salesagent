@@ -14,7 +14,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-INSPECTOR="/Users/konst/.claude/plugins/cache/agentic-toolkit/qa-bdd/0.2.0/skills/inspect-steps/scripts/inspect_bdd_steps.py"
+INSPECTOR="$PROJECT_ROOT/.claude/scripts/inspect_bdd_steps.py"
 FEATURES_DIR="$PROJECT_ROOT/tests/bdd/features"
 STEPS_DIR="$PROJECT_ROOT/tests/bdd/steps"
 
