@@ -376,6 +376,85 @@ class TestA2ASkillInvocation:
             assert isinstance(artifact_data["packages"], list)
 
     @pytest.mark.asyncio
+    async def test_create_with_a2a_push_config_short_credentials_is_refused(
+        self, handler, sample_tenant, sample_principal, sample_products, mock_identity, validator, monkeypatch
+    ):
+        """A short webhook credential on the A2A protocol-layer config REFUSES the create.
+
+        INVERTED by salesagent-pldmk.8, deliberately. This test previously asserted
+        the opposite -- that an 18-character credential still created the buy --
+        on the premise that ``params.configuration`` is a TRANSPORT-layer parameter
+        outside request-body validation, citing gh-#1299.
+
+        Both halves of that premise failed checking. The pinned AdCP 3.1.1 schema
+        (``core/push-notification-config.json``,
+        ``properties.authentication.properties.credentials.minLength: 32``) states
+        the constraint UNCONDITIONALLY -- no transport discriminator, no if/then --
+        and the spec's own prose says the A2A envelope differs while "the object's
+        contents are identical". And PR #1299 is "test: restore green main -- BDD
+        strict-marker cleanup"; it decided nothing about credential length.
+
+        What the create used to do instead was accept the registration and refuse
+        it much later inside the sender as ``credentials_too_short``, where the
+        buyer is not on the call and the only signal is a webhook that never
+        fires. The refusal now happens at ingest, correctably, naming the field.
+        """
+        import google.protobuf.json_format as jf
+
+        from tests.helpers.egress_hatches import egress_hatch_env
+
+        for k, v in egress_hatch_env(private=True).items():
+            monkeypatch.setenv(k, v)
+
+        handler._get_auth_token = MagicMock(return_value=sample_principal["access_token"])
+
+        with patch("src.core.resolved_identity.resolve_identity", return_value=mock_identity):
+            from datetime import UTC, datetime, timedelta
+
+            from tests.a2a_helpers import make_a2a_context
+
+            ctx = make_a2a_context(headers={"host": f"{sample_tenant['subdomain']}.example.com"})
+            start_date = datetime.now(UTC) + timedelta(days=1)
+            end_date = start_date + timedelta(days=30)
+            skill_params = {
+                "brand": {"domain": "testbrand.com"},
+                "idempotency_key": f"int-key-{uuid.uuid4().hex}",
+                "packages": [
+                    {
+                        "product_id": sample_products[0],
+                        "budget": 10000.0,
+                        "pricing_option_id": "cpm_usd_fixed",
+                    }
+                ],
+                "start_time": start_date.isoformat(),
+                "end_time": end_date.isoformat(),
+            }
+            message = create_a2a_message_with_skill("create_media_buy", skill_params)
+            params = SendMessageRequest(message=message)
+            # Proto AuthenticationInfo is singular `scheme`; the skill handler
+            # translates it to AdCP's `schemes` list before injecting into params.
+            jf.ParseDict(
+                {
+                    "taskPushNotificationConfig": {
+                        "url": "https://127.0.0.1:9/webhook",
+                        "authentication": {"scheme": "Bearer", "credentials": "test-webhook-token"},
+                    }
+                },
+                params.configuration,
+            )
+
+            with pytest.raises(Exception) as exc_info:  # noqa: B017 - the A2A layer's own error type
+                await handler.on_message_send(params, context=ctx)
+
+            # The refusal must name the credential, not the url: the url here is
+            # policy-passing, so a refusal blaming it would mean the wrong gate fired.
+            message = str(exc_info.value)
+            assert "credentials" in message, f"the refusal must name the credential field; got {message!r}"
+            assert "127.0.0.1:9/webhook" not in message, (
+                f"the refusal named the url, so the wrong gate refused; got {message!r}"
+            )
+
+    @pytest.mark.asyncio
     async def test_explicit_skill_create_media_buy_manual_approval(
         self, handler, sample_tenant, sample_principal, sample_products, mock_identity, validator
     ):

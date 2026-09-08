@@ -74,6 +74,19 @@ class MediaBuyListDispatchMixin:
         on this tool therefore graded a re-serialized typed payload rather than the
         bytes a buyer receives, which is exactly the blind spot GH #1900 slipped
         through. ``_run_mcp_client`` stashes ``structured_content``, the real MCP wire.
+
+        The wrapper path is wrong for the error path too, and for a second reason:
+        it calls the UNDECORATED module function, while ``with_error_logging`` is
+        applied at registration time (``src/core/main.py``). Through it no
+        ``AdCPToolError`` is ever raised, so nothing is stashed and the dispatcher
+        captures ``None`` for BOTH the error envelope and the success response —
+        while this env goes on declaring ``has_wire=True``.
+
+        Through the client, the rejection moves from ``_resolve_status_filter``
+        inside ``_impl`` to FastMCP's TypeAdapter at the schema boundary, which
+        changes the message and field shape. That is what a real MCP buyer
+        receives — ``RequestCompatMiddleware`` translates the TypeAdapter rejection
+        into the two-layer error — so grading it is the point.
         """
         return self._run_mcp_client("get_media_buys", GetMediaBuysResponse, **kwargs)
 

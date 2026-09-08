@@ -1,6 +1,6 @@
 .PHONY: setup quality quality-ci quality-full pre-pr lint-fix lint typecheck test-fast test-full
 .PHONY: test-stack-up test-stack-down test-all test-cov test-entity
-.PHONY: test-int test-bdd test-e2e creative-formats-refresh
+.PHONY: test-int test-bdd test-e2e creative-formats-refresh mutation-check-breaker
 
 setup:
 	uv run python scripts/setup-dev.py
@@ -15,6 +15,7 @@ creative-formats-refresh:
 quality-ci:
 	uv run ruff format --check .
 	uv run ruff check .
+	uv run ruff check --config ruff-egress.toml --ignore-noqa --no-respect-gitignore src/ scripts/
 	uv run mypy src/ --config-file=mypy.ini
 	uv run python .pre-commit-hooks/check_code_duplication.py
 	uv run python .pre-commit-hooks/check-gam-auth-support.py
@@ -105,6 +106,15 @@ ifndef TARGET
 	$(error TARGET is required. Usage: make test-e2e TARGET=tests/e2e/test_file.py)
 endif
 	scripts/run-test.sh --stack $(TARGET) $(ARGS)
+
+# ─── Mutation gate (explicitly invoked, never part of a suite) ──
+# Proves the e2e_rest circuit-breaker scenario actually grades the DEPLOYED
+# server's breaker: deletes circuit_breaker.record_failure() from the server,
+# rebuilds its image, and requires the scenario to REDDEN. Deliberately not in
+# `quality`, `quality-full` or run_all_tests.sh — it runs the in-network bdd_e2e
+# suite twice against two builds. See the script header for why it is a script.
+mutation-check-breaker:
+	scripts/mutation-check-webhook-breaker.sh
 
 # ─── Entity-scoped test runs ────────────────────────────────────
 # Usage: make test-entity ENTITY=delivery

@@ -82,8 +82,29 @@ def _credential_in_args_field(validation_error: ValidationError) -> str | None:
     return None
 
 
+def _prefix_field_path(derived: str | None, field_prefix: str | None) -> str | None:
+    """Qualify a derived field path with the outer request field, if any.
+
+    Shared by the credential-detection and the ordinary validation paths so a
+    sub-model coerced under a named request field (e.g. ``push_notification_config``)
+    reports the buyer-relative path, not the bare inner location.
+    """
+    if field_prefix is None:
+        return derived
+    return f"{field_prefix}.{derived}" if derived else field_prefix
+
+
+def _qualified_field(error: ValidationError, field_prefix: str | None) -> str | None:
+    """The derived field path, optionally qualified by the outer request field."""
+    return _prefix_field_path(first_validation_error_field(error), field_prefix)
+
+
 @contextmanager
-def adcp_validation_boundary(context: str = "parameters", field: str | None = None) -> Iterator[None]:
+def adcp_validation_boundary(
+    context: str = "parameters",
+    field: str | None = None,
+    field_prefix: str | None = None,
+) -> Iterator[None]:
     """Translate a Pydantic ``ValidationError`` into a typed ``AdCPValidationError``.
 
     Transport wrappers and skill handlers validate buyer parameters at the
@@ -104,11 +125,23 @@ def adcp_validation_boundary(context: str = "parameters", field: str | None = No
     under a named request field: coercing a ``BrandReference`` reports
     ``field="brand"``, not the nested pydantic location (e.g. ``industries``).
     When ``None`` (default) the field is derived from the validation error.
+
+    ``field_prefix`` QUALIFIES the derived location instead of replacing it, for
+    models coerced out of a named request field whose INTERNAL path is the useful
+    part: a bad scheme inside ``push_notification_config`` should read
+    ``push_notification_config.authentication.schemes[0]``, not the bare
+    ``authentication.schemes[0]`` — ``error.field`` is a path into the document
+    the BUYER sent, and the buyer sent the outer field. Mutually exclusive with
+    ``field``, which discards the inner path entirely.
     """
+    if field is not None and field_prefix is not None:
+        # A validator whose job is refusing quietly-wrong documents must not itself
+        # accept a quietly-wrong call: passing both would silently drop the prefix.
+        raise ValueError("adcp_validation_boundary takes field= OR field_prefix=, not both")
     try:
         yield
     except ValidationError as e:
-        raise adcp_validation_error_from(e, context=context, field=field) from e
+        raise adcp_validation_error_from(e, context=context, field=field, field_prefix=field_prefix) from e
 
 
 def boundary_context(tool_name: str) -> str:
@@ -126,7 +159,11 @@ def boundary_context(tool_name: str) -> str:
 
 
 def adcp_validation_error_from(
-    validation_error: ValidationError, *, context: str = "parameters", field: str | None = None
+    validation_error: ValidationError,
+    *,
+    context: str = "parameters",
+    field: str | None = None,
+    field_prefix: str | None = None,
 ) -> AdCPError:
     """Build the typed ``AdCPError`` for a caught Pydantic ``ValidationError``.
 
@@ -145,6 +182,13 @@ def adcp_validation_error_from(
     ``details`` on every transport — so a transport-blind scenario can assert the
     same strings everywhere.
 
+    ``field`` pins the reported request field (``field`` wins over any derivation);
+    ``field_prefix`` QUALIFIES the derived location for a sub-model coerced out of a
+    named request field (e.g. ``push_notification_config`` — so a bad scheme inside it
+    reports ``push_notification_config.authentication.schemes[0]``, not the bare inner
+    path). Applied to BOTH the credential-detection path and the derived validation
+    path, since a credential can sit inside such a coerced sub-model.
+
     A credential-bearing ``extra_forbidden`` field is rejected with the pinned
     ``CREDENTIAL_IN_ARGS`` code (terminal) instead — the buyer-principal-credential-in-args
     contract (authentication.mdx L2). The message stays generic and never echoes the value; the
@@ -157,11 +201,11 @@ def adcp_validation_error_from(
             "A credential was detected in the request arguments. Credentials must be sent on the "
             "transport authentication channel (e.g. Authorization: Bearer), never inside the request "
             "payload.",
-            field=field if field is not None else credential_field,
+            field=field if field is not None else _prefix_field_path(credential_field, field_prefix),
         )
     return AdCPValidationError(
         format_validation_error(validation_error, context=context),
-        field=field if field is not None else first_validation_error_field(validation_error),
+        field=field if field is not None else _qualified_field(validation_error, field_prefix),
         suggestion=suggest_validation_fix(validation_error),
         details=build_validation_error_details(validation_error.errors()),
     )

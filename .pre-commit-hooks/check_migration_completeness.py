@@ -17,6 +17,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from scripts.ci.migration_helpers import (
     MigrationParseError,
+    is_downgrade_exempt,
     is_empty_body,
     is_merge_migration,
     parse_function,
@@ -42,14 +43,22 @@ def check_migration_file(path: Path) -> list[str]:
     upgrade = parse_function(tree, "upgrade")
     downgrade = parse_function(tree, "downgrade")
 
+    # The downgrade allowlist is shared with the guard test via migration_helpers:
+    # this hook and `make quality` must never reach different verdicts on one file.
+    # Exempt files are skipped for BOTH missing and empty, exactly as the guard's
+    # test_non_merge_migrations_have_downgrade skips them.
+    downgrade_exempt = is_downgrade_exempt(path)
+
     if upgrade is None:
         errors.append(f"{path}: missing upgrade() function")
 
-    if downgrade is None:
+    if downgrade is None and not downgrade_exempt:
         errors.append(f"{path}: missing downgrade() function")
 
     for name, node in (("upgrade", upgrade), ("downgrade", downgrade)):
         if node is None:
+            continue
+        if name == "downgrade" and downgrade_exempt:
             continue
         if is_empty_body(node):
             errors.append(f"{path}: {name}() is empty (only pass/docstring) — must contain migration logic")

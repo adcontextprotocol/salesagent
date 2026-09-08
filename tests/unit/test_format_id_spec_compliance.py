@@ -71,14 +71,14 @@ async def test_build_creative_sends_format_id_as_object():
 
     registry = CreativeAgentRegistry.__new__(CreativeAgentRegistry)
 
-    mock_client = AsyncMock()
     mock_result = MagicMock()
     mock_result.structured_content = {"message": "ok", "context_id": "ctx1", "status": "draft"}
-    mock_client.call_tool.return_value = mock_result
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_call_mcp_tool = AsyncMock(return_value=mock_result)
 
-    with patch("src.core.creative_agent_registry.create_mcp_client", return_value=mock_client):
+    # Patched one frame below the registry: ``build_creative`` reaches the dial
+    # through ``call_operator_mcp_tool``, so this keeps the real argument
+    # forwarding (and ``extract_tool_payload``) in the path being graded.
+    with patch("src.core.utils.operator_mcp.call_mcp_tool", mock_call_mcp_tool):
         await registry.build_creative(
             agent_url="https://creative.test.example.com/api/creative-agent",
             format_id="display_300x250_generative",
@@ -87,8 +87,8 @@ async def test_build_creative_sends_format_id_as_object():
         )
 
     # Verify format_id was sent as an object, not a string
-    call_args = mock_client.call_tool.call_args
-    params = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("arguments", {})
+    call_args = mock_call_mcp_tool.call_args
+    params = call_args.kwargs["arguments"]
     format_id_sent = params["format_id"]
 
     assert isinstance(format_id_sent, dict), (

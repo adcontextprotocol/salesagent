@@ -265,7 +265,6 @@ def when_query_task_list(ctx: dict) -> None:
             result = _dispatch_list_tasks_e2e(ctx, **params)
         else:
             result = _dispatch_list_tasks(env, **params)
-        ctx["response"] = result
         ctx["task_list_result"] = result
     except (AdCPError, TypeError, Exception) as exc:
         ctx["error"] = exc

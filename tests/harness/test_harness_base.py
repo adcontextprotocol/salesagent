@@ -88,9 +88,21 @@ class TestBaseClassContract:
             mock_engine.return_value = MagicMock()
             with patch("tests.factories.ALL_FACTORIES", []):
                 with env:
-                    assert len(env._patchers) == 2
-                # After exit, patchers are cleared
-                assert len(env._patchers) == 0
+                    # The registry holds the DB release too, so grade the PATCH
+                    # entries by label — the property this test always meant,
+                    # now stated precisely instead of by total count.
+                    assert [label for label, _ in env._enter_cleanups if label.startswith("patch:")] == [
+                        "patch:a",
+                        "patch:b",
+                    ]
+                    # The DB registers THREE cleanups, one per acquisition, so a
+                    # failure between them cannot strand the earlier resource.
+                    assert [label for label, _ in env._enter_cleanups if label.startswith("db")] == [
+                        "db_session",
+                        "db_factories",
+                    ]
+                # After exit, the whole registry is cleared
+                assert env._enter_cleanups == []
 
     def test_unit_env_patches_are_reversed_on_exit(self):
         """Patches are stopped in reverse order on exit."""
@@ -101,8 +113,9 @@ class TestBaseClassContract:
 
         env = _TestEnv()
         with env:
-            assert len(env._patchers) == 2
-        assert len(env._patchers) == 0
+            # A unit env binds no database, so the registry is the patches alone.
+            assert [label for label, _ in env._enter_cleanups] == ["patch:a", "patch:b"]
+        assert env._enter_cleanups == []
 
     def test_identity_respects_dry_run(self):
         """Both base classes pass dry_run to testing_context."""
@@ -165,13 +178,16 @@ class TestBaseClassContract:
         #
         # The test's actual subject is unchanged: __exit__ still meets a patcher
         # whose stop() raises, and must still stop the others and clear its state.
-        real_stop = env._patchers[-1].stop
+        # The registry holds (label, cleanup) pairs, so sabotage the CLEANUP the
+        # last acquisition registered rather than the patcher object itself. The
+        # subject is unchanged: __exit__ still meets a cleanup that raises.
+        _label, real_stop = env._enter_cleanups[-1]
 
         def _stop_then_raise() -> None:
             real_stop()
             raise RuntimeError("stop failed")
 
-        env._patchers[-1].stop = _stop_then_raise
+        env._enter_cleanups[-1] = (_label, _stop_then_raise)
 
         # __exit__ should still clean up patcher "a" and clear state
         # even though patcher "b" raises
@@ -180,8 +196,8 @@ class TestBaseClassContract:
         except RuntimeError:
             pass  # Expected from the sabotaged patcher
 
-        # Key assertion: mock dict and patchers list must be cleared
-        assert env._patchers == []
+        # Key assertion: mock dict and the cleanup registry must be cleared
+        assert env._enter_cleanups == []
         assert env.mock == {}
         # And the patch must be genuinely unwound, not merely forgotten. Clearing
         # the bookkeeping while leaving `os.getpid` replaced is what broke the
@@ -208,7 +224,7 @@ class TestBaseClassContract:
 
         # Cleanup must have happened despite the exception
         assert env.mock == {}
-        assert env._patchers == []
+        assert env._enter_cleanups == []
 
     def test_identity_for_returns_correct_protocol(self):
         """identity_for(transport) sets the correct protocol on identity."""
@@ -395,3 +411,374 @@ class TestIsE2EProperty:
 
         env = BaseTestEnv()
         assert env.is_e2e is False
+
+
+class TestPartialEnterUnwind:
+    """A failed ``__enter__`` must leave the process exactly as it found it.
+
+    Python does NOT call ``__exit__`` when ``__enter__`` raises, so every
+    resource an env acquires before the failure point survives for the rest of
+    the xdist worker unless the env releases it itself. Today's unwind guard
+    protects a LEXICAL REGION -- the body of ``BaseTestEnv.__enter__`` -- rather
+    than the env's acquisition SET, so a cooperative ``super().__enter__()``
+    chain places every subclass's setup outside the guard by construction.
+
+    These tests grade the acquisition set: whatever an env acquired is released,
+    wherever it was acquired from. Two of them (``local_origin_mixin`` and
+    ``fast_backoff_mixin``) are security oracles -- the resource they pin is an
+    ENVIRONMENT VARIABLE that relaxes the outbound egress posture, and a leaked
+    ``ADCP_OUTBOUND_ALLOW_PRIVATE=true`` silently disarms every later refusal
+    scenario on the same worker.
+    """
+
+    # -- helpers ---------------------------------------------------------
+
+    @staticmethod
+    def _origin_is_listening(origin) -> bool:
+        """Whether the local origin's socket still accepts connections.
+
+        The honest observation of "the origin context exited": ``serve_in_thread``
+        shuts the server down and closes the socket in its ``finally``, so a
+        refused connect is the only proof the context really unwound. Reading a
+        bookkeeping attribute would pass on an env that forgot the socket.
+        """
+        import socket
+
+        try:
+            with socket.create_connection((origin.host, origin.port), timeout=1.0):
+                return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def _force_release(env) -> None:
+        """Best-effort hermeticity net -- a NO-OP once the unwind works.
+
+        Runs only in a ``finally``, after every observation has been captured
+        into locals, so it can never mask the leak it exists to clean up. It is
+        here because a RED run of these tests genuinely leaks a live TLS server
+        thread and two environment variables into the rest of the session.
+        """
+        from contextlib import suppress
+
+        for name in ("_fast_backoff", "_egress_hatches", "_origin_ctx", "_ssl_cert_file"):
+            resource = getattr(env, name, None)
+            if resource is None:
+                continue
+            with suppress(Exception):
+                if name == "_origin_ctx":
+                    resource.__exit__(None, None, None)
+                else:
+                    resource.stop()
+        with suppress(Exception):
+            env.__exit__(None, None, None)
+
+    # -- the base's own hooks --------------------------------------------
+
+    def test_enter_post_failure_unwinds_everything(self):
+        """A raising ``_enter_post`` releases the patches AND the pre-hook's resources.
+
+        ``_enter_post`` is the last thing ``__enter__`` runs, so a failure there
+        is the worst case: the env is fully acquired and nothing has been
+        released. Everything registered -- by the base's patch loop and by a
+        subclass's ``_enter_pre`` -- must come back.
+        """
+        import pytest
+
+        from tests.harness._base import BaseTestEnv
+
+        released: list[str] = []
+
+        class _TestEnv(BaseTestEnv):
+            EXTERNAL_PATCHES = {"a": "os.getcwd", "b": "os.getpid"}
+
+            def _enter_pre(self) -> None:
+                self._guard("pre_resource", lambda: released.append("pre_resource"))
+
+            def _enter_post(self) -> None:
+                raise RuntimeError("post failed")
+
+        env = _TestEnv()
+        try:
+            with pytest.raises(RuntimeError, match="post failed"):
+                env.__enter__()
+
+            assert released == ["pre_resource"], f"the pre-hook's registered cleanup was not released: {released}"
+            assert env.mock == {}
+            assert env._enter_cleanups == []
+            # Genuinely unwound, not merely forgotten: a MagicMock left on
+            # os.getpid rides into every later logging.LogRecord in this worker.
+            assert isinstance(os.getpid(), int)
+            assert isinstance(os.getcwd(), str)
+        finally:
+            self._force_release(env)
+
+    def test_enter_pre_partial_failure_releases_earlier_resources(self):
+        """A hook that fails half way through releases what it already acquired, LIFO.
+
+        This is the shape every hand-rolled ``__enter__`` gets wrong: two
+        resources acquired, the second acquisition fails, and the first is
+        stranded. Registering each acquisition as it happens is what makes a
+        partial failure recoverable, and reverse order is what makes the
+        release valid (a later resource may depend on an earlier one).
+        """
+        import pytest
+
+        from tests.harness._base import BaseTestEnv
+
+        released: list[str] = []
+
+        class _TestEnv(BaseTestEnv):
+            EXTERNAL_PATCHES = {"a": "os.getcwd"}
+
+            def _enter_pre(self) -> None:
+                self._guard("first", lambda: released.append("first"))
+                self._guard("second", lambda: released.append("second"))
+                raise RuntimeError("pre failed")
+
+        env = _TestEnv()
+        try:
+            with pytest.raises(RuntimeError, match="pre failed"):
+                env.__enter__()
+
+            assert released == ["second", "first"], f"expected LIFO release of both pre-hook resources, got {released}"
+            assert env._enter_cleanups == []
+            # The failure was in the PRE hook, so the patch loop never ran and
+            # os.getcwd was never replaced -- prove it stayed real.
+            assert isinstance(os.getcwd(), str)
+        finally:
+            self._force_release(env)
+
+    # -- the security oracles ---------------------------------------------
+
+    def test_local_origin_mixin_unwinds_on_base_failure(self):
+        """A base failure must not leave the egress hatch open for the whole worker.
+
+        ``LocalOriginMixin`` acquires three resources -- the ``SSL_CERT_FILE``
+        patch, the running TLS origin, and ``ADCP_OUTBOUND_ALLOW_PRIVATE=true``
+        -- and only then enters the base. When the base fails, Python skips
+        ``__exit__`` and all three survive. The env var is the one that matters:
+        every later scenario on this worker that grades a private-address
+        refusal is then graded with the hatch WIDE OPEN, and passes for the
+        wrong reason.
+        """
+        import pytest
+
+        from tests.harness._base import IntegrationEnv
+        from tests.harness._mixins import LocalOriginMixin
+        from tests.helpers.egress_hatches import ALLOW_PRIVATE_ENV
+
+        class _OriginEnv(LocalOriginMixin, IntegrationEnv):
+            EXTERNAL_PATCHES: dict[str, str] = {}
+
+        env = _OriginEnv()
+        # patch.dict with no changes snapshots os.environ and restores it
+        # wholesale on exit -- including deletions -- so a RED run of this test
+        # cannot leak the hatch into the rest of the session.
+        with patch.dict(os.environ, {}):
+            os.environ.pop("SSL_CERT_FILE", None)
+            os.environ.pop(ALLOW_PRIVATE_ENV, None)
+            try:
+                with (
+                    patch(
+                        "src.core.database.database_session.get_engine",
+                        side_effect=RuntimeError("engine boom"),
+                    ),
+                    patch("tests.factories.ALL_FACTORIES", []),
+                    pytest.raises(RuntimeError, match="engine boom"),
+                ):
+                    env.__enter__()
+
+                leaked_ssl_cert_file = os.environ.get("SSL_CERT_FILE")
+                leaked_allow_private = os.environ.get(ALLOW_PRIVATE_ENV)
+                origin = getattr(env, "_origin", None)
+                origin_still_listening = origin is not None and self._origin_is_listening(origin)
+            finally:
+                self._force_release(env)
+
+            assert leaked_allow_private is None, (
+                f"{ALLOW_PRIVATE_ENV}={leaked_allow_private!r} survived a failed __enter__ -- "
+                f"the private-egress hatch is now open for the rest of this worker, and every "
+                f"later scenario grading a private-address refusal is disarmed"
+            )
+            assert leaked_ssl_cert_file is None, (
+                f"SSL_CERT_FILE={leaked_ssl_cert_file!r} survived a failed __enter__ -- "
+                f"later outbound work in this worker trusts the test CA"
+            )
+            assert origin_still_listening is False, (
+                "the local TLS origin was still accepting connections after a failed "
+                "__enter__ -- its context was never exited"
+            )
+
+    def test_fast_backoff_mixin_unwinds_on_failed_enter(self):
+        """A failed enter must not leave production's retry backoff shortened.
+
+        ``OrderApprovalWebhookEnv`` shortens the egress seam's retry base to
+        10ms so its retry cases do not cost wall time. That override is read by
+        the seam at CALL time from the environment, so a copy stranded by a
+        failed enter silently rescales BR-RULE-029's 1s/2s/4s schedule for every
+        later test in this worker -- including the ones that grade the schedule.
+        """
+        import pytest
+
+        from src.core.security.egress.attempts import _BACKOFF_BASE_ENV
+        from tests.harness.order_approval_webhook import OrderApprovalWebhookEnv
+
+        env = OrderApprovalWebhookEnv()
+        with patch.dict(os.environ, {}):
+            os.environ.pop(_BACKOFF_BASE_ENV, None)
+            try:
+                with (
+                    patch(
+                        "src.core.database.database_session.get_engine",
+                        side_effect=RuntimeError("engine boom"),
+                    ),
+                    patch("tests.factories.ALL_FACTORIES", []),
+                    pytest.raises(RuntimeError, match="engine boom"),
+                ):
+                    env.__enter__()
+
+                leaked_backoff = os.environ.get(_BACKOFF_BASE_ENV)
+            finally:
+                self._force_release(env)
+
+            assert leaked_backoff is None, (
+                f"{_BACKOFF_BASE_ENV}={leaked_backoff!r} survived a failed __enter__ -- "
+                f"the egress seam's retry schedule stays shortened for the rest of this worker"
+            )
+
+        # The override belongs to one owner, composed into this env -- not to a
+        # hand-rolled __enter__/__exit__ pair that test_harness_envs_define_no_enter_exit
+        # forbids.
+        from tests.harness.egress import FastOutboundBackoffMixin
+
+        assert FastOutboundBackoffMixin in type(env).__mro__, (
+            "OrderApprovalWebhookEnv must get its fast backoff from FastOutboundBackoffMixin"
+        )
+
+    def test_admin_env_failed_enter_releases_client(self):
+        """``AdminAccountEnv`` acquires a Flask client, then does DB work that can fail.
+
+        It is not a ``BaseTestEnv`` and keeps its own ``__enter__``; that makes
+        it the one place the guarantee is hand-rolled rather than structural, so
+        it needs its own oracle. ``_setup_integration`` opens the test client
+        (an entered context manager) and ``_ensure_tenant`` then hits the
+        database -- a failure there strands the client.
+        """
+        import pytest
+
+        from tests.harness.admin_accounts import AdminAccountEnv
+
+        env = AdminAccountEnv(mode="integration")
+        try:
+            with (
+                patch.object(AdminAccountEnv, "_ensure_tenant", side_effect=RuntimeError("tenant boom")),
+                pytest.raises(RuntimeError, match="tenant boom"),
+            ):
+                env.__enter__()
+
+            assert env._flask_client is None, (
+                "the Flask test client survived a failed __enter__ -- its context was never exited"
+            )
+        finally:
+            from contextlib import suppress
+
+            with suppress(Exception):
+                env.__exit__(None, None, None)
+
+    def test_fast_backoff_is_observed_at_the_seam(self):
+        """The mixin's override reaches production's schedule, end to end.
+
+        Grades mixin -> environment -> ``attempts._backoff_seconds`` rather than
+        the env var alone: an override the seam does not actually read is an
+        override that buys nothing. No wall clock is involved -- the jitter draw
+        is pinned to 0 and the schedule is read as a NUMBER.
+        """
+        from src.core.security.egress import attempts
+        from tests.harness.egress import FastOutboundBackoffMixin
+        from tests.harness.order_approval_webhook import OrderApprovalWebhookEnv
+
+        assert FastOutboundBackoffMixin in OrderApprovalWebhookEnv.__mro__, (
+            "OrderApprovalWebhookEnv must compose FastOutboundBackoffMixin"
+        )
+
+        with (
+            patch("src.core.database.database_session.get_engine") as mock_engine,
+            patch("tests.factories.ALL_FACTORIES", []),
+        ):
+            mock_engine.return_value = MagicMock()
+            with OrderApprovalWebhookEnv() as env:
+                assert env is not None
+                with patch("src.core.security.egress.attempts.random.uniform", return_value=0.0):
+                    assert attempts._backoff_seconds(1) == 0.01
+                    # The shape is NOT overridden -- only the base. Doubling
+                    # still holds, which is what makes the override safe.
+                    assert attempts._backoff_seconds(2) == 0.02
+
+
+class TestHarnessLifecycleRoleDeclaration:
+    """``__enter__``/``__exit__`` have exactly two declared homes in the harness.
+
+    A frozen ROLE DECLARATION, not a violations allowlist: the set below names
+    where the context-manager protocol is IMPLEMENTED, and it can only shrink.
+    Any other env that grows one is acquiring resources outside
+    ``BaseTestEnv``'s unwind guard by construction -- which is the defect the
+    ``_enter_pre``/``_enter_post`` hooks exist to make unnecessary.
+    """
+
+    LIFECYCLE_METHODS = frozenset({"__enter__", "__exit__", "__aenter__", "__aexit__"})
+
+    # (file name, class name) -- the only two homes.
+    #   _base.py / BaseTestEnv       -- owns the ONE enter/exit for every env
+    #   admin_accounts.py / AdminAccountEnv -- not a BaseTestEnv (own Flask /
+    #       requests transports); a named, tested exception whose interior is
+    #       still hand-guarded (see test_admin_env_failed_enter_releases_client)
+    DECLARED_HOMES = frozenset(
+        {
+            ("_base.py", "BaseTestEnv"),
+            ("admin_accounts.py", "AdminAccountEnv"),
+        }
+    )
+
+    def test_harness_envs_define_no_enter_exit(self):
+        """No harness module outside the two declared homes implements the protocol."""
+        import ast
+        import pathlib
+
+        harness_root = pathlib.Path(__file__).parent
+        # rglob, not glob: a future env in a subpackage must not escape by
+        # sitting one directory down.
+        sources = [p for p in sorted(harness_root.rglob("*.py")) if not p.name.startswith("test_")]
+        assert sources, f"no harness modules found under {harness_root}"
+
+        found: set[tuple[str, str, str]] = set()
+        for path in sources:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                for item in node.body:
+                    if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef) and item.name in self.LIFECYCLE_METHODS:
+                        found.add((path.name, node.name, item.name))
+
+        # The async pair is covered too: freezing only the sync pair leaves a
+        # silent hole on the day someone writes an async env.
+        async_defs = sorted(f for f in found if f[2] in {"__aenter__", "__aexit__"})
+        assert async_defs == [], (
+            f"async context-manager methods in tests/harness/: {async_defs}. "
+            f"Acquire through _enter_pre / _enter_post instead."
+        )
+
+        homes = {(file_name, class_name) for file_name, class_name, _ in found}
+        undeclared = sorted(homes - self.DECLARED_HOMES)
+        assert undeclared == [], (
+            f"these harness classes implement __enter__/__exit__ outside the two declared homes: "
+            f"{undeclared}. Subclass setup belongs in _enter_pre / _enter_post, whose bodies run "
+            f"inside BaseTestEnv.__enter__'s unwind guard; a hand-rolled __enter__ acquires "
+            f"resources the guard cannot release."
+        )
+        missing = sorted(self.DECLARED_HOMES - homes)
+        assert missing == [], (
+            f"declared lifecycle homes no longer implement the protocol: {missing}. "
+            f"The set may shrink -- but shrink it here, deliberately."
+        )

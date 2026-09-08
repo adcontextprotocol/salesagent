@@ -75,6 +75,14 @@ Publishers deploy their own sales agent. Choose based on your needs:
 
 **Docker is the fastest** - it bundles PostgreSQL and just works. Cloud platforms require separate database setup.
 
+The app itself is platform-agnostic — beyond the walkthroughs above you can host it anywhere:
+- Docker (recommended) — any Docker-compatible platform
+- Kubernetes — full k8s manifests supported
+- Cloud providers — AWS, GCP, Azure, DigitalOcean
+- Platform services — Fly.io, Heroku, Railway, Render
+
+See `docs/deployment/` for platform-specific guides.
+
 Because this is alpha software tracking a beta protocol, pin the version you deploy
 and re-test after every upgrade — minor releases can carry breaking changes.
 
@@ -349,8 +357,8 @@ We welcome contributions! Please see our [Development Guide](docs/development/RE
 ### Important: Database Access Patterns
 
 When contributing, follow the standardized database patterns. All data access goes
-through SQLAlchemy 2.0 ORM via repository classes — see
-[Contributing Guide](docs/development/contributing.md) and `CLAUDE.md` for details.
+through SQLAlchemy 2.0 ORM via repository classes — see the
+[Patterns reference](docs/development/patterns-reference.md) and `CLAUDE.md` for details.
 
 ```python
 # Use a context-managed session
