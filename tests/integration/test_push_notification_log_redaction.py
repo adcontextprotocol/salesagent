@@ -1,19 +1,23 @@
 """#1617: the buyer's webhook credential must never reach the logs.
 
-One test per push-notification log site, each driving the real code path with a
-credential-bearing config and asserting on what that site actually logged.
+One test per surviving push-notification log site, each driving the real code
+path with a credential-bearing config and asserting on what that site actually
+logged.
 
-Two of the sites are redaction choke points: the admin creative-status webhook
-and the protocol webhook service both route their config through
-``src.core.log_safety.redact_push_notification_config`` before logging. A single
-site test would leave the other choke point unguarded: a revert there would still
-be green.
+``send_notification`` is the redaction choke point: it routes its config through
+``src.core.log_safety.redact_push_notification_config`` before logging.
 
-The third site, media_buy_create, is NOT a choke point of that helper — it never
+The second site, media_buy_create, is NOT a choke point of that helper — it never
 imports it. It withholds by construction instead, handing the logger only the
 config id and ``webhook_url_for_log(url)``, so its case grades that inherited
 withhold on upstream code rather than a redaction call. See
 ``_assert_registration_log_withholds_credential`` for why its assertion differs.
+
+A third site used to exist — the admin creative-status webhook logged the stored
+config it was about to send with. Upstream deleted that log line outright (the
+whole debug preamble in ``_deliver_sync_creatives_webhook``), so there is nothing
+left there to redact and its case was removed with it: withholding by DELETING
+the log strictly dominates redacting it.
 
 Capture is taken by patching each module's ``logger`` object and reading its
 ``info`` call args, NOT via caplog or a handler: a full-suite run can leave
@@ -24,10 +28,10 @@ call regardless of that global logging state, while the path under test still
 runs for real.
 
 Why the mask presence assert (not just secret-absence) is the load-bearing one at
-two of the three sites: those sites are handed the ``PushNotificationConfig`` DB
-model, whose ``__repr__`` already prints ``authentication_token='***'``. Log the
-raw model and no secret appears — only the ``REDACTED`` sentinel disappears. That
-is precisely why the sentinel is kept distinct from ``'***'``; see
+the choke point: that site is handed the ``PushNotificationConfig`` ORM row,
+whose ``__repr__`` already prints ``authentication_token='***'``. Log the raw row
+and no secret appears — only the ``REDACTED`` sentinel disappears. That is
+precisely why the sentinel is kept distinct from ``'***'``; see
 src.core.log_safety.REDACTED and
 tests/unit/test_log_safety.py::test_sentinel_is_distinct_from_model_repr_mask.
 """
@@ -35,7 +39,7 @@ tests/unit/test_log_safety.py::test_sentinel_is_distinct_from_model_repr_mask.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -154,93 +158,6 @@ def test_create_media_buy_registration_log_withholds_webhook_credential(integrat
     _assert_registration_log_withholds_credential(mock_logger)
 
 
-@pytest.fixture
-def reviewed_creative_with_webhook_step(integration_db):
-    """A fully-reviewed creative whose sync_creatives workflow step carries a
-    credential-bearing push_notification_config.
-
-    That ``request_data`` is exactly what
-    ``src/admin/blueprints/creatives.py::_call_webhook_for_creative_status``
-    turns into the ``DBPushNotificationConfig`` it logs, so the credential
-    reaches the log site for real. Built with the factories + ContextManager
-    production APIs (same shape as
-    tests/integration/test_admin_media_buy_reject_webhook.py::make_pending_media_buy),
-    committed so the blueprint's own session sees the rows.
-    """
-    from sqlalchemy.orm import Session as SASession
-
-    from src.core.context_manager import ContextManager
-    from src.core.database.database_session import get_engine
-    from tests.factories import ALL_FACTORIES, CreativeFactory, PrincipalFactory, TenantFactory
-
-    session = SASession(bind=get_engine())
-    for f in ALL_FACTORIES:
-        f._meta.sqlalchemy_session = session
-    try:
-        tenant = TenantFactory(tenant_id="pnc_redact_tenant")
-        principal = PrincipalFactory(tenant=tenant, principal_id="pnc_redact_principal")
-        creative = CreativeFactory(
-            tenant=tenant,
-            principal=principal,
-            creative_id="creative_pnc_redact",
-            status="approved",
-        )
-        cm = ContextManager()
-        context = cm.create_context(tenant_id=tenant.tenant_id, principal_id=principal.principal_id)
-        cm.create_workflow_step(
-            context_id=context.context_id,
-            step_type="approval",
-            owner="publisher",
-            status="requires_approval",
-            tool_name="sync_creatives",
-            request_data={
-                "protocol": "mcp",
-                "push_notification_config": wire_push_notification_config(id="pnc_cr", credentials=_SECRET),
-            },
-            object_mappings=[
-                {"object_type": "creative", "object_id": creative.creative_id, "action": "approve"},
-            ],
-        )
-        yield {"tenant_id": tenant.tenant_id, "creative_id": creative.creative_id}
-    finally:
-        for f in ALL_FACTORIES:
-            f._meta.sqlalchemy_session = None
-        session.close()
-
-
-@pytest.mark.requires_db
-def test_creative_status_webhook_log_redacts_webhook_credential(reviewed_creative_with_webhook_step):
-    """The admin creative-status webhook logs the stored config it is about to
-    send with; that log must be the redacted view.
-
-    Deletion oracle: revert the site to ``logger.info(f"push_notification_config:
-    {push_notification_config}")``. The model's ``__repr__`` masks the token with
-    ``'***'``, so the secret-absence assert stays green and ONLY the
-    ``REDACTED``-present assert reddens — that one is the oracle here.
-    """
-    from src.admin.blueprints.creatives import _call_webhook_for_creative_status
-
-    mock_service = MagicMock()
-    mock_service.send_notification = AsyncMock(return_value=True)
-
-    with (
-        patch("src.admin.blueprints.creatives.logger") as mock_logger,
-        patch("src.admin.blueprints.creatives.get_protocol_webhook_service", return_value=mock_service),
-    ):
-        delivered = asyncio.run(
-            _call_webhook_for_creative_status(
-                creative_id=reviewed_creative_with_webhook_step["creative_id"],
-                tenant_id=reviewed_creative_with_webhook_step["tenant_id"],
-            )
-        )
-
-    # Guard against a vacuous pass: every early return in this function is a
-    # `return False` that never reaches the log site.
-    assert delivered is True, "webhook path did not run to completion — the log assertion would be vacuous"
-    mock_service.send_notification.assert_awaited_once()
-    _assert_log_redacted(mock_logger)
-
-
 def test_send_notification_log_redacts_webhook_credential():
     """The webhook service logs the config it is delivering with; that log must be
     the redacted view.
@@ -248,9 +165,10 @@ def test_send_notification_log_redacts_webhook_credential():
     No DB: the config is a real (unsaved) ``PushNotificationConfig`` model — not a
     MagicMock, which would make the secret-absence assert vacuously true — and the
     send goes to a real loopback receiver rather than a patched private method, so
-    the production ``send_notification`` body runs end to end. ``metadata`` carries
-    only ``task_type``, which keeps the delivery-log/audit writes (tenant-scoped)
-    out of the path.
+    the production ``send_notification`` body runs end to end. The task context
+    carries ``task_type="sync_creatives"`` and no ``media_buy_id``, so
+    ``WebhookTaskContext.records_delivery_log`` is False and the tenant-scoped
+    delivery-log write stays out of the path.
 
     Deletion oracle: restore the old hand-rolled ``safe_config`` block (or an
     f-string of the raw config). ``PushNotificationConfig.__repr__`` masks the
@@ -260,6 +178,7 @@ def test_send_notification_log_redacts_webhook_credential():
     from adcp import create_mcp_webhook_payload
     from adcp.webhooks import GeneratedTaskStatus
 
+    from src.core.webhooks.delivery import WebhookTaskContext
     from src.services.protocol_webhook_service import ProtocolWebhookService
     from tests.e2e._webhook_capture import WebhookCaptureHandler, run_webhook_capture_server
     from tests.factories import PushNotificationConfigFactory
@@ -285,7 +204,15 @@ def test_send_notification_log_redacts_webhook_credential():
                 ProtocolWebhookService().send_notification(
                     push_notification_config=config,
                     payload=payload,
-                    metadata={"task_type": "sync_creatives"},
+                    task=WebhookTaskContext(
+                        task_id="task_pnc_redact",
+                        task_type="sync_creatives",
+                        tenant_id=None,
+                        principal_id=None,
+                        media_buy_id=None,
+                        sequence_number=1,
+                        notification_type=None,
+                    ),
                 )
             )
         assert info["received"], "receiver got no webhook — send_notification did not reach the wire"

@@ -11,9 +11,36 @@ from pathlib import Path
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "alembic" / "versions"
 
+# Pre-existing violations — allowlists shrink as violations are fixed.
+# FIXME(#2107): These legacy migrations have incomplete downgrades.
+#
+# Lives HERE, not in the guard test, because the completeness policy has two
+# enforcement paths — the pre-push hook (.pre-commit-hooks/check_migration_
+# completeness.py) and the guard (tests/unit/test_architecture_migration_
+# completeness.py) — and a hook cannot import from tests/. With the list on the
+# test side only, the tree was green under `make quality` and red at push time.
+KNOWN_EMPTY_DOWNGRADE = frozenset(
+    {
+        # Legacy: data migration (adds default values), no structural revert needed
+        "017_handle_partial_schemas.py",
+        # Legacy: fixes JSON encoding, no structural revert
+        "e81e275c9b29_fix_price_guidance_json_encoding.py",
+    }
+)
+
 
 class MigrationParseError(ValueError):
     """Raised when a migration file cannot be parsed or is structurally invalid."""
+
+
+def is_downgrade_exempt(path: Path) -> bool:
+    """Whether this migration is allowlisted for an empty ``downgrade()``.
+
+    Single source of truth for BOTH enforcement paths. Never widen it: the
+    stale-entry guards in tests/unit/test_architecture_migration_completeness.py
+    exist so entries can only be removed.
+    """
+    return path.name in KNOWN_EMPTY_DOWNGRADE
 
 
 def get_migration_files() -> list[Path]:

@@ -9,7 +9,7 @@ Then steps: publisher_properties assertions (selection_type, field presence)
 Steps store results in ctx:
     ctx["response"] — GetProductsResponse on success
     ctx["error"] — Exception on failure
-    ctx["wire_error_envelope"] — transport wire envelope on tool error
+    ctx["result"].error_envelope() — the error envelope on tool error
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Any
 
 from pytest_bdd import given, parsers, then, when
 
-from tests.bdd.steps._outcome_helpers import _require_response
+from tests.bdd.steps._outcome_helpers import assert_wire_rejection, require_payload
 from tests.bdd.steps.generic._brand_param import parse_brand_gherkin_param
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.factories import (
@@ -28,7 +28,6 @@ from tests.factories import (
     ProductFactory,
     TenantFactory,
 )
-from tests.helpers import assert_envelope_shape
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -39,7 +38,7 @@ def _call_get_products(ctx: dict, **kwargs: Any) -> None:
     Delegates to the universal ``dispatch_request`` helper (#1417): it
     routes through ``env.call_via`` for the parametrized transport, stores the
     normalized ``ctx['result']`` plus ``ctx['response']`` / ``ctx['error']`` /
-    ``ctx['wire_error_envelope']``, and fails loudly if no transport is set
+    ``ctx['result'].error_envelope()``, and fails loudly if no transport is set
     (the IMPL ``call_impl`` fallback was removed — a missing transport is a
     wiring bug, not an IMPL bypass).
     """
@@ -202,7 +201,7 @@ def when_request_products_with_brand(ctx: dict, brand: str) -> None:
 def then_has_products(ctx: dict) -> None:
     """Assert the response has exactly the product created in the Given step."""
     assert "error" not in ctx, f"Request failed: {ctx.get('error')}"
-    response = _require_response(ctx)
+    response = require_payload(ctx)
     expected = ctx["product"]
     assert response.products is not None, "Response has no products"
     assert len(response.products) == 1, f"Expected 1 product, got {len(response.products)}"
@@ -216,16 +215,23 @@ def then_has_products(ctx: dict) -> None:
 
 @then(parsers.parse('the request is rejected with VALIDATION_ERROR naming field "{field}"'))
 def then_rejected_validation_field(ctx: dict, field: str) -> None:
-    """Assert the wire envelope is VALIDATION_ERROR and names the field structurally."""
-    envelope = ctx.get("wire_error_envelope")
-    assert envelope is not None, f"No wire error envelope (error={ctx.get('error')!r})"
-    assert_envelope_shape(envelope, "VALIDATION_ERROR", recovery="correctable")
-    assert envelope["errors"][0].get("field") == field, (
-        f"errors[0].field={envelope['errors'][0].get('field')!r}, expected {field!r}"
-    )
-    assert envelope["adcp_error"].get("field") == field, (
-        f"adcp_error.field={envelope['adcp_error'].get('field')!r}, expected {field!r}"
-    )
+    """Assert the wire envelope is VALIDATION_ERROR and names the field structurally.
+
+    Shared beyond this use case: it also binds the brand-shorthand scenarios and
+    every request-level refusal in ``local-egress-ssrf-refusal.feature`` (the
+    egress module used to carry a twin of this sentence for INVALID_REQUEST; the
+    seam and the DNS-free registration gate now answer with one code, so there is
+    one step). The rationale that came with it, and applies to every caller:
+
+    ``correctable`` is the load-bearing half. For the egress callers, the refusal
+    once surfaced as SERVICE_UNAVAILABLE / transient, which tells the buyer to
+    retry a request that will be refused identically forever; generally, it is the
+    assertion that says the buyer can fix this themselves. ``field`` is the other
+    half — where the message must disclose nothing (AdCP 3.1.1 L1 § "Webhook URL
+    validation (SSRF)" point 6), it is the ONLY channel that can say WHICH of the
+    request's inputs to fix.
+    """
+    assert_wire_rejection(ctx, "VALIDATION_ERROR", recovery="correctable", field=field)
 
 
 @then(parsers.parse('the first product publisher_properties selection_type is "{expected}"'))

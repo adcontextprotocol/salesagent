@@ -42,6 +42,26 @@ def _make_create_request(**overrides: Any) -> CreateMediaBuyRequest:
     return CreateMediaBuyRequest(**defaults)
 
 
+def _single_creative_request(creative_id: str, **overrides: Any) -> CreateMediaBuyRequest:
+    """A ``_make_create_request`` for one product/pricing-option package carrying one creative.
+
+    The one-package-one-creative shape a fetch-failure/refusal test needs to
+    exercise a specific stored creative's format-fetch path, without each such
+    test restating the package dict.
+    """
+    return _make_create_request(
+        packages=[
+            {
+                "product_id": "prod_1",
+                "budget": 5000.0,
+                "pricing_option_id": "cpm_usd_fixed",
+                "creative_ids": [creative_id],
+            }
+        ],
+        **overrides,
+    )
+
+
 def _get_tenant_dict(tenant_id: str) -> dict[str, Any]:
     """Load full tenant dict from DB (matches resolve_identity output)."""
     from src.core.database.models import Tenant as TenantModel

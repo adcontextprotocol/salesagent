@@ -16,10 +16,12 @@ from factory import LazyAttribute, RelatedFactory, Sequence, SubFactory
 from src.core.database.models import (
     AdapterConfig,
     AuthorizedProperty,
+    CreativeAgent,
     CurrencyLimit,
     GAMInventory,
     PropertyTag,
     PublisherPartner,
+    SignalsAgent,
     Tenant,
 )
 from src.core.database.repositories.adapter_config import AdapterConfigRepository
@@ -245,3 +247,49 @@ class PropertyTagFactory(factory.alchemy.SQLAlchemyModelFactory):
     tag_id = Sequence(lambda n: f"tag_{n:04d}")
     name = LazyAttribute(lambda o: f"Tag {o.tag_id}")
     description = LazyAttribute(lambda o: f"Description for {o.name}")
+
+
+class CreativeAgentFactory(factory.alchemy.SQLAlchemyModelFactory):
+    """A stored creative-agent row — the operator configuration a probe dials.
+
+    Every column the dial reads (``auth_type``/``auth_credentials``,
+    ``auth_header``, ``timeout``) is a plain default here rather than a
+    generated one, so a test that cares about one of them sets exactly that one
+    and the rest stay boring.
+    """
+
+    class Meta:
+        model = CreativeAgent
+        sqlalchemy_session = None
+        sqlalchemy_session_persistence = "commit"
+
+    tenant = SubFactory(TenantFactory)
+    tenant_id = LazyAttribute(lambda o: o.tenant.tenant_id)
+    agent_url = Sequence(lambda n: f"https://creative-{n:04d}.example.com/mcp")
+    name = Sequence(lambda n: f"Creative Agent {n:04d}")
+    enabled = True
+    priority = 10
+    auth_type = None
+    auth_header = None
+    auth_credentials = None
+    timeout = 30
+
+
+class SignalsAgentFactory(factory.alchemy.SQLAlchemyModelFactory):
+    """A stored signals-agent row. Mirrors :class:`CreativeAgentFactory`."""
+
+    class Meta:
+        model = SignalsAgent
+        sqlalchemy_session = None
+        sqlalchemy_session_persistence = "commit"
+
+    tenant = SubFactory(TenantFactory)
+    tenant_id = LazyAttribute(lambda o: o.tenant.tenant_id)
+    agent_url = Sequence(lambda n: f"https://signals-{n:04d}.example.com/mcp")
+    name = Sequence(lambda n: f"Signals Agent {n:04d}")
+    enabled = True
+    auth_type = None
+    auth_header = None
+    auth_credentials = None
+    forward_promoted_offering = True
+    timeout = 30

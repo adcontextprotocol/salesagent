@@ -18,6 +18,7 @@ from src.core.config_loader import get_tenant_config
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
 from src.core.schemas import MediaPackage
+from src.services.slack_notifier import SlackNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -171,63 +172,63 @@ class BaseWorkflowManager:
             action_details: Details about the workflow step
         """
         try:
-            tenant_config = get_tenant_config(self.tenant_id)
-            slack_webhook_url = tenant_config.get("slack", {}).get("webhook_url")
+            # get_tenant_config takes a config KEY, not a tenant id. Passing
+            # self.tenant_id returned None, and the .get("slack", {}) that followed
+            # raised AttributeError into the broad handler below — so this
+            # notification never fired, for any tenant, including the four GAM
+            # workflow callers that inherit this method. The column is a per-field
+            # tenant column (models.py:68), read by key like every other caller.
+            slack_webhook_url = get_tenant_config("slack_webhook_url")
 
             if not slack_webhook_url:
                 self.log("[yellow]No Slack webhook configured - skipping notification[/yellow]")
                 return
 
-            import requests
-
             # Get notification styling based on action type
             notification = self._get_notification_details(step_id, action_details)
 
-            # Build Slack message
-            slack_payload = {
-                "attachments": [
+            # The attachment is the message; the notifier is the sender. This used
+            # to assemble a payload and dial the raw egress seam itself, which meant
+            # no retry bookkeeping and no delivery record — while slack_notifier
+            # already owned both. The attachment shape is relocated VERBATIM: Slack
+            # renders legacy attachments differently from Block Kit, so converting
+            # would change what an operator sees, which is not a refactor's call.
+            # max_retries=1 preserves the previous single-attempt behaviour.
+            attachment = {
+                "color": notification["color"],
+                "title": notification["title"],
+                "text": notification["description"],
+                "fields": [
+                    {"title": "Step ID", "value": step_id, "short": True},
                     {
-                        "color": notification["color"],
-                        "title": notification["title"],
-                        "text": notification["description"],
-                        "fields": [
-                            {"title": "Step ID", "value": step_id, "short": True},
-                            {
-                                "title": "Platform",
-                                "value": action_details.get("platform", self.platform_name),
-                                "short": True,
-                            },
-                            {
-                                "title": "Automation Mode",
-                                "value": action_details.get("automation_mode", "unknown").replace("_", " ").title(),
-                                "short": True,
-                            },
-                            {
-                                "title": "Action Required",
-                                "value": action_details.get("instructions", ["Check admin dashboard"])[0],
-                                "short": False,
-                            },
-                        ],
-                        "footer": "AdCP Sales Agent",
-                        "ts": int(datetime.now(UTC).timestamp()),
-                    }
-                ]
+                        "title": "Platform",
+                        "value": action_details.get("platform", self.platform_name),
+                        "short": True,
+                    },
+                    {
+                        "title": "Automation Mode",
+                        "value": action_details.get("automation_mode", "unknown").replace("_", " ").title(),
+                        "short": True,
+                    },
+                    {
+                        "title": "Action Required",
+                        "value": action_details.get("instructions", ["Check admin dashboard"])[0],
+                        "short": False,
+                    },
+                ],
+                "footer": "AdCP Sales Agent",
+                "ts": int(datetime.now(UTC).timestamp()),
             }
 
-            # Send notification
-            response = requests.post(
-                slack_webhook_url,
-                json=slack_payload,
-                timeout=10,
-                headers={"Content-Type": "application/json"},
+            SlackNotifier(webhook_url=slack_webhook_url).send_message(
+                text=notification["title"],
+                attachments=[attachment],
+                max_retries=1,
             )
 
-            if response.status_code == 200:
-                self.log(f"Sent Slack notification for workflow step {step_id}")
-                if self.audit_logger:
-                    self.audit_logger.log_success(f"Sent Slack notification for workflow step: {step_id}")
-            else:
-                self.log(f"[yellow]Slack notification failed with status {response.status_code}[/yellow]")
+            self.log(f"Sent Slack notification for workflow step {step_id}")
+            if self.audit_logger:
+                self.audit_logger.log_success(f"Sent Slack notification for workflow step: {step_id}")
 
         except Exception as e:
             self.log(f"[yellow]Failed to send Slack notification: {str(e)}[/yellow]")

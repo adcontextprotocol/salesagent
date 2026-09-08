@@ -1,10 +1,15 @@
 """Shared capture helpers for create_media_buy transport boundary tests.
 
-Both MCP and A2A wrappers serialize PushNotificationConfig before forwarding
-to _create_media_buy_impl. These helpers build the mock context, patch _impl
-with a side_effect that records its kwargs, invoke the wrapper, and return the
-forwarded push_notification_config dict — so individual tests only assert on
-the returned value without duplicating scaffolding.
+Both MCP and A2A wrappers forward a TYPED PushNotificationConfig to
+_create_media_buy_impl (the A2A one coercing a raw wire dict into it first).
+These helpers build the mock context, patch _impl with a side_effect that
+records its kwargs, invoke the wrapper, and return the forwarded
+push_notification_config — so individual tests only assert on the returned
+value without duplicating scaffolding.
+
+Returns the model, not a dict: Epic D lane C3 moved the wire-type conversion
+out of the wrappers and into ValidatedWebhookRegistration, so what _impl
+receives is the typed model and what persistence receives is plain str.
 
 Used by:
   - tests/unit/test_create_media_buy_behavioral.py  (serialization obligations)
@@ -36,7 +41,7 @@ def _make_mock_ctx() -> AsyncMock:
     return mock_ctx
 
 
-async def capture_mcp_forwarded_pnc(pnc: Any) -> dict | None:
+async def capture_mcp_forwarded_pnc(pnc: Any) -> Any:
     """Invoke the MCP create_media_buy wrapper with *pnc* and return the
     push_notification_config dict that was forwarded to _create_media_buy_impl.
 
@@ -85,7 +90,7 @@ async def capture_mcp_forwarded_pnc(pnc: Any) -> dict | None:
     return captured.get("push_notification_config")
 
 
-async def capture_a2a_forwarded_pnc(pnc: Any) -> dict | None:
+async def capture_a2a_forwarded_pnc(pnc: Any) -> Any:
     """Invoke the A2A create_media_buy_raw wrapper with *pnc* and return the
     push_notification_config dict that was forwarded to _create_media_buy_impl.
 

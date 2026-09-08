@@ -18,7 +18,7 @@ import pytest
 from pytest_bdd import given, parsers, then, when
 
 from tests.bdd.steps._harness_db import db_session
-from tests.bdd.steps._outcome_helpers import is_e2e
+from tests.bdd.steps._outcome_helpers import is_e2e, payload_or_none, require_payload
 from tests.bdd.steps.generic._account_resolution import ensure_tenant_principal, seed_account_with_access
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.factories.creative_asset import (
@@ -34,8 +34,13 @@ from tests.factories.principal import PrincipalFactory
 # E2E format helpers — real creative agent data for Docker transport
 # ═══════════════════════════════════════════════════════════════════════
 
-# Docker's creative agent URL (internal to Docker network, used by the app container)
-_E2E_AGENT_URL = "http://creative-agent:8080/api/creative-agent"
+# Docker's creative agent URL (internal to Docker network, used by the app
+# container) — https via the shared tls-proxy front; the seam requires https
+# unconditionally now (#1757), so this stopped being reachable at all once
+# ADCP_OUTBOUND_ALLOW_INSECURE was deleted, and this literal was the one thing
+# in this file that was never caught by that disease scan (it hardcodes a URL,
+# not the flag itself).
+_E2E_AGENT_URL = "https://creative-agent.adcp.test:8443/api/creative-agent"
 # Real format that exists in Docker's creative agent catalog
 _E2E_FORMAT_ID = "display_300x250_image"
 
@@ -376,8 +381,7 @@ def then_proceed_with_resolved_account(ctx: dict) -> None:
 
     # 1. Response succeeded with correct type
     assert "error" not in ctx, f"Expected success but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response (SyncCreativesResponse)"
+    resp = require_payload(ctx)
     assert isinstance(resp, SyncCreativesResponse), f"Expected SyncCreativesResponse, got {type(resp).__name__}"
 
     # 2. Production processed the request (account resolution succeeded)
@@ -631,7 +635,7 @@ def _assert_workflow_steps(env: object, *, expect_present: bool) -> list:
 def _assert_success_response(ctx: dict) -> None:
     """Assert dispatch succeeded with no error."""
     assert "error" not in ctx, f"Expected success but got error: {ctx.get('error')}"
-    assert ctx.get("response") is not None, "Expected a response but got None"
+    assert payload_or_none(ctx) is not None, "Expected a response but got None"
 
 
 @then(parsers.parse('the creative status should be "{status}"'))
@@ -1450,8 +1454,7 @@ def given_assignment_entry_missing_package_id_alias(ctx: dict) -> None:
 
 def _get_creative_assigned_to(ctx: dict) -> list[str]:
     """Return the assigned_to list from the response's first creative result."""
-    resp = ctx.get("response")
-    assert resp is not None, f"Expected a response, got error: {ctx.get('error')}"
+    resp = require_payload(ctx)
     # SyncCreativesResponse.creatives is list[SyncCreativeResult] (adcp 3.9 schema)
     results = resp.creatives
     assert results, f"Response has no creatives: {resp}"
@@ -1497,7 +1500,7 @@ def _assert_per_creative_failure(ctx: dict, expected_code: str) -> None:
     """
     from src.core.exceptions import AdCPError
 
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     error = ctx.get("error")
     if resp is not None:
         results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
@@ -1567,7 +1570,7 @@ def then_uc006_result_should_be(ctx: dict, outcome: str) -> None:
         assert expected_pkg_id in assigned, f"Expected package {expected_pkg_id!r} in assigned_to but got {assigned}"
     elif outcome == "FORMAT_MISMATCH":
         assert err is not None, (
-            f"Expected FORMAT_MISMATCH error but production succeeded. Response: {ctx.get('response')}"
+            f"Expected FORMAT_MISMATCH error but production succeeded. Response: {payload_or_none(ctx)}"
         )
         assert isinstance(err, AdCPError), f"Expected AdCPError for FORMAT_MISMATCH, got {type(err).__name__}: {err}"
         msg = str(err).lower()
@@ -1576,7 +1579,7 @@ def then_uc006_result_should_be(ctx: dict, outcome: str) -> None:
         )
     elif outcome in ("success", "success (no agent validation)"):
         assert err is None, f"Expected '{outcome}' but production raised {type(err).__name__}: {err}"
-        assert ctx.get("response") is not None, f"Expected a response for '{outcome}'"
+        assert payload_or_none(ctx) is not None, f"Expected a response for '{outcome}'"
     elif outcome in (
         "CREATIVE_FORMAT_REQUIRED",
         "CREATIVE_FORMAT_UNKNOWN",
@@ -1701,8 +1704,7 @@ def then_existing_assignment_updated_not_duplicated(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: idempotent upsert should succeed, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response for idempotent upsert"
+    resp = require_payload(ctx)
 
     assignment_id = ctx["existing_assignment_id"]
     tenant_id = ctx["tenant"].tenant_id
@@ -1771,8 +1773,7 @@ def then_no_assignment_processing(ctx: dict) -> None:
     SyncCreativeResult.assigned_to is None/empty.
     """
     assert "error" not in ctx, f"Expected success (no assignments) but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response when assignments is absent"
+    resp = require_payload(ctx)
     # There may be 0 results if the creative also failed validation for other reasons,
     # but the defining property is: no assigned_to populated.
     for r in resp.creatives:
@@ -1931,7 +1932,7 @@ def _assert_auth_rejection(ctx: dict, expected_code: str) -> None:
     matching the spec.
     """
     error = ctx.get("error")
-    assert error is not None, f"Expected {expected_code} error but got response: {ctx.get('response')}"
+    assert error is not None, f"Expected {expected_code} error but got response: {payload_or_none(ctx)}"
     actual_code, _ = _extract_error_code_and_suggestion(error)
     assert actual_code == expected_code, (
         f"Expected error code '{expected_code}', got '{actual_code}' ({type(error).__name__}: {error})"
@@ -1944,7 +1945,7 @@ def then_creative_processed_successfully(ctx: dict) -> None:
     from src.core.schemas import SyncCreativesResponse
 
     assert "error" not in ctx, f"Expected success but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     assert isinstance(resp, SyncCreativesResponse), (
         f"Expected SyncCreativesResponse, got {type(resp).__name__ if resp else None}"
     )
@@ -2062,8 +2063,7 @@ def then_creative_action_created(ctx: dict) -> None:
         pytest.xfail(
             f"SPEC-PRODUCTION GAP: expected action='created', but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one SyncCreativeResult in response, got: {resp}"
     first = results[0]
@@ -2083,7 +2083,7 @@ def then_creative_action_failed(ctx: dict) -> None:
     Promotes the first error string to ctx["error"] as a synthetic object
     so downstream generic Then steps (error code, message, suggestion) can run.
     """
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     err = ctx.get("error")
     if resp is None:
         pytest.xfail(
@@ -2272,7 +2272,7 @@ def then_operation_fails_with_assignment_error(ctx: dict) -> None:
     error = ctx.get("error")
     if error is None:
         # Promote response.errors if available (partial-success pattern), then re-check
-        resp = ctx.get("response")
+        resp = payload_or_none(ctx)
         if resp is not None and getattr(resp, "errors", None):
             error = resp.errors[0]
             ctx["error"] = error
@@ -2280,7 +2280,7 @@ def then_operation_fails_with_assignment_error(ctx: dict) -> None:
     if error is None:
         pytest.xfail(
             f"SPEC-PRODUCTION GAP: expected an assignment error but production succeeded. "
-            f"Response: {ctx.get('response')!r}"
+            f"Response: {payload_or_none(ctx)!r}"
         )
 
     # MCP/TypeAdapter pre-impl rejection of FormatId pattern — surface as gap
@@ -2383,7 +2383,7 @@ def then_assignment_result_should_be(ctx: dict, outcome: str) -> None:
     from src.core.exceptions import AdCPError
 
     error = ctx.get("error")
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
 
     if outcome == "operation aborts with error":
         assert error is not None, (
@@ -2424,7 +2424,7 @@ def then_assignment_processing_should_abort(ctx: dict) -> None:
     error = ctx.get("error")
     assert error is not None, (
         "Strict mode with non-existent package should abort with an error, "
-        f"but production succeeded. Response: {ctx.get('response')}"
+        f"but production succeeded. Response: {payload_or_none(ctx)}"
     )
     assert isinstance(error, AdCPError), (
         f"Expected AdCPError for strict mode abort, got {type(error).__name__}: {error}"
@@ -2456,7 +2456,7 @@ def then_behavior_matches_strict_mode(ctx: dict) -> None:
     error = ctx.get("error")
     assert error is not None, (
         "Default validation_mode should be 'strict' (abort on error), "
-        f"but production succeeded without raising. Response: {ctx.get('response')}"
+        f"but production succeeded without raising. Response: {payload_or_none(ctx)}"
     )
     assert isinstance(error, AdCPError), (
         f"Strict mode abort should raise AdCPError, got {type(error).__name__}: {error}"
@@ -2657,8 +2657,7 @@ def _get_sync_creative_result(ctx: dict) -> object:
     from src.core.schemas import SyncCreativesResponse
 
     assert "error" not in ctx, f"Expected success but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response (SyncCreativesResponse)"
+    resp = require_payload(ctx)
     assert isinstance(resp, SyncCreativesResponse), f"Expected SyncCreativesResponse, got {type(resp).__name__}"
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one SyncCreativeResult, got empty: {resp}"
@@ -2859,8 +2858,7 @@ def _setup_product_with_creative_policy(
 def then_creative_processed_without_warning(ctx: dict) -> None:
     """Assert the creative was processed successfully with no provenance warnings."""
     assert "error" not in ctx, f"Expected successful processing without warning, but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = resp.creatives
     assert results, "Expected creative results for provenance check, but response.creatives is empty"
     first = results[0]
@@ -2879,8 +2877,7 @@ def then_provenance_warning_generated(ctx: dict) -> None:
     assert "error" not in ctx, (
         f"Expected successful processing with provenance warning, but got error: {ctx.get('error')}"
     )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = resp.creatives
     assert results, "Expected creative results for provenance check, but response.creatives is empty"
     first = results[0]
@@ -3316,8 +3313,7 @@ def _assert_format_check_outcome(ctx: dict, label: str) -> None:
     warnings. ``label`` tags the outcome in the failure messages.
     """
     assert "error" not in ctx, f"format check ({label}): expected no error, but production raised: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, f"format check ({label}): expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"format check ({label}): expected at least one SyncCreativeResult"
     first = results[0]
@@ -3658,8 +3654,7 @@ def then_formats_match_using_format_id_key(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: expected success with format_id key, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response for format_id key match"
+    resp = require_payload(ctx)
     assigned = _get_creative_assigned_to(ctx)
     expected = ctx["package"].package_id
     assert expected in assigned, f"Expected {expected!r} in assigned_to (format_id key variant), got {assigned}"
@@ -3681,8 +3676,7 @@ def then_formats_match_after_url_normalization(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: expected success after URL normalization, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response after URL normalization"
+    resp = require_payload(ctx)
     assigned = _get_creative_assigned_to(ctx)
     expected = ctx["package"].package_id
     assert expected in assigned, f"Expected {expected!r} in assigned_to after URL normalization, got {assigned}"
@@ -3816,8 +3810,7 @@ def then_creative_processed_normally(ctx: dict) -> None:
     """Assert the creative was processed with a success action (created/updated)."""
     error = ctx.get("error")
     assert error is None, f"Expected normal processing, but got {type(error).__name__}: {error}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one creative result, got empty from {type(resp).__name__}"
     actions = [str(getattr(getattr(r, "action", None), "value", getattr(r, "action", None))) for r in results]
@@ -3830,8 +3823,7 @@ def then_creative_processed_normally(ctx: dict) -> None:
 def then_no_provenance_warning(ctx: dict) -> None:
     """Assert no provenance-related warnings in the response."""
     assert "error" not in ctx, f"Expected no provenance warnings, but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     for r in resp.creatives:
         warnings = r.warnings or []
         provenance_warnings = [w for w in warnings if "provenance" in str(w).lower()]
@@ -3860,8 +3852,7 @@ def then_creative_flagged_for_review(ctx: dict) -> None:
 def then_creative_processed_not_rejected(ctx: dict) -> None:
     """Assert the creative was processed (not rejected) -- non-blocking enforcement (INV-1)."""
     assert "error" not in ctx, f"Expected creative to be processed (not rejected), but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = resp.creatives
     assert results, "Expected creative results, but response.creatives is empty"
     first = results[0]
@@ -3996,8 +3987,7 @@ def then_existing_creative_updated_by_triple_key(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: expected creative update by triple key, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
 
     creative_id = ctx["pre_existing_creative_id"]
     tenant = ctx["tenant"]
@@ -4058,7 +4048,7 @@ def when_sync_both_creatives(ctx: dict) -> None:
 
 def _get_creative_result_by_id(ctx: dict, creative_id: str) -> object | None:
     """Find a SyncCreativeResult by creative_id in the response."""
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is None:
         return None
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
@@ -4106,8 +4096,7 @@ def then_valid_not_affected_by_invalid(ctx: dict) -> None:
         pytest.xfail(
             f"SPEC-PRODUCTION GAP: expected per-creative isolation, but dispatch raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert len(results) == 2, f"Expected 2 creative results (one valid, one failed), got {len(results)}"
     valid_result = _get_creative_result_by_id(ctx, ctx["valid_creative_id"])
@@ -4153,8 +4142,7 @@ def then_processed_without_external_validation(ctx: dict) -> None:
     assert "error" not in ctx, (
         f"Expected adapter format to skip external validation, but production raised: {ctx.get('error')}"
     )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, "Expected at least one SyncCreativeResult"
     first = results[0]
@@ -4190,8 +4178,7 @@ def then_creative_action_created_or_updated(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: expected action created/updated, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, "Expected at least one SyncCreativeResult"
     first = results[0]
@@ -4259,7 +4246,7 @@ def then_assignment_should_fail_with(ctx: dict, error_code: str) -> None:
 
     error = ctx.get("error")
     assert error is not None, (
-        f"Expected assignment failure with {error_code}, but production succeeded. Response: {ctx.get('response')}"
+        f"Expected assignment failure with {error_code}, but production succeeded. Response: {payload_or_none(ctx)}"
     )
     if isinstance(error, AdCPError):
         # Production may use different code names; accept message-based matching for FORMAT_MISMATCH
@@ -4314,8 +4301,7 @@ def then_valid_assignment_created(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: lenient mode should continue despite invalid assignment, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response in lenient mode"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     if not results:
         pytest.xfail(
@@ -4329,6 +4315,9 @@ def then_valid_assignment_created(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: lenient mode should create valid assignment to {valid_pkg}, "
             f"but assigned_to={assigned}"
         )
+    # The claim, stated on the path that RETURNS. The xfail above records the
+    # known gap; without this the satisfied path returned having graded nothing.
+    assert valid_pkg in assigned, f"expected assignment to {valid_pkg}, got assigned_to={assigned}"
 
 
 @then("the non-existent package should be reported as a warning")
@@ -4346,8 +4335,7 @@ def then_nonexistent_package_reported_as_warning(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: lenient mode should warn about non-existent "
             f"package, but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response in lenient mode"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, "Lenient mode must return per-creative results (POST-S1/S2)"
     first = results[0]
@@ -4380,8 +4368,7 @@ def then_processing_continues_normally(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: lenient mode should continue normally, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response (processing continued)"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, "Expected at least one creative result from a completed sync"
     actions = [str(getattr(getattr(r, "action", None), "value", getattr(r, "action", None))) for r in results]
@@ -4446,8 +4433,7 @@ def then_proceed_without_idempotency(ctx: dict) -> None:
     assert error is None, (
         f"Expected request to proceed without idempotency check, but production raised {type(error).__name__}: {error}"
     )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response when idempotency_key is absent"
+    resp = require_payload(ctx)
     # Verify the response represents a successful sync, not an error envelope
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, (
@@ -4470,8 +4456,7 @@ def then_request_proceed_normally(ctx: dict) -> None:
     """
     error = ctx.get("error")
     assert error is None, f"Expected request to proceed normally, but production raised {type(error).__name__}: {error}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a non-None response for a normal request"
+    resp = require_payload(ctx)
     # Confirm the response is a successful result, not an error envelope
     has_products = getattr(resp, "products", None) is not None
     has_creatives = getattr(resp, "creatives", None) is not None or getattr(resp, "results", None) is not None
@@ -4583,8 +4568,7 @@ def _assert_standard_processing(ctx: dict) -> None:
         pytest.xfail(
             f"SPEC-PRODUCTION GAP: expected 'standard processing' but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response for 'standard processing'"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     actions = [str(getattr(getattr(r, "action", None), "value", getattr(r, "action", None))) for r in results]
     assert any(a in ("created", "updated", "unchanged") for a in actions), (
@@ -4611,8 +4595,7 @@ def _assert_generative_build(ctx: dict, prompt_source: str) -> None:
         pytest.xfail(
             f"SPEC-PRODUCTION GAP: expected 'generative build' but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response for generative build"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     actions = [str(getattr(getattr(r, "action", None), "value", getattr(r, "action", None))) for r in results]
     assert any(a in ("created", "updated") for a in actions), (
@@ -4884,8 +4867,7 @@ def then_invoke_generative_with_asset_prompt(ctx: dict) -> None:
         pytest.xfail(
             f"SPEC-PRODUCTION GAP: expected 'generative build' but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response for generative build"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     actions = [str(getattr(getattr(r, "action", None), "value", getattr(r, "action", None))) for r in results]
     assert any(a in ("created", "updated") for a in actions), (
@@ -5154,8 +5136,7 @@ def then_processed_as_generative(ctx: dict) -> None:
     error = ctx.get("error")
     if error is not None:
         pytest.xfail(f"SPEC-PRODUCTION GAP: expected generative processing but got {type(error).__name__}: {error}")
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response for generative processing"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     actions = [str(getattr(getattr(r, "action", None), "value", getattr(r, "action", None))) for r in results]
     assert any(a in ("created", "updated") for a in actions), (
@@ -5219,8 +5200,7 @@ def then_generative_build_uses_prompt(ctx: dict, expected_prompt: str) -> None:
             f"SPEC-PRODUCTION GAP: expected generative build with prompt "
             f"'{expected_prompt}' but got {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response for generative build"
+    resp = require_payload(ctx)
 
     env = ctx["env"]
     registry = env.mock["registry"].return_value
@@ -5254,8 +5234,7 @@ def then_generative_build_skipped(ctx: dict) -> None:
         pytest.xfail(
             f"SPEC-PRODUCTION GAP: expected generative build to be skipped but got {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response when generative build is skipped"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     actions = [str(getattr(getattr(r, "action", None), "value", getattr(r, "action", None))) for r in results]
     assert any(a in ("updated", "unchanged") for a in actions), (
@@ -5517,8 +5496,7 @@ def then_response_includes_assignment_errors(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: lenient mode should return response with assignment_errors, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, "Expected at least one creative result to check for assignment_errors"
     first = results[0]
@@ -5564,8 +5542,7 @@ def then_creative_associated_with_principal(ctx: dict, principal_id: str) -> Non
             f"SPEC-PRODUCTION GAP: expected creative created for principal '{principal_id}', "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
 
     creative_id = ctx["creatives"][-1]["creative_id"]
     tenant_id = ctx["tenant"].tenant_id
@@ -5656,8 +5633,7 @@ def then_sync_did_not_fail(ctx: dict) -> None:
     """
     error = ctx.get("error")
     assert error is None, f"sync_creatives failed on a cross-principal assignment reference: {error!r}"
-    response = ctx.get("response")
-    assert response is not None, "Expected a sync_creatives response"
+    response = require_payload(ctx)
     entries = {r.creative_id: r for r in (getattr(response, "creatives", None) or [])}
     entry = entries.get("creative-xp")
     assert entry is not None, (
@@ -5704,8 +5680,7 @@ def then_new_creative_created_for_principal(ctx: dict, principal_id: str) -> Non
             f"SPEC-PRODUCTION GAP: expected creative created for principal '{principal_id}', "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
 
     # Assert response has action="created"
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
@@ -5779,8 +5754,7 @@ def then_creative_validated_by_agent(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: expected creative agent validation, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response for agent-validated creative"
+    resp = require_payload(ctx)
 
     # Assert observable outcome: the creative was successfully synced
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
@@ -5820,8 +5794,7 @@ def then_response_includes_one_creative_with_action(ctx: dict, action: str) -> N
             f"SPEC-PRODUCTION GAP: expected one creative with action '{action}', "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one SyncCreativeResult, got empty: {resp}"
 
@@ -6124,8 +6097,7 @@ def then_second_is_idempotent_upsert(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: idempotent upsert should succeed, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response for idempotent upsert"
+    resp = require_payload(ctx)
 
     tenant_id = ctx["tenant"].tenant_id
     creative_id = ctx["creatives"][-1]["creative_id"]
@@ -6195,8 +6167,7 @@ def then_response_includes_creative_with_assignment_results(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: expected creative with assignment results, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one SyncCreativeResult, got empty: {resp}"
     first = results[0]
@@ -6265,7 +6236,7 @@ def then_operation_should_abort_package_not_found(ctx: dict) -> None:
         pytest.xfail(
             "SPEC-PRODUCTION GAP: strict mode with non-existent package should abort "
             "with PACKAGE_NOT_FOUND, but production succeeded without raising. "
-            f"Response: {ctx.get('response')!r}"
+            f"Response: {payload_or_none(ctx)!r}"
         )
 
     assert isinstance(error, AdCPError), f"Expected AdCPError, got {type(error).__name__}: {error}"
@@ -6296,8 +6267,7 @@ def then_assignment_errors_contain_package_id(ctx: dict) -> None:
             f"{type(error).__name__}: {error}"
         )
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response in lenient mode"
+    resp = require_payload(ctx)
 
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Response has no creative results: {resp}"
@@ -6349,7 +6319,7 @@ def then_system_should_reject_validation_error(ctx: dict) -> None:
         pytest.xfail(
             "SPEC-PRODUCTION GAP: invalid validation_mode 'partial' should be rejected "
             "with VALIDATION_ERROR, but production accepted it. Production may not validate "
-            f"the validation_mode enum at input. Response: {ctx.get('response')!r}"
+            f"the validation_mode enum at input. Response: {payload_or_none(ctx)!r}"
         )
 
     # MCP transport: FastMCP TypeAdapter rejects invalid enum before _impl
@@ -6370,6 +6340,10 @@ def then_system_should_reject_validation_error(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: expected error_code in {expected_codes}, "
             f"got '{actual_code}' ({type(error).__name__}: {error})"
         )
+    # The claim this step's text makes, stated on the path that RETURNS. The
+    # xfail above records the known gap; without this the accepted path returned
+    # having graded nothing.
+    assert actual_code in expected_codes, f"expected error_code in {expected_codes}, got {actual_code!r}"
 
 
 @then("preview URLs should be generated")
@@ -6382,8 +6356,7 @@ def then_preview_urls_generated(ctx: dict) -> None:
     error = ctx.get("error")
     assert error is None, f"Expected success but got error: {error}"
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
 
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Response has no creative results: {resp}"
@@ -6426,8 +6399,7 @@ def then_compatible_package_assignment_created(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: expected compatible assignment to succeed, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one SyncCreativeResult, got empty: {resp}"
     first = results[0]
@@ -6458,8 +6430,7 @@ def then_assignment_skipped_with_warning(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: lenient mode should skip and warn, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response (lenient mode should not abort)"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one SyncCreativeResult, got empty: {resp}"
     first = results[0]
@@ -6545,8 +6516,7 @@ def then_assignment_results_list_assigned_packages(ctx: dict) -> None:
         pytest.xfail(
             f"SPEC-PRODUCTION GAP: expected assignment results, but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one SyncCreativeResult, got empty: {resp}"
     first = results[0]
@@ -6572,8 +6542,7 @@ def then_two_assignments_created_successfully(ctx: dict) -> None:
             f"SPEC-PRODUCTION GAP: expected 2 successful assignments, "
             f"but production raised {type(error).__name__}: {error}"
         )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one SyncCreativeResult, got empty: {resp}"
     first = results[0]
@@ -6605,8 +6574,7 @@ def then_response_includes_assignment_errors_for_nonexistent(ctx: dict) -> None:
             f"{type(error).__name__}: {error}"
         )
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response in lenient mode"
+    resp = require_payload(ctx)
 
     results = getattr(resp, "creatives", None) or getattr(resp, "results", None) or []
     assert results, f"Expected at least one SyncCreativeResult, got empty: {resp}"
@@ -6985,16 +6953,14 @@ def then_success_variant_with_creatives(ctx: dict) -> None:
     assert ctx.get("error") is None, (
         f"expected the success variant, but got an operation-level error: {ctx.get('error')!r}"
     )
-    response = ctx.get("response")
-    assert response is not None, "expected a sync_creatives response payload"
+    response = require_payload(ctx)
     assert isinstance(response.creatives, list), f"creatives must be a list, got {type(response.creatives).__name__}"
 
 
 @then(parsers.parse('every creative result has action "{action}"'))
 def then_every_creative_action(ctx: dict, action: str) -> None:
     """Every per-creative result carries the given action (e.g. 'failed')."""
-    response = ctx.get("response")
-    assert response is not None, "expected a sync_creatives response payload"
+    response = require_payload(ctx)
     assert response.creatives, "expected at least one per-creative result"
     actions = [_action_str(c.action) for c in response.creatives]
     assert actions == [action] * len(actions), f"expected every action == {action!r}, got {actions}"
@@ -7008,8 +6974,7 @@ def then_no_operation_level_errors(ctx: dict) -> None:
     unique to the SyncCreativesError variant). Per-creative errors live on each
     result's own `errors`, which is distinct.
     """
-    response = ctx.get("response")
-    assert response is not None, "expected a sync_creatives response payload"
+    response = require_payload(ctx)
     operation_errors = getattr(response, "errors", None)
     assert operation_errors is None, (
         f"success variant must not carry operation-level errors[]; got {operation_errors!r}"
@@ -7047,7 +7012,7 @@ def given_creative_already_synced_with_key(ctx: dict, key: str) -> None:
     when_sync_creative(ctx)
 
     assert ctx.get("error") is None, f"the first sync under idempotency_key {key!r} failed: {ctx['error']}"
-    first = ctx.get("response")
+    first = payload_or_none(ctx)
     assert first is not None, f"the first sync under idempotency_key {key!r} returned no response"
     assert [_action_str(c.action) for c in first.creatives] == ["created"], (
         "the first sync must CREATE the creative so the retry has something to replay; got "
@@ -7084,7 +7049,7 @@ def then_no_changes_list(ctx: dict) -> None:
     None default serializes to the spec-invalid ``null`` on MCP (see the comment
     on that field). Asserting ``is None`` was unsatisfiable by construction.
     """
-    response = ctx.get("response")
+    response = payload_or_none(ctx)
     assert response is not None, "expected a sync_creatives response payload"
     assert response.creatives, "expected at least one per-creative result"
     changes = [c.changes for c in response.creatives]

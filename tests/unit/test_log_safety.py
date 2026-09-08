@@ -112,6 +112,57 @@ class TestRedactPushNotificationConfig:
         for cfg in (_wire_cfg(), _db_cfg()):
             assert _SECRET not in str(redact_push_notification_config(cfg)), cfg
 
+    def test_url_query_and_userinfo_are_dropped_for_every_shape(self) -> None:
+        """A credential can ride in the URL as easily as in the auth block.
+
+        Masking ``authentication`` while printing the raw URL beside it would
+        redact one half of one secret: a bearer token is just as loggable as
+        ``?token=`` or ``https://user:pw@host``. The helper therefore renders
+        ``url`` through ``webhook_url_for_log`` (scheme://host/path), the same
+        renderer the sender's other log lines and
+        ``ValidatedWebhookRegistration.__repr__`` use.
+
+        Deletion oracle: return ``getattr(config, "url", None)`` raw and every
+        assertion below reddens.
+        """
+        query_secret = "QUERY-TOKEN-should-never-be-logged"
+        userinfo_secret = "USERINFO-PW-should-never-be-logged"
+        raw = f"https://buyer:{userinfo_secret}@buyer.example/wh?token={query_secret}"
+
+        for cfg in (_wire_cfg(url=raw), _db_cfg(url=raw)):
+            rendered = str(redact_push_notification_config(cfg))
+            assert query_secret not in rendered, cfg
+            assert userinfo_secret not in rendered, cfg
+            # ... and what survives is still diagnosable, not an empty placeholder.
+            assert "https://buyer.example/wh" in rendered, cfg
+
+    def test_url_of_a_validated_registration_is_sanitized(self) -> None:
+        """The sender is handed a ``ValidatedWebhookRegistration``, not only an ORM row.
+
+        That carrier reaches ``send_notification`` straight from the A2A stash and
+        satisfies :class:`FlatCredentialConfig` structurally. Its own ``__repr__``
+        sanitizes, but the helper must not depend on being handed something whose
+        repr happens to be safe — it is the choke point.
+        """
+        from src.core.webhooks.registration import accept_push_notification_config
+
+        query_secret = "REG-QUERY-TOKEN-should-never-be-logged"
+        registration = accept_push_notification_config(
+            {
+                "url": f"https://buyer.example/wh?token={query_secret}",
+                "authentication": {"schemes": ["Bearer"], "credentials": _SECRET},
+            },
+            field_prefix="push_notification_config",
+        )
+
+        result = redact_push_notification_config(registration)
+
+        assert _SECRET not in str(result)
+        assert query_secret not in str(result)
+        assert result["url"] == "https://buyer.example/wh"
+        assert result["authentication"] == REDACTED
+        assert result["authentication_type"] == "Bearer"
+
     def test_sentinel_is_distinct_from_model_repr_mask(self) -> None:
         """The mask value itself is load-bearing — pinned here, and only here.
 
