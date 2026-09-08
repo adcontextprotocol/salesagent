@@ -18,21 +18,30 @@ from tests.helpers.create_media_buy_capture import capture_a2a_forwarded_pnc, ca
 
 
 class TestMCPWrapperPncJsonSerialization:
-    """MCP wrapper must serialize PushNotificationConfig with mode='json'.
+    """The typed model reaches ``_impl``, and the values it becomes are plain.
 
-    Regression: plain model_dump() preserves AnyUrl objects that SQLAlchemy
-    String columns cannot coerce, raising StatementError at flush.
+    gh-#1377 is the regression these obligations exist for: a pydantic ``AnyUrl``
+    (or an ``AuthenticationScheme`` enum) reaching a SQLAlchemy ``String`` column
+    raises ``StatementError`` at flush. The RISK is unchanged. What Epic D lane
+    C3 changed is WHERE it is prevented.
+
+    Before: each transport wrapper did ``model_dump(mode="json")`` and handed
+    ``_impl`` a dict, so the conversion was a step every wrapper had to remember —
+    and the A2A wrapper's ``else`` branch forgot it entirely, forwarding whatever
+    raw dict the buyer sent.
+    After: the wrapper forwards the TYPED model, and
+    ``ValidatedWebhookRegistration`` performs the conversion once, at the one
+    boundary where wire types become stored primitives. So these cases now assert
+    the model arrives typed AND that what persistence receives is plain — which is
+    the actual obligation, stated at the layer that now owns it.
     """
 
     @pytest.mark.asyncio
     async def test_mcp_wrapper_url_is_plain_str_not_anyurl(self):
-        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-01
-
-        When the MCP wrapper serializes PushNotificationConfig to a dict,
-        the url field must be a plain str (not a Pydantic AnyUrl object) so
-        that SQLAlchemy String columns can persist it without StatementError.
-        """
+        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-01"""
         from adcp import PushNotificationConfig
+
+        from src.core.webhooks.registration import accept_push_notification_config
 
         pnc = PushNotificationConfig(
             url="https://buyer.example.com/webhook",
@@ -41,25 +50,23 @@ class TestMCPWrapperPncJsonSerialization:
         forwarded = await capture_mcp_forwarded_pnc(pnc)
 
         assert forwarded is not None, "MCP wrapper did not forward push_notification_config to _impl"
-        assert isinstance(forwarded, dict), f"push_notification_config must be a dict, got {type(forwarded).__name__}"
+        assert isinstance(forwarded, PushNotificationConfig), (
+            f"_impl must receive the typed model, got {type(forwarded).__name__}"
+        )
 
-        url = forwarded.get("url")
-        assert isinstance(url, str), (
-            f"url must be a plain str after model_dump(mode='json'), got {type(url).__name__!r}. "
-            "This indicates model_dump() was used instead of model_dump(mode='json'), "
-            "which preserves AnyUrl objects and causes SQLAlchemy StatementError."
+        url = accept_push_notification_config(forwarded).to_columns()["url"]
+        assert type(url) is str, (
+            f"the url written to a SQLAlchemy String column must be a PLAIN str, got "
+            f"{type(url).__name__!r} — a pydantic AnyUrl here is gh-#1377 at flush time"
         )
         assert url == "https://buyer.example.com/webhook", f"url value mismatch: {url!r}"
 
     @pytest.mark.asyncio
     async def test_mcp_wrapper_enum_schemes_are_plain_strings(self):
-        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-01
-
-        When the MCP wrapper serializes PushNotificationConfig, enum fields
-        such as authentication.schemes must be plain strings, not enum instances,
-        so SQLAlchemy can persist them without coercion errors.
-        """
+        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-01"""
         from adcp import PushNotificationConfig
+
+        from src.core.webhooks.registration import accept_push_notification_config
 
         pnc = PushNotificationConfig(
             url="https://buyer.example.com/webhook",
@@ -68,31 +75,30 @@ class TestMCPWrapperPncJsonSerialization:
         forwarded = await capture_mcp_forwarded_pnc(pnc)
         assert forwarded is not None
 
-        auth = forwarded.get("authentication", {})
-        schemes = auth.get("schemes", [])
-        for scheme in schemes:
-            assert isinstance(scheme, str), (
-                f"authentication.schemes entries must be plain str after model_dump(mode='json'), "
-                f"got {type(scheme).__name__!r} — enum instances cause SQLAlchemy coercion errors."
-            )
+        columns = accept_push_notification_config(forwarded).to_columns()
+        scheme = columns["authentication_type"]
+        assert type(scheme) is str, (
+            f"authentication_type must be a PLAIN str, got {type(scheme).__name__!r} — "
+            f"AuthenticationScheme is a str SUBCLASS, so it persists but leaks an enum "
+            f"into the DB and JSONB layers"
+        )
+        assert scheme == "Bearer", f"scheme value mismatch: {scheme!r}"
 
 
 class TestA2AWrapperPncJsonSerialization:
-    """A2A wrapper must serialize PushNotificationConfig with mode='json'.
+    """Same obligation on the A2A path, which additionally COERCES a raw dict.
 
-    Regression: plain model_dump() preserves AnyUrl objects that SQLAlchemy
-    String columns cannot coerce, raising StatementError at flush.
+    The A2A wrapper used to pass a raw dict straight through — the untyped seam
+    Epic D lanes 1-3 traced. It now coerces through the pinned model, so a
+    document the schema forbids is refused instead of stored.
     """
 
     @pytest.mark.asyncio
     async def test_a2a_wrapper_url_is_plain_str_not_anyurl(self):
-        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-02
-
-        When the A2A wrapper (create_media_buy_raw) receives a PushNotificationConfig
-        model instance and serializes it to a dict, the url field must be a plain str
-        (not a Pydantic AnyUrl object) so SQLAlchemy String columns can persist it.
-        """
+        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-02"""
         from adcp import PushNotificationConfig
+
+        from src.core.webhooks.registration import accept_push_notification_config
 
         pnc = PushNotificationConfig(
             url="https://buyer.example.com/webhook",
@@ -101,23 +107,25 @@ class TestA2AWrapperPncJsonSerialization:
         forwarded = await capture_a2a_forwarded_pnc(pnc)
 
         assert forwarded is not None, "A2A wrapper did not forward push_notification_config to _impl"
-        assert isinstance(forwarded, dict), f"push_notification_config must be a dict, got {type(forwarded).__name__}"
+        assert isinstance(forwarded, PushNotificationConfig), (
+            f"_impl must receive the typed model, got {type(forwarded).__name__}"
+        )
 
-        url = forwarded.get("url")
-        assert isinstance(url, str), (
-            f"url must be a plain str after model_dump(mode='json'), got {type(url).__name__!r}. "
-            "This indicates model_dump() was used instead of model_dump(mode='json'), "
-            "which preserves AnyUrl objects and causes SQLAlchemy StatementError."
+        url = accept_push_notification_config(forwarded).to_columns()["url"]
+        assert type(url) is str, (
+            f"the url written to a SQLAlchemy String column must be a PLAIN str, got {type(url).__name__!r} — gh-#1377"
         )
         assert url == "https://buyer.example.com/webhook", f"url value mismatch: {url!r}"
 
     @pytest.mark.asyncio
-    async def test_a2a_wrapper_passthrough_dict_unchanged(self):
+    async def test_a2a_wrapper_coerces_a_raw_dict_to_the_typed_model(self):
         """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-02
 
-        When the A2A wrapper receives push_notification_config already as a plain
-        dict (the normal A2A JSON path), it must pass it through unchanged without
-        re-serializing it.
+        This case INVERTED in Epic D lane C3, deliberately. It previously asserted
+        the A2A wrapper passes a raw dict through UNCHANGED — which is precisely
+        the untyped hole that let a schema-invalid registration reach ``_impl``,
+        be stored, and then never deliver. The wrapper now coerces, so the buyer's
+        dict becomes the pinned model or is refused by name.
         """
         pnc_dict = {
             "url": "https://buyer.example.com/webhook",
@@ -125,19 +133,21 @@ class TestA2AWrapperPncJsonSerialization:
         }
         forwarded = await capture_a2a_forwarded_pnc(pnc_dict)
 
+        from adcp import PushNotificationConfig
+
         assert forwarded is not None
-        assert isinstance(forwarded, dict)
-        assert forwarded["url"] == "https://buyer.example.com/webhook"
-        assert forwarded["authentication"]["schemes"] == ["Bearer"]
+        assert isinstance(forwarded, PushNotificationConfig), (
+            f"the A2A wrapper must COERCE a raw dict, not forward it — got {type(forwarded).__name__}"
+        )
+        assert str(forwarded.url) == "https://buyer.example.com/webhook"
+        assert [str(s) for s in forwarded.authentication.schemes] == ["Bearer"]
 
     @pytest.mark.asyncio
     async def test_a2a_wrapper_enum_schemes_are_plain_strings(self):
-        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-02
-
-        When the A2A wrapper serializes a PushNotificationConfig model, enum
-        fields such as authentication.schemes must be plain strings.
-        """
+        """Covers: UC-002-TRANSPORT-PNC-SERIALIZATION-02"""
         from adcp import PushNotificationConfig
+
+        from src.core.webhooks.registration import accept_push_notification_config
 
         pnc = PushNotificationConfig(
             url="https://buyer.example.com/webhook",
@@ -146,10 +156,6 @@ class TestA2AWrapperPncJsonSerialization:
         forwarded = await capture_a2a_forwarded_pnc(pnc)
         assert forwarded is not None
 
-        auth = forwarded.get("authentication", {})
-        schemes = auth.get("schemes", [])
-        for scheme in schemes:
-            assert isinstance(scheme, str), (
-                f"authentication.schemes entries must be plain str after model_dump(mode='json'), "
-                f"got {type(scheme).__name__!r} — enum instances cause SQLAlchemy coercion errors."
-            )
+        scheme = accept_push_notification_config(forwarded).to_columns()["authentication_type"]
+        assert type(scheme) is str, f"authentication_type must be a PLAIN str, got {type(scheme).__name__!r}"
+        assert scheme == "Bearer", f"scheme value mismatch: {scheme!r}"

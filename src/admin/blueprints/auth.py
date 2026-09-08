@@ -30,6 +30,8 @@ from src.core.domain_config import (
     get_super_admin_domain,
     is_sales_agent_domain,
 )
+from src.core.security.outbound_http import OutboundError
+from src.services.google_oauth_client import exchange_authorization_code
 
 logger = logging.getLogger(__name__)
 
@@ -1000,47 +1002,42 @@ def gam_callback():
             callback_uri = url_for("auth.gam_callback", _external=True)
 
         # Exchange authorization code for tokens
-        import requests
 
         logger.info(f"Exchanging authorization code for tokens - tenant: {tenant_id}, callback_uri: {callback_uri}")
         logger.debug(f"Token exchange request - client_id: {gam_config.client_id[:20]}...")
 
-        token_response = requests.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "client_id": gam_config.client_id,
-                "client_secret": gam_config.client_secret,
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": callback_uri,
-            },
-        )
-
-        if not token_response.ok:
-            error_details = (
-                token_response.json()
-                if token_response.headers.get("content-type", "").startswith("application/json")
-                else {"raw": token_response.text}
+        try:
+            token_response = exchange_authorization_code(
+                code,
+                client_id=gam_config.client_id,
+                client_secret=gam_config.client_secret,
+                redirect_uri=callback_uri,
             )
-            logger.error(f"Token exchange failed: status={token_response.status_code}, details={error_details}")
+        except OutboundError as exc:
+            # The seam RAISES on a non-2xx rather than returning one, so what used to
+            # be an `if not token_response.ok` branch is this handler. Google's error
+            # body is not readable here by design — the seam discards a failed
+            # response — so the specific-cause messages below now key off the status.
+            status = exc.http_status
+            logger.error("Token exchange failed: status=%s, error=%s", status, exc)
 
-            # Provide user-friendly error messages based on common issues
-            error_description = error_details.get("error_description", "")
-            if "redirect_uri_mismatch" in str(error_details):
-                flash("OAuth configuration error: Redirect URI mismatch. Please contact your administrator.", "error")
-            elif "invalid_grant" in str(error_details):
-                flash("Authorization code expired or invalid. Please try again.", "error")
-            elif "invalid_client" in str(error_details):
-                flash("Invalid OAuth credentials. Please contact your administrator.", "error")
-            else:
+            # A 400 from this endpoint is one of redirect_uri_mismatch / invalid_grant
+            # / invalid_client, and the three-way message that distinguished them read
+            # Google's body. That body is gone, so the operator gets the actionable
+            # superset rather than a guess at which of the three it was.
+            if status == 400:
                 flash(
-                    f"Failed to exchange authorization code for tokens: {error_description or 'Unknown error'}", "error"
+                    "Google rejected the authorization code. This is usually an expired code, a "
+                    "redirect-URI mismatch, or invalid OAuth credentials — try again, and contact "
+                    "your administrator if it persists.",
+                    "error",
                 )
+            else:
+                flash("Failed to exchange authorization code for tokens.", "error")
 
             return redirect(url_for("tenants.tenant_settings", tenant_id=tenant_id))
 
-        token_data = token_response.json()
-        refresh_token = token_data.get("refresh_token")
+        refresh_token = token_response.refresh_token
 
         if not refresh_token:
             logger.error("No refresh token in OAuth response")

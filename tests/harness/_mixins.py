@@ -10,9 +10,11 @@ Mixins may call ``self._commit_factory_data()`` which is a no-op in unit mode.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Any
-from unittest.mock import MagicMock
+import os
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
+from unittest.mock import MagicMock, patch
 
 from src.adapters.mock_ad_server import simulate_breakdowns
 from src.core.schemas import (
@@ -30,14 +32,164 @@ from src.core.tools.products import _get_products_impl
 from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
 from src.services.webhook_delivery_service import (
     CircuitBreaker,
+    CircuitState,
     WebhookDeliveryService,
 )
 from tests.harness._realize import e2e_unsupported, realize_e2e
+from tests.helpers.egress_hatches import egress_hatch_env
+from tests.helpers.local_http_origin import (
+    LocalOrigin,
+    OriginRequest,
+    OriginResponse,
+    responds,
+    run_local_origin,
+)
+from tests.helpers.test_tls_material import load_gen_test_tls, server_ssl_context
 
-# Patch target for send-time SSRF gate in CircuitBreakerEnv (unit + integration).
-OUTBOUND_SSRF_VALIDATE_TARGET = "src.core.webhook_validator.WebhookURLValidator.validate_outbound_webhook_url"
-# Shared EXTERNAL_PATCHES fragment — both CircuitBreakerEnv variants merge this.
-SSRF_EXTERNAL_PATCH: dict[str, str] = {"ssrf": OUTBOUND_SSRF_VALIDATE_TARGET}
+
+def _e2e_capture_url(env: Any) -> str:
+    """E2E realization of :attr:`LocalOriginMixin.webhook_url` (#2098).
+
+    In process the endpoint is a loopback origin on the runner. The Docker server
+    cannot reach that, so under e2e the endpoint is the compose stack's
+    long-lived ``webhook-capture`` service, addressed through the shared TLS
+    front exactly as a production receiver would be.
+    """
+    from tests.e2e._webhook_capture import delivery_url_for
+
+    return delivery_url_for(env._capture_key)
+
+
+def _e2e_reject_next(env: Any, count: int, status: int = 418) -> None:
+    """E2E realization of :meth:`LocalOriginMixin.reject_next`.
+
+    Programs the capture service's per-key rejection run over its plain-HTTP
+    control plane, the same side of the house as reading captures back.
+    """
+    from tests.e2e._webhook_capture import program_rejections
+
+    program_rejections(env._capture_key, status=status, count=count)
+
+
+# Long enough to outlast any scenario's retry schedule (3 attempts x a handful of
+# deliveries), short enough to stay a number rather than a promise.
+_E2E_UNBOUNDED_RUN = 1000
+
+
+def _e2e_set_http_status(env: Any, code: int, text: str = "") -> None:
+    """E2E realization of :meth:`LocalOriginMixin.set_http_status`.
+
+    The capture service's control plane speaks a rejection RUN -- ``status`` for
+    the next ``count`` deliveries, then 200 again -- so the two answers this
+    method's callers actually ask for are both expressible:
+
+    * a healthy endpoint (``2xx``) is a run of length ZERO;
+    * a failing endpoint is a run long enough to outlast the scenario. The
+      in-process meaning is "every attempt, forever"; over e2e that is a finite
+      but generous run, because the control plane counts.
+
+    ``text`` is dropped: the capture service answers a status, not a body, and no
+    scenario asserts on that body over e2e.
+    """
+    from tests.e2e._webhook_capture import program_rejections
+
+    program_rejections(env._capture_key, status=code, count=0 if 200 <= code < 300 else _E2E_UNBOUNDED_RUN)
+
+
+def _e2e_set_http_sequence(env: Any, responses: list) -> None:
+    """E2E realization of :meth:`LocalOriginMixin.set_http_sequence`.
+
+    Only the shape the control plane can express: ``N`` copies of one failing
+    status followed by a success, which is what every scenario using this step
+    asks for ("fails on first attempt but succeeds on second"). A sequence with
+    two DIFFERENT failure statuses, or one ending in a failure, is a genuinely
+    different program and raises rather than being approximated -- an approximated
+    endpoint would grade a scenario nobody wrote.
+    """
+    from tests.e2e._webhook_capture import program_rejections
+
+    statuses = [item[0] if isinstance(item, tuple) else None for item in responses]
+    if None in statuses:
+        raise NotImplementedError(
+            "set_http_sequence over e2e_rest accepts (status, text) pairs only; a full "
+            "OriginResponse (hangs_up / malformed body / delay) has no control-plane "
+            "expression on the capture service. See prebid/salesagent#2098."
+        )
+    failing = [code for code in statuses if not 200 <= code < 300]
+    if len(set(failing)) > 1:
+        raise NotImplementedError(
+            f"set_http_sequence over e2e_rest expresses ONE failing status repeated, then "
+            f"success; this sequence mixes {sorted(set(failing))}. See prebid/salesagent#2098."
+        )
+    if failing and not 200 <= statuses[-1] < 300:
+        raise NotImplementedError(
+            "set_http_sequence over e2e_rest expresses a run of failures FOLLOWED BY success; "
+            "this sequence ends on a failure, which the control plane cannot hold open. "
+            "See prebid/salesagent#2098."
+        )
+    program_rejections(env._capture_key, status=failing[0] if failing else 200, count=len(failing))
+
+
+class _CapturedDelivery:
+    """One delivery the compose stack's capture service received.
+
+    The capture service stores the parsed JSON PAYLOAD and nothing else -- no
+    headers, no raw bytes -- so this exposes ``.json()`` and refuses the rest BY
+    NAME rather than returning an empty dict that a signature assertion would
+    read as "no signature header". An assertion that cannot run over e2e must say
+    so; one that quietly passes on absent evidence is worse than one that errors.
+    """
+
+    __slots__ = ("_payload",)
+
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def json(self) -> dict:
+        return self._payload
+
+    @property
+    def headers(self) -> Any:
+        raise AttributeError(
+            "the webhook-capture service records the delivery PAYLOAD only, not its headers, "
+            "so header assertions (signature, auth) cannot run over e2e_rest. Grade them "
+            "in-process, or give the capture service header storage (prebid/salesagent#2098)."
+        )
+
+    @property
+    def body(self) -> bytes:
+        raise AttributeError(
+            "the webhook-capture service records the PARSED payload, not the raw bytes on the "
+            "wire, so byte-equality assertions (HMAC over the exact body) cannot run over "
+            "e2e_rest. Grade them in-process (prebid/salesagent#2098)."
+        )
+
+
+def _e2e_delivered_requests(env: Any) -> list[_CapturedDelivery]:
+    """E2E realization of :attr:`LocalOriginMixin.delivered_requests`."""
+    from tests.e2e._webhook_capture import ReceivedView
+
+    return [_CapturedDelivery(payload) for payload in ReceivedView(env._capture_key)]
+
+
+def _e2e_last_delivery(env: Any) -> _CapturedDelivery:
+    """E2E realization of :attr:`LocalOriginMixin.last_delivery`."""
+    delivered = _e2e_delivered_requests(env)
+    if not delivered:
+        raise AssertionError("no webhook delivery reached the capture service")
+    return delivered[-1]
+
+
+def _e2e_delivery_attempts(env: Any) -> int:
+    """E2E realization of :attr:`LocalOriginMixin.delivery_attempts`.
+
+    Counts what the capture service actually received. A rejected delivery is
+    still recorded, so this counts ATTEMPTS the server made — which is what
+    "and no further attempt arrives" needs in order to mean anything.
+    """
+    from tests.e2e._webhook_capture import ReceivedView
+
+    return len(ReceivedView(env._capture_key))
 
 
 def _persist_simulation_config(env: Any, resp: AdapterGetMediaBuyDeliveryResponse) -> Any:
@@ -264,44 +416,265 @@ class DeliveryPollMixin:
         )
 
 
-class WebhookMixin:
+class LocalOriginMixin:
+    """A REAL local HTTP origin, shared by every webhook-delivery env.
+
+    The webhook envs used to patch the transport itself — ``requests.post`` in
+    one env, ``httpx.Client`` in another — which made the tests a description of
+    *how* delivery is currently implemented rather than of what delivery does.
+    Migrating production onto ``src.core.security.outbound_http`` deletes both of
+    those symbols, so every one of those tests would have had to be rewritten as
+    part of the migration, which is exactly when a rewrite is least trustworthy.
+
+    An origin that actually serves HTTP is neutral to that choice: it answered
+    ``requests.post`` before the migration and answers
+    ``src.core.security.outbound_http.send`` now, and the assertions — how many
+    requests arrived, with which headers, carrying which bytes — mean the same
+    thing under both. That is why this landed before the migration rather than
+    with it.
+
+    The origin serves real TLS off the generated CA/leaf (the primitive from
+    #1757, reused here — never a second mechanism), so it no longer needs the
+    scheme hatch, which the same issue deleted entirely; the private-range
+    hatch stays open for the duration of the env because the origin
+    necessarily listens on loopback, which the seam refuses by default —
+    opening it here is the same statement the seam's own integration tests
+    make with ``set_flags(private=True)``. ``SSL_CERT_FILE`` is scoped to the
+    origin's lifetime only (patched and restored alongside it, not left
+    ambient for the rest of the env), pointed at the COMBINED CA bundle (system
+    + private) so any other outbound work inside the same scenario keeps
+    trusting real public roots too.
+    """
+
+    _origin: LocalOrigin
+
+    @property
+    def origin(self) -> LocalOrigin:
+        """The in-process local origin -- IN-PROCESS ONLY, and it says so.
+
+        This was a bare class annotation, so every read under e2e raised an
+        anonymous ``AttributeError: 'CircuitBreakerEnv' object has no attribute
+        'origin'`` from wherever it happened to be reached. That is how the
+        cascade in #1802 happened: one step read it, the env then failed to
+        unbind the factory session, and 5 failures became 443.
+
+        A named failure instead. It does not make the attribute REACHABLE over
+        e2e -- programming the capture service's responses is
+        prebid/salesagent#2098's work -- but it removes the anonymous form, and
+        it tells the reader which accessor answers the same question on both
+        transports.
+        """
+        if self.is_e2e:  # type: ignore[attr-defined]
+            raise AttributeError(
+                "env.origin is the IN-PROCESS local origin and does not exist under e2e_rest, "
+                "where the endpoint is the compose stack's webhook-capture service. Read through "
+                "a realize-aware accessor instead (delivery_attempts / delivered_requests / "
+                "last_delivery), or program the endpoint through reject_next. Making the "
+                "response-programming setters work over e2e is prebid/salesagent#2098."
+            )
+        return self._origin
+
+    # -- Lifecycle ----------------------------------------------------------
+
+    if TYPE_CHECKING:
+        # Declared, not implemented. This mixin is only ever composed with
+        # BaseTestEnv, which owns the cleanup registry; the requirement used to
+        # be spelled as a bare ``_patchers: list`` annotation and this is the
+        # same statement for the method that replaced it.
+        def _guard(self, label: str, cleanup: Callable[[], None]) -> None: ...
+
+    def _enter_pre(self) -> None:
+        """Acquire the TLS origin BEFORE the base binds the DB and configures mocks.
+
+        Pre, not post: ``CircuitBreakerEnv._configure_mocks`` programs
+        ``self.origin``, so the origin has to exist by then.
+
+        Every resource is registered with ``_guard`` on the line it is acquired,
+        so a failure part-way through releases exactly what was started —
+        no defensive ``getattr`` teardown, and nothing survives a failed enter.
+        Release is LIFO, which reproduces the old hatches -> origin -> ssl order.
+        """
+        super()._enter_pre()  # type: ignore[misc]
+        if self.is_e2e:  # type: ignore[attr-defined]
+            # No local origin under e2e: it would listen on the runner's loopback,
+            # which the Docker server cannot reach — that unreachability is the
+            # whole defect #2098 exists to fix. The endpoint is the compose
+            # stack's webhook-capture service instead, addressed by a fresh
+            # per-scenario key so concurrent scenarios never share captures.
+            from tests.e2e._webhook_capture import register_capture_key
+
+            self._capture_key, _ = register_capture_key()
+            return
+
+        gen_test_tls = load_gen_test_tls()
+        gen_test_tls.ensure_test_tls()
+        self._ssl_cert_file = patch.dict(os.environ, {"SSL_CERT_FILE": str(gen_test_tls.COMBINED_CERT)})
+        self._ssl_cert_file.start()
+        self._guard("ssl_cert_file", self._ssl_cert_file.stop)
+
+        self._origin_ctx = run_local_origin(ssl_context=server_ssl_context(gen_test_tls))
+        self._origin = self._origin_ctx.__enter__()
+        self._guard("local_origin", self._exit_origin)
+
+        self._egress_hatches = patch.dict(os.environ, egress_hatch_env(private=True))
+        self._egress_hatches.start()
+        self._guard("egress_hatches", self._egress_hatches.stop)
+
+    def _exit_origin(self) -> None:
+        """Close the origin context, discarding ``__exit__``'s suppression verdict.
+
+        A cleanup returns nothing: the registry is releasing resources, not
+        handling the exception, and letting a context manager's bool leak into
+        that position would silently mean "suppressed".
+        """
+        self._origin_ctx.__exit__(None, None, None)
+
+    # -- The endpoint under test -------------------------------------------
+
+    @property
+    @realize_e2e(_e2e_capture_url)
+    def webhook_url(self) -> str:
+        """The endpoint every webhook test targets.
+
+        In process, the running local origin. Over e2e, the compose stack's
+        webhook-capture service — the only endpoint the Docker server can reach.
+        """
+        return f"{self.origin.base_url}/webhook"
+
+    # -- Programming the endpoint to FAIL ------------------------------------
+
+    @realize_e2e(_e2e_reject_next)
+    def reject_next(self, count: int, status: int = 418) -> None:
+        """Answer the next ``count`` deliveries with ``status``, then 200 again.
+
+        The one way a scenario makes deliveries fail for real, on every
+        transport. In process the origin answers a sequence whose last entry
+        repeats; over e2e the capture service is programmed with the same run.
+
+        ``status`` defaults to a terminal, non-retryable 4xx on purpose. A
+        retryable 5xx (``_RETRYABLE_STATUSES``, src/core/security/egress/attempts.py)
+        multiplies the request count by the attempt schedule and adds seconds of
+        real backoff per failure, so "the endpoint received exactly 5 attempts"
+        would stop being countable.
+        """
+        self.set_http_sequence([(status, "")] * count + [(200, "")])
+
+    # -- Programming the endpoint ------------------------------------------
+
+    @realize_e2e(_e2e_set_http_status)
+    def set_http_status(self, code: int, text: str = "") -> None:
+        """Answer every attempt with ``code`` and ``text`` as the body."""
+        self.origin.respond_with(code, body=(text or f"Status {code}").encode())
+
+    @realize_e2e(_e2e_set_http_sequence)
+    def set_http_sequence(self, responses: list[tuple[int, str] | OriginResponse]) -> None:
+        """Answer each attempt with the next entry; the last entry repeats.
+
+        An entry is either ``(status_code, text)`` or a full ``OriginResponse``
+        (``hangs_up()``, ``sends_malformed_body()``, ``responds(..., delay_seconds=...)``)
+        so a sequence can express recovery from a genuine transport fault, not
+        just from an unhappy status code.
+        """
+        self.origin.respond_in_sequence(
+            [
+                item if isinstance(item, OriginResponse) else responds(item[0], body=item[1].encode())
+                for item in responses
+            ]
+        )
+
+    def set_http_error(self) -> None:
+        """Accept every attempt and then drop the connection without answering."""
+        self.origin.close_without_responding()
+
+    # -- Observing what actually arrived ------------------------------------
+
+    @property
+    @realize_e2e(_e2e_delivery_attempts)
+    def delivery_attempts(self) -> int:
+        """How many requests the endpoint actually received.
+
+        Over e2e this is a fresh readback of the capture service on every access,
+        so a count that has stopped growing is a live observation rather than a
+        cached one.
+        """
+        return self.origin.hits
+
+    @property
+    @realize_e2e(_e2e_delivered_requests)
+    def delivered_requests(self) -> list[OriginRequest]:
+        """Every request the endpoint received, oldest first."""
+        return self.origin.requests
+
+    @property
+    @realize_e2e(_e2e_last_delivery)
+    def last_delivery(self) -> OriginRequest:
+        """The most recent request the endpoint received."""
+        return self.origin.last_request
+
+
+class WebhookOutcomeRowsMixin:
+    """Read back the ``webhook_delivery_log`` rows a sender concluded with.
+
+    Shared by the two senders' envs (``CircuitBreakerEnv``,
+    ``ProtocolWebhookEnv``) because "what did production write down about this
+    delivery" is one question, and the whole point of the lane in #1802 is
+    that both senders must answer it through ONE recorder. A per-env copy of
+    this read is how the two answers would be allowed to drift.
+
+    The read goes through :class:`~src.core.database.repositories.delivery.DeliveryRepository`
+    rather than a raw ``select()``: the repository is the tenant-scoped data
+    access layer, and grading the recorder against a query the grader wrote
+    itself would only prove the grader and the writer agree about columns.
+    """
+
+    def make_media_buy(self, **overrides: Any) -> Any:
+        """Create the ``MediaBuy`` row the delivery log's foreign key requires.
+
+        ``webhook_delivery_log.media_buy_id`` references ``media_buys``, so a
+        delivery-log assertion against a media buy that does not exist would
+        grade nothing: the writers swallow the integrity error and log it,
+        leaving zero rows and no exception.
+        """
+        from tests.factories import MediaBuyFactory
+
+        tenant, principal = self.setup_default_data()  # type: ignore[attr-defined]
+        return MediaBuyFactory(tenant=tenant, principal=principal, **overrides)
+
+    def recorded_outcomes(
+        self,
+        media_buy_id: str,
+        *,
+        task_type: str,
+        status: str | None = None,
+    ) -> list[Any]:
+        """The delivery-log rows a sender recorded for ``media_buy_id``.
+
+        ``task_type`` is REQUIRED, not optional. ``media_buy_delivery.py``
+        persists ``task_type="delivery_poll"`` counter rows that are also
+        ``status="success"`` on the same ``media_buy_id``; a read that did not
+        filter would let a grader for "the sender recorded a success" pass on a
+        row no sender wrote.
+
+        The senders commit through their own ``get_db_session()``, so the
+        env-bound session must drop what it has cached or it answers from its
+        identity map.
+        """
+        from src.core.database.repositories.delivery import DeliveryRepository
+
+        session = self.get_session()  # type: ignore[attr-defined]
+        session.expire_all()
+        repo = DeliveryRepository(session, self._tenant_id)  # type: ignore[attr-defined]
+        return repo.get_logs_by_webhook_id(media_buy_id, task_type=task_type, status=status)
+
+
+class WebhookMixin(LocalOriginMixin):
     """Shared fluent API for webhook delivery testing."""
 
     _seq_counter: dict[str, int]
 
-    def set_http_status(self, code: int, text: str = "") -> None:
-        """Configure requests.post to return a single response with the given status."""
-        mock_response = MagicMock()
-        mock_response.status_code = code
-        mock_response.text = text or f"Status {code}"
-        self.mock["post"].return_value = mock_response  # type: ignore[attr-defined]
-        self.mock["post"].side_effect = None  # type: ignore[attr-defined]
-
-    def set_http_sequence(self, responses: list[tuple[int, str]]) -> None:
-        """Configure requests.post to return a sequence of responses.
-
-        Args:
-            responses: List of (status_code, text) tuples.
-        """
-        mocks = []
-        for code, text in responses:
-            r = MagicMock()
-            r.status_code = code
-            r.text = text
-            mocks.append(r)
-        self.mock["post"].side_effect = mocks  # type: ignore[attr-defined]
-
-    def set_http_error(self, exception: Exception) -> None:
-        """Make requests.post raise the given exception."""
-        self.mock["post"].side_effect = exception  # type: ignore[attr-defined]
-
-    def set_url_invalid(self, error_msg: str = "Invalid URL") -> None:
-        """Make URL validation fail, short-circuiting delivery."""
-        self.mock["validate"].return_value = (False, error_msg)  # type: ignore[attr-defined]
-
     def call_deliver(
         self,
-        webhook_url: str = "https://example.com/webhook",
+        webhook_url: str | None = None,
         payload: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         signing_secret: str | None = None,
@@ -321,8 +694,15 @@ class WebhookMixin:
         ``notification_type`` / ``next_expected_at``.  This mirrors the payload
         shape that ``WebhookDeliveryService`` produces so that BDD Then steps can
         assert on payload fields without requiring the full service stack.
+
+        ``webhook_url`` defaults to the running local origin, so a test that
+        does not care where delivery goes gets a destination that really
+        answers. Passing an explicit URL is how a test targets somewhere the
+        origin is NOT — e.g. a cloud-metadata address, which production's own
+        URL policy refuses before any request leaves.
         """
         self._commit_factory_data()  # type: ignore[attr-defined]
+        webhook_url = webhook_url if webhook_url is not None else self.webhook_url
         mb = media_buy_id or "mb_001"
 
         # Per-media-buy sequence counter (simulates WebhookDeliveryService behaviour)
@@ -352,6 +732,7 @@ class WebhookMixin:
             payload=payload,
             headers=headers,
             signing_secret=signing_secret,
+            authentication_scheme="HMAC-SHA256" if signing_secret else None,
             max_retries=max_retries,
             timeout=timeout,
             event_type=event_type,
@@ -365,7 +746,7 @@ class WebhookMixin:
         return self.call_deliver(**kwargs)
 
 
-class CircuitBreakerMixin:
+class CircuitBreakerMixin(LocalOriginMixin):
     """Shared fluent API for circuit breaker / webhook delivery service testing."""
 
     _service: WebhookDeliveryService | None
@@ -381,45 +762,105 @@ class CircuitBreakerMixin:
         return CircuitBreaker(**kwargs)
 
     def set_http_response(self, status_code: int) -> None:
-        """Configure the httpx Client mock to return the given status code."""
-        mock_response = MagicMock()
-        mock_response.status_code = status_code
-        self.mock["client"].return_value.__enter__.return_value.post.return_value = mock_response  # type: ignore[attr-defined]
+        """Answer every attempt with the given status code."""
+        self.set_http_status(status_code)
 
-    def set_http_status(self, code: int, text: str = "") -> None:
-        """Alias for set_http_response — BDD steps use this name consistently."""
-        self.set_http_response(code)
+    def endpoint_key(self, tenant_id: str | None = None) -> str:
+        """The per-endpoint circuit-breaker key production derives for this origin.
 
-    def set_http_sequence(self, responses: list[tuple[int, str]]) -> None:
-        """Configure httpx Client to return a sequence of responses."""
-        mocks = []
-        for code, text in responses:
-            r = MagicMock()
-            r.status_code = code
-            r.text = text
-            mocks.append(r)
-        self.mock["client"].return_value.__enter__.return_value.post.side_effect = mocks  # type: ignore[attr-defined]
-
-    def set_url_invalid(self, error_msg: str = "Invalid URL") -> None:
-        """Make send-time SSRF validation fail (skip delivery / record failure).
-
-        Default harness config passes the SSRF mock so fixture hostnames do not
-        NXDOMAIN-fail; scenarios that grade the outbound reject branch must call
-        this hook explicitly.
+        Production keys breakers on ``f"{tenant_id}:{config.url}"``. The origin's
+        port is only known at runtime, so a test cannot spell that key as a
+        literal; deriving it here keeps the one place it is built.
         """
-        self.mock["ssrf"].return_value = (False, error_msg)  # type: ignore[attr-defined]
+        return f"{tenant_id or self._tenant_id}:{self.webhook_url}"  # type: ignore[attr-defined]
 
-    def set_url_valid(self) -> None:
-        """Allow fixture hostnames through send-time SSRF (default harness path)."""
-        self.mock["ssrf"].return_value = (True, "")  # type: ignore[attr-defined]
+    # -- Circuit-breaker seam ------------------------------------------------
+    #
+    # The harness owns exactly ONE private-state seam on the breaker, used for
+    # SEEDING and for driving the OPEN->HALF_OPEN transition. Production exposes
+    # a public READER (``get_circuit_breaker_state``) but no public setter, and
+    # a test must be able to start from a given breaker state without spending
+    # real failures to get there — so the write side lives here, in the harness,
+    # and NOWHERE else. Every state READ that an assertion depends on goes
+    # through :meth:`breaker_snapshot`, i.e. through the production public API.
+    #
+    # Enforced by tests/unit/test_architecture_bdd_wire_discipline.py's
+    # ``test_no_private_circuit_breaker_state_in_steps`` (permanently empty
+    # allowlist): no step under tests/bdd/steps/ may touch ``_circuit_breakers``.
 
-    def _configure_ssrf_default(self) -> None:
-        """Default: allow fixture hostnames through send-time SSRF (DNS covered elsewhere).
+    def _breaker_for(self, endpoint_key: str) -> CircuitBreaker:
+        """The breaker production would use for *endpoint_key*, creating it if absent.
 
-        Scenarios that grade the reject branch call set_url_invalid(). Both
-        CircuitBreakerEnv variants must call this from ``_configure_mocks``.
+        THE single private-state touch. Everything else in this seam goes
+        through it, so there is one line to audit rather than six.
         """
-        self.set_url_valid()
+        service = self.get_service()
+        if endpoint_key not in service._circuit_breakers:
+            service._circuit_breakers[endpoint_key] = CircuitBreaker()
+        return service._circuit_breakers[endpoint_key]
+
+    def seed_breaker_failures(self, endpoint_key: str, n: int) -> None:
+        """Record *n* consecutive failures, as production's own arithmetic would.
+
+        Uses ``record_failure`` rather than assigning ``failure_count``: the
+        breaker decides what n failures MEAN (including whether they open it),
+        and a test that set the count directly would be asserting against its
+        own arithmetic instead of production's.
+        """
+        breaker = self._breaker_for(endpoint_key)
+        for _ in range(n):
+            breaker.record_failure()
+
+    def set_breaker_state(self, endpoint_key: str, state: str) -> None:
+        """Force the breaker into *state* ('OPEN' | 'HALF_OPEN' | 'CLOSED').
+
+        A Given that names a state is describing where the scenario STARTS, not
+        something production just did — so this is a seed, not an assertion, and
+        the state it sets is read back through :meth:`breaker_snapshot`.
+        """
+        self._breaker_for(endpoint_key).state = CircuitState[state.upper()]
+
+    def elapse_breaker_timeout(self, endpoint_key: str, seconds: int = 61) -> None:
+        """Age the last failure past the breaker's recovery timeout.
+
+        Moves the CLOCK rather than the state: production decides what an
+        elapsed timeout means (OPEN -> HALF_OPEN on the next ``can_attempt``),
+        and a test that set HALF_OPEN directly would skip the transition it
+        means to exercise.
+        """
+        self._breaker_for(endpoint_key).last_failure_time = datetime.now(UTC) - timedelta(seconds=seconds)
+
+    def drive_breaker_transition(self, endpoint_key: str) -> None:
+        """Drive the breaker's OPEN -> HALF_OPEN transition. Returns nothing.
+
+        ``can_attempt()`` is not a pure read: it is where an OPEN breaker whose
+        timeout has elapsed becomes HALF_OPEN, so a scenario that says "the
+        timeout elapsed, now evaluate" must call it to get the transition. It is
+        called here for that side effect alone.
+
+        The verdict is deliberately DISCARDED, not returned. Asserting on it
+        would grade the gate's own opinion of itself, which is unfalsifiable
+        across a process boundary — under e2e_rest the breaker being consulted
+        is the test process's, not the server's.
+
+        Observe the CONSEQUENCE instead. :meth:`breaker_snapshot` is the better
+        state read, because it goes through the production public API rather
+        than the private dict — but it resolves the same test-process breaker,
+        so it does not escape that boundary either. The only observation that
+        does is what the endpoint actually saw: an admitted probe, a delivery
+        count.
+        """
+        self._breaker_for(endpoint_key).can_attempt()
+
+    def breaker_snapshot(self, endpoint_url: str | None = None) -> tuple[CircuitState, int]:
+        """(state, failure_count) for *endpoint_url*, via the PRODUCTION public API.
+
+        The ONLY read path. Delegates to
+        :meth:`WebhookDeliveryService.get_circuit_breaker_state` so that what a
+        test observes is what production exposes — a read of the private dict
+        could report state production has no way to surface.
+        """
+        return self.get_service().get_circuit_breaker_state(endpoint_url or self.webhook_url)  # type: ignore[attr-defined]
 
     def call_send(
         self,
@@ -495,26 +936,74 @@ class CircuitBreakerMixin:
         return self.call_send(**kwargs)
 
     def get_breaker_state(self) -> str:
-        """Return circuit breaker state for this tenant's endpoints.
+        """Return the circuit-breaker state this env's tenant is in.
 
-        Scans all circuit breakers keyed to this tenant and returns the
-        worst observed state: 'open' > 'half_open' > 'closed'.
+        Reads through the production public API only, which shapes what it can
+        say: ``has_open_circuit_breaker`` answers "is ANY breaker under this
+        tenant OPEN", and ``get_circuit_breaker_state`` answers per-URL. So this
+        returns OPEN when any of the tenant's breakers is open, and otherwise the
+        state of THIS env's own ``webhook_url``.
+
+        That is narrower than the previous private-dict scan, which returned the
+        worst state across every key under the tenant prefix: a HALF_OPEN breaker
+        on some OTHER url now reads 'closed' here. Inert for every current caller
+        (these envs drive a single origin), and stated rather than left for a
+        reader to discover — production exposes no public "worst state for a
+        tenant" reader, and inventing one to preserve a test-only scan would put
+        test convenience into production.
+
+        Callers: then_circuit_breaker_state, then_circuit_breaker_transition,
+        then_circuit_healthy.
 
         Returns:
             State string: 'closed', 'open', or 'half_open'
         """
-        from src.services.webhook_delivery_service import CircuitState
-
         service = self.get_service()
-        tenant_prefix = f"{self._tenant_id}:"  # type: ignore[attr-defined]
-        worst = CircuitState.CLOSED
-        for key, cb in service._circuit_breakers.items():
-            if key.startswith(tenant_prefix):
-                if cb.state == CircuitState.OPEN:
-                    return CircuitState.OPEN.value
-                if cb.state == CircuitState.HALF_OPEN:
-                    worst = CircuitState.HALF_OPEN
-        return worst.value
+        if service.has_open_circuit_breaker(self._tenant_id):  # type: ignore[attr-defined]
+            return CircuitState.OPEN.value
+        state, _ = self.breaker_snapshot()
+        return state.value
+
+    @realize_e2e(
+        e2e_unsupported(
+            "the seam's BR-RULE-029 retry-schedule sleep count is process-local "
+            "(env.mock['sleep']), not observable across the Docker HTTP boundary"
+        )
+    )
+    def assert_no_retry_schedule_entered(self) -> None:
+        """Prove a refusal happened pre-flight, before any retry/backoff attempt.
+
+        In-process only — declared e2e-unsupported (see the decorator).
+        """
+        backoff_waits = self.mock["sleep"].call_count  # type: ignore[attr-defined]
+        assert backoff_waits == 0, (
+            f"Expected the refusal to happen before any connection attempt, but the seam's retry "
+            f"schedule was entered {backoff_waits} time(s) — the destination was dialled, not refused"
+        )
+
+    @realize_e2e(
+        e2e_unsupported(
+            "get_service() constructs a fresh in-process WebhookDeliveryService under e2e_rest, "
+            "disconnected from the live server's real circuit-breaker state — no wire surface"
+        )
+    )
+    def assert_circuit_breaker_failure_recorded(self, endpoint_key: str) -> None:
+        """Prove the circuit breaker recorded a failure for *endpoint_key*.
+
+        In-process only — declared e2e-unsupported (see the decorator).
+
+        Reads through the production public getter, which returns ``(CLOSED, 0)``
+        for an endpoint it has NO breaker for. So "no breaker was ever created"
+        and "a breaker exists with zero failures" are indistinguishable here,
+        where the previous private-dict read could tell them apart. The assertion
+        below is unaffected — it demands ``>= 1``, which both of those fail — but
+        the diagnostic can no longer say which one happened.
+        """
+        _state, failure_count = self.breaker_snapshot(endpoint_key)
+        assert failure_count >= 1, (
+            f"Expected failure_count >= 1 after SSRF rejection for {endpoint_key!r}, got {failure_count} — "
+            "the refusal did not reach the breaker, so a destination we cannot deliver to still looks healthy"
+        )
 
 
 class ProductMixin:

@@ -44,11 +44,21 @@ def _expected_response_data(
     ``build_two_layer_error_envelope`` — the same function the production code
     now uses — so the test asserts on EXACTLY the dict shape
     ``update_workflow_step`` will receive.
+
+    ``recovery`` is no longer passed to the constructor (it is a read-only
+    derived property). It is still a REQUIRED argument here, and is asserted
+    against the value the derivation produces: that keeps every caller stating
+    the pair it expects, so a derivation that silently moved would redden these
+    tests rather than quietly agreeing with itself.
     """
     from src.core.exceptions import AdCPError, build_two_layer_error_envelope
 
-    exc = AdCPError(message, field=field, details=details, recovery=recovery)
+    exc = AdCPError(message, field=field, details=details)
     exc.error_code = code
+    assert exc.recovery == recovery, (
+        f"expected {code} to derive recovery {recovery!r}, got {exc.recovery!r} — "
+        "the test's stated expectation and the pin disagree"
+    )
     return build_two_layer_error_envelope(exc)
 
 
@@ -101,6 +111,39 @@ class TestFailWorkflowStepForExceptionWebhookPayload:
             status="failed",
             error_message="kaboom",
             response_data=_expected_response_data("SERVICE_UNAVAILABLE", "kaboom", recovery="transient"),
+        )
+
+    def test_non_standard_wire_code_is_sanitized_with_the_pinned_recovery(self):
+        """A code outside WIRE_STANDARD_CODES is rewritten, and takes the PIN's recovery.
+
+        This is the helper's defensive sanitization branch, and it is the only
+        path that reaches it: the sibling test above starts from a bare
+        RuntimeError, whose INTERNAL_ERROR maps to SERVICE_UNAVAILABLE and so is
+        already standard — the branch is skipped. A source carrying a code with no
+        mapping entry at all is what enters it.
+
+        The rewrite used to hand-type ``recovery="terminal"`` onto the
+        SERVICE_UNAVAILABLE it substitutes — a pair the pinned enumMetadata
+        contradicts, since that code is classified ``transient``. Webhook
+        subscribers read this envelope verbatim, so the contradiction was
+        buyer-visible: a subscriber classifying by code saw "retry with backoff"
+        and one classifying by recovery saw "stop". Sanitizing the CODE is this
+        branch's whole job; the recovery follows from the code it chose.
+        """
+        from src.core.exceptions import AdCPError
+
+        cm, mock_update = _new_ctx_manager_with_mocked_update()
+
+        source = AdCPError("upstream exploded")
+        source.error_code = "TOTALLY_NON_STANDARD_CODE"
+
+        cm.audit_workflow_step_failure("step_sanitize", source)
+
+        mock_update.assert_called_once_with(
+            "step_sanitize",
+            status="failed",
+            error_message="upstream exploded",
+            response_data=_expected_response_data("SERVICE_UNAVAILABLE", "upstream exploded", recovery="transient"),
         )
 
     def test_empty_exception_message_falls_back_to_type_name(self):

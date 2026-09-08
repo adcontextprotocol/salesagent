@@ -40,7 +40,7 @@ import asyncio
 import pytest
 from pytest_bdd import given, parsers, then, when
 
-from tests.bdd.steps._outcome_helpers import is_e2e, wire_dict
+from tests.bdd.steps._outcome_helpers import is_e2e, payload_or_none, wire_dict
 from tests.bdd.steps.domain.uc006_sync_creatives import (
     _E2E_AGENT_URL,
     _E2E_FORMAT_ID,
@@ -291,7 +291,15 @@ def when_sync_creative_with_captured_format_id(ctx: dict) -> None:
 
 
 def _require_response(ctx: dict, expectation: str) -> object:
-    """Return ``ctx["response"]``, or FAIL — a dispatch error is never a "known gap".
+    """Return the dispatch's typed payload, or FAIL — a dispatch error is never a "known gap".
+
+    Reads the dispatch's own ``TransportResult`` through ``payload_or_none``, so
+    the value arrives WITH its provenance instead of as a detached payload copy
+    that cannot tell a wire fact from an in-process reconstruction (enforced by
+    ``tests/unit/test_architecture_bdd_wire_discipline.py`` Check D).
+    ``payload_or_none`` — not ``require_payload`` — because the expectation-aware
+    diagnostic below is the whole point of this helper: it names WHAT was
+    expected and forbids swallowing the failure.
 
     This replaces a ``_response_or_xfail`` helper that turned ANY dispatch
     failure into a green xfail. Its docstring argued that an operation-level
@@ -305,7 +313,7 @@ def _require_response(ctx: dict, expectation: str) -> object:
     escape hatch inside a step body. So this asserts, and a real gap is ledgered
     by tag instead.
     """
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     err = ctx.get("error")
     assert resp is not None, (
         f"Expected {expectation}, but the dispatch produced no response "
@@ -317,7 +325,7 @@ def _require_response(ctx: dict, expectation: str) -> object:
 
 
 def _first_creative_result(ctx: dict, expectation: str) -> object:
-    """Return the first per-creative result off ``ctx['response'].creatives``.
+    """Return the first per-creative result off the dispatch payload's ``creatives``.
 
     ASSERTS on absence rather than xfailing it: an empty ``creatives``
     list means the seller returned no per-creative result at all, which is a

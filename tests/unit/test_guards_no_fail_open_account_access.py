@@ -20,10 +20,8 @@ The existing ``test_architecture_no_handrolled_identity_guard`` only scans
 import ast
 
 from tests.unit._architecture_helpers import (
-    REPO_ROOT,
     assert_detector_catches_ast_snippets,
-    parse_module,
-    src_python_files,
+    scan_src,
 )
 
 
@@ -64,10 +62,9 @@ def find_fail_open_access_violations(tree: ast.Module) -> list[int]:
 
 
 def test_no_fail_open_account_access_in_src():
-    violations: list[str] = []
-    for path in src_python_files(REPO_ROOT):
-        for lineno in find_fail_open_access_violations(parse_module(path)):
-            violations.append(f"{path.relative_to(REPO_ROOT)}:{lineno}")
+    violations = [
+        f"{path}:{lineno}" for path, lines in scan_src(find_fail_open_access_violations).items() for lineno in lines
+    ]
     assert not violations, (
         "Fail-open account-access check(s) found — a falsy principal_id skips the "
         "has_access authorization. Obtain the principal via require_principal_id"

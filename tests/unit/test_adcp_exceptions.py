@@ -338,12 +338,24 @@ class TestRecoveryClassification:
         exc = AdCPServiceUnavailableError("product temporarily unavailable")
         assert exc.recovery == "transient"
 
-    def test_recovery_can_be_overridden_per_instance(self):
-        """Callers can override recovery for specific raise sites."""
+    def test_recovery_cannot_be_overridden_per_instance(self):
+        """A raise site cannot choose a recovery — it chooses a CLASS.
+
+        REPLACES test_recovery_can_be_overridden_per_instance, which pinned the
+        exact behaviour this epic exists to remove: a free ``recovery=`` kwarg let
+        a call site pair any code with any classification, and the wire carried
+        the contradiction (SERVICE_UNAVAILABLE + terminal) with a green test
+        grading it. The contract is excised, so the test that pinned it is
+        replaced rather than deleted — what was "callers can" is now "callers
+        cannot", asserted the only way an excised argument can be.
+        """
         from src.core.exceptions import AdCPValidationError
 
-        exc = AdCPValidationError("permanent schema mismatch", recovery="terminal")
-        assert exc.recovery == "terminal"
+        with pytest.raises(TypeError):
+            AdCPValidationError("permanent schema mismatch", recovery="terminal")
+
+        # And the derived value stands on its own: VALIDATION_ERROR is pinned correctable.
+        assert AdCPValidationError("permanent schema mismatch").recovery == "correctable"
 
     def test_to_dict_includes_recovery(self):
         """to_dict() must include recovery field in serialized output."""
@@ -354,13 +366,17 @@ class TestRecoveryClassification:
         assert "recovery" in d
         assert d["recovery"] == "correctable"
 
-    def test_to_dict_includes_overridden_recovery(self):
-        """to_dict() must serialize overridden recovery value."""
+    def test_to_dict_serializes_the_derived_recovery(self):
+        """to_dict() serializes the classification the code derives.
+
+        REPLACES test_to_dict_includes_overridden_recovery. There is no overridden
+        value to serialize any more; what must hold is that the serializer reports
+        the pin's answer for the wire code, which is what a buyer reads.
+        """
         from src.core.exceptions import AdCPAdapterError
 
-        exc = AdCPAdapterError("permanent config error", recovery="terminal")
-        d = exc.to_dict()
-        assert d["recovery"] == "terminal"
+        exc = AdCPAdapterError("permanent config error")
+        assert exc.to_dict()["recovery"] == "transient"  # SERVICE_UNAVAILABLE, pinned
 
 
 # ---------------------------------------------------------------------------

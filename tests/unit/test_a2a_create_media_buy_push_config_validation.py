@@ -113,6 +113,40 @@ async def test_short_webhook_credentials_do_not_block_create_media_buy():
         "authentication": {"schemes": ["Bearer"], "credentials": "test-webhook-token"},
     }, f"push_notification_config not forwarded to tool: {captured.get('push_notification_config')!r}"
 
+    # ── Epic D lane C3 (salesagent-fo99.3): what changed, and what did not ──
+    # The assertions above still hold: the HANDLER must not fold
+    # push_notification_config into CreateMediaBuyRequest.model_validate and
+    # short-circuit the whole request. That was gh-#1299's actual defect and it
+    # stays fixed.
+    #
+    # What DID change is one frame lower, and this test could not see it because
+    # it patches core_create_media_buy_tool — the very function that now coerces.
+    # Left unextended it would stay VACUOUSLY GREEN while production reversed.
+    #
+    # Pinned AdCP 3.1.1 (core/push-notification-config.json) gives
+    # authentication.credentials minLength 32, so an 18-char credential is
+    # schema-invalid. Before C3 the untyped A2A path forwarded it, stored it, and
+    # then the fail-closed sender refused to deliver — accept-then-never-deliver.
+    # It is now refused AT INGEST, correctably, naming the exact field. Owner
+    # decision recorded on salesagent-fo99.3 ("tighten to spec"); #1299's real
+    # concern is honoured because the buyer gets a precise field, not an opaque
+    # whole-request rejection.
+    from src.core.exceptions import AdCPValidationError
+    from src.core.tools.media_buy_create import create_media_buy_raw
+
+    with pytest.raises(AdCPValidationError) as refusal:
+        await create_media_buy_raw(
+            **{k: v for k, v in params.items() if k != "push_notification_config"},
+            push_notification_config={
+                "url": "http://localhost:9999/webhook",
+                "authentication": {"schemes": ["Bearer"], "credentials": "test-webhook-token"},
+            },
+            identity=identity,
+        )
+    assert refusal.value.field == "push_notification_config.authentication.credentials", (
+        f"a short webhook credential must be refused by NAME at ingest, not opaquely; got field={refusal.value.field!r}"
+    )
+
     # The handler must return the tool's result (manual-approval submitted),
     # not a VALIDATION_ERROR dict.
     if isinstance(result, dict):

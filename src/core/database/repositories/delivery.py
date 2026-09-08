@@ -14,13 +14,35 @@ handles commit/rollback at the boundary.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.core.database.models import WebhookDeliveryLog, WebhookDeliveryRecord
+from src.core.webhooks.delivery import WebhookDeliveryOutcome, WebhookTaskContext
+
+# The ``task_type`` that marks a row as the delivery-poll sequence counter rather
+# than a delivery. Named here because the repository owns what the row means; a
+# caller spelling it is how it started looking like an outcome.
+POLL_SEQUENCE_TASK_TYPE = "delivery_poll"
+
+# ``webhook_delivery_log.webhook_url`` is NOT NULL and a sequence-counter row has
+# no destination. The scheme is deliberately not http(s): nothing may ever mistake
+# this for something that was, or could be, dialled.
+_POLL_SEQUENCE_PLACEHOLDER_URL = "delivery_poll://internal"
+
+# How each :class:`WebhookDeliveryOutcome` kind is written down. A kind absent
+# from this map records NO row — today that is ``refused_auth`` alone, and the
+# absence is the ruling, not an oversight (see :meth:`record_outcome`).
+_OUTCOME_STATUS: dict[str, str] = {
+    "delivered": "success",
+    "refused_destination": "refused",
+    "client_error": "failed",
+    "exhausted": "failed",
+}
 
 
 class DeliveryRepository:
@@ -226,7 +248,129 @@ class DeliveryRepository:
     # WebhookDeliveryLog writes
     # ------------------------------------------------------------------
 
-    def create_log(
+    def record_outcome(
+        self,
+        *,
+        ctx: WebhookTaskContext,
+        log_id: str,
+        webhook_url: str,
+        outcome: WebhookDeliveryOutcome,
+        response_time_ms: int | None = None,
+    ) -> None:
+        """Write down what became of one webhook delivery. The ONLY outcome writer.
+
+        Both senders conclude here. Before this existed, the only persisted
+        recorder was a private fourteen-parameter method on ONE sender, reachable
+        from nothing else, and it ran on failure paths only — so "did this webhook
+        conclude, and how" was answerable for one sender, half the time. The other
+        sender wrote nothing at all. Two senders each re-deriving the encoding is
+        how a refusal came to be spelled the same as a delivery the buyer's
+        endpoint actually rejected.
+
+        The kind -> row mapping lives here, once:
+
+        ============================  ==========  ===============================
+        ``outcome.kind``              ``status``  ``attempt_count``
+        ============================  ==========  ===============================
+        ``delivered``                 success     ``outcome.attempts``
+        ``refused_destination``       refused     ``outcome.attempts`` — always 0
+        ``client_error``              failed      ``outcome.attempts``
+        ``exhausted``                 failed      ``outcome.attempts``
+        ``refused_auth``              *no row*    —
+        ============================  ==========  ===============================
+
+        ``attempt_count`` is the outcome's own count, never re-derived from the
+        kind: a refusal arrives with ``attempts=0`` because nothing was attempted
+        (``webhook_egress._outcome_for_outbound_error``), and a recorder that
+        second-guessed that would be one more place the two could disagree.
+
+        ``refused_destination`` gets its own status value rather than reusing
+        ``"failed"``: a destination refused before a connection was opened is not
+        a delivery that failed on the wire, and an operator who cannot tell those
+        apart cannot tell a misconfigured URL from a flaky endpoint. It is a
+        String column, so this is a new value and not a migration.
+
+        ``refused_auth`` writes NOTHING, deliberately: the buyer registered an
+        authentication this sender cannot produce, so no request was ever built.
+        A row claiming an attempt would misreport a refusal as a delivery that
+        failed on the wire. The buyer-actionable refusal already happened at
+        registration time.
+
+        Silently writes nothing when ``ctx`` is not log-eligible — that gate
+        (:attr:`WebhookTaskContext.records_delivery_log`) used to be spelled once
+        per branch at each sender.
+
+        Does NOT commit, and does NOT open a session — the caller owns the
+        transaction boundary, exactly one per conclusion.
+        """
+        status = _OUTCOME_STATUS.get(outcome.kind)
+        if status is None or not ctx.records_delivery_log:
+            return
+
+        # records_delivery_log already requires all three of these truthy; the
+        # assert only narrows mypy's view from str | None to str (it cannot
+        # narrow through a property call) and can never fire.
+        assert ctx.tenant_id and ctx.principal_id and ctx.media_buy_id and ctx.task_type
+
+        self._create_log(
+            log_id=log_id,
+            principal_id=ctx.principal_id,
+            media_buy_id=ctx.media_buy_id,
+            webhook_url=webhook_url,
+            task_type=ctx.task_type,
+            status=status,
+            attempt_count=outcome.attempts,
+            sequence_number=ctx.sequence_number,
+            notification_type=ctx.notification_type,
+            http_status_code=outcome.http_status,
+            error_message=outcome.detail,
+            payload_size_bytes=outcome.payload_size_bytes,
+            response_time_ms=response_time_ms,
+            completed_at=datetime.now(UTC),
+        )
+
+    def record_poll_sequence(
+        self,
+        *,
+        principal_id: str,
+        media_buy_id: str,
+        sequence_number: int,
+        notification_type: str | None,
+    ) -> None:
+        """Persist the per-media-buy delivery-poll sequence counter.
+
+        This row is NOT a delivery outcome and never was: nothing was sent, no
+        destination exists, and ``webhook_url`` is a placeholder. It exists only
+        so the next poll can read ``get_max_sequence_number`` and continue the
+        count. It is spelled as its own method — rather than smuggled through
+        the outcome writer, or through a public ``create_log`` kept alive "for
+        that one caller" — because a writer whose name does not say what the row
+        IS is precisely how this row came to look like a delivery.
+
+        WRITE-ONLY, and deliberately NOT atomic: the caller still reads
+        :meth:`get_max_sequence_number` and passes ``max + 1``. Folding the read
+        and the write together here would be a behavior change (a real
+        reservation) that this method is not introducing.
+
+        ``log_id`` is generated here because callers have nothing to say about
+        it: :meth:`_create_log` upserts on ``id`` via ``merge()``, so a stable or
+        derived id would silently turn insert-per-poll into update-in-place. A
+        fresh uuid per call preserves today's behavior exactly.
+
+        Does NOT commit — the caller handles that.
+        """
+        self._create_log(
+            log_id=str(uuid4()),
+            principal_id=principal_id,
+            media_buy_id=media_buy_id,
+            webhook_url=_POLL_SEQUENCE_PLACEHOLDER_URL,
+            task_type=POLL_SEQUENCE_TASK_TYPE,
+            status="success",
+            sequence_number=sequence_number,
+            notification_type=notification_type,
+        )
+
+    def _create_log(
         self,
         *,
         log_id: str,
@@ -251,6 +395,14 @@ class DeliveryRepository:
         service updates the same log entry across retry attempts).
 
         Does NOT commit — the caller handles that.
+
+        PRIVATE. It is the single construction site for ``WebhookDeliveryLog``,
+        and it is private so that it stays that way: a public writer taking
+        fifteen loose keyword arguments is what let a *sequence counter* and a
+        *delivery outcome* be written as the same kind of thing by callers that
+        each decided for themselves what ``status`` and ``task_type`` meant.
+        Callers use :meth:`record_outcome` or :meth:`record_poll_sequence`,
+        which name what the row IS.
         """
         log_entry = WebhookDeliveryLog(
             id=log_id,

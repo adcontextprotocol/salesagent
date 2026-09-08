@@ -1,0 +1,156 @@
+# Egress import bans for the shipped tree (GH #1589).
+#
+# Run as its own quality line: `uv run ruff check --config ruff-egress.toml
+# --no-respect-gitignore src/ scripts/` (see Makefile `quality` / `quality-ci`).
+#
+# Scope: `src/` and `scripts/` — the code this repo ships and operates with.
+# `tests/` is deliberately out: tests import httpx/requests freely (TestClient,
+# annotations, local origins); the seam architecture governs production egress,
+# not test tooling. `alembic/` is deliberately out too: verified zero violations
+# under this config and zero `src/` imports of it, and `ipaddress` has legitimate
+# migration uses (CIDR columns), so extending there only invites false positives.
+#
+# `--no-respect-gitignore` is load-bearing, not decoration: ruff's directory walk
+# honors `.gitignore`, which hid the git-tracked `scripts/ops/sync_all_tenants.py`
+# from the scan (GH #1802 round-3 F2). The flag makes the walk indifferent to a
+# later `.gitignore` edit re-opening that hole.
+#
+# Residual, accepted and named: a dynamic import (`importlib.import_module("httpx")`)
+# evades this table. The threat model is honest drift, not an adversarial author —
+# and no in-repo gate survives its own author. CLAUDE.md pattern #9 forbids adding
+# a second RUNTIME egress mechanism to cover it.
+#
+# This table replaces the deleted AST scans #1 (raw network libs) and #2
+# (SDK/MCP client constructors) of tests/unit/test_architecture_no_raw_egress.py.
+# Non-vacuity is proven executable by tests/unit/test_ruff_egress_bans.py: every
+# entry must fire on every resolving import spelling; and the set of SUPPRESSED
+# violations is computed by ruff itself (`--ignore-noqa`), not by a regex that
+# mirrors ruff's noqa syntax — so every suppression spelling ruff honors is
+# visible to the proof by construction, and the exempt set is closed to the
+# recorded constant there.
+#
+# Symbol bans enumerate EVERY resolving import path (banned-api matches the
+# written path textually — a single-path ban is bypassable via re-exports).
+
+[lint]
+select = ["TID251", "ANN401"]
+
+# ANN401 (`Any` in a signature) is scoped to the outbound chain, not all of src/.
+#
+# `Any` is not a type, it is an opt-out of type checking: assignable to and from
+# everything by definition. So it is the one value the seam's own signatures
+# CANNOT make unrepresentable. `send`/`asend` declare `json: JsonValue | None`,
+# but a NEW forwarder declaring `json: Any` and passing it straight through
+# type-checks clean, and mypy reports Success while a `datetime` reaches the
+# wire (GH #1802 / GH #1802). That is the same defect pldmk.23 just
+# removed from `VendorHttpClient.call` -- eliminated at every existing site,
+# while remaining writable at the next one.
+#
+# The negated glob is what makes this a class-level ban rather than a list of
+# known files: a forwarder added to a NEW module under either directory is
+# covered on the day it is written. src/ as a whole is 209 violations and not
+# this backstop's business; these two directories are 25.
+# ---------------------------------------------------------------------------
+# EXEMPTIONS LIVE HERE, and only here.
+#
+# The gate runs with `--ignore-noqa` (Makefile), which makes `# noqa` INERT for
+# this config. That is the point: a file cannot exempt itself. The only way to
+# be exempt is a row below, which lands in a reviewed diff instead of in a
+# comment nobody sees.
+#
+# The cost, stated: these rows are FILE-granular where a noqa was line-granular.
+# That is the trade for deleting the ~150 lines of machinery that used to audit
+# whether every scattered noqa was recorded and still live — the audit is
+# unnecessary once self-exemption is impossible rather than merely detectable
+# (GH #1802).
+#
+# Rows only ever leave this list. Adding one is a review conversation.
+# ---------------------------------------------------------------------------
+[lint.per-file-ignores]
+# ANN401 is scoped to the outbound chain, not all of src/.
+"!{src/core/security,src/adapters}/**" = ["ANN401"]
+
+# TID251 — the sanctioned importers of what the seam wraps. A seam architecture
+# must have exactly these; the set is a floor, not debt.
+"src/core/security/outbound_http.py" = ["TID251"]
+"src/core/security/egress/policy.py" = ["TID251"]
+"src/core/utils/mcp_client.py" = ["TID251"]
+
+# TID251 — scripts/ debt, NOT a seam. Retire these, do not grow them.
+#   gen_test_tls.py      builds certificate IP SANs, not address classification
+#   sync_all_tenants.py  ops-plane self-call to a hardcoded loopback URL; the
+#                        seam refuses loopback by design, so routing it through
+#                        the seam would be wrong rather than safer
+"scripts/dev/gen_test_tls.py" = ["TID251"]
+"scripts/ops/sync_all_tenants.py" = ["TID251"]
+
+# ANN401 — `Any` that PREDATES the ban: **kwargs response stubs, -> Any decode
+# returns, and genuinely dynamic logging/serializer inputs. Shrinks only.
+"src/adapters/base_inventory.py" = ["ANN401"]
+"src/adapters/broadstreet/client.py" = ["ANN401"]
+"src/adapters/gam/managers/targeting.py" = ["ANN401"]
+"src/adapters/gam/utils/error_handler.py" = ["ANN401"]
+"src/adapters/gam/utils/formatters.py" = ["ANN401"]
+"src/adapters/gam/utils/logging.py" = ["ANN401"]
+"src/adapters/gam_orders_discovery.py" = ["ANN401"]
+"src/adapters/xandr.py" = ["ANN401"]
+"src/core/security/egress/response.py" = ["ANN401"]
+"src/core/security/webhook_strict_json.py" = ["ANN401"]
+
+[lint.flake8-tidy-imports.banned-api]
+# --- Module bans: the bare import fires, so verb/class enumeration is moot ---
+"httpx".msg = "Outbound HTTP goes through src/core/security/outbound_http.py (send/asend) — the seam owns address, TLS, redirect and retry policy (GH #1589)."
+"requests".msg = "Outbound HTTP goes through src/core/security/outbound_http.py (send/asend) — the seam owns address, TLS, redirect and retry policy (GH #1589)."
+"aiohttp".msg = "aiohttp is a dropped dependency; outbound HTTP goes through src/core/security/outbound_http.py (GH #1589)."
+"urllib.request".msg = "Outbound HTTP goes through src/core/security/outbound_http.py (send/asend), never urlopen (GH #1589)."
+"httpcore".msg = "Outbound HTTP goes through src/core/security/outbound_http.py (send/asend) — the seam owns address, TLS, redirect and retry policy (GH #1589)."
+"urllib3".msg = "Outbound HTTP goes through src/core/security/outbound_http.py (send/asend) — the seam owns address, TLS, redirect and retry policy (GH #1589)."
+"http.client".msg = "Outbound HTTP goes through src/core/security/outbound_http.py (send/asend) — the seam owns address, TLS, redirect and retry policy (GH #1589)."
+"httpx2".msg = "Outbound HTTP goes through src/core/security/outbound_http.py (send/asend) — the seam owns address, TLS, redirect and retry policy (GH #1589)."
+"httpcore2".msg = "Outbound HTTP goes through src/core/security/outbound_http.py (send/asend) — the seam owns address, TLS, redirect and retry policy (GH #1589)."
+
+# Recorded non-additions (2026-08-31, GH #1802 round-3 F1). Deliberate, not
+# oversight — re-argue before adding:
+#   websockets                     — not HTTP-shaped; no feature uses it.
+#   socket / asyncio.open_connection — raw TCP is not an honest-mistake path to
+#                                    HTTP; `socket.gethostbyname` IS banned below
+#                                    because resolve-then-check is.
+#   ftplib / smtplib               — not HTTP.
+#   xmlrpc.client                  — rides `http.client`, banned above.
+
+# --- MCP transports: construct via the MCP seam (src/core/utils/mcp_client.py),
+# which validates the URL once and pins it with guarded_client_factory ---
+"fastmcp.client.transports.StreamableHttpTransport".msg = "Construct via src.core.utils.mcp_client.create_mcp_client — the MCP seam pins the validated URL with src.core.security.outbound_http.guarded_client_factory (GH #1589)."
+"fastmcp.client.StreamableHttpTransport".msg = "Construct via src.core.utils.mcp_client.create_mcp_client — the MCP seam pins the validated URL with src.core.security.outbound_http.guarded_client_factory (GH #1589)."
+"fastmcp.client.transports.http.StreamableHttpTransport".msg = "Construct via src.core.utils.mcp_client.create_mcp_client — the MCP seam pins the validated URL with src.core.security.outbound_http.guarded_client_factory (GH #1589)."
+"fastmcp.client.transports.SSETransport".msg = "Construct via src.core.utils.mcp_client.create_mcp_client — the MCP seam pins the validated URL with src.core.security.outbound_http.guarded_client_factory (GH #1589)."
+"fastmcp.client.SSETransport".msg = "Construct via src.core.utils.mcp_client.create_mcp_client — the MCP seam pins the validated URL with src.core.security.outbound_http.guarded_client_factory (GH #1589)."
+"fastmcp.client.transports.sse.SSETransport".msg = "Construct via src.core.utils.mcp_client.create_mcp_client — the MCP seam pins the validated URL with src.core.security.outbound_http.guarded_client_factory (GH #1589)."
+
+# --- adcp SDK clients: constructing one dials, on an un-pinned path (adcp 6.6.0
+# exposes no transport injection point — tracked by GH #1589) ---
+"adcp.ADCPClient".msg = "Constructing an adcp client dials un-pinned (no transport injection point in adcp 6.6.0). Sanctioned sites carry a line-scoped noqa; see tests/unit/test_ruff_egress_bans.py (GH #1589)."
+"adcp.client.ADCPClient".msg = "Constructing an adcp client dials un-pinned (no transport injection point in adcp 6.6.0). Sanctioned sites carry a line-scoped noqa; see tests/unit/test_ruff_egress_bans.py (GH #1589)."
+"adcp.ADCPMultiAgentClient".msg = "Constructing an adcp client dials un-pinned (no transport injection point in adcp 6.6.0). Sanctioned sites carry a line-scoped noqa; see tests/unit/test_ruff_egress_bans.py (GH #1589)."
+"adcp.client.ADCPMultiAgentClient".msg = "Constructing an adcp client dials un-pinned (no transport injection point in adcp 6.6.0). Sanctioned sites carry a line-scoped noqa; see tests/unit/test_ruff_egress_bans.py (GH #1589)."
+
+# --- adcp SDK signer footgun: discards the body bytes it signs, so its own
+# docstring's recommended usage reintroduces the signed-bytes-vs-wire-bytes
+# divergence bug (GH #1802 / GH #1095) ---
+"adcp.webhooks.get_adcp_signed_headers_for_webhook".msg = "Discards the signed body bytes -- its own docstring example re-sends json=payload separately, reintroducing the signed-bytes-vs-wire-bytes divergence bug (GH #1802). Sign and send via src/core/security/outbound_http.py's send/asend with the signed byte string, not this helper."
+"adcp.get_adcp_signed_headers_for_webhook".msg = "Discards the signed body bytes -- its own docstring example re-sends json=payload separately, reintroducing the signed-bytes-vs-wire-bytes divergence bug (GH #1802). Sign and send via src/core/security/outbound_http.py's send/asend with the signed byte string, not this helper."
+
+# --- Address classification: owned by adcp.signing + the egress package's
+# own supplement/blocklist (src/core/security/egress/policy.py). Reinventing
+# either outside that one file is the disease #1589's own triage (F1) found:
+# a second range set added five CIDRs with no check going red. ---
+"ipaddress".msg = "Address classification belongs to adcp.signing + src/core/security/egress/policy.py's supplement/blocklist (GH #1589, adcontextprotocol/adcp-client-python#974). A second copy outside the egress package is the exact disease this backstop exists to prevent."
+"socket.gethostbyname".msg = "Resolve-then-check is a TOCTOU the egress package does not use (adcp.signing pins the resolved IP in one step). Address classification belongs to src/core/security/egress/policy.py (GH #1589)."
+
+# --- fastmcp.Client itself: `Client(url)` INFERS an un-pinned
+# StreamableHttpTransport from a bare URL (verified at runtime), so banning the
+# transports without banning the constructor that manufactures one leaves the
+# hole open. The seam passes transport= only. ---
+"fastmcp.Client".msg = "Client(url) infers an un-pinned StreamableHttpTransport from a bare URL. Construct via src.core.utils.mcp_client.create_mcp_client, which passes a factory-pinned transport (GH #1589)."
+"fastmcp.client.Client".msg = "Client(url) infers an un-pinned StreamableHttpTransport from a bare URL. Construct via src.core.utils.mcp_client.create_mcp_client, which passes a factory-pinned transport (GH #1589)."
+"fastmcp.client.client.Client".msg = "Client(url) infers an un-pinned StreamableHttpTransport from a bare URL. Construct via src.core.utils.mcp_client.create_mcp_client, which passes a factory-pinned transport (GH #1589)."

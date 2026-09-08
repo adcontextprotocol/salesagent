@@ -42,7 +42,7 @@ import src.app as app_module
 from src.app import app_lifespan
 from src.core import lifecycle
 from src.services import protocol_webhook_service
-from src.services.protocol_webhook_service import ProtocolWebhookService, get_protocol_webhook_service
+from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 pytestmark = pytest.mark.integration
 
@@ -86,37 +86,39 @@ def _prime_real_connection_pool(session: requests.Session) -> object:
     return adapter.poolmanager
 
 
-async def test_lifespan_closes_real_webhook_session_pool(isolated_global_app_state):
-    """The real lifespan shutdown must release the real requests.Session pool.
+async def test_lifespan_awaits_every_registered_shutdown_callback(isolated_global_app_state):
+    """The real lifespan shutdown must AWAIT the callbacks the registry holds.
 
-    Constructs the REAL service through ``get_protocol_webhook_service()`` so it
-    self-registers with the REAL lifecycle registry. Primes a real connection
-    pool, runs the genuine ASGI lifespan (real startup including
-    ``_install_admin_mounts``, then shutdown), and asserts the real poolmanager
-    was emptied by production's ``run_all_shutdown_callbacks()`` -> ``close()``.
+    Repointed by salesagent-cnkq. This used to prime a real
+    ``requests.Session`` pool on ProtocolWebhookService and assert the lifespan
+    emptied it. That service now builds and discards a per-destination pinned
+    transport, so it owns no pool and registers nothing — with it went the last
+    producer in ``src/``, and with that, mutation (b) ("skip register_shutdown on
+    construction"): a test that registers the callback itself can only grade the
+    drain, not any production registration. Coverage here is honestly 2 of the
+    original 3 mutations, not 3.
 
-    Fails under mutation (a) (no await -> coroutine never runs -> pool intact)
-    and mutation (b) (no register_shutdown -> close never invoked).
+    What still matters, and is still graded: the lifespan must AWAIT what the
+    registry holds. Fails under mutation (a) — drop the ``await`` and the
+    coroutine never runs.
     """
-    protocol_webhook_service._webhook_service = None
     lifecycle._shutdown_callbacks.clear()
-    service = get_protocol_webhook_service()  # self-registers close
+    awaited: list[str] = []
 
-    poolmanager = _prime_real_connection_pool(service._session)
-    assert len(poolmanager.pools) >= 1, "precondition: a real connection pool must be cached before shutdown"
+    async def _close() -> None:
+        awaited.append("closed")
+
+    lifecycle.register_shutdown(_close)
 
     app = FastAPI(lifespan=app_lifespan)
     async with LifespanManager(app):
-        # Startup ran the real _install_admin_mounts(); pool intact mid-lifespan.
-        assert len(poolmanager.pools) >= 1, "pool must survive until shutdown"
-    # Exiting LifespanManager ran the real shutdown phase -> real close().
+        # Startup ran the real _install_admin_mounts(); nothing drained yet.
+        assert awaited == [], "callbacks must not run until the shutdown phase"
 
-    assert len(poolmanager.pools) == 0, (
-        "FastAPI lifespan shutdown did not release the ProtocolWebhookService "
-        "requests.Session connection pool. PR #1264 fix #3 regression: the real "
-        f"poolmanager still holds {len(poolmanager.pools)} pool(s). The shutdown "
-        "hook either did not await run_all_shutdown_callbacks() or the service "
-        "never self-registered its close callback."
+    assert awaited == ["closed"], (
+        "FastAPI lifespan shutdown did not await the registered callback. "
+        "Either app_lifespan dropped its await of run_all_shutdown_callbacks(), "
+        "or the registry did not invoke what it held."
     )
 
 
@@ -137,46 +139,64 @@ async def test_lifespan_safe_when_no_callbacks_registered(isolated_global_app_st
     assert protocol_webhook_service._webhook_service is None
 
 
-class _RaisingCloseSession(requests.Session):
-    """A REAL ``requests.Session`` whose ``close()`` raises — not a mock.
+async def test_constructing_the_webhook_service_registers_no_shutdown_callback(isolated_global_app_state):
+    """Constructing the webhook service must leave the shutdown registry empty.
 
-    Subclassing the real ``Session`` keeps every other behaviour real while
-    letting the test prove the registry's per-callback ``try/except`` actually
-    swallows a failing ``close()``. ``super().close()`` still runs (real pool
-    release) before the simulated failure.
-    """
+    ``ProtocolWebhookService`` holds a long-lived ``requests.Session`` today and
+    self-registers ``close`` to release it. The egress-seam migration
+    (salesagent-cnkq) removes the session, because
+    ``build_ip_pinned_transport`` resolves its destination at construction and
+    refuses to connect anywhere else — so there can be no client that outlives a
+    single delivery, and therefore nothing left to close at shutdown.
 
-    close_calls = 0
+    This grades the removal from the outside, at the registry, rather than by
+    naming the attribute that goes away: a service that still holds a pooled
+    client under some other name would still have to register a close callback
+    to be correct, and would still fail here.
 
-    def close(self) -> None:  # type: ignore[override]
-        type(self).close_calls += 1
-        super().close()
-        raise RuntimeError("simulated requests.Session.close() failure")
-
-
-async def test_lifespan_swallows_webhook_close_errors(isolated_global_app_state):
-    """A failing ``close()`` must be logged and swallowed, never escape the lifespan.
-
-    Registers a real ``ProtocolWebhookService`` whose real ``Session`` subclass
-    raises in ``close()``. The registry's per-callback ``try/except`` must
-    contain it so ``LifespanManager`` exits normally. Fails under mutation (c)
-    (try/except removed -> ``RuntimeError`` propagates out of ``LifespanManager``).
+    The real ASGI lifespan runs afterwards to pin the other half of the
+    requirement — the app starts and stops cleanly with the hook gone.
+    ``test_lifespan_safe_when_no_callbacks_registered`` grades an EMPTY registry
+    that nothing ever tried to fill; this grades a registry that the webhook
+    service was constructed against.
     """
     protocol_webhook_service._webhook_service = None
     lifecycle._shutdown_callbacks.clear()
-    service = ProtocolWebhookService()
-    service._session = _RaisingCloseSession()
-    protocol_webhook_service._webhook_service = service
-    lifecycle.register_shutdown(service.close)
-    _RaisingCloseSession.close_calls = 0
+
+    get_protocol_webhook_service()
+
+    assert lifecycle._shutdown_callbacks == [], (
+        "constructing ProtocolWebhookService registered a shutdown callback: "
+        f"{lifecycle._shutdown_callbacks}. Nothing survives a single delivery any more, "
+        "so there is nothing for the lifespan to release."
+    )
+
+    app = FastAPI(lifespan=app_lifespan)
+    async with LifespanManager(app):
+        pass
+
+
+async def test_lifespan_swallows_a_failing_shutdown_callback(isolated_global_app_state):
+    """A failing callback must be logged and swallowed, never escape the lifespan.
+
+    Repointed by salesagent-cnkq for the same reason as the drain test above: the
+    webhook service no longer has a ``close()`` to make raise. The contract under
+    test is the registry's, not that service's — one bad callback must not take
+    the process down at shutdown. Fails under mutation (c) (per-callback
+    try/except removed -> the error propagates out of ``LifespanManager``).
+    """
+    lifecycle._shutdown_callbacks.clear()
+    calls: list[str] = []
+
+    async def _raising_close() -> None:
+        calls.append("called")
+        raise RuntimeError("close failed")
+
+    lifecycle.register_shutdown(_raising_close)
 
     app = FastAPI(lifespan=app_lifespan)
     # Must NOT raise: the registry wraps each callback in try/except.
     async with LifespanManager(app):
         pass
 
-    assert _RaisingCloseSession.close_calls == 1, (
-        "production shutdown must have invoked the real session.close() exactly "
-        f"once; got {_RaisingCloseSession.close_calls} — the close callback was "
-        "not registered/awaited"
-    )
+    assert calls == ["called"], f"production shutdown must have invoked the callback exactly once; got {calls}"

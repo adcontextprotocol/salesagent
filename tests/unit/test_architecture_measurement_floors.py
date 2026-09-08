@@ -33,9 +33,9 @@ sys.path.insert(0, str(REPO_ROOT))
 # node ids by identity rather than by size.
 #
 # The set spans BOTH sources, deliberately. The literal `ENV_ROUTES` block holds
-# 15 wired rows; `ENV_ROUTES +=` appends 5 more from `_UC_BUCKET_ROUTES` at
-# import time. "How many wired rows are there" therefore has two answers (15 and
-# 20), and a floor that does not say which it means is itself an ambiguous
+# 21 wired rows; `ENV_ROUTES +=` appends 5 more from `_UC_BUCKET_ROUTES` at
+# import time. "How many wired rows are there" therefore has two answers (21 and
+# 26), and a floor that does not say which it means is itself an ambiguous
 # counter. This pins the runtime set — what actually routes scenarios.
 #
 # Discipline, matching EXPECTED_LEDGER in test_storyboard_ledger_state.py:
@@ -50,6 +50,11 @@ EXPECTED_WIRED_ROUTES: frozenset[str] = frozenset(
         "UC-019",
         "UC-GET-PRODUCTS",
         # literal ENV_ROUTES block
+        "egress-create",
+        "egress-get-products",
+        "egress-sync",
+        "egress-sync-creds",
+        "egress-update",
         "uc002-account",
         "uc002-ext",
         "uc002-idempotency",

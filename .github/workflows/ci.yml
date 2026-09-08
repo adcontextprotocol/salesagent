@@ -257,6 +257,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Start pinned creative agent
+        id: creative_agent
         if: matrix.group == 'creative'
         env:
           CREATIVE_AGENT_GHCR_IMAGE: ghcr.io/${{ github.repository }}/adcp-creative-agent
@@ -267,7 +268,19 @@ jobs:
           disable_randomly: "true"
           extra_args: --timeout=60 -m "(${{ matrix.marker }}) and not skip_ci"
         env:
-          CREATIVE_AGENT_URL: ${{ matrix.group == 'creative' && 'http://localhost:9999/api/creative-agent' || '' }}
+          CREATIVE_AGENT_URL: ${{ steps.creative_agent.outputs.url }}
+          # The pinned creative agent is reached over https through its own TLS
+          # front (scripts/creative-agent-stack.sh, salesagent-40qh) at a
+          # reserved loopback address, which the egress seam refuses on the
+          # ADDRESS count. run_all_tests_host.sh and the e2e compose files
+          # already open this hatch; this group is driven directly by the
+          # action, so it needs it too — without it the group goes red the
+          # moment the MCP client validates its agent URL (salesagent-jl08).
+          ADCP_OUTBOUND_ALLOW_PRIVATE: ${{ matrix.group == 'creative' && 'true' || '' }}
+          # Trust both the private leaf (creative-agent-stack.sh's TLS front)
+          # and real public roots — the private-CA-only file broke `uv sync`
+          # against pypi.org during salesagent-40qh's own verification.
+          SSL_CERT_FILE: ${{ matrix.group == 'creative' && format('{0}/.test-tls/combined-ca.pem', github.workspace) || '' }}
       - name: Cleanup pinned creative agent
         if: always() && matrix.group == 'creative'
         run: ./scripts/creative-agent-stack.sh down

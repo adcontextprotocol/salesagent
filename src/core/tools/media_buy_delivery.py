@@ -85,7 +85,7 @@ PLATFORM_DEFAULT_ATTRIBUTION_MODEL = AttributionModel.last_touch
 from src.core.auth import require_identity, require_principal_id, require_tenant, resolve_principal_or_raise
 from src.core.database.models import MediaBuy, PricingOption
 from src.core.database.repositories import MediaBuyRepository, MediaBuyUoW
-from src.core.database.repositories.delivery import DeliveryRepository
+from src.core.database.repositories.delivery import POLL_SEQUENCE_TASK_TYPE, DeliveryRepository
 from src.core.database.repositories.product import ProductRepository
 from src.core.helpers.adapter_helpers import get_adapter
 from src.core.resolved_identity import ResolvedIdentity
@@ -621,18 +621,17 @@ def _get_media_buy_delivery_impl(
             delivery_repo = DeliveryRepository(uow.session, tenant["tenant_id"])
             # Use the first media buy's sequence as the response-level sequence
             first_mb_id = deliveries[0].media_buy_id
-            max_seq = delivery_repo.get_max_sequence_number(first_mb_id, task_type="delivery_poll")
+            max_seq = delivery_repo.get_max_sequence_number(first_mb_id, task_type=POLL_SEQUENCE_TASK_TYPE)
             sequence_number = max_seq + 1
-            # Persist the new sequence number
-            from uuid import uuid4
-
-            delivery_repo.create_log(
-                log_id=str(uuid4()),
+            # Persist the new sequence number. This row is a COUNTER, not a
+            # delivery — nothing was sent and there is no destination — so it goes
+            # through the method that says so. It used to be written with the same
+            # generic writer the two webhook senders used, spelling its own
+            # status/task_type/webhook_url at the call site, which is how a counter
+            # came to be indistinguishable from a successful delivery.
+            delivery_repo.record_poll_sequence(
                 principal_id=principal_id,
                 media_buy_id=first_mb_id,
-                webhook_url="delivery_poll://internal",
-                task_type="delivery_poll",
-                status="success",
                 sequence_number=sequence_number,
                 notification_type=notification_type,
             )

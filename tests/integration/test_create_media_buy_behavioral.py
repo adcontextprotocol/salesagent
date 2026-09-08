@@ -51,6 +51,7 @@ from src.core.exceptions import (
     AdCPBudgetExceededError,
     AdCPBudgetTooLowError,
     AdCPCapabilityNotSupportedError,
+    AdCPConfigurationError,
     AdCPCreativeRejectedError,
     AdCPFormatNotFoundError,
     AdCPNotFoundError,
@@ -926,10 +927,15 @@ class TestMainFlowObligations:
                 "Setup incomplete", missing_tasks=[{"name": "Configure Products", "description": "Add products"}]
             )
 
-            with pytest.raises(AdCPValidationError, match="Setup incomplete") as exc_info:
+            with pytest.raises(AdCPConfigurationError, match="Setup incomplete") as exc_info:
                 await _create_media_buy_impl(req=req, identity=identity)
 
-            assert exc_info.value.error_code == "VALIDATION_ERROR"
+            # Incomplete tenant setup is a SELLER configuration fault: the buyer
+            # cannot resolve it by resending, so the pinned-terminal
+            # CONFIGURATION_ERROR carries the verdict rather than a correctable
+            # VALIDATION_ERROR with a hand-typed terminal recovery.
+            assert exc_info.value.error_code == "CONFIGURATION_ERROR"
+            assert exc_info.value.recovery == "terminal"
 
     @pytest.mark.asyncio
     async def test_ordering_mode_detection_package_based(self):
@@ -1836,15 +1842,17 @@ class TestExtensionObligations:
             tenant, _principal = env.setup_default_data()
             # Product created WITHOUT any pricing option.
             env.setup_product_chain(tenant, with_pricing=False)
-            with pytest.raises(AdCPValidationError) as excinfo:
+            with pytest.raises(AdCPConfigurationError) as excinfo:
                 env.call_impl(req=req)
 
-        # Pricing-error sites in _validate_pricing_model_selection tag the error
-        # via details={"error_code": "PRICING_ERROR"} while the wire code stays
-        # VALIDATION_ERROR — verify both layers so we don't regress either one.
+        # A product with no pricing_options is the SELLER's data-integrity fault,
+        # not a malformed buyer request: CONFIGURATION_ERROR, whose pinned
+        # enumMetadata recovery is terminal. (It used to be VALIDATION_ERROR, whose
+        # pinned recovery is correctable — telling the buyer to fix and resend a
+        # request that will fail identically until the seller fixes the catalogue.)
         exc = excinfo.value
-        assert exc.error_code == "VALIDATION_ERROR"
-        assert exc.error_code == "VALIDATION_ERROR"
+        assert exc.error_code == "CONFIGURATION_ERROR"
+        assert exc.recovery == "terminal"
         assert "pricing_options" in exc.message
 
     @pytest.mark.asyncio

@@ -12,7 +12,7 @@ from typing import Any
 
 from pytest_bdd import given, parsers, then, when
 
-from tests.bdd.steps._outcome_helpers import _require_error
+from tests.bdd.steps._outcome_helpers import _require_error, payload_or_none, require_payload
 from tests.bdd.steps.generic.given_media_buy import _ensure_request_defaults
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -208,8 +208,7 @@ def _get_overlay_field(pkg: Any, field: str) -> Any:
 
 def _get_packages(ctx: dict) -> list:
     """Extract packages from create or update media_buy response."""
-    resp = ctx.get("response")
-    assert resp is not None, f"Expected a response. Error: {ctx.get('error')}"
+    resp = require_payload(ctx)
     # CreateMediaBuyResult wraps .response which has .packages
     inner = getattr(resp, "response", resp)
     packages = getattr(inner, "packages", None)
@@ -274,8 +273,7 @@ def _create_media_buy_for_update(ctx: dict, **pkg_overrides: Any) -> None:
     req = CreateMediaBuyRequest(**kwargs)
     dispatch_request(ctx, req=req)
 
-    resp = ctx.get("response")
-    assert resp is not None, f"Failed to create media buy for update setup: {ctx.get('error')}"
+    resp = require_payload(ctx)
     inner = getattr(resp, "response", resp)
     mb_id = getattr(inner, "media_buy_id", None)
     assert mb_id, "Created media buy has no media_buy_id"
@@ -286,7 +284,12 @@ def _create_media_buy_for_update(ctx: dict, **pkg_overrides: Any) -> None:
         ctx["existing_package_id"] = _pkg_field(pkg_obj, "package_id")
         ctx["existing_package"] = pkg_obj
     # Clear response so When step gets clean state
-    ctx.pop("response", None)
+    # Clear every source the payload accessors read, not just the retired
+    # ctx["response"]: a When that raises BEFORE dispatching leaves the previous
+    # step's TransportResult in ctx, and require_payload/payload_or_none would
+    # serve it as though this step had produced it.
+    ctx.pop("result", None)
+    ctx.pop("self_dispatched_response", None)
     ctx.pop("error", None)
     # Reset request_kwargs for the update
     ctx.pop("request_kwargs", None)
@@ -1589,14 +1592,20 @@ def _dispatch_create(ctx: dict) -> None:
 
 def _promote_create_errors(ctx: dict) -> None:
     """Promote CreateMediaBuyError responses to ctx['error']."""
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is None:
         return
     from src.core.schemas._base import CreateMediaBuyError as CMBError
 
     if hasattr(resp, "response") and isinstance(resp.response, CMBError) and resp.response.errors:
         ctx["error"] = resp.response.errors[0]
-        del ctx["response"]
+        # This promotion makes the error payload INVISIBLE to success-path Thens —
+        # that was the point of the old `del ctx["response"]`, and retiring the key
+        # did not retire the requirement. Clear every source the payload accessors
+        # read, or require_payload/payload_or_none hand the error payload straight
+        # back and a success-path Then grades it as a success.
+        ctx.pop("result", None)
+        ctx.pop("self_dispatched_response", None)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1873,8 +1882,7 @@ def then_operation_succeeds(ctx: dict) -> None:
     dedicated follow-on Then steps already present in each scenario.
     """
     assert "error" not in ctx, f"Expected success but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none was recorded"
+    resp = require_payload(ctx)
 
     # Check status on the response itself or on an inner .response wrapper
     # (CreateMediaBuyResult wraps .response which may carry status).
@@ -2307,7 +2315,7 @@ def then_new_pkg_in_mb(ctx: dict, mb_id: str) -> None:
     # Verify the response media_buy_id matches the target (different from original)
     named_mb_ids = ctx.get("named_media_buy_ids", {})
     original_mb_id = named_mb_ids.get("mb-A") or ctx.get("existing_media_buy_id")
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is not None:
         inner = getattr(resp, "response", resp)
         resp_mb_id = getattr(inner, "media_buy_id", None)
