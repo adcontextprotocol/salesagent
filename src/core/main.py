@@ -412,9 +412,10 @@ def _register_tool(tool_name: str, spec: Any) -> None:
             f"to be filed as salesagent-lpfa0. TaskResultEnvelope was the model in question: it "
             f"inherited ProtocolEnvelope alone, so create_media_buy and update_media_buy were "
             f"the only two responses in the tool set that could not state the release.\n\n"
-            f"Extend the SDK response type for this tool -- its arms already inherit "
-            f"AdcpVersionEnvelope -- or, for a local wrapper, inherit AdcpVersionEnvelope "
-            f"alongside ProtocolEnvelope as TaskResultEnvelope and CompleteTaskResponse do."
+            f"Extend the SDK response type for this tool -- every branch of its oneOf already "
+            f"inherits AdcpVersionEnvelope -- or, for a local wrapper, inherit "
+            f"AdcpVersionEnvelope alongside ProtocolEnvelope as TaskResultEnvelope and "
+            f"CompleteTaskResponse do."
         )
     if sdk_def is not None and model is not None and sdk_grounding(model) is None:
         raise RuntimeError(
