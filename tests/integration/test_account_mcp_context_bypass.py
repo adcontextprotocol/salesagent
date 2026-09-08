@@ -27,6 +27,7 @@ from src.core.schemas.account import (
     ListAccountsResponse,
     SyncAccountsResponse,
 )
+from tests.bdd.steps._outcome_helpers import require_payload
 from tests.harness.account_list import AccountListEnv
 from tests.harness.account_sync import AccountSyncEnv
 
@@ -218,7 +219,9 @@ class TestBDDTransportBypass:
             bdd_ctx = {"env": env, "transport": "mcp"}
             dispatch_request(bdd_ctx, req=req)
 
-            response = bdd_ctx["response"]
+            # The dispatch result, not a copy of it: dispatch_request stashes the
+            # TransportResult and the payload is read through the shared accessor.
+            response = require_payload(bdd_ctx)
 
         assert response.context is not None
         assert response.context.channel == "dispatch-test"

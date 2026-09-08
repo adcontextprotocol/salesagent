@@ -1,14 +1,36 @@
-"""Webhook signature verification utilities for AdCP webhook receivers.
+"""Webhook signature verification reference for AdCP webhook receivers.
 
-This module provides utilities for webhook receivers to verify HMAC-SHA256 signatures
-and validate timestamps to prevent replay attacks per AdCP webhook spec.
+Delegates entirely to ``adcp.webhook_receiver.verify_webhook_hmac`` (the
+installed ``adcp==6.6.0`` SDK), which verifies the HMAC over the RAW body
+bytes as received — never a re-serialization of a parsed payload. Per AdCP
+3.1.1 (``docs/building/by-layer/L3/webhooks.mdx:404-418``):
+"Verifiers MUST use the raw HTTP body bytes as received on the wire,
+captured before any JSON parse or re-serialize." A verifier that
+re-serializes a parsed dict (this module's own prior implementation)
+recreates, on the receive side, the exact signed-bytes-vs-wire-bytes
+divergence salesagent-47n9.1 fixes on the send side — and masks it, because
+a re-serializing verifier and a re-serializing signer can agree with each
+other while both disagree with the real wire.
+
+This is a reference implementation for AdCP webhook *receivers* — this
+application is a sender, not a receiver, and has no inbound webhook route in
+``src/`` today (salesagent-47n9.19's disease scan confirmed zero production
+callers of this module). The duplicate-object-key rejection below is
+conformance work for that reference, graded by the vendored spec vectors, not
+production ingress policy.
 """
 
-import hashlib
-import hmac
-import json
-from datetime import UTC, datetime
+import time
+from collections.abc import Mapping
 from typing import Any
+
+from adcp.signing.webhook_hmac import (
+    LegacyWebhookHmacError,
+    LegacyWebhookHmacOptions,
+    verify_webhook_hmac,
+)
+
+from src.core.security.webhook_strict_json import DuplicateKeyInput, loads_rejecting_duplicate_keys
 
 
 class WebhookVerificationError(Exception):
@@ -17,8 +39,31 @@ class WebhookVerificationError(Exception):
     pass
 
 
+class WebhookBodyMalformedError(WebhookVerificationError):
+    """Raised when a webhook's signature verifies but the body is malformed.
+
+    Deliberately a plain ``Exception`` subclass (not a typed ``AdCPError``):
+    neither this class nor its parent can reach a transport boundary today
+    (no production caller, no inbound route — see module docstring), so the
+    wire-code machinery buys nothing yet, and the spec explicitly leaves
+    error-carrier internals implementation-defined. This is a stated
+    decision, not leftover debt.
+
+    Distinct from a bare :class:`WebhookVerificationError` (signature
+    mismatch, bad timestamp, malformed header) per AdCP 3.1.1
+    L1/security.mdx §Duplicate object keys: *"the signature IS valid; the
+    body is malformed"* — verifier checklist step 14 names this identifier
+    ``webhook_body_malformed``, distinct from
+    ``webhook_signature_digest_mismatch``. Raised strictly AFTER
+    ``verify_webhook_hmac`` succeeds — never before, and never in place of a
+    genuine signature failure.
+    """
+
+    pass
+
+
 class WebhookVerifier:
-    """Verifies AdCP webhook signatures and timestamps."""
+    """Verifies AdCP webhook signatures and timestamps over the raw received body."""
 
     def __init__(self, webhook_secret: str, replay_window_seconds: int = 300):
         """Initialize webhook verifier.
@@ -33,158 +78,122 @@ class WebhookVerifier:
         self.webhook_secret = webhook_secret
         self.replay_window_seconds = replay_window_seconds
 
-    def verify_webhook(
-        self,
-        payload: dict[str, Any] | str,
-        signature: str,
-        timestamp: str,
-    ) -> bool:
-        """Verify webhook signature and timestamp.
+    def verify_webhook(self, body: bytes, headers: Mapping[str, str]) -> dict[str, Any] | None:
+        """Verify a webhook's ``X-AdCP-Signature``/``X-AdCP-Timestamp`` over ``body``.
 
         Args:
-            payload: Webhook payload (dict or JSON string)
-            signature: HMAC signature from X-ADCP-Signature header
-            timestamp: ISO format timestamp from X-ADCP-Timestamp header
+            body: The RAW HTTP request body bytes, exactly as received on the
+                wire — never a re-serialization of a parsed payload.
+            headers: HTTP request headers (case-insensitive; any Mapping).
 
         Returns:
-            True if webhook is valid
+            The parsed JSON payload once the signature verifies and the body
+            contains no duplicate object key at any depth. If ``body`` is not
+            a JSON OBJECT at all — not valid JSON, or valid JSON that parses
+            to something other than an object (a top-level array, a scalar,
+            the literal ``null``) — ``None`` is returned instead. Duplicate-
+            key detection only applies to objects, so this method does not
+            require the body to be JSON, or JSON-object-shaped, to succeed;
+            it only adds the duplicate-key MUST on top of signature
+            verification for the bodies that are.
+
+            Returning the parsed payload (rather than ``True``) eliminates a
+            double-parse: this method used to instruct callers to
+            "parse the body again" after verification, which is a second,
+            independent parse of the same bytes — exactly the
+            parser-differential shape AdCP 3.1.1's duplicate-key rule cites
+            CVE-2017-12635 to warn against (a verifier and a business-logic
+            parser disagreeing about what a body means). This return-type
+            change is NOT required by the duplicate-key MUST itself — a
+            ``bool`` return with an internal raise-on-duplicate would already
+            satisfy "reject after HMAC succeeds" — it is adopted to close
+            that separate parser-differential risk.
 
         Raises:
-            WebhookVerificationError: If verification fails
-        """
-        # Verify timestamp first (cheaper operation)
-        self._verify_timestamp(timestamp)
-
-        # Verify signature
-        self._verify_signature(payload, signature, timestamp)
-
-        return True
-
-    def _verify_timestamp(self, timestamp: str):
-        """Verify timestamp is recent (within replay window).
-
-        Args:
-            timestamp: ISO format timestamp
-
-        Raises:
-            WebhookVerificationError: If timestamp is too old or invalid
+            WebhookVerificationError: Signature, timestamp, or header format
+                failure.
+            WebhookBodyMalformedError: The signature verified but the body
+                contains a duplicate JSON object key (AdCP 3.1.1
+                L1/security.mdx §Duplicate object keys, verifier checklist
+                step 14) — raised strictly AFTER signature verification
+                succeeds, never before, and never conflated with a genuine
+                signature failure.
         """
         try:
-            webhook_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        except ValueError as e:
-            raise WebhookVerificationError(f"Invalid timestamp format: {e}")
-
-        # Ensure timezone-aware
-        if webhook_time.tzinfo is None:
-            raise WebhookVerificationError("Timestamp must be timezone-aware (UTC)")
-
-        # Check age
-        age_seconds = (datetime.now(UTC) - webhook_time).total_seconds()
-
-        if age_seconds < 0:
-            raise WebhookVerificationError("Timestamp is in the future")
-
-        if age_seconds > self.replay_window_seconds:
-            raise WebhookVerificationError(
-                f"Timestamp too old ({age_seconds:.0f}s > {self.replay_window_seconds}s window)"
+            verify_webhook_hmac(
+                headers=headers,
+                body=body,
+                options=LegacyWebhookHmacOptions(
+                    secret=self.webhook_secret.encode("utf-8"),
+                    sender_identity="webhook_verifier",
+                    now=time.time(),
+                    window_seconds=self.replay_window_seconds,
+                ),
             )
+        except LegacyWebhookHmacError as exc:
+            raise WebhookVerificationError(str(exc)) from exc
 
-    def _verify_signature(
-        self,
-        payload: dict[str, Any] | str,
-        provided_signature: str,
-        timestamp: str,
-    ):
-        """Verify HMAC-SHA256 signature.
+        try:
+            payload = loads_rejecting_duplicate_keys(body)
+        except DuplicateKeyInput as exc:
+            raise WebhookBodyMalformedError(str(exc)) from exc
+        except ValueError:
+            # Not valid JSON at all (e.g. an empty body) -- the duplicate-key
+            # check doesn't apply to non-JSON content; the signature already
+            # verified, so this webhook is accepted.
+            return None
 
-        Args:
-            payload: Webhook payload
-            provided_signature: Signature from header
-            timestamp: ISO format timestamp
-
-        Raises:
-            WebhookVerificationError: If signature doesn't match
-        """
-        # Convert payload to JSON string if needed
-        if isinstance(payload, dict):
-            payload_str = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        else:
-            payload_str = payload
-
-        # Create signature input: timestamp + json payload
-        message = f"{timestamp}.{payload_str}"
-
-        # Generate expected signature
-        expected_signature = hmac.new(
-            self.webhook_secret.encode("utf-8"),
-            message.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-
-        # Constant-time comparison to prevent timing attacks
-        if not hmac.compare_digest(provided_signature, expected_signature):
-            raise WebhookVerificationError("Signature verification failed")
-
-    @staticmethod
-    def extract_headers(request_headers: dict[str, str]) -> tuple[str, str]:
-        """Extract signature and timestamp from request headers.
-
-        Args:
-            request_headers: HTTP request headers (case-insensitive)
-
-        Returns:
-            Tuple of (signature, timestamp)
-
-        Raises:
-            WebhookVerificationError: If required headers are missing
-        """
-        # Normalize header names to lowercase for case-insensitive lookup
-        headers_lower = {k.lower(): v for k, v in request_headers.items()}
-
-        signature = headers_lower.get("x-adcp-signature")
-        timestamp = headers_lower.get("x-adcp-timestamp")
-
-        if not signature:
-            raise WebhookVerificationError("Missing X-ADCP-Signature header")
-
-        if not timestamp:
-            raise WebhookVerificationError("Missing X-ADCP-Timestamp header")
-
-        return signature, timestamp
+        # loads_rejecting_duplicate_keys parses arbitrary JSON, not just
+        # objects -- a top-level array, scalar, or ``null`` all parse
+        # cleanly and are none of them a duplicate-key candidate. Narrowing
+        # here (rather than returning `payload` unconditionally) is what
+        # makes ``None`` mean exactly one thing: "not a JSON object", never
+        # conflated with "JSON object that happens to be empty" or "the
+        # literal JSON null".
+        return payload if isinstance(payload, dict) else None
 
 
 def verify_adcp_webhook(
     webhook_secret: str,
-    payload: dict[str, Any],
-    request_headers: dict[str, str],
+    body: bytes,
+    request_headers: Mapping[str, str],
     replay_window_seconds: int = 300,
-) -> bool:
-    """Convenience function to verify AdCP webhook in one call.
+) -> dict[str, Any] | None:
+    """Convenience function to verify an AdCP webhook in one call.
 
     Args:
         webhook_secret: Shared secret for HMAC verification
-        payload: Webhook payload dictionary
+        body: The RAW HTTP request body bytes, exactly as received on the
+            wire — read them BEFORE any JSON parse, e.g. ``request.get_data()``
+            in Flask or ``await request.body()`` in Starlette, never
+            ``request.json()`` (which discards the exact bytes a signature
+            was computed over).
         request_headers: HTTP request headers
         replay_window_seconds: Maximum age of webhook (default: 300s = 5 min)
 
     Returns:
-        True if webhook is valid
+        The parsed JSON payload (or ``None`` for a body that isn't a JSON
+        object) — see :meth:`WebhookVerifier.verify_webhook`.
 
     Raises:
-        WebhookVerificationError: If verification fails
+        WebhookVerificationError: Signature/timestamp/format failure.
+        WebhookBodyMalformedError: Signature verified but the body contains a
+            duplicate JSON object key.
 
     Example:
         try:
-            verify_adcp_webhook(
+            payload = verify_adcp_webhook(
                 webhook_secret=os.environ["WEBHOOK_SECRET"],
-                payload=request.json(),
+                body=request.get_data(),
                 request_headers=dict(request.headers)
             )
-            # Process webhook
+            # payload is already parsed and duplicate-key-checked -- do not
+            # parse request.get_data() again.
         except WebhookVerificationError as e:
-            # Reject webhook
+            # Reject webhook (catches both a signature failure and a
+            # malformed-body rejection, since WebhookBodyMalformedError
+            # subclasses this)
             return {"error": str(e)}, 401
     """
     verifier = WebhookVerifier(webhook_secret, replay_window_seconds)
-    signature, timestamp = verifier.extract_headers(request_headers)
-    return verifier.verify_webhook(payload, signature, timestamp)
+    return verifier.verify_webhook(body, request_headers)

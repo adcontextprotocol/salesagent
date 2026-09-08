@@ -684,35 +684,13 @@ class TestRecoveryOverrideInSerialization:
         assert serialized["success"] is False
         assert serialized["errors"][0]["code"] == "NOT_FOUND"
 
-    def test_custom_recovery_override_in_to_dict(self):
-        """to_dict() reflects custom recovery, not class default."""
-        from src.core.exceptions import AdCPConflictError
-
-        # Default recovery is "transient" (CONFLICT per the pinned enum, #1417)
-        default = AdCPConflictError("dup")
-        assert default.to_dict()["recovery"] == "transient"
-
-        # Override to "terminal" (e.g., non-retryable conflict)
-        overridden = AdCPConflictError("permanent conflict", recovery="terminal")
-        assert overridden.to_dict()["recovery"] == "terminal"
-
-    def test_custom_recovery_survives_mcp_then_extract(self):
-        """Custom recovery: AdCPError(recovery=X) -> ToolError -> extract_error_info -> X."""
-        from fastmcp.exceptions import ToolError
-
-        from src.core.exceptions import AdCPAdapterError
-        from src.core.tool_error_logging import extract_error_info, with_error_logging
-
-        def failing():
-            raise AdCPAdapterError("permanent failure", recovery="terminal")
-
-        wrapped = with_error_logging(failing)
-
-        with pytest.raises(ToolError) as exc_info:
-            wrapped()
-
-        code, message, recovery = extract_error_info(exc_info.value)
-        assert recovery == "terminal"  # Custom, not default "transient"
+    # test_custom_recovery_override_in_to_dict and
+    # test_custom_recovery_survives_mcp_then_extract were DELETED with the contract
+    # they pinned: a hand-passed `recovery=` reaching to_dict, and the same value
+    # surviving MCP -> extract_error_info. `recovery` is now a read-only property
+    # derived from the pinned enumMetadata, so there is no override to propagate.
+    # The DERIVED value is still graded on both paths, by
+    # test_error_boundary_translation.py's to_dict and extract_error_info tests.
 
 
 # ---------------------------------------------------------------------------

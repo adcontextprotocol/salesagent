@@ -24,9 +24,14 @@ from pathlib import Path
 
 from tests.helpers.ledger import load_ledger_nodeids
 
-# The 17 e2e_rest nodeids remaining: 7 genuine gaps + 10 parallel-e2e_rest
+# The 14 e2e_rest nodeids remaining: 7 genuine gaps + 7 parallel-e2e_rest
 # mock-injection artifacts (owner-approved, added on the adcp-6.6 /
 # perf/parallelize-test-suite work — see the block comment inside the set).
+# The 3 uc018 rows of that block graduated 2026-08-31: their Givens seed through
+# the factories into the live server's own database, so the block's
+# "injected cross-principal creatives" clause no longer describes them. XPASS in
+# innet_270826_0338, innet_270826_1824 and innet_310826_1248; full evidence in
+# the ledger file's block comment.
 # Graduated on the way here: the 2 date-range boundary rows (2026-07-09, first
 # in-network CI run), the 2 date-range partition twins (origin/pr-1417 merge,
 # d4af23095 — strict-xfail XPASS in-network), and the 2 uc004 account valid rows
@@ -77,9 +82,6 @@ EXPECTED_LEDGER: frozenset[str] = frozenset(
         "tests/bdd/test_uc005_discover_creative_formats.py::test_baseline_list_creative_formats_response_carries_format_id_objects_with_agent_url_and_id[e2e_rest]",
         "tests/bdd/test_uc005_discover_creative_formats.py::test_format_id_roundtrip__list_creative_formats_returns_the_same_format_object_that_get_products_advertised[e2e_rest]",
         "tests/bdd/test_uc005_discover_creative_formats.py::test_format_id_with_agent_url_pointing_at_a_thirdparty_creative_agent_is_reported_as_observation_not_failure[e2e_rest]",
-        "tests/bdd/test_uc018_list_creatives.py::test_brrule034_inv1_counter__crossprincipal_creatives_never_visible[e2e_rest]",
-        "tests/bdd/test_uc018_list_creatives.py::test_brrule034_inv1_holds__query_always_scoped_by_principal[e2e_rest]",
-        "tests/bdd/test_uc018_list_creatives.py::test_list_creatives_filtered_by_concept_ids_returns_only_creatives_in_that_concept_carrying_concept_id_and_concept_name[e2e_rest]",
     }
 )
 

@@ -107,6 +107,24 @@ def set_live_adapter_behavior(live_server: dict, *, tenant_subdomain: str = "ci-
         return set_adapter_test_behavior(env, tenant.tenant_id, **behavior)
 
 
+def wait_until(predicate, timeout_seconds: float, poll_interval: float = 0.5) -> bool:
+    """Poll ``predicate`` until it is truthy or ``timeout_seconds`` elapses.
+
+    A ``time.monotonic()`` deadline, not an iteration counter — the caller's
+    ``predicate`` may itself be a network round trip (e.g. a webhook-capture
+    readback, salesagent-amht.3), so counting iterations under-waits whenever
+    a single check costs more than ``poll_interval``. Returns whether
+    ``predicate`` was ever truthy, so a caller can assert on the return value
+    instead of re-evaluating ``predicate`` a second time.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(poll_interval)
+    return bool(predicate())
+
+
 def wait_for_server_readiness(mcp_url: str, timeout: int = 60):
     """
     Wait for the MCP server to become ready by checking its health endpoint.

@@ -33,8 +33,8 @@ variables:
   TASK_IDS:
     description: "Space-separated step IDs in the parent epic's dependency order. Structural steps are sequential: each one narrows a type the next one depends on."
     required: true
-  PLAN_DOC:
-    description: "Path to the git-tracked design note that is the scope authority. The baseline atom records its SHA. Required, because solution-review grades the design's fidelity to this document, which means nothing when the referee lives inside the task the design came from."
+  PLAN_ISSUE:
+    description: "Issue ID of the bead holding the plan, normally the parent epic. The baseline atom hashes its text so a later edit is visible. It must not be the step under review: solution-review grades a step's design against the plan, which means nothing when the referee lives inside the task the design came from. A parent epic satisfies that, and keeps the plan beside the work instead of on a disk that no bead reader can see."
     required: true
 
 labels:
@@ -50,15 +50,26 @@ setup:
       Run and record in the epic notes:
 
       ```bash
-      ./run_all_tests.sh                              # per-suite pass counts, xpassed node IDs
+      # REMOTE_TEST_HOST must be on EVERY cassini call (run/status/kill/fetch) --
+      # without it status/kill target the default box and report a phantom run.
+      export REMOTE_TEST_HOST=noetis-b-vm
+      export UNIT_XDIST_N=16 INTEGRATION_XDIST_N=16 BDD_XDIST_N=16 PYTEST_XDIST_AUTO_NUM_WORKERS=16
+      cassini run --detach       # returns a run id; exit 0 = LAUNCHED, not passed
+      cassini status <id>        # poll until 'finished'; pulls test-results/<latest>/
       ls tests/unit/test_architecture_*.py tests/unit/test_guards*.py | wc -l
-      git rev-parse HEAD                              # base for the no-new-test check
-      sha256sum {PLAN_DOC}
+      git rev-parse HEAD         # base for the no-new-test check
+      bd show {PLAN_ISSUE} --json | python3 -c \
+        'import json,sys; r=json.load(sys.stdin); r=r[0] if isinstance(r,list) else r; \
+         print((r.get("description") or "") + (r.get("design") or ""))' | shasum -a 256
       ```
+
+      Read the per-suite pass counts and the xpassed node IDs from
+      `test-results/<latest>/*.json`, which `cassini status` pulls back. A zero
+      exit from `cassini run` means the run launched, not that it passed.
 
       Record the guard file count, the total allowlist entry count, and the
       full-suite pass counts. Later atoms compare against these values.
-    acceptance: "Baseline recorded in the epic notes: suite pass counts, xpassed node IDs, guard file count, allowlist total, base commit SHA, plan SHA."
+    acceptance: "Baseline recorded in the epic notes: suite pass counts, xpassed node IDs, guard file count, allowlist total, base commit SHA, plan text hash."
     labels: ["atom:baseline"]
 
 iterate:
@@ -79,7 +90,7 @@ iterate:
 
         1. `bd show {TASK_ID}` — the step body and every correction note
            appended to it. Later notes override earlier text.
-        2. `{PLAN_DOC}` — this step's section.
+        2. `bd show {PLAN_ISSUE}` — the plan, and this step's clause in it.
         3. `ast-grep` or `.agent-index/` to confirm the cited symbols still
            match the tree. Reconcile a drifted line number; keep the intent.
 
@@ -123,11 +134,37 @@ iterate:
         > Does this step remove the ability to express the defect, or does it
         > detect the defect?
 
-        If the answer is "detect", return **NARROW**. A step that adds a check
-        belongs in a different formula, or the design needs reshaping until the
-        defect becomes unexpressible. This verdict exists because adding a check
-        is always available and always looks reasonable, which is how a guard
+        If the answer is "detect", return **NARROW**, unless the LEDGER
+        exception below applies. A step that adds a check belongs in a
+        different formula, or the design needs reshaping until the defect
+        becomes unexpressible. This verdict exists because adding a check is
+        always available and always looks reasonable, which is how a guard
         corpus grows past the thing it guards.
+
+        ## The LEDGER exception
+
+        One case resists every reshaping: a hand-maintained set with no
+        derivable source. No type narrowing makes "someone removed a row"
+        inexpressible, so NARROW rejects such a step forever, however well you
+        execute it. The `finalize` atom already carries the same conditional
+        for its net-line rule; this is that rule one level up.
+
+        Return **LEDGER** only when all four conditions hold:
+
+        1. The step guards a named set, not a code shape.
+        2. That set has no derivable source. Prove this by naming what you
+           would derive it from and why the derivation fails. A set you can
+           derive earns DEEPEN, not LEDGER.
+        3. The check is shrink-only. It reddens on removal, stays silent on
+           addition, and compares set identity rather than a count, so an
+           add-plus-drop cannot pass.
+        4. The step names its graduation discipline, matching the storyboard
+           ledger and the allowlist rule in `CLAUDE.md`: entries leave the set
+           one at a time, with evidence, and never in bulk.
+
+        A LEDGER step still declares a deletion list, and the epic's net-line
+        rule still binds it. LEDGER permits the check; it does not exempt the
+        step from paying for it.
 
         Then grade the design against both failure modes:
 
@@ -142,16 +179,23 @@ iterate:
         |---------|---------|
         | PROCEED | The design removes the possibility, within the plan's boundary. |
         | DEEPEN | The design is correct but stops at a call site. Name the type or constructor it should change instead. |
-        | NARROW | The design detects rather than removes, or exceeds the plan's boundary. |
+        | LEDGER | The design detects, but it guards a hand-maintained set with no derivable source, and the check is shrink-only with a stated graduation discipline. All four conditions of the LEDGER exception hold. |
+        | NARROW | The design detects rather than removes, and LEDGER does not apply, or the design exceeds the plan's boundary. |
         | ESCALATE | The plan is wrong or under-specifies. Stop and report to the owner. |
 
         Record the verdict and its one-sentence reason in the bead. Do not write
         code and do not close {TASK_ID}.
-      acceptance: "Verdict recorded with a reason; PROCEED required to continue; NARROW and DEEPEN route back to design; ESCALATE stops the chain."
+      acceptance: "Verdict recorded with a reason; PROCEED or LEDGER required to continue, and a LEDGER verdict records all four conditions; NARROW and DEEPEN route back to design; ESCALATE stops the chain."
       depends_on: ["design-{TASK_ID}"]
       labels: ["atom:solution-review", "atom:gate"]
+      # NOT review-architecture. That agent is specified to run LAST, consuming
+      # eight prior dimensional reviewers' findings as its symptom set. This atom
+      # runs FIRST, before any code exists, so it hands that agent no input and
+      # gets no verdict back -- it goes idle silently, which reads like a passed
+      # gate. A fresh-context general-purpose referee applying the rubric above
+      # is what this atom needs; the rubric, not the agent, carries the review.
       delegate:
-        agent: review-architecture
+        agent: general-purpose
 
     # ── Atom 3: Predict — replaces write-test ────────────────────────────
     - id: "predict-{TASK_ID}"
@@ -166,9 +210,33 @@ iterate:
         | Field | Content |
         |-------|---------|
         | `measure_cmd` | A single command that prints one number or one list. It must be deterministic and runnable from a clean tree. |
-        | `before` | What that command prints before the change. Run it and paste the output. |
+        | `before` | What that command prints before the change. Take it the same way `verify-prediction` takes the after value, so the two are comparable. |
         | `predicted` | What it prints after the step. A specific value, not a direction. |
         | `deletes` | The files, tables, constants, and allowlist entries from the design's deletion list, as paths and names a command can check. |
+
+        ## Where to run the measurement
+
+        Take `before` on the same host that `verify-prediction` uses, or the two
+        numbers describe different machines. This epic exists because host state
+        changes the measurement: a personal specification clone, a liveness
+        artifact that only a full BDD run produces, and joins that fail closed
+        all move the number without failing.
+
+        For a whole-suite or guard-count measurement, run it on the box:
+
+        ```bash
+        # REMOTE_TEST_HOST must be on EVERY cassini call (run/status/kill/fetch) --
+        # without it status and kill target the default box and report a phantom run.
+        export REMOTE_TEST_HOST=noetis-b-vm
+        cassini run --detach       # returns a run id; exit 0 means LAUNCHED, not passed
+        cassini status <id>        # poll until 'finished'; pulls test-results/<latest>/
+        ```
+
+        For a narrow slice, use `REMOTE_TEST_HOST=noetis-b-vm cassini test <files>`.
+
+        A measurement that reads only committed files, such as a `git grep` count
+        or a byte total, runs anywhere. Say which kind it is in the bead, because
+        a reviewer cannot tell from the number.
 
         ## Rules
 
@@ -193,16 +261,6 @@ iterate:
         and e2e_rest, asserting on the wire envelope. Route that half through
         the `author-bdd-steps` skill. A behavior change graded by a unit test is
         not graded.
-
-        ## On success, and ONLY on success, stamp the task
-
-        ```bash
-        bd label add {TASK_ID} atom:predict
-        ```
-
-        The implement atom's gate reads this label off {TASK_ID}. Do NOT add it until all
-        four fields are recorded -- the label IS the gate, so stamping an incomplete
-        prediction silently authorises implementation against nothing.
       acceptance: "measure_cmd, before, predicted, and deletes recorded in {TASK_ID}; no file added under tests/unit/ or tests/integration/; BDD scenario authored if behavior-delta is yes."
       depends_on: ["solution-review-{TASK_ID}"]
       labels: ["atom:predict", "atom:gate"]
@@ -281,9 +339,17 @@ iterate:
            colour.
 
         ```bash
-        ./run_all_tests.sh
+        export REMOTE_TEST_HOST=noetis-b-vm      # required on every cassini call
+        export UNIT_XDIST_N=16 INTEGRATION_XDIST_N=16 BDD_XDIST_N=16 PYTEST_XDIST_AUTO_NUM_WORKERS=16
+        cassini run --detach
+        cassini status <id>                      # poll until 'finished'
         # then diff test-results/<latest>/*.json against the baseline run
         ```
+
+        Run a step's own graders as you go with
+        `REMOTE_TEST_HOST=noetis-b-vm cassini test <files>`, naming FILES and
+        never a directory. Do not use `--ignore`, `-k "not ..."`, or
+        `--deselect`.
 
         ## Prohibitions
 
@@ -291,16 +357,6 @@ iterate:
         - Do not file follow-up tickets from this run.
 
         Record all three results in the bead. Do not close {TASK_ID}.
-
-        ## On success, and ONLY on success, stamp the task
-
-        ```bash
-        bd label add {TASK_ID} atom:verify-prediction
-        ```
-
-        The commit atom's gate reads this label off {TASK_ID}. Do NOT add it if any
-        of the three checks failed -- the label IS the gate, so stamping a failed
-        verification silently authorises the commit.
       acceptance: "measure_cmd output equals predicted; every item in deletes confirmed absent; full-suite pass counts and xpassed identity match the baseline."
       depends_on: ["diff-review-{TASK_ID}"]
       labels: ["atom:verify-prediction", "atom:gate"]

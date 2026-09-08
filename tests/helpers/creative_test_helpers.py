@@ -105,12 +105,23 @@ def sync_patches():
         async def mock_list_all_formats(tenant_id=None):
             return [mock_format_spec_arg] if mock_format_spec_arg else []
 
-        async def mock_get_format(agent_url, format_id):
+        async def mock_get_format(agent_url, format_id, **_kwargs):
             return mock_format_spec_arg
+
+        async def mock_preview_creative(*_args, **_kwargs):
+            return {"preview_url": "https://creative.example/preview"}
 
         mock_registry = Mock()
         mock_registry.list_all_formats = mock_list_all_formats
         mock_registry.get_format = mock_get_format
+        # preview_creative must be AWAITABLE. It was never reached before: the
+        # catalog lookup compared FormatId models with `==`, which is Pydantic's
+        # class-sensitive equality, so it never matched and the whole
+        # agent-backed arm was skipped for every consumer of this helper. A bare
+        # Mock() attribute is not a coroutine, so the first test to actually
+        # reach that arm got "Expected coroutine, got Mock" and its creative was
+        # rejected — the mock was incomplete all along, invisibly.
+        mock_registry.preview_creative = mock_preview_creative
 
         mock_uow, mock_creative_repo = make_creative_uow()
 

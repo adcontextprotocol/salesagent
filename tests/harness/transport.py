@@ -75,12 +75,12 @@ def _envelope_from_adcp_error(exc: Exception) -> dict[str, Any] | None:
     exception. It does NOT verify that a regression in
     ``build_two_layer_error_envelope`` actually reaches the wire.
 
-    Lives here (not in ``dispatchers.py`` or ``client.py``) because both of
-    those modules need it: ``dispatchers.py`` for the in-process dispatchers,
-    ``client.py`` for the generic ``AdCPTestClient`` error path. Housing it
-    in either would force the other to reach back across the dispatch-core
-    boundary, which is exactly the mutual-lazy-import cycle this module
-    breaks.
+    ImplDispatcher is its ONLY caller, and deliberately so: no other transport
+    may hand a rebuilt envelope to a test. It lives here rather than in
+    ``dispatchers.py`` because this module is the dispatch-core both
+    ``dispatchers.py`` and ``client.py`` import from; housing it in either would
+    force the other to reach back across that boundary, which is exactly the
+    mutual-lazy-import cycle this module breaks.
 
     A2A and REST tests asserting on ``result.wire_error_envelope`` see
     REAL wire bytes:
@@ -98,19 +98,31 @@ def _envelope_from_adcp_error(exc: Exception) -> dict[str, Any] | None:
 
 
 def _wire_envelope_from_exception(exc: Exception) -> dict[str, Any] | None:
-    """Prefer the REAL wire envelope stashed by the harness; fall back to synthesized.
+    """The REAL wire envelope stashed by the harness, or None. NEVER synthesized.
 
     When the A2A pipeline reconstructs an AdCPError from a failed Task's
-    artifact DataPart, ``tests.harness._base._envelope_to_adcp_error``
-    attaches the captured envelope to the exception as
-    ``_wire_error_envelope``. This helper returns that real wire envelope
-    if present; otherwise falls back to ``_envelope_from_adcp_error``
-    (synthesized — same helper production calls).
+    artifact DataPart, ``tests.harness._base._envelope_to_adcp_error`` attaches
+    the captured envelope to the exception as ``_wire_error_envelope``. That
+    stash — real bytes that actually came back — is the only thing this helper
+    will hand out.
+
+    It used to fall back to ``_envelope_from_adcp_error`` above, the same builder
+    production calls, and return the result under ``wire_error_envelope`` — the
+    field named for what actually crossed the wire. A scenario asserting on that
+    field then graded the harness rebuilding an envelope from the exception it
+    had just caught, which passes whether or not production emitted anything at
+    all. Making the synthesized field private did not close
+    that channel: the laundered copy arrives under the name of the thing it is
+    impersonating.
+
+    ``None`` is the honest answer when nothing crossed the wire. A transport that
+    genuinely has no wire says so through ``has_wire=False`` and offers
+    ``_synthesized_error_envelope`` under its OWN name, as ImplDispatcher does.
+    Do not reintroduce the fallback here; pinned by
+    ``tests/unit/test_harness_mcp_never_synthesizes.py``.
     """
     real_wire = getattr(exc, "_wire_error_envelope", None)
-    if isinstance(real_wire, dict):
-        return real_wire
-    return _envelope_from_adcp_error(exc)
+    return real_wire if isinstance(real_wire, dict) else None
 
 
 def _envelope_from_mcp_error(exc: Exception) -> dict[str, Any] | None:
@@ -189,12 +201,22 @@ class E2EConfig:
     """Configuration for E2E transport dispatch.
 
     Attributes:
-        base_url: Docker stack URL (e.g., ``http://localhost:8092``).
+        base_url: Docker stack URL (e.g., ``http://localhost:8092``). Stays
+            PLAINTEXT — 487 bdd_e2e and 95 e2e tests target it and do not move.
         postgres_url: Docker PostgreSQL URL for factory data writes.
+        tls_base_url: The SECOND origin the same stack serves, over real TLS at a
+            dotted host (e.g. ``https://proxy.adcp.test:8443``). ``None`` when the
+            stack publishes no TLS listener. Additive: only scenarios that need a
+            real handshake read it (#1291).
+        ca_bundle: ABSOLUTE path to the CA that signed the stack's leaf. Absolute
+            because pytest does not always run from the repo root. ``None`` when
+            there is no TLS listener to verify.
     """
 
     base_url: str
     postgres_url: str
+    tls_base_url: str | None = None
+    ca_bundle: str | None = None
 
 
 # Fields `_serialize_for_a2a` adds to an A2A artifact DataPart. They are
@@ -285,14 +307,55 @@ class TransportResult:
             IMPL transport, which has no wire. This is the canonical field
             for error verification — see ``tests/CLAUDE.md`` § Error
             Verification Policy.
-        synthesized_error_envelope: Two-layer envelope produced by
+        has_wire: Whether these bytes crossed a REAL wire, declared by the
+            dispatcher AT CONSTRUCTION. Positive and required — never inferred
+            at a read site from which transport enum happens to be in play,
+            because that inference breaks (or, worse, silently reclassifies)
+            the day ``Transport.IMPL`` is removed.
+
+            REQUIRED and keyword-only, deliberately: a default would make
+            omission mean "no wire", so a forgetful new dispatcher would send
+            readers down the re-serialize path and a wire-shape assertion would
+            pass green against a ``model_dump`` — the silent tautology the wire
+            readers exist to raise on. Omitting it is a ``TypeError`` instead.
+
+            Declared PER SITE, not per transport class: it is True only where
+            the construction is downstream of an actual send/receive. A wire
+            dispatcher's "missing config" guard constructs a result for a request
+            that never left. Its catch-all ``except`` arm is a STRADDLE — it may
+            fire before OR after bytes moved, and cannot tell which — so it
+            declares False, because claiming a wire that may not exist is the
+            failure mode that matters here: it would send a reader looking for a
+            capture nothing produced.
+
+            ``has_wire=True`` with ``wire_response is None`` on a success path
+            means the env failed to STASH the wire. That is a harness bug to
+            raise on loudly; it must never fall back to serializing the typed
+            payload, which would assert nothing about the wire.
+
+            SCOPE — this predicate governs the SUCCESS path only, and
+            deliberately does NOT feed ``assert_wire_error``'s no-envelope
+            diagnostic (which the lane in #1802 originally specified).
+            The reason is concrete: a dispatcher's catch-all arm declares
+            ``has_wire=False`` because it may fire before anything was sent, yet
+            it can still derive a ``wire_error_envelope`` from the exception —
+            ``A2ADispatcher``'s does exactly that. Wiring ``has_wire`` into that
+            diagnostic would therefore report a genuine wire rejection as "no
+            wire", which is worse than the message it replaces. Error-path
+            wire-presence needs its own per-site declaration; that is not this
+            lane's, and inventing one here would be the same identity-inference
+            mistake in a new spelling.
+        _synthesized_error_envelope: Two-layer envelope produced by
             ``build_two_layer_error_envelope`` against the IMPL-caught
             ``AdCPError`` — what production WOULD emit at the boundary.
             ``None`` on success and on REST/MCP/A2A (those expose the real
-            wire envelope above instead). Tests asserting on this field
-            verify the envelope-builder contract, NOT the wire shape — a
-            regression in the production boundary translator would not be
-            caught here. Use REST/MCP/A2A for wire-shape regressions.
+            wire envelope above instead). PRIVATE: read it through
+            :meth:`error_envelope`, which is the only place allowed to decide
+            that this value may stand in for a wire. A test that reads it
+            directly verifies the envelope-builder contract against itself —
+            production and the harness compute it from the same in-memory
+            exception — so a regression in the boundary translator cannot be
+            caught that way. Use REST/MCP/A2A for wire-shape regressions.
     """
 
     payload: BaseModel | None = None
@@ -301,7 +364,8 @@ class TransportResult:
     raw_response: Any = None
     wire_response: dict[str, Any] | None = None
     wire_error_envelope: dict[str, Any] | None = None
-    synthesized_error_envelope: dict[str, Any] | None = None
+    _synthesized_error_envelope: dict[str, Any] | None = None
+    has_wire: bool = field(kw_only=True)
 
     @property
     def is_success(self) -> bool:
@@ -310,6 +374,56 @@ class TransportResult:
     @property
     def is_error(self) -> bool:
         return self.error is not None
+
+    def error_envelope(self) -> dict[str, Any]:
+        """The two-layer error envelope this dispatch produced. Raises if there is none.
+
+        Three branches, spelled out because getting them wrong is this lane's
+        whole subject:
+
+        1. a captured wire envelope is present -> return it;
+        2. no wire was captured AND the dispatcher declared no wire AND a
+           synthesized envelope exists -> return the synthesized one;
+        3. otherwise -> RAISE.
+
+        Branch 2 is reachable only on IMPL, and NOT because ``has_wire`` says
+        so. ``has_wire`` is ``False`` on every A2A, MCP and IMPL error — a
+        catch-all may fire before anything was sent — so keying on it alone
+        would hand back a rebuilt envelope on transports that HAVE a wire, and
+        on A2A and MCP it would discard a real captured one. What actually
+        isolates IMPL is that IMPL is the only dispatcher that populates the
+        synthesized field at all. That single-producer invariant is the load
+        bearing one, and it is pinned by
+        ``tests/unit/test_harness_mcp_never_synthesizes.py``.
+
+        Branch 3 covers the case every operand is ``None`` — an A2A catch-all
+        that derived nothing. Falling back to re-serializing the typed payload
+        there would assert nothing about the wire while looking green, which is
+        the tautology this reader exists to prevent.
+        """
+        envelope = self.error_envelope_or_none()
+        assert envelope is not None, (
+            "Expected an error envelope, but none was captured "
+            f"(is_error={self.is_error}, payload={self.payload!r}). The operation either "
+            "succeeded or errored before reaching a transport."
+        )
+        return envelope
+
+    def error_envelope_or_none(self) -> dict[str, Any] | None:
+        """:meth:`error_envelope`, returning ``None`` instead of raising.
+
+        For the callers that branch on envelope-presence as CONTROL FLOW rather
+        than reading it — an MCP dispatch can fail with a ``ToolError`` that is
+        genuinely not an AdCP envelope, and collapsing that branch would turn a
+        correct assertion into an error. The success path already ships this
+        same pair: ``_wire_or_none`` returns ``None`` for a declared no-wire
+        while ``wire_field``/``wire_dict`` raise. Prefer the raising one.
+        """
+        if isinstance(self.wire_error_envelope, dict):
+            return self.wire_error_envelope
+        if not self.has_wire and isinstance(self._synthesized_error_envelope, dict):
+            return self._synthesized_error_envelope
+        return None
 
     def require_wire(self) -> dict[str, Any]:
         """The success-path body the buyer actually received, or a loud failure.
@@ -328,9 +442,9 @@ class TransportResult:
         """
         assert self.is_success, f"expected a success wire body, got error {self.error!r}"
         assert self.wire_response is not None, (
-            "no wire body was stashed for a successful call — the dispatch bypassed the "
-            "real pipeline, so any assertion on it would grade a harness reconstruction "
-            "rather than what the buyer received"
+            "wire_response is None on a successful call — no wire body was stashed, so the "
+            "dispatch bypassed the real pipeline and any assertion on it would grade a "
+            "harness reconstruction rather than what the buyer received"
         )
         return self.wire_response
 

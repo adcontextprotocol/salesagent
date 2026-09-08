@@ -23,6 +23,7 @@ from src.core.database.models import (
     WebhookDeliveryRecord,
 )
 from src.core.database.repositories.delivery import DeliveryRepository
+from src.core.webhooks.delivery import WebhookDeliveryOutcome, WebhookTaskContext
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -398,21 +399,81 @@ class TestUpdateRecord:
 # WebhookDeliveryLog tests
 # ---------------------------------------------------------------------------
 
+# ``WebhookDeliveryLog`` rows are no longer written by a generic fifteen-keyword
+# ``create_log``: that writer is private, and callers go through the method that
+# names what the row IS — ``record_outcome`` for a delivery outcome,
+# ``record_poll_sequence`` for the delivery-poll counter. These two builders keep
+# the cases below reading as "a delivery concluded LIKE THIS", which is the fact
+# each of them is actually about, instead of as a column-by-column row literal.
 
-class TestCreateLog:
-    """create_log persists delivery log entries with upsert semantics."""
+# Which outcome kind is written down as which status. This is the INVERSE of the
+# mapping ``record_outcome`` owns, spelled here so a test can still say "a
+# successful row" / "a failed row" — and so a change to the production mapping
+# breaks these tests rather than silently passing through them.
+_KIND_FOR_STATUS = {
+    "success": "delivered",
+    "failed": "exhausted",
+    "refused": "refused_destination",
+}
+
+
+def _ctx(
+    tenant_id: str,
+    principal_id: str,
+    media_buy_id: str,
+    *,
+    task_type: str = "media_buy_delivery",
+    sequence_number: int = 1,
+    notification_type: str | None = None,
+) -> WebhookTaskContext:
+    """A log-eligible task identity — the WHO of a delivery.
+
+    ``task_type`` defaults to one of the two values
+    ``WebhookTaskContext.records_delivery_log`` admits: an ineligible ctx makes
+    ``record_outcome`` a deliberate silent no-op, so a case built with one would
+    assert against a row that was never written.
+    """
+    return WebhookTaskContext(
+        task_id=f"task_for_{media_buy_id}",
+        task_type=task_type,
+        tenant_id=tenant_id,
+        principal_id=principal_id,
+        media_buy_id=media_buy_id,
+        sequence_number=sequence_number,
+        notification_type=notification_type,
+    )
+
+
+def _outcome(
+    status: str,
+    *,
+    attempts: int = 1,
+    http_status: int | None = None,
+    payload_size_bytes: int | None = None,
+    detail: str | None = None,
+) -> WebhookDeliveryOutcome:
+    """What became of a delivery, named by the status it is written down as."""
+    return WebhookDeliveryOutcome(
+        kind=_KIND_FOR_STATUS[status],
+        attempts=attempts,
+        http_status=http_status,
+        detail=detail,
+        payload_size_bytes=payload_size_bytes,
+    )
+
+
+class TestRecordOutcome:
+    """record_outcome persists delivery outcomes with upsert semantics."""
 
     def test_creates_log_with_required_fields(self, tenant_a, principal_a, media_buy_a):
         log_id = str(uuid4())
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(tenant_a, principal_a, media_buy_a),
                 log_id=log_id,
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com/delivery",
-                task_type="media_buy_delivery",
-                status="success",
+                outcome=_outcome("success"),
             )
             session.commit()
 
@@ -427,23 +488,21 @@ class TestCreateLog:
 
     def test_creates_log_with_all_optional_fields(self, tenant_a, principal_a, media_buy_a):
         log_id = str(uuid4())
-        now = datetime.now(UTC)
+        before = datetime.now(UTC) - timedelta(seconds=1)
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(
+                    tenant_a,
+                    principal_a,
+                    media_buy_a,
+                    sequence_number=5,
+                    notification_type="scheduled",
+                ),
                 log_id=log_id,
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com/delivery",
-                task_type="media_buy_delivery",
-                status="success",
-                attempt_count=2,
-                sequence_number=5,
-                notification_type="scheduled",
-                http_status_code=200,
-                payload_size_bytes=1024,
+                outcome=_outcome("success", attempts=2, http_status=200, payload_size_bytes=1024),
                 response_time_ms=150,
-                completed_at=now,
             )
             session.commit()
 
@@ -456,34 +515,50 @@ class TestCreateLog:
             assert persisted.http_status_code == 200
             assert persisted.payload_size_bytes == 1024
             assert persisted.response_time_ms == 150
+            # Stamped by the recorder rather than passed in: a conclusion happens
+            # when it is recorded, and a caller-supplied completion time is a
+            # second clock that can disagree with the row it lands on. Asserted as
+            # a WINDOW around the call rather than as `is not None`, so the column
+            # still has to carry this conclusion's time — a recorder that stamped a
+            # fixed date, or the epoch, would pass a null check.
+            assert persisted.completed_at is not None
+            completed_at = persisted.completed_at
+            if completed_at.tzinfo is None:
+                completed_at = completed_at.replace(tzinfo=UTC)
+            assert before <= completed_at <= datetime.now(UTC) + timedelta(seconds=1), (
+                f"the row's completed_at is {completed_at}, outside the window this conclusion "
+                f"happened in ({before} .. now) — the column is not recording when the delivery "
+                "concluded"
+            )
 
     def test_upsert_updates_existing_log(self, tenant_a, principal_a, media_buy_a):
-        """create_log uses merge() so calling twice with same ID updates the record."""
+        """record_outcome merges on log_id, so re-concluding UPDATES one row.
+
+        The property under test is unchanged and is what the protocol sender
+        depends on: one delivery is one row, however many times it is concluded
+        about. What changed is the vocabulary — the first conclusion used to be
+        written as ``status="retrying"``, a value NO production code has ever
+        written and which no outcome kind maps to. It is expressed here as the
+        conclusion it actually models: an attempt that ended without delivering.
+        """
         log_id = str(uuid4())
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(tenant_a, principal_a, media_buy_a),
                 log_id=log_id,
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com",
-                task_type="media_buy_delivery",
-                status="retrying",
-                attempt_count=1,
+                outcome=_outcome("failed", attempts=1),
             )
             session.commit()
 
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(tenant_a, principal_a, media_buy_a),
                 log_id=log_id,
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com",
-                task_type="media_buy_delivery",
-                status="success",
-                attempt_count=2,
-                http_status_code=200,
+                outcome=_outcome("success", attempts=2, http_status=200),
             )
             session.commit()
 
@@ -503,13 +578,11 @@ class TestGetLogsByWebhookId:
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
             for _i in range(3):
-                repo.create_log(
+                repo.record_outcome(
+                    ctx=_ctx(tenant_a, principal_a, media_buy_a),
                     log_id=str(uuid4()),
-                    principal_id=principal_a,
-                    media_buy_id=media_buy_a,
                     webhook_url="https://example.com",
-                    task_type="media_buy_delivery",
-                    status="success",
+                    outcome=_outcome("success"),
                 )
             session.commit()
 
@@ -521,21 +594,17 @@ class TestGetLogsByWebhookId:
     def test_filters_by_task_type(self, tenant_a, principal_a, media_buy_a):
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(tenant_a, principal_a, media_buy_a),
                 log_id=str(uuid4()),
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com",
-                task_type="media_buy_delivery",
-                status="success",
+                outcome=_outcome("success"),
             )
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(tenant_a, principal_a, media_buy_a, task_type="delivery_report"),
                 log_id=str(uuid4()),
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com",
-                task_type="delivery_report",
-                status="success",
+                outcome=_outcome("success"),
             )
             session.commit()
 
@@ -548,22 +617,18 @@ class TestGetLogsByWebhookId:
     def test_tenant_isolation(self, tenant_a, tenant_b, principal_a, principal_b, media_buy_a, media_buy_b):
         with get_db_session() as session:
             repo_a = DeliveryRepository(session, tenant_a)
-            repo_a.create_log(
+            repo_a.record_outcome(
+                ctx=_ctx(tenant_a, principal_a, media_buy_a),
                 log_id=str(uuid4()),
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com",
-                task_type="media_buy_delivery",
-                status="success",
+                outcome=_outcome("success"),
             )
             repo_b = DeliveryRepository(session, tenant_b)
-            repo_b.create_log(
+            repo_b.record_outcome(
+                ctx=_ctx(tenant_b, principal_b, media_buy_b),
                 log_id=str(uuid4()),
-                principal_id=principal_b,
-                media_buy_id=media_buy_b,
                 webhook_url="https://example.com",
-                task_type="media_buy_delivery",
-                status="success",
+                outcome=_outcome("success"),
             )
             session.commit()
 
@@ -580,14 +645,11 @@ class TestGetRecentSuccessfulLog:
     def test_finds_recent_successful_log(self, tenant_a, principal_a, media_buy_a):
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(tenant_a, principal_a, media_buy_a, notification_type="scheduled"),
                 log_id=str(uuid4()),
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com",
-                task_type="media_buy_delivery",
-                status="success",
-                notification_type="scheduled",
+                outcome=_outcome("success"),
             )
             session.commit()
 
@@ -619,14 +681,11 @@ class TestGetRecentSuccessfulLog:
     def test_ignores_failed_logs(self, tenant_a, principal_a, media_buy_a):
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(tenant_a, principal_a, media_buy_a, notification_type="scheduled"),
                 log_id=str(uuid4()),
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com",
-                task_type="media_buy_delivery",
-                status="failed",
-                notification_type="scheduled",
+                outcome=_outcome("failed"),
             )
             session.commit()
 
@@ -655,14 +714,11 @@ class TestGetMaxSequenceNumber:
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
             for seq in [1, 2, 3]:
-                repo.create_log(
+                repo.record_outcome(
+                    ctx=_ctx(tenant_a, principal_a, media_buy_a, sequence_number=seq),
                     log_id=str(uuid4()),
-                    principal_id=principal_a,
-                    media_buy_id=media_buy_a,
                     webhook_url="https://example.com",
-                    task_type="media_buy_delivery",
-                    status="success",
-                    sequence_number=seq,
+                    outcome=_outcome("success"),
                 )
             session.commit()
 
@@ -674,23 +730,23 @@ class TestGetMaxSequenceNumber:
     def test_scoped_to_task_type(self, tenant_a, principal_a, media_buy_a):
         with get_db_session() as session:
             repo = DeliveryRepository(session, tenant_a)
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(tenant_a, principal_a, media_buy_a, sequence_number=5),
                 log_id=str(uuid4()),
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com",
-                task_type="media_buy_delivery",
-                status="success",
-                sequence_number=5,
+                outcome=_outcome("success"),
             )
-            repo.create_log(
+            repo.record_outcome(
+                ctx=_ctx(
+                    tenant_a,
+                    principal_a,
+                    media_buy_a,
+                    task_type="delivery_report",
+                    sequence_number=10,
+                ),
                 log_id=str(uuid4()),
-                principal_id=principal_a,
-                media_buy_id=media_buy_a,
                 webhook_url="https://example.com",
-                task_type="delivery_report",
-                status="success",
-                sequence_number=10,
+                outcome=_outcome("success"),
             )
             session.commit()
 
