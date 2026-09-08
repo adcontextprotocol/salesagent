@@ -6,6 +6,7 @@ import uuid
 
 from pytest_bdd import given, parsers, then, when
 
+from tests.bdd.steps._outcome_helpers import require_payload
 from tests.bdd.steps.domain.uc002_create_media_buy import _get_response_field
 from tests.bdd.steps.generic._brand_param import parse_brand_gherkin_param
 from tests.bdd.steps.generic._dispatch import dispatch_request
@@ -32,7 +33,6 @@ def when_send_create_media_buy_with_brand(ctx: dict, brand: str) -> None:
 def then_create_media_buy_succeeds(ctx: dict) -> None:
     """Assert create_media_buy completed and returned a media_buy_id."""
     assert "error" not in ctx, f"Request failed: {ctx.get('error')}"
-    response = ctx.get("response")
-    assert response is not None, "No response recorded"
+    response = require_payload(ctx)
     media_buy_id = _get_response_field(response, "media_buy_id")
     assert media_buy_id, f"Expected media_buy_id in response, got {response!r}"

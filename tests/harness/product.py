@@ -1,5 +1,10 @@
 """ProductEnv — integration test environment for _get_products_impl.
 
+Two envs live here: ``ProductEnv`` (everything external mocked) and
+``RealResolverProductEnv`` (identical, minus the ``resolve_property_list``
+patch) for the tests that must reach the real property-list resolver and the
+real egress seam.
+
 Patches: PolicyCheckService, generate_variants_for_brief,
          get_factory (ranking), resolve_property_list.
 Real: ProductUoW, get_principal_object, convert_product_model_to_schema,
@@ -29,7 +34,7 @@ Available mocks via env.mock:
 Transport support:
     call_impl(**kw)          -- direct _get_products_impl (sync wrapper around async)
     call_a2a(**kw)           -- get_products_raw A2A wrapper
-    call_mcp(**kw)           -- get_products MCP wrapper via _run_mcp_wrapper
+    call_mcp(**kw)           -- get_products via the registered MCP client
     build_rest_body(**kw)    -- POST /api/v1/products body
     parse_rest_response(d)   -- JSON -> GetProductsResponse
 """
@@ -38,10 +43,12 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from unittest.mock import MagicMock
 
 from src.core.schemas import GetProductsResponse
 from tests.harness._base import IntegrationEnv
 from tests.harness._mixins import ProductMixin
+from tests.harness.egress import EgressHatchMixin
 
 
 class ProductEnv(ProductMixin, IntegrationEnv):
@@ -116,6 +123,13 @@ class ProductEnv(ProductMixin, IntegrationEnv):
         which fields exist" defect the acceptance seam exists to remove, one
         layer out, in the tests that are supposed to catch it.
 
+        The allow-list also went stale in the other direction: it silently
+        dropped ``property_list`` when the route gained it, so
+        a REST case could send the field, have the harness discard it, and pass
+        — grading nothing. Reading the field list off ``GetProductsBody`` would
+        have fixed that one case; forwarding verbatim fixes both, because the
+        harness no longer holds an opinion about which fields exist.
+
         The seam is the authority: the middleware publishes the wire body and
         `@accepts_spec_request_fields` carries it to the tool, which honors or
         refuses each field. The harness's only job is to put the buyer's bytes on
@@ -126,3 +140,36 @@ class ProductEnv(ProductMixin, IntegrationEnv):
     def parse_rest_response(self, data: dict[str, Any]) -> GetProductsResponse:
         """Parse REST JSON response into GetProductsResponse."""
         return GetProductsResponse(**data)
+
+
+class RealResolverProductEnv(EgressHatchMixin, ProductEnv):
+    """``ProductEnv`` with the property-list resolver left UNPATCHED.
+
+    ``ProductEnv`` mocks ``resolve_property_list`` so ordinary product tests
+    never reach the network. This variant drops exactly that one patch and
+    changes nothing else, so ``get_products`` runs the real resolver and the
+    real egress seam — which is the point: the refusal under test has to be
+    produced by production code, or the wire envelope proves nothing.
+
+    TRAP: because the mock is gone, ``self.mock["resolve_property_list"]`` does
+    not exist after ``__enter__`` — the stand-in below is deleted as soon as
+    ``ProductMixin``'s happy-path wiring has finished with it. Any Given step
+    calling ``ProductMixin.set_property_list()`` on this env will ``KeyError``.
+    A scenario that needs a SUCCESSFUL property-list fetch wants plain
+    ``ProductEnv`` (mocked resolver) or a real local origin, not this class.
+    """
+
+    EXTERNAL_PATCHES = {
+        name: target for name, target in ProductEnv.EXTERNAL_PATCHES.items() if name != "resolve_property_list"
+    }
+    ASYNC_PATCHES = ProductEnv.ASYNC_PATCHES - {"resolve_property_list"}
+
+    def _configure_mocks(self) -> None:
+        # ProductMixin's happy-path wiring pokes ``self.mock["resolve_property_list"]``.
+        # A throwaway stand-in keeps that one line harmless without forking the
+        # rest of the wiring, which this env does want.
+        self.mock["resolve_property_list"] = MagicMock()
+        try:
+            super()._configure_mocks()
+        finally:
+            del self.mock["resolve_property_list"]

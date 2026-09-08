@@ -34,6 +34,16 @@ make test-cov                          # Open htmlcov/index.html
 - **tests/e2e/**: Full system tests (Docker stack) — `tox -e e2e`
 - **tests/admin/**: Admin UI tests (Docker stack) — `tox -e admin`
 - **tests/bdd/**: BDD behavioral tests — `tox -e bdd`
+- **tests/ui/**: UI smoke tests (Playwright/chromium; needs full Docker stack)
+
+## Entity Markers
+Tests are auto-tagged with entity markers by filename pattern. Use `-m` to run entity-scoped slices:
+```bash
+make test-entity ENTITY=delivery          # All delivery tests
+make test-entity ENTITY="creative"        # All creative tests
+make test-entity ENTITY="product"         # All product tests
+```
+Entities: delivery, creative, product, media_buy, tenant, auth, adapter, inventory, schema, admin, architecture, targeting, transport, workflow, policy, agent, infra.
 
 ## Database Fixtures
 ```python
@@ -109,6 +119,7 @@ Results are saved as JSON in `test-results/<ddmmyy_HHmm>/`. Always check these a
 ```bash
 # ALL changes
 make quality
+uv run python -c "from src.core.tools import your_import"  # Verify imports
 
 # Refactorings (shared impl, moving code, imports)
 tox -e integration

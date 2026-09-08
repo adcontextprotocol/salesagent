@@ -33,7 +33,12 @@ from src.core.schemas.product import GetProductsRequest
 from src.core.validation_helpers import adcp_validation_boundary
 
 
-def _coerce_wire_object[ModelT: BaseModel](value: Any, model_cls: type[ModelT], context: str) -> ModelT | None:
+def _coerce_wire_object[ModelT: BaseModel](
+    value: Any,
+    model_cls: type[ModelT],
+    context: str,
+    field_prefix: str | None = None,
+) -> ModelT | None:
     """Shared dict → typed-model coercion with the boundary BUILT IN.
 
     Single home for the ``to_*`` helpers' isinstance ladder. The internal
@@ -48,7 +53,7 @@ def _coerce_wire_object[ModelT: BaseModel](value: Any, model_cls: type[ModelT], 
     if value is None or isinstance(value, model_cls):
         return value
     if isinstance(value, dict):
-        with adcp_validation_boundary(context=context):
+        with adcp_validation_boundary(context=context, field_prefix=field_prefix):
             # model_validate handles plain models and RootModels alike
             # (AccountReference is a RootModel — field-unpacking would break it).
             return model_cls.model_validate(value)
@@ -67,9 +72,60 @@ def to_reporting_webhook(webhook: dict[str, Any] | ReportingWebhook | None) -> R
 
 def to_push_notification_config(
     config: dict[str, Any] | PushNotificationConfig | None,
+    *,
+    field_prefix: str = "push_notification_config",
 ) -> PushNotificationConfig | None:
-    """Convert dict to PushNotificationConfig for adcp type compatibility."""
-    return _coerce_wire_object(config, PushNotificationConfig, "push_notification_config value")
+    """Convert dict to PushNotificationConfig for adcp type compatibility.
+
+    ``field_prefix`` defaults HERE rather than at the call sites: five callers
+    each remembering the same string literal is the remembered-call shape this
+    epic exists to delete, and the sixth caller is where the divergence comes
+    back. A refusal from this funnel therefore names
+    ``push_notification_config.authentication.credentials`` — the path into the
+    document the buyer actually sent — which is what FastMCP already emits (it
+    validates the whole argument model, so its pydantic loc carries the parameter
+    name) and what the registration gate raises. This converges REST and A2A onto
+    the spelling MCP and the ingest gate already use; it is not a third one.
+
+    Scope note: the broader prefix inconsistency across every field this
+    validator reports is gh-#1895 and stays open — this narrows exactly one
+    helper's one field.
+    """
+    return _coerce_wire_object(
+        config,
+        PushNotificationConfig,
+        "push_notification_config value",
+        field_prefix=field_prefix,
+    )
+
+
+def require_push_notification_config(
+    config: dict[str, Any] | PushNotificationConfig,
+    *,
+    field_prefix: str = "push_notification_config",
+) -> PushNotificationConfig:
+    """:func:`to_push_notification_config` for a caller that HAS a config.
+
+    Same funnel, same refusals, same field paths -- the only difference is that
+    ``None`` is not in the domain, so the result is not ``| None`` and a caller
+    has nothing to narrow.
+
+    The optional version exists because some callers legitimately hold "maybe a
+    config"; the trouble was that callers who did NOT then had to prove the
+    absence away, and two of them did it with a bare ``assert``. Under
+    ``python -O`` an assert is deleted, so a function annotated as never
+    returning ``None`` returned it. Stating the requirement in the SIGNATURE is
+    what removes the narrowing rather than making it survive an interpreter
+    flag.
+    """
+    coerced = to_push_notification_config(config, field_prefix=field_prefix)
+    if coerced is None:
+        # Unreachable via the annotated domain; a runtime guard rather than an
+        # assert so it cannot be optimised away, and so a caller that passed
+        # ``None`` through an ``Any`` gets a named failure instead of one
+        # deferred to whatever first dereferences the result.
+        raise ValueError(f"{field_prefix} is required but resolved to None")
+    return coerced
 
 
 def is_url_shorthand(value: str) -> bool:
@@ -268,6 +324,7 @@ __all__ = [
     "to_brand_reference",
     "to_context_object",
     "to_property_list_reference",
+    "require_push_notification_config",
     "to_push_notification_config",
     "to_reporting_webhook",
     "coerce_creative_filters",

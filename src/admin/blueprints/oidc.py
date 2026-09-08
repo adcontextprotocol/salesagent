@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from src.admin.auth_utils import extract_user_info
 from src.admin.utils import require_tenant_access
+from src.admin.utils.url_policy import json_error_if_url_blocked
 from src.core.database.database_session import get_db_session
 from src.core.database.models import Tenant, User
 from src.services.auth_config_service import (
@@ -92,6 +93,15 @@ def save_config(tenant_id: str):
 
     if not provider or not client_id:
         return jsonify({"error": "provider and client_id are required"}), 400
+
+    # Both are stored now and fetched later — discovery_url by authlib's own
+    # server_metadata_url= dereference, logout_url by the browser redirect at
+    # logout — so both are graded by ingest-time egress policy.
+    if discovery_url and (blocked := json_error_if_url_blocked(discovery_url, "OIDC discovery URL")):
+        return blocked
+
+    if logout_url and (blocked := json_error_if_url_blocked(logout_url, "OIDC logout URL")):
+        return blocked
 
     # Require client_secret for new configs (no existing secret)
     existing_config = get_or_create_auth_config(tenant_id)

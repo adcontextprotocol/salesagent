@@ -14,7 +14,15 @@ from src.adapters.gam_reporting_service import GAMReportingService
 
 
 def mock_requests_get(url, **kwargs):
-    """Mock requests.get to return gzipped CSV data"""
+    """Stand in for the egress seam's send(), returning gzipped CSV data.
+
+    The report download goes through src.core.security.outbound_http.send now, so
+    this returns an OutboundResult-shaped double: the body is read off
+    ``result.content`` (salesagent-tbrk.5 closed OutboundResult over
+    content/text/headers directly -- no more ``.response`` reach-through),
+    and the seam raises on a non-2xx rather than handing back something to
+    call raise_for_status() on.
+    """
     import csv
     import gzip
     import io
@@ -55,11 +63,10 @@ def mock_requests_get(url, **kwargs):
     with gzip.open(gz_buffer, "wt", newline="") as gz_file:
         gz_file.write(csv_buffer.getvalue())
 
-    # Create mock response
-    mock_response = unittest.mock.Mock()
-    mock_response.content = gz_buffer.getvalue()
-    mock_response.raise_for_status = unittest.mock.Mock()
-    return mock_response
+    # OutboundResult-shaped double: production reads result.content directly
+    mock_result = unittest.mock.Mock()
+    mock_result.content = gz_buffer.getvalue()
+    return mock_result
 
 
 def create_mock_gam_client():
@@ -99,8 +106,8 @@ def test_country_breakdown():
     # Create mock client and service
     mock_client = create_mock_gam_client()
 
-    # Patch requests.get to return mock data
-    with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+    # Patch the seam entry point the report download now uses
+    with unittest.mock.patch("src.adapters.gam_reporting_service.send", side_effect=mock_requests_get):
         service = GAMReportingService(mock_client, "America/New_York")
 
         # Test get_country_breakdown
@@ -132,8 +139,8 @@ def test_ad_unit_breakdown():
     # Create mock client and service
     mock_client = create_mock_gam_client()
 
-    # Patch requests.get to return mock data
-    with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+    # Patch the seam entry point the report download now uses
+    with unittest.mock.patch("src.adapters.gam_reporting_service.send", side_effect=mock_requests_get):
         service = GAMReportingService(mock_client, "America/New_York")
 
         # Test get_ad_unit_breakdown
@@ -173,8 +180,8 @@ def test_combined_reporting():
     # Create mock client and service
     mock_client = create_mock_gam_client()
 
-    # Patch requests.get to return mock data
-    with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+    # Patch the seam entry point the report download now uses
+    with unittest.mock.patch("src.adapters.gam_reporting_service.send", side_effect=mock_requests_get):
         service = GAMReportingService(mock_client, "America/New_York")
 
         # Get reporting data with both dimensions
@@ -214,8 +221,8 @@ def test_gam_reporting_integration():
     # Create mock client and service for integration test
     mock_client = create_mock_gam_client()
 
-    # Patch requests.get to return mock data
-    with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+    # Patch the seam entry point the report download now uses
+    with unittest.mock.patch("src.adapters.gam_reporting_service.send", side_effect=mock_requests_get):
         service = GAMReportingService(mock_client, "America/New_York")
 
         # Test country breakdown
@@ -265,8 +272,8 @@ class TestGAMCountryAdUnitReporting:
         # Create mock client and service
         mock_client = create_mock_gam_client()
 
-        # Patch requests.get to return mock data
-        with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+        # Patch the seam entry point the report download now uses
+        with unittest.mock.patch("src.adapters.gam_reporting_service.send", side_effect=mock_requests_get):
             service = GAMReportingService(mock_client, "America/New_York")
 
             # Get country breakdown
@@ -285,8 +292,8 @@ class TestGAMCountryAdUnitReporting:
         # Create mock client and service
         mock_client = create_mock_gam_client()
 
-        # Patch requests.get to return mock data
-        with unittest.mock.patch("requests.get", side_effect=mock_requests_get):
+        # Patch the seam entry point the report download now uses
+        with unittest.mock.patch("src.adapters.gam_reporting_service.send", side_effect=mock_requests_get):
             service = GAMReportingService(mock_client, "America/New_York")
 
             # Get ad unit breakdown

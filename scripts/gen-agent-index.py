@@ -75,6 +75,24 @@ STUBGEN_TARGETS: dict[str, list[str]] = {
         "tests/factories/metrics.py",
         "tests/factories/format.py",
     ],
+    # "What assertion/setup helpers exist?" — tests/helpers.
+    # These are the most-queried symbols in BDD and integration work (the wire
+    # assertion vocabulary, the pinned-schema loader, the local origin), and they
+    # were the index's largest blind spot: every miss sent an agent tree-walking.
+    "helpers.pyi": [
+        "tests/helpers/__init__.py",
+        "tests/helpers/envelope_assertions.py",
+        "tests/helpers/pinned_schema.py",
+        "tests/helpers/adcp_schema_validator.py",
+        "tests/helpers/format_assertions.py",
+        "tests/helpers/backoff_assertions.py",
+        "tests/helpers/hmac_assertions.py",
+        "tests/helpers/local_http_origin.py",
+        "tests/helpers/egress_hatches.py",
+        "tests/helpers/external_service.py",
+        "tests/helpers/mcp_envelope_capture.py",
+        "tests/helpers/webhook_credential_refusal.py",
+    ],
     # "How does data persist?" — database
     "persistence/models.pyi": ["src/core/database/models.py"],
     "persistence/repositories.pyi": [
@@ -228,10 +246,22 @@ def generate_index() -> None:
 
 
 def main() -> None:
+    # The search interceptor's query log lives INSIDE the index dir, so a plain
+    # rmtree destroyed it on every regeneration -- and the index regenerates on
+    # every commit, so the log never accumulated past a handful of entries. That
+    # log is the only measurement of which symbols the index FAILED to answer
+    # (`"hit": false`), i.e. the evidence for what to add to STUB_MAP above.
+    # Carry it across the rebuild.
+    log_path = INDEX_DIR / "interceptor.log.jsonl"
+    preserved_log = log_path.read_bytes() if log_path.is_file() else None
+
     # Clean previous index
     if INDEX_DIR.exists():
         shutil.rmtree(INDEX_DIR)
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
+
+    if preserved_log is not None:
+        log_path.write_bytes(preserved_log)
 
     print(f"Generating .agent-index/ at {INDEX_DIR}")
     stub_count = generate_stubs()

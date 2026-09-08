@@ -11,6 +11,7 @@ Both wrappers must forward push_notification_config identically
 from __future__ import annotations
 
 import pytest
+from adcp.types import PushNotificationConfig
 
 from tests.helpers.create_media_buy_capture import capture_a2a_forwarded_pnc, capture_mcp_forwarded_pnc
 
@@ -32,10 +33,14 @@ class TestMCPForwardsPushNotificationConfig:
         assert forwarded is not None, (
             "MCP wrapper does not forward push_notification_config to _impl. This is a transport parity violation."
         )
-        assert isinstance(forwarded, dict), (
+        # Epic D lane C3: _impl now takes the TYPED model, so "forwarded" is a
+        # PushNotificationConfig rather than a dumped dict. The obligation is
+        # unchanged — the wrapper must forward the buyer's registration, not drop
+        # it — only its shape moved.
+        assert isinstance(forwarded, PushNotificationConfig), (
             f"push_notification_config must be forwarded as dict, got {type(forwarded).__name__}"
         )
-        assert forwarded["url"] == "https://example.com/webhook"
+        assert str(forwarded.url) == "https://example.com/webhook"
 
 
 class TestA2AForwardsPushNotificationConfig:
@@ -51,5 +56,5 @@ class TestA2AForwardsPushNotificationConfig:
         forwarded = await capture_a2a_forwarded_pnc(pnc_dict)
 
         assert forwarded is not None, "A2A wrapper does not forward push_notification_config to _impl"
-        assert isinstance(forwarded, dict)
-        assert forwarded["url"] == "https://example.com/webhook"
+        assert isinstance(forwarded, PushNotificationConfig)
+        assert str(forwarded.url) == "https://example.com/webhook"

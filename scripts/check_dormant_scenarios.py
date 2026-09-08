@@ -56,12 +56,21 @@ BDD_DIR = Path("tests") / "bdd"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-# The reason vocabulary is OWNED by tests/bdd/xfail_taxonomy and emitted by
-# tests/bdd/conftest.py. Importing it (rather than hand-copying the literals)
-# is the point: a reworded conftest reason must not silently reclassify dormant
-# scenarios as documented gaps. The module is a leaf — no pytest import — so
-# this stays a cheap script.
+# Both imports below are the same move, for the same reason: the module that
+# OWNS a piece of shared vocabulary is imported, never hand-copied here.
+#
+# * ``xfail_taxonomy`` owns the reason vocabulary tests/bdd/conftest.py emits —
+#   a reworded conftest reason must not silently reclassify dormant scenarios
+#   as documented gaps. It is a leaf (no pytest import), so this stays cheap.
+# * ``storyboard_spec`` owns the scenario-liveness artifact's env-var seam, per
+#   tests/unit/test_architecture_liveness_contract_owner.py.
+from scripts.audit.storyboard_spec import ARTIFACT_ENV_VAR as _LIVENESS_ARTIFACT_ENV_VAR
 from tests.bdd.xfail_taxonomy import is_dormant_reason, scenario_name
+
+#: Throwaway sink for the scenario-liveness artifact this check's own pytest run
+#: would otherwise write over the real one. Under gitignored ``test-results/``,
+#: named so a stray file is self-explaining. See ``run_without_db``.
+_LIVENESS_SCRATCH_ARTIFACT = REPO_ROOT / "test-results" / "check_dormant_liveness_scratch.json"
 
 _XFAIL_PREFIX = re.compile(r"^XFAIL\s+")
 _XFAIL_REASON_SEP = re.compile(r"^\s+-\s+")
@@ -183,6 +192,19 @@ def run_without_db(modules: list[Path]) -> subprocess.CompletedProcess[str]:
     # the env pytest inherits, since either alone can be overridden.
     env["PY_COLORS"] = "0"
     env.pop("FORCE_COLOR", None)
+    # Send tests/bdd/scenario_liveness.py's artifact to a throwaway path.
+    # That plugin is registered in tests/bdd/conftest.py's ``pytest_plugins``, so
+    # it writes test-results/bdd_scenario_liveness.json at sessionfinish for ANY
+    # bdd invocation -- including this one. This run is deliberately narrowed (a
+    # module subset) and deliberately database-less, so its records are not a
+    # measurement of the suite. Worse, the join's guard would not catch it:
+    # scripts/audit/scenario_liveness_join._reject_narrowed_run only rejects
+    # ``-k``/``-m`` narrowing, and this run narrows by POSITIONAL module paths,
+    # which leaves ``selection``/``markers`` empty -- so the partial artifact is
+    # accepted as a full-suite measurement and every scenario it does not name
+    # reads as ungraded. An informational local check must not overwrite the
+    # audit's evidence; ARTIFACT_ENV_VAR is that plugin's own documented seam.
+    env[_LIVENESS_ARTIFACT_ENV_VAR] = str(_LIVENESS_SCRATCH_ARTIFACT)
     cmd = [
         sys.executable,
         "-m",

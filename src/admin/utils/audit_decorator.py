@@ -139,6 +139,40 @@ def _get_or_create_audit_logger(tenant_id: str):
     return getattr(g, cache_key)
 
 
+_HANDLED_FAILURE_KEY = "_admin_action_failure"
+
+
+def record_admin_action_failure(error: object) -> None:
+    """Mark the current admin action as FAILED even though the handler returns normally.
+
+    A handler that catches its own domain refusal, flashes it, and returns a
+    redirect never raises — so :func:`log_admin_action`'s ``except`` never fires
+    and ``success`` stays ``True``. The refusal is then written to the audit log
+    as a successful admin action.
+
+    That is not hypothetical: ``register_webhook`` refuses an SSRF-blocked URL
+    and returns a friendly redirect, and both that shape and its predecessor (a
+    return-code check with the same early return) audited as successes.
+
+    Raising instead would be the other fix, and is wrong here: the operator
+    should get a flash, not a 500. So the handler says so explicitly.
+    """
+    g.__setattr__(_HANDLED_FAILURE_KEY, error)
+
+
+def _apply_handled_failure(success: bool, error_message: str | None) -> tuple[bool, str | None]:
+    """Fold a handler-declared failure into the outcome the audit row records.
+
+    Kept out of the wrapper so the branch does not push ``log_admin_action`` past
+    the C901 ceiling the repo ratchets (ADR-009 / GH #1610).
+    """
+    handled = getattr(g, _HANDLED_FAILURE_KEY, None)
+    if handled is None:
+        return success, error_message
+    g.__delattr__(_HANDLED_FAILURE_KEY)
+    return False, str(handled)
+
+
 def log_admin_action(
     operation_name: str,
     extract_details: Callable[..., dict[str, Any]] | None = None,
@@ -189,6 +223,11 @@ def log_admin_action(
                 # Re-raise to let Flask handle it
                 raise
             finally:
+                # A handler that CAUGHT its own refusal and returned normally never
+                # reaches the except above. Without this, such a refusal audits as a
+                # success — see record_admin_action_failure.
+                success, error_message = _apply_handled_failure(success, error_message)
+
                 # Log the admin action (even if it failed)
                 if tenant_id:
                     try:

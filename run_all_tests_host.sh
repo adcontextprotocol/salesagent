@@ -108,6 +108,40 @@ elif [ "$MODE" = "ci" ]; then
     # healthy stack across runs); torn down with the Docker stack on EXIT.
     ./scripts/creative-agent-stack.sh up
     export CREATIVE_AGENT_URL="$(./scripts/creative-agent-stack.sh url)"
+
+    # ─── Outbound egress escape hatch — TEST PATH ONLY (#1589, salesagent-e6h0) ──
+    # The line above exports an https://agent.localhost:<port>/... URL
+    # (scripts/creative-agent-stack.sh's own TLS front, salesagent-40qh) at a
+    # reserved loopback address, which src/core/security/outbound_http.py
+    # refuses for the ADDRESS reason. docker-compose.e2e.yml opens the same
+    # hatch for the in-network runner; tox.ini only PASSES it through
+    # (pass_env, not setenv), so on this host path nothing creates it and the
+    # two authoritative run paths would diverge — in-network green, host red,
+    # same commit.
+    #
+    # SSL_CERT_FILE is required too: `uv run pytest`/`tox` below run ON THIS
+    # HOST, not inside the dockerized server (which gets its own SSL_CERT_FILE
+    # from docker-compose.e2e.yml directly) — so the test PROCESS itself needs
+    # to trust the generated CA to dial the same https fronts (creative-agent,
+    # the webhook capture at webhooks.adcp.test — salesagent-amht.3) the
+    # server dials. The COMBINED bundle (system CA + our private CA), never
+    # the private CA alone — that broke `uv sync` against real pypi.org once
+    # already.
+    #
+    # There is no scheme hatch anymore (salesagent-e6h0 deleted it) — every
+    # outbound origin here is TLS-fronted, so there is nothing left to relax.
+    #
+    # Set here and NOT in quick mode or at file scope, deliberately: quick mode
+    # starts no Docker and no creative-agent stack, so it has no loopback fixture
+    # to accommodate, and it is the mode that carries the in-process refusal
+    # grading (set_flags() in tests/integration/test_outbound_http.py, plus the
+    # BDD refusal scenarios). An ambient private-range hatch there would make
+    # the seam accept exactly the addresses it exists to reject.
+    #
+    # Literal "true" — the seam compares the lowercased string.
+    export ADCP_OUTBOUND_ALLOW_PRIVATE="true"
+    export SSL_CERT_FILE="$(pwd)/.test-tls/combined-ca.pem"
+
     trap './scripts/creative-agent-stack.sh down 2>/dev/null || true; ./scripts/test-stack.sh down 2>/dev/null || true' EXIT
 
     if [ -n "$PYTEST_TARGET" ]; then
