@@ -17,10 +17,15 @@ import adcp
 #: 3-part string through would violate that pattern and risk the SDK model
 #: rejecting construction. Strip to the first two dot-separated components.
 _FULL_SPEC_VERSION: str = adcp.get_adcp_spec_version()
-_RELEASE_VERSION: str = ".".join(_FULL_SPEC_VERSION.split(".")[:2])
 
-SUPPORTED_ADCP_VERSIONS: list[str] = [_RELEASE_VERSION]
-SUPPORTED_ADCP_MAJORS: list[int] = [int(_RELEASE_VERSION.split(".")[0])]
+#: The release THIS BUILD SERVES, which is what a response echoes. Named separately from the
+#: advertisement below because they answer different questions -- "what did you serve?" versus
+#: "what do you speak?" -- and reading the served release as ``SUPPORTED_ADCP_VERSIONS[0]``
+#: would encode the accident that this seller currently speaks exactly one release.
+SERVED_ADCP_VERSION: str = ".".join(_FULL_SPEC_VERSION.split(".")[:2])
+
+SUPPORTED_ADCP_VERSIONS: list[str] = [SERVED_ADCP_VERSION]
+SUPPORTED_ADCP_MAJORS: list[int] = [int(SERVED_ADCP_VERSION.split(".")[0])]
 
 
 def negotiate_adcp_version(adcp_version: str | None, adcp_major_version: int | None) -> None:

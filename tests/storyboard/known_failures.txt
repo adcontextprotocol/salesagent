@@ -107,8 +107,15 @@ tests/storyboard/test_storyboard_conformance.py::test_storyboard_check[mcp::core
 # --- v3_envelope_integrity (1) ---
 tests/storyboard/test_storyboard_conformance.py::test_storyboard_check[mcp::core::v3_envelope_integrity::no_legacy_status_fields]
 
-# --- version_negotiation (1) ---
-tests/storyboard/test_storyboard_conformance.py::test_storyboard_check[mcp::core::version_negotiation::get_capabilities_with_version]
+# --- version_negotiation --- GRADUATED (salesagent-lpfa0)
+# The step failed on its two envelope checks, envelope_field_present and
+# envelope_field_pattern at path adcp_version: the field was declared on 12 of the 14
+# response models and assigned by nothing, and AdCPBaseModel's exclude_none=True meant it
+# vanished rather than serializing as null. The seller now echoes the release it served,
+# stamped once at the one response seam (src/core/tools/_wire.py::to_wire), so all three
+# transports carry it. Graded on the wire by @T-UC-010-v31-adcp-version-echo, which was
+# shown RED under two mutations before this line was removed: stamp deleted, and stamped
+# with the full semver instead of the release-precision form.
 
 
 

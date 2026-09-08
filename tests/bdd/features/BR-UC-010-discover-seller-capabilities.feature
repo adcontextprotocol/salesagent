@@ -945,6 +945,34 @@ Feature: BR-UC-010 Discover Seller Capabilities
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/supported_versions
     # @source repo=adcp ref=v3.1.1 path=dist/schemas/3.1.1/protocol/get-adcp-capabilities-response.json pointer=/properties/adcp/properties/major_versions
 
+  @T-UC-010-v31-adcp-version-echo @v31 @main-flow @post-s16 @boundary
+  Scenario: adcp-version-echo — the response envelope echoes the release the seller served
+    Given a tenant is resolvable from the request context
+    And the tenant has full capabilities configured
+    When the Buyer Agent calls get_adcp_capabilities
+    Then the response is compliant with the get_adcp_capabilities spec
+    And the response envelope should echo adcp_version "3.1"
+    And the response envelope adcp_version should match pattern "^\d+\.\d+(-[a-zA-Z0-9.-]+)?$"
+    # The OTHER half of the version-negotiation contract. The sibling scenario above grades
+    # adcp.supported_versions in the BODY (what the seller speaks); this grades adcp_version
+    # on the ENVELOPE (what it served). compliance/universal/version-negotiation.yaml rides
+    # both checks on one get_adcp_capabilities call and grades this half twice:
+    #   envelope_field_present  path: adcp_version
+    #   envelope_field_pattern  path: adcp_version  pattern: ^\d+\.\d+(-[a-zA-Z0-9.-]+)?$
+    # Both are severity: advisory at 3.1, carry permanent_advisory notes that the 3.2
+    # storyboard cut promotes them to required, and are MUST at 4.0.
+    #
+    # No response SCHEMA declares adcp_version, and that is deliberate rather than an
+    # omission — the storyboard's own narrative says legacy sellers omit the echo and
+    # "additionalProperties: true makes the field invisible to them". So a schema check can
+    # never catch a regression here and only this named-field assertion can.
+    #
+    # "3.1" is the release the pin serves (adcp==6.6.0 -> AdCP 3.1.1, truncated to
+    # MAJOR.MINOR). A literal on purpose: a version bump SHOULD redden this scenario, and
+    # tests/unit/test_adcp_spec_version.py guards the pin it is derived from.
+    # POST-S16: Buyer knows which release answered its call
+    # @source repo=adcp ref=v3.1.1 path=dist/compliance/3.1.1/universal/version-negotiation.yaml pointer=/phases/0/steps/0/validations
+
   @T-UC-010-v31-build-version @v31 @main-flow @post-s17 @boundary
   Scenario: build-version — optional advisory build_version is semver and not used for negotiation
     Given a tenant is resolvable from the request context

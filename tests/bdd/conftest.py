@@ -4238,6 +4238,10 @@ def _uc010_wired_tags() -> frozenset[str]:
             "T-UC-010-ext-d-invalid-value",
             "T-UC-010-ext-d-empty",
             "T-UC-010-v31-supported-versions",
+            # The other half of the same version-negotiation storyboard step: the
+            # advertisement rides in the body, the echo on the envelope. Wired with the
+            # sibling because it needs no setup the sibling does not already have.
+            "T-UC-010-v31-adcp-version-echo",
             "T-UC-010-v31-version-unsupported",
             "T-UC-010-v31-version-unsupported-major-fallback",
             "T-UC-010-v31-version-unsupported-build-version-advisory",

@@ -770,6 +770,32 @@ def then_supported_versions_pattern(ctx: dict, pattern: str) -> None:
         assert re.fullmatch(pattern, value), f"supported_versions entry {value!r} does not match {pattern!r}"
 
 
+@then(parsers.parse('the response envelope should echo adcp_version "{version}"'))
+def then_envelope_echoes_adcp_version(ctx: dict, version: str) -> None:
+    """The ENVELOPE root, not the ``adcp`` body block — two different obligations.
+
+    ``adcp.supported_versions`` above is what the seller SPEAKS; this is what it SERVED, and
+    ``version-negotiation.yaml`` rides both on the one ``get_adcp_capabilities`` call.
+    Read through ``wire_field`` off the real body, because no response model declares the
+    field: it is stamped by the response seam, so reading a typed payload would grade nothing.
+    """
+    echoed = wire_field(ctx, "adcp_version")
+    assert echoed == version, (
+        f"envelope echoed adcp_version={echoed!r}, expected {version!r} — the seller must echo "
+        "the release it actually served (version-negotiation.yaml, envelope_field_present)"
+    )
+
+
+@then(parsers.parse('the response envelope adcp_version should match pattern "{pattern}"'))
+def then_envelope_adcp_version_pattern(ctx: dict, pattern: str) -> None:
+    """Release precision, which is a separate graded check from presence."""
+    echoed = wire_field(ctx, "adcp_version")
+    assert re.fullmatch(pattern, echoed), (
+        f"envelope adcp_version {echoed!r} is not release-precision {pattern!r} "
+        "(version-negotiation.yaml, envelope_field_pattern)"
+    )
+
+
 @then(parsers.parse('the response should include supported_protocols containing "{protocol}"'))
 def then_supported_protocols_contains(ctx: dict, protocol: str) -> None:
     assert protocol in wire_field(ctx, "supported_protocols")
