@@ -132,9 +132,16 @@ class TestAdvisoryErrorMetadataDerivation:
     def test_validation_error_advisory_derives_from_class(self):
         from src.core.exceptions import AdCPValidationError
         from src.core.tools.accounts import _VALIDATION_ERROR_CODE, _VALIDATION_ERROR_RECOVERY
+        from tests.harness.transport import _pinned_error_metadata
 
+        # error_code is still the class attribute; recovery is DERIVED from the pinned
+        # enumMetadata (RECOVERY_BY_WIRE_CODE), the same authority the instance .recovery
+        # property reads — NOT the class _default_recovery literal (a fallback for a code
+        # the pin does not classify). VALIDATION_ERROR is pinned `correctable`, so an
+        # advisory built from advisory_defaults() cannot drift to the base `transient`.
         assert _VALIDATION_ERROR_CODE == AdCPValidationError._default_error_code == "VALIDATION_ERROR"
-        assert _VALIDATION_ERROR_RECOVERY == AdCPValidationError._default_recovery
+        meta = _pinned_error_metadata()
+        assert _VALIDATION_ERROR_RECOVERY == meta[_VALIDATION_ERROR_CODE]["recovery"]
 
     def test_billing_not_supported_recovery_matches_pinned_enum(self):
         from src.core.tools.accounts import _BILLING_NOT_SUPPORTED_CODE, _BILLING_NOT_SUPPORTED_RECOVERY

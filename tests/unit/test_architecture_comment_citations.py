@@ -36,6 +36,21 @@ _ALLOWED_MISSING: dict[str, str] = {
     # An illustrative example of a generated per-test database NAME (hex suffix), not a test
     # citation — `integration_db` builds names like this; it is documentation, not a pointer.
     "test_a3f8d92c": "illustrative generated-db-name example in integration_db fixture docstring",
+    # Pre-existing HISTORICAL/illustrative citations in main's #1802 (SSRF-seam / outbound-egress
+    # / order-approval) files — comments that reference a test which was DELETED or RENAMED by that
+    # refactor ("Replaces `X`", "`X` lived here", "`X`, deleted"). This citation guard was authored
+    # in #1329/#1682 and never ran on main, so these entered its scope only when origin/main merged
+    # in; they are not new stale citations from this PR. Reconcile (drop the backticks or delete the
+    # historical note) with the #1802 test files in a follow-up so the allowlist shrinks again.
+    "test_webhook_notification_sent_on_success": "historical: names a test #1802 replaced (test_order_approval_webhook/service)",
+    "test_webhook_retries_on_failure": "historical: names a test #1802 replaced (test_order_approval_webhook/service)",
+    "test_cgnat_is_the_one_documented_gap_not_refused_by_validate_url": "historical: names a test #1802 deleted (test_outbound_http)",
+    "test_unresolvable_hostname_rejected": "historical: names a test #1802 removed/renamed (test_outbound_http, test_ssrf_url_validator)",
+    "test_custom_recovery_in_extract_error_info": "historical: names a test no longer present (test_error_boundary_translation)",
+    "test_start_approval_creates_sync_job": "historical: comment records a test that 'lived here' before #1802 (test_order_approval_service)",
+    "test_plain_http_accepted_when_hatch_open": "historical: names a case no longer a discrete test (test_webhook_security)",
+    # Not a test citation — `test_behavior` is the MockAdServer DB field read by `_read_test_behavior`.
+    "test_behavior": "data field, not a test: MockAdServer._read_test_behavior (test_mock_adapter_failure_injection_classes)",
 }
 
 # A test citation is BACKTICK-QUOTED (`` `test_foo` `` / `` ``test_foo`` ``) — the convention for

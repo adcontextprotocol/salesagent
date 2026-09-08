@@ -24,8 +24,9 @@ connection") and the generic ``the error code is "X"`` step (uc011_accounts), wh
 are registered globally — this module defines only governance-specific steps.
 
 ctx["env"] is a GovernanceSyncEnv (bound by the conftest UC-030 branch).
-ctx["response"] / ctx["error"] / ctx["wire_response"] / ctx["wire_error_envelope"]
-are populated by dispatch_request.
+dispatch_request stashes the TransportResult under ctx["result"] (plus ctx["error"]
+on failure); Then steps read it through the shared accessors (require_payload /
+wire_dict / wire_error_envelope_or_none), never a detached ctx["response"] copy.
 
 #1329 (UC-030)
 """
@@ -37,7 +38,7 @@ from typing import Any
 
 from pytest_bdd import given, parsers, then, when
 
-from tests.bdd.steps._outcome_helpers import _require_response, wire_dict, wire_error_envelope_or_none
+from tests.bdd.steps._outcome_helpers import require_payload, wire_dict, wire_error_envelope_or_none
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.factories import AccountFactory
 from tests.factories.principal import _UNSET
@@ -620,7 +621,7 @@ def then_request_verdict(ctx: dict, verdict: str) -> None:
 @then(parsers.parse("the response variant is success and carries an accounts array with {n:d} item"))
 def then_variant_success(ctx: dict, n: int | None = None) -> None:
     assert ctx.get("error") is None, f"expected success variant, got error {ctx.get('error')!r}"
-    _require_response(ctx)
+    require_payload(ctx)
     accounts = _wire_accounts(ctx)
     assert accounts, "success variant must carry a non-empty accounts array"
     if n is not None:
@@ -636,7 +637,7 @@ def then_accounts_count(ctx: dict, n: int) -> None:
 @then("the response variant is error")
 def then_variant_error(ctx: dict) -> None:
     result = ctx["result"]
-    assert result.is_error, f"expected error variant, got response {ctx.get('response')!r}"
+    assert result.is_error, f"expected error variant, got success payload {result.payload!r}"
     # Route the code-agnostic two-layer structural grade through the single harness accessor
     # (both layers present, codes non-empty AND agreeing, recovery set) instead of hand-digging
     # adcp_error.code/errors[0].code/recovery out of the dict. The SPECIFIC code is pinned by
@@ -1019,7 +1020,7 @@ def then_response_outcome(ctx: dict, outcome: str) -> None:
     # request-validation wire error fired.
     if outcome == "accepted":
         assert ctx.get("error") is None, f"expected accepted, got error {ctx.get('error')!r}"
-        _require_response(ctx)
+        require_payload(ctx)
     elif outcome == "rejected":
         # A too-short / malformed idempotency_key violates the request schema, so the
         # rejection is a VALIDATION_ERROR on the wire. Grade the code + pinned-enum recovery

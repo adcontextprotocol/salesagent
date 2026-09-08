@@ -545,8 +545,17 @@ class AdCPError(Exception):
         codegen/refactor rename of those attributes breaks in one place. Returns a NAMED tuple
         (``AdvisoryDefaults``) so callers read ``.error_code`` / ``.recovery`` / ``.suggestion``
         by name rather than unpacking an anonymous 3-tuple positionally with a discard.
+
+        ``recovery`` is DERIVED from the pinned ``RECOVERY_BY_WIRE_CODE`` for this class's wire
+        code — the same authority the instance ``.recovery`` property (above) reads — with
+        ``_default_recovery`` only as the fallback for a code the pin does not classify. This
+        keeps an advisory ``errors[]`` recovery byte-identical to the recovery a raised instance
+        of the same class carries, so the per-account error path cannot drift from the
+        raise path (the pin owns recovery, not a per-class literal).
         """
-        return AdvisoryDefaults(cls._default_error_code, cls._default_recovery, cls._default_suggestion)
+        wire_code = translate_error_code(cls._default_error_code)
+        recovery = RECOVERY_BY_WIRE_CODE.get(wire_code, cls._default_recovery)
+        return AdvisoryDefaults(cls._default_error_code, recovery, cls._default_suggestion)
 
     @property
     def wire_error_code(self) -> str:
