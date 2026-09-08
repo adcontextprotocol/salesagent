@@ -1,17 +1,19 @@
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
-import requests
+from pydantic import JsonValue
 
 from src.adapters.base import AdServerAdapter, CreativeEngineAdapter
 from src.adapters.constants import REQUIRED_UPDATE_ACTIONS
+from src.adapters.vendor_http import VendorHttpClient, require_vendor
 from src.core.exceptions import (
-    AdCPAdapterError,
     AdCPCapabilityNotSupportedError,
     AdCPPackageNotFoundError,
 )
 from src.core.schemas import *
+from src.core.security.outbound_http import OperatorEndpoint, OutboundError, send
 
 
 class TritonDigital(AdServerAdapter):
@@ -46,6 +48,7 @@ class TritonDigital(AdServerAdapter):
         self.base_url = self.config.get("base_url", "https://tap-api.tritondigital.com/v1")
         self.auth_token = self.config.get("auth_token")
 
+        self._vendor: VendorHttpClient | None = None
         if self.dry_run:
             self.log("Running in dry-run mode - Triton API calls will be simulated", dry_run_prefix=False)
         else:
@@ -54,7 +57,10 @@ class TritonDigital(AdServerAdapter):
                 field="auth_token",
                 message="Triton Digital config is missing 'auth_token'",
             )
-            self.headers = {"Authorization": f"Bearer {self.auth_token}", "Content-Type": "application/json"}
+            self._vendor = VendorHttpClient(
+                base_url=self.base_url,
+                headers={"Authorization": f"Bearer {self.auth_token}", "Content-Type": "application/json"},
+            )
 
     # Only audio device types supported
     SUPPORTED_DEVICE_TYPES = {"mobile", "desktop", "audio"}
@@ -226,7 +232,7 @@ class TritonDigital(AdServerAdapter):
                 self.log("  }")
         else:
             # Create campaign in Triton
-            campaign_payload = {
+            campaign_payload: dict[str, JsonValue] = {
                 "advertiserId": self.advertiser_id,
                 "name": f"AdCP Campaign {media_buy_id}",
                 "startDate": start_time.date().isoformat(),
@@ -235,8 +241,9 @@ class TritonDigital(AdServerAdapter):
                 "active": True,
             }
 
-            response = requests.post(f"{self.base_url}/campaigns", headers=self.headers, json=campaign_payload)
-            response.raise_for_status()
+            response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                "POST", "/campaigns", json=campaign_payload
+            )
             campaign_data = response.json()
             campaign_id = campaign_data["id"]
 
@@ -270,8 +277,9 @@ class TritonDigital(AdServerAdapter):
                     if targeting and "stationIds" in targeting:
                         flight_payload["stationIds"] = targeting["stationIds"]
 
-                flight_response = requests.post(f"{self.base_url}/flights", headers=self.headers, json=flight_payload)
-                flight_response.raise_for_status()
+                flight_response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                    "POST", "/flights", json=flight_payload
+                )
 
             # Use the actual campaign ID from Triton
             media_buy_id = f"triton_{campaign_id}"
@@ -306,10 +314,9 @@ class TritonDigital(AdServerAdapter):
                 campaign_id = media_buy_id.replace("triton_", "")
 
                 # Get all flights for the campaign to map package names to flight IDs
-                flights_response = requests.get(
-                    f"{self.base_url}/flights", headers=self.headers, params={"campaignId": campaign_id}
+                flights_response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                    "GET", "/flights", params={"campaignId": campaign_id}
                 )
-                flights_response.raise_for_status()
                 flights = flights_response.json()
                 flight_map = {flight["name"]: flight["id"] for flight in flights}
 
@@ -322,12 +329,11 @@ class TritonDigital(AdServerAdapter):
 
                     creative_payload = {"name": asset["name"], "type": "AUDIO", "url": asset["media_url"]}
 
-                    creative_response = requests.post(
-                        f"{self.base_url}/creatives", headers=self.headers, json=creative_payload
+                    creative_response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                        "POST", "/creatives", json=creative_payload
                     )
-                    creative_response.raise_for_status()
                     creative_data = creative_response.json()
-                    creative_id = creative_data["id"]
+                    creative_id: JsonValue = creative_data["id"]
 
                     # Associate the creative with the assigned flights
                     flight_ids_to_associate = [
@@ -336,15 +342,14 @@ class TritonDigital(AdServerAdapter):
 
                     if flight_ids_to_associate:
                         for flight_id in flight_ids_to_associate:
-                            association_payload = {"creativeIds": [creative_id]}
-                            assoc_response = requests.put(
-                                f"{self.base_url}/flights/{flight_id}", headers=self.headers, json=association_payload
+                            association_payload: dict[str, JsonValue] = {"creativeIds": [creative_id]}
+                            assoc_response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                                "PUT", f"/flights/{flight_id}", json=association_payload
                             )
-                            assoc_response.raise_for_status()
 
                     created_asset_statuses.append(AssetStatus(creative_id=asset["creative_id"], status="approved"))
 
-            except requests.exceptions.RequestException as e:
+            except OutboundError as e:
                 self.log(f"Error creating Triton Creative: {e}")
                 for asset in assets:
                     if not any(s.creative_id == asset["creative_id"] for s in created_asset_statuses):
@@ -386,8 +391,9 @@ class TritonDigital(AdServerAdapter):
                 # Extract campaign ID from media_buy_id
                 campaign_id = media_buy_id.replace("triton_", "")
 
-                response = requests.get(f"{self.base_url}/campaigns/{campaign_id}", headers=self.headers)
-                response.raise_for_status()
+                response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                    "GET", f"/campaigns/{campaign_id}"
+                )
                 campaign_data = response.json()
 
                 # Map Triton status to our status
@@ -400,7 +406,7 @@ class TritonDigital(AdServerAdapter):
 
                 return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status=status)
 
-            except requests.exceptions.RequestException as e:
+            except OutboundError as e:
                 self.log(f"Error checking Triton Campaign status: {e}")
                 return CheckMediaBuyStatusResponse(media_buy_id=media_buy_id, status="unknown")
 
@@ -445,7 +451,7 @@ class TritonDigital(AdServerAdapter):
                 currency="USD",
             )
         else:
-            report_payload = {
+            report_payload: dict[str, JsonValue] = {
                 "reportType": "FLIGHT",
                 "startDate": date_range.start.isoformat(),
                 "endDate": date_range.end.isoformat(),
@@ -454,16 +460,18 @@ class TritonDigital(AdServerAdapter):
             }
 
             try:
-                response = requests.post(f"{self.base_url}/reports", headers=self.headers, json=report_payload)
-                response.raise_for_status()
+                response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                    "POST", "/reports", json=report_payload
+                )
                 report_job = response.json()
                 job_id = report_job["id"]
 
                 import time
 
                 for _ in range(10):  # Poll for up to 5 seconds
-                    status_response = requests.get(f"{self.base_url}/reports/{job_id}", headers=self.headers)
-                    status_response.raise_for_status()
+                    status_response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                        "GET", f"/reports/{job_id}"
+                    )
                     status_data = status_response.json()
                     if status_data["status"] == "COMPLETED":
                         report_url = status_data["url"]
@@ -472,8 +480,9 @@ class TritonDigital(AdServerAdapter):
                 else:
                     raise Exception("Triton report did not complete in time.")
 
-                report_response = requests.get(report_url)
-                report_response.raise_for_status()
+                # A VENDOR-RETURNED url with no auth — one of the two sites this
+                # migration genuinely secures rather than merely tidies.
+                report_response = send(report_url, method="GET", timeout=30.0, max_attempts=1)
 
                 import csv
                 import io
@@ -513,7 +522,7 @@ class TritonDigital(AdServerAdapter):
                     currency="USD",
                 )
 
-            except requests.exceptions.RequestException as e:
+            except OutboundError as e:
                 self.log(f"Error getting delivery report from Triton: {e}")
                 raise
 
@@ -621,17 +630,15 @@ class TritonDigital(AdServerAdapter):
                 if action in ["pause_media_buy", "resume_media_buy"]:
                     # Update campaign status
                     update_payload: dict[str, Any] = {"active": action == "resume_media_buy"}
-                    response = requests.put(
-                        f"{self.base_url}/campaigns/{campaign_id}", headers=self.headers, json=update_payload
+                    response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                        "PUT", f"/campaigns/{campaign_id}", json=update_payload
                     )
-                    response.raise_for_status()
 
                 elif action in ["pause_package", "resume_package"] and package_id:
                     # Get flight ID by name
-                    flights_response = requests.get(
-                        f"{self.base_url}/flights", headers=self.headers, params={"campaignId": campaign_id}
+                    flights_response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                        "GET", "/flights", params={"campaignId": campaign_id}
                     )
-                    flights_response.raise_for_status()
                     flights = flights_response.json()
 
                     flight = next((f for f in flights if f["name"] == package_id), None)
@@ -641,10 +648,9 @@ class TritonDigital(AdServerAdapter):
                     # Update flight status
                     is_resume = action == "resume_package"
                     flight_update_payload: dict[str, Any] = {"active": is_resume}
-                    response = requests.put(
-                        f"{self.base_url}/flights/{flight['id']}", headers=self.headers, json=flight_update_payload
+                    response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                        "PUT", f"/flights/{flight['id']}", json=flight_update_payload
                     )
-                    response.raise_for_status()
 
                     # Return affected package with paused state
                     return UpdateMediaBuySuccess.carrier(
@@ -666,10 +672,9 @@ class TritonDigital(AdServerAdapter):
                     and budget is not None
                 ):
                     # Get flight and update goal
-                    flights_response = requests.get(
-                        f"{self.base_url}/flights", headers=self.headers, params={"campaignId": campaign_id}
+                    flights_response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                        "GET", "/flights", params={"campaignId": campaign_id}
                     )
-                    flights_response.raise_for_status()
                     flights = flights_response.json()
 
                     flight = next((f for f in flights if f["name"] == package_id), None)
@@ -685,10 +690,9 @@ class TritonDigital(AdServerAdapter):
                         new_impressions = budget  # budget param contains impressions
 
                     goal_update_payload: dict[str, Any] = {"goal": {"type": "IMPRESSIONS", "value": new_impressions}}
-                    response = requests.put(
-                        f"{self.base_url}/flights/{flight['id']}", headers=self.headers, json=goal_update_payload
+                    response = require_vendor(self._vendor, vendor="Triton Digital").call(
+                        "PUT", f"/flights/{flight['id']}", json=goal_update_payload
                     )
-                    response.raise_for_status()
 
                 return UpdateMediaBuySuccess.carrier(
                     media_buy_id=media_buy_id,
@@ -696,6 +700,10 @@ class TritonDigital(AdServerAdapter):
                     implementation_date=today,
                 )
 
-            except requests.exceptions.RequestException as e:
+            except OutboundError as e:
                 self.log(f"Error updating Triton campaign/flight: {e}")
-                raise AdCPAdapterError(str(e)) from e
+                from src.core.helpers.outbound_error_mapping import raise_mapped_outbound_error
+
+                raise_mapped_outbound_error(
+                    e, provenance=OperatorEndpoint("Triton Digital"), logger=logging.getLogger(__name__)
+                )

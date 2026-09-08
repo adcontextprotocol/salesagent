@@ -71,10 +71,9 @@ class GetProductsBody(SalesAgentBaseModel):
     # dict BrandReference or string domain/URL shorthand (#1324)
     brand: dict[str, Any] | str | None = None
     filters: dict[str, Any] | None = None
-    # PropertyListReference; coerced at the route via create_get_products_request. This
-    # genuinely filters the returned set (filter_products_by_property_list in
-    # src/core/tools/products.py), so omitting it here handed a REST buyer an UNFILTERED
-    # product list at HTTP 200 while MCP and A2A both forwarded it.
+    # Top-level property of get-products-request.json at AdCP 3.1.1. Omitting it
+    # made the field MCP+A2A-only, which is a protocol gap rather than a REST
+    # limitation.
     property_list: dict[str, Any] | None = None
     # buying_mode is the sole entry in the required array of get-products-request at the
     # pinned spec (3.1.1), so a spec-valid client always sends it. It must be declared on

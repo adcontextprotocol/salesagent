@@ -1,7 +1,8 @@
 """Unit tests for order approval service."""
 
+import logging
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -180,86 +181,67 @@ def test_get_approval_status_not_found(mock_db_session):
     assert status is None
 
 
-def test_webhook_notification_sent_on_success():
-    """Test webhook notification is sent when approval succeeds."""
+# ─────────────────────────────────────────────────────────────────────────────
+# Two webhook unit tests that lived here were REMOVED, not repaired, when
+# ``_send_approval_webhook`` stopped speaking httpx and started handing the URL
+# to the egress seam (``src.core.security.outbound_http.send``):
+#
+#   * ``test_webhook_notification_sent_on_success`` claimed: the payload carries
+#     event/media_buy_id/status/order_id/attempts, and a stored bearer
+#     PushNotificationConfig becomes ``Authorization: Bearer <token>``. It read
+#     those off a substituted ``httpx.Client``, plus (from #1697)
+#     ``httpx.Client(timeout=10.0, follow_redirects=False)`` — a constructor the
+#     module no longer calls at all. Regraded against a real origin in
+#     ``tests/integration/test_order_approval_webhook.py``
+#     (``TestDeliveredPayload``, ``TestStoredCredential`` — which also covers the
+#     no-config direction the old test only hit incidentally).
+#   * ``test_webhook_retries_on_failure`` claimed: a failing POST is retried to
+#     three attempts. The hand-rolled ``for attempt in range(...)`` /
+#     ``time.sleep(2 ** attempt)`` loop it patched no longer exists; the seam owns
+#     attempt count, retry classification and BR-RULE-029 backoff. Regraded in
+#     ``tests/integration/test_order_approval_webhook.py``
+#     (``TestRetryClassification``, ``TestExhaustedDeliveryIsSilent``) and, for
+#     the spacing, once in ``tests/integration/test_outbound_http.py``.
+#
+# The SSRF obligation from #1697 stays here because it is a claim about THIS
+# call site — that the order-approval sender shares the gate — which the seam's
+# own suite cannot make on its behalf.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_approval_webhook_rejects_metadata_url_without_post(caplog):
+    """Order-approval sender must share the outbound SSRF gate (no open redirect).
+
+    Repointed off ``patch("httpx.Client")``: the sender does not speak httpx any
+    more, so a mock standing in for it would grade a transport this module never
+    touches. ``send`` is spied with ``wraps=`` instead, so the REAL validation
+    runs — the link-local metadata address is refused inside the seam before any
+    connection is attempted (and stays refused even with the private/insecure
+    escape hatches on), and production swallows the refusal as a log line.
+
+    Both halves are asserted: the raw URL reached the gate under the attempt
+    budget this call site asks for, and the gate refused it — which is what
+    "nothing was POSTed" means once no local transport exists to count.
+    """
+    from src.core.security.outbound_http import send as real_send
     from src.services.order_approval_service import _send_approval_webhook
+
+    metadata_url = "http://169.254.169.254/latest/meta-data/"
 
     with (
         patch("src.services.order_approval_service.get_db_session") as mock_db,
-        patch("httpx.Client") as mock_httpx,
-        patch(
-            "src.core.webhook_validator.WebhookURLValidator.validate_outbound_webhook_url",
-            return_value=(True, ""),
-        ),
-    ):
-        # Mock push notification config
-        mock_db_instance = MagicMock()
-        mock_db.return_value.__enter__.return_value = mock_db_instance
-
-        from src.core.database.models import PushNotificationConfig
-
-        mock_config = PushNotificationConfig(
-            tenant_id="tenant_1",
-            principal_id="principal_1",
-            url="https://example.com/webhook",
-            authentication_type="bearer",
-            authentication_token="test_token",
-            is_active=True,
-        )
-        mock_db_instance.scalars.return_value.first.return_value = mock_config
-
-        # Mock HTTP client
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_client_instance = MagicMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_httpx.return_value.__enter__.return_value = mock_client_instance
-
-        # Send webhook
-        _send_approval_webhook(
-            webhook_url="https://example.com/webhook",
-            tenant_id="tenant_1",
-            principal_id="principal_1",
-            media_buy_id="mb_123",
-            status="approved",
-            message="Order approved successfully",
-            order_id="12345",
-            attempts=3,
-        )
-
-        # Verify HTTP POST was made
-        mock_client_instance.post.assert_called_once()
-        mock_httpx.assert_called_with(timeout=10.0, follow_redirects=False)
-        call_args = mock_client_instance.post.call_args
-
-        # Check webhook payload
-        assert call_args[0][0] == "https://example.com/webhook"
-        payload = call_args[1]["json"]
-        assert payload["event"] == "order_approval_update"
-        assert payload["media_buy_id"] == "mb_123"
-        assert payload["status"] == "approved"
-        assert payload["order_id"] == "12345"
-        assert payload["attempts"] == 3
-
-        # Check authentication header
-        headers = call_args[1]["headers"]
-        assert headers["Authorization"] == "Bearer test_token"
-
-
-def test_approval_webhook_rejects_metadata_url_without_post():
-    """Order-approval sender must share the outbound SSRF gate (no open redirect)."""
-    from src.services.order_approval_service import _send_approval_webhook
-
-    with (
-        patch("src.services.order_approval_service.get_db_session") as mock_db,
-        patch("httpx.Client") as mock_httpx,
+        # The seam call now lives one layer down, inside deliver_webhook
+        # (src.core.security.webhook_egress) -- the shared delivery function every
+        # webhook sender routes through since #1802.
+        patch("src.core.security.webhook_egress.send", wraps=real_send) as spy_send,
+        caplog.at_level(logging.WARNING, logger="src.services.order_approval_service"),
     ):
         mock_db_instance = MagicMock()
         mock_db.return_value.__enter__.return_value = mock_db_instance
         mock_db_instance.scalars.return_value.first.return_value = None
 
         _send_approval_webhook(
-            webhook_url="http://169.254.169.254/latest/meta-data/",
+            webhook_url=metadata_url,
             tenant_id="tenant_1",
             principal_id="principal_1",
             media_buy_id="mb_123",
@@ -267,65 +249,81 @@ def test_approval_webhook_rejects_metadata_url_without_post():
             message="Order approved successfully",
         )
 
-        mock_httpx.assert_not_called()
+    # content=, not json=: deliver_webhook serializes once (via
+    # prepare_signed_request) and transmits those exact bytes via content=, never
+    # json= (#1802's Core Invariant -- no webhook sender may reach
+    # json= on the egress seam).
+    spy_send.assert_called_once_with(metadata_url, content=ANY, headers=ANY, timeout=10.0, max_attempts=3)
+    assert "was refused by egress policy" in caplog.text
 
 
-@patch("src.services.order_approval_service.time.sleep")
-def test_webhook_retries_on_failure(mock_sleep):
-    """Test webhook retries on HTTP failure."""
-    import src.services.order_approval_service as service_module
+def test_a_started_approval_thread_can_be_cancelled(mock_db_session):
+    """A caller can cancel a started approval thread, and it stops promptly.
 
-    with (
-        patch.object(service_module, "get_db_session") as mock_db,
-        patch("httpx.Client") as mock_httpx,
-        patch(
-            "src.core.webhook_validator.WebhookURLValidator.validate_outbound_webhook_url",
-            return_value=(True, ""),
-        ),
-    ):
-        # Mock DB
-        mock_db_instance = MagicMock()
-        mock_db.return_value.__enter__.return_value = mock_db_instance
-        mock_db_instance.scalars.return_value.first.return_value = None  # No auth config
+    The defect (#2056): `_active_approvals` holds the thread but exposes no way
+    to stop it. A started thread runs the real webhook retry path -- backoff
+    behind HTTP POSTs that time out after 10 s -- so it outlives the request,
+    and the test, by tens of seconds. Measured: a thread from
+    `test_start_approval_creates_sync_job` called sleep(1) and sleep(2) during
+    `test_performance_index_behavioral` and `test_policy_typed_models`, roughly
+    1500 tests later, landing inside another test's mock because
+    `src/core/webhook_delivery.py` imports `time` and patching
+    `src.core.webhook_delivery.time.sleep` replaces it process-wide.
 
-        # Mock HTTP client - fails twice, succeeds third time
-        mock_response_fail = MagicMock()
-        mock_response_fail.status_code = 500
-        mock_response_success = MagicMock()
-        mock_response_success.status_code = 200
+    `delivery_simulator.stop_simulation` and gam/managers/reporting already
+    solve this with a parallel `_stop_signals` Event dict beside the registry;
+    this service is the third site and never got one.
 
-        # Track calls explicitly with closure
-        call_counter = {"count": 0}
-        responses = [mock_response_fail, mock_response_fail, mock_response_success]
+    What this test grades is the registry half, and that half is unchanged by
+    the move of outbound HTTP behind the egress seam: a started approval must
+    expose a stop signal, a caller must be able to set it, and the thread must
+    be joinable once it is set. The seam owns the backoff now and offers no
+    cancellation hook, so production checks the signal before handing a
+    delivery over rather than inside a loop it no longer has -- which is why
+    the worker below is substituted, and no HTTP path is exercised here.
 
-        def post_side_effect(*args, **kwargs):
-            call_counter["count"] += 1
-            idx = min(call_counter["count"] - 1, len(responses) - 1)
-            return responses[idx]
+    The import is inside the test on purpose: in the red state it fails here,
+    before any thread is started, so a failing run does not itself leak the
+    thread this test exists to bound.
+    """
+    import threading
 
-        # Create a fresh MagicMock for the client instance
-        mock_client_instance = MagicMock()
-        mock_client_instance.post.side_effect = post_side_effect
+    from src.services.order_approval_service import (
+        _active_approvals,
+        cancel_order_approval,
+        get_approval_stop_signal,
+    )
 
-        # Create a fresh context manager mock
-        mock_context = MagicMock()
-        mock_context.__enter__.return_value = mock_client_instance
-        mock_context.__exit__.return_value = None
-        mock_httpx.return_value = mock_context
+    started = threading.Event()
+    observed_stop: dict[str, threading.Event | None] = {"signal": None}
 
-        # Send webhook
-        service_module._send_approval_webhook(
-            webhook_url="https://example.com/webhook",
+    def _blocking_worker(*args, **kwargs):
+        # Stand in for the real worker: wait on the stop signal the way a
+        # cancellable wait must, rather than sleeping blind. approval_id comes
+        # from args[0], as production's _run_approval_thread receives it — NOT
+        # from a variable the caller assigns after start_order_approval_background
+        # returns, which the worker races.
+        signal = get_approval_stop_signal(args[0])
+        observed_stop["signal"] = signal
+        started.set()
+        signal.wait(timeout=30.0)
+
+    approval_id_holder: dict[str, str] = {}
+    with patch("src.services.order_approval_service._run_approval_thread", side_effect=_blocking_worker):
+        approval_id_holder["id"] = start_order_approval_background(
+            order_id="12345",
+            media_buy_id="mb_123",
             tenant_id="tenant_1",
             principal_id="principal_1",
-            media_buy_id="mb_123",
-            status="approved",
-            message="Order approved",
         )
+        approval_id = approval_id_holder["id"]
+        assert started.wait(timeout=5.0), "worker never started"
+        assert is_approval_running(approval_id)
 
-        # Verify retry logic works - should be at least 3 attempts
-        # Note: Due to test pollution in full suite, may see 4 calls, but minimum is 3
-        assert call_counter["count"] >= 3, f"Expected at least 3 retry attempts, got {call_counter['count']}"
-        assert call_counter["count"] <= 4, (
-            f"Expected at most 4 retry attempts (3 + 1 pollution), got {call_counter['count']}"
-        )
+        cancel_order_approval(approval_id)
+
+        thread = _active_approvals.get(approval_id)
+        assert thread is not None
+        thread.join(timeout=5.0)
+        assert not thread.is_alive(), "cancel did not stop the approval thread within 5 s"
+        assert observed_stop["signal"] is not None and observed_stop["signal"].is_set()

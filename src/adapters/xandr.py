@@ -8,11 +8,11 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import requests
 from dateutil import parser as dateutil_parser
+from pydantic import JsonValue
 
 from src.adapters.base import AdServerAdapter
-from src.core.retry_utils import api_retry
+from src.adapters.vendor_http import VendorHttpClient, require_vendor
 from src.core.schemas import (
     AdapterGetMediaBuyDeliveryResponse,
     CreateMediaBuyRequest,
@@ -25,6 +25,7 @@ from src.core.schemas import (
     UpdateMediaBuyResponse,
     url,
 )
+from src.core.security.outbound_http import OutboundError
 
 # NOTE: Xandr adapter needs full refactor - it's using old schemas and patterns
 # The other methods (get_media_buy_status, get_media_buy_delivery, etc.) still use old schemas
@@ -223,8 +224,19 @@ class XandrAdapter(AdServerAdapter):
             self.advertiser_id = mapping.get("advertiser_id")
 
         # Session management
-        self.token = None
-        self.token_expiry = None
+        # Annotated: a bare `= None` makes mypy infer the attribute as always-None,
+        # so every later use as a header value is an error (#1611 ratchet).
+        self.token: str | None = None
+        self.token_expiry: datetime | None = None
+
+        # _bootstrap: the un-credentialed client that dials /auth itself; a
+        # real VendorHttpClient exists the moment api_endpoint does (it
+        # always does — :214's default), which is what a client that
+        # carries no secret is allowed to prove. Built once, never rebuilt.
+        # _vendor: the credentialed client every OTHER call goes through —
+        # rebuilt whole on every successful authenticate; never mutated.
+        self._bootstrap = VendorHttpClient(base_url=self.api_endpoint, headers={"Content-Type": "application/json"})
+        self._vendor: VendorHttpClient | None = None
 
         # Manual approval mode
         self.manual_approval = config.get("manual_approval_required", False)
@@ -232,24 +244,39 @@ class XandrAdapter(AdServerAdapter):
 
         logger.info(f"Initialized Xandr adapter for principal {principal.name}")
 
-    @api_retry
     def _authenticate(self):
         """Authenticate with Xandr API and get session token."""
         if self.token and self.token_expiry and datetime.now(UTC) < self.token_expiry:
             return  # Token still valid
 
-        auth_url = f"{self.api_endpoint}/auth"
-        auth_data = {"auth": {"username": self.username, "password": self.password}}
+        auth_data: dict[str, JsonValue] = {"auth": {"username": self.username, "password": self.password}}
 
         try:
-            response = requests.post(auth_url, json=auth_data)
-            response.raise_for_status()
+            # max_attempts=1: this call did not retry by intent — it retried because
+            # @api_retry wrapped it, and because _make_request carried the same
+            # decorator the two multiplied, costing 9 authentication POSTs against a
+            # down Xandr with a cold token. Both decorators are gone; the seam is the
+            # only thing that decides attempts here now.
+            result = self._bootstrap.call("POST", "/auth", json=auth_data)
 
-            data = response.json()
+            data = result.json()
             if data.get("response", {}).get("status") == "OK":
-                self.token = data["response"]["token"]
+                # Bound to a local first, then reused for the header below: reading
+                # `self.token` there would be `str | None` and mypy cannot see that
+                # this branch just set it. Same value, same order, no narrowing cast.
+                token = data["response"]["token"]
+                self.token = token
                 # Xandr tokens typically last 2 hours
                 self.token_expiry = datetime.now(UTC) + timedelta(hours=2)
+                # Rotation replaces the client whole, never mutates the live
+                # one in place: frozen blocks REBINDING self._vendor.headers,
+                # but the dict that field points at is still mutable, so
+                # "never mutated" is a discipline this call site keeps, not
+                # one the dataclass enforces on its own.
+                self._vendor = VendorHttpClient(
+                    base_url=self.api_endpoint,
+                    headers={"Authorization": token, "Content-Type": "application/json"},
+                )
                 logger.info("Successfully authenticated with Xandr")
             else:
                 raise Exception(f"Authentication failed: {data}")
@@ -258,31 +285,26 @@ class XandrAdapter(AdServerAdapter):
             logger.error(f"Xandr authentication error: {e}")
             raise
 
-    @api_retry
     def _make_request(self, method: str, endpoint: str, data: dict | None = None) -> dict:
         """Make authenticated request to Xandr API."""
         self._authenticate()
 
-        headers = {"Authorization": self.token, "Content-Type": "application/json"}
-
-        url = f"{self.api_endpoint}{endpoint}"
+        if method not in ("GET", "POST", "PUT", "DELETE"):
+            raise ValueError(f"Unsupported method: {method}")
 
         try:
-            if method == "GET":
-                response = requests.get(url, headers=headers, params=data)
-            elif method == "POST":
-                response = requests.post(url, headers=headers, json=data)
-            elif method == "PUT":
-                response = requests.put(url, headers=headers, json=data)
-            elif method == "DELETE":
-                response = requests.delete(url, headers=headers)
-            else:
-                raise ValueError(f"Unsupported method: {method}")
+            # The verb branch is gone: the client already takes method=, and a GET
+            # carries its dict as params while the others carry it as a body.
+            # max_attempts=1 preserves this site's real behaviour — see _authenticate.
+            result = require_vendor(self._vendor, vendor="Xandr").call(
+                method,
+                endpoint,
+                params=data if method == "GET" else None,
+                json=data if method != "GET" and data is not None else None,
+            )
+            return result.json()
 
-            response.raise_for_status()
-            return response.json()
-
-        except requests.exceptions.RequestException as e:
+        except OutboundError as e:
             logger.error(f"Xandr API request failed: {e}")
             raise
 
@@ -294,8 +316,7 @@ class XandrAdapter(AdServerAdapter):
         """Create a task for human approval."""
         import uuid
 
-        from database_session import get_db_session
-
+        from src.core.database.database_session import get_db_session
         from src.core.database.models import Tenant
 
         task_id = f"task_{uuid.uuid4().hex[:8]}"
@@ -313,7 +334,7 @@ class XandrAdapter(AdServerAdapter):
 
             if tenant and tenant.slack_webhook_url:
                 # Send Slack notification
-                from slack_notifier import get_slack_notifier
+                from src.services.slack_notifier import get_slack_notifier
 
                 # Build config for Slack notifier
                 tenant_config = {"features": {"slack_webhook_url": tenant.slack_webhook_url}}
@@ -322,8 +343,7 @@ class XandrAdapter(AdServerAdapter):
                 slack.notify_new_task(
                     task_id=task_id,
                     task_type=operation,
-                    title=f"Xandr: {operation.replace('_', ' ').title()}",
-                    description=f"Manual approval required for {self.principal.name}",
+                    principal_name=self.principal.name,
                     media_buy_id=details.get("media_buy_id", "N/A"),
                 )
 

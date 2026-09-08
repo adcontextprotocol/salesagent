@@ -24,6 +24,7 @@ from src.core.database.models import Principal, Tenant
 from src.core.domain_config import get_sales_agent_domain
 from src.core.validation import sanitize_form_data, validate_form_data
 from src.services.setup_checklist_service import SetupChecklistService
+from src.services.slack_notifier import SlackNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -467,45 +468,6 @@ def update(tenant_id):
     return redirect(url_for("tenants.settings", tenant_id=tenant_id))
 
 
-@tenants_bp.route("/<tenant_id>/update_slack", methods=["POST"])
-@log_admin_action("update_slack")
-@require_tenant_access()
-def update_slack(tenant_id):
-    """Update tenant Slack settings."""
-    try:
-        from src.core.webhook_validator import WebhookURLValidator
-
-        # Sanitize form data
-        form_data = sanitize_form_data(request.form.to_dict())
-        webhook_url = form_data.get("slack_webhook_url", "").strip()
-
-        # Validate webhook URL for SSRF protection
-        if webhook_url:
-            is_valid, error_msg = WebhookURLValidator.validate_webhook_url(webhook_url)
-            if not is_valid:
-                flash(f"Invalid Slack webhook URL: {error_msg}", "error")
-                return redirect(url_for("tenants.settings", tenant_id=tenant_id, section="slack"))
-
-        with get_db_session() as db_session:
-            tenant = db_session.scalars(select(Tenant).filter_by(tenant_id=tenant_id)).first()
-            if not tenant:
-                flash("Tenant not found", "error")
-                return redirect(url_for("core.index"))
-
-            # Update Slack webhook
-            tenant.slack_webhook_url = webhook_url if webhook_url else None
-            tenant.updated_at = datetime.now(UTC)
-
-            db_session.commit()
-            flash("Slack settings updated successfully", "success")
-
-    except Exception as e:
-        logger.error(f"Error updating Slack settings: {e}", exc_info=True)
-        flash("Error updating Slack settings", "error")
-
-    return redirect(url_for("tenants.settings", tenant_id=tenant_id, section="slack"))
-
-
 @tenants_bp.route("/<tenant_id>/test_slack", methods=["POST"])
 @log_admin_action("test_slack")
 @require_tenant_access()
@@ -520,48 +482,49 @@ def test_slack(tenant_id):
             if not tenant.slack_webhook_url:
                 return jsonify({"success": False, "error": "No Slack webhook configured"}), 400
 
-            # Send test message
-            import requests
-
-            response = requests.post(
-                tenant.slack_webhook_url,
-                json={
-                    "text": f"🎉 Test message from Prebid Sales Agent for {tenant.name}",
-                    "blocks": [
-                        {
-                            "type": "section",
-                            "text": {
+            # One Block Kit owner. This route used to assemble its own blocks and
+            # dial the raw egress seam, duplicating what slack_notifier already does
+            # — and skipping its retry/record bookkeeping in the process.
+            #
+            # max_retries=1 is preserved deliberately: a test notification that
+            # silently sends three times is worse than one that fails visibly. That
+            # decision predates this change and survives it; the notifier grew a
+            # passthrough rather than the route keeping its own dialer.
+            sent = SlackNotifier(webhook_url=tenant.slack_webhook_url).send_message(
+                text=f"🎉 Test message from Prebid Sales Agent for {tenant.name}",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"*Test Notification*\nThis is a test message from the "
+                                f"Prebid Sales Agent for *{tenant.name}*."
+                            ),
+                        },
+                    },
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
                                 "type": "mrkdwn",
-                                "text": f"*Test Notification*\nThis is a test message from the Prebid Sales Agent for *{tenant.name}*.",
-                            },
-                        },
-                        {
-                            "type": "context",
-                            "elements": [
-                                {
-                                    "type": "mrkdwn",
-                                    "text": f"Sent at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                                }
-                            ],
-                        },
-                    ],
-                },
-                timeout=5,
+                                "text": f"Sent at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                            }
+                        ],
+                    },
+                ],
+                tenant_id=tenant.tenant_id,
+                max_retries=1,
             )
 
-            if response.status_code == 200:
-                return jsonify({"success": True, "message": "Test message sent successfully"})
-            else:
-                return (
-                    jsonify(
-                        {"success": False, "error": f"Slack returned status {response.status_code}: {response.text}"}
-                    ),
-                    400,
-                )
+            if not sent:
+                # Same contract the OutboundError arm used to serve: 400 with an
+                # opaque message. Slack's own response body is a counterparty
+                # response and is never echoed back to the operator.
+                return jsonify({"success": False, "error": "Slack webhook delivery failed"}), 400
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error testing Slack webhook: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+            return jsonify({"success": True, "message": "Test message sent successfully"})
+
     except Exception as e:
         logger.error(f"Unexpected error testing Slack: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Internal server error"}), 500

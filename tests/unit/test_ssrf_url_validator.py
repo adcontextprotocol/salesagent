@@ -1,153 +1,44 @@
-"""Unit tests for SSRF URL validation (F-04).
+"""Unit tests for SSRF-adjacent URL handling (F-04).
+
+``TestCheckUrlSsrf`` and ``TestBlockedHostnames`` — the direct tests of
+``check_url_ssrf``/``BLOCKED_HOSTNAMES`` — are DELETED: that module
+(``src.core.security.url_validator``) no longer exists (salesagent-tbrk.1).
+Every row's behavioral content migrated into
+``tests/integration/test_outbound_http.py``'s verdict-parity table (see that
+file's ``EgressPolicy.check_registration`` cases), which grades the SAME
+address predicate now shared by both the registration and dial verdicts —
+triaged row-by-row so nothing was silently dropped:
+
+- localhost / metadata / docker / gateway-docker hostname rows -> the
+  blocked-hostname parity rows.
+- loopback, RFC1918 x3, link-local, 224.0.0.1, ``[ff02::1]``,
+  ``[64:ff9b::...]`` -> the reserved-range parity rows.
+- CGNAT literal -> the supplement-range parity rows (this is the row that
+  used to pass ONLY because ``url_validator.BLOCKED_NETWORKS`` covered it —
+  now covered by the shared predicate on both verdicts, closing
+  salesagent-634hc).
+- non-http / file scheme / require_https -> the non-https parity rows.
+- ``valid_public_https_url_accepted`` -> the accepted half of the
+  unresolvable-hostname divergence case.
+- ``test_unresolvable_hostname_rejected`` (the ``resolve_dns=True`` DNS
+  branch — dropped as dead code, one production caller, always
+  ``resolve_dns=False``) -> its live semantics are preserved by the DIAL half
+  of that same divergence case: an unresolvable host IS refused, via the
+  SDK's single pinned resolution.
+- ``valid_public_http_url_accepted`` (``require_https=False``) -> genuinely
+  dead; the one production caller always passed ``require_https=True``.
+  Nothing to migrate.
 
 Covers:
-- check_url_ssrf: core validator used across signals agents, webhooks, property lists
-- validate_agent_url: media_buy_create wrapper
-- BLOCKED_HOSTNAMES: Docker-internal and cloud metadata hostname coverage
-- Flask endpoint-level wiring for signals agents add/edit handlers
+- validate_agent_url: media_buy_create wrapper (format-only, unrelated to the
+  address-policy migration above)
+- Flask endpoint-level wiring for signals agents add/edit handlers (routes
+  through ``src.admin.utils.url_policy`` -> ``outbound_http.validate_url``,
+  never called ``check_url_ssrf`` directly)
 """
 
 import os
 from unittest.mock import MagicMock, patch
-
-from src.core.security.url_validator import BLOCKED_HOSTNAMES, check_url_ssrf
-
-
-class TestCheckUrlSsrf:
-    """Core validator rejects private/internal targets."""
-
-    def test_valid_public_https_url_accepted(self):
-        with patch("src.core.security.url_validator.socket.gethostbyname", return_value="93.184.216.34"):
-            is_safe, error = check_url_ssrf("https://example.com/agent")
-        assert is_safe is True
-        assert error == ""
-
-    def test_valid_public_http_url_accepted(self):
-        with patch("src.core.security.url_validator.socket.gethostbyname", return_value="93.184.216.34"):
-            is_safe, error = check_url_ssrf("http://example.com/agent")
-        assert is_safe is True
-        assert error == ""
-
-    def test_localhost_rejected(self):
-        is_safe, error = check_url_ssrf("http://localhost:9999")
-        assert is_safe is False
-        assert "blocked" in error.lower()
-
-    def test_loopback_ip_rejected(self):
-        with patch("src.core.security.url_validator.socket.gethostbyname", return_value="127.0.0.1"):
-            is_safe, error = check_url_ssrf("http://127.0.0.1:9999")
-        assert is_safe is False
-
-    def test_private_rfc1918_10_rejected(self):
-        with patch("src.core.security.url_validator.socket.gethostbyname", return_value="10.0.0.1"):
-            is_safe, error = check_url_ssrf("http://internal-host.example.com")
-        assert is_safe is False
-        assert "10.0.0.0/8" in error
-
-    def test_private_rfc1918_192168_rejected(self):
-        with patch("src.core.security.url_validator.socket.gethostbyname", return_value="192.168.1.1"):
-            is_safe, error = check_url_ssrf("http://router.local")
-        assert is_safe is False
-
-    def test_private_rfc1918_172_rejected(self):
-        with patch("src.core.security.url_validator.socket.gethostbyname", return_value="172.16.0.1"):
-            is_safe, error = check_url_ssrf("http://internal.corp")
-        assert is_safe is False
-
-    def test_link_local_169_254_rejected(self):
-        with patch("src.core.security.url_validator.socket.gethostbyname", return_value="169.254.169.254"):
-            is_safe, error = check_url_ssrf("http://169.254.169.254/metadata")
-        assert is_safe is False
-
-    def test_aws_metadata_hostname_rejected(self):
-        is_safe, error = check_url_ssrf("http://169.254.169.254/latest/meta-data/")
-        assert is_safe is False
-
-    def test_gcp_metadata_hostname_rejected(self):
-        is_safe, error = check_url_ssrf("http://metadata.google.internal/computeMetadata/v1/")
-        assert is_safe is False
-        assert "blocked" in error.lower()
-
-    def test_docker_internal_hostname_rejected(self):
-        """F-04: host.docker.internal is the exact vector from the audit evidence."""
-        is_safe, error = check_url_ssrf("http://host.docker.internal:9999")
-        assert is_safe is False
-        assert "blocked" in error.lower()
-
-    def test_gateway_docker_internal_rejected(self):
-        is_safe, error = check_url_ssrf("http://gateway.docker.internal")
-        assert is_safe is False
-
-    def test_non_http_scheme_rejected(self):
-        is_safe, error = check_url_ssrf("ftp://example.com/agent")
-        assert is_safe is False
-        assert "http" in error.lower()
-
-    def test_file_scheme_rejected(self):
-        is_safe, error = check_url_ssrf("file:///etc/passwd")
-        assert is_safe is False
-
-    def test_cgnat_100_64_rejected(self):
-        is_safe, error = check_url_ssrf("http://100.64.0.1/webhook")
-        assert is_safe is False
-        assert "100.64.0.0/10" in error
-
-    def test_multicast_224_rejected(self):
-        is_safe, error = check_url_ssrf("http://224.0.0.1/webhook")
-        assert is_safe is False
-        assert "224.0.0.0/4" in error
-
-    def test_ipv6_multicast_ff00_rejected(self):
-        is_safe, error = check_url_ssrf("http://[ff02::1]/")
-        assert is_safe is False
-        assert "ff00::/8" in error
-
-    def test_nat64_well_known_prefix_rejected(self):
-        # NAT64-embedded link-local metadata (169.254.169.254) via 64:ff9b::/96
-        is_safe, error = check_url_ssrf("http://[64:ff9b::a9fe:a9fe]/")
-        assert is_safe is False
-        assert "64:ff9b::/96" in error
-
-    def test_require_https_rejects_http(self):
-        with patch("src.core.security.url_validator.socket.gethostbyname", return_value="93.184.216.34"):
-            is_safe, error = check_url_ssrf("http://example.com/agent", require_https=True)
-        assert is_safe is False
-        assert "https" in error.lower()
-
-    def test_require_https_accepts_https(self):
-        with patch("src.core.security.url_validator.socket.gethostbyname", return_value="93.184.216.34"):
-            is_safe, error = check_url_ssrf("https://example.com/agent", require_https=True)
-        assert is_safe is True
-
-    def test_unresolvable_hostname_rejected(self):
-        import socket
-
-        with patch(
-            "src.core.security.url_validator.socket.gethostbyname",
-            side_effect=socket.gaierror("Name or service not known"),
-        ):
-            is_safe, error = check_url_ssrf("http://this-hostname-does-not-exist.invalid")
-        assert is_safe is False
-        assert "resolve" in error.lower() or "cannot" in error.lower()
-
-
-class TestBlockedHostnames:
-    """BLOCKED_HOSTNAMES covers all known internal-alias patterns."""
-
-    def test_localhost_in_blocked_hostnames(self):
-        assert "localhost" in BLOCKED_HOSTNAMES
-
-    def test_host_docker_internal_in_blocked_hostnames(self):
-        assert "host.docker.internal" in BLOCKED_HOSTNAMES
-
-    def test_gateway_docker_internal_in_blocked_hostnames(self):
-        assert "gateway.docker.internal" in BLOCKED_HOSTNAMES
-
-    def test_gcp_metadata_in_blocked_hostnames(self):
-        assert "metadata.google.internal" in BLOCKED_HOSTNAMES
-
-    def test_aws_metadata_ip_in_blocked_hostnames(self):
-        assert "169.254.169.254" in BLOCKED_HOSTNAMES
 
 
 class TestValidateAgentUrl:
@@ -196,6 +87,12 @@ class TestValidateAgentUrl:
         assert validate_agent_url("https://not-deployed-yet.internal.example.com/agent") is True
 
 
+# A public, non-reserved address as a literal: the ingest gate's verdict on it is
+# decided entirely by address policy, with no DNS lookup to go missing offline.
+# (The mirror image of the reject cases' 169.254.169.254 / host.docker.internal.)
+SAFE_PUBLIC_URL = "https://93.184.216.34/agent"
+
+
 def _make_signals_agent_client():
     """Create a Flask test client authenticated as super admin for signals agent endpoints."""
     from src.admin.app import create_app
@@ -221,11 +118,17 @@ def _mock_db_for_signals_add(mock_db, tenant_id="default"):
 
 
 class TestSignalsAgentEndpointSSRFWiring:
-    """Flask endpoint-level tests confirming check_url_ssrf() is wired into handlers.
+    """Flask endpoint-level tests confirming the ingest egress gate is wired into handlers.
 
     These tests exercise the actual POST /tenant/<id>/signals-agents/add and
     POST /tenant/<id>/signals-agents/<id>/edit endpoints so that removing or
-    bypassing the check_url_ssrf() call in the handler would cause a real failure.
+    bypassing the ingest check in the handler would cause a real failure. The
+    handlers no longer call check_url_ssrf() directly: they go through
+    ``src.admin.utils.url_policy`` -> ``src.core.security.outbound_http.validate_url``,
+    whose address policy is the live ``adcp.signing`` validator. The accepted URL is
+    therefore a public IP literal rather than a fixture hostname: nothing here patches
+    a resolver any more, so a hostname would make the accept case depend on this
+    machine's DNS, and the verdict must be a pure address-policy fact.
     """
 
     def test_add_endpoint_rejects_docker_internal_url(self):
@@ -251,7 +154,11 @@ class TestSignalsAgentEndpointSSRFWiring:
         assert "add" in response.headers.get("Location", "")
 
     def test_add_endpoint_accepts_safe_public_url(self):
-        """POST /signals-agents/add with a safe public URL must proceed past the SSRF check."""
+        """POST /signals-agents/add with a safe public URL must proceed past the SSRF check.
+
+        ``SAFE_PUBLIC_URL`` is an https IP literal in public space, so the gate's verdict
+        needs no DNS and the agent row really is created — the redirect goes to the list.
+        """
         client = _make_signals_agent_client()
 
         with patch("src.admin.blueprints.signals_agents.get_db_session") as mock_db:
@@ -259,22 +166,38 @@ class TestSignalsAgentEndpointSSRFWiring:
             # Make session.add() and commit() no-ops
             mock_session.add = MagicMock()
             mock_session.commit = MagicMock()
-            with patch("src.core.security.url_validator.socket.gethostbyname", return_value="93.184.216.34"):
-                with patch.dict(os.environ, {"ADCP_AUTH_TEST_MODE": "true"}):
-                    response = client.post(
-                        "/tenant/default/signals-agents/add",
-                        data={
-                            "agent_url": "https://signals.example.com/agent",
-                            "name": "Safe Agent",
-                            "enabled": "on",
-                            "timeout": "30",
-                        },
-                        follow_redirects=False,
-                    )
+            with patch.dict(os.environ, {"ADCP_AUTH_TEST_MODE": "true"}):
+                response = client.post(
+                    "/tenant/default/signals-agents/add",
+                    data={
+                        "agent_url": SAFE_PUBLIC_URL,
+                        "name": "Safe Agent",
+                        "enabled": "on",
+                        "timeout": "30",
+                    },
+                    follow_redirects=False,
+                )
 
         # Must redirect to list (success) — not back to add form
         assert response.status_code == 302
         assert "add" not in response.headers.get("Location", "")
+        # And the row was actually written — proving it reached the endpoint-add path,
+        # not merely that it failed somewhere past the gate. Assert on WHAT was added,
+        # not just that add() fired: a bare assert_called_once() would stay green if a
+        # regression wrote the wrong row.
+        #
+        # ONE assertion, not a count-then-dissect pair. The earlier form —
+        # assert_called_once_with(ANY) followed by a call_args read — pinned the count
+        # and nothing about the argument, which is the split shape the weak-mock guard
+        # bans; routing it through ANY only disguised it.
+        assert len(mock_session.add.call_args_list) == 1, (
+            f"expected exactly one row to be added, got {mock_session.add.call_args_list!r}"
+        )
+        added = mock_session.add.call_args.args[0]
+        assert str(getattr(added, "agent_url", None)) == SAFE_PUBLIC_URL, (
+            f"the persisted row must carry the URL that passed the gate; got {added!r}"
+        )
+        mock_session.commit.assert_called_once_with()
 
     def test_edit_endpoint_rejects_unsafe_url_on_update(self):
         """POST /signals-agents/<id>/edit updating URL to host.docker.internal must be rejected.

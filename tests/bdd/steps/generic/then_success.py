@@ -1,6 +1,6 @@
 """Then steps for success assertions (response status, fields, sandbox).
 
-These steps assert on ``ctx["response"]`` which holds a real response
+These steps assert on the dispatch payload (``require_payload``), which is a real response
 object from production code (any use case).
 """
 
@@ -9,6 +9,7 @@ from __future__ import annotations
 from pytest_bdd import parsers, then
 
 from src.core.helpers import enum_value
+from tests.bdd.steps._outcome_helpers import require_payload
 from tests.bdd.steps.generic.then_media_buy import then_no_media_buy_persisted as _then_no_media_buy_persisted
 
 
@@ -50,8 +51,7 @@ def then_response_status(ctx: dict, status: str) -> None:
       (b) the schema-required success payload being present. Any requested
       status other than "completed" against a status-less response fails.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
 
     # Determine if response type declares a ``status`` field via Pydantic metadata.
     # Uses getattr on the class (not instance) to handle non-Pydantic test doubles.
@@ -100,8 +100,7 @@ def then_response_status(ctx: dict, status: str) -> None:
 @then(parsers.parse('the response should contain "{field}" array'))
 def then_response_contains_array(ctx: dict, field: str) -> None:
     """Assert response contains a field that is an array (list)."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     value = getattr(resp, field, None)
     assert value is not None, f"Expected '{field}' in response, got attrs: {dir(resp)}"
     assert isinstance(value, list), f"Expected '{field}' to be a list, got {type(value)}"
@@ -113,8 +112,7 @@ def then_response_contains_array(ctx: dict, field: str) -> None:
 @then("the response should include sandbox equals true")
 def then_sandbox_true(ctx: dict) -> None:
     """Assert response includes sandbox: true."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     assert getattr(resp, "sandbox", None) is True, f"Expected sandbox=True, got {getattr(resp, 'sandbox', None)}"
 
 
@@ -126,8 +124,7 @@ def then_no_sandbox_field(ctx: dict) -> None:
     A field present with value None still serializes as ``{"sandbox": null}``
     which counts as "including a sandbox field".
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     dumped = resp.model_dump()
     assert "sandbox" not in dumped, (
         f"Expected no sandbox field in serialized response, got sandbox={dumped.get('sandbox')}"
@@ -149,8 +146,7 @@ def then_natural_key_resolves_to_sandbox(ctx: dict) -> None:
         f"Expected the natural-key reference to resolve to a sandbox account, but the create failed: "
         f"{ctx.get('error')!r}"
     )
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a successful create response with a resolved sandbox account"
+    resp = require_payload(ctx)
     media_buy_id = getattr(resp, "media_buy_id", None)
     assert media_buy_id, f"Expected a media_buy_id from the sandbox-account create, got {media_buy_id!r}"
 
@@ -163,8 +159,7 @@ def then_no_real_orders_created(ctx: dict) -> None:
     creation. The mock adapter records create_media_buy calls; in sandbox mode
     none should have run against a real platform.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a successful sandbox response"
+    resp = require_payload(ctx)
     # Sandbox isolation contract: the response must mark itself sandbox so the
     # buyer knows no real platform order exists.
     assert getattr(resp, "sandbox", None) is True, (
@@ -198,11 +193,7 @@ def then_no_real_api_calls(ctx: dict) -> None:
 
     # 1. Production must have produced a response. A missing response means
     #    the operation didn't run — that's a test failure, not a vacuous pass.
-    resp = ctx.get("response")
-    assert resp is not None, (
-        "Expected a response from production code but none found — "
-        "cannot verify 'no real API calls' without a completed operation"
-    )
+    resp = require_payload(ctx)
 
     # 2. The harness must have external service patches active. Each harness
     #    env declares EXTERNAL_PATCHES that replace real ad-platform clients

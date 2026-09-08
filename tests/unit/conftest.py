@@ -8,11 +8,22 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
+
+# Prefixes of a test-owned HTTP origin running in this process. A unit test that
+# stands one up (``tests.harness._mixins.LocalOriginMixin``) has to reach it for
+# real — a canned 200 from the blanket mock below would answer instead of the
+# server, and the test would then grade the mock rather than the delivery.
+_LOOPBACK_PREFIXES = ("http://127.0.0.1:", "http://localhost:", "http://[::1]:")
 
 
 @pytest.fixture(autouse=True)
 def mock_all_external_dependencies():
-    """Automatically mock all external dependencies for unit tests."""
+    """Automatically mock all external dependencies for unit tests.
+
+    "External" means *off this machine*. Requests to a loopback origin the test
+    itself started are passed through untouched.
+    """
     # Mock database connections - create a proper context manager mock
     mock_session = MagicMock()
     mock_session.__enter__ = MagicMock(return_value=mock_session)
@@ -29,11 +40,18 @@ def mock_all_external_dependencies():
         mock_db.return_value = mock_session
 
         # Mock external services
-        with patch("requests.post") as mock_post:
-            mock_post.return_value.status_code = 200
-            mock_post.return_value.json.return_value = {}
+        real_post = requests.post
 
-            yield
+        def _post(url, *args, **kwargs):
+            if str(url).startswith(_LOOPBACK_PREFIXES):
+                return real_post(url, *args, **kwargs)
+            canned = MagicMock()
+            canned.status_code = 200
+            canned.json.return_value = {}
+            return canned
+
+        with patch("requests.post", side_effect=_post) as mock_post:
+            yield mock_post
 
 
 @pytest.fixture

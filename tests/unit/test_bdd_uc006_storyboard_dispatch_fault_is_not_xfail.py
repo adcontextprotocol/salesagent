@@ -84,24 +84,26 @@ def _errored_ctx() -> dict[str, Any]:
     """The ctx a failed dispatch actually leaves behind.
 
     Mirrors ``_populate_ctx_from_result`` (tests/bdd/steps/generic/_dispatch.py)
-    on the ``result.is_error`` branch: ``result``/``error``/
-    ``wire_error_envelope``/``synthesized_error_envelope`` are set and
-    ``response`` is NEVER set. The Given-supplied keys are present because the
-    Givens ran before the When.
+    on the ``result.is_error`` branch: ``result`` and ``error`` are set, the
+    detached envelope copies are NOT (steps read them off
+    ``ctx['result'].error_envelope()``), and ``response`` is NEVER set. The
+    Given-supplied keys are present because the Givens ran before the When.
     """
     result = TransportResult(
+        # The injected fault is a REST 500 whose body came back over HTTP —
+        # bytes crossed the wire, so the site declares True. No synthesized
+        # envelope: only the IMPL dispatcher, which has no wire, may populate
+        # that field (tests/unit/test_harness_mcp_never_synthesizes.py).
+        has_wire=True,
         payload=None,
         error=_INJECTED_500,
         wire_error_envelope=_INJECTED_500_ENVELOPE,
-        synthesized_error_envelope=_INJECTED_500_ENVELOPE,
     )
     return {
         "env": _NoSessionEnv(),
         "transport": "rest",
         "result": result,
         "error": _INJECTED_500,
-        "wire_error_envelope": _INJECTED_500_ENVELOPE,
-        "synthesized_error_envelope": _INJECTED_500_ENVELOPE,
         # Given-supplied state from the two mutated scenarios.
         "creatives": [{"creative_id": f"creative-bulk-{n}"} for n in ("display", "video", "native")],
         "captured_format_id": {"agent_url": "https://creative.example.com", "id": "display_300x250"},

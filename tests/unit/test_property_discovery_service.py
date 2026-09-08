@@ -156,7 +156,10 @@ class TestPropertyDiscoveryService:
 
             assert stats["domains_synced"] == 0
             assert len(stats["errors"]) == 1
-            assert "Invalid adagents.json" in stats["errors"][0]
+            # salesagent-grgc: a fixed, non-disclosing message -- never the library's
+            # own exception text (AdagentsValidationError can carry a resolved IP /
+            # SSRF range classification).
+            assert stats["errors"][0] == "example.com: adagents.json could not be validated"
 
         mock_db_patcher.stop()
 

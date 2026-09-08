@@ -1,6 +1,6 @@
 """Then steps for create_media_buy response assertions.
 
-Asserts on ``ctx["response"]`` (CreateMediaBuyResult or CreateMediaBuySuccess)
+Asserts on the dispatch payload (CreateMediaBuyResult or CreateMediaBuySuccess)
 and ``ctx["error"]`` (AdCPError or CreateMediaBuyError).
 """
 
@@ -19,16 +19,14 @@ from tests.bdd.steps._harness_db import db_session as _db_session
 def then_response_succeeds(ctx: dict) -> None:
     """Assert the response is a success (no error, has response object)."""
     assert "error" not in ctx, f"Expected success but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
 
 
 @then("the pricing validation should pass")
 def then_pricing_validation_passes(ctx: dict) -> None:
     """Assert pricing validation passed — no error, response has media_buy_id."""
     assert "error" not in ctx, f"Expected pricing validation to pass but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found (pricing validation may have failed silently)"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "Expected media_buy_id in response — pricing validation passed but no media buy created"
 
@@ -37,8 +35,7 @@ def then_pricing_validation_passes(ctx: dict) -> None:
 def then_budget_validation_passes(ctx: dict) -> None:
     """Assert budget validation passed — no error, response has media_buy_id."""
     assert "error" not in ctx, f"Expected budget validation to pass but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found (budget validation may have failed silently)"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "Expected media_buy_id in response — budget validation passed but no media buy created"
 
@@ -47,8 +44,7 @@ def then_budget_validation_passes(ctx: dict) -> None:
 def then_date_validation_passes(ctx: dict) -> None:
     """Assert date validation passed — no error, response has media_buy_id."""
     assert "error" not in ctx, f"Expected date validation to pass but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found (date validation may have failed silently)"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "Expected media_buy_id in response — date validation passed but no media buy created"
 
@@ -56,8 +52,7 @@ def then_date_validation_passes(ctx: dict) -> None:
 @then(parsers.parse('the response should include a "{field}"'))
 def then_response_includes_field(ctx: dict, field: str) -> None:
     """Assert response includes the specified field with a non-None value."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     # Check on the response object — may be CreateMediaBuyResult wrapping a Success
     value = _get_response_field(resp, field)
     assert value is not None, f"Expected '{field}' in response, got None"
@@ -66,8 +61,7 @@ def then_response_includes_field(ctx: dict, field: str) -> None:
 @then(parsers.parse('the response should include "{field}" matching "{value}"'))
 def then_response_field_matches(ctx: dict, field: str, value: str) -> None:
     """Assert response field matches the expected value."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     actual = _get_response_field(resp, field)
     assert str(actual) == value, f"Expected {field}='{value}', got '{actual}'"
 
@@ -79,8 +73,7 @@ def then_response_has_packages(ctx: dict) -> None:
     Verifies the exact expected count from request_kwargs and that
     each package has a product_id proving allocation occurred.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     packages = _get_response_field(resp, "packages")
     assert packages is not None, "Expected 'packages' in response"
     # Verify exact count matches what was requested (scenario sets up N packages)
@@ -101,8 +94,7 @@ def then_response_has_packages(ctx: dict) -> None:
 @then("each package should include product_id, budget, and pricing details")
 def then_packages_have_details(ctx: dict) -> None:
     """Assert each package has product_id, budget, AND pricing details with concrete values."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     packages = _get_response_field(resp, "packages")
     assert packages is not None, "No packages field in response"
     assert isinstance(packages, list), f"Expected packages to be a list, got {type(packages).__name__}"
@@ -147,8 +139,7 @@ def then_approval_auto(ctx: dict) -> None:
     This distinguishes auto-approved from manually-approved-then-completed,
     where a workflow step would have been created even if it was later resolved.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     status = _get_response_field(resp, "status")
     assert status == "completed", (
         f"Expected auto-approval (status='completed' per BR-RULE-017), got '{status}'. "
@@ -199,8 +190,7 @@ def then_approval_manual(ctx: dict) -> None:
     """
     from tests.bdd.steps._outcome_helpers import is_e2e
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     status = _get_response_field(resp, "status")
     if is_e2e(ctx):
         # E2E Docker mock adapter auto-approves -- allow terminal statuses
@@ -221,8 +211,7 @@ def then_pending_state(ctx: dict) -> None:
     from src.core.database.models import MediaBuy
     from tests.bdd.steps._outcome_helpers import is_e2e
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response to find media_buy_id"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "No media_buy_id in response"
 
@@ -249,7 +238,7 @@ def then_media_buy_status(ctx: dict, status: str) -> None:
     Checks response first (preferred), then falls back to DB query.
     Both paths must assert the exact status — no silent fallthrough.
     """
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     media_buy = ctx.get("existing_media_buy")
     assert resp is not None or media_buy is not None, (
         "No response or existing media buy to check status — "
@@ -303,8 +292,7 @@ def then_no_media_buy_persisted(ctx: dict) -> None:
 @then("the media buy record should be persisted")
 def then_media_buy_persisted(ctx: dict) -> None:
     """Assert a media buy was persisted in the database with correct field values."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response to check persistence"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "No media_buy_id in response to verify persistence"
 
@@ -332,8 +320,7 @@ def then_media_buy_persisted(ctx: dict) -> None:
 @then(parsers.parse('the media buy record should be persisted with status "{status}"'))
 def then_media_buy_persisted_with_status(ctx: dict, status: str) -> None:
     """Assert media buy is persisted with expected status."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "No media_buy_id in response"
 
@@ -350,8 +337,7 @@ def then_media_buy_persisted_with_status(ctx: dict, status: str) -> None:
 @then("the package records should be persisted")
 def then_package_records_persisted(ctx: dict) -> None:
     """Assert media buy packages were persisted in the database with correct count."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response to check package persistence"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "No media_buy_id in response to verify package persistence"
 
@@ -436,8 +422,7 @@ def then_creative_assignment_records_persisted(ctx: dict) -> None:
     creative_ids across all packages in the request.
     If no creative_ids were requested, this step passes (no assignments expected).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response to check creative assignment persistence"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "No media_buy_id in response"
 
@@ -469,7 +454,7 @@ def then_creative_assignment_records_persisted(ctx: dict) -> None:
 @then(parsers.parse('the response should include "rejection_reason" containing "{text}"'))
 def then_rejection_reason_contains(ctx: dict, text: str) -> None:
     """Assert rejection_reason field contains expected text."""
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is None:
         resp = ctx.get("existing_media_buy")
     assert resp is not None, "No response or media buy to check"
@@ -491,8 +476,7 @@ def then_start_time_resolved_to_utc(ctx: dict) -> None:
 
     from src.core.database.models import MediaBuy
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response to find media_buy_id"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "No media_buy_id in response"
 
@@ -520,8 +504,7 @@ def then_campaign_immediately_activating(ctx: dict) -> None:
 
     from src.core.database.models import MediaBuy
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     # Task status "completed" means the create_media_buy workflow step finished
     # successfully — the adapter was called (not held for manual approval).
     # "submitted" would indicate manual approval pending.
@@ -564,8 +547,7 @@ def then_response_includes_resolved_start_time(ctx: dict) -> None:
     """
     from datetime import UTC, datetime
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert media_buy_id, "No media_buy_id in response"
 
@@ -616,8 +598,7 @@ def then_response_has_success_fields(ctx: dict) -> None:
     Success fields for BR-RULE-018: media_buy_id (non-empty string),
     packages (non-empty list), and status (valid completion status).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a success response but none found"
+    resp = require_payload(ctx)
     media_buy_id = _get_response_field(resp, "media_buy_id")
     assert isinstance(media_buy_id, str) and media_buy_id, (
         f"Expected non-empty string media_buy_id in success response, got: {media_buy_id!r}"
@@ -642,8 +623,7 @@ def then_response_no_errors_field(ctx: dict) -> None:
     Step says 'NOT have an "errors" field' — the field should be absent or None,
     not merely an empty list (which would mean the field IS present but empty).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     # Check the inner response (unwrap CreateMediaBuyResult)
     inner = getattr(resp, "response", resp)
     if isinstance(inner, dict):
@@ -678,7 +658,7 @@ def then_response_no_success_fields(ctx: dict) -> None:
     must be absent or falsy on the error response.
     """
     # On error path, ctx["response"] is deleted by dispatch — only ctx["error_response"] remains
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     assert resp is None, f"Expected no success response on error path, but ctx['response'] is present: {resp!r}"
     error_response = ctx.get("error_response")
     assert error_response is not None, (
@@ -732,6 +712,63 @@ def then_each_error_has_suggestion(ctx: dict) -> None:
         assert suggestion, f"Error[{i}] missing 'suggestion' field: {err}"
 
 
+def _retry_after_from_error_object(error_object: dict) -> tuple[object, str] | None:
+    """Read ``retry_after`` off one wire error object, spec slot first.
+
+    ``core/error.json`` @3.1.1 declares ``retry_after`` as a TOP-LEVEL member of
+    the error object (``"type": "number"``, ``minimum: 1``, ``maximum: 3600``),
+    and ``error-details/rate-limited.json`` enumerates limit / remaining /
+    window_seconds / scope with NO ``retry_after`` member — so ``details`` is not
+    the modelled home for the value.
+
+    The ``details`` read is kept as a LEGACY fallback rather than deleted: at
+    least one pinned test-kit (``dist/compliance/3.1.1/test-kits/
+    rate-limit-trip-runner.yaml``) still reads ``error.details.retry_after``, and
+    call sites that have not yet moved to the spec slot must fail this step on
+    the VALUE, not on where they happened to put it.
+    """
+    if error_object.get("retry_after") is not None:
+        return error_object["retry_after"], "top-level (core/error.json)"
+    details = error_object.get("details") or {}
+    if details.get("retry_after") is not None:
+        return details["retry_after"], "details (legacy slot)"
+    return None
+
+
+def _retry_after_from_envelope(envelope: dict) -> tuple[object, str] | None:
+    """Read ``retry_after`` off the two-layer wire envelope.
+
+    ``errors[0]`` is the per-error layer and ``adcp_error`` the envelope-level
+    mirror; pinned storyboards read each of them in the wild, so either carrying
+    the value satisfies the step.
+    """
+    for layer, error_object in (
+        ("errors[0]", (envelope.get("errors") or [{}])[0]),
+        ("adcp_error", envelope.get("adcp_error") or {}),
+    ):
+        found = _retry_after_from_error_object(error_object or {})
+        if found is not None:
+            value, slot = found
+            return value, f"{layer} {slot}"
+    return None
+
+
+def _retry_after_from_exception(error: object) -> tuple[object, str] | None:
+    """Read ``retry_after`` off a reconstructed exception — the IMPL / no-wire path.
+
+    ``AdCPError`` has a first-class ``retry_after`` attribute that serializes to
+    the envelope's top level, so that attribute is read first here for the same
+    reason the wire top level is read first above.
+    """
+    value = getattr(error, "retry_after", None)
+    if value is not None:
+        return value, "error.retry_after attribute"
+    details = getattr(error, "details", None) or {}
+    if isinstance(details, dict) and details.get("retry_after") is not None:
+        return details["retry_after"], "error.details (legacy slot)"
+    return None
+
+
 @then('the error should include "retry_after" field')
 def then_error_has_retry_after(ctx: dict) -> None:
     """Assert the error includes a retry_after hint (transient error recovery).
@@ -739,34 +776,49 @@ def then_error_has_retry_after(ctx: dict) -> None:
     Step claims the field should be 'included' — verify it exists and contains
     a positive numeric value (retry delay in seconds).
 
-    Checks both ctx["error"] (AdCPError from dispatch) and ctx["error_response"]
-    (structured error response) to match the dispatch contract.
-    """
-    # Check both error keys to match the dispatch contract used by other error steps
-    error = ctx.get("error") or ctx.get("error_response")
-    assert error is not None, (
-        "No error recorded in ctx (checked both 'error' and 'error_response') — "
-        "step claims error should include retry_after but no error was captured"
-    )
-    # AdCPError stores retry_after in details dict
-    from src.core.exceptions import AdCPError
+    **Authority: the WIRE envelope's top-level ``retry_after``.** Per
+    ``tests/CLAUDE.md`` § "Error Verification Policy" the buyer-facing contract is
+    the envelope, not a reconstructed exception, and per ``core/error.json``
+    @3.1.1 the field's home in that envelope is the error object's TOP LEVEL —
+    ``retry_after`` is a member of the Error object itself, bounded [1, 3600].
+    A read of ``details["retry_after"]`` is kept only as a legacy fallback for
+    call sites that still emit into the slot the spec does not model, and the
+    reconstructed exception is the last resort for IMPL / no-wire scenarios
+    (which have no envelope by definition).
 
-    retry_after = None
-    if isinstance(error, AdCPError):
-        assert error.details is not None, "Expected error details with retry_after"
-        assert "retry_after" in error.details, f"Expected 'retry_after' in error details, got: {error.details}"
-        retry_after = error.details["retry_after"]
-    else:
-        # adcp.types.Error model — check for retry_after attribute
-        retry_after = getattr(error, "retry_after", None)
-        if retry_after is None and hasattr(error, "details"):
-            retry_after = (error.details or {}).get("retry_after")
-    assert retry_after is not None, f"Expected retry_after field on error, but it is absent: {error}"
+    **DORMANT — this body executes nowhere today.** ``then_media_buy`` is not in
+    ``tests/bdd/conftest.py``'s ``pytest_plugins``, so pytest-bdd never registers
+    this step; the ten feature usages either xfail at the harness gate (BR-UC-002)
+    or have no binding test module at all (BR-UC-016/020/022). Wiring the module
+    is #2132's scope. Stated here so a reader does not take the wire-authority
+    reasoning above as evidence that anything grades it.
+    """
+    from tests.bdd.steps._outcome_helpers import error_envelope_or_none
+
+    envelope = error_envelope_or_none(ctx)
+    found = _retry_after_from_envelope(envelope) if envelope else None
+
+    if found is None:
+        # Check both error keys to match the dispatch contract used by other error steps
+        error = ctx.get("error") or ctx.get("error_response")
+        assert error is not None or envelope is not None, (
+            "No error recorded in ctx (checked the result's error envelope, "
+            "'error' and 'error_response') — "
+            "step claims error should include retry_after but no error was captured"
+        )
+        found = _retry_after_from_exception(error) if error is not None else None
+        assert found is not None, (
+            f"Expected retry_after on the error, but it is absent from every slot. "
+            f"Wire envelope: {envelope}. Reconstructed error: {error!r}"
+        )
+
+    retry_after, slot = found
     # retry_after should be a positive number (seconds to wait before retrying)
-    assert isinstance(retry_after, (int, float)), (
-        f"Expected retry_after to be a number (seconds), got {type(retry_after).__name__}: {retry_after!r}"
+    assert isinstance(retry_after, (int, float)) and not isinstance(retry_after, bool), (
+        f"Expected retry_after to be a number (seconds), got {type(retry_after).__name__}: "
+        f"{retry_after!r} (read from {slot})"
     )
-    assert retry_after > 0, f"Expected positive retry_after value, got {retry_after}"
+    assert retry_after > 0, f"Expected positive retry_after value, got {retry_after} (read from {slot})"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -774,4 +826,8 @@ def then_error_has_retry_after(ctx: dict) -> None:
 # ═══════════════════════════════════════════════════════════════════════
 
 # Single source of truth lives in _outcome_helpers; re-exported for backward compat.
-from tests.bdd.steps._outcome_helpers import _get_response_field as _get_response_field  # noqa: F811, PLC0414
+from tests.bdd.steps._outcome_helpers import _get_response_field as _get_response_field
+from tests.bdd.steps._outcome_helpers import (
+    payload_or_none,
+    require_payload,  # noqa: F811, PLC0414
+)

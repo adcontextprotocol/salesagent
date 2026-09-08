@@ -61,8 +61,11 @@ class TestCreateMediaBuyEndpoint:
 # ---------------------------------------------------------------------------
 
 # field -> (wire value, value the route must forward to the raw wrapper).
-# Object params are coerced to SDK types at the route (#1417), so the
-# forwarded value is the typed model, not the wire dict; ext stays a raw dict.
+# Object params are coerced to typed models at the route (#1417), so the
+# forwarded value is the model, not the wire dict; ext stays a raw dict.
+# push_notification_config coerces to the PINNED type: ingest is spec-exact, so a
+# non-spec scheme or casing is refused here. The widened LibraryAuthentication
+# applies only when REHYDRATING an already-stored row (see registration.from_stash).
 _CREATE_WEBHOOK_WIRE = {
     "url": "https://example.com/hook",
     "authentication": {"schemes": ["Bearer"], "credentials": "e9kw-credential-value-of-32-chars"},

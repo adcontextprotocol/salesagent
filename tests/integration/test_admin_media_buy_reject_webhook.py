@@ -14,11 +14,13 @@ send_notification was awaited exactly once. Pre-fix the raw construction raises 
 send, so send_notification is never called — that is what this test detects.
 """
 
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 
 from src.core.context_manager import ContextManager
+from src.core.webhooks.delivery import WebhookTaskContext
+from src.services.protocol_webhook_service import ProtocolWebhookService
 from tests.helpers.media_buy_write_seam import (
     MediaBuyState,
     assert_status_move_carried_bookkeeping,
@@ -128,7 +130,7 @@ def make_pending_media_buy(integration_db):
             tenant_id=tenant.tenant_id,
             principal_id=principal.principal_id,
         )
-        cm.create_workflow_step(
+        step = cm.create_workflow_step(
             context_id=context.context_id,
             step_type="approval",
             owner="publisher",
@@ -147,6 +149,10 @@ def make_pending_media_buy(integration_db):
         return {
             "tenant_id": tenant.tenant_id,
             "media_buy_id": media_buy.media_buy_id,
+            # The webhook's task_id. Exposed so the expected WebhookTaskContext can
+            # NAME it rather than matching it with ANY -- an ANY there would let the
+            # route send a webhook keyed on some other step and still pass.
+            "step_id": step.step_id,
         }
 
     try:
@@ -170,19 +176,30 @@ def webhook_capture():
     """Patch the protocol webhook service; yield a dict capturing the outbound call.
 
     Single shared capture (hoisted from per-test copies — PR #1567 round-3 nit):
-    ``captured["payload"]``/``["metadata"]`` are set atomically by the side_effect
+    ``captured["payload"]``/``["task"]`` are set atomically by the side_effect
     (no split assert_called_once() + call_args inspection); ``captured["service"]``
     exposes the mock for call-signature assertions.
+
+    ``task`` is a typed ``WebhookTaskContext``, not the loose ``metadata`` dict this
+    used to capture. That dict was flattened from the context and rebuilt downstream
+    from the PAYLOAD, which reset ``sequence_number`` and ``notification_type`` on
+    the way to ``webhook_delivery_log``; the context now travels whole.
     """
     captured: dict = {}
 
-    async def _capture(*, push_notification_config=None, payload=None, metadata=None):
+    async def _capture(*, push_notification_config=None, payload=None, task=None):
         captured["push_notification_config"] = push_notification_config
         captured["payload"] = payload
-        captured["metadata"] = metadata
+        captured["task"] = task
 
-    mock_service = MagicMock()
-    mock_service.send_notification = AsyncMock(side_effect=_capture)
+    # A REAL service with only the wire call stubbed. The route dispatches through
+    # notify() now (salesagent-pldmk.39), and notify() on a MagicMock returns a
+    # MagicMock that asyncio.run refuses -- the route would swallow that as a failed
+    # send and this guard would assert against an empty capture. With the real
+    # object, notify() builds the payload for real and _capture still sees exactly
+    # what reaches the wire.
+    mock_service = ProtocolWebhookService()
+    mock_service.send_notification = AsyncMock(side_effect=_capture)  # type: ignore[method-assign]
     captured["service"] = mock_service
     with patch(
         "src.admin.blueprints.operations.get_protocol_webhook_service",
@@ -242,14 +259,19 @@ class TestAdminMediaBuyRejectWebhook:
         webhook_capture["service"].send_notification.assert_called_once_with(
             push_notification_config=ANY,
             payload=ANY,
-            # Metadata carries the audit identifiers the webhook service logs
-            # (task_type/tenant_id/principal_id/media_buy_id — PR #1567 round-2 cleanup).
-            metadata={
-                "task_type": "create_media_buy",
-                "tenant_id": tenant_id,
-                "principal_id": "reject_wh_principal",
-                "media_buy_id": media_buy_id,
-            },
+            # The typed context carries the audit identifiers the webhook service
+            # logs. Asserted as a whole value rather than field-by-field: it is a
+            # frozen dataclass, so equality IS the field-by-field check, and a field
+            # added to it without a value here fails rather than passing silently.
+            task=WebhookTaskContext(
+                task_id=pending_reject_media_buy["step_id"],
+                task_type="create_media_buy",
+                tenant_id=tenant_id,
+                principal_id="reject_wh_principal",
+                media_buy_id=media_buy_id,
+                sequence_number=1,
+                notification_type=None,
+            ),
         )
 
     def test_reject_webhook_does_not_embed_completed_success(
@@ -358,13 +380,19 @@ class TestAdminMediaBuyRejectWebhook:
         assert embedded.get("context") is None, (
             f"approve webhook with no stored request context must not embed one, got {embedded.get('context')!r}"
         )
-        # Metadata now carries the audit identifiers the webhook service logs.
-        assert webhook_capture["metadata"] == {
-            "task_type": "create_media_buy",
-            "tenant_id": tenant_id,
-            "principal_id": "reject_wh_principal",
-            "media_buy_id": media_buy_id,
-        }
+        # The typed context carries the audit identifiers the webhook service logs.
+        # Compared as a whole frozen value: equality IS the field-by-field check,
+        # and a field added to the type without a value here fails rather than
+        # passing silently.
+        assert webhook_capture["task"] == WebhookTaskContext(
+            task_id=pending_reject_media_buy["step_id"],
+            task_type="create_media_buy",
+            tenant_id=tenant_id,
+            principal_id="reject_wh_principal",
+            media_buy_id=media_buy_id,
+            sequence_number=1,
+            notification_type=None,
+        )
 
     def test_reject_bumps_revision_without_confirming(
         self, authenticated_admin_session, pending_reject_media_buy, webhook_capture

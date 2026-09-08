@@ -8,9 +8,6 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-from a2a.types import Task, TaskStatusUpdateEvent
-from adcp import create_a2a_webhook_payload, create_mcp_webhook_payload
-from adcp.types import McpWebhookPayload
 from adcp.webhooks import GeneratedTaskStatus
 from pydantic import BaseModel
 from rich.console import Console
@@ -20,11 +17,18 @@ from src.core.async_utils import pin_task
 from src.core.database.database_session import DatabaseManager
 from src.core.database.models import Context, ObjectWorkflowMapping, WorkflowStep
 from src.core.database.models import Context as DBContext
-from src.core.exceptions import AdCPError, build_two_layer_error_envelope, normalize_to_adcp_error
+from src.core.exceptions import (
+    AdCPError,
+    AdCPValidationError,
+    build_two_layer_error_envelope,
+    normalize_to_adcp_error,
+)
+from src.core.security.outbound_http import OutboundError
 from src.core.webhook_validator import (
-    validate_webhook_task_type,
     webhook_url_for_log,
 )
+from src.core.webhooks.delivery import WebhookTaskContext
+from src.core.webhooks.registration import ValidatedWebhookRegistration
 from src.services.protocol_webhook_service import get_protocol_webhook_service
 
 logger = logging.getLogger(__name__)
@@ -401,7 +405,6 @@ class ContextManager(DatabaseManager):
                 source = AdCPError.synthesize(
                     source.message or str(source),
                     error_code="SERVICE_UNAVAILABLE",
-                    recovery="terminal",
                     details=source.details,
                     field=source.field,
                     suggestion=source.suggestion,
@@ -791,21 +794,18 @@ class ContextManager(DatabaseManager):
             session: Active database session
         """
         try:
-            import requests
+            from src.core.database.repositories.push_notification_config import PushNotificationConfigRepository
 
-            from src.core.database.models import PushNotificationConfig
-
-            # Get object mappings for this step
-            stmt = select(ObjectWorkflowMapping).filter_by(step_id=step.step_id)
-            mappings = session.scalars(stmt).all()
+            # step.object_mappings and step.context, not two hand-written selects:
+            # both relationships already exist on WorkflowStep and express exactly
+            # these two queries, keyed on the same columns.
+            mappings = step.object_mappings
 
             if not mappings:
                 console.print(f"[yellow]No object mappings found for step {step.step_id}[/yellow]")
                 return
 
-            # Get context to find tenant_id
-            context_stmt = select(Context).filter_by(context_id=step.context_id)
-            context = session.scalars(context_stmt).first()
+            context = step.context
             if not context:
                 console.print(f"[yellow]No context found for step {step.step_id}[/yellow]")
                 return
@@ -813,15 +813,11 @@ class ContextManager(DatabaseManager):
             tenant_id = context.tenant_id
             principal_id = context.principal_id
 
-            # Find registered webhooks for this principal
-            # NOTE: PushNotificationConfig doesn't have object_type/object_id columns
-            # Those are in ObjectWorkflowMapping which we already have via 'mappings'
-            webhook_stmt = select(PushNotificationConfig).filter_by(
-                tenant_id=tenant_id,
-                principal_id=principal_id,
-                is_active=True,
-            )
-            webhooks = session.scalars(webhook_stmt).all()
+            # Through the repository, which owns the (tenant, principal) scope this
+            # hand-written filter_by was retyping. NOTE: PushNotificationConfig has
+            # no object_type/object_id columns -- those are on ObjectWorkflowMapping,
+            # which `mappings` already holds.
+            webhooks = PushNotificationConfigRepository(session, tenant_id).list_active_by_principal(principal_id)
 
             console.print(f"[cyan]🔍 Found {len(webhooks)} active webhook configs for principal {principal_id}[/cyan]")
 
@@ -832,34 +828,49 @@ class ContextManager(DatabaseManager):
                 )
 
                 for _webhook_config in webhooks:
-                    # build push notification config from step request data
-                    from uuid import uuid4
-
+                    # Rehydrate the registration by RE-RUNNING the ingest gate. The
+                    # stash is buyer data that has sat in JSONB, possibly across a
+                    # deploy, possibly written by a producer that stores the wire
+                    # shape directly — so it is parsed by the one gate, never
+                    # re-plucked here into loose strings. That re-pluck is what let
+                    # an HMAC registration resolve to Unauthenticated and go out
+                    # unsigned if any producer's shape drifted.
                     cfg_dict = (step.request_data or {}).get("push_notification_config") or {}
-                    url = cfg_dict.get("url")
-                    if not url:
+                    if not str(cfg_dict.get("url") or "").strip():
                         console.print("[red]No push notification URL present; skipping webhook[/red]")
                         continue
 
-                    authentication = cfg_dict.get("authentication") or {}
-                    schemes = authentication.get("schemes") or []
-                    auth_type = schemes[0] if isinstance(schemes, list) and schemes else None
-                    auth_token = authentication.get("credentials")
+                    try:
+                        push_notification_config = ValidatedWebhookRegistration.from_stash(cfg_dict)
+                    except AdCPValidationError as exc:
+                        # FAIL CLOSED: this runs inside a status update. A stashed
+                        # config that no longer passes the gate must cost the
+                        # webhook, never the status transition.
+                        #
+                        # logger.error, NOT console.print, and that is load-bearing
+                        # rather than tidiness. This refusal produces no
+                        # WebhookDeliveryOutcome and no delivery-log row — the
+                        # outcome type has exactly one producer, the egress seam,
+                        # and this path never reaches it. With no durable record and
+                        # no migration for the rows this affects, THIS LINE IS THE
+                        # ONLY SURFACE the refusal has, so it must be enumerable
+                        # from the logs: an operator has to be able to list which
+                        # buyers stopped receiving webhooks and why.
+                        stash_context = getattr(step, "context", None)
+                        logger.error(
+                            "Stashed push notification config is not deliverable (%s); "
+                            "skipping webhook (tenant=%s, principal=%s, step=%s)",
+                            exc.message,
+                            tenant_id or getattr(stash_context, "tenant_id", None),
+                            getattr(stash_context, "principal_id", None),
+                            getattr(step, "step_id", None),
+                        )
+                        continue
 
                     # Derive principal/tenant from the step context if available
                     context_obj = getattr(step, "context", None)
                     derived_tenant_id = tenant_id or (getattr(context_obj, "tenant_id", None))
                     derived_principal_id = getattr(context_obj, "principal_id", None)
-
-                    push_notification_config = PushNotificationConfig(
-                        id=cfg_dict.get("id") or f"pnc_{uuid4().hex[:16]}",
-                        tenant_id=derived_tenant_id,
-                        principal_id=derived_principal_id,
-                        url=url,
-                        authentication_type=auth_type,
-                        authentication_token=auth_token,
-                        is_active=True,
-                    )
 
                     service = get_protocol_webhook_service()
 
@@ -880,42 +891,33 @@ class ContextManager(DatabaseManager):
                     except ValueError:
                         status_enum = GeneratedTaskStatus.unknown
 
-                    # SDK 5.7 validates task_type against TaskType enum; coerce a
-                    # COPY for the payload while leaving task_type_str untouched.
-                    wire_task_type = validate_webhook_task_type(task_type_str)
-
-                    payload: Task | TaskStatusUpdateEvent | McpWebhookPayload
-                    if protocol == "a2a":
-                        payload = create_a2a_webhook_payload(
-                            task_id=step.step_id,
-                            status=status_enum,
-                            context_id=step.context_id,
-                            result=step.response_data or {},
-                        )
-                    else:
-                        # SDK 5.7: returns McpWebhookPayload directly
-                        payload = create_mcp_webhook_payload(
-                            task_id=step.step_id,
-                            status=status_enum,
-                            task_type=wire_task_type,
-                            result=step.response_data,
-                        )
-
-                    metadata: dict[str, Any] = {
-                        "task_type": task_type_str,
-                        "tenant_id": derived_tenant_id,
-                        "principal_id": derived_principal_id,
-                    }
+                    # The dialect fork and the metadata dict both moved into
+                    # notify() (salesagent-pldmk.39). It keeps this site's
+                    # salesagent-yi3s invariant intact: the ORIGINAL task_type_str
+                    # reaches the metadata and the guards that key on it, while the
+                    # SDK payload gets validate_webhook_task_type's coerced COPY.
+                    webhook_task = WebhookTaskContext(
+                        task_id=step.step_id,
+                        task_type=task_type_str,
+                        tenant_id=derived_tenant_id,
+                        principal_id=derived_principal_id,
+                        media_buy_id=None,
+                        sequence_number=1,
+                        notification_type=None,
+                    )
 
                     try:
                         # If we're already in an event loop, schedule the send; otherwise run it directly
                         try:
                             loop = asyncio.get_running_loop()
                             task = loop.create_task(
-                                service.send_notification(
-                                    push_notification_config=push_notification_config,
-                                    payload=payload,
-                                    metadata=metadata,
+                                service.notify(
+                                    push_notification_config,
+                                    task=webhook_task,
+                                    status=status_enum,
+                                    result=step.response_data or {},
+                                    protocol=protocol,
+                                    context_id=step.context_id or "",
                                 )
                             )
 
@@ -939,17 +941,30 @@ class ContextManager(DatabaseManager):
                         except RuntimeError:
                             # No running loop; safe to run synchronously
                             sent = asyncio.run(
-                                service.send_notification(
-                                    push_notification_config=push_notification_config,
-                                    payload=payload,
-                                    metadata=metadata,
+                                service.notify(
+                                    push_notification_config,
+                                    task=webhook_task,
+                                    status=status_enum,
+                                    result=step.response_data or {},
+                                    protocol=protocol,
+                                    context_id=step.context_id or "",
                                 )
                             )
                             _log_webhook_send_outcome(push_notification_config.url, sent)
 
-                    except requests.exceptions.Timeout:
-                        console.print(f"[red]❌ Webhook timeout for {safe_webhook_url}[/red]")
-                    except requests.exceptions.RequestException as e:
+                    except OutboundError as e:
+                        # The seam's two failure classes (OutboundRequestBlocked /
+                        # OutboundDeliveryFailed) replaced the requests exceptions
+                        # this used to catch — including the separate Timeout arm,
+                        # which was a property of requests' taxonomy and has no
+                        # counterpart here (a timeout arrives as
+                        # OutboundDeliveryFailed with http_status=None, and its
+                        # str() carries the attempt count). The send_notification
+                        # path cannot raise these any more — it catches them and
+                        # returns False, which is exactly why
+                        # _log_webhook_send_outcome must never read False as
+                        # success. Kept as a safety net; the URL is sanitized to
+                        # scheme://host/path for the log (AdCP L1 SSRF log hygiene).
                         console.print(f"[red]❌ Webhook failed for {safe_webhook_url}: {str(e)}[/red]")
 
         except Exception as e:

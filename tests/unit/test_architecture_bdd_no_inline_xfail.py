@@ -144,7 +144,6 @@ _ALLOWLIST: set[XfailSite] = {
     ("domain/uc004_delivery.py", "then_attribution_default", 1),
     ("domain/uc004_delivery.py", "then_geo_system", 1),
     ("domain/uc004_delivery.py", "then_packages_include_breakdown", 1),
-    ("domain/uc004_delivery.py", "then_single_probe", 1),
     ("domain/uc006_sync_creatives.py", "_assert_generative_build", 1),
     ("domain/uc006_sync_creatives.py", "_assert_per_creative_failure", 3),
     ("domain/uc006_sync_creatives.py", "_assert_standard_processing", 1),

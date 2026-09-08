@@ -1,347 +1,278 @@
-"""Unit tests for webhook delivery service with exponential backoff retry logic."""
+"""Unit tests for webhook delivery service with exponential backoff retry logic.
 
-from unittest.mock import Mock, call, patch
+Delivery goes to a real local HTTP origin (``WebhookEnv``), not to a patched
+``requests.post``. Nothing here asserts on the shape of a transport call, so
+these tests keep grading the same behaviour once delivery moves onto the egress
+seam (salesagent-4fya.11) — which is the whole reason they were repointed
+(salesagent-vkxf). What each test observes is what the endpoint actually
+received and what production returned.
+"""
 
-import requests
+from unittest.mock import patch
 
-from src.core.webhook_delivery import WebhookDelivery, deliver_webhook_with_retry
+from tests.helpers.backoff_assertions import assert_backoff_schedule
+from tests.helpers.local_http_origin import responds
+
+# Reserved (link-local cloud metadata). Production's URL policy refuses it even
+# under the harness's loopback allowance, which is what makes a refusal test
+# grade production rather than the allowance.
+RESERVED_METADATA_URL = "http://169.254.169.254/webhook"
 
 
-@patch("src.core.webhook_delivery.time.sleep")
 class TestWebhookDelivery:
     """Test cases for webhook delivery with exponential backoff retry."""
 
-    def test_successful_delivery_first_attempt(self, mock_sleep):
+    def test_successful_delivery_first_attempt(self):
         """Test successful delivery on first attempt (200 OK)."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            max_retries=3,
-            timeout=10,
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(200)
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"}, max_retries=3, timeout=10)
 
             assert success is True
             assert result["status"] == "delivered"
             assert result["attempts"] == 1
             assert result["response_code"] == 200
             assert "delivery_id" in result
-            assert mock_post.call_count == 1
+            assert env.delivery_attempts == 1
 
-    def test_successful_delivery_after_retry(self, mock_sleep):
+    def test_successful_delivery_after_retry(self):
         """Test successful delivery after 5xx error retry."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            max_retries=3,
-            timeout=10,
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            # First attempt: 503 Service Unavailable
-            # Second attempt: 200 OK
-            mock_response_503 = Mock()
-            mock_response_503.status_code = 503
-            mock_response_503.text = "Service temporarily unavailable"
+        with WebhookEnv() as env:
+            env.set_http_sequence([(503, "Service temporarily unavailable"), (200, "OK")])
 
-            mock_response_200 = Mock()
-            mock_response_200.status_code = 200
-
-            mock_post.side_effect = [mock_response_503, mock_response_200]
-
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"}, max_retries=3, timeout=10)
 
             assert success is True
             assert result["status"] == "delivered"
             assert result["attempts"] == 2
             assert result["response_code"] == 200
-            assert mock_post.call_count == 2
+            assert env.delivery_attempts == 2
 
             # Should have backed off 1 second between attempts (2^0 = 1)
-            mock_sleep.assert_called_once_with(1)
+            assert env.mock["sleep"].call_count == 1
+            assert_backoff_schedule([float(c.args[0]) for c in env.mock["sleep"].call_args_list], jitter=None)
 
-    def test_retry_on_500_error(self, mock_sleep):
+    def test_retry_on_500_error(self):
         """Test that 5xx errors trigger retry."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            max_retries=3,
-            timeout=10,
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 500
-            mock_response.text = "Internal Server Error"
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(500, "Internal Server Error")
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"}, max_retries=3, timeout=10)
 
             assert success is False
             assert result["status"] == "failed"
             assert result["attempts"] == 3  # All 3 attempts used
             assert result["response_code"] == 500
-            assert "Internal Server Error" in result["error"]
-            assert mock_post.call_count == 3
+            # The origin's body no longer reaches the caller: the seam does not echo
+            # a counterparty response back to whoever supplied the URL. The status is
+            # named, the body is not — assert both halves so a regression re-adding
+            # the echo fails here.
+            assert "3 attempts" in result["error"]
+            assert "Internal Server Error" not in result["error"]
+            assert env.delivery_attempts == 3
 
-            # Should have exponential backoff: 1s + 2s (no sleep after last attempt)
-            assert mock_sleep.call_count == 2
-            mock_sleep.assert_has_calls([call(1), call(2)])
+            # Exponential backoff: 1s + 2s (no sleep after the last attempt)
+            assert_backoff_schedule([float(c.args[0]) for c in env.mock["sleep"].call_args_list], jitter=None)
 
-    def test_no_retry_on_400_error(self, mock_sleep):
+    def test_no_retry_on_400_error(self):
         """Test that 4xx client errors do NOT trigger retry."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            max_retries=3,
-            timeout=10,
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 400
-            mock_response.text = "Bad Request"
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(400, "Bad Request")
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"}, max_retries=3, timeout=10)
 
             assert success is False
             assert result["status"] == "failed"
             assert result["attempts"] == 1  # No retries
             assert result["response_code"] == 400
-            assert "Client error" in result["error"]
-            assert "Bad Request" in result["error"]
-            assert mock_post.call_count == 1  # Only 1 attempt
+            assert "Client error 400" in result["error"]
+            assert "Bad Request" not in result["error"], "the origin's body must not be echoed back"
+            assert env.delivery_attempts == 1  # Only 1 attempt
 
-    def test_no_retry_on_404_error(self, mock_sleep):
+    def test_no_retry_on_404_error(self):
         """Test that 404 Not Found does NOT trigger retry."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            max_retries=3,
-            timeout=10,
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 404
-            mock_response.text = "Not Found"
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(404, "Not Found")
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"}, max_retries=3, timeout=10)
 
             assert success is False
             assert result["attempts"] == 1  # No retries for client error
-            assert mock_post.call_count == 1
+            assert env.delivery_attempts == 1
 
-    def test_retry_on_timeout(self, mock_sleep):
-        """Test that timeout errors trigger retry."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            max_retries=3,
-            timeout=10,
-        )
+    def test_retry_on_timeout(self):
+        """Test that timeout errors trigger retry.
 
-        with patch("requests.post") as mock_post:
-            mock_post.side_effect = requests.exceptions.Timeout("Request timed out")
+        The origin stalls longer than the caller's timeout, so the timeout is
+        real: every attempt provably arrived (it is counted) and the caller's
+        own clock is what gives up.
+        """
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-            success, result = deliver_webhook_with_retry(delivery)
+        with WebhookEnv() as env:
+            env.set_http_sequence([responds(200, delay_seconds=2.0)])
+
+            success, result = env.call_deliver(payload={"test": "data"}, max_retries=3, timeout=1)
 
             assert success is False
             assert result["status"] == "failed"
             assert result["attempts"] == 3
-            assert "timeout" in result["error"].lower()
-            assert mock_post.call_count == 3
+            # The seam does not distinguish a timeout from a dropped connection.
+            # What it still reports, truthfully, is that nothing came back.
+            assert "no response received" in result["error"]
+            assert env.delivery_attempts == 3
 
-            # Should have exponential backoff: 1s + 2s (no sleep after last attempt)
-            assert mock_sleep.call_count == 2
-            mock_sleep.assert_has_calls([call(1), call(2)])
+            # Exponential backoff: 1s + 2s (no sleep after the last attempt)
+            assert_backoff_schedule([float(c.args[0]) for c in env.mock["sleep"].call_args_list], jitter=None)
 
-    def test_retry_on_connection_error(self, mock_sleep):
+    def test_retry_on_connection_error(self):
         """Test that connection errors trigger retry."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            max_retries=3,
-            timeout=10,
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_post.side_effect = requests.exceptions.ConnectionError("Connection refused")
+        with WebhookEnv() as env:
+            env.set_http_error()
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"}, max_retries=3, timeout=10)
 
             assert success is False
             assert result["attempts"] == 3
-            assert "Connection" in result["error"]
-            assert mock_post.call_count == 3
+            assert "no response received" in result["error"]
+            assert env.delivery_attempts == 3
 
-    def test_exponential_backoff_timing(self, mock_sleep):
-        """Test that exponential backoff follows 2^n pattern (1s, 2s, 4s)."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            max_retries=3,
-            timeout=10,
-        )
+    def test_exponential_backoff_timing(self):
+        """Test that backoff follows BR-RULE-029's 1s, 2s, 4s schedule."""
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 503
-            mock_response.text = "Service Unavailable"  # Add text attribute
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(503, "Service Unavailable")
 
-            deliver_webhook_with_retry(delivery)
+            env.call_deliver(payload={"test": "data"}, max_retries=3, timeout=10)
 
-            # Backoff: 2^0=1s after attempt 1, 2^1=2s after attempt 2 (no sleep after last)
-            assert mock_sleep.call_count == 2
-            mock_sleep.assert_has_calls([call(1), call(2)])
+            # 1s after attempt 1, 2s after attempt 2 (no sleep after the last), each
+            # plus the seam's jitter — which is why jitter=None (grade the window and
+            # require randomisation) rather than an exact schedule.
+            durations = [float(c.args[0]) for c in env.mock["sleep"].call_args_list]
+            assert len(durations) == 2
+            assert_backoff_schedule(durations, jitter=None)
 
-    def test_max_retries_exceeded(self, mock_sleep):
+    def test_max_retries_exceeded(self):
         """Test behavior when all retries are exhausted."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            max_retries=2,  # Only 2 retries
-            timeout=10,
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 502
-            mock_response.text = "Bad Gateway"  # Add text attribute
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(502, "Bad Gateway")
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"}, max_retries=2, timeout=10)
 
             assert success is False
             assert result["attempts"] == 2
-            assert mock_post.call_count == 2
+            assert env.delivery_attempts == 2
 
-    def test_successful_delivery_with_202_accepted(self, mock_sleep):
+    def test_successful_delivery_with_202_accepted(self):
         """Test that 202 Accepted is treated as success."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 202
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(202)
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"})
 
             assert success is True
             assert result["response_code"] == 202
 
-    def test_successful_delivery_with_204_no_content(self, mock_sleep):
+    def test_successful_delivery_with_204_no_content(self):
         """Test that 204 No Content is treated as success."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 204
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(204)
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"})
 
             assert success is True
             assert result["response_code"] == 204
 
-    def test_hmac_signature_added(self, mock_sleep):
-        """Test that HMAC signature is added when signing_secret provided."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            signing_secret="test-secret-key",
-        )
+    def test_hmac_signature_added(self):
+        """The HMAC signature verifies against the exact bytes that crossed the socket.
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_post.return_value = mock_response
+        Recomputes over ``env.last_delivery.body`` (the raw wire bytes), not a
+        fresh serialization of the payload dict -- a recompute from the dict
+        can silently agree with a sender that signed one serialization and
+        transmitted another, which is exactly the defect salesagent-47n9.1
+        fixed. Spec header name (X-AdCP-Signature, from
+        adcp.sign_legacy_webhook) since salesagent-47n9.1 -- the non-spec
+        X-Webhook-Signature no longer exists.
+        """
+        from tests.harness.delivery_webhook_unit import WebhookEnv
+        from tests.helpers import assert_signature_verifies_over_wire_body
 
-            success, result = deliver_webhook_with_retry(delivery)
+        secret = "test-secret-key-padded-to-the-min"
 
-            # Check that signature headers were added
-            call_args = mock_post.call_args
-            headers = call_args.kwargs["headers"]
+        with WebhookEnv() as env:
+            env.set_http_status(200)
 
-            assert "X-Webhook-Signature" in headers or "X-Hub-Signature-256" in headers
+            success, result = env.call_deliver(payload={"test": "data"}, signing_secret=secret)
+
             assert success is True
+            assert_signature_verifies_over_wire_body(env.last_delivery, secret)
 
-    def test_invalid_webhook_url_validation(self, mock_sleep):
+    def test_invalid_webhook_url_validation(self):
         """Test that invalid webhook URLs are rejected."""
-        delivery = WebhookDelivery(
-            webhook_url="javascript:alert('xss')",  # Invalid scheme
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            success, result = deliver_webhook_with_retry(delivery)
-
-            assert success is False
-            assert "Invalid webhook URL" in result["error"]
-            assert mock_post.call_count == 0  # Should not attempt to call
-
-    def test_localhost_webhook_url_rejected(self, mock_sleep):
-        """Test that localhost URLs are rejected for SSRF protection."""
-        delivery = WebhookDelivery(
-            webhook_url="http://localhost:8080/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-        )
-
-        with patch("requests.post") as mock_post:
-            success, result = deliver_webhook_with_retry(delivery)
+        with WebhookEnv() as env:
+            success, result = env.call_deliver(
+                webhook_url="javascript:alert('xss')",  # Invalid scheme
+                payload={"test": "data"},
+            )
 
             assert success is False
             assert "Invalid webhook URL" in result["error"]
-            assert mock_post.call_count == 0
+            assert env.delivery_attempts == 0  # Should not attempt to call
+
+    def test_reserved_address_webhook_url_rejected(self):
+        """Test that reserved (link-local metadata) URLs are rejected for SSRF protection.
+
+        This grades the same production branch the old localhost case did. It
+        cannot be localhost here: the harness must allow loopback for the test
+        origin to be reachable at all, so a localhost assertion would grade the
+        harness's allowance instead of production's policy.
+        """
+        from tests.harness.delivery_webhook_unit import WebhookEnv
+
+        with WebhookEnv() as env:
+            success, result = env.call_deliver(webhook_url=RESERVED_METADATA_URL, payload={"test": "data"})
+
+            assert success is False
+            assert "Invalid webhook URL" in result["error"]
+            assert env.delivery_attempts == 0
 
     @patch("src.core.webhook_delivery._create_delivery_record")
     @patch("src.core.webhook_delivery._update_delivery_record")
-    def test_database_tracking_on_success(self, mock_update, mock_create, mock_sleep):
+    def test_database_tracking_on_success(self, mock_update, mock_create):
         """Test that successful delivery is tracked in database."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            event_type="test.event",
-            tenant_id="tenant_1",
-            object_id="obj_123",
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(200)
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(
+                payload={"test": "data"},
+                event_type="test.event",
+                tenant_id="tenant_1",
+                object_id="obj_123",
+            )
 
             assert success is True
 
@@ -361,23 +292,18 @@ class TestWebhookDelivery:
 
     @patch("src.core.webhook_delivery._create_delivery_record")
     @patch("src.core.webhook_delivery._update_delivery_record")
-    def test_database_tracking_on_failure(self, mock_update, mock_create, mock_sleep):
+    def test_database_tracking_on_failure(self, mock_update, mock_create):
         """Test that failed delivery is tracked in database."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            event_type="test.event",
-            tenant_id="tenant_1",
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 400
-            mock_response.text = "Bad Request"
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(400, "Bad Request")
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(
+                payload={"test": "data"},
+                event_type="test.event",
+                tenant_id="tenant_1",
+            )
 
             assert success is False
 
@@ -386,42 +312,35 @@ class TestWebhookDelivery:
             update_args = mock_update.call_args.kwargs
             assert update_args["status"] == "failed"
             assert update_args["response_code"] == 400
-            assert "Bad Request" in update_args["last_error"]
+            assert "Client error 400" in update_args["last_error"]
+            assert "Bad Request" not in update_args["last_error"]
 
-    def test_custom_timeout(self, mock_sleep):
-        """Test that custom timeout value is respected."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-            timeout=5,  # Custom 5 second timeout
-        )
+    def test_custom_timeout(self):
+        """Test that a custom timeout value is honoured, not merely passed along.
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_post.return_value = mock_response
+        The origin stalls for longer than the configured timeout, so a delivery
+        that respects the value fails on the clock. Asserting the kwarg reached
+        the transport would prove nothing once the transport changes.
+        """
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-            deliver_webhook_with_retry(delivery)
+        with WebhookEnv() as env:
+            env.set_http_sequence([responds(200, delay_seconds=2.0)])
 
-            # Check that timeout was passed to requests.post
-            call_args = mock_post.call_args
-            assert call_args.kwargs["timeout"] == 5
+            success, result = env.call_deliver(payload={"test": "data"}, max_retries=1, timeout=1)
 
-    def test_result_contains_duration(self, mock_sleep):
+            assert success is False
+            assert result["error"] == "Delivery failed after 1 attempts (no response received)"
+            assert env.delivery_attempts == 1
+
+    def test_result_contains_duration(self):
         """Test that result includes duration metric."""
-        delivery = WebhookDelivery(
-            webhook_url="https://example.com/webhook",
-            payload={"test": "data"},
-            headers={"Content-Type": "application/json"},
-        )
+        from tests.harness.delivery_webhook_unit import WebhookEnv
 
-        with patch("requests.post") as mock_post:
-            mock_response = Mock()
-            mock_response.status_code = 200
-            mock_post.return_value = mock_response
+        with WebhookEnv() as env:
+            env.set_http_status(200)
 
-            success, result = deliver_webhook_with_retry(delivery)
+            success, result = env.call_deliver(payload={"test": "data"})
 
             assert "duration" in result
             assert isinstance(result["duration"], float)
