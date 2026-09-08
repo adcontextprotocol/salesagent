@@ -112,12 +112,12 @@ The architect atom is the key differentiator from regular `/remediate`. It:
 
 ### Required Reading for Architect
 
-1. `CLAUDE.md` — 7 critical patterns
+1. `CLAUDE.md` — 9 critical patterns
 2. `docs/development/structural-guards.md` — 6 AST-enforced invariants
-3. `docs/code-reviews/00-migration-summary.md` — CRIT-1..CRIT-11
-4. `docs/code-reviews/01-schema-model-layer.md` — schema constraints
-5. `docs/code-reviews/02-api-boundary-layer.md` — boundary constraints
-6. `docs/code-reviews/04-adapter-layer.md` — adapter contracts
+3. `archive/code-reviews/00-migration-summary.md` — CRIT-1..CRIT-11
+4. `archive/code-reviews/01-schema-model-layer.md` — schema constraints
+5. `archive/code-reviews/02-api-boundary-layer.md` — boundary constraints
+6. `archive/code-reviews/04-adapter-layer.md` — adapter contracts
 7. `docs/development/architecture.md` — system architecture
 
 ## Iron Rule: Stub Intent Is Absolute Truth

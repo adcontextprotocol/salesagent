@@ -188,6 +188,7 @@ _ENTITY_PATTERNS: dict[str, list[str]] = {
         "impl_resolved_identity",
         "no_model_dump_in_impl",
         "inspect_bdd_steps",
+        "ruff_egress_bans",
     ],
     # --- Extended domain entities ---
     "targeting": [

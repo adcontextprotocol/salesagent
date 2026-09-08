@@ -11,27 +11,68 @@ This service implements the AdCP webhook specification from PR #86:
 """
 
 import atexit
-import hashlib
-import hmac
-import json
 import logging
-import random
 import threading
 import time
 from collections import deque
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
+from uuid import uuid4
 
-import httpx
 from adcp import get_adcp_spec_version
 
-from src.core.webhook_validator import (
-    reject_unsafe_outbound_webhook_url,
-    webhook_url_for_log,
-)
+from src.core.security.egress.attempts import env_float
+from src.core.security.webhook_egress import deliver_webhook
+from src.core.webhook_validator import webhook_url_for_log
+from src.core.webhooks.delivery import WebhookDeliveryOutcome, WebhookTaskContext
+from src.services.webhook_conclusion import record_conclusion
 
 logger = logging.getLogger(__name__)
+
+# The ``task_type`` this sender stamps on its rows. It differs from the protocol
+# sender's ("media_buy_delivery") because the two senders are answering about
+# different things; ``WebhookTaskContext.records_delivery_log`` admits both. What
+# must NOT differ is what a row SAYS became of a delivery — that vocabulary lives
+# once, in DeliveryRepository.record_outcome.
+DELIVERY_REPORT_TASK_TYPE = "delivery_report"
+
+
+# How long a single delivery attempt may take. Read at CALL time, not import, so a
+# test can shorten it without patching a transport — which is what lets the timeout
+# path be graded against an origin that really stalls, rather than against a mocked
+# clock. Production's value is unchanged.
+_DELIVERY_TIMEOUT_ENV = "ADCP_WEBHOOK_DELIVERY_TIMEOUT_SECONDS"
+_DEFAULT_DELIVERY_TIMEOUT_SECONDS = 10.0
+
+# The breaker's three policy parameters, read at CALL time for the same reason the
+# delivery timeout above is: an import-time read would freeze the first value.
+#
+# These are POLICY, not a test hatch. 5 / 2 / 60s is a default a deployment may
+# legitimately disagree with — a seller with flaky buyers may want to trip later,
+# and one with strict SLOs may want to recover sooner. Until now they were
+# constructor defaults with no reader at all, so no deployment could express that.
+#
+# This is also what lets the e2e stack reach HALF_OPEN without spending 60 real
+# seconds per scenario: docker-compose.e2e.yml supplies a shorter recovery timeout.
+# The code path is identical in both environments — only the VALUE differs, which
+# is the line between configuration and a branch that behaves differently under
+# test. See prebid/salesagent#2094 for the general case.
+_BREAKER_FAILURE_THRESHOLD_ENV = "ADCP_WEBHOOK_BREAKER_FAILURE_THRESHOLD"
+_BREAKER_SUCCESS_THRESHOLD_ENV = "ADCP_WEBHOOK_BREAKER_SUCCESS_THRESHOLD"
+_BREAKER_TIMEOUT_ENV = "ADCP_WEBHOOK_BREAKER_TIMEOUT_SECONDS"
+_DEFAULT_BREAKER_FAILURE_THRESHOLD = 5
+_DEFAULT_BREAKER_SUCCESS_THRESHOLD = 2
+_DEFAULT_BREAKER_TIMEOUT_SECONDS = 60
+
+
+def _configured_breaker() -> "CircuitBreaker":
+    """Build a breaker from the configured policy, falling back to the shipped defaults."""
+    return CircuitBreaker(
+        failure_threshold=int(env_float(_BREAKER_FAILURE_THRESHOLD_ENV, _DEFAULT_BREAKER_FAILURE_THRESHOLD)),
+        success_threshold=int(env_float(_BREAKER_SUCCESS_THRESHOLD_ENV, _DEFAULT_BREAKER_SUCCESS_THRESHOLD)),
+        timeout_seconds=int(env_float(_BREAKER_TIMEOUT_ENV, _DEFAULT_BREAKER_TIMEOUT_SECONDS)),
+    )
 
 
 class CircuitState(Enum):
@@ -310,36 +351,135 @@ class WebhookDeliveryService:
             )
             return False
 
-    def _generate_hmac_signature(self, payload: dict[str, Any], secret: str, timestamp: str) -> str:
-        """Generate HMAC-SHA256 signature for webhook payload.
+    def _deliver_to_config(
+        self,
+        db: Any,
+        config: Any,
+        *,
+        tenant_id: str,
+        principal_id: str,
+        media_buy_id: str,
+        delivery_payload: dict[str, Any],
+    ) -> bool:
+        """Deliver one webhook to one configured endpoint and record the outcome.
 
-        Args:
-            payload: Webhook payload
-            secret: Webhook secret (min 32 characters)
-            timestamp: ISO format timestamp
-
-        Returns:
-            HMAC signature as hex string
-        """
-        # Create signature input: timestamp + json payload
-        payload_str = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        message = f"{timestamp}.{payload_str}"
-
-        # Generate HMAC-SHA256
-        signature = hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
-
-        return signature
-
-    def _verify_secret_strength(self, secret: str) -> bool:
-        """Verify webhook secret meets minimum strength requirements.
-
-        Args:
-            secret: Webhook secret
+        This is :meth:`_send_webhook_enhanced`'s per-config loop body, extracted
+        unchanged so that method stays under the ADR-009 complexity ratchet
+        (#1610). Each ``continue`` in the original loop becomes ``return False``:
+        the caller counts ENDPOINTS THAT TOOK THE WEBHOOK, and every early exit
+        here was already a not-delivered endpoint.
 
         Returns:
-            True if secret is strong enough
+            True when the endpoint took the webhook; False for every other
+            outcome -- auth-blocked, breaker open, queue full, nothing attempted,
+            or a recorded delivery failure.
         """
-        return len(secret) >= 32
+        safe_url = webhook_url_for_log(config.url)
+        # Skip auth-blocked endpoints (UC-004-EXT-G-07)
+        if isinstance(getattr(config, "auth_blocked_at", None), datetime):
+            logger.warning(
+                "⚠️ Auth blocked for %s, skipping until credentials reconfigured",
+                safe_url,
+            )
+            return False
+
+        endpoint_key = f"{tenant_id}:{config.url}"
+
+        # Get or create circuit breaker for this endpoint
+        if endpoint_key not in self._circuit_breakers:
+            self._circuit_breakers[endpoint_key] = _configured_breaker()
+
+        # Get or create queue for this endpoint
+        if endpoint_key not in self._queues:
+            self._queues[endpoint_key] = WebhookQueue(max_size=1000)
+
+        circuit_breaker = self._circuit_breakers[endpoint_key]
+        queue = self._queues[endpoint_key]
+
+        # Check circuit breaker
+        if not circuit_breaker.can_attempt():
+            logger.warning(
+                "⚠️ Circuit breaker OPEN for %s, skipping webhook delivery",
+                safe_url,
+            )
+            return False
+
+        # No send-time address gate here: #1697 put one in front of the
+        # raw POST this path used to do, and the egress seam that POST
+        # became now owns exactly that policy — it resolves, validates
+        # and PINS the connection to the validated IP inside the same
+        # call, so there is no window between the verdict and the
+        # socket. Re-checking here would only re-resolve, which is the
+        # rebinding gap the pin closes, and #1697's refusal-records-a-
+        # failure bookkeeping survives in _deliver_with_backoff: a
+        # refused URL raises OutboundRequestBlocked, which reaches
+        # record_failure() through the OutboundError handler.
+        # (Registration-time validation, which must NOT resolve DNS,
+        # still lives in src/core/webhook_validator.py.)
+
+        # Add to queue (bounded)
+        webhook_data = {
+            "config": config,
+            "payload": delivery_payload,
+            "timestamp": datetime.now(UTC),
+        }
+
+        if not queue.enqueue(webhook_data):
+            logger.warning("⚠️ Queue full for %s, webhook dropped", safe_url)
+            return False
+
+        attempt_started = time.time()
+
+        # ONE conclusion per config. The outcome arrives from the
+        # delivery function; what to DO about it — write it down, feed
+        # the breaker, count it — is decided here, once, for every kind.
+        # Splitting that across the delivery function's arms is how this
+        # sender ended up feeding a breaker but recording nothing.
+        outcome = self._deliver_with_backoff(endpoint_key, queue)
+        if outcome is None:
+            # The queue was empty: nothing was attempted, so there is no
+            # outcome to record and no signal to give the breaker.
+            return False
+
+        ctx = WebhookTaskContext(
+            task_id=media_buy_id,
+            task_type=DELIVERY_REPORT_TASK_TYPE,
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            media_buy_id=media_buy_id,
+            sequence_number=delivery_payload.get("sequence_number", 1),
+            notification_type=delivery_payload.get("notification_type"),
+        )
+        # Persistence is observability; it does not get a vote on
+        # delivery. Without this swallow a DB error would be caught by
+        # this method's outer bare ``except`` and turn a webhook that WAS
+        # delivered into ``False`` — and upstream into a spurious retry.
+        # Committed PER CONCLUSION, not once at the end: a later config's
+        # failure must not roll back an earlier config's recorded row.
+        # (expire_on_commit is True, so `config` re-loads after this — safe,
+        # the session is still open, and safe_url was computed above.)
+        try:
+            record_conclusion(
+                db,
+                tenant_id=tenant_id,
+                ctx=ctx,
+                log_id=str(uuid4()),
+                webhook_url=config.url,
+                outcome=outcome,
+                response_time_ms=int((time.time() - attempt_started) * 1000),
+            )
+        except Exception as e:
+            logger.error("Failed to write webhook delivery log: %s", e)
+            db.rollback()
+
+        # EVERY non-delivered kind records a breaker failure, exactly as
+        # the base ``except OutboundError`` did: a destination we cannot
+        # deliver to must not look healthy to the breaker.
+        if outcome.kind == "delivered":
+            circuit_breaker.record_success()
+            return True
+        circuit_breaker.record_failure()
+        return False
 
     def _send_webhook_enhanced(
         self,
@@ -361,16 +501,14 @@ class WebhookDeliveryService:
         """
         try:
             # Get webhook configurations
-            from sqlalchemy import select
 
             from src.core.database.database_session import get_db_session
-            from src.core.database.models import PushNotificationConfig
+            from src.core.database.repositories.push_notification_config import (
+                PushNotificationConfigRepository,
+            )
 
             with get_db_session() as db:
-                stmt = select(PushNotificationConfig).filter_by(
-                    tenant_id=tenant_id, principal_id=principal_id, is_active=True
-                )
-                configs = db.scalars(stmt).all()
+                configs = PushNotificationConfigRepository(db, tenant_id).list_active_by_principal(principal_id)
 
                 if not configs:
                     logger.debug(f"⚠️ No webhooks configured for {tenant_id}/{principal_id}")
@@ -379,53 +517,14 @@ class WebhookDeliveryService:
                 # Send to all configured webhooks
                 sent_count = 0
                 for config in configs:
-                    safe_url = webhook_url_for_log(config.url)
-                    # Skip auth-blocked endpoints (UC-004-EXT-G-07)
-                    if isinstance(getattr(config, "auth_blocked_at", None), datetime):
-                        logger.warning(
-                            "⚠️ Auth blocked for %s, skipping until credentials reconfigured",
-                            safe_url,
-                        )
-                        continue
-
-                    endpoint_key = f"{tenant_id}:{config.url}"
-
-                    # Get or create circuit breaker for this endpoint
-                    if endpoint_key not in self._circuit_breakers:
-                        self._circuit_breakers[endpoint_key] = CircuitBreaker()
-
-                    # Get or create queue for this endpoint
-                    if endpoint_key not in self._queues:
-                        self._queues[endpoint_key] = WebhookQueue(max_size=1000)
-
-                    circuit_breaker = self._circuit_breakers[endpoint_key]
-                    queue = self._queues[endpoint_key]
-
-                    # Check circuit breaker
-                    if not circuit_breaker.can_attempt():
-                        logger.warning(
-                            "⚠️ Circuit breaker OPEN for %s, skipping webhook delivery",
-                            safe_url,
-                        )
-                        continue
-
-                    # Send-time SSRF gate before enqueue/POST (registration may skip DNS).
-                    if self._reject_unsafe_outbound_url(config.url, circuit_breaker):
-                        continue
-
-                    # Add to queue (bounded)
-                    webhook_data = {
-                        "config": config,
-                        "payload": delivery_payload,
-                        "timestamp": datetime.now(UTC),
-                    }
-
-                    if not queue.enqueue(webhook_data):
-                        logger.warning("⚠️ Queue full for %s, webhook dropped", safe_url)
-                        continue
-
-                    # Deliver from queue with enhanced features
-                    if self._deliver_with_backoff(endpoint_key, circuit_breaker, queue):
+                    if self._deliver_to_config(
+                        db,
+                        config,
+                        tenant_id=tenant_id,
+                        principal_id=principal_id,
+                        media_buy_id=media_buy_id,
+                        delivery_payload=delivery_payload,
+                    ):
                         sent_count += 1
 
                 if sent_count > 0:
@@ -439,131 +538,132 @@ class WebhookDeliveryService:
             logger.error(f"❌ Error in webhook delivery: {e}", exc_info=True)
             return False
 
-    def _reject_unsafe_outbound_url(self, url: str, circuit_breaker: CircuitBreaker) -> bool:
-        """Return True when outbound URL fails SSRF (caller must skip delivery)."""
-        rejected, _error_msg = reject_unsafe_outbound_webhook_url(url, log=logger, kind="Application")
-        if rejected:
-            circuit_breaker.record_failure()
-            return True
-        return False
-
     def _deliver_with_backoff(
         self,
         endpoint_key: str,
-        circuit_breaker: CircuitBreaker,
         queue: WebhookQueue,
-    ) -> bool:
-        """Deliver webhook with exponential backoff and jitter.
+    ) -> WebhookDeliveryOutcome | None:
+        """Deliver one queued webhook and say WHAT BECAME OF IT.
+
+        Returns the outcome rather than a bool, and feeds neither the circuit
+        breaker nor the delivery log itself: this function knows what happened,
+        and :meth:`_send_webhook_enhanced` decides what to do about it, once, for
+        every kind. Concluding in ``bool`` here is what destroyed the fact that a
+        refusal is not a failure — and left this sender, alone among the two,
+        writing no delivery-log row at all.
 
         Args:
             endpoint_key: Unique endpoint identifier
-            circuit_breaker: Circuit breaker for this endpoint
             queue: Webhook queue for this endpoint
 
         Returns:
-            True if delivered successfully, False otherwise
+            The outcome, or ``None`` when the queue was empty and nothing was
+            attempted — which is not an outcome and must not be recorded as one.
         """
-        max_retries = 3
-        base_delay = 1.0  # Initial delay in seconds
-
         webhook_data = queue.dequeue()
         if not webhook_data:
-            return False
+            return None
 
         config = webhook_data["config"]
         payload = webhook_data["payload"]
-        timestamp = webhook_data["timestamp"].isoformat()
         safe_url = webhook_url_for_log(config.url)
 
-        # Generate HMAC signature if webhook secret is configured
-        webhook_secret = getattr(config, "webhook_secret", None)
+        # Signing (X-ADCP-Signature / X-ADCP-Timestamp) is owned entirely by
+        # deliver_webhook below -- it serializes, signs and stamps the timestamp
+        # as one decision, so this function never holds a signature and a body
+        # serialization as two independent things to keep in sync.
+        #
+        # The auth DECISION above that transport is owned entirely by
+        # deliver_webhook/adeliver_webhook (salesagent-47n9.24, GH #1894). This
+        # sender used to make
+        # it inline and made it wrong four ways at once: it read webhook_secret (a
+        # column with zero writers in src/, so the signing branch was unreachable
+        # for any row a buyer can create), signed on a truthy secret rather than on
+        # the scheme, silently downgraded a weak secret to an UNSIGNED delivery, and
+        # compared "bearer" against an enum every writer stores as "Bearer". One
+        # seam call replaces all four, and the pinned Authentication type is what
+        # makes "what if it is none of these" un-writable.
         headers = {
             "Content-Type": "application/json",
             "User-Agent": "AdCP-Sales-Agent/2.3 (Enhanced Webhooks)",
-            "X-ADCP-Timestamp": timestamp,  # For replay prevention
         }
 
-        if webhook_secret:
-            if not self._verify_secret_strength(webhook_secret):
+        # ONE call. The seam validates the stored pair against the pinned type,
+        # applies whatever that scheme requires, dials, retries on the BR-RULE-029
+        # schedule, and reports what became of it. This sender no longer decides
+        # anything about authentication — which is the point: three senders each
+        # deciding is how one buyer's HMAC row signed on one path, went out
+        # unsigned on another, and matched nothing on a third.
+        #
+        # The credential-length rule that used to be argued about here now lives at
+        # the seam, applied to every sender at once. Pinned AdCP 3.1.1
+        # (core/push-notification-config.json) requires authentication.credentials
+        # with minLength 32, and owner ruling #2 for Epic D says a present-but
+        # -non-conforming block REFUSES rather than silently downgrading to a plain
+        # send. A stored row that cannot be delivered conformantly is not a delivery
+        # we should be making; its owner re-registers. Do NOT re-add a local
+        # tolerance here — that reinstates the divergence this seam removed.
+        #
+        # No ``field=``: this URL is read back out of storage, not off a request
+        # document. Every log names ``safe_url`` (scheme://host/path), never
+        # ``config.url``, which may carry userinfo credentials or a query token.
+        try:
+            outcome = deliver_webhook(
+                config.url,
+                payload,
+                scheme=config.authentication_type,
+                credentials=config.authentication_token,
+                headers=headers,
+                timeout=env_float(_DELIVERY_TIMEOUT_ENV, _DEFAULT_DELIVERY_TIMEOUT_SECONDS),
+                max_attempts=3,
+            )
+        except Exception as e:
+            # DELIBERATELY KEPT. The seam maps its OWN failure taxonomy onto the
+            # outcome, so nothing it raises lands here — but no outcome kind covers
+            # a NON-transport failure, and this function is contracted ``-> bool``.
+            # The pinned transport's own wrong-host guard raises a bare RuntimeError,
+            # which belongs here rather than escaping into the poller thread.
+            logger.error("Unexpected error delivering to %s: %s", safe_url, e, exc_info=True)
+            # No outcome kind covers a NON-transport failure, so this arm builds
+            # the one it means. It no longer feeds the breaker itself — every kind
+            # reaches the caller's single conclusion, so no arm can be the one that
+            # forgets.
+            return WebhookDeliveryOutcome.unexpected(type(e).__name__)
+
+        if outcome.kind != "delivered":
+            if outcome.kind == "refused_auth":
+                # FAIL-CLOSED, and deliberately log-and-return rather than raise. The
+                # buyer asked for an authentication this sender cannot produce; an
+                # unsigned POST to an endpoint that will reject it is strictly worse
+                # than no POST, because it is an unauthenticated request to a third
+                # party that no receiver can attribute to us. By the time control
+                # reaches here the poller is on its own thread with no request in
+                # flight, so there is no caller left to receive a raise.
+                logger.error("Refusing to deliver webhook to %s: %s", safe_url, outcome.detail or outcome.reason)
+            elif outcome.kind == "client_error":
+                # The seam logs nothing on a non-retryable 4xx and its records do not
+                # propagate here, so this is the only operator-visible trace.
                 logger.warning(
-                    "⚠️ Webhook secret for %s is too weak (min 32 characters required)",
+                    "Webhook delivery to %s returned client error %s, will not retry",
                     safe_url,
+                    outcome.http_status,
                 )
+            elif outcome.kind == "refused_destination":
+                # Severity carried on the outcome, not chosen here (salesagent-pldmk.39).
+                logger.log(outcome.log_level, "Webhook delivery to %s was refused by egress policy", safe_url)
             else:
-                signature = self._generate_hmac_signature(payload, webhook_secret, timestamp)
-                headers["X-ADCP-Signature"] = signature
-
-        # Add authentication
-        if config.authentication_type == "bearer" and config.authentication_token:
-            headers["Authorization"] = f"Bearer {config.authentication_token}"
-
-        # Exponential backoff with jitter
-        for attempt in range(max_retries):
-            try:
-                # Calculate delay with exponential backoff and jitter
-                if attempt > 0:
-                    # Base delay * 2^attempt + random jitter (0-1 seconds)
-                    delay = (base_delay * (2**attempt)) + random.uniform(0, 1)
-                    logger.debug(f"Retrying webhook delivery after {delay:.2f}s (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(delay)
-
-                # Send webhook — never follow redirects (open-redirect SSRF bypass).
-                with httpx.Client(timeout=10.0, follow_redirects=False) as client:
-                    response = client.post(
-                        config.url,
-                        json=payload,
-                        headers=headers,
-                    )
-
-                    if 200 <= response.status_code < 300:
-                        logger.debug(
-                            "Webhook delivered to %s (status: %s)",
-                            safe_url,
-                            response.status_code,
-                        )
-                        circuit_breaker.record_success()
-                        return True
-
-                    # Client errors (4xx): do NOT retry — the request is invalid
-                    if 400 <= response.status_code < 500:
-                        logger.warning(
-                            "Webhook delivery to %s returned client error %s, will not retry",
-                            safe_url,
-                            response.status_code,
-                        )
-                        circuit_breaker.record_failure()
-                        return False
-
-                    logger.warning(
-                        "Webhook delivery to %s returned status %s (attempt: %s/%s)",
-                        safe_url,
-                        response.status_code,
-                        attempt + 1,
-                        max_retries,
-                    )
-
-            except httpx.TimeoutException:
+                cause = f"status {outcome.http_status}" if outcome.http_status is not None else "no response"
                 logger.warning(
-                    "Webhook delivery to %s timed out (attempt: %s/%s)",
-                    safe_url,
-                    attempt + 1,
-                    max_retries,
+                    "Webhook delivery to %s failed after %s attempts (%s)", safe_url, outcome.attempts, cause
                 )
-            except httpx.RequestError as e:
-                logger.warning(
-                    "Webhook delivery to %s failed: %s (attempt: %s/%s)",
-                    safe_url,
-                    e,
-                    attempt + 1,
-                    max_retries,
-                )
-            except Exception as e:
-                logger.error("Unexpected error delivering to %s: %s", safe_url, e, exc_info=True)
-                break
+            return outcome
 
-        # All retries failed
-        circuit_breaker.record_failure()
-        return False
+        logger.debug(
+            "Webhook delivered to %s (status: %s)",
+            safe_url,
+            outcome.http_status,
+        )
+        return outcome
 
     def reset_sequence(self, media_buy_id: str):
         """Reset sequence number for a media buy.

@@ -39,9 +39,21 @@ PG="adcp-postgres"
 AGENT="creative-agent"
 SRC="/tmp/adcp-server-${ADCP_PIN}"
 HEALTH="http://localhost:9999/api/creative-agent/health"
-CREATIVE_AGENT_URL="http://localhost:9999/api/creative-agent"
+
+# TLS front (salesagent-40qh): the same primitive scripts/test-stack.sh already
+# uses for the server (agent.localhost + the generated private CA + stock
+# nginx:stable + nginx-tls-test.conf.template), fronting THIS agent instead.
+# `agent.localhost` is the host-published name gen_test_tls.py's SAN already
+# reserves for exactly this; a fixed port is fine here (unlike test-stack.sh's
+# dynamic allocation) because this script runs at most one stack at a time —
+# the container names above are already fixed, not per-instance.
+TLS_PROXY="creative-agent-tls"
+TLS_PORT="9443"
+HEALTH_TLS="https://agent.localhost:${TLS_PORT}/api/creative-agent/health"
+CREATIVE_AGENT_URL="https://agent.localhost:${TLS_PORT}/api/creative-agent"
 
 _healthy() { curl -sf -m 3 "$HEALTH" >/dev/null 2>&1; }
+_tls_healthy() { curl -sf -m 3 --cacert .test-tls/ca.pem "$HEALTH_TLS" >/dev/null 2>&1; }
 
 # Retry transient network failures (ECONNRESET during npm/tarball fetch in CI).
 _retry() {
@@ -152,9 +164,16 @@ cmd_build() {
     _ensure_image
 }
 
+_emit_url_output() {
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "url=${CREATIVE_AGENT_URL}" >> "$GITHUB_OUTPUT"
+    fi
+}
+
 cmd_up() {
-    if _healthy; then
-        echo "[creative-agent] already healthy on :9999 (reuse)"
+    if _healthy && _tls_healthy; then
+        echo "[creative-agent] already healthy on :9999 and https (reuse)"
+        _emit_url_output
         return 0
     fi
 
@@ -186,16 +205,48 @@ cmd_up() {
     fi
 
     echo "[creative-agent] waiting for health..."
+    _agent_ok=false
     for _ in $(seq 1 60); do
-        if _healthy; then echo "[creative-agent] healthy on :9999"; return 0; fi
+        if _healthy; then _agent_ok=true; echo "[creative-agent] healthy on :9999"; break; fi
         sleep 2
     done
-    echo "[creative-agent] FAILED to become healthy" >&2
-    docker logs "$AGENT" 2>&1 | tail -30 >&2
+    if [ "$_agent_ok" != true ]; then
+        echo "[creative-agent] FAILED to become healthy" >&2
+        docker logs "$AGENT" 2>&1 | tail -30 >&2
+        return 1
+    fi
+
+    # TLS front (salesagent-40qh): same image+template as the shared stack's
+    # tls-proxy service (salesagent-amht.2), applied to this standalone stack —
+    # this SNI name matches nothing in that template's map, so it falls back to
+    # the TLS_UPSTREAM set below. The generator writes/refreshes .test-tls/
+    # before nginx needs it.
+    scripts/dev/ensure-test-tls.sh
+    if ! docker ps --format '{{.Names}}' | grep -qx "$TLS_PROXY"; then
+        docker rm -f "$TLS_PROXY" >/dev/null 2>&1 || true
+        docker run -d --network "$NET" --name "$TLS_PROXY" -p "${TLS_PORT}:8443" \
+            -e TLS_UPSTREAM="${AGENT}:8080" \
+            -v "$(pwd)/config/nginx/nginx-tls-test.conf.template:/etc/nginx/templates/tls-test.conf.template:ro" \
+            -v "$(pwd)/.test-tls:/app/.test-tls:ro" \
+            nginx:stable >/dev/null
+    fi
+
+    echo "[creative-agent] waiting for TLS handshake..."
+    for _ in $(seq 1 60); do
+        if _tls_healthy; then
+            echo "[creative-agent] https ready on agent.localhost:${TLS_PORT}"
+            _emit_url_output
+            return 0
+        fi
+        sleep 2
+    done
+    echo "[creative-agent] TLS front FAILED to complete a verified handshake at $HEALTH_TLS" >&2
+    docker logs "$TLS_PROXY" 2>&1 | tail -30 >&2
     return 1
 }
 
 cmd_down() {
+    docker rm -f "$TLS_PROXY" >/dev/null 2>&1 || true
     docker rm -f "$AGENT" >/dev/null 2>&1 || true
     docker rm -f "$PG" >/dev/null 2>&1 || true
     docker network rm "$NET" >/dev/null 2>&1 || true

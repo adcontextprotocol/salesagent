@@ -64,7 +64,6 @@ from tests.harness.transport import (
     DeliverResult,
     Transport,
     TransportResult,
-    _envelope_from_adcp_error,
     _envelope_from_mcp_error,
     _wire_envelope_from_exception,
     derive_error_status,
@@ -546,6 +545,10 @@ def _unwrap_tool_success(
     so an E2E dispatch is never mislabeled in-process.
     """
     return TransportResult(
+        # Downstream of DELIVER: the MCP structured_content / A2A artifact
+        # DataPart already came back, which is the same declaration the
+        # in-process McpDispatcher/A2ADispatcher success sites make.
+        has_wire=True,
         payload=_parse_pinned_response(tool_name, delivered.payload),
         envelope={"transport": transport.value},
         wire_response=delivered.wire_response,
@@ -606,6 +609,10 @@ def unwrap_rest_response(
             # No JSON body means no AdCP envelope was produced at all — the
             # request died as a transport fault.
             return TransportResult(
+                # The HTTP response was received (status >= 400); its body just
+                # isn't JSON. Bytes crossed the wire, so has_wire is True even
+                # though no AdCP envelope could be recovered from them.
+                has_wire=True,
                 envelope={**envelope, "status": derive_error_status(None)},
                 error=non_json_error,
                 raw_response=raw_response,
@@ -614,6 +621,8 @@ def unwrap_rest_response(
         # REST's authentic evidence is its real HTTP body: a parseable AdCP
         # envelope is a structured rejection, anything else is a fault (C4).
         return TransportResult(
+            # Structured >= 400 body — the real HTTP response was received.
+            has_wire=True,
             error=parsed_error,
             envelope={**envelope, "status": derive_error_status(body)},
             raw_response=raw_response,
@@ -632,8 +641,13 @@ def unwrap_rest_response(
         # the envelope/raw_response still attached (mirrors the former
         # RestE2EDispatcher behavior) rather than propagating a raw
         # JSONDecodeError/ValidationError past the dispatch boundary.
-        return TransportResult(envelope=envelope, error=exc, raw_response=raw_response)
-    return TransportResult(payload=payload, envelope=envelope, raw_response=raw_response, wire_response=wire_response)
+        # Parse failure on an ALREADY-RECEIVED 2xx response: the wire happened,
+        # only the harness-side parse of it did not.
+        return TransportResult(has_wire=True, envelope=envelope, error=exc, raw_response=raw_response)
+    # 2xx success — the real HTTP JSON body.
+    return TransportResult(
+        has_wire=True, payload=payload, envelope=envelope, raw_response=raw_response, wire_response=wire_response
+    )
 
 
 def _unwrap_rest(env: BaseTestEnv, raw: Any, transport: Transport, tool_name: str) -> TransportResult:
@@ -759,18 +773,26 @@ def unwrap_mcp_error(exc: Exception, transport: Transport = Transport.MCP) -> Tr
     # typed AdCPError, so error-code assertions resolve to the real wire code
     # rather than "AdCPToolError".
     raw_tool_error_envelope = _envelope_from_mcp_error(exc)
-    wire = raw_tool_error_envelope or getattr(exc, "_wire_error_envelope", None)
+    wire = raw_tool_error_envelope or _wire_envelope_from_exception(exc)
     error = _unwrap_mcp_tool_error(exc) if raw_tool_error_envelope is not None else exc
     return TransportResult(
+        # This is the catch-all arm of an MCP dispatch: it wraps env.call_mcp
+        # whole, so it can fire before any bytes moved and cannot tell which.
+        # It declares False and still hands back the REAL envelope it recovered
+        # from the ToolError above — see TransportResult.has_wire's SCOPE note.
+        has_wire=False,
         error=error,
         # Derived per-transport status: MCP's authentic evidence is
         # whether a structured AdCP envelope was recoverable from the ToolError,
         # rather than a fault that produced no envelope at all.
         envelope={"transport": transport.value, "status": derive_error_status(wire)},
         wire_error_envelope=wire,
-        # What production WOULD emit for the same exception — never a substitute
-        # for the wire field.
-        synthesized_error_envelope=_envelope_from_adcp_error(exc),
+        # NO synthesized envelope. MCP HAS a wire, so a rebuilt copy here is
+        # either redundant or — when the capture above came back None — a mask
+        # that would let error_envelope() hand a downstream test a value
+        # regenerated from the very exception it caught. Only ImplDispatcher,
+        # which has no wire by definition, may populate that field; pinned by
+        # tests/unit/test_harness_mcp_never_synthesizes.py.
     )
 
 
@@ -779,12 +801,29 @@ def unwrap_a2a_error(exc: Exception, transport: Transport = Transport.A2A) -> Tr
 
     ``_run_a2a_handler`` already reconstructs ``AdCPError`` with
     ``_wire_error_envelope`` stashed (via ``_envelope_to_adcp_error``) before
-    raising, so ``_wire_envelope_from_exception``'s getattr fast-path covers it.
+    raising, so the ``_wire_error_envelope`` getattr below covers it.
     See :func:`unwrap_mcp_error` for why this is one function rather than a copy
     per dispatch path.
+
+    REAL STASH ONLY — never ``_envelope_from_adcp_error``. That rule has ONE
+    owner, ``transport._wire_envelope_from_exception``, called below rather than
+    re-implemented here: an inlined second copy is how the fallback survived a
+    merge once already (it was restored in ``transport.py`` while this call site
+    kept its own read). Handing back an envelope the harness rebuilt from the
+    exception it just caught, under the field named for what actually crossed
+    the wire, is the laundered-copy channel this branch closed — a
+    scenario asserting on ``wire_error_envelope`` would then grade the rebuild,
+    and pass whether or not production emitted anything at all. ``None`` is the
+    honest answer when nothing was captured; pinned by
+    ``tests/unit/test_harness_mcp_never_synthesizes.py``.
     """
     wire = _wire_envelope_from_exception(exc)
     return TransportResult(
+        # Catch-all arm wrapping the whole A2A delivery — it may fire before
+        # anything was sent, so it declares False while still exposing the real
+        # envelope stashed on the reconstructed AdCPError. This is the exact
+        # case TransportResult.has_wire's SCOPE note names.
+        has_wire=False,
         error=exc,
         # Derived per-transport status: the A2A evidence is whether
         # a failed Task carried an AdCP envelope in its artifact DataPart.
@@ -805,6 +844,9 @@ def unwrap_rest_error(exc: Exception, transport: Transport = Transport.REST) -> 
     because an ABSENT status is what let the storyboard Then pass on nothing.
     """
     return TransportResult(
+        # An exception here means no HTTP response body existed at all, so no
+        # bytes ever crossed the wire.
+        has_wire=False,
         error=exc,
         envelope={"transport": transport.value, "status": derive_error_status(None)},
     )

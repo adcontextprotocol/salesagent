@@ -10,6 +10,7 @@ from pydantic import Field
 
 from src.core.helpers import enum_value
 from src.core.resolved_identity import ResolvedIdentity
+from src.core.schema_helpers import to_push_notification_config
 from src.core.tool_context import ToolContext
 from src.core.tools._mcp import mcp_result
 
@@ -124,7 +125,10 @@ def sync_creatives_raw(
         delete_missing=delete_missing,
         dry_run=dry_run,
         validation_mode=validation_mode,
-        push_notification_config=push_notification_config,
+        # Coerce here: this is the untyped seam. The A2A skill forwards the buyer's
+        # raw dict, so the annotation above was decorative and a document the pinned
+        # schema forbids reached _impl unchallenged.
+        push_notification_config=to_push_notification_config(push_notification_config),
         context=context,
         identity=identity,
     )

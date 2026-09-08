@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pytest_bdd import parsers, then
 
-from tests.bdd.steps._outcome_helpers import wire_error_envelope_or_none
+from tests.bdd.steps._outcome_helpers import payload_or_none, wire_error_envelope_or_none
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -198,7 +198,7 @@ def then_operation_fails(ctx: dict) -> None:
     if error is not None:
         _assert_meaningful_error(error)
         return
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is not None and hasattr(resp, "errors") and resp.errors:
         # Promote the first response error to ctx["error"] so downstream
         # Then steps (error_code, error_message) can find it.
@@ -209,7 +209,7 @@ def then_operation_fails(ctx: dict) -> None:
         return
     raise AssertionError(
         "Expected the operation to fail but no error was recorded. "
-        f"ctx keys: {list(ctx.keys())}, response: {ctx.get('response')!r}"
+        f"ctx keys: {list(ctx.keys())}, response: {payload_or_none(ctx)!r}"
     )
 
 
@@ -230,7 +230,7 @@ def then_entire_sync_operation_fails(ctx: dict) -> None:
     """
     # ── Resolve the error object ────────────────────────────────────
     error = ctx.get("error")
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
 
     # Promote response.errors if no top-level error was captured
     if error is None and resp is not None and hasattr(resp, "errors") and resp.errors:
@@ -862,13 +862,24 @@ def then_terminal_failure(ctx: dict) -> None:
     error = ctx.get("error")
     assert error is not None, (
         "Expected a terminal failure but no error was recorded. "
-        f"ctx keys: {list(ctx.keys())}, response: {ctx.get('response')!r}"
+        f"ctx keys: {list(ctx.keys())}, response: {payload_or_none(ctx)!r}"
     )
     _assert_meaningful_error(error)
     from src.core.exceptions import AdCPError
 
     if isinstance(error, AdCPError):
-        assert error.recovery == "terminal", f"Expected terminal recovery, got '{error.recovery}'"
+        # Read the WIRE where there is one. ``error`` is the harness's
+        # RECONSTRUCTION, and its ``.recovery`` is now derived from its own class —
+        # so asserting on it compares the derivation against itself and would pass
+        # under any value the wire actually carried. On IMPL there is no wire by
+        # design, and the reconstruction is the real raised exception, so the
+        # class check is all that level can offer and is kept as the fallback.
+        wire = _wire_error_object(ctx)
+        if wire is not None:
+            actual = wire.get("recovery")
+            assert actual == "terminal", f"Expected terminal recovery on the wire, got {actual!r}: {wire}"
+        else:
+            assert error.recovery == "terminal", f"Expected terminal recovery, got '{error.recovery}'"
     elif hasattr(error, "recovery"):
         recovery = error.recovery.value if hasattr(error.recovery, "value") else str(error.recovery)
         assert recovery == "terminal", f"Expected terminal recovery, got '{recovery}'"
@@ -1040,7 +1051,7 @@ def _assert_no_new_media_buy(ctx: dict) -> None:
     3. Fallback: verify the operation errored (no response = no creation).
     """
     env = ctx["env"]
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
 
     # Strategy 1: if we got a response with media_buy_id, it should not be in DB
     if resp is not None:

@@ -22,7 +22,7 @@ Before writing code, verify you understand:
 - What does "done" look like?
 - Are there dependencies or blocked tasks?
 
-**From CLAUDE.md (7 critical patterns):**
+**From CLAUDE.md (9 critical patterns):**
 - Does this touch schemas? → Check AdCP pattern (#1)
 - Does this add routes? → Check route conflict pattern (#2)
 - Does this touch the database? → PostgreSQL only (#3)
