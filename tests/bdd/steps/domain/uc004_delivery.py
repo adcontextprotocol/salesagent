@@ -2198,10 +2198,28 @@ def then_delivery_successful(ctx: dict) -> None:
 
 @then("the circuit breaker state should remain healthy")
 def then_circuit_healthy(ctx: dict) -> None:
-    """Assert circuit breaker remains in healthy (closed) state."""
+    """Assert the breaker is CLOSED *and* carries no recorded failure.
+
+    "Healthy" is two facts, and the state alone is the weaker one: the default
+    failure_threshold is 5, so a delivery that succeeded but was ALSO counted as
+    a failure still reports CLOSED. The failure count is what says the retried
+    delivery was recorded as the single success it was.
+
+    Both reads go through the production public API
+    (``WebhookDeliveryService.get_circuit_breaker_state``). Neither can tell "no
+    breaker exists" from "a breaker with zero failures" — stated at
+    ``breaker_snapshot`` and unchanged here — so this does NOT grade that a
+    success was recorded at all; that half is prebid/salesagent#2060's, and it
+    needs a wire surface (``reporting_delayed``) this scenario does not touch.
+    """
     env = ctx["env"]
     actual = env.get_breaker_state()
     assert actual == "closed", f"Expected CB to remain 'closed' (healthy), got '{actual}'"
+    _state, failure_count = env.breaker_snapshot()
+    assert failure_count == 0, (
+        f"Expected the successful (retried) delivery to leave no recorded failure, got "
+        f"failure_count={failure_count} — a delivery that succeeded is being counted against the endpoint"
+    )
 
 
 @then("the configuration should be rejected")

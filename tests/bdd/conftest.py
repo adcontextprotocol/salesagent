@@ -1564,11 +1564,44 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         # is reachable from the Docker HTTP path (the origin listens on the
         # runner's loopback, not the container's). Remove when an E2E webhook
         # receiver or circuit-breaker introspection is available.
+        # Graduated (run innet_080926_0627, mutation; baselines innet_070926_1424 ->
+        # _1642): T-UC-004-webhook-notification-type, -sequence, -no-aggregated and
+        # -retry-success. The routing reason above was stale for these four — the
+        # in-process origin is no longer the endpoint under e2e_rest; the compose
+        # stack's long-lived webhook-capture service is (#1873), and
+        # LocalOriginMixin's realize_e2e accessors read the delivery back off it, so
+        # the POST body IS observable through the Docker HTTP path.
+        #
+        # Measured, not read off the green mark. Four mutations in
+        # src/services/webhook_delivery_service.py (bind-mounted into the `tests`
+        # container, so they reach the sender these scenarios drive), one run:
+        # notification_type pinned to "delayed"; sequence_number pinned to 1;
+        # aggregated_totals injected into the report; max_attempts 3 -> 1. Every one
+        # of the six graduated node ids flipped XPASS -> XFAIL with the message of
+        # its OWN assertion ("Expected notification_type='final', got 'delayed'";
+        # "sequence_number not ascending at index 1: 1 -> 1"; "the delivery report
+        # carries 'aggregated_totals'"; "Expected successful delivery (success=True),
+        # got success=False"). Exactly 8 of 2856 nodes changed outcome across the
+        # whole e2e leg — the six, plus retry-5xx (also on the mutated retry path)
+        # and the notification-type "delayed" row, which went XFAIL -> FAIL because
+        # production suddenly emitted the value its strict row demands. Nothing else
+        # moved, so attribution is per-assertion, not per-suite.
+        #
+        # These grade the IN-PROCESS sender (call_send constructs a
+        # WebhookDeliveryService in the test process, on every transport) reaching a
+        # real endpoint over real HTTP — NOT the deployed adcp-server, whose image
+        # these mutations never touched. That is the same reach the a2a/mcp/rest legs
+        # have; what e2e_rest adds here is the real socket, the real TLS front and
+        # the server-bound DB. The breaker rows below are a different case and stay.
+        #
+        # Verified un-routed in innet_080926_0638: all six report a plain PASS, the
+        # failure count is unchanged at 123, and the notification-type "delayed" row
+        # still XFAILs on its own strict row. In-process siblings re-run serially
+        # (slice 686e6861): retry-success PASSes on a2a/mcp/rest with the
+        # strengthened "remain healthy" Then.
         _UC004_E2E_WEBHOOK_INTERNAL_TAGS: set[str] = {
             "T-UC-004-webhook-bearer",
             "T-UC-004-webhook-hmac",
-            "T-UC-004-webhook-notification-type",
-            "T-UC-004-webhook-no-aggregated",
             # DEFERRED to prebid/salesagent#2060, which owns both halves of the
             # breaker's missing coverage. These two were briefly un-routed by
             # #2098's rewrite attempt; they are RESTORED here because #2060's
@@ -1583,14 +1616,14 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             # Re-run it yourself with `make mutation-check-breaker`.
             "T-UC-004-webhook-circuit-open",
             "T-UC-004-webhook-circuit-recovery",
-            "T-UC-004-webhook-retry-success",
-            # #1873: retry/sequence observability — assert on the requests the
-            # in-process origin received, not visible over the Docker HTTP path.
-            # #1873 is the webhook-capture service that makes them observable.
+            # #1873: retry observability — assert on the requests the endpoint
+            # received. -retry-success and -sequence graduated off this note (see
+            # above); these three still assert on things the capture service does not
+            # expose (the seam's process-local retry SCHEDULE via env.mock["sleep"],
+            # and a connection that is refused before any request exists to record).
             "T-UC-004-webhook-retry-5xx",
             "T-UC-004-webhook-retry-network",
             "T-UC-004-webhook-no-retry-4xx",
-            "T-UC-004-webhook-sequence",
         }
         if is_e2e_rest and (marker_names & _UC004_E2E_WEBHOOK_INTERNAL_TAGS):
             item.add_marker(
