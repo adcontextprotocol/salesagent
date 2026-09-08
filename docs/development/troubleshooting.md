@@ -1,140 +1,286 @@
-# Troubleshooting Guide
+# Troubleshooting guide
 
-## Production Emergency Response
+This guide is a symptom lookup for the local Docker stack and its test
+tooling. Every service is reached through the nginx proxy at
+`http://localhost:8000`. Each entry gives the symptom, the immediate fix, and
+a link to the document that explains the mechanism. Find your symptom in the
+contents, apply the fix, and follow the link if the fix isn't enough.
 
-### Critical Production Failures
+## Contents
 
-#### Database Schema Conflicts
-**Symptoms**: `operator does not exist: text < timestamp with time zone`
-- **Immediate Action**: Identify which queries are failing
-- **Root Cause**: Schema type mismatches between expected and actual column types
-- **Emergency Fix**: Comment out problematic queries temporarily
-- **Permanent Fix**: Migrate to consistent schema or eliminate conflicting systems
+Startup and Docker:
 
-#### Broken Migration Chain
-**Symptoms**: `Can't locate revision identified by '[revision_id]'`
-- **Immediate Diagnosis**: `alembic history` to check chain integrity
-- **Emergency Repair**:
-  1. Identify last known good revision: `alembic current`
-  2. Reset to good revision: `alembic stamp [good_revision]`
-  3. Create new migration with correct `down_revision`
-  4. Test locally before deploying
-- **Deploy**: Migration fix first, then code changes
+- [The stack won't come up, or the app crash-loops](#the-server-does-not-start) — decision tree
+- [Container exits at startup](#container-does-not-start)
+- [`ModuleNotFoundError` or `ImportError` after `docker compose up`](#import-errors-after-docker-compose-up)
+- [Port 8000 is already allocated](#port-8000-already-in-use)
+- [Permission denied inside a container](#permission-denied-inside-a-container)
+- [Containers use too much memory](#high-memory-usage)
 
-#### Application Crash Loops
-**Symptoms**: App repeatedly crashes on startup, "smoke checks failed"
-- **Immediate Response**: Check `fly logs --app adcp-sales-agent`
-- **Debug Process**:
-  1. Identify specific error in logs
-  2. Check recent PR changes: `git log --oneline -10`
-  3. Test fix locally with Docker
-  4. Deploy minimal fix to restore service
-  5. Implement broader changes incrementally
+Database:
 
-#### Emergency Recovery Steps
-```bash
-# 1. Check current production status
-fly status --app adcp-sales-agent
+- [`column ... does not exist`](#column-does-not-exist)
+- [`Can't locate revision identified by ...`](#broken-migration-chain)
+- [`operator does not exist: text < timestamp with time zone`](#operator-does-not-exist-type-mismatch-in-queries)
+- [App can't reach PostgreSQL](#postgresql-connection-failed)
+- [Queries are slow](#slow-queries)
 
-# 2. Review recent logs for errors
-fly logs --app adcp-sales-agent --limit 100
+Authentication:
 
-# 3. Check deployment history
-fly releases --app adcp-sales-agent
+- [Which layer rejected the request](#authentication-issues) — decision tree
+- ["Access denied" when logging in to the Admin UI](#access-denied-in-the-admin-ui)
+- [404 after the Google OAuth redirect](#oauth-callback-404)
+- [Login loops back to the OAuth screen](#oauth-redirect-loop)
+- ["Missing or invalid x-adcp-auth header" with a valid token](#missing-or-invalid-x-adcp-auth-header)
+- [MCP requests rejected as unauthorized](#invalid-token-for-the-mcp-api)
+- [A2A requests rejected as unauthenticated](#a2a-authentication-failed)
 
-# 4. Rollback if needed (last resort)
-fly releases rollback --app adcp-sales-agent [release_id]
+MCP and A2A:
 
-# 5. Deploy emergency fix
-fly deploy --app adcp-sales-agent
+- ["Tool not found" from the MCP server](#tool-not-found)
+- [`get_products` returns an empty array](#mcp-returns-an-empty-products-array)
+- [`Input validation error: '...' is a required property`](#contract-validation-errors)
+- [A2A endpoint doesn't respond](#a2a-server-not-responding)
+- [JSON-RPC rejects the `messageId`](#invalid-messageid-errors)
+
+Admin UI:
+
+- [Blank page or 500 error](#blank-page-or-500-error)
+- [Activity feed doesn't update](#activity-feed-not-updating)
+- [Slack notifications don't arrive](#slack-notifications-not-arriving)
+
+GAM integration:
+
+- ["Could not determine client ID from request"](#could-not-determine-client-id-from-request)
+- [Choosing between OAuth and a service account](#oauth-compared-with-service-account)
+- [GAM refresh token stopped working](#oauth-token-invalid)
+- [Wrong GAM network code](#network-code-mismatch)
+- [Inventory sync runs for 30+ minutes](#inventory-sync-timeout)
+
+Outbound requests:
+
+- [An outbound HTTP call is refused](#outbound-request-refused)
+
+Testing and quality gates:
+
+- [`make quality` fails — which gate](#a-make-quality-run-fails) — decision tree
+- [A `test_architecture_*` guard test fails](#a-structural-guard-fails)
+- [`TID251` import ban on `httpx`, `requests`, or `aiohttp`](#an-egress-import-ban-fires)
+- [Integration tests are slow or flaky](#integration-tests-slow-or-flaky)
+- [Async tests fail with coroutine warnings](#async-test-failures)
+- [`X-Dry-Run` and other testing headers are ignored](#testing-hook-headers-not-working)
+- [`AttributeError: '...' object has no attribute ...`](#attributeerror-on-model-fields)
+
+Reference:
+
+- [Recover a broken production deployment](#production-recovery)
+- [API error quick reference](#api-error-quick-reference)
+- [Check system health](#check-system-health)
+- [Read the logs](#read-the-logs)
+- [Get help](#get-help)
+
+## The server does not start
+
+The following decision tree routes a failed `docker compose up -d` — or an
+app that starts and then crash-loops — to the right entry by what the logs
+say.
+
+```mermaid
+flowchart TD
+    Start["docker compose up -d fails,\nor the app crash-loops"] --> Logs["docker compose logs adcp-server"]
+    Logs --> Import{"ModuleNotFoundError\nor ImportError?"}
+    Import -->|Yes| Rebuild["Rebuild the image:\nsee Import errors after\ndocker compose up"]
+    Import -->|No| Rev{"Can't locate revision\nidentified by ...?"}
+    Rev -->|Yes| Chain["Repair the migration chain:\nsee Broken migration chain"]
+    Rev -->|No| Bind{"port is already allocated\nor bind failed?"}
+    Bind -->|Yes| Port["Free port 8000:\nsee Port 8000 already in use"]
+    Bind -->|No| DB{"Connection refused\nto postgres?"}
+    DB -->|Yes| PG["Check the database container:\nsee PostgreSQL connection failed"]
+    DB -->|No| Recent["Read the specific error, then check\nrecent changes: git log --oneline -10"]
 ```
 
-## Common Issues and Solutions
+## Server and Docker issues
 
-### Dashboard and UI Issues
+### Container does not start
 
-#### "Error loading dashboard" (HISTORICAL - FIXED)
-This was caused by the dashboard querying deprecated `Task` models.
+Read the logs first, then rebuild if the error is not specific:
 
-**Historical Issue**: Dashboard was querying `tasks` table that had schema conflicts.
-**Resolution**: Dashboard now uses `WorkflowStep` model for activity tracking.
-**Current State**: No task-related queries - dashboard shows workflow activity.
-
-#### Task-related errors (HISTORICAL - FIXED)
-These errors are resolved by the workflow system migration.
-
-**Historical Issue**: Missing task management templates and deprecated task models.
-**Resolution**: Task system eliminated in favor of unified workflow system.
-**Current State**: Dashboard shows workflow activity feed instead of task lists.
-
-#### Activity Feed Not Updating
-The activity feed uses Server-Sent Events (SSE) for real-time updates.
-
-**Check:**
-1. SSE endpoint is accessible: `http://localhost:8000/admin/tenant/{tenant_id}/events`
-2. Database audit_logs table is being populated
-3. No browser extensions blocking SSE connections
-
-### Inventory Sync Issues
-
-#### Inventory Sync Timeout (30+ minutes)
-**Symptoms**: Sync job shows "running" status but never completes, or times out after 30 minutes.
-
-**Root Cause**: Large accounts (100+ custom targeting keys with thousands of values each) cause 250+ API calls to GAM.
-
-**Solution**: Inventory sync now uses **lazy loading** by default:
-- Syncs only custom targeting **keys** during inventory sync (~2 minutes)
-- Values are fetched **on-demand** when browsing or creating campaigns
-- Values are cached in database once fetched
-
-**How it works:**
 ```bash
-# 1. Run inventory sync (fast - only fetches keys)
-curl -X POST https://adcp-sales-agent.fly.dev/api/v1/sync/trigger/{tenant_id} \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -d '{"sync_type": "full", "force": true}'
+# Check logs
+docker compose logs adcp-server
+docker compose logs postgres
 
-# 2. Check which keys have values loaded
-curl -X GET https://adcp-sales-agent.fly.dev/api/tenant/{tenant_id}/targeting/all
-
-# 3. Lazy load values for specific key when needed
-curl -X GET "https://adcp-sales-agent.fly.dev/api/tenant/{tenant_id}/targeting/values/{key_id}?limit=1000"
+# Rebuild containers
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
-**Check sync status:**
-```bash
-# Get recent sync jobs
-curl -X GET https://adcp-sales-agent.fly.dev/api/v1/sync/history/{tenant_id}?limit=5 \
-  -H "X-API-Key: YOUR_API_KEY"
+Migrations run automatically at startup: the `db-init` service runs
+`python scripts/ops/migrate.py` and `adcp-server` waits for it to complete.
+A migration error therefore appears in `docker compose logs db-init`.
 
-# Check if custom targeting values are loaded
-SELECT
-  COUNT(*) FILTER (WHERE inventory_type = 'custom_targeting_key') as keys_count,
-  COUNT(*) FILTER (WHERE inventory_type = 'custom_targeting_value') as values_count
-FROM gam_inventory
-WHERE tenant_id = '{tenant_id}';
+### Import errors after docker compose up
+
+**Symptoms**: `ModuleNotFoundError: No module named 'flask'` or
+`ImportError: cannot import name ... from 'adcp...'` when running
+`docker compose up` with source bind mounts.
+
+The image installs the virtualenv at `/opt/venv` (outside `/app`), so the
+`.:/app` bind mount never shadows installed packages. Import errors therefore
+mean the image itself is stale — for example, after a dependency bump in
+`uv.lock`. Rebuild without cache:
+
+```bash
+docker compose build --no-cache db-init adcp-server
+docker compose up
 ```
 
-**Force full sync with values (not recommended for large accounts):**
+If you add your own `docker-compose.override.yml`, mount source at `/app`
+only — don't add a `/app/.venv` volume. The image provides packages on
+`PATH` from `/opt/venv` and source on `PYTHONPATH=/app`.
+
+### Port 8000 already in use
+
+The proxy publishes one host port, `8000` by default. Set `CONDUCTOR_PORT`
+to move it:
+
 ```bash
-curl -X POST https://adcp-sales-agent.fly.dev/api/v1/sync/trigger/{tenant_id} \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -d '{
-    "sync_type": "full",
-    "fetch_custom_targeting_values": true,
-    "custom_targeting_limit": 500,
-    "force": true
-  }'
+# Find the process holding the port
+lsof -i :8000
+
+# Or start the stack on a different host port
+CONDUCTOR_PORT=8001 docker compose up -d
 ```
 
-**Performance impact:**
-- Before: 30+ minutes (timeout)
-- After: ~2 minutes (keys only)
-- Lazy load per key: ~5 seconds (only when needed)
+The `ADCP_SALES_PORT` variable (default `8080`) is the app's port inside the
+Compose network, behind the proxy. Changing it doesn't resolve a host port
+conflict.
 
-### Authentication Problems
+### Permission denied inside a container
 
-#### "Access Denied" in Admin UI
+```bash
+# Fix volume ownership
+docker compose exec adcp-server chown -R $(id -u):$(id -g) /app
+
+# Or run with your user ID
+docker compose run --user $(id -u):$(id -g) adcp-server
+```
+
+### High memory usage
+
+```bash
+# Check container stats
+docker stats
+```
+
+To cap a service, add limits in `docker-compose.override.yml`:
+
+```yaml
+services:
+  adcp-server:
+    mem_limit: 512m
+    mem_reservation: 256m
+```
+
+## Database issues
+
+### Column does not exist
+
+The schema is behind the code. Run migrations:
+
+```bash
+# Locally
+uv run python scripts/ops/migrate.py
+
+# In Docker
+docker compose exec adcp-server python scripts/ops/migrate.py
+
+# Check migration status
+docker compose exec adcp-server python scripts/ops/migrate.py status
+```
+
+If migrations fail, check for overlapping revisions:
+
+```bash
+grep -r "revision = " alembic/versions/
+```
+
+The `test_architecture_single_migration_head.py` guard fails `make quality`
+when the migration graph has more than one head, so a chain conflict usually
+surfaces there first.
+
+### Broken migration chain
+
+**Symptoms**: `Can't locate revision identified by '[revision_id]'` — the app
+crashes at startup or a deployment fails.
+
+1. Check the chain: `uv run alembic history`.
+2. Identify the last known good revision: `uv run alembic current`.
+3. Reset to it: `uv run alembic stamp [good_revision]`.
+4. Create a new migration with the correct `down_revision`.
+5. Test locally, then deploy the migration fix before any code changes.
+
+Never modify a committed migration file — create a new one.
+
+### Operator does not exist: type mismatch in queries
+
+**Symptoms**: `operator does not exist: text < timestamp with time zone`.
+
+A query compares a column against a value of a different type, which means
+the column's type in the database doesn't match what the ORM model declares.
+Find the failing query in the logs, compare the column's type in the model
+(`src/core/database/models.py`) against the live schema, and write a
+migration that aligns them. The `test_architecture_query_type_safety.py`
+guard catches new queries whose filter types don't match the column
+definitions — see [Structural guards](structural-guards.md).
+
+### PostgreSQL connection failed
+
+```bash
+# Check PostgreSQL is running
+docker ps | grep postgres
+
+# Test the connection
+docker compose exec postgres psql -U adcp_user adcp -c "SELECT 1;"
+
+# Check the environment variable
+echo $DATABASE_URL
+```
+
+### Slow queries
+
+```bash
+# Inspect the query plan
+docker compose exec postgres psql -U adcp_user adcp -c \
+  "EXPLAIN ANALYZE SELECT * FROM media_buys WHERE tenant_id='test';"
+```
+
+Add an index through a migration (`uv run alembic revision -m "add index"`),
+not by hand — a hand-created index exists only in that one database.
+
+## Authentication issues
+
+Three entry points authenticate differently. The following decision tree
+routes an authentication failure by where the request came in; the
+[request lifecycle](request-lifecycle.md) document explains how
+`resolve_identity` and the middleware order make this work.
+
+```mermaid
+flowchart TD
+    Fail["Authentication fails"] --> Which{"Which entry point?"}
+    Which -->|"Admin UI (browser)"| UI{"What do you see?"}
+    UI -->|"Access denied page"| Denied["Check SUPER_ADMIN_EMAILS:\nsee Access denied in the Admin UI"]
+    UI -->|"404 after Google login"| CB["Fix the redirect URI:\nsee OAuth callback 404"]
+    UI -->|"Login loops"| Loop["Clear cookies, check FLASK_SECRET_KEY:\nsee OAuth redirect loop"]
+    Which -->|"MCP (x-adcp-auth header)"| MCP{"Is the token in the\nprincipals table?"}
+    MCP -->|No| Token["Get a token from the Admin UI:\nsee Invalid token for the MCP API"]
+    MCP -->|Yes| Active["Check the tenant is active:\nsee Missing or invalid\nx-adcp-auth header"]
+    Which -->|"A2A (Authorization header)"| A2A["Send Authorization: Bearer TOKEN:\nsee A2A authentication failed"]
+```
+
+### Access denied in the Admin UI
+
 ```bash
 # Check super admin configuration
 echo $SUPER_ADMIN_EMAILS
@@ -143,597 +289,488 @@ echo $SUPER_ADMIN_DOMAINS
 # Verify OAuth credentials
 echo $GOOGLE_CLIENT_ID
 echo $GOOGLE_CLIENT_SECRET
-
-# Check redirect URI matches your deployment:
-# - Local Docker: http://localhost:8000/auth/google/callback
-# - Production: https://your-domain.com/admin/auth/google/callback
 ```
 
-#### OAuth Callback 404
-If you get redirected to a callback URL but get a 404, your Google OAuth
-credentials redirect URI doesn't match your deployment.
+The Google account you log in with must match `SUPER_ADMIN_EMAILS` (or a
+domain in `SUPER_ADMIN_DOMAINS`), or be a tenant user. OAuth setup, including
+the exact redirect URIs per environment, is documented in the
+[security guide](../security.md).
 
-**Fix**: Update your Google OAuth credentials to use `http://localhost:8000/auth/google/callback`
-for local development.
+### OAuth callback 404
 
-#### Invalid Token for MCP API
+The redirect URI registered in the Google Cloud Console doesn't match your
+deployment. Register the URI for your environment:
+
+- Local Docker: `http://localhost:8000/auth/google/callback`
+- Behind a production proxy: `https://your-domain.com/admin/auth/google/callback`
+
+### OAuth redirect loop
+
 ```bash
-# Get correct token from Admin UI
-# Go to Advertisers tab → Copy token
+# Clear session cookies in the browser, or use an incognito window.
 
-# Or check database
-docker-compose exec postgres psql -U adcp_user adcp -c \
-  "SELECT principal_id, access_token FROM principals;"
-```
+# Verify the redirect URI in the Google Console matches exactly:
+# http://localhost:8000/auth/google/callback
 
-#### MCP Returns Empty Products Array
-```bash
-# Check if products exist for the tenant
-docker-compose exec postgres psql -U adcp_user adcp -c \
-  "SELECT COUNT(*) FROM products WHERE tenant_id='your_tenant_id';"
-
-# Create products using Admin UI or database script
-# Products are tenant-specific and must be created for each tenant
-```
-
-#### "Missing or invalid x-adcp-auth header" with Valid Token
-```bash
-# Verify tenant is active
-docker-compose exec postgres psql -U adcp_user adcp -c \
-  "SELECT is_active FROM tenants WHERE tenant_id='your_tenant_id';"
-
-# Check if using SSE transport (may not forward headers properly)
-# Use direct HTTP requests for debugging instead of SSE
-```
-
-### Database Issues
-
-#### "Column doesn't exist" Error
-```bash
-# Run migrations
-docker-compose exec adcp-server python migrate.py
-
-# Check migration status
-docker-compose exec adcp-server python migrate.py status
-
-# If migrations fail, check for overlapping revisions
-grep -r "revision = " alembic/versions/
-```
-
-#### PostgreSQL Connection Failed
-```bash
-# Check PostgreSQL is running
-docker ps | grep postgres
-
-# Test connection
-docker-compose exec postgres psql -U adcp_user adcp -c "SELECT 1;"
-
-# Check environment variable
-echo $DATABASE_URL
-```
-
-### Docker Problems
-
-#### Container Won't Start
-```bash
-# Check logs
-docker-compose logs adcp-server
-docker-compose logs admin-ui
-
-# Rebuild containers
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-
-# Check port conflicts
-lsof -i :8080
-lsof -i :8001
-```
-
-#### Permission Denied Errors
-```bash
-# Fix volume permissions
-docker-compose exec adcp-server chown -R $(id -u):$(id -g) /app
-
-# Or run with user ID
-docker-compose run --user $(id -u):$(id -g) adcp-server
-```
-
-#### ModuleNotFoundError / Import Errors with Hot Reload
-**Symptoms**: `ModuleNotFoundError: No module named 'flask'` or `ImportError: cannot import name 'GovernanceAgent' from 'adcp...'` when using `docker compose up` with source bind mounts.
-
-**Cause (historical)**: Older compose files used an anonymous `/app/.venv` volume to preserve the image venv under a `.:/app` bind mount. Anonymous volumes are populated once from the image and **persist across rebuilds**, so dependency bumps in `uv.lock` could leave a stale venv overlaying current source.
-
-**Current fix (#1310)**: The app Dockerfile installs the venv at `/opt/venv` (`UV_PROJECT_ENVIRONMENT`), outside `/app`. Bind-mounting `.:/app` no longer shadows installed packages — no anonymous venv volume is needed.
-
-**If you still see import errors after pulling this fix**:
-```bash
-docker compose build --no-cache db-init adcp-server
-docker compose up
-```
-
-**Custom override**: If you add your own `docker-compose.override.yml`, mount source at `/app` only — do **not** add a `/app/.venv` anonymous volume. Rely on `/opt/venv` from the image (packages on `PATH`, source on `PYTHONPATH=/app`).
-
-### GAM Integration Issues
-
-#### "Could not determine client ID from request"
-
-**Symptom**: Error when trying to save/test GAM configuration with OAuth authentication.
-
-**Cause**: `GAM_OAUTH_CLIENT_ID` or `GAM_OAUTH_CLIENT_SECRET` environment variables not set.
-
-**Solution**:
-
-1. Check if environment variables are set:
-   ```bash
-   docker-compose exec adcp-server env | grep GAM_OAUTH
-   ```
-
-2. If missing, add to your `.env` file:
-   ```bash
-   GAM_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
-   GAM_OAUTH_CLIENT_SECRET=your-client-secret
-   ```
-
-3. Create OAuth credentials at [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
-   - Create OAuth 2.0 Client ID (Web application)
-   - Add redirect URI: `http://localhost:8000/tenant/callback/gam`
-
-4. Restart services:
-   ```bash
-   docker-compose restart
-   ```
-
-5. Verify configuration:
-   ```bash
-   docker-compose exec adcp-server python scripts/gam_prerequisites_check.py
-   ```
-
-**Alternative**: Use Service Account authentication instead (no OAuth setup required). Configure via Admin UI in the "Service Account Integration" section.
-
-#### GAM OAuth vs Service Account
-
-| Feature | OAuth (Refresh Token) | Service Account |
-|---------|----------------------|-----------------|
-| Setup complexity | Higher (requires OAuth credentials) | Lower (just upload JSON key) |
-| Token expiration | Tokens can expire | Never expires |
-| Use case | Quick local testing | Production deployments |
-| Security | Tied to user account | Isolated service identity |
-
-**Recommendation**: Use Service Account for production; OAuth for quick testing only.
-
-#### OAuth Token Invalid
-```bash
-# Refresh OAuth token
-python -m scripts.setup.setup_tenant "Publisher" \
-  --adapter google_ad_manager \
-  --gam-network-code YOUR_CODE \
-  --gam-refresh-token NEW_TOKEN
-
-# Verify in database
-docker-compose exec postgres psql -U adcp_user adcp -c \
-  "SELECT gam_refresh_token FROM adapter_configs;"
-```
-
-#### Network Code Mismatch
-```bash
-# Update network code
-docker-compose exec postgres psql -U adcp_user adcp -c \
-  "UPDATE adapter_configs SET gam_network_code='123456' WHERE tenant_id='tenant_id';"
-```
-
-### MCP Server Issues
-
-#### "Tool not found" Error
-```bash
-# List available tools
-curl -X POST http://localhost:8000/mcp/ \
-  -H "x-adcp-auth: YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"method": "list_tools"}'
-
-# Check tool implementation
-grep -r "def get_products" main.py
-```
-
-#### SSE Connection Drops
-```bash
-# Check timeout settings
-# In docker-compose.yml, add:
-environment:
-  - ADCP_REQUEST_TIMEOUT=120
-  - ADCP_KEEPALIVE_INTERVAL=30
-```
-
-#### Contract Validation Errors (Prevention System Available)
-**Symptoms**: `Input validation error: 'brief' is a required property` or similar parameter validation failures
-
-**Immediate Diagnosis**:
-```bash
-# Test the specific failing request
-uv run python -c "
-from src.core.schemas import GetProductsRequest
-try:
-    req = GetProductsRequest(promoted_offering='test product')
-    print('✅ Request creation successful')
-except Exception as e:
-    print(f'❌ Validation error: {e}')
-"
-
-# Run contract validation tests
-uv run pytest tests/integration/test_mcp_contract_validation.py -v
-
-# Audit all schema requirements
-uv run python scripts/audit_required_fields.py
-```
-
-**Common Fixes**:
-- Make over-strict fields optional with sensible defaults
-- Update MCP tool parameter ordering (required first, optional with defaults)
-- Add contract validation tests for new schemas
-
-**Prevention**:
-- Use pre-commit hooks: `pre-commit run mcp-contract-validation --all-files`
-- Test minimal parameter creation for all Request models
-- Follow schema design guidelines in CLAUDE.md
-
-### A2A Protocol Issues
-
-#### JSON-RPC "Invalid messageId" Error
-```bash
-# A2A spec requires string messageId, not numeric
-# Old format (incorrect):
-{"id": 123, "params": {"message": {"messageId": 456}}}
-
-# New format (correct):
-{"id": "123", "params": {"message": {"messageId": "456"}}}
-
-# Server has backward compatibility middleware
-# but clients should update to use strings
-```
-
-#### A2A Server Not Responding
-```bash
-# Check if A2A server is running
-docker ps | grep a2a
-
-# Test A2A endpoint directly
-curl http://localhost:8091/.well-known/agent.json
-
-# Check logs for errors
-docker logs adcp-server | grep a2a
-```
-
-#### A2A Authentication Failed
-```bash
-# Use Bearer token in Authorization header
-curl -X POST http://localhost:8091/a2a \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "method": "message/send", ...}'
-
-# Avoid deprecated query parameter auth
-# Don't use: ?auth=TOKEN
-```
-
-### Admin UI Issues
-
-#### Blank Page or 500 Error
-```bash
-# Check Flask logs
-docker-compose logs admin-ui | grep ERROR
-
-# Enable debug mode
-# In docker-compose.override.yml:
-environment:
-  - FLASK_DEBUG=1
-  - FLASK_ENV=development
-
-# Check templates
-docker-compose exec admin-ui python -c \
-  "from admin_ui import app; app.jinja_env.compile('template.html')"
-```
-
-#### OAuth Redirect Loop
-```bash
-# Clear session cookies in browser
-# Or use incognito mode
-
-# Verify redirect URI in Google Console
-# Must match exactly: http://localhost:8000/auth/google/callback
-
-# Check session secret
+# Check the session secret is set and stable across restarts
 echo $FLASK_SECRET_KEY
 ```
 
-### Performance Issues
+When `FLASK_SECRET_KEY` is unset, the app generates a random key at startup,
+which invalidates every existing session cookie on each restart.
 
-#### Slow Database Queries
+### Missing or invalid x-adcp-auth header
+
+**Symptoms**: the token is correct, but MCP requests are still rejected.
+
 ```bash
-# Check query performance
-docker-compose exec postgres psql -U adcp_user adcp -c \
-  "EXPLAIN ANALYZE SELECT * FROM media_buys WHERE tenant_id='test';"
-
-# Add indexes if needed
-docker-compose exec postgres psql -U adcp_user adcp -c \
-  "CREATE INDEX idx_media_buys_tenant ON media_buys(tenant_id);"
+# Verify the tenant is active
+docker compose exec postgres psql -U adcp_user adcp -c \
+  "SELECT is_active FROM tenants WHERE tenant_id='your_tenant_id';"
 ```
 
-#### High Memory Usage
-```bash
-# Check container stats
-docker stats
+Token extraction accepts `x-adcp-auth` first, then `Authorization: Bearer` —
+the [request lifecycle](request-lifecycle.md) document describes the exact
+resolution order, including how the tenant is resolved before the token.
 
-# Limit memory in docker-compose.yml
+### Invalid token for the MCP API
+
+Get the token from the Admin UI: open the **Advertisers** tab and copy the
+API token. Or read it from the database:
+
+```bash
+docker compose exec postgres psql -U adcp_user adcp -c \
+  "SELECT principal_id, access_token FROM principals;"
+```
+
+### A2A authentication failed
+
+Send the token as a Bearer token in the `Authorization` header:
+
+```bash
+curl -X POST http://localhost:8000/a2a \
+  -H "Authorization: Bearer ${ADCP_AUTH_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "message/send", ...}'
+```
+
+## MCP server issues
+
+### Tool not found
+
+List the tools the server actually registers:
+
+```bash
+uvx adcp http://localhost:8000/mcp/ --auth test-token list_tools
+```
+
+If a tool is missing, check its registration in `src/core/main.py` and its
+implementation under `src/core/tools/`:
+
+```bash
+grep -rn "def get_products" src/core/tools/
+```
+
+The [request lifecycle](request-lifecycle.md) document explains the path from
+the MCP wrapper to the `_impl` function.
+
+### MCP returns an empty products array
+
+Products are tenant-specific and must be created for each tenant:
+
+```bash
+# Check whether products exist for the tenant
+docker compose exec postgres psql -U adcp_user adcp -c \
+  "SELECT COUNT(*) FROM products WHERE tenant_id='your_tenant_id';"
+```
+
+Create products through the Admin UI. A product requires the tenant to have a
+USD `CurrencyLimit` and the `all_inventory` property tag — see the tenant
+setup dependencies in the repository `CLAUDE.md`.
+
+### Contract validation errors
+
+**Symptoms**: `Input validation error: 'brief' is a required property` or a
+similar parameter validation failure.
+
+```bash
+# Reproduce the failing request construction locally
+uv run python -c "
+from src.core.schemas import GetProductsRequest
+req = GetProductsRequest(promoted_offering='test product')
+print('Request creation successful')
+"
+
+# Run the contract validation tests (starts a database for you)
+scripts/run-test.sh tests/integration/test_mcp_contract_validation.py
+
+# Run the same check the pre-commit stage runs
+pre-commit run adcp-contract-tests --all-files
+```
+
+Schemas extend the `adcp` library types by inheritance, and redeclarations
+are graded against the library parent — see the schema inheritance guard in
+[Structural guards](structural-guards.md) and the repository `CLAUDE.md`
+before changing a request model.
+
+## A2A protocol issues
+
+### A2A server not responding
+
+The A2A handler runs inside the unified server behind the proxy — there is no
+separate container:
+
+```bash
+# Fetch the agent card
+curl http://localhost:8000/.well-known/agent-card.json
+
+# Check the logs
+docker compose logs adcp-server | grep -i a2a
+```
+
+### Invalid messageId errors
+
+The A2A specification requires string identifiers. Send `id` and `messageId`
+as strings, not numbers:
+
+```json
+{"id": "123", "params": {"message": {"messageId": "456"}}}
+```
+
+## Admin UI issues
+
+### Blank page or 500 error
+
+```bash
+# Check the Flask error in the logs
+docker compose logs adcp-server | grep ERROR
+```
+
+To get interactive tracebacks, enable debug mode in
+`docker-compose.override.yml`:
+
+```yaml
 services:
   adcp-server:
-    mem_limit: 512m
-    mem_reservation: 256m
+    environment:
+      FLASK_DEBUG: "1"
 ```
 
-### API Errors
+### Activity feed not updating
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `401 Unauthorized` | Invalid token | Check x-adcp-auth header |
-| `404 Not Found` | Wrong endpoint | Check URL and method |
-| `500 Internal Error` | Server error | Check server logs |
-| `422 Validation Error` | Invalid request | Check request schema |
-| `400 Invalid ID format` | Malformed IDs | Ensure IDs match pattern |
+The activity feed uses Server-Sent Events (SSE). Check the following:
 
-## Check System Health
+1. The SSE endpoint responds:
+   `http://localhost:8000/admin/tenant/{tenant_id}/events`.
+2. The `audit_logs` table is being populated.
+3. No browser extension is blocking the SSE connection.
 
-```bash
-# Service health endpoints (via nginx proxy)
-curl http://localhost:8000/health
+### Slack notifications not arriving
 
-# Database health
-docker compose exec postgres pg_isready
+1. Verify the webhook URL in the tenant settings (`slack_webhook_url`).
+2. Check that the notification types are enabled.
+3. Test the webhook directly:
 
-# Container health
-docker compose ps adcp-server
-```
-
-## Getting Help
-
-### Resources
-
-1. **Documentation** - Check `/docs` directory
-2. **GitHub Issues** - Search existing issues
-3. **Code Comments** - Read inline documentation
-4. **Test Files** - Examples of correct usage
-
-### Reporting Issues
-
-When reporting issues, include:
-
-1. **Error message** - Full stack trace
-2. **Environment** - Docker/standalone, OS, versions
-3. **Steps to reproduce** - Minimal example
-4. **Logs** - Relevant log entries
-5. **Configuration** - Sanitized config files
-
-### Quick Fixes Checklist
-
-- [ ] Migrations run? `python migrate.py`
-- [ ] Environment variables set? Check `.env`
-- [ ] Docker containers running? `docker ps`
-- [ ] OAuth configured? Check redirect URI
-- [ ] Database accessible? Test connection
-- [ ] Logs show errors? `docker-compose logs`
-- [ ] Browser console errors? Check DevTools
-
-## Monitoring and Logs
-
-### Application Logs
-
-```bash
-# View all logs
-docker-compose logs -f
-
-# Specific service
-docker-compose logs -f adcp-server
-docker-compose logs -f admin-ui
-
-# Inside container
-docker-compose exec adcp-server tail -f /tmp/mcp_server.log
-```
-
-### Audit Logs
-
-All operations logged to database:
-- Operation type and timestamp
-- Principal and tenant IDs
-- Success/failure status
-- Detailed operation data
-- Security violations tracked
-
-Access via Admin UI Operations Dashboard.
-
-### Health Monitoring
-
-```bash
-# Check service health (via nginx proxy)
-curl http://localhost:8000/health
-
-# Database status
-docker compose exec postgres pg_isready
-
-# Container status
-docker compose ps
-```
-
-## Operations Troubleshooting
-
-### Common Issues
-
-1. **Login failures**
-   - Check SUPER_ADMIN_EMAILS configuration
-   - Verify OAuth credentials
-   - Check redirect URI matches
-
-2. **Missing data**
-   - Verify tenant_id in session
-   - Check database connections
-   - Review audit logs
-
-3. **Slow performance**
-   - Check database indexes
-   - Monitor container resources
-   - Review query optimization
-
-### Debug Mode
-
-Enable detailed logging:
-
-```bash
-# In docker-compose.override.yml
-environment:
-  - FLASK_DEBUG=1
-  - LOG_LEVEL=DEBUG
-```
-
-### Slack Integration Issues
-
-If notifications aren't working:
-
-1. Verify webhook URL in tenant settings
-2. Check notification types are enabled
-3. Test webhook manually:
    ```bash
    curl -X POST "your-webhook-url" \
      -H "Content-Type: application/json" \
      -d '{"text": "Test notification"}'
    ```
 
-## Testing Issues
+## GAM integration issues
 
-### Pre-commit Hook "Excessive Mocking" Failure
+### Could not determine client ID from request
 
-**Cause**: Test file has more than 10 mocks (detected via `@patch|MagicMock|Mock()` count)
+**Symptoms**: error when saving or testing a GAM configuration with OAuth
+authentication.
 
-**Fix**: Apply mock reduction patterns:
-1. Create centralized `MockSetup` class for duplicate mock creation
-2. Use `patch.multiple()` helper methods to consolidate patches
-3. Move database testing to integration tests with real DB connections
-4. Focus mocking on external dependencies only (APIs, third-party services)
+**Cause**: `GAM_OAUTH_CLIENT_ID` or `GAM_OAUTH_CLIENT_SECRET` isn't set.
 
-See `docs/testing/mock-reduction-patterns.md` for detailed examples.
+1. Check whether the variables are set:
 
-### Tests Failing After Mock Refactoring
+   ```bash
+   docker compose exec adcp-server env | grep GAM_OAUTH
+   ```
 
-**Common Causes**:
-- Missing imports: Add `from src.core.main import function_name`
-- Mock return type mismatches: Ensure mocks return correct data types (list, dict, not Mock)
-- Schema validation errors: Update test data to match current model requirements
-- Test class naming: Rename `TestModel` classes to `ModelClass` to avoid pytest collection
+2. If missing, add them to your `.env.secrets` file:
 
-### Integration Tests Slow or Flaky
+   ```bash
+   GAM_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GAM_OAUTH_CLIENT_SECRET=your-client-secret
+   ```
 
-**Fix**: Use proper database session management and isolation
-**Pattern**: Create/cleanup test data in fixtures rather than mocking database calls
+3. Create OAuth credentials in the
+   [Google Cloud Console credentials page](https://console.cloud.google.com/apis/credentials):
+   create an OAuth 2.0 client ID of type Web application and add the redirect
+   URI `http://localhost:8000/admin/auth/gam/callback`.
 
-### Async Test Failures
+4. Restart the services:
 
-**Fix**: Ensure proper `@pytest.mark.asyncio` and `AsyncMock` usage
-**Pattern**: Use `async with` for async context managers, `await` for all async calls
+   ```bash
+   docker compose restart
+   ```
 
-## Testing Backend Issues
+5. Verify the configuration:
 
-### Testing Hooks Not Working
+   ```bash
+   docker compose exec adcp-server python scripts/gam_prerequisites_check.py
+   ```
 
-**Issue**: X-Dry-Run, X-Mock-Time headers not being processed
+**Alternative**: use service account authentication instead, which needs no
+OAuth setup. Configure it in the Admin UI under Service Account Integration.
 
-**Cause**: Headers not being extracted from FastMCP context properly
-**Fix**: Use `context.meta.get("headers", {})` to extract headers from FastMCP context
+### OAuth compared with service account
 
-### Response Headers Missing
+| Feature | OAuth (refresh token) | Service account |
+|---------|----------------------|-----------------|
+| Setup complexity | Higher — requires OAuth credentials | Lower — upload a JSON key |
+| Token expiration | Tokens can expire | Never expires |
+| Use case | Quick local testing | Production deployments |
+| Security | Tied to a user account | Isolated service identity |
 
-**Issue**: X-Next-Event, X-Next-Event-Time, X-Simulated-Spend headers not in response
+Use a service account for production and OAuth for quick testing only.
 
-**Cause**: Response headers not being set after apply_testing_hooks
-**Fix**: Ensure `campaign_info` dict is passed to testing hooks for event calculation
+### OAuth token invalid
 
-### Session Isolation Not Working
-
-**Issue**: Parallel tests interfering with each other
-
-**Cause**: Missing or incorrect X-Test-Session-ID header
-**Fix**: Generate unique session IDs per test and include in all requests
-
-## Production Issues
-
-### "operator does not exist: text < timestamp with time zone"
-
-**Cause**: Database schema mismatch - columns created as TEXT instead of TIMESTAMP WITH TIME ZONE
-**Root Cause**: Deprecated task system with conflicting schema definitions
-**Fix**: Migrate to unified workflow system and eliminate task tables
-**Prevention**: Use consistent schema definitions and avoid dual systems
-
-### "Can't locate revision identified by '[revision_id]'"
-
-**Cause**: Broken Alembic migration chain with missing or incorrect revision links
-**Symptoms**: App crashes on startup, deployment failures, migration errors
-
-**Fix Process**:
-1. Check migration history: `alembic history`
-2. Identify last known good revision
-3. Reset to good revision: `alembic stamp [good_revision]`
-4. Create new migration with correct `down_revision`
-5. Deploy migration fix before code changes
-
-**Prevention**: Never modify committed migration files, always test migrations locally
-
-### Production Crashes After PR Merge
-
-**Debugging Process**:
-1. Check deployment status: `fly status --app adcp-sales-agent`
-2. Review logs: `fly logs --app adcp-sales-agent`
-3. Identify specific error patterns (database, import, runtime)
-4. Check git history for recent changes
-5. Test fixes locally before deploying
-
-**Recovery**: Deploy minimal fix first, then implement broader changes
-
-## Schema Alignment Issues
-
-### AttributeError on Model Fields
-
-**Symptoms**: `AttributeError: 'Creative' object has no attribute 'format_id'`
-
-**Common Causes**:
-- Field removed in schema migration
-- Wrong data type assumptions
-- JSONB updates not persisting
-- Tests passing locally but failing in CI
-
-**Prevention**:
-1. Always use `attributes.flag_modified()` for JSONB updates
-2. Update all three layers when refactoring: Database schema, ORM model, MCP tools
-3. Use pre-commit schema validation hooks
-4. Test BOTH model creation AND updates
-
-See `docs/development/schema-alignment.md` for detailed patterns.
-
-## GAM Inventory Sync Issues (FIXED - Sep 2025)
-
-**Historical Issue**: Inventory browser returned `{"error": "Not yet implemented"}`
-
-**Root Causes**:
-1. Import path issues from code reorganization
-2. Missing endpoint registration
-3. Route conflicts
-
-**Prevention**: Always use absolute imports and verify endpoint registration for new services
-
-## Port Conflicts
-
-**Solution**: Update `.env` file:
 ```bash
-ADCP_SALES_PORT=8080  # Unified server port (MCP + A2A + Admin all on same port)
+# Store a fresh refresh token for the tenant
+uv run python -m scripts.setup.setup_tenant "Publisher" \
+  --adapter google_ad_manager \
+  --gam-network-code YOUR_CODE \
+  --gam-refresh-token NEW_TOKEN
+
+# Verify in the database
+docker compose exec postgres psql -U adcp_user adcp -c \
+  "SELECT gam_refresh_token FROM adapter_config;"
 ```
 
-## Additional Resources
+### Network code mismatch
 
-- **Security Guide**: [Security](../security.md)
-- **Architecture**: [Architecture](architecture.md)
+```bash
+docker compose exec postgres psql -U adcp_user adcp -c \
+  "UPDATE adapter_config SET gam_network_code='123456' WHERE tenant_id='tenant_id';"
+```
+
+### Inventory sync timeout
+
+**Symptoms**: a sync job shows "running" and never completes, or a large
+account (hundreds of custom targeting keys with thousands of values each)
+takes more than 30 minutes.
+
+Inventory sync loads lazily by design: it fetches custom targeting **keys**
+only, and the Admin UI fetches a key's **values** on demand when you browse
+them, caching the result. A full sync of keys takes about two minutes.
+
+```bash
+# Trigger an inventory sync (authenticated with the SYNC_API_KEY value)
+curl -X POST http://localhost:8000/admin/api/sync/trigger/{tenant_id} \
+  -H "X-API-Key: ${SYNC_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"sync_type": "full", "force": true}'
+
+# Check recent sync jobs
+curl "http://localhost:8000/admin/api/sync/history/{tenant_id}?limit=5" \
+  -H "X-API-Key: ${SYNC_API_KEY}"
+```
+
+Check what the sync loaded:
+
+```sql
+SELECT
+  COUNT(*) FILTER (WHERE inventory_type = 'custom_targeting_key') AS keys_count,
+  COUNT(*) FILTER (WHERE inventory_type = 'custom_targeting_value') AS values_count
+FROM gam_inventory
+WHERE tenant_id = '{tenant_id}';
+```
+
+A sync that still runs long is stuck in GAM API calls — check
+`docker compose logs adcp-server` for the request the sync is waiting on.
+
+## Outbound request refused
+
+**Symptoms**: an outbound HTTP call fails with an egress error, or a webhook
+or creative-agent URL is rejected at save time.
+
+Every outbound request goes through the single gateway in
+`src/core/security/outbound_http.py`, which refuses private, loopback, and
+metadata addresses. This is intended behavior, not a network fault — don't
+add a bypass or a hand-rolled IP check at the call site.
+[Outbound egress](../security/outbound-egress.md) documents what the gateway
+refuses, what it never refuses, how tests exercise egress through the TLS
+terminator, and how to add a new outbound call.
+
+## Testing and quality-gate issues
+
+### A make quality run fails
+
+`make quality` runs formatting, linting, the egress import ban, type
+checking, ratchet checks, and the unit suite in that order. The following
+decision tree routes a failure by which gate reported it.
+
+```mermaid
+flowchart TD
+    Q["make quality fails"] --> Gate{"Which gate failed?"}
+    Gate -->|"ruff format --check"| Fmt["Run: make lint-fix"]
+    Gate -->|"ruff check"| Lint["Fix the named rule;\ncomplexity rules mean\nextract helpers"]
+    Gate -->|"ruff check --config ruff-egress.toml\n(TID251)"| Egress["Route the call through the\negress seam: see An egress\nimport ban fires"]
+    Gate -->|"mypy"| Types["Fix types in the files\nyou changed"]
+    Gate -->|"check_code_duplication.py"| Dry["Extract a shared helper —\nthe baseline only shrinks"]
+    Gate -->|"pytest tests/unit/"| Unit{"Is it a\ntest_architecture_* test?"}
+    Unit -->|Yes| Guard["A structural guard fired:\nsee A structural guard fails"]
+    Unit -->|No| Test["Fix the code or the test —\nnever skip it"]
+```
+
+### A structural guard fails
+
+A failing `tests/unit/test_architecture_*.py` test means your change violates
+an enforced architecture invariant — a new raw `select()` outside a
+repository, a transport import in an `_impl` function, a weakened schema
+redeclaration. The fix is to change your code to satisfy the invariant, not
+to grow the guard's allowlist: allowlists only shrink.
+[Structural guards](structural-guards.md) documents every guard, what it
+catches, and why it exists;
+[Architecture principles](architecture-principles.md) and the
+[patterns reference](patterns-reference.md) explain the layering rules the
+guards enforce.
+
+### An egress import ban fires
+
+**Symptoms**: `TID251` on an import of `httpx`, `requests`, `urllib.request`,
+or `aiohttp` under `src/` or `scripts/`.
+
+Outbound HTTP goes through `send`/`asend` in
+`src/core/security/outbound_http.py` — import that instead of a raw client.
+[Outbound egress](../security/outbound-egress.md) explains the seam and the
+narrow, reviewed exemption process.
+
+### Integration tests slow or flaky
+
+Create and clean up test data in factory-based fixtures
+(`tests/factories/`), not by mocking database calls. Run one test against a
+real database with:
+
+```bash
+scripts/run-test.sh tests/integration/test_foo.py -x
+```
+
+For the full containerized suite, its databases, and its failure modes, see
+[End-to-end testing](e2e-testing.md) — in particular the
+"Failure modes and what they mean" section before you re-run anything.
+
+### Async test failures
+
+Mark async tests with `@pytest.mark.asyncio` and mock async dependencies with
+`AsyncMock`. Use `async with` for async context managers and `await` every
+async call — a bare coroutine assertion passes vacuously.
+
+### Testing hook headers not working
+
+**Symptoms**: `X-Dry-Run`, `X-Mock-Time`, or `X-Test-Session-ID` request
+headers have no effect, or `X-Next-Event`, `X-Next-Event-Time`, and
+`X-Simulated-Spend` are missing from responses.
+
+The hooks live in `src/core/testing_hooks.py`:
+
+- Request headers are extracted from the FastMCP context with
+  `context.meta.get("headers", {})` — a wrapper that reads them anywhere else
+  sees nothing.
+- Response event headers are computed only when a `campaign_info` dict is
+  passed to `apply_testing_hooks()`.
+- Parallel test sessions isolate through unique `X-Test-Session-ID` values —
+  generate one per test and send it on every request.
+
+Any operation that calls `apply_testing_hooks()` requires a roundtrip test
+(`check_roundtrip_tests.py` enforces this in `make quality`).
+
+### AttributeError on model fields
+
+**Symptoms**: `AttributeError: 'Creative' object has no attribute
+'format_id'` — often after a schema change, or passing locally but failing
+in CI.
+
+- A refactor must update all three layers together: the database schema (a
+  migration), the ORM model, and the Pydantic schemas.
+- In-place mutations of a `JSONType` column don't persist unless you call
+  `attributes.flag_modified(obj, "field_name")` — see the uses in
+  `src/core/database/repositories/` for the pattern.
+- Test both model creation and updates; an update-path bug survives
+  creation-only tests.
+
+The schema-alignment pre-commit stage (`pre-commit run mcp-schema-alignment
+--all-files`) and the guards in
+[Structural guards](structural-guards.md) catch most drift before commit.
+
+## Production recovery
+
+This project deploys to whatever platform you host it on, so the commands
+are your platform's — the sequence is what matters:
+
+1. Read the platform logs and identify the specific error.
+2. Check recent changes: `git log --oneline -10`.
+3. Reproduce and fix locally with Docker.
+4. Deploy the migration fix first, then the code change — a code deploy
+   against an unmigrated schema crash-loops.
+5. Deploy the minimal fix to restore service; ship broader changes
+   incrementally.
+
+For migration-chain failures, follow
+[Broken migration chain](#broken-migration-chain) before deploying anything.
+
+## API error quick reference
+
+The following table maps HTTP errors to their usual cause.
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `401 Unauthorized` | Invalid token | Check the `x-adcp-auth` header |
+| `404 Not Found` | Wrong endpoint | Check the URL and method |
+| `422 Validation Error` | Invalid request | Check the request schema |
+| `400 Invalid ID format` | Malformed IDs | Ensure IDs match the expected pattern |
+| `500 Internal Error` | Server error | Check the server logs |
+
+## Check system health
+
+```bash
+# Service health through the nginx proxy
+curl http://localhost:8000/health
+
+# Database health
+docker compose exec postgres pg_isready
+
+# Container health
+docker compose ps
+```
+
+## Read the logs
+
+```bash
+# All services, following
+docker compose logs -f
+
+# The app (MCP, A2A, REST, and Admin UI run in this one service)
+docker compose logs -f adcp-server
+
+# The migration runner
+docker compose logs db-init
+```
+
+Every operation is also written to the `audit_logs` table — operation type,
+timestamp, principal and tenant IDs, success or failure, and security
+violations. The Admin UI Operations dashboard reads from it.
+
+Test runs persist JSON reports in `test-results/<ddmmyy_HHmm>/` — read those
+instead of re-running a suite whose terminal output is gone.
+
+## Get help
+
+Check these sources in order:
+
+1. The `/docs` directory — start with the
+   [architecture principles](architecture-principles.md) and the
+   [request lifecycle](request-lifecycle.md).
+2. Existing GitHub issues.
+3. The tests — `tests/` is the largest set of working examples.
+
+When reporting an issue, include the full stack trace, your environment
+(Docker or standalone, OS, versions), minimal reproduction steps, the
+relevant log entries, and a sanitized configuration.

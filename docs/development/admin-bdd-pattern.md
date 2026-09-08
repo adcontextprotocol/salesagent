@@ -9,7 +9,7 @@ fundamentally different transport layer:
 
 | Aspect | API BDD (UC-xxx) | Admin BDD (T-ADMIN-xxx) |
 |--------|-------------------|-------------------------|
-| Transport | MCP / A2A / REST / IMPL | Flask test_client / requests.Session |
+| Transport | MCP / A2A / REST | Flask test_client / requests.Session |
 | Auth | ResolvedIdentity | Flask session cookies |
 | Response | Pydantic models | HTML pages + JSON API |
 | Parametrize | 4 API transports | Not parametrized (single transport) |

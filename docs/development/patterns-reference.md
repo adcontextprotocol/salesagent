@@ -1,12 +1,25 @@
-# Architecture Patterns Reference
+# Architecture patterns reference
 
 This document maps every key pattern to its **canonical implementation file** and identifies **known anti-patterns** that exist as tracked debt. New code must follow the canonical pattern, not the anti-pattern, even when the anti-pattern appears in surrounding code.
 
 > **Why this document exists:** The codebase has two eras — legacy code and current architecture. Most code by volume is legacy. If you pattern-match from surrounding code, you will likely follow a legacy pattern. This document tells you which files represent the target architecture.
 
-These patterns are machine-enforced by 8 review agents (`.claude/agents/review-*.md`) and 14+ structural guard tests (`tests/unit/test_architecture_*.py`).
+Structural guard tests under `tests/unit/test_architecture_*.py` enforce these patterns, and the standards in [engineering-standards.md](engineering-standards.md) restate the ones a reviewer applies.
 
-## 1. Repository Pattern (CP-3)
+## Contents
+
+- [1. Repository pattern (CP-3)](#1-repository-pattern-cp-3)
+- [2. Unit of Work (UoW)](#2-unit-of-work-uow)
+- [3. Structural guards and allowlists](#3-structural-guards-and-allowlists)
+- [4. Writing tests — the test harness](#4-writing-tests--the-test-harness)
+- [5. Factory fixtures for integration tests](#5-factory-fixtures-for-integration-tests)
+- [6. Transport boundary (CP-5)](#6-transport-boundary-cp-5)
+- [7. Error hierarchy](#7-error-hierarchy)
+- [8. DRY — shared validation](#8-dry--shared-validation)
+- [Quick reference: where to look](#quick-reference-where-to-look) — pattern-to-file lookup table
+- [Legacy code awareness](#legacy-code-awareness) — the files not to pattern-match from
+
+## 1. Repository pattern (CP-3)
 
 All database access goes through repository classes. `_impl` functions never contain raw `select()`, `session.scalars()`, `session.add()`, or direct model imports for data access.
 
@@ -42,9 +55,25 @@ currency_stmt = select(CurrencyLimit).where(
 currency_limit = session.scalars(currency_stmt).first()
 ```
 
+**Anti-pattern: inline session management and raw model construction in business logic:**
+```python
+# WRONG
+def _create_media_buy_impl(req, identity):
+    with get_db_session() as session:
+        mb = MediaBuy(
+            media_buy_id=generate_id(),
+            buyer_ref=req.buyer_ref,      # manual field plucking
+            tenant_id=tenant["tenant_id"], # from a dict, not even a model
+            status="pending_approval",     # magic string
+            ...
+        )
+        session.add(mb)
+```
+Use model factory methods or repository `create_from_*()` methods instead.
+
 **Adding a new repository:** Create `src/core/database/repositories/your_model.py` following `media_buy.py`, add to `__init__.py`, wire into the appropriate UoW. The `test_architecture_no_raw_select.py` guard catches raw `select()` calls outside repository files.
 
-**Enforced by:** `review-architecture` (CP-3), `review-execution-excellence` (Repository+UoW), `review-layering` (_impl → Repository leaks), `test_architecture_no_raw_select.py`, `test_architecture_repository_pattern.py`
+**Enforced by:** `test_architecture_no_raw_select.py`, `test_architecture_repository_pattern.py`
 
 ## 2. Unit of Work (UoW)
 
@@ -80,9 +109,9 @@ uow.session is deprecated — use repository methods instead of raw session acce
 
 If you see `session = uow.session` in existing code, that is tracked debt. If you need data access that no repository method provides, **add a repository method** — don't use the raw session.
 
-**Enforced by:** `review-execution-excellence` (Repository+UoW pattern), `review-layering` (_impl → Repository leaks)
+**Enforced by:** `test_architecture_repository_pattern.py`
 
-## 3. Structural Guards and Allowlists
+## 3. Structural guards and allowlists
 
 AST-scanning tests enforce architecture invariants on every `make quality` run. See [`docs/development/structural-guards.md`](structural-guards.md) for the full inventory.
 
@@ -97,7 +126,7 @@ Guards use `(file_path, function_name)` tuples in their allowlists, not line num
 
 **Enforced by:** `review-architecture` (references all 14 guards), CI (`make quality`)
 
-## 4. Writing Tests — The Test Harness
+## 4. Writing tests — the test harness
 
 The project has a **test harness** at [`tests/harness/`](../../tests/harness/) that provides domain-specific test environments. These environments handle mock wiring, identity creation, UoW setup, and multi-transport dispatch so tests focus purely on behavior.
 
@@ -162,7 +191,7 @@ Supporting modules: `_mixins.py` (shared fluent APIs), `_mock_uow.py` (UoW mock 
 The harness dispatches the same test through multiple transports:
 
 ```python
-@pytest.mark.parametrize("transport", [Transport.IMPL, Transport.A2A, Transport.REST])
+@pytest.mark.parametrize("transport", [Transport.A2A, Transport.MCP, Transport.REST])
 def test_something(self, integration_db, transport):
     with CreativeSyncEnv() as env:
         result = env.call_via(transport, creatives=[...])
@@ -220,7 +249,7 @@ assert should_abort is True  # Tests Python arithmetic, not your endpoint
 
 **Enforced by:** `review-testing` (Anti-Pattern 1: Mock Echo, Anti-Pattern 2: Assertion-Free, Anti-Pattern 5: Happy Path Only)
 
-## 5. Factory Fixtures for Integration Tests
+## 5. Factory fixtures for integration tests
 
 Integration tests use `factory-boy` factories, not inline `session.add()`.
 
@@ -244,9 +273,9 @@ with get_db_session() as session:
     session.commit()
 ```
 
-**Enforced by:** `review-execution-excellence` (Factory Fixtures), `test_architecture_repository_pattern.py` (catches `session.add()` in integration tests)
+**Enforced by:** `test_architecture_repository_pattern.py` (catches `session.add()` in integration tests)
 
-## 6. Transport Boundary (CP-5)
+## 6. Transport boundary (CP-5)
 
 All tools have two layers: transport wrappers (MCP, A2A, REST) and business logic (`_impl` functions).
 
@@ -269,7 +298,7 @@ This is tracked debt — functions should be split into `_list_tasks_impl` + tra
 
 **Enforced by:** `review-architecture` (CP-5), `review-layering` (Transport → _impl leaks), `test_transport_agnostic_impl.py`, `test_impl_resolved_identity.py`, `test_no_toolerror_in_impl.py`, `test_architecture_boundary_completeness.py`
 
-## 7. Error Hierarchy
+## 7. Error hierarchy
 
 `_impl` functions raise `AdCPError` subclasses (defined in `src/core/exceptions.py`). Transport wrappers catch these and translate to transport-appropriate format.
 
@@ -309,9 +338,9 @@ raise ValueError(f"Media buy '{media_buy_id}' not found.")
 raise AdCPNotFoundError(f"Media buy '{media_buy_id}' not found.")
 ```
 
-**Enforced by:** `review-execution-excellence` (AdCPError Hierarchy), `review-python-practices` (Error Handling), `test_no_toolerror_in_impl.py`
+**Enforced by:** `test_no_toolerror_in_impl.py`
 
-## 8. DRY — Shared Validation
+## 8. DRY — shared validation
 
 When the same validation logic applies to multiple code paths (create and update), extract a shared validator. Both create and update should call the same validation function.
 
@@ -328,9 +357,27 @@ if budget_amount < min_package_budget:
 
 Same check, two implementations, different error handling. When the validation rule changes, one gets updated and the other doesn't.
 
+**How to apply DRY correctly** — extract the shared pattern instead of copy-pasting with variable substitution:
+
+```python
+# WRONG: copy-paste with variable substitution
+formats = [f for f in formats if {fid.id for fid in f.output_format_ids} & requested_output_ids]
+formats = [f for f in formats if {fid.id for fid in f.input_format_ids} & requested_input_ids]
+
+# CORRECT: extract the shared pattern
+def filter_by_format_ids(formats, requested, attr):
+    if not requested:
+        return formats
+    ids = {fmt.id for fmt in requested}
+    return [f for f in formats if {fid.id for fid in getattr(f, attr)} & ids]
+
+formats = filter_by_format_ids(formats, req.output_format_ids, "output_format_ids")
+formats = filter_by_format_ids(formats, req.input_format_ids, "input_format_ids")
+```
+
 **Enforced by:** `review-dry` (Category 4: Database Query Patterns, Category 3: Error Handling), `check_code_duplication.py` (make quality)
 
-## Quick Reference: Where to Look
+## Quick reference: where to look
 
 | When you need to... | Read this file |
 |---------------------|---------------|
@@ -343,9 +390,9 @@ Same check, two implementations, different error handling. When the validation r
 | Create a test factory | `tests/factories/media_buy.py` |
 | Understand error hierarchy | `src/core/exceptions.py` |
 | Add a structural guard | `docs/development/structural-guards.md` |
-| Understand the review agents | `.claude/agents/review-*.md` (8 agents) |
+| Know the standards a change is held to | [engineering-standards.md](engineering-standards.md) |
 
-## Legacy Code Awareness
+## Legacy code awareness
 
 These files contain significant legacy patterns. **Do not follow patterns from these files for new code:**
 

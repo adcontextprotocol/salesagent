@@ -1,137 +1,161 @@
-# GAM Product Configuration Guide
+# GAM product configuration
 
-Complete guide for configuring Google Ad Manager (GAM) product trafficking settings in the Prebid Sales Agent.
+How to configure Google Ad Manager (GAM) trafficking settings for products in the Prebid Sales Agent. The configuration system separates user-facing AdCP product fields from the internal GAM fields that line item creation requires.
 
----
+## Contents
 
-## Table of Contents
-1. [Overview](#overview)
-2. [Quick Start](#quick-start)
-3. [Configuration Workflow](#configuration-workflow)
-4. [Field Reference](#field-reference)
-5. [Migration Guide](#migration-guide)
-6. [Testing](#testing)
-
----
+- [Overview](#overview)
+- [Quick start](#quick-start)
+- [Configuration workflow](#configuration-workflow)
+- [Line item type selection](#line-item-type-selection)
+- [Field reference](#field-reference)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [API reference](#api-reference)
+- [Best practices](#best-practices)
+- [Related documentation](#related-documentation)
 
 ## Overview
 
-### What This Is
-The GAM configuration system separates user-facing AdCP product fields from internal GAM trafficking fields required for line item creation.
+The configuration model distinguishes three layers:
 
-### Key Concepts
-- **AdCP Fields**: Price, formats, countries (visible to buyers)
-- **GAM Fields**: Priority, inventory targeting, creative placeholders (internal only)
-- **implementation_config**: JSONB field storing all GAM-specific settings
+- **AdCP fields**: Price, formats, countries — visible to buyers.
+- **GAM fields**: Priority, inventory targeting, creative placeholders — internal only.
+- **`implementation_config`**: The JSONB column on the products table that stores all GAM-specific settings.
 
-### Architecture
+The following diagram shows how a product's GAM configuration flows from creation to a live line item:
+
+```mermaid
+flowchart LR
+    Create["Product creation\n(Admin UI)"] --> Defaults["Smart defaults\nGAMProductConfigService"]
+    Defaults --> UI["GAM config UI\n/adapters/gam/config/..."]
+    UI --> Validate["validate_config()"]
+    Validate --> Buy["Media buy creation"]
+    Buy --> LI["GAM line item"]
 ```
-Product Creation → Smart Defaults → GAM Config UI → Validation → Media Buy → GAM Line Item
-```
 
----
+For where adapters sit in the overall system, see [Architecture](../../development/architecture.md). For the adapter interface itself, see [Creating an adapter](../creating-an-adapter.md).
 
-## Quick Start
+## Quick start
 
-### For New Products
-1. Create product in Admin UI (name, price, delivery type, formats)
-2. Click **"GAM Config"** button after creation
-3. Use inventory picker to select ad units/placements
-4. Adjust priority and other settings if needed
-5. Save configuration
-6. Create media buy - GAM line items will be created automatically
+1. Create the product in the Admin UI (name, price, delivery type, formats). The system generates a default GAM configuration from the delivery type and formats.
+2. On the product edit page, click **Configure GAM Adapter** to open the GAM configuration UI.
+3. Use the inventory picker to select ad units or placements.
+4. Adjust priority and other settings if needed.
+5. Save the configuration.
+6. Create a media buy. The adapter creates the GAM line items from the stored configuration. If a product still has no configuration at media buy time, the system generates defaults then.
 
-### For Existing Products
-Products are automatically migrated with smart defaults based on delivery type. Use the GAM Config UI to customize.
+## Configuration workflow
 
----
+### Smart default generation
 
-## Configuration Workflow
+`GAMProductConfigService.generate_default_config()` derives defaults from the product's delivery type. Creative placeholders are derived from the product's formats.
 
-### 1. Smart Default Generation
+Guaranteed products:
 
-When a product is created, defaults are auto-generated based on delivery type:
-
-**Guaranteed Products:**
 ```json
 {
+  "cost_type": "CPM",
   "line_item_type": "STANDARD",
   "priority": 6,
   "primary_goal_type": "DAILY",
-  "creative_placeholders": [...]
+  "primary_goal_unit_type": "IMPRESSIONS",
+  "delivery_rate_type": "EVENLY",
+  "creative_rotation_type": "EVEN",
+  "non_guaranteed_automation": "manual",
+  "include_descendants": true,
+  "creative_placeholders": ["..."]
 }
 ```
 
-**Non-Guaranteed Products:**
+Non-guaranteed products:
+
 ```json
 {
+  "cost_type": "CPM",
   "line_item_type": "PRICE_PRIORITY",
   "priority": 10,
   "primary_goal_type": "NONE",
-  "creative_placeholders": [...]
+  "primary_goal_unit_type": "IMPRESSIONS",
+  "delivery_rate_type": "AS_FAST_AS_POSSIBLE",
+  "creative_rotation_type": "OPTIMIZED",
+  "non_guaranteed_automation": "confirmation_required",
+  "include_descendants": true,
+  "creative_placeholders": ["..."]
 }
 ```
 
-### 2. GAM Configuration UI
+### GAM configuration UI
 
-**Location**: Admin UI → Products → GAM Config button
+Open the product edit page in the Admin UI and click **Configure GAM Adapter**. The UI is served at `/adapters/gam/config/<tenant_id>/<product_id>`.
 
-**Features:**
-- Searchable inventory picker (ad units & placements)
-- Priority slider (1-16)
+The UI provides the following features:
+
+- Searchable inventory picker for ad units and placements
+- Priority selection (1-16)
 - Frequency cap configuration
 - Creative placeholder management
 - Custom targeting options
 
-**UI Components:**
-- Blue badge UI for selected inventory
-- Real-time search with debouncing
-- One-click removal of selections
-- Validation before saving
+### Validation
 
-### 3. Validation
+`GAMProductConfigService.validate_config()` checks the configuration when you save it and again when a media buy is created:
 
-**At Configuration Time:**
-- Required fields present
-- Priority in valid range (1-16)
-- Creative placeholders match formats
-- Line item type appropriate for delivery type
+- `priority` and `creative_placeholders` are present.
+- `priority` is an integer between 1 and 16.
+- Every creative placeholder has a `width` and a `height`.
+- `line_item_type`, if present, is one of the valid values.
 
-**At Media Buy Creation:**
-- Configuration exists for all products
-- Configuration is complete and valid
-- Clear error messages if validation fails
+If no inventory targeting is set, validation passes but the adapter logs a warning and falls back to the network root ad unit.
 
----
+At media buy creation, a missing or invalid configuration fails with an explicit error message.
 
-## Field Reference
+## Line item type selection
 
-### Required Fields
+You can set `line_item_type` explicitly, but you don't have to: when it is absent, `PricingCompatibility.select_line_item_type()` (in `src/adapters/gam/pricing_compatibility.py`) picks the type from the pricing model and the delivery guarantee. An explicit type that is incompatible with the pricing model is rejected with a `ValueError`.
 
-#### Line Item Type
-- **Field**: `line_item_type`
-- **Type**: String enum
-- **Values**: `STANDARD`, `PRICE_PRIORITY`, `SPONSORSHIP`, `NETWORK`, `BULK`, `HOUSE`
-- **Defaults**:
-  - Guaranteed → `STANDARD`
-  - Non-guaranteed → `PRICE_PRIORITY`
+The following decision tree shows how the adapter selects the line item type:
+
+```mermaid
+flowchart TD
+    Start["Pricing model + guarantee"] --> OV{"line_item_type set in\nimplementation_config?"}
+    OV -->|"yes"| CHK{"Compatible with the\npricing model?"}
+    CHK -->|"no"| ERR["Error: incompatible\nline item type"]
+    CHK -->|"yes"| USE["Use the configured type"]
+    OV -->|"no"| FR{"flat_rate?"}
+    FR -->|"yes"| SP["SPONSORSHIP\nbilled as CPD:\ntotal budget / flight days"]
+    FR -->|"no"| VC{"vcpm?"}
+    VC -->|"yes"| ST["STANDARD\nGAM supports VCPM\nonly on STANDARD"]
+    VC -->|"no"| G{"Guaranteed\ndelivery?"}
+    G -->|"yes"| ST2["STANDARD"]
+    G -->|"no"| PP["PRICE_PRIORITY"]
+```
+
+CPD (cost per day) is a GAM cost type, not an AdCP pricing model — the adapter uses it internally to translate flat-rate pricing into GAM's native flat-fee model.
+
+## Field reference
+
+The authoritative field list is the `GAMImplementationConfig` schema in `src/adapters/gam_implementation_config_schema.py`. The fields you set most often are described here.
+
+### Validated fields
 
 #### Priority
-- **Field**: `priority`
-- **Type**: Integer (1-16, where 1 is highest)
-- **Defaults**:
-  - Guaranteed → 6
-  - Non-guaranteed → 10
+
+- **Field**: `priority` (required)
+- **Type**: Integer, 1-16, where 1 is the highest priority
+- **Defaults**: 6 for guaranteed, 10 for non-guaranteed
 - **Guidelines**:
-  - 1-4: Reserved for emergency/critical campaigns
+  - 1-4: Reserved for emergency or critical campaigns
   - 4-6: Guaranteed inventory
-  - 8-12: Non-guaranteed/price priority
+  - 8-12: Non-guaranteed and price priority
   - 16: House ads
 
-#### Creative Placeholders
-- **Field**: `creative_placeholders`
+#### Creative placeholders
+
+- **Field**: `creative_placeholders` (required)
 - **Type**: Array of objects
 - **Structure**:
+
   ```json
   [
     {
@@ -142,54 +166,65 @@ When a product is created, defaults are auto-generated based on delivery type:
     }
   ]
   ```
-- **Auto-generated**: Based on product formats
 
-#### Primary Goal Type
-- **Field**: `primary_goal_type`
+- **Auto-generated**: Derived from the product's formats
+
+#### Line item type
+
+- **Field**: `line_item_type` (optional)
 - **Type**: String enum
-- **Values**: `DAILY`, `LIFETIME`, `NONE`
-- **Defaults**:
-  - Guaranteed → `DAILY`
-  - Non-guaranteed → `NONE`
+- **Values**: `STANDARD`, `PRICE_PRIORITY`, `SPONSORSHIP`, `NETWORK`, `BULK`, `HOUSE`
+- **Behavior**: When absent, the adapter selects the type from the pricing model — see [Line item type selection](#line-item-type-selection)
 
-### Optional Fields
+### Optional fields
 
-#### Inventory Targeting
-- **Fields**:
-  - `targeted_ad_unit_ids` (array of strings)
-  - `targeted_placement_ids` (array of strings)
-- **Behavior**: If not specified, uses network root ad unit
-- **Best Practice**: Always specify for production campaigns
+#### Primary goal
 
-#### Frequency Caps
+- **Fields**: `primary_goal_type` (`DAILY`, `LIFETIME`, `NONE`) and `primary_goal_unit_type` (`IMPRESSIONS`, `CLICKS`, `VIEWABLE_IMPRESSIONS`)
+- **Defaults**: `DAILY` for guaranteed, `NONE` for non-guaranteed; unit defaults to `IMPRESSIONS`
+
+#### Inventory targeting
+
+- **Fields**: `targeted_ad_unit_ids`, `excluded_ad_unit_ids`, `targeted_placement_ids` (arrays of strings), `include_descendants` (boolean, default `true`)
+- **Behavior**: If no targeting is specified, the adapter uses the network root ad unit
+- **Best practice**: Always specify targeting for production campaigns. GAM requires numeric IDs.
+
+#### Frequency caps
+
 - **Field**: `frequency_caps`
 - **Type**: Array of objects
 - **Structure**:
+
   ```json
   [
     {
       "max_impressions": 3,
-      "num_time_units": 1,
-      "time_unit": "DAY"
+      "time_unit": "DAY",
+      "time_range": 1
     }
   ]
   ```
-- **Time Units**: `DAY`, `WEEK`, `MONTH`, `LIFETIME`
 
-#### Roadblocking
-- **Field**: `roadblocking_type`
-- **Values**: `ONLY_ONE`, `AS_MANY_AS_POSSIBLE`, `ALL_ROADBLOCK`, `CREATIVE_SET`
-- **Default**: `ONLY_ONE`
+- **Time units**: `MINUTE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, `LIFETIME`
 
-#### Creative Rotation
+#### Creative rotation
+
 - **Field**: `creative_rotation_type`
-- **Values**: `EVEN`, `OPTIMIZED`, `WEIGHTED`, `SEQUENTIAL`
-- **Default**: `OPTIMIZED`
+- **Values**: `EVEN`, `OPTIMIZED`, `MANUAL`, `SEQUENTIAL`
+- **Defaults**: `EVEN` for guaranteed, `OPTIMIZED` for non-guaranteed
 
-#### Custom Targeting
+#### Delivery rate
+
+- **Field**: `delivery_rate_type`
+- **Values**: `EVENLY`, `FRONTLOADED`, `AS_FAST_AS_POSSIBLE`
+- **Defaults**: `EVENLY` for guaranteed, `AS_FAST_AS_POSSIBLE` for non-guaranteed
+
+#### Custom targeting
+
 - **Field**: `custom_targeting_keys`
 - **Type**: JSON object
 - **Example**:
+
   ```json
   {
     "sport": ["football", "basketball"],
@@ -197,79 +232,30 @@ When a product is created, defaults are auto-generated based on delivery type:
   }
   ```
 
----
+#### Non-guaranteed automation
 
-## Migration Guide
-
-### Running the Migration Script
-
-**Dry-Run (Safe - No Changes):**
-```bash
-python scripts/migrate_product_configs.py
-```
-
-**Apply Changes:**
-```bash
-python scripts/migrate_product_configs.py --apply
-```
-
-**Specific Tenant:**
-```bash
-python scripts/migrate_product_configs.py --tenant tenant_id --apply
-```
-
-### Migration Behavior
-
-**What It Does:**
-- Examines all products in database
-- Skips products that already have `implementation_config`
-- Generates smart defaults based on delivery type and formats
-- Validates all generated configs
-- Applies changes (if `--apply` flag used)
-
-**What It Doesn't Do:**
-- Never overwrites existing configurations
-- Never modifies user-facing product fields
-- Never changes products with valid configs
-
-### Safety Features
-- ✅ Dry-run by default
-- ✅ Confirmation prompt before applying
-- ✅ Detailed logging of every operation
-- ✅ Validation before saving
-- ✅ Transaction safety with flush/commit
-- ✅ Tenant-specific targeting
-
----
+- **Field**: `non_guaranteed_automation`
+- **Values**: `automatic` (instant activation), `confirmation_required` (human approval, then automatic activation), `manual` (a human handles all steps)
+- **Defaults**: `manual` for guaranteed, `confirmation_required` for non-guaranteed
 
 ## Testing
 
-### Test GAM Configuration
+### Test the configuration UI
 
-**In Development:**
 ```bash
 # Start Docker services
 docker compose up -d
 
-# Access Admin UI
+# Open the Admin UI
 open http://localhost:8000
-
-# Navigate to Products → GAM Config
-# Test inventory picker, priority slider, save/validation
 ```
 
-**Test Migration:**
-```bash
-# Dry-run to see what would change
-PYTHONPATH=. uv run python scripts/migrate_product_configs.py
+In the Admin UI, open a product, click **Configure GAM Adapter**, and exercise the inventory picker, priority setting, and save-time validation.
 
-# Apply if output looks correct
-PYTHONPATH=. uv run python scripts/migrate_product_configs.py --apply
-```
+### Verify the stored configuration
 
-### Verify Configuration
+Through the database:
 
-**Via Database:**
 ```sql
 SELECT
   product_id,
@@ -281,50 +267,35 @@ FROM products
 WHERE implementation_config IS NOT NULL;
 ```
 
-**Via Admin UI:**
-1. Navigate to Products
-2. Click "GAM Config" on any product
-3. Verify fields are populated
-4. Make changes and save
-5. Reload page - changes should persist
+Through the Admin UI:
 
-### Test Media Buy Creation
+1. Open a product and click **Configure GAM Adapter**.
+2. Verify that the fields are populated.
+3. Make a change and save it.
+4. Reload the page and confirm that the change persists.
 
-**With Valid Config:**
-- Create media buy with configured product
-- Should succeed and create GAM line item
+### Test media buy creation
 
-**With Invalid Config:**
-- Remove required fields from `implementation_config`
-- Attempt to create media buy
-- Should fail with clear validation error
+- With a valid configuration: create a media buy for the product. It succeeds and creates a GAM line item.
+- With an invalid configuration: remove a required field from `implementation_config` and attempt to create a media buy. It fails with an explicit validation error.
 
----
+For the automated end-to-end stack, see [E2E testing](../../development/e2e-testing.md). For real-GAM manual tests, see [Testing setup](testing-setup.md).
 
 ## Troubleshooting
 
 ### "GAM configuration validation failed"
-- **Cause**: Required fields missing from `implementation_config`
-- **Fix**: Click "GAM Config" button and complete all required fields
 
-### Changes Not Persisting
-- **Cause**: JSONB field mutations not tracked by SQLAlchemy
-- **Fix**: Code now uses `attributes.flag_modified()` - should not occur
+- **Cause**: Required fields are missing from `implementation_config`.
+- **Fix**: Click **Configure GAM Adapter** on the product and complete the required fields.
 
-### Inventory Picker Not Loading
-- **Cause**: No inventory synced for tenant
-- **Fix**: Run inventory sync: Admin UI → Inventory → Sync button
+### Inventory picker not loading
 
-### Migration Errors
-- **Cause**: Format field inconsistencies
-- **Fix**: Migration script handles both dict and string formats
-- **Verify**: Check `product.formats` field structure in database
+- **Cause**: No inventory has been synced for the tenant.
+- **Fix**: Run an inventory sync from the Admin UI's inventory browser (**Sync All**).
 
----
+## API reference
 
-## API Reference
-
-### GAM Configuration Service
+### GAM configuration service
 
 ```python
 from src.services.gam_product_config_service import GAMProductConfigService
@@ -334,17 +305,17 @@ service = GAMProductConfigService()
 # Generate defaults
 config = service.generate_default_config(
     delivery_type="guaranteed",
-    formats=["display_300x250"]
+    formats=["display_300x250"],
 )
 
-# Validate config
+# Validate a config
 is_valid, error_msg = service.validate_config(config)
 
-# Parse form data
+# Parse GAM config form data
 impl_config = service.parse_form_config(request.form)
 ```
 
-### Inventory API Endpoint
+### Inventory list endpoint
 
 ```http
 GET /api/tenant/{tenant_id}/inventory-list
@@ -353,66 +324,63 @@ GET /api/tenant/{tenant_id}/inventory-list
   &status=ACTIVE
 ```
 
-**Response:**
+Query parameters:
+
+- `type`: `ad_unit` or `placement`; omit for both.
+- `search`: Case-insensitive partial match on the name.
+- `status`: Defaults to `ACTIVE`; use `ALL` for all statuses.
+- `ids`: Comma-separated inventory IDs to fetch directly, bypassing the result limit.
+
+Response:
+
 ```json
 {
   "items": [
     {
       "id": "123456",
       "name": "Sports Homepage",
-      "path": "/Sports/Homepage",
-      "type": "ad_unit"
+      "path": ["Sports", "Homepage"],
+      "type": "ad_unit",
+      "status": "ACTIVE"
     }
-  ]
+  ],
+  "count": 1,
+  "has_more": false
 }
 ```
 
----
+## Best practices
 
-## Best Practices
+### Priority
 
-### Priority Guidelines
-- **Emergency/Critical**: 1-4 (use sparingly)
-- **Guaranteed**: 4-6 (standard guaranteed delivery)
-- **Non-Guaranteed**: 8-12 (price priority/house)
-- **House Ads**: 16 (lowest priority)
+- **Emergency or critical**: 1-4 (use sparingly)
+- **Guaranteed**: 4-6
+- **Non-guaranteed**: 8-12
+- **House ads**: 16
 
-### Inventory Targeting
-- Always specify ad units or placements (don't rely on root fallback)
-- Use placements for grouped inventory
-- Use ad units with `include_descendants` for hierarchies
-- Test targeting in GAM before production
+### Inventory targeting
 
-### Creative Placeholders
-- Match product formats exactly
-- Set `expected_creative_count` appropriately
-- Use `is_native: true` for native formats
-- Don't over-specify - keep it simple
+- Always specify ad units or placements rather than relying on the network-root fallback.
+- Use placements for grouped inventory.
+- Use ad units with `include_descendants` for hierarchies.
+- Test targeting in GAM before production.
 
-### Frequency Caps
-- Set reasonable caps (3-5 per day typical)
-- Use `LIFETIME` caps for awareness campaigns
-- Test impact on delivery before production
-- Monitor fill rate after enabling caps
+### Creative placeholders
 
----
+- Match the product's formats exactly.
+- Set `expected_creative_count` to the number of creatives you expect per size.
+- Set `is_native: true` for native formats.
 
-## Related Documentation
-- [GAM Testing Setup](testing-setup.md) - OAuth and test environment setup
-- [Adapters Overview](../README.md) - Adapter documentation
-- [Development Guide](../../development/README.md) - Development and migrations
+### Frequency caps
 
----
+- Set reasonable caps (3-5 per day is typical).
+- Use `LIFETIME` caps for awareness campaigns.
+- Test the impact on delivery before production, and monitor fill rate after enabling caps.
 
-## Support
+## Related documentation
 
-**For Issues:**
-- Check validation error messages first
-- Review logs: `docker-compose logs adcp-server`
-- Verify database: `implementation_config` field in products table
-- Test migration in dry-run mode first
-
-**For Questions:**
-- See examples in migration script output
-- Review generated defaults for similar products
-- Check GAM API documentation for field specifications
+- [GAM adapter overview](README.md) — supported features and pricing model mapping
+- [Testing setup](testing-setup.md) — real-GAM manual test configuration
+- [Creating an adapter](../creating-an-adapter.md) — the adapter interface this configuration feeds
+- [Architecture](../../development/architecture.md) — where adapters sit in the system
+- [E2E testing](../../development/e2e-testing.md) — the automated test stack

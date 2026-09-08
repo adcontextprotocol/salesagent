@@ -25,24 +25,30 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
-FENCE_MARKER = "# CORRECT: the seam decides address, TLS, redirect and retry policy"
+SEAM_IMPORT = "from src.core.security.outbound_http import"
 
 
-def _pattern_9_correct_fence() -> str:
-    """The body of Pattern #9's ``# CORRECT`` python fence."""
+def _egress_example_fence() -> str:
+    """The body of the CLAUDE.md python fence that imports the seam.
+
+    Anchored on the import rather than on the prose around it. A comment
+    naming the example is editorial and moves whenever the pattern is
+    reworded; the import is the thing the example exists to demonstrate, so
+    binding to it keeps this test pointed at the example through a rewrite.
+    """
     text = CLAUDE_MD.read_text(encoding="utf-8")
-    assert FENCE_MARKER in text, (
-        f"CLAUDE.md no longer contains the Pattern #9 CORRECT fence marker {FENCE_MARKER!r}. "
-        "Either the example moved and this test is pointed at nothing, or the pattern was "
-        "rewritten -- both make this binding vacuous."
+    assert SEAM_IMPORT in text, (
+        f"CLAUDE.md no longer contains a python fence importing the seam ({SEAM_IMPORT!r}). "
+        "Either the example was removed and this test is pointed at nothing, or the seam's "
+        "import path changed -- both make this binding vacuous."
     )
-    start = text.index(FENCE_MARKER)
+    start = text.index(SEAM_IMPORT)
     end = text.index("```", start)
     return text[start:end]
 
 
 def test_the_correct_fence_call_binds_against_the_real_signature() -> None:
-    fence = _pattern_9_correct_fence()
+    fence = _egress_example_fence()
     tree = ast.parse(fence)
 
     imports = [n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]

@@ -1,27 +1,120 @@
-# Structural Guards
+# Structural guards
 
 Automated architecture enforcement tests that run on every `make quality`.
 Each guard uses AST scanning and introspection to detect violations at the
 source level — no runtime execution of business logic needed.
 
-## Why These Exist
+Before you read the inventory, read the decision framework. It governs
+whether a guard should exist at all, and most structural concerns are better
+served by something that is not a guard. The guard inventory is expected to
+shrink as invariants move into types and lint rules.
 
-During the adcp 3.2 → 3.6 migration, several classes of bugs appeared that
-shared a common trait: they were invisible at review time and only surfaced
-as silent runtime failures. Examples:
+## Contents
 
-- A schema class copied fields from the adcp library instead of inheriting,
-  then drifted out of sync when the library updated a field type
-- An MCP wrapper accepted a new parameter but forgot to pass it through to
-  the shared `_impl` function — callers could set the value but it was silently
-  discarded
-- A database query filtered an Integer PK column with string values from JSON,
-  returning 0 rows instead of raising an error
+- [Decide whether a guard should exist](#decide-whether-a-guard-should-exist) — the three-question framework; work through it before adding to the inventory
+- [Refactoring checks are scaffolding, not guards](#refactoring-checks-are-scaffolding-not-guards) — completion checks get a deletion condition, not a permanent slot
+- [What guards catch](#what-guards-catch) — the one defect class that justifies a guard
+- [Guard design rules](#guard-design-rules) — shrinking allowlists and the other invariants every guard follows
+- [Guard inventory](#guard-inventory) — every active guard, with how it works, its tests, and its known violations:
+  - [Transport-boundary guards](#transport-boundary-guards)
+  - [Schema inheritance guard](#schema-inheritance-guard)
+  - [Boundary completeness guard](#boundary-completeness-guard)
+  - [Query type safety guard](#query-type-safety-guard)
+  - [No model_dump() in _impl guard](#no-model_dump-in-_impl-guard)
+  - [Repository pattern guard](#repository-pattern-guard)
+  - [BDD step quality guards](#bdd-step-quality-guards)
+  - [Single migration head guard](#single-migration-head-guard)
+  - [Hook-relocation guards](#hook-relocation-guards)
+- [Add a guard](#add-a-guard) — the procedure, and the shared helpers to build on
+- [Symbol subjects and shape subjects](#symbol-subjects-and-shape-subjects) — bind a symbol, allowlist a shape
+- [Run the guards](#run-the-guards)
+- [Relationship to other quality mechanisms](#relationship-to-other-quality-mechanisms) — where guards sit among types, lint, and hooks
 
-These failures are difficult to catch in code review because the code _looks_
-correct. The guards make these structural invariants machine-checkable.
+## Decide whether a guard should exist
 
-## Design Principles
+A guard is the last resort, not the first move. Work through these three
+questions in order, and stop at the first one that resolves the concern.
+
+### First: can the wrong thing be made unrepresentable?
+
+Correct architecture beats any test, because it removes the ability to
+express the mistake instead of detecting it afterwards. There are unbounded
+ways to write code wrongly, and a guard can only enumerate the ways someone
+thought of. An architecture that makes the wrong call impossible to write is
+worth more than a test that reports it.
+
+Concrete substitutions, each backed by a mechanism this repository already
+runs:
+
+- **A guard that checks a caller passes certain parameters** → make the
+  parameters typed and required. A missing argument is then a mypy error,
+  not a test failure. `make quality-ci` runs
+  `mypy src/ --config-file=mypy.ini` on every change.
+- **A guard that forbids calls to the wrong one of several similar
+  functions** → mypy, and ruff's banned-api rule (`TID251`), exist for
+  exactly this. `ruff-egress.toml` bans every raw HTTP import across `src/`
+  and `scripts/` with a per-import message that names the sanctioned seam,
+  and `make quality-ci` runs that check with `--ignore-noqa` so a file
+  cannot exempt itself.
+- **A guard that watches for growing complexity** → ruff's complexity rules
+  already fail the build: `C901` (mccabe, `max-complexity = 10`), `PLR0912`
+  (too many branches), and `PLR0915` (too many statements) are
+  count-ratcheted against `.ruff-complexity-baseline` by
+  `.pre-commit-hooks/check_ruff_complexity_count.py` in `make quality-ci`.
+- **A guard that keeps business logic away from raw sessions** → you can
+  scan for `.session`, but the better answer is a design where the
+  repository and the Unit of Work are the easy path. Make the correct call
+  the convenient one, and the wrong call stops being written. The
+  repository-pattern guard in the inventory is the backstop while its
+  allowlist shrinks, not the primary defense.
+
+### Second: does this need a check at all?
+
+Not every structural concern deserves an artifact. Ask what is actually at
+risk if no check exists. A pattern that nothing in future work plausibly
+reintroduces, or whose violation is loud on its own — a crash, a type
+error, a failing behavioral test — needs no guard on top.
+
+### Last: write a guard
+
+Write a guard only when both earlier answers are no: the wrong thing cannot
+be made unrepresentable, and the risk is real. The rest of this document
+describes how to write one well and inventories the guards that met that
+bar.
+
+## Refactoring checks are scaffolding, not guards
+
+A refactoring check and a permanent invariant are different artifacts.
+
+When the task is "refactor these classes", a check that fails before the
+change and passes after it is a legitimate way to know the work is
+complete. That is its whole purpose. It does not follow that the check
+belongs in the codebase afterwards: it was scaffolding for a finished task.
+Delete it when the refactor lands.
+
+A guard earns permanence only if it protects an invariant that future work
+could plausibly violate again. "It proved I finished the refactor" is not
+that.
+
+## What guards catch
+
+The guards that remain after the framework cover one class of defect:
+structural invariants whose violation looks correct in review and surfaces
+only as a silent runtime failure. Examples:
+
+- A schema class copies fields from the adcp library instead of inheriting,
+  then drifts out of sync when the library changes a field type.
+- An MCP wrapper accepts a parameter but doesn't pass it through to the
+  shared `_impl` function — callers can set the value, and the wrapper
+  silently discards it.
+- A database query filters an Integer PK column with string values from
+  JSON, returning 0 rows instead of raising an error.
+
+None of these can be made unrepresentable with the types the boundary
+offers, and none of them fail loudly on their own. The guards make them
+machine-checkable.
+
+## Guard design rules
 
 **Allowlists shrink, never grow.** Every guard has a set of known violations
 (existing code that predates the guard). New code that introduces a violation
@@ -37,15 +130,19 @@ ids don't resolve for outside contributors reading the code.
 `ast` module. They don't import or execute business logic, so they run fast
 and can't be affected by runtime state.
 
-**Introspection for type hierarchies.** Where AST alone is insufficient (e.g.,
-checking class MRO), guards use `inspect` and `importlib` on the already-imported
-modules.
+**Introspection for type hierarchies.** Where AST alone is insufficient (for
+example, checking a class MRO), guards use `inspect` and `importlib` on the
+already-imported modules.
 
-## Guard Inventory
+**Shared helpers, not re-implemented traversal.** A guard uses the helpers in
+`tests/unit/_architecture_helpers.py` rather than writing its own AST
+machinery. See [Add a guard](#add-a-guard).
 
-### Pre-existing Guards
+## Guard inventory
 
-| Test File | What It Enforces |
+### Transport-boundary guards
+
+| Test file | What it enforces |
 |-----------|-----------------|
 | `test_no_toolerror_in_impl.py` | `_impl` functions raise `AdCPError`, never `ToolError` from FastMCP |
 | `test_transport_agnostic_impl.py` | `_impl` functions have zero transport imports (no fastmcp, a2a, starlette) |
@@ -55,23 +152,29 @@ These three guards enforce Critical Pattern #5: shared `_impl` functions are
 transport-agnostic. They don't know whether they're called from MCP, A2A, or
 a REST endpoint.
 
-### Schema Inheritance Guard (removed)
+### Schema inheritance guard
 
-Deleted in PR #1941. Its subject was the SDK's own classes rather than this repo's
-structure, which made it unfixable in principle: to find which SDK types this repo
-subclasses it had to enumerate how imports are spelled, and two classes imported under
-an `AdCP*` alias instead of `Library*` were invisible to it. Widening the alias key took
-its target set from 54 classes to 149 and demanded nine new allowlist entries about
-someone else's DTOs.
+**File:** `tests/unit/test_architecture_schema_inheritance.py`
 
-Measured before removal: a duplicate `media_buy_id: str` on `UpdateMediaBuySuccess` left
-the guard green AND changed nothing observable — same annotation, same wire keys. The
-same field redeclared as `int` also left the guard green, but failed
-`test_pydantic_schema_alignment.py` in two places. So every redeclaration that reaches
-the wire is caught against the PINNED SCHEMA, and the only thing the guard could
-uniquely have caught is inert.
+**What it enforces:** A local schema class that redeclares a field of its
+adcp library parent must keep the parent's shape: same annotation (or a
+subclass), no added nullability, `is_required()` not relaxed, metadata a
+superset, no introduced default. A redeclaration that reshapes or weakens a
+field needs an allowlist row naming the weakened axis.
 
-### Boundary Completeness Guard
+**How it works:** The redefinition rule
+(`test_no_field_redefinition_in_subclasses`) walks the live MRO of each
+local schema class and tests `__module__` to find fields redeclared over a
+library parent, so it consults no import spelling. The companion
+`test_all_library_types_have_local_subclass` discovers `Library*` aliases in
+`src/core/schemas` and asserts that the local class with the unprefixed name
+inherits from the library type; that half is alias-keyed, and an import
+under a different alias goes unexamined by it.
+`test_pydantic_schema_alignment.py` separately grades declared fields and
+`model_dump` survival against the pinned schema, so any drift that reaches
+the wire is caught there.
+
+### Boundary completeness guard
 
 **File:** `tests/unit/test_architecture_boundary_completeness.py`
 
@@ -126,7 +229,7 @@ async def create_media_buy(...):
 
 #### Tests
 
-| Test | What It Checks |
+| Test | What it checks |
 |------|---------------|
 | `test_mcp_wrappers_pass_all_impl_params` | Every MCP wrapper passes all `_impl` parameters |
 | `test_a2a_wrappers_pass_all_impl_params` | Every A2A wrapper passes all `_impl` parameters |
@@ -134,13 +237,13 @@ async def create_media_buy(...):
 
 #### Current known violations (3)
 
-| Wrapper | Missing Parameter | Tracked By |
+| Wrapper | Missing parameter | Tracked by |
 |---------|------------------|------------|
 | `create_media_buy` (MCP) | `push_notification_config` | salesagent-v0kb |
 | `create_media_buy_raw` (A2A) | `context_id` | salesagent-v0kb |
 | `update_media_buy_raw` (A2A) | `context_id` | salesagent-v0kb |
 
-### Query Type Safety Guard
+### Query type safety guard
 
 **File:** `tests/unit/test_architecture_query_type_safety.py`
 
@@ -189,7 +292,7 @@ The fix is to cast at the boundary: `[int(x) for x in pricing_option_ids]`.
 
 #### Tests
 
-| Test | What It Checks |
+| Test | What it checks |
 |------|---------------|
 | `test_no_in_queries_on_integer_pk_with_wrong_type` | No new `.in_()` calls on Integer PK columns without review |
 | `test_no_string_literals_in_filter_by_for_integer_pks` | No `filter_by(id="string")` patterns |
@@ -197,11 +300,11 @@ The fix is to cast at the boundary: `[int(x) for x in pricing_option_ids]`.
 
 #### Current known violations (1)
 
-| File | Pattern | Tracked By |
+| File | Pattern | Tracked by |
 |------|---------|------------|
 | `media_buy_delivery.py` | `PricingOption.id.in_(string_list)` | salesagent-mq3n |
 
-### No model_dump() in _impl Guard
+### No model_dump() in _impl guard
 
 **File:** `tests/unit/test_architecture_no_model_dump_in_impl.py`
 
@@ -221,7 +324,7 @@ looking for method calls where the method name is `model_dump` or
 
 #### Tests
 
-| Test | What It Checks |
+| Test | What it checks |
 |------|---------------|
 | `test_no_new_model_dump_violations` | No new `.model_dump()` calls beyond the allowlist |
 | `test_known_violations_not_stale` | Allowlisted violations haven't been fixed (stale entry detection) |
@@ -229,7 +332,7 @@ looking for method calls where the method name is `model_dump` or
 
 #### Current known violations (29)
 
-| File | Count | Primary Use |
+| File | Count | Primary use |
 |------|-------|-------------|
 | `media_buy_update.py` | 23 | `response_data=X.model_dump()` for workflow step storage |
 | `media_buy_create.py` | 4 | `raw_request=req.model_dump()` for DB storage + workflow |
@@ -240,7 +343,7 @@ looking for method calls where the method name is `model_dump` or
 calls that serialize workflow step responses for DB storage. These should be
 replaced with typed repository methods that accept model objects directly.
 
-### Repository Pattern Guard
+### Repository pattern guard
 
 **File:** `tests/unit/test_architecture_repository_pattern.py`
 
@@ -256,6 +359,11 @@ becomes impossible to test without a real database, impossible to swap storage
 backends, and impossible to enforce consistent transaction boundaries. Similarly,
 when tests scatter `session.add()` calls through test bodies, fixture setup is
 duplicated, brittle, and hard to maintain.
+
+This guard is the backstop for the framework's fourth substitution: the
+primary defense is a repository and Unit of Work layer that is easier to
+call than a raw session. The guard holds the line while the allowlist
+shrinks.
 
 #### How it works
 
@@ -294,7 +402,7 @@ def test_something(integration_db, sample_tenant):
 
 #### Tests
 
-| Test | What It Checks |
+| Test | What it checks |
 |------|---------------|
 | `test_no_new_get_db_session_in_impl` | No new `get_db_session()` calls outside the allowlist |
 | `test_allowlist_entries_still_exist` (impl) | Stale allowlist detection for impl violations |
@@ -308,12 +416,12 @@ def test_something(integration_db, sample_tenant):
 
 All tracked by `salesagent-qo8a`.
 
-### BDD Step Quality Guards
+### BDD step quality guards
 
 Five AST-scanning guards enforce step definition quality in `tests/bdd/steps/`.
 They prevent the most common LLM-generated BDD anti-patterns.
 
-#### No-Op Then Steps
+#### No-op Then steps
 
 **File:** `tests/unit/test_architecture_bdd_no_pass_steps.py`
 
@@ -330,28 +438,28 @@ or is `env.*` (harness method).
 
 **Current known violations:** 41 Then steps in `uc004_delivery.py` using `_pending()`.
 
-#### Trivial Assertions
+#### Trivial assertions
 
 **File:** `tests/unit/test_architecture_bdd_no_trivial_assertions.py`
 
 Catches `@then` steps that only use bare truthiness checks (`assert x`) without
 comparisons (`==`, `!=`, `in`, `not in`, `is`, `isinstance`).
 
-#### No Dict in Registry
+#### No dict in registry
 
 **File:** `tests/unit/test_architecture_bdd_no_dict_registry.py`
 
 Catches `@given` steps that store raw dict literals in `ctx["registry_formats"]`
 instead of `FormatFactory.build()` objects.
 
-#### No Duplicate Step Bodies
+#### No duplicate step bodies
 
 **File:** `tests/unit/test_architecture_bdd_no_duplicate_steps.py`
 
 Catches groups of 3+ step functions with identical normalized bodies (after
 stripping docstrings). Threshold of 2 is tolerated for partition/boundary pairs.
 
-#### No Silent Env Degradation
+#### No silent env degradation
 
 **File:** `tests/unit/test_architecture_bdd_no_silent_env.py`
 
@@ -363,7 +471,7 @@ Catches two "No Quiet Failures" violations:
 
 **Current known violations:** 17 `ctx.get("env")` + 22 `hasattr(env, ...)` in `uc004_delivery.py`.
 
-### Single Migration Head Guard
+### Single migration head guard
 
 **File:** `tests/unit/test_architecture_single_migration_head.py`
 
@@ -386,7 +494,7 @@ not pointed to by any other migration. The test asserts exactly one head.
 
 #### Tests
 
-| Test | What It Checks |
+| Test | What it checks |
 |------|---------------|
 | `test_single_migration_head` | Exactly one head exists in the migration graph |
 
@@ -402,12 +510,12 @@ uv run alembic merge -m "Merge migration heads" heads
 The smoke test in `tests/smoke/test_database_migrations.py` also checks this,
 providing coverage in the CI smoke-tests job before unit tests run.
 
-### PR 4 Hook-Relocation Guards (issue #1234)
+### Hook-relocation guards
 
-These guards replaced grep-based pre-commit hooks. Run via `pytest -m arch_guard`
-or as part of `make quality`.
+These guards run via `pytest -m arch_guard` or as part of `make quality`.
+They replaced grep-based pre-commit hooks (issue #1234).
 
-| Test File | Replaces Hook | What It Enforces |
+| Test file | Replaces hook | What it enforces |
 |-----------|---------------|------------------|
 | `test_architecture_no_tenant_config.py` | `no-tenant-config` | No `tenant.config` / `tenant["config"]` in `src/` |
 | `test_architecture_jsontype_columns.py` | `enforce-jsontype` | JSON columns use `JSONType`, not plain `JSON` |
@@ -415,28 +523,169 @@ or as part of `make quality`.
 | `test_architecture_import_usage.py` | `check-import-usage` | Tree-wide import usage check for `src/` |
 | `test_architecture_query_type_safety.py` | `enforce-sqlalchemy-2-0` (partial) | `test_no_legacy_session_query`, `test_models_use_mapped_not_column` |
 | `test_architecture_pre_commit_hook_count.py` | — | Commit-stage hook count ≤12 (D27) |
-| `test_architecture_pre_commit_no_additional_deps.py` | — | No `additional_dependencies` in pre-commit config (PR 2) |
+| `test_architecture_pre_commit_no_additional_deps.py` | — | No `additional_dependencies` in pre-commit config |
 | `test_architecture_ci_bdd_shard_manifest.py` | — | BDD CI shards partition suite; matrix matches `SHARD_COUNTS` |
 | `test_architecture_repo_invariants.py` | `repo-invariants` (partial) | Self-tests for `.fn()` detection in consolidated hook |
 
-Shared AST helpers live in `tests/unit/_architecture_helpers.py`. Guards use the
-`@pytest.mark.arch_guard` marker (distinct from the entity-marker `architecture`).
+Guards use the `@pytest.mark.arch_guard` marker (distinct from the
+entity-marker `architecture`).
 
-Each PR 4 guard includes a **known-bad self-test** (inline snippet or tmp fixture)
-so a narrowed detector fails CI instead of passing green silently.
+Each of these guards includes a **known-bad self-test** (inline snippet or tmp
+fixture) so a narrowed detector fails CI instead of passing green silently.
 
-CI-only hook enforcement moved to `make quality-ci`: duplication, GAM auth support,
-response attribute access, roundtrip tests. See `.pre-commit-coverage-map.yml`.
+CI-only hook enforcement runs in `make quality-ci`: duplication, GAM auth
+support, response attribute access, roundtrip tests. See
+`.pre-commit-coverage-map.yml`.
 
-## Adding a New Guard
+## Add a guard
+
+Before step 1, work through
+[Decide whether a guard should exist](#decide-whether-a-guard-should-exist).
+If the invariant can live in a type signature, a mypy check, or a ruff rule,
+put it there and stop. If the check only proves a refactor is finished, write
+it, use it, and delete it with the refactor — don't add it here.
 
 1. Create `tests/unit/test_architecture_{name}.py`
 2. Use AST scanning (not `inspect.getsource()` — it's banned by lint rules)
-3. Include an allowlist for pre-existing violations
-4. Include a stale-allowlist test that fails when a violation is fixed but the
+3. Build on the shared helpers in `tests/unit/_architecture_helpers.py`
+   instead of re-implementing traversal (see the following section)
+4. Include an allowlist for pre-existing violations
+5. Include a stale-allowlist test that fails when a violation is fixed but the
    entry remains
-5. Add FIXME comments at each violation site: `# FIXME(#<gh-issue>): description` (GitHub issue/PR number, never a beads id)
-6. Document the guard in this file
+6. Add FIXME comments at each violation site: `# FIXME(#<gh-issue>): description` (GitHub issue/PR number, never a beads id)
+7. Document the guard in this file
+
+### Use the shared helpers
+
+`tests/unit/_architecture_helpers.py` centralizes the machinery guards need,
+so a guard states its rule and borrows everything else. The pieces most
+guards use:
+
+- `repo_root()` / `rel()` — the repo-root anchor and repo-relative paths for
+  stable allowlist keys.
+- `parse_module()` — AST parsing with an mtime-keyed cache shared across
+  guards; `safe_parse()` is the variant that returns `None` for a missing or
+  unparseable file.
+- `iter_module_trees()` — yields `(tree, repo_relative_path)` for every
+  `.py` file under the given directories, through the shared cache, and
+  raises on an unparseable file instead of silently dropping it.
+- `src_python_files()` and `iter_call_expressions()` — source-file iteration
+  and call-node filtering.
+- `walk_with_enclosing_function()` — yields each node with the name of its
+  enclosing function, for rules scoped to `_impl` or step functions.
+- `assert_violations_match_allowlist()` — the standard
+  new-violation/stale-entry comparison.
+- `format_failure()` — the standard failure-message formatter.
+- `assert_detector_catches_ast_snippets()` — feeds known-bad inline snippets
+  to your detector and fails if any go unflagged.
+
+`assert_detector_catches_ast_snippets` matters more than it looks: a
+detector nobody proved can fire is a guard that passes vacuously. A green
+run then reports "no violations" over a tree the detector cannot actually
+read, which is indistinguishable from a clean tree. Every guard's detector
+gets a known-bad self-test.
+
+### Write a guard with the helpers
+
+A complete guard, with each helper doing the job it exists for. The rule here
+is "no `datetime.utcnow()` in `src/`", because it returns a naive datetime;
+substitute your own predicate and the rest of the shape holds.
+
+```python
+"""Guard: no naive `datetime.utcnow()` in src/."""
+
+import ast
+
+from tests.unit._architecture_helpers import (
+    assert_detector_catches_ast_snippets,
+    assert_violations_match_allowlist,
+    iter_module_trees,
+    repo_root,
+    walk_with_enclosing_function,
+)
+
+# Pre-existing violations, keyed on (path, enclosing function). Never a line
+# number: it moves when anything above it is edited, and the entry goes stale
+# without the violation being fixed.
+KNOWN_VIOLATIONS: set[tuple[str, str]] = set()
+
+
+def _violations(tree: ast.Module):
+    """Yield each `.utcnow()` call with the function that encloses it."""
+    for node, enclosing in walk_with_enclosing_function(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "utcnow"
+        ):
+            yield node, enclosing
+
+
+def _lineno_violations(tree: ast.Module) -> list[int]:
+    """The same detector, as the line-number list the self-test expects."""
+    return [node.lineno for node, _ in _violations(tree)]
+
+
+def test_detector_catches_known_bad() -> None:
+    """Prove the detector fires. Without this the scan below proves nothing."""
+    assert_detector_catches_ast_snippets(
+        _lineno_violations,
+        snippets={
+            "module level": "import datetime\ndatetime.datetime.utcnow()\n",
+            "inside a function": (
+                "import datetime\n"
+                "def f():\n"
+                "    return datetime.datetime.utcnow()\n"
+            ),
+        },
+    )
+
+
+def test_no_naive_utcnow() -> None:
+    found = {
+        (path, enclosing)
+        for tree, path in iter_module_trees([repo_root() / "src"])
+        for _, enclosing in _violations(tree)
+    }
+    assert_violations_match_allowlist(
+        found,
+        KNOWN_VIOLATIONS,
+        fix_hint="Use datetime.now(UTC); utcnow() returns a naive datetime.",
+    )
+```
+
+What each helper is doing, and what goes wrong without it:
+
+- **`repo_root()`** anchors the scan. Do not write `Path(__file__).parents[2]`
+  or a relative `Path("src")`. The hand-rolled spellings in this repository
+  disagree with each other — 55 modules say `parents[2]` and 19 say
+  `parents[1]` — so at least one family is anchored somewhere unintended, and
+  a relative path resolves against whatever directory pytest was started
+  from. A guard pointed at a directory that does not exist finds nothing and
+  passes.
+- **`iter_module_trees()`** yields `(tree, repo_relative_path)` for every
+  `.py` file under the directories you give it, through a shared mtime-keyed
+  cache, and raises on a file it cannot parse rather than skipping it. Skipping
+  an unparseable file is how a guard silently stops covering it.
+- **`walk_with_enclosing_function()`** gives you the enclosing function name
+  alongside each node, which is what lets the allowlist key on
+  `(path, function)` instead of a line number.
+- **`assert_violations_match_allowlist()`** compares both directions: a new
+  violation fails, and so does an allowlist entry whose violation is gone. The
+  second direction is what stops the allowlist accumulating entries nobody can
+  retire.
+- **`assert_detector_catches_ast_snippets()`** runs the detector against
+  known-bad input. This is the test that matters most, and the one most often
+  omitted: a detector that has quietly stopped matching reports "no
+  violations" over a tree it cannot read, which is indistinguishable from a
+  clean tree. Include a snippet for each spelling the rule must catch — an
+  attribute call, an aliased import, a call inside a nested function.
+
+Two further helpers cover cases the example does not: `parse_module()` when
+you need a single file rather than a tree walk, and `iter_call_expressions()`
+when the rule is about calls to one named function. `format_failure()` renders
+a failure with a summary, a fix hint, and a documentation link, for guards
+that assert directly rather than through the allowlist comparison.
 
 ## Symbol subjects and shape subjects
 
@@ -460,7 +709,7 @@ clean because it finds nothing, which is indistinguishable from finding nothing
 wrong. That is the failure mode binding removes: an unresolvable import cannot
 be green.
 
-Two things worth knowing before writing one:
+Two things are worth knowing before you write one:
 
 - A **module-level** import buys a collection failure, but it aborts the whole
   unit run and masks every other result. For a heavy module, use
@@ -475,7 +724,7 @@ This page does not list which guards are which kind. Such a list is prose about
 symbols, which is exactly the artifact that goes stale without anything noticing
 — the reason the rule above exists.
 
-## Running Guards
+## Run the guards
 
 ```bash
 # All guards (part of make quality)
@@ -488,26 +737,32 @@ uv run pytest tests/unit/test_architecture_*.py tests/unit/test_*impl*.py -v
 uv run pytest tests/unit/test_pydantic_schema_alignment.py -v
 ```
 
-## Relationship to Other Quality Mechanisms
+## Relationship to other quality mechanisms
 
 ```
-Pre-commit hooks               ← catch formatting, route conflicts, star imports
+Types + lint (mypy, ruff TID251,   ← make the wrong thing unrepresentable,
+complexity ratchet)                  or fail it at the import/signature level
     │
     ▼
-Structural guards              ← catch architecture violations with allowlists (THIS FILE)
+Pre-commit hooks                   ← catch formatting, route conflicts, star imports
     │
     ▼
-Unit tests (~2950)             ← catch behavior bugs
+Structural guards                  ← catch architecture violations with allowlists (THIS FILE)
     │
     ▼
-Integration tests (PostgreSQL) ← catch data layer bugs
+Unit tests (~2950)                 ← catch behavior bugs
     │
     ▼
-E2E tests (Docker stack)       ← catch deployment/wiring bugs
+Integration tests (PostgreSQL)     ← catch data layer bugs
+    │
+    ▼
+E2E tests (Docker stack)           ← catch deployment/wiring bugs
 ```
 
 Guards sit between pre-commit hooks (syntactic) and unit tests (behavioral).
-They enforce structural properties that are invisible to both.
+They enforce structural properties that are invisible to both — and only
+those. A property expressible at the top of this ladder belongs there, not
+here.
 
 **ast-grep scan rules** (`.ast-grep/rules/`) provide fast first-line defense at
 commit time for simple BDD patterns (`ctx.get("env")`, `hasattr(env, ...)`,

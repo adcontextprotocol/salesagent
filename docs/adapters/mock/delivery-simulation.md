@@ -1,109 +1,149 @@
-# Mock Adapter Delivery Simulation
+# Mock adapter delivery simulation
 
-## Overview
+The mock adapter can simulate a campaign delivering over time, compressed so
+that seconds of real time stand for hours or days of campaign time. A
+background thread fires delivery webhooks at a configurable interval until the
+simulated campaign completes, which lets you test an AI agent's reaction to a
+full campaign lifecycle in minutes.
 
-The Mock Adapter includes a real-time delivery simulation system that fires webhooks as campaigns progress. This allows you to test AI agents' responses to delivery updates without waiting for actual campaign durations.
+## Contents
 
-## How It Works
+- [How it works](#how-it-works) — the components involved and the order they act in
+- [Configuration](#configuration) — the `delivery_simulation` block, its defaults, and where it lives
+- [Webhook payload](#webhook-payload) — the exact JSON each webhook carries
+- [Webhook endpoints](#webhook-endpoints) — registering receivers per principal
+- [Simulated metrics](#simulated-metrics) — how spend, impressions, and clicks are computed
+- [Seeded delivery responses for tests](#seeded-delivery-responses-for-tests) — the polling-side seeding mechanism, distinct from webhooks
+- [Lifecycle and threading](#lifecycle-and-threading)
+- [Troubleshooting](#troubleshooting)
+- [Related documentation](#related-documentation)
 
-When you create a media buy using the mock adapter, it can automatically:
+## How it works
 
-1. **Start a background simulation thread** that tracks campaign progress
-2. **Fire webhooks at regular intervals** with delivery metrics
-3. **Accelerate time** so seconds become hours (configurable)
-4. **Send realistic metrics** including impressions, spend, pacing, and performance
+When `MockAdServer` creates a media buy (not in dry-run mode), it calls
+`DeliverySimulator.start_simulation()` in
+[`src/services/delivery_simulator.py`](../../../src/services/delivery_simulator.py).
+The simulator runs one background thread per media buy. On every update
+interval, the thread computes how far the accelerated campaign has progressed
+and hands the metrics to `webhook_delivery_service`
+([`src/services/webhook_delivery_service.py`](../../../src/services/webhook_delivery_service.py)),
+which signs and delivers the payload to every active webhook endpoint
+registered for the principal.
+
+The following diagram shows the sequence from media buy creation to the final
+webhook.
+
+```mermaid
+sequenceDiagram
+    participant Buyer
+    participant Adapter as MockAdServer
+    participant Sim as DeliverySimulator thread
+    participant WDS as webhook_delivery_service
+    participant EP as Webhook endpoint
+
+    Buyer->>Adapter: create_media_buy
+    Adapter->>Sim: start_simulation(media_buy_id, budget, flight dates)
+    Adapter-->>Buyer: CreateMediaBuyResponse
+    Sim->>WDS: initial webhook (status pending, 0 impressions)
+    WDS->>EP: signed POST
+    loop Every update_interval_seconds until complete or stopped
+        Sim->>Sim: advance simulated clock by interval x time_acceleration
+        Sim->>WDS: delivery metrics (notification_type scheduled)
+        WDS->>EP: signed POST
+    end
+    Sim->>WDS: final webhook (notification_type final, status completed)
+    WDS->>EP: signed POST
+```
+
+Time acceleration maps real seconds to simulated campaign time. With the
+default acceleration of 3600, each real second advances the campaign by one
+hour, so a 7-day campaign completes in 168 seconds.
 
 ## Configuration
 
-### Enable in Admin UI
+The `delivery_simulation` block holds three keys.
 
-1. Navigate to **Products** for your tenant
-2. Click **Configure** on a mock adapter product
-3. Scroll to **Delivery Simulation** section
-4. Check **Enable Delivery Simulation**
-5. Configure acceleration and interval settings
-6. Save configuration
+| Key | Default | Accepted range | Meaning |
+|-----|---------|----------------|---------|
+| `enabled` | `false` | `true` / `false` | Turns the simulation on for media buys created against this configuration |
+| `time_acceleration` | `3600` | 1–86400 | Simulated seconds that pass per real second (`3600` = 1 second is 1 hour) |
+| `update_interval_seconds` | `1.0` | 0.1–60 | Real-time interval between webhooks |
 
-### Configuration Options
+The block lives in two places:
 
-| Setting | Description | Default | Example Values |
-|---------|-------------|---------|----------------|
-| **Enabled** | Turn delivery simulation on/off | `false` | `true` / `false` |
-| **Time Acceleration** | Real seconds = Simulated seconds | `3600` (1 sec = 1 hour) | `60` (1 sec = 1 min), `86400` (1 sec = 1 day) |
-| **Update Interval** | How often to fire webhooks (real-time) | `1.0` seconds | `0.5` (twice per second), `5.0` (every 5 seconds) |
+- **Adapter configuration.** `MockAdServer._start_delivery_simulation()` reads
+  `delivery_simulation` from the adapter's own config dict when a media buy is
+  created. Constructing the adapter with this block in its config — as the
+  integration tests do — is what starts a simulation automatically.
+- **Product `implementation_config`.** The mock product configuration page in
+  the Admin UI (`/adapters/mock/config/<tenant_id>/<product_id>`) stores the
+  same block on the product's `implementation_config`, and
+  `DeliverySimulator.restart_active_simulations()` reads it from there when
+  simulations are restarted manually.
 
-### Example Scenarios
+### Example timings
 
-**Fast Testing (1 second = 1 hour)**
-```
-Time Acceleration: 3600
-Update Interval: 1.0 seconds
+The three configurations that follow show how acceleration and interval
+combine for a 7-day campaign.
 
-Result:
-- 7-day campaign completes in 168 seconds (~2.8 minutes)
-- Webhook fires every 1 second (= 1 hour of campaign time)
-- 168 total webhooks
-```
+**Fast (1 second = 1 hour):**
 
-**Ultra-Fast Testing (1 second = 1 day)**
-```
-Time Acceleration: 86400
-Update Interval: 1.0 seconds
+```text
+time_acceleration: 3600
+update_interval_seconds: 1.0
 
-Result:
-- 7-day campaign completes in 7 seconds
-- Webhook fires every 1 second (= 1 day of campaign time)
-- 7 total webhooks
+The campaign completes in 168 seconds (about 2.8 minutes),
+with one webhook per second — 168 webhooks, each one hour apart
+in campaign time.
 ```
 
-**Slow Motion (1 second = 1 minute)**
+**Ultra-fast (1 second = 1 day):**
+
+```text
+time_acceleration: 86400
+update_interval_seconds: 1.0
+
+The campaign completes in 7 seconds, with one webhook per
+simulated day — 7 webhooks.
 ```
-Time Acceleration: 60
-Update Interval: 1.0 seconds
 
-Result:
-- 7-day campaign completes in 10,080 seconds (~2.8 hours)
-- Webhook fires every 1 second (= 1 minute of campaign time)
-- Useful for watching delivery in "real-ish" time
+**Slow motion (1 second = 1 minute):**
+
+```text
+time_acceleration: 60
+update_interval_seconds: 1.0
+
+The campaign completes in 10,080 seconds (about 2.8 hours).
+Useful for watching delivery progress at a readable pace.
 ```
 
-## Webhook Payload
+To reduce webhook volume without changing campaign speed, raise
+`update_interval_seconds` instead of lowering `time_acceleration`.
 
-> **✅ AdCP V2.3 Compliant**: Delivery simulation webhooks use the standard **`GetMediaBuyDeliveryResponse`** format defined in the AdCP V2.3 specification. This ensures compatibility with any AdCP-compliant AI agents and tools.
+## Webhook payload
 
-The webhook payload follows the A2A push notification transport with AdCP-compliant delivery data:
+Each webhook body is the delivery notification built by
+`webhook_delivery_service.send_delivery_webhook()`:
 
-**Outer Envelope (A2A Transport):**
 ```json
 {
-  "task_id": "buy_abc123",
-  "status": "working" | "completed",
-  "timestamp": "2025-10-07T12:34:56.789Z",
-  "tenant_id": "tenant_123",
-  "principal_id": "principal_456",
-  "data": { /* AdCP GetMediaBuyDeliveryResponse */ }
-}
-```
-
-**Inner Payload (AdCP V2.3 GetMediaBuyDeliveryResponse):**
-```json
-{
-  "adcp_version": "2.3.0",
-  "notification_type": "scheduled" | "final",
-  "sequence_number": 1,
-  "next_expected_at": "2025-10-07T12:34:57.789Z",
+  "adcp_version": "3.1.1",
+  "notification_type": "scheduled",
+  "is_adjusted": false,
+  "sequence_number": 3,
+  "next_expected_at": "2026-01-15T12:34:57.789Z",
   "reporting_period": {
-    "start": "2025-10-08T15:00:00Z",
-    "end": "2025-10-08T15:00:00Z"
+    "start": "2026-01-10T00:00:00Z",
+    "end": "2026-01-12T03:00:00Z"
   },
   "currency": "USD",
   "media_buy_deliveries": [
     {
       "media_buy_id": "buy_abc123",
-      "status": "active" | "completed",
+      "status": "delivering",
       "totals": {
         "impressions": 45000,
-        "spend": 450.00,
+        "spend": 450.0,
         "clicks": 450,
         "ctr": 0.01
       },
@@ -113,182 +153,109 @@ The webhook payload follows the A2A push notification transport with AdCP-compli
 }
 ```
 
-### Webhook Events
+The fields behave as follows:
 
-| notification_type | Description | When Fired |
-|------------------|-------------|------------|
-| `scheduled` | Regular periodic update | Every update interval during campaign |
-| `final` | Campaign completed | Last webhook when campaign reaches 100% |
+- **`adcp_version`** — the AdCP spec version the server is pinned to. See
+  [AdCP spec version](../../adcp-spec-version.md).
+- **`notification_type`** — `scheduled` for a periodic update, `final` for the
+  last webhook of a completed campaign, and `adjusted` for a restatement of
+  previously reported data.
+- **`sequence_number`** — starts at 1 for each media buy and increments with
+  every webhook.
+- **`next_expected_at`** — ISO timestamp of the next expected webhook. Absent
+  on the final webhook.
+- **`status`** — `pending` on the initial webhook, `delivering` while the
+  simulated campaign runs, and `completed` at the end.
+- **`reporting_period`** — spans from the campaign start to the current
+  simulated time.
 
-### Key AdCP Fields
+Delivery itself goes through the webhook egress module: each POST carries an
+HMAC-SHA256 signature (`X-ADCP-Signature` and `X-ADCP-Timestamp` headers) when
+the endpoint's configuration requires one, a per-endpoint circuit breaker
+protects against failing receivers, and each endpoint has a bounded queue of
+1,000 pending webhooks.
 
-- **`notification_type`**: Indicates if this is a scheduled update or final report
-- **`sequence_number`**: Sequential counter starting at 1, increments with each webhook
-- **`next_expected_at`**: ISO timestamp for next webhook (omitted when `notification_type` is `final`)
-- **`media_buy_deliveries`**: Array of delivery data (one per media buy)
-- **`totals`**: Aggregate metrics (impressions, spend, clicks, CTR)
+## Webhook endpoints
 
-## Setting Up Webhook Endpoints
+The service delivers each webhook to every **active push-notification
+configuration registered for the principal** that owns the media buy. Register
+an endpoint in either of two ways:
 
-### Step 1: Register Webhook in Admin UI
+- In the Admin UI, open the principal (advertiser) and use its webhooks page
+  to register a URL with optional authentication.
+- Pass a `push_notification_config` when calling `create_media_buy`.
 
-1. Navigate to **Principals** for your tenant
-2. Select the principal (advertiser)
-3. Click **Manage Webhooks**
-4. Add webhook URL with authentication
-5. Test webhook delivery
+If the principal has no active endpoint, the simulation still runs but
+delivers nothing; the server logs `No webhooks configured for
+<tenant>/<principal>`.
 
-### Step 2: Configure Mock Product
+## Simulated metrics
 
-Enable delivery simulation for the product (see Configuration above).
+The simulator paces spend evenly across the flight with a ±5% random variance,
+capped at the total budget. The other metrics derive from spend:
 
-### Step 3: Create Media Buy
+- Impressions assume a fixed $10 CPM (`impressions = spend / 0.01`).
+- Clicks are 1% of impressions, and `ctr` is reported as `0.01`.
 
-When you create a media buy via MCP/A2A:
+## Seeded delivery responses for tests
 
-```python
-# Via MCP
-result = await client.tools.create_media_buy(
-    promoted_offering="Test Campaign",
-    product_ids=["prod_mock_1"],
-    total_budget=5000.0,
-    flight_start_date="2025-10-08",
-    flight_end_date="2025-10-15"
-)
+Separately from webhook simulation, the mock adapter's
+`get_media_buy_delivery()` can return an exact, pre-seeded payload. When the
+`ADCP_TESTING` environment variable is `true`, the adapter checks the
+`delivery_simulation_configs` table for a row keyed by tenant and media buy
+and, if one exists, returns its stored payload verbatim. The e2e harness
+writes these rows so that in-process and containerized runs see identical
+delivery numbers. Without the environment variable or a matching row, the
+adapter computes delivery from campaign progress as usual.
 
-# Delivery simulation starts automatically
-# Webhooks begin firing immediately
-```
+This mechanism affects polling (`get_media_buy_delivery`) only — it neither
+starts nor alters webhook simulations. See
+[Test architecture](../../../tests/CLAUDE.md) for how tests use it.
 
-## Testing with AI Agents
+## Lifecycle and threading
 
-### Example: Agent Monitoring Campaign
-
-Your AI agent can:
-
-1. **Create media buy** → Delivery simulation starts
-2. **Receive delivery webhooks** → Process every 1 second
-3. **Check pacing** → If under-delivering, take action
-4. **Optimize in real-time** → Update bids, targeting, etc.
-5. **Complete quickly** → Test full lifecycle in minutes
-
-### Sample Agent Response Logic
-
-```python
-async def handle_delivery_webhook(payload):
-    progress = payload["data"]["progress"]["progress_percentage"]
-    pacing = payload["data"]["delivery"]["pacing_percentage"]
-
-    if progress > pacing + 10:
-        # Under-delivering by >10%
-        await increase_bids()
-    elif progress < pacing - 10:
-        # Over-delivering by >10%
-        await decrease_bids()
-
-    if payload["data"]["status"] == "completed":
-        await generate_final_report()
-```
-
-## Advanced Configuration
-
-### Per-Tenant Configuration (Direct Database)
-
-For more advanced users, you can configure delivery simulation directly in the tenant's adapter config:
-
-```json
-{
-  "adapters": {
-    "mock": {
-      "enabled": true,
-      "delivery_simulation": {
-        "enabled": true,
-        "time_acceleration": 3600,
-        "update_interval_seconds": 1.0
-      }
-    }
-  }
-}
-```
-
-### Per-Product Configuration (Admin UI Preferred)
-
-Use the Admin UI to configure per-product settings (recommended approach).
+- Each media buy gets its own daemon thread; threads never block server
+  shutdown, and a stop signal (`DeliverySimulator.stop_simulation()`) ends one
+  gracefully.
+- When a simulation completes, the thread exits and the webhook sequence
+  counter for that media buy resets.
+- Simulation threads do not survive a server restart, and the server does not
+  restart them on boot. `DeliverySimulator.restart_active_simulations()`
+  restarts simulations for active media buys on demand.
+- A simulation starts only for a real creation — a dry-run `create_media_buy`
+  stores nothing and starts nothing.
 
 ## Troubleshooting
 
-### Webhooks Not Firing
+**Webhooks are not firing.** Check, in order:
 
-**Check:**
-1. Is delivery simulation **enabled** in product config?
-2. Is webhook configured for the principal?
-3. Is webhook URL reachable?
-4. Check server logs: `docker-compose logs -f adcp-server`
+1. The `delivery_simulation` block has `enabled: true` in the configuration
+   the adapter reads (see [Configuration](#configuration)).
+2. The principal has an active webhook endpoint registered
+   (see [Webhook endpoints](#webhook-endpoints)).
+3. The endpoint URL is reachable from the server container.
+4. The server logs. A healthy start logs these lines:
 
-**Common Issues:**
-- Webhook URL requires authentication → Configure auth token
-- Firewall blocking outbound requests → Check network settings
-- Simulation thread failed → Check logs for errors
-
-### Too Many/Few Webhooks
-
-**Adjust settings:**
-- **Too many?** → Increase update interval (e.g., 5.0 seconds)
-- **Too few?** → Decrease update interval (e.g., 0.5 seconds)
-- **Too fast?** → Decrease time acceleration
-- **Too slow?** → Increase time acceleration
-
-### Simulation Not Starting
-
-**Debugging:**
-```bash
-# Check adapter logs
-docker-compose logs -f adcp-server | grep "delivery simulation"
-
-# Should see:
-# "🚀 Starting delivery simulation (acceleration: 3600x, interval: 1.0s)"
-# "📊 Simulation parameters for buy_abc123..."
+```text
+🚀 Starting delivery simulation (acceleration: 3600x, interval: 1.0s)
+✅ Started delivery simulation for buy_abc123 (acceleration: 3600x, interval: 1.0s)
+📊 Simulation parameters for buy_abc123: ...
+📤 Delivery webhook #1 for buy_abc123: 0 imps, $0.00 [scheduled]
 ```
 
-**If missing:**
-1. Verify config saved correctly (check database)
-2. Ensure dry_run is `false` (simulation only runs in real mode)
-3. Check for errors in media buy creation
+If the start lines are missing, the configuration was not read at creation
+time or the media buy was created in dry-run mode. If the start lines appear
+but no `📤` lines follow, the webhook side is failing — look for
+`No webhooks configured`, circuit breaker warnings, or delivery errors in the
+same log.
 
-## Architecture Notes
+**Too many or too few webhooks.** Raise `update_interval_seconds` to thin them
+out, or lower it for more frequent updates. Adjust `time_acceleration` to
+change how fast the campaign itself completes.
 
-### Thread Safety
+## Related documentation
 
-- Each media buy gets its own background thread
-- Threads are daemon threads (won't block shutdown)
-- Stop signals allow graceful termination
-
-### Performance Impact
-
-- **Minimal CPU:** Thread sleeps between updates
-- **Minimal memory:** ~1KB per active simulation
-- **Network:** One HTTP POST per webhook interval
-
-### Scaling Considerations
-
-For production deployments with many concurrent campaigns:
-
-1. **Increase update interval** → Reduce webhook frequency
-2. **Use time acceleration wisely** → Don't simulate faster than needed
-3. **Monitor webhook endpoint** → Ensure it can handle volume
-4. **Consider batching** → Group multiple campaigns if needed
-
-## Future Enhancements
-
-Potential improvements:
-
-- [ ] Delivery anomaly simulation (sudden drops, spikes)
-- [ ] Webhook retry with exponential backoff
-- [ ] Delivery event history in Admin UI
-- [ ] Pause/resume simulation controls
-- [ ] Campaign-specific acceleration overrides
-
-## Related Documentation
-
-- [Mock Adapter Guide](README.md) - Full mock adapter documentation
-- [Troubleshooting](../../development/troubleshooting.md) - Common issues
+- [Mock adapter](README.md) — the full mock adapter guide
+- [End-to-end testing](../../development/e2e-testing.md) — the containerized stack these simulations run in
+- [Test architecture](../../../tests/CLAUDE.md) — writing tests against the mock adapter
+- [Troubleshooting](../../development/troubleshooting.md) — general debugging
