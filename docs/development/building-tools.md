@@ -1,7 +1,27 @@
 # How a tool works
 
-The design this codebase implements. Read "One declaration" and "The request lifecycle" first. The lifecycle is the spine, and
-every other rule here follows from it.
+This document describes the design the codebase implements. Read "One declaration" and "The
+request lifecycle" first: the lifecycle is the spine, and every other rule follows from it.
+
+The system rests on five seams. Each is the single place its concern is decided. Each replaced
+a set of per-transport copies that could disagree:
+
+- **The declaration.** `TOOLS` names a tool once. MCP registration, the A2A skill and agent
+  card, and the REST route all derive from that row.
+- **The request boundary.** Every transport validates into the same DTO and then calls
+  `invoke_tool`. Account scope, idempotency and the version stamp happen there, once.
+- **The response.** `to_wire` produces every body. The transports differ only in the container
+  they put it in.
+- **The errors.** A raise site names a code and supplies facts. `CODE_TABLE` owns every
+  sentence a buyer reads.
+- **The outbound calls.** One send path owns address policy, retries and redirect refusal.
+
+Having one of each means a rule holds everywhere by construction. Most of the checks that
+policed agreement between copies are therefore gone. It is also why this document tells you to
+make a mistake unconstructible before reaching for a guard.
+
+BDD scenarios executed across every transport grade the behaviour, and the conformance
+storyboards grade it again from outside.
 
 AdCP **3.1.1** via the `adcp` SDK. Companion pages: [architecture.md](architecture.md),
 [patterns-reference.md](patterns-reference.md), [structural-guards.md](structural-guards.md).
