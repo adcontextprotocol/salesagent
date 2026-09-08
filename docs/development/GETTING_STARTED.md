@@ -163,6 +163,25 @@ uv run mypy src/core/your_file.py --config-file=mypy.ini
 make lint-fix
 ```
 
+## Conductor Workspaces
+
+Conductor is a Mac app that runs multiple development workspaces in
+parallel, each in its own git worktree with an isolated Docker environment.
+To set up a workspace, run the setup script from inside it:
+
+```bash
+./scripts/setup/setup_conductor_workspace.sh
+```
+
+The script copies `.env` from the Conductor root directory (create it there
+first — see [Environment Configuration](#environment-configuration)),
+assigns the workspace a unique port, and starts the Docker stack. When you
+archive a workspace, release its Docker resources:
+
+```bash
+./scripts/setup/cleanup_conductor_workspace.sh
+```
+
 ## Environment Configuration
 
 The `.env` file is created from `.env.template` during setup. Key variables:
@@ -179,6 +198,7 @@ For OAuth, GAM integration, and other production settings, see the comments in `
 ## Next Steps
 
 - [Architecture](architecture.md) — system design and component overview
-- [Contributing](contributing.md) — code style, adapters, debugging
+- [Engineering standards](engineering-standards.md) — the standards every change is held to
+- [Creating an ad server adapter](../adapters/creating-an-adapter.md) — the adapter base-class contract
 - [Structural Guards](structural-guards.md) — automated architecture enforcement
 - [Troubleshooting](troubleshooting.md) — common development issues

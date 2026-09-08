@@ -25,7 +25,7 @@ class TestSyncCreativesCreativeIdsFilter:
             creative_id="creative_1",
             variants=[],
             name="Test Creative",
-            format_id=FormatId(agent_url="https://creatives.example.com/", id="display_300x250"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             assets=build_assets(image_spec("banner")),
         )
 
@@ -45,7 +45,7 @@ class TestSyncCreativesCreativeIdsFilter:
             creative_id="creative_1",
             variants=[],
             name="Test Creative",
-            format_id=FormatId(agent_url="https://creatives.example.com/", id="display_300x250"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display_300x250"),
             assets=build_assets(image_spec("banner")),
         )
 
@@ -87,17 +87,17 @@ class TestSyncCreativesCreativeIdsFilter:
             {
                 "creative_id": "creative_1",
                 "name": "Creative 1",
-                "format_id": {"agent_url": "https://example.com/", "id": "display"},
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display"},
             },
             {
                 "creative_id": "creative_2",
                 "name": "Creative 2",
-                "format_id": {"agent_url": "https://example.com/", "id": "display"},
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display"},
             },
             {
                 "creative_id": "creative_3",
                 "name": "Creative 3",
-                "format_id": {"agent_url": "https://example.com/", "id": "display"},
+                "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display"},
             },
         ]
 
@@ -221,7 +221,7 @@ class TestUpdateMediaBuyCreativeAssignments:
                 {
                     "creative_id": "new_c1",
                     "name": "New Creative",
-                    "format_id": {"agent_url": "https://example.com/", "id": "display_300x250"},
+                    "format_id": {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"},
                     "assets": build_assets(image_spec("banner")),
                     "weight": 75,
                     "placement_ids": ["pl_1"],
@@ -299,7 +299,7 @@ class TestSyncCreativesErrorCases:
             creative_id="creative_1",
             variants=[],
             name="Test Creative",
-            format_id=FormatId(agent_url="https://creatives.example.com/", id="display"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display"),
             assets=build_assets(image_spec("banner")),
         )
 
@@ -327,14 +327,14 @@ class TestSyncCreativesErrorCases:
                 creative_id="creative_1",
                 variants=[],
                 name="Creative 1",
-                format_id=FormatId(agent_url="https://creatives.example.com/", id="display"),
+                format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display"),
                 assets=build_assets(image_spec("banner", url="https://example.com/1.png")),
             ),
             Creative(
                 creative_id="creative_2",
                 variants=[],
                 name="Creative 2",
-                format_id=FormatId(agent_url="https://creatives.example.com/", id="display"),
+                format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display"),
                 assets=build_assets(image_spec("banner", url="https://example.com/2.png")),
             ),
         ]
@@ -365,7 +365,7 @@ class TestSyncCreativesErrorCases:
             creative_id="creative_1",
             variants=[],
             name="Test",
-            format_id=FormatId(agent_url="https://creatives.example.com/", id="display"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display"),
             assets=build_assets(image_spec("banner")),
         )
 
@@ -606,7 +606,7 @@ class TestDeleteMissingWithCreativeIdsFilter:
             creative_id="creative_1",
             variants=[],
             name="Test",
-            format_id=FormatId(agent_url="https://creatives.example.com/", id="display"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display"),
             assets=build_assets(image_spec("banner")),
         )
 
@@ -639,7 +639,7 @@ class TestDeleteMissingWithCreativeIdsFilter:
             creative_id="c1",
             variants=[],
             name="Creative 1",
-            format_id=FormatId(agent_url="https://creatives.example.com/", id="display"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display"),
             assets=build_assets(image_spec("banner")),
         )
 
@@ -696,14 +696,14 @@ class TestUpsertSemantics:
             creative_id="c1",
             variants=[],
             name="Creative 1 Updated",
-            format_id=FormatId(agent_url="https://creatives.example.com/", id="display"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display"),
             assets=build_assets(image_spec("banner", url="https://example.com/new.png")),
         )
         c2 = Creative(
             creative_id="c2",
             variants=[],
             name="Creative 2 Updated",
-            format_id=FormatId(agent_url="https://creatives.example.com/", id="display"),
+            format_id=FormatId(agent_url="https://creative.adcontextprotocol.org", id="display"),
             assets=build_assets(image_spec("banner", url="https://example.com/new2.png")),
         )
 

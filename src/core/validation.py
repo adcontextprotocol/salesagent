@@ -4,7 +4,6 @@ import json
 import logging
 import re
 from typing import Any
-from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -30,48 +29,6 @@ class FormValidator:
         email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
         if not re.match(email_regex, email):
             return "Invalid email address format"
-
-        return None
-
-    @staticmethod
-    def validate_url(url: str, required: bool = False) -> str | None:
-        """Validate URL format."""
-        if not url and required:
-            return "URL is required"
-
-        if not url:
-            return None
-
-        try:
-            result = urlparse(url)
-            if not all([result.scheme, result.netloc]):
-                return "Invalid URL format"
-
-            if result.scheme not in ["http", "https"]:
-                return "URL must use http or https protocol"
-
-            return None
-        except Exception as e:
-            logger.debug(f"URL validation error: {e}")
-            return "Invalid URL format"
-
-    @staticmethod
-    def validate_webhook_url(url: str) -> str | None:
-        """Validate webhook URL (more specific than general URL)."""
-        if not url:
-            return None  # Webhooks are optional
-
-        # First do general URL validation
-        url_error = FormValidator.validate_url(url)
-        if url_error:
-            return url_error
-
-        # Check for known webhook patterns
-        if "hooks.slack.com/services/" in url:
-            # Validate Slack webhook format
-            parts = url.split("/")
-            if len(parts) < 7:
-                return "Invalid Slack webhook URL format"
 
         return None
 

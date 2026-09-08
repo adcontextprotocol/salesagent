@@ -233,17 +233,18 @@ class TestExtG07WebhookAuthFailureRecovery:
             env.set_http_status(401, "Unauthorized: invalid credentials")
 
             success, result = env.call_deliver(
-                webhook_url="https://buyer.example.com/webhook",
                 payload={"media_buy_id": "mb_001", "status": "active"},
                 event_type="delivery.update",
                 tenant_id="test_tenant",
                 object_id="mb_001",
             )
+            attempts_made = env.delivery_attempts
 
         assert success is False
         assert result["status"] == "failed"
         assert result["response_code"] == 401
         assert result["attempts"] == 1
+        assert attempts_made == 1
         assert "Client error 401" in result["error"]
 
         # --- Step 2: Circuit breaker opens after auth failures ---
@@ -259,13 +260,14 @@ class TestExtG07WebhookAuthFailureRecovery:
             env.set_http_status(200, "OK")
 
             success_after, result_after = env.call_deliver(
-                webhook_url="https://buyer.example.com/webhook",
                 payload={"media_buy_id": "mb_001", "status": "active"},
                 headers={"Authorization": "Bearer new-valid-token"},
                 event_type="delivery.update",
                 tenant_id="test_tenant",
                 object_id="mb_001",
             )
+            # The reconfigured credential really reached the endpoint.
+            assert env.last_delivery.headers["Authorization"] == "Bearer new-valid-token"
 
         assert success_after is True
         assert result_after["status"] == "delivered"
@@ -281,7 +283,6 @@ class TestExtG07WebhookAuthFailureRecovery:
             env.set_http_status(401, "Unauthorized")
 
             success, result = env.call_deliver(
-                webhook_url="https://buyer.example.com/webhook",
                 event_type="delivery.update",
                 tenant_id="test_tenant",
                 object_id="mb_001",
@@ -291,7 +292,7 @@ class TestExtG07WebhookAuthFailureRecovery:
             assert result["response_code"] == 401
             assert result["attempts"] == 1
             assert result["status"] == "failed"
-            env.mock["post"].assert_called_once()
+            assert env.delivery_attempts == 1
 
     def test_403_causes_immediate_failure_no_retry(self):
         """403 forbidden error is treated as 4xx client error: no retry.
@@ -304,7 +305,6 @@ class TestExtG07WebhookAuthFailureRecovery:
             env.set_http_status(403, "Forbidden")
 
             success, result = env.call_deliver(
-                webhook_url="https://buyer.example.com/webhook",
                 headers={"Authorization": "Bearer expired-token"},
                 event_type="delivery.update",
                 tenant_id="test_tenant",
@@ -315,7 +315,7 @@ class TestExtG07WebhookAuthFailureRecovery:
             assert result["response_code"] == 403
             assert result["attempts"] == 1
             assert result["status"] == "failed"
-            env.mock["post"].assert_called_once()
+            assert env.delivery_attempts == 1
 
     def test_circuit_breaker_opens_after_repeated_auth_failures(self):
         """Circuit breaker opens after threshold auth failures, blocking delivery.
@@ -573,14 +573,17 @@ class TestResetSequence:
 
 
 class TestDeliverWithBackoffGenericException:
-    """_deliver_with_backoff breaks on non-httpx exceptions.
+    """_deliver_with_backoff turns a non-transport exception into an outcome.
 
-    Covers lines 514-516 of webhook_delivery_service.py (pre-removal line numbers).
+    The exception must not escape a function the poller thread calls with no
+    caller left to receive a raise, and it must not be reported as the same
+    nothing a refusal is.
     """
 
     def test_generic_exception_breaks_retry_loop(self):
         from unittest.mock import MagicMock
 
+        from src.core.webhooks.delivery import WebhookDeliveryOutcome
         from src.services.webhook_delivery_service import (
             CircuitBreaker,
             WebhookDeliveryService,
@@ -593,7 +596,9 @@ class TestDeliverWithBackoffGenericException:
 
         mock_config = MagicMock()
         mock_config.url = "https://example.com/hook"
-        mock_config.webhook_secret = None
+        # No webhook_secret: production stopped reading that column with
+        # salesagent-47n9.24, and a MagicMock answers every attribute, so leaving
+        # it set would keep this mock describing a config shape nothing reads.
         mock_config.authentication_type = None
         mock_config.authentication_token = None
 
@@ -605,19 +610,63 @@ class TestDeliverWithBackoffGenericException:
             }
         )
 
-        with patch("src.services.webhook_delivery_service.httpx") as mock_httpx:
-            mock_httpx.Client.return_value.__enter__ = MagicMock(
-                return_value=MagicMock(post=MagicMock(side_effect=RuntimeError("unexpected")))
-            )
-            mock_httpx.Client.return_value.__exit__ = MagicMock(return_value=False)
-            mock_httpx.TimeoutException = type("TimeoutException", (Exception,), {})
-            mock_httpx.RequestError = type("RequestError", (Exception,), {})
+        # salesagent-vkxf part 2: the subject is a NON-transport exception escaping
+        # the delivery call, so there is nothing an origin can serve to produce it.
+        # It is injected at the seam instead of at a transport this module no
+        # longer touches — and the seam's own exception TYPES are real now, rather
+        # than the placeholder classes the old httpx-module stub had to invent.
+        #
+        # salesagent-pldmk.6: the STIMULUS changed, and it had to. This test used to
+        # raise RuntimeError("unexpected") and pin detail == "unexpected", which
+        # positively graded the ``detail=str(e)`` behaviour Move 2 removes. It could
+        # not simply be re-pinned in place: the replacement detail is a sentence
+        # webhook_egress.py authors about an UNEXPECTED failure, so it contains the
+        # word "unexpected" itself — making "the exception's own text is absent"
+        # unwritable against the old stimulus. So the stimulus is now the realistic
+        # case the arm's own comment names: the pinned transport's wrong-host guard,
+        # whose message interpolates TWO hostnames (verbatim shape from
+        # adcp/signing/ip_pinned_transport.py:150-154) into a field contracted
+        # "never a URL, never a credential" and then persisted to
+        # webhook_delivery_log.error_message.
+        def _unexpected(*args, **kwargs):
+            raise RuntimeError("IpPinnedTransport is pinned to 'a.example'; refusing connect to 'b.example'")
 
-            result = svc._deliver_with_backoff("test_endpoint", cb, queue)
+        # Patched at ``deliver_webhook`` since Epic D lane C4: the sender no longer
+        # calls the signing helper directly — it calls the seam, which owns the auth
+        # decision and returns an outcome. The subject is unchanged: a NON-transport
+        # exception escaping the delivery call, which no origin can serve, so it is
+        # still injected here rather than at a transport this module never touches.
+        with patch("src.services.webhook_delivery_service.deliver_webhook", _unexpected):
+            result = svc._deliver_with_backoff("test_endpoint", queue)
 
-        assert result is False
-        # Circuit breaker should record the failure
-        assert cb.failure_count >= 1
+        # The foreign exception's text never reaches ``detail``. Asserted FIRST
+        # because it is the disclosure: ``detail`` is written verbatim to
+        # webhook_delivery_log.error_message (repositories/delivery.py:327) and
+        # emitted as an audit warning (protocol_webhook_service.py:280), so a
+        # hostname landing here lands in storage and in an operator record.
+        detail = result.detail or ""
+        assert "a.example" not in detail, f"outcome.detail carries the pinned hostname: {detail!r}"
+        assert "b.example" not in detail, f"outcome.detail carries the attempted hostname: {detail!r}"
+        assert "pinned to" not in detail, f"outcome.detail carries the foreign exception's phrasing: {detail!r}"
+
+        # The function concludes in an OUTCOME, not a bool: "it did not deliver"
+        # and "why" used to collapse into False, which is how a refusal became
+        # indistinguishable from three failed attempts. No kind covers a
+        # NON-transport failure, so the arm builds ``exhausted`` with the honest
+        # attempt count — zero. Whole-object equality against the named
+        # constructor keeps kind/attempts/http_status/reason/scheme pinned exactly
+        # as they were, so fixing ``detail`` cannot quietly change anything else.
+        assert result == WebhookDeliveryOutcome.unexpected("RuntimeError")
+
+        # The circuit breaker is NOT fed here any more, and that is the change,
+        # not an oversight: _send_webhook_enhanced now feeds it from the outcome,
+        # once, for every kind — so no arm of this function can be the one that
+        # forgets. Asserting a failure tick here would pin the breaker to an arm
+        # it no longer belongs to. The obligation is graded where it moved, over
+        # the public surface: tests/integration/test_delivery_service_behavioral.py
+        # asserts get_circuit_breaker_state()'s failure_count for a delivery that
+        # did not succeed, including a refused URL reaching the open threshold.
+        assert cb.failure_count == 0
 
 
 class TestShutdownHandler:

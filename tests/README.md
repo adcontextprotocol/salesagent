@@ -1,8 +1,10 @@
-# AdCP Sales Agent Test Suite
+# AdCP Sales Agent test suite
 
 > For AI agent instructions, see [`CLAUDE.md`](CLAUDE.md) in this directory.
 
-## Test Suites
+## Test suites
+
+Each suite maps to a tox environment:
 
 | Suite | Directory | tox env | Needs Docker? | Count |
 |-------|-----------|---------|---------------|-------|
@@ -12,7 +14,7 @@
 | E2E | `tests/e2e/` | `e2e` | Full stack | ~80 |
 | Admin | `tests/admin/` | `admin` | Full stack | ~4 |
 
-## Running Tests
+## Run tests
 
 ```bash
 # Quick quality check (format + lint + typecheck + unit tests)
@@ -39,9 +41,9 @@ make test-cov
 
 Test results are saved as JSON in `test-results/<ddmmyy_HHmm>/` (last 10 runs kept).
 
-## Test Architecture
+## Test architecture
 
-### Harness System (`tests/harness/`)
+### Harness system (`tests/harness/`)
 
 The test harness provides domain-specific environments that manage mocks, database sessions,
 identity, and multi-transport dispatch. Each environment is a context manager:
@@ -61,13 +63,13 @@ with DeliveryPollEnv(tenant_id="t1", principal_id="p1") as env:
 ```
 
 Environments auto-patch external dependencies, bind database sessions to factories,
-and support dispatching through all 4 transports (IMPL, A2A, MCP, REST).
+and support dispatching through the three transports (A2A, MCP, REST), in-process or over real HTTP.
 
 See [`CLAUDE.md`](CLAUDE.md) for the full environment table and API reference.
 
-### Factory System (`tests/factories/`)
+### Factory system (`tests/factories/`)
 
-All test data is created via [factory-boy](https://factoryboy.readthedocs.io/) factories:
+Create all test data through [factory-boy](https://factoryboy.readthedocs.io/) factories:
 
 ```python
 from tests.factories import TenantFactory, PrincipalFactory, MediaBuyFactory
@@ -81,32 +83,34 @@ identity = PrincipalFactory.make_identity(tenant_id="t1", principal_id="p1")
 ORM factories live in `tests/factories/` (core, principal, product, media_buy, creative,
 metrics, webhook). Pydantic model factories (Format, FormatId) are also available.
 
-### BDD Tests (`tests/bdd/`)
+### BDD tests (`tests/bdd/`)
 
-Behavioral tests derived from AdCP requirements using pytest-bdd. Feature files in
-`tests/bdd/features/` are auto-generated from the AdCP spec — do not hand-edit.
+Behavioral tests derived from AdCP requirements using pytest-bdd. The feature
+files in `tests/bdd/features/` are generated from the AdCP spec — do not edit
+them by hand.
 
-Step definitions are organized in two layers:
+Step definitions live in two layers:
+
 - **`steps/generic/`** — Reusable steps shared across use cases
 - **`steps/domain/`** — Use-case-specific steps
 
-Every scenario is automatically parametrized across all 4 transports unless tagged
-with a specific one (`@rest`, `@mcp`, `@a2a`).
+Every scenario is automatically parametrized across the three transports
+(A2A, MCP, REST) unless tagged with a specific one (`@rest`, `@mcp`, `@a2a`).
 
-### Obligation Tests
+### Obligation tests
 
 Tests tagged with `Covers: <obligation-id>` verify behavioral contracts. The
-obligation DOCUMENTS those ids referred to are no longer committed — they were
-generated reports, and a generated report kept in the tree drifts from its
-generator — so the two structural guards that graded tags against them were
-deleted with the documents. Existing tags are kept as provenance; do not add new
-ones. See `tests/CLAUDE.md` for the rules that still bind a tagged test.
+obligation documents that those ids refer to are generated reports and are not
+committed — a generated report kept in the tree drifts from its generator — so
+no structural guard checks the tags against the documents. The tags record
+provenance; do not add more. See [`CLAUDE.md`](CLAUDE.md) for the rules that
+bind a tagged test.
 
-## Structural Guards
+## Structural guards
 
 AST-scanning tests in `tests/unit/` enforce architecture invariants on every
-`make quality` run. See [structural-guards.md](../docs/development/structural-guards.md)
-for the full list. Key testing guards:
+`make quality` run. See [Structural guards](../docs/development/structural-guards.md)
+for the full list. The following guards matter most when writing tests:
 
 - **Repository pattern** — no `get_db_session()` or `session.add()` outside repositories
 - **BDD no-op steps** — Then steps must assert, not delegate to no-ops
@@ -114,6 +118,8 @@ for the full list. Key testing guards:
 - **BDD no dict registry** — Given steps must use factories, not raw dicts
 
 ## Markers
+
+Tests carry the following markers:
 
 - `@pytest.mark.requires_db` — needs PostgreSQL (integration, BDD)
 - **Entity markers** (auto-applied by filename): `delivery`, `creative`, `product`,
@@ -123,6 +129,7 @@ for the full list. Key testing guards:
 ## Coverage
 
 Coverage is collected per-suite and combined automatically:
+
 - HTML report: `htmlcov/index.html` (open with `make test-cov`)
 - JSON report: `coverage.json`
 - Per-entity thresholds: `tests/coverage_scopes.yaml`

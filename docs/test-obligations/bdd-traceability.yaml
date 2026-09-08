@@ -16182,3 +16182,103 @@ mappings:
       upstream_refs: ["BR-UC-032-main"]
       business_rules: []
       status: new
+  EGRESS-SSRF:
+    # Locally-added feature, no upstream storyboard step to inherit: nothing in
+    # dist/compliance/3.1.1/ grades a seller refusing a counterparty-supplied
+    # URL. Grounded on AdCP 3.1.1 L1 prose (docs/building/by-layer/L1/security.mdx
+    # § "Webhook URL validation (SSRF)", points 1/2/6) instead. obligation_id:
+    # null / status: new follows the local-uc006 precedent above — `mapped` would
+    # require a real obligation ID, and there is none yet.
+    - adcp_scenario_id: "T-EGRESS-SSRF-refused-url-is-a-correctable-buyer-error"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-EGRESS-SSRF-refusal-discloses-nothing"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-EGRESS-SSRF-plaintext-http-refused"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-EGRESS-SSRF-ingest-refused-webhook-url"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-EGRESS-SSRF-sync-creatives-agent-url"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+  EGRESS-CREDS:
+    # The CREDENTIAL half of the same locally-added feature: a webhook
+    # registration naming HMAC-SHA256 with no shared secret. Also ungraded by
+    # dist/compliance/3.1.1/ — the `credentials` hits there are TRANSPORT auth
+    # (universal/security.yaml), not a webhook registration — so it follows the
+    # EGRESS-SSRF precedent above: grounded on the pinned schema
+    # (core/push-notification-config.json -> Authentication.required =
+    # [schemes, credentials], credentials minLength 32), obligation_id null /
+    # status new, because there is no obligation ID to point at yet.
+    - adcp_scenario_id: "T-EGRESS-CREDS-create-media-buy"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-EGRESS-CREDS-update-media-buy"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-EGRESS-CREDS-sync-creatives"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-EGRESS-CREDS-a2a-message-send"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    # Lane C3 (salesagent-fo99.3): the two documents the pinned schema forbids
+    # outright — a >1 `schemes` array (maxItems 1) and a `credentials` shorter
+    # than minLength 32 — which reach `_impl` unvalidated on the untyped A2A tool
+    # path. Same standing as the group above: grounded on the pin
+    # (core/push-notification-config.json + enums/auth-scheme.json), ungraded by
+    # dist/compliance/3.1.1/, so obligation_id null / status new.
+    - adcp_scenario_id: "T-EGRESS-SCHEMES-multi-create"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    - adcp_scenario_id: "T-EGRESS-CREDS-short-sync"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
+    # salesagent-pldmk.8: the same pinned minimum on the PRIMITIVES path — the A2A
+    # protocol envelope, where src/core/webhooks/registration.py currently exempts
+    # a present-but-short credential. Same standing as its siblings above:
+    # grounded on core/push-notification-config.json (credentials.minLength 32,
+    # unconditional), ungraded by dist/compliance/3.1.1/ — the runner emits only
+    # schema-valid negative payloads — so obligation_id null / status new.
+    - adcp_scenario_id: "T-EGRESS-CREDS-short-a2a-message-send"
+      adcp_feature: "local-egress-ssrf-refusal.feature"
+      obligation_id: null
+      upstream_refs: []
+      business_rules: []
+      status: new
