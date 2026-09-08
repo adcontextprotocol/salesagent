@@ -13,6 +13,7 @@ import pytest
 from a2a.types import InvalidRequestError
 
 from src.a2a_server.adcp_a2a_server import AdCPRequestHandler
+from src.core.schemas import GetProductsResponse, ListCreativeFormatsResponse
 from tests.factories.principal import PrincipalFactory
 from tests.helpers.capture_wrapper_req import stub_impl
 
@@ -34,7 +35,7 @@ class TestAuthOptionalSkills:
     async def test_list_creative_formats_without_auth(self):
         """list_creative_formats should work with anonymous identity (no principal)."""
         with stub_impl("list_creative_formats") as mock_tool:
-            mock_tool.return_value = {"formats": []}
+            mock_tool.return_value = ListCreativeFormatsResponse(formats=[])
 
             result = await self.handler._dispatch_skill("list_creative_formats", {}, self.anon_identity)
 
@@ -46,7 +47,7 @@ class TestAuthOptionalSkills:
     async def test_list_creative_formats_with_auth(self):
         """list_creative_formats should work with authenticated identity."""
         with stub_impl("list_creative_formats") as mock_tool:
-            mock_tool.return_value = {"formats": []}
+            mock_tool.return_value = ListCreativeFormatsResponse(formats=[])
 
             result = await self.handler._dispatch_skill("list_creative_formats", {}, self.mock_identity)
 
@@ -57,7 +58,7 @@ class TestAuthOptionalSkills:
     async def test_get_products_without_auth(self):
         """get_products should work with anonymous identity."""
         with stub_impl("get_products") as mock_tool:
-            mock_tool.return_value = {"products": []}
+            mock_tool.return_value = GetProductsResponse(products=[])
 
             result = await self.handler._dispatch_skill("get_products", {"brief": "test campaign"}, self.anon_identity)
 
@@ -68,7 +69,7 @@ class TestAuthOptionalSkills:
     async def test_get_products_with_auth(self):
         """get_products should work with authenticated identity."""
         with stub_impl("get_products") as mock_tool:
-            mock_tool.return_value = {"products": []}
+            mock_tool.return_value = GetProductsResponse(products=[])
 
             result = await self.handler._dispatch_skill("get_products", {"brief": "test campaign"}, self.mock_identity)
 

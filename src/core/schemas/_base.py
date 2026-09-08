@@ -956,7 +956,7 @@ class CreateMediaBuySubmitted(AdCPCreateMediaBuySubmitted):
 CreateMediaBuyResponse = CreateMediaBuySuccess | CreateMediaBuyError
 
 
-class TaskResultEnvelope(ProtocolEnvelope, SalesAgentBaseModel):
+class TaskResultEnvelope(AdcpVersionEnvelope, ProtocolEnvelope, SalesAgentBaseModel):
     """DRY base for protocol-status-wrapping result types.
 
     Serializes to {"status": <TaskStatus>, ...response_fields} by flattening the domain
@@ -974,12 +974,23 @@ class TaskResultEnvelope(ProtocolEnvelope, SalesAgentBaseModel):
 
     ``status`` is the envelope's ``TaskStatus`` rather than a bare ``str``, so a value outside
     the pinned enum no longer type-checks.
+
+    It inherits ``AdcpVersionEnvelope`` for the same reason it inherits ``ProtocolEnvelope``:
+    the other twelve tools' responses get ``adcp_version`` from that SDK base through their
+    own response model, and this wrapper is not one of them. Without it, create_media_buy and
+    update_media_buy were the only two responses that could not carry the release the seller
+    served -- the field the boundary stamps on every envelope. Same shape as
+    ``CompleteTaskResponse(AdcpVersionEnvelope, ProtocolEnvelope)`` below.
     """
 
     @model_serializer(mode="wrap")
     def _serialize(self, serializer, info):
         result = self.response.model_dump(mode=info.mode, context=info.context)
         result["status"] = self.status
+        # Projected like ``status``, and for the identical reason: the WRAPPER owns the
+        # envelope fields, and this body is built from the domain response, which carries its
+        # own unset ``adcp_version`` and would drop it under exclude_none.
+        result["adcp_version"] = self.adcp_version
         # The wrapper owns ``replayed``, not the domain response. A variant that declares its
         # own (``UpdateMediaBuySubmitted`` does, via the SDK parent) would otherwise emit the
         # response's default -- which is how a REPLAYED submitted update went on the wire

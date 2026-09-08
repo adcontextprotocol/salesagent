@@ -336,6 +336,7 @@ from adcp.types.generated_poc.core.version_envelope import AdcpVersionEnvelope
 from mcp.types import ToolAnnotations
 
 from src.core.tools._announced_shape import sdk_grounding
+from src.core.tools._boundary import _response_model_for
 from src.core.tools.registry import TOOLS
 
 _sdk_tool_defs = {td["name"]: td for td in ADCP_TOOL_DEFINITIONS}
@@ -395,6 +396,25 @@ def _register_tool(tool_name: str, spec: Any) -> None:
             f"This check is UNGATED on purpose. The SDK-grounding refusal below fires only "
             f"when the SDK defines the tool, which exempts precisely the tools most likely "
             f"to grow a parallel model."
+        )
+    response_model = _response_model_for(spec.impl)
+    if response_model is not None and not issubclass(response_model, AdcpVersionEnvelope):
+        raise RuntimeError(
+            f"{tool_name} cannot be registered: {response_model.__name__} does not descend "
+            f"from adcp's AdcpVersionEnvelope, so it has nowhere to carry adcp_version -- the "
+            f"release this seller served, which the boundary stamps on EVERY response "
+            f"(_boundary._served) and AdCP 3.1.1 grades at the envelope root "
+            f"(compliance/universal/version-negotiation.yaml, envelope_field_present).\n\n"
+            f"The symmetric refusal to the request-side one above, and for the same reason: a "
+            f"response model that cannot hold an envelope field fails SILENTLY. AdCPBaseModel "
+            f"serializes with exclude_none=True, so the field does not go out as null -- it is "
+            f"simply absent, on every transport, which is how this went unnoticed long enough "
+            f"to be filed as salesagent-lpfa0. TaskResultEnvelope was the model in question: it "
+            f"inherited ProtocolEnvelope alone, so create_media_buy and update_media_buy were "
+            f"the only two responses in the tool set that could not state the release.\n\n"
+            f"Extend the SDK response type for this tool -- its arms already inherit "
+            f"AdcpVersionEnvelope -- or, for a local wrapper, inherit AdcpVersionEnvelope "
+            f"alongside ProtocolEnvelope as TaskResultEnvelope and CompleteTaskResponse do."
         )
     if sdk_def is not None and model is not None and sdk_grounding(model) is None:
         raise RuntimeError(

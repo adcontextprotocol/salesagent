@@ -56,15 +56,17 @@ import inspect
 import logging
 import typing
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from adcp.types import ProtocolEnvelope
+from adcp.types.generated_poc.core.version_envelope import AdcpVersionEnvelope
 from pydantic import BaseModel
 
 from src.core.idempotency_canonical import canonical_request_hash
 from src.core.idempotency_replay import cache_success, lookup_cached_replay, maybe_evict_expired
 from src.core.resolved_identity import ResolvedIdentity
 from src.core.schemas._base import BuyerRequest
+from src.core.version_negotiation import SERVED_ADCP_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +216,41 @@ async def invoke(
     An implementation is called with the request and the caller, and nothing else. There is
     no per-transport channel here, so no transport can hand an implementation a value the
     others cannot.
+
+    The response comes back stamped with the release this build served. That is an envelope
+    field like any other -- every response model declares ``adcp_version``, inherited from the
+    SDK's ``AdcpVersionEnvelope`` -- and it is set HERE for the same reason the account and the
+    idempotency key are read here: it is a property of the seller and the call, not of the
+    work, so an implementation neither knows it nor should have to. AdCP 3.1.1
+    ``compliance/universal/version-negotiation.yaml`` grades it at the envelope root with
+    ``envelope_field_present`` and ``envelope_field_pattern`` (advisory at 3.1, MUST at 4.0).
     """
+    return _served(await _invoke(tool_name, impl, req, identity))
+
+
+def _served(response: ProtocolEnvelope) -> ProtocolEnvelope:
+    """Stamp the release this build served onto one response envelope.
+
+    THE one assignment. Both of ``invoke``'s answers pass through it -- a fresh run and a
+    replayed one -- so a replay echoes the release that is serving it, which is what the
+    buyer's connection is actually speaking.
+    """
+    # Every registered response inherits BOTH ``ProtocolEnvelope`` (status, replayed, ...) and
+    # the SDK's ``AdcpVersionEnvelope`` (adcp_version). Python has no intersection type, so the
+    # cast names the half this assignment needs;
+    # ``test_architecture_response_envelope_bases`` grades that the half is really there for
+    # every tool, which is what keeps the cast from being a hope.
+    cast("AdcpVersionEnvelope", response).adcp_version = SERVED_ADCP_VERSION
+    return response
+
+
+async def _invoke(
+    tool_name: str,
+    impl: Callable[..., Any],
+    req: BuyerRequest,
+    identity: ResolvedIdentity | None = None,
+) -> ProtocolEnvelope:
+    """``invoke`` without the envelope stamp: resolve the account, honour the key, run it."""
     account = req.get_account()
     if account is not None and identity is not None:
         from src.core.transport_helpers import enrich_identity_with_account

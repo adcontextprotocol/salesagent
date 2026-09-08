@@ -6,11 +6,9 @@ from typing import Any
 
 from adcp.types import ProtocolEnvelope
 
-from src.core.version_negotiation import SERVED_ADCP_VERSION
-
 
 def to_wire(response: ProtocolEnvelope) -> dict[str, Any]:
-    r"""Serialize a tool's response into the body every transport sends.
+    """Serialize a tool's response into the body every transport sends.
 
     One function, three callers. MCP puts the result in ``ToolResult.structured_content``,
     A2A in an artifact ``DataPart``, REST returns it as the HTTP body -- those three
@@ -33,23 +31,9 @@ def to_wire(response: ProtocolEnvelope) -> dict[str, Any]:
     the wider bound and produce a body with no envelope at all -- the same reasoning that binds
     ``mcp_result`` to ``AdCPBaseModel`` rather than to ``BaseModel``.
 
-    ``adcp_version`` is stamped HERE, and it is the one exception to "nothing to add" above --
-    which it does not actually contradict, because it is not per-transport. It is a property of
-    the SELLER, not of the response: the release this build served, identical on every response
-    and unknowable to an implementation. AdCP 3.1.1
-    ``compliance/universal/version-negotiation.yaml``, step ``get_capabilities_with_version``,
-    grades it with ``envelope_field_present`` and ``envelope_field_pattern`` at path
-    ``adcp_version`` -- "the release the seller actually served", release-precision
-    ``^\d+\.\d+(-[a-zA-Z0-9.-]+)?$``. Advisory at 3.1, promoted at 3.2, MUST at 4.0.
-
-    Stamped on the DICT rather than the model, and that is deliberate. No pinned response
-    schema declares the field -- the storyboard narrative says so itself, "``additionalProperties:
-    true`` makes the field invisible to them" -- and two of the fourteen responses are
-    ``TaskResultEnvelope`` subclasses whose wrap serializer builds the body from the domain
-    response and would drop an envelope field nobody projected. Stamping the body reaches all
-    fourteen through one line; stamping the model would have reached twelve and needed a second
-    edit for the other two.
+    ``adcp_version`` is one of those declared envelope fields and needs no help here either.
+    It is set on the MODEL at the boundary (``_boundary.invoke``), which is the response-side
+    mirror of where the request is read, and it serializes from there like ``status`` or
+    ``message``.
     """
-    body = response.model_dump(mode="json")
-    body["adcp_version"] = SERVED_ADCP_VERSION
-    return body
+    return response.model_dump(mode="json")
