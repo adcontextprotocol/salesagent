@@ -39,6 +39,7 @@ def _result(
     field it means to break, so the failure is attributable to that field alone.
     """
     return TransportResult(
+        has_wire=True,
         wire_error_envelope={
             "adcp_error": {"code": code, "message": "boom", "recovery": recovery},
             "errors": [
@@ -48,7 +49,7 @@ def _result(
                     "recovery": errors_recovery if errors_recovery is not None else recovery,
                 }
             ],
-        }
+        },
     )
 
 
@@ -83,8 +84,8 @@ class TestAssertWireRecovery:
             _result(errors_code="MEDIA_BUY_NOT_FOUND").assert_wire_recovery("correctable")
 
     def test_fails_when_no_wire_envelope_was_captured(self):
-        with pytest.raises(AssertionError, match="no wire_error_envelope was captured"):
-            TransportResult().assert_wire_recovery("correctable")
+        with pytest.raises(AssertionError, match="none was captured"):
+            TransportResult(has_wire=False).assert_wire_recovery("correctable")
 
 
 class TestAssertWireIsAdcpEnvelope:
@@ -108,11 +109,14 @@ class TestAssertWireIsAdcpEnvelope:
             _result(code=_NON_CANONICAL_CODE).assert_wire_is_adcp_envelope()
 
     def test_fails_when_the_envelope_layer_has_no_code(self):
-        result = TransportResult(wire_error_envelope={"adcp_error": {"message": "boom"}, "errors": []})
+        result = TransportResult(
+            has_wire=True,
+            wire_error_envelope={"adcp_error": {"message": "boom"}, "errors": []},
+        )
         with pytest.raises(AssertionError, match="no envelope-level adcp_error.code"):
             result.assert_wire_is_adcp_envelope()
 
     def test_fails_on_a_500_or_non_adcp_body(self):
         """No envelope captured is exactly the shape this step is meant to reject."""
-        with pytest.raises(AssertionError, match="no wire_error_envelope was captured"):
-            TransportResult().assert_wire_is_adcp_envelope()
+        with pytest.raises(AssertionError, match="none was captured"):
+            TransportResult(has_wire=False).assert_wire_is_adcp_envelope()
