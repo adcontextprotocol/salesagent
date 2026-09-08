@@ -15,7 +15,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 INSPECTOR="$PROJECT_ROOT/.claude/scripts/inspect_bdd_steps.py"
-FEATURES_DIR="$PROJECT_ROOT/tests/bdd/features"
 STEPS_DIR="$PROJECT_ROOT/tests/bdd/steps"
 
 # Parse args
@@ -29,7 +28,6 @@ sed 's/timeout=180/timeout=600/;s/"--then-only", action="store_true", default=Tr
 
 echo "=== Parallel BDD Step Inspection ==="
 echo "Inspector: $INSPECTOR"
-echo "Features:  $FEATURES_DIR"
 echo "Output:    $OUTPUT_DIR"
 echo ""
 
@@ -61,7 +59,6 @@ for name in "${!SLICES[@]}"; do
 
     python3 "$PATCHED" \
         --steps-dir "$slice_dir" \
-        --features-dir "$FEATURES_DIR" \
         --output "$OUTPUT_DIR/$name.md" \
         --pass1-only \
         > "$OUTPUT_DIR/$name.log" 2>&1 &
