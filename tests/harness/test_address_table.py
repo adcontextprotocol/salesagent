@@ -399,8 +399,9 @@ class TestCrossRegistryConsistencyGuard:
         invariant, CLAUDE.md)."""
         table = AddressTable()
         rest_names = table.all_tools(Transport.REST)
-        assert len(rest_names) == 12, rest_names
+        assert len(rest_names) == 13, rest_names  # 12 day-one + sync_governance (#1329)
         assert "get_adcp_capabilities" in rest_names  # handler is named after its tool
+        assert "sync_governance" in rest_names  # the tool #1329 adds — pinned as a member
         assert "get_capabilities" not in rest_names  # raw handler name, not a tool identity
         for absent_tool in REST_ABSENT_TOOLS:
             assert absent_tool not in rest_names

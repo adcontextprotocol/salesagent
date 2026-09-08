@@ -1008,9 +1008,12 @@ class TestDeliveredPayloadAdcpVersion:
     payload's own ``adcp_version`` is how it decides which schema to parse it
     with, so a stale value is a misparse on their side, not a cosmetic drift.
 
-    Compared against ``get_adcp_spec_version()`` rather than a literal: a literal
-    would keep passing across a spec bump while the wire told buyers the old
-    version, which is the exact failure the assertion exists to catch. This is
+    Compared against ``wire_adcp_version()`` (release precision, e.g. ``"3.1"``)
+    rather than a literal: a literal would keep passing across a spec bump while
+    the wire told buyers the old version, which is the exact failure the assertion
+    exists to catch. The wire carries release precision, never full semver — every
+    wire ``adcp_version`` emitter renders through the one ``wire_adcp_version()``
+    accessor (#1329), so the delivery payload echoes ``3.1``, not ``3.1.1``. This is
     the only place the field is graded on THIS surface — the assertion in
     ``tests/e2e/test_a2a_endpoints_working.py`` is on the A2A envelope, a
     different payload assembled by different code.
@@ -1025,8 +1028,7 @@ class TestDeliveredPayloadAdcpVersion:
         """
         from datetime import UTC, datetime
 
-        from adcp import get_adcp_spec_version
-
+        from src.core.version_compat import wire_adcp_version
         from tests.factories import (
             PrincipalFactory,
             PushNotificationConfigFactory,
@@ -1057,7 +1059,7 @@ class TestDeliveredPayloadAdcpVersion:
 
             assert result is True
             sent_payload = env.last_delivery.json()
-            assert sent_payload["adcp_version"] == get_adcp_spec_version()
+            assert sent_payload["adcp_version"] == wire_adcp_version()
 
 
 # ---------------------------------------------------------------------------
