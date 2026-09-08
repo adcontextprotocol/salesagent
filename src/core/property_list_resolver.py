@@ -7,11 +7,9 @@ the results using the cache_valid_until TTL from the response.
 import logging
 from datetime import UTC, datetime, timedelta
 
-import httpx
 from adcp.types import GetPropertyListResponse, PropertyListReference
 
-from src.core.exceptions import AdCPAdapterError
-from src.core.security.url_validator import check_url_ssrf
+from src.core.security.outbound_http import CounterpartyUrl, asend
 
 logger = logging.getLogger(__name__)
 
@@ -21,22 +19,15 @@ _DEFAULT_TIMEOUT = 10.0
 # Default cache TTL when cache_valid_until is not provided (seconds)
 _DEFAULT_CACHE_TTL_SECONDS = 300  # 5 minutes
 
+# Where this URL sits in the buyer's request, in AdCP JSONPath-lite. ``property_list``
+# is a TOP-LEVEL property of get-products-request.json (3.1.1), $ref-ing
+# core/property-list-ref.json whose required keys are agent_url and list_id — so the
+# path is not a packages[i] one. An egress refusal carries this to the buyer as
+# error.field; the seam cannot derive it, because it sees a URL and not a request.
+_REFUSED_FIELD_PATH = "property_list.agent_url"
+
 # Cache: (agent_url, list_id) -> (identifier_values, expires_at)
 _cache: dict[tuple[str, str], tuple[list[str], datetime]] = {}
-
-
-def _validate_agent_url(agent_url: str) -> None:
-    """Validate agent_url to prevent SSRF attacks.
-
-    Buyer-supplied agent_url must be HTTPS and must not target private/internal
-    networks or cloud metadata services.
-
-    Raises:
-        AdCPAdapterError: If the URL is not allowed.
-    """
-    is_safe, error = check_url_ssrf(agent_url, require_https=True)
-    if not is_safe:
-        raise AdCPAdapterError(f"Property list agent_url rejected: {error}")
 
 
 async def resolve_property_list(ref: PropertyListReference) -> list[str]:
@@ -53,12 +44,18 @@ async def resolve_property_list(ref: PropertyListReference) -> list[str]:
         List of property identifier value strings.
 
     Raises:
-        AdCPAdapterError: On HTTP errors, timeouts, connection failures, or SSRF violations.
+        OutboundRequestBlocked: The buyer-supplied ``agent_url`` was refused by
+            egress policy (non-HTTPS scheme, or an address the SDK validator
+            rejects). VALIDATION_ERROR / correctable: the buyer supplied the URL,
+            so the buyer is the only party who can fix it. The refusal carries
+            ``error.field = "property_list.agent_url"`` on both envelope layers,
+            which is the only channel that can name the offending input — the
+            message says nothing about the cause on purpose (AdCP 3.1.1 L1
+            security, point 6).
+        OutboundDeliveryFailed: The agent service was reachable but did not
+            answer — SERVICE_UNAVAILABLE / transient.
     """
     agent_url_str = str(ref.agent_url)
-
-    # Validate URL before any network I/O
-    _validate_agent_url(agent_url_str)
 
     cache_key = (agent_url_str, ref.list_id)
 
@@ -77,20 +74,20 @@ async def resolve_property_list(ref: PropertyListReference) -> list[str]:
     if ref.auth_token:
         headers["Authorization"] = f"Bearer {ref.auth_token}"
 
-    # Fetch
-    try:
-        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT) as client:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise AdCPAdapterError(f"Failed to fetch property list from {url}: HTTP {exc.response.status_code}") from exc
-    except httpx.TimeoutException as exc:
-        raise AdCPAdapterError(f"Request to property list service timed out: {url}") from exc
-    except httpx.RequestError as exc:
-        raise AdCPAdapterError(f"Failed to connect to property list service: {url} — {exc}") from exc
+    # Fetch. Scheme policy, address validation, IP pinning, redirect refusal,
+    # the response-size cap and retry classification are all the seam's — a
+    # refusal or a delivery failure arrives here already typed as an AdCPError
+    # with the right wire code, so there is nothing left to catch and rewrap.
+    result = await asend(
+        url,
+        method="GET",
+        headers=headers,
+        timeout=_DEFAULT_TIMEOUT,
+        provenance=CounterpartyUrl(field=_REFUSED_FIELD_PATH),
+    )
 
     # Parse response
-    parsed = GetPropertyListResponse.model_validate(response.json())
+    parsed = GetPropertyListResponse.model_validate(result.json())
 
     # Extract identifier values
     identifier_values = [ident.value for ident in parsed.identifiers] if parsed.identifiers else []

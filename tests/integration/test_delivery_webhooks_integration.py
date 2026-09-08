@@ -204,15 +204,19 @@ async def test_delivery_webhook_sends_for_fresh_data(integration_db):
         args, kwargs = mock_send_notification.await_args
 
         # Extract from kwargs
-        metadata = kwargs.get("metadata")
+        task = kwargs.get("task")
         payload = kwargs.get("payload")
         push_notification_config = kwargs.get("push_notification_config")
 
-        # Extract from metadata
-        task_type = metadata.get("task_type")
-        extracted_tenant_id = metadata.get("tenant_id")
-        extracted_principal_id = metadata.get("principal_id")
-        extracted_media_buy_id = metadata.get("media_buy_id")
+        # Extract from the typed task context. This was a loose `metadata` dict
+        # until the sender started taking a WebhookTaskContext whole: the dict was
+        # flattened from that context and rebuilt downstream from the PAYLOAD,
+        # which reset sequence_number and notification_type on the way to
+        # webhook_delivery_log.
+        task_type = task.task_type
+        extracted_tenant_id = task.tenant_id
+        extracted_principal_id = task.principal_id
+        extracted_media_buy_id = task.media_buy_id
 
         # Extract from payload
         task_id = payload.task_id
@@ -227,6 +231,17 @@ async def test_delivery_webhook_sends_for_fresh_data(integration_db):
         assert extracted_media_buy_id == media_buy_id
         assert result is not None
         assert result.get("notification_type") == "scheduled"
+        # The SAME two values on the context, which is what reaches the delivery
+        # row. They used to be re-derived from the payload downstream, so the
+        # context could hold 1/None while the payload said otherwise and nothing
+        # noticed until an operator read the log back.
+        assert task.notification_type == "scheduled", (
+            f"the scheduler put {task.notification_type!r} on the context while the payload "
+            "says 'scheduled' -- the delivery row records the context, not the payload"
+        )
+        assert task.sequence_number == 1, (
+            f"first delivery for this media buy, so the context must say sequence 1; got {task.sequence_number}"
+        )
         assert result.get("next_expected_at") is not None
         assert result.get("partial_data") is False
         assert result.get("unavailable_count") == 0

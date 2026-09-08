@@ -1,8 +1,8 @@
-# Development Guide
+# Development guide
 
 Documentation for contributors to the Prebid Sales Agent codebase, maintained under Prebid.org.
 
-## Getting Started
+## Get started
 
 ```bash
 git clone https://github.com/prebid/salesagent.git
@@ -10,37 +10,137 @@ cd salesagent
 make setup
 ```
 
-See [Getting Started](GETTING_STARTED.md) for prerequisites, manual setup, testing, and common operations.
+See [Getting started](GETTING_STARTED.md) for prerequisites, manual setup, testing, and common operations.
 
-## Documentation
+## Find the document that answers your question
 
-- **[Architecture](architecture.md)** - System design and component overview
-- **[Patterns Reference](patterns-reference.md)** - Canonical examples for every key pattern (start here for new contributors)
-- **[Contributing](contributing.md)** - Development workflows, testing, code style
-- **[Structural Guards](structural-guards.md)** - Automated architecture enforcement tests
-- **[Troubleshooting](troubleshooting.md)** - Common development issues
+The following table maps the questions contributors arrive with to the document that answers each one.
 
-## Key Resources
+| Your question | Read | What it contains |
+|---|---|---|
+| What is this system, and what are its parts? | [Architecture guide](architecture.md) | The top-level map: topology, component locations, data model, adapters, and extension points, each section linking to the document with the details |
+| Why does code belong in this layer and not that one? | [Architecture principles](architecture-principles.md) | Six principles — logic only in `_impl`, models everywhere, construction and serialization at the boundary, typed errors — each short enough to apply on sight |
+| What happens to my request before `_impl` runs? | [Request lifecycle](request-lifecycle.md) | The middleware stack in execution order, identity resolution, the per-transport path, and a placement table for changes to the request path |
+| Which file do I copy from — and which files must I not imitate? | [Patterns reference](patterns-reference.md) | The canonical implementation file per pattern, the test harness, and the legacy files whose surrounding code is tracked debt |
+| What is this change going to be held to? | [Engineering standards](engineering-standards.md) | The standards every pull request is reviewed against — layering, duplication, test integrity, spec grounding — ending in a verification list |
+| Why did `make quality` fail on a test I never touched? | [Structural guards](structural-guards.md) | The AST-scanning tests that enforce the architecture, the framework for deciding whether a guard should exist, and how to add one |
+| How do I write a test, and what must it assert? | [Test architecture](../../tests/CLAUDE.md) | The harness environments, the factories, and the wire-envelope assertion policy — the authoritative test-writing recipe |
+| How do I run the tests that use the live server? | [End-to-end testing](e2e-testing.md) | The Docker stack, the two suites that share the name "e2e", computed worker counts, and a failure-modes table for debugging runs |
+| Why can I not call `httpx` directly? | [Outbound egress](../security/outbound-egress.md) | The one egress gateway, the four policy decisions it makes on your behalf, and the three layers that stop a raw HTTP call |
+| You are changing the egress gateway itself — who owns which decision? | [Egress gateway and the SDK boundary](../design/egress-sdk-boundary.md) | The gateway's module map, what the `adcp` SDK owns, the two-verdict validation split, and which local workarounds are temporary |
+| What are the condensed rules an AI agent works from? | [Root CLAUDE.md](../../CLAUDE.md) | The critical patterns, common commands, and test-integrity policy, stated compactly — the same rules the preceding documents explain in full |
 
-- **[CLAUDE.md](../../CLAUDE.md)** - Detailed development patterns and conventions
-- **[Tests](../../tests/)** - Test suite and examples
-- **[Source](../../src/)** - Application source code
+## Where to start
 
-## Quick Reference
+The honest starting point differs by what brought you. Each path is three or
+four documents, in reading order.
 
-### Running Tests
+**You are new to the codebase.** Build the mental model before touching code:
+
+1. [Architecture guide](architecture.md) — what the system is and where its parts live.
+2. [Architecture principles](architecture-principles.md) — why code lives where it lives.
+3. [Request lifecycle](request-lifecycle.md) — how a request reaches business logic.
+4. [Patterns reference](patterns-reference.md) — which files to imitate, and which not to.
+
+**You are about to make a change.** Know the target before you write:
+
+1. [Engineering standards](engineering-standards.md) — the criteria the change is held to.
+2. The [placement table](request-lifecycle.md#where-does-my-change-go) — which layer owns your change.
+3. [Patterns reference](patterns-reference.md) — the canonical file for the pattern you are writing.
+4. [Test architecture](../../tests/CLAUDE.md) — how to prove the change with tests that can fail.
+
+**You are debugging a failing run.** Start from the symptom:
+
+1. [Failure modes and what they mean](e2e-testing.md#failure-modes-and-what-they-mean) — for live-stack runs, symptoms mapped to causes.
+2. [Structural guards](structural-guards.md) — when `make quality` fails on an architecture test you never wrote.
+3. [Troubleshooting](troubleshooting.md) — environment, database, and operations issues.
+
+## How the documents relate
+
+The set has a shape: one map, a principle layer with its mechanisms, the
+standards a change is graded against, the testing pair, and the egress pair.
+The following diagram shows which document leads to which.
+
+```mermaid
+flowchart TD
+    ARCH["Architecture guide\nthe map"]
+    PRIN["Architecture principles\nthe why"]
+    LIFE["Request lifecycle\nthe mechanism"]
+    PAT["Patterns reference\nthe canonical examples"]
+    STD["Engineering standards\nthe review criteria"]
+    GUARD["Structural guards\nthe mechanical enforcement"]
+    TESTS["Test architecture\nhow to write tests"]
+    E2E["End-to-end testing\nhow to run the live suites"]
+    EGR["Outbound egress\nthe rule"]
+    EGRD["Egress SDK boundary\nthe design"]
+    CMD["Root CLAUDE.md\nthe condensed agent guide"]
+
+    ARCH -->|"principles behind the layering"| PRIN
+    ARCH -->|"outbound HTTP"| EGR
+    PRIN -->|"how the layering works on the wire"| LIFE
+    PRIN -->|"what the pattern looks like in a file"| PAT
+    STD -->|"grades changes against"| PRIN
+    STD -->|"what a test must prove"| TESTS
+    GUARD -->|"enforces on every make quality run"| PRIN
+    TESTS -->|"the suites that need a live server"| E2E
+    EGR -->|"depth for gateway maintainers"| EGRD
+    CMD -.->|"condenses the whole set"| ARCH
+```
+
+Two pairings deserve a sentence each. [Outbound
+egress](../security/outbound-egress.md) states the rule for anyone making a
+request; [the egress SDK boundary](../design/egress-sdk-boundary.md) is its
+depth companion for anyone changing the gateway — read the first unless you
+are editing `src/core/security/`. [Architecture
+principles](architecture-principles.md) is the why and [Request
+lifecycle](request-lifecycle.md) is the how: the principles justify the
+layering, the lifecycle traces a request through it.
+
+## Supporting guides
+
+The guides in this directory that sit outside the core set:
+
+- [Getting started](GETTING_STARTED.md) — prerequisites, one-command setup, and common operations.
+- [Creating an ad server adapter](../adapters/creating-an-adapter.md) — the adapter base-class contract, registration, and targeting translation.
+- [Troubleshooting](troubleshooting.md) — symptom-to-fix reference for environment, database, and operations issues.
+- [CI pipeline](ci-pipeline.md) — the GitHub Actions workflow, required checks, and test shards.
+- [A2A and MCP agent flows](a2a-mcp-agent-flows.md) — protocol-side sequence diagrams for buyer, governance, and creative flows.
+- [Admin UI BDD pattern](admin-bdd-pattern.md) — how to write BDD tests for Flask admin features.
+
+## Records of past work, not guidance
+
+Completed review rounds, remediation plans, one-time reports and epic planning
+artifacts live in [`archive/`](../../archive/) at the repository root. Each was
+accurate about a moment that has passed; none describes how the system works
+now. Release notes stay under `docs/releases/`, where they belong as a record
+of what shipped.
+
+## Key resources
+
+- [Root CLAUDE.md](../../CLAUDE.md) — development patterns and conventions, condensed for AI agents.
+- [Test architecture](../../tests/CLAUDE.md) — the authoritative guide to writing tests.
+- [Tests](../../tests/) — the test suites and examples.
+- [Source](../../src/) — the application source code.
+
+## Quick reference
+
+### Run tests
 
 ```bash
-./run_all_tests.sh ci     # Full suite: Docker + all 5 suites (DEFAULT)
-./run_all_tests.sh quick  # No Docker: unit + integration + integration_v2
-# Both modes produce JSON reports in test-results/<ddmmyy_HHmm>/
+./run_all_tests.sh        # Full suite: in-network Docker stack, all suites (DEFAULT)
+./run_all_tests.sh quick  # No Docker: unit + integration
+# Both modes produce JSON reports in test-results/
 
 # Manual pytest
 uv run pytest tests/unit/ -x
 uv run pytest tests/integration/ -x
 ```
 
-### Code Quality
+For everything beyond this — targeted runs, the live-server suites, iterating
+on one failing test — use the command table in
+[End-to-end testing](e2e-testing.md#choose-a-command).
+
+### Code quality
 
 ```bash
 # Pre-commit hooks
@@ -50,9 +150,9 @@ pre-commit run --all-files
 uv run mypy src/core/your_file.py --config-file=mypy.ini
 ```
 
-### Database Migrations
+### Database migrations
 
-Migrations run automatically on startup. To run manually:
+Migrations run automatically on startup. To run them manually:
 
 ```bash
 # Inside Docker
@@ -61,6 +161,6 @@ docker compose exec adcp-server python scripts/ops/migrate.py
 # Or locally with uv
 uv run python scripts/ops/migrate.py
 
-# Create new migration
+# Create a migration
 uv run alembic revision -m "description"
 ```

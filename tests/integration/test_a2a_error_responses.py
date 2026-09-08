@@ -906,29 +906,34 @@ class TestA2AErrorResponseStructure:
             envelope = build_two_layer_error_envelope(error)
             assert envelope["adcp_error"]["recovery"] == "correctable"
 
-    async def test_custom_recovery_override_preserved_through_a2a(self, integration_db, handler):
-        """Custom recovery= override on AdCPError is preserved when propagating.
+    async def test_derived_recovery_reaches_both_envelope_layers_through_a2a(self, integration_db, handler):
+        """A typed error's DERIVED recovery reaches both envelope layers unchanged.
 
-        A raise-site override on ``recovery`` survives propagation through
-        ``_handle_explicit_skill`` and round-trips through the two-layer
-        envelope builder unchanged.
+        REPLACES test_custom_recovery_override_preserved_through_a2a. That test
+        pinned a raise-site ``recovery=`` override surviving propagation — the
+        contract this epic excises, since recovery is now a read-only property
+        over the pinned enumMetadata. What still matters, and is what this pins,
+        is that the boundary neither loses nor rewrites the classification on the
+        way out: it must appear, correct, on BOTH layers of the envelope.
         """
         from unittest.mock import patch
 
         from src.core.exceptions import AdCPNotFoundError, build_two_layer_error_envelope
 
-        async def mock_transient_not_found(params, token):
-            raise AdCPNotFoundError("temporarily gone", recovery="transient")
+        async def mock_not_found(params, token):
+            raise AdCPNotFoundError("temporarily gone")
 
-        with patch.object(handler, "_handle_get_products_skill", mock_transient_not_found):
+        with patch.object(handler, "_handle_get_products_skill", mock_not_found):
             with pytest.raises(AdCPNotFoundError) as exc_info:
                 await handler._handle_explicit_skill("get_products", {}, "token")
 
             error = exc_info.value
-            msg = "Custom recovery='transient' override must be preserved, not default 'terminal'"
-            assert error.recovery == "transient", msg
+            # NOT_FOUND translates to INVALID_REQUEST on the wire; the pin calls it
+            # correctable — the buyer can fix the reference and resend.
+            assert error.recovery == "correctable"
             envelope = build_two_layer_error_envelope(error)
-            assert envelope["adcp_error"]["recovery"] == "transient"
+            assert envelope["adcp_error"]["recovery"] == "correctable"
+            assert envelope["errors"][0]["recovery"] == "correctable"
 
     async def test_valueerror_wraps_to_adcp_validation_error(self, integration_db, handler):
         """ValueError in a skill handler propagates as AdCPValidationError.

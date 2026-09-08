@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.core.exceptions import AdCPValidationError
+from src.core.exceptions import AdCPConfigurationError, AdCPValidationError
 from src.core.schemas import PricingModel
 from src.core.tools.media_buy_create import _validate_pricing_model_selection
 
@@ -29,12 +29,14 @@ class TestPricingValidation:
         package.pricing_model = None
         package.bid_price = None
 
-        # Should raise data integrity error
-        with pytest.raises(AdCPValidationError) as exc_info:
+        # A product with no pricing_options is SELLER data integrity, not a buyer
+        # mistake — AdCPConfigurationError, whose pinned recovery is terminal.
+        with pytest.raises(AdCPConfigurationError) as exc_info:
             _validate_pricing_model_selection(package, product, "USD")
 
         assert "has no pricing_options configured" in str(exc_info.value)
         assert "data integrity error" in str(exc_info.value)
+        assert exc_info.value.recovery == "terminal", "the buyer cannot fix the seller's product catalogue by resending"
 
     def test_legacy_product_with_pricing_model_in_package_should_error(self):
         """Test product with no pricing_options should raise data integrity error."""
@@ -51,11 +53,14 @@ class TestPricingValidation:
         package.pricing_option_id = None
         package.bid_price = None
 
-        with pytest.raises(AdCPValidationError) as exc_info:
+        # Same seller data-integrity fault as the sibling above, reached with a
+        # package-level pricing_model set: the class must not depend on that.
+        with pytest.raises(AdCPConfigurationError) as exc_info:
             _validate_pricing_model_selection(package, product, "USD")
 
         assert "has no pricing_options configured" in str(exc_info.value)
         assert "data integrity error" in str(exc_info.value)
+        assert exc_info.value.recovery == "terminal"
 
     def test_new_product_with_matching_pricing_model(self):
         """Test product with pricing_options and package specifying valid pricing_model."""
@@ -209,10 +214,12 @@ class TestPricingValidation:
         package.pricing_model = PricingModel.cpm
         package.bid_price = None
 
-        with pytest.raises(AdCPValidationError) as exc_info:
+        # is_fixed with no rate is a SELLER product misconfiguration.
+        with pytest.raises(AdCPConfigurationError) as exc_info:
             _validate_pricing_model_selection(package, product, "USD")
 
         assert "no rate specified" in str(exc_info.value)
+        assert exc_info.value.recovery == "terminal", "the buyer cannot fix the seller's pricing option by resending"
 
     def test_budget_below_minimum_spend(self):
         """Test package budget below min_spend_per_package."""

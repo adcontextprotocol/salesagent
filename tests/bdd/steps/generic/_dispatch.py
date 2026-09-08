@@ -26,11 +26,16 @@ def _populate_ctx_from_result(ctx: dict, result: TransportResult) -> None:
 
     Shared post-processing for every dispatch path (``dispatch_request`` via
     ``env.call_via``, ``dispatch_via_client`` via ``AdCPTestClient.call``) so
-    they populate the identical six-key contract the wire-first Then steps
+    they populate the identical ctx contract the wire-first Then steps
     (``then_error.py``'s ``_wire_code``/``_wire_suggestion``/``_wire_error_object``)
     read — ``ctx['result']`` is the only key with exactly one producer; leaving
     it unset silently downgrades those Then steps to the lossy reconstructed
     ``ctx['error']`` fallback (disease scan).
+
+    That contract is deliberately NARROW: ``ctx['result']`` always, plus
+    ``ctx['error']`` on the error path and ``ctx['wire_response']`` on the
+    success path. The detached ``ctx['response']`` / ``ctx['wire_error_envelope']``
+    / ``ctx['synthesized_error_envelope']`` copies are gone — see below.
     """
     # Expose the normalized TransportResult so Then-steps can use the
     # harness-provided, transport-independent assertions (result.assert_wire_error)
@@ -38,14 +43,18 @@ def _populate_ctx_from_result(ctx: dict, result: TransportResult) -> None:
     ctx["result"] = result
     if result.is_error:
         ctx["error"] = result.error
-        # Capture the real wire envelope (A2A/REST/MCP) and the
-        # synthesized envelope (IMPL has no wire) so Then steps can
-        # assert the two-layer AdCP shape per the Error Verification
-        # Policy. Both are None-safe; absent keys mean "no envelope".
-        ctx["wire_error_envelope"] = result.wire_error_envelope
-        ctx["synthesized_error_envelope"] = result.synthesized_error_envelope
+        # NO ctx envelope copies. Then steps read ctx["result"].error_envelope(),
+        # which is the one place allowed to decide whether a synthesized value
+        # may stand in for a wire. Copying the two fields into ctx created a
+        # second spelling of that decision — and only this seam ever wrote the
+        # keys, so a scenario dispatched through _call_via saw None even when
+        # the envelope HAD been captured on the result.
     else:
-        ctx["response"] = result.payload
+        # NO ctx["response"]. A provenance-stripped copy of the payload cannot
+        # tell a Then whether it is reading a wire fact or an in-process
+        # reconstruction — which is how a self-grading transport stayed green.
+        # Steps read ctx["result"] (the TransportResult, stashed above) through
+        # the guarded accessors in _outcome_helpers.py instead.
         # Propagate the real serialized success-path wire body so Then steps
         # can assert on what the buyer actually receives (ctx["wire_response"]),
         # not the reconstructed typed payload (REST HTTP body; A2A/MCP artifact
@@ -59,7 +68,7 @@ def _populate_ctx_from_result(ctx: dict, result: TransportResult) -> None:
 def dispatch_request(ctx: dict, *, identity: Any = NO_IDENTITY_OVERRIDE, **kwargs: Any) -> None:
     """Dispatch a request through ctx['transport'] via call_via, or direct call_impl.
 
-    Stores result in ctx["response"] on success, ctx["error"] on failure.
+    Stores the TransportResult in ctx["result"]; ctx["error"] on failure.
     If ctx["transport"] is a Transport enum, uses call_via directly.
     If it's a string, maps to Transport enum first.
     If absent, falls back to call_impl.

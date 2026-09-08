@@ -4,7 +4,7 @@ import pytest
 from flask import Flask
 from sqlalchemy import select
 
-from src.admin.utils.audit_decorator import log_admin_action
+from src.admin.utils.audit_decorator import log_admin_action, record_admin_action_failure
 from src.core.database.database_session import get_db_session
 from src.core.database.models import AuditLog, Tenant
 
@@ -294,3 +294,61 @@ def test_decorator_handles_missing_session(integration_db):
 
         assert audit_log is not None
         assert audit_log.principal_name == "unknown"
+
+
+@pytest.mark.requires_db
+def test_decorator_records_failure_when_the_handler_catches_and_returns(integration_db, bound_factory_session):
+    """A handler that CATCHES its refusal and returns normally must not audit as a success.
+
+    The decorator flips ``success`` inside ``except Exception``, which then
+    re-raises. A handler that instead catches its own domain refusal, flashes it
+    for the operator and returns a redirect never reaches that arm — so the
+    refusal was written to the audit log as a SUCCESSFUL admin action.
+
+    ``register_webhook`` is the live instance: an SSRF-blocked URL raises
+    ``AdCPBlockedUrlError``, the route catches it so the operator gets a flash
+    rather than a 500, and the action audited as a success. Raising instead
+    would be the wrong fix — the flash is the point — so the handler signals the
+    failure explicitly via :func:`record_admin_action_failure`.
+
+    Pre-existing rather than new: the predecessor on ``main`` checked the URL as
+    a return code and took the same early return, so it audited the same way.
+    """
+    from tests.factories import TenantFactory
+
+    TenantFactory(tenant_id="test_tenant_handled_failure")
+    bound_factory_session.commit()
+
+    app = Flask(__name__)
+    app.secret_key = "test"
+
+    @app.route("/test/<tenant_id>", methods=["POST"])
+    @log_admin_action("handled_refusal")
+    def test_route(tenant_id):
+        # Exactly the shape register_webhook uses: catch, signal, flash, return.
+        try:
+            raise ValueError("URL resolves to a restricted range.")
+        except ValueError as exc:
+            record_admin_action_failure(exc)
+            return "refused"
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess["user"] = {"email": "test@example.com"}
+        response = client.post("/test/test_tenant_handled_failure")
+        assert response.status_code == 200, "the operator gets a redirect, not a 500 — that is the point"
+
+    # The decorator's audit logger committed on its own session; expire ours so the
+    # read is a fresh one rather than this transaction's earlier snapshot.
+    bound_factory_session.expire_all()
+    stmt = select(AuditLog).filter_by(tenant_id="test_tenant_handled_failure", operation="AdminUI.handled_refusal")
+    audit_log = bound_factory_session.scalars(stmt).first()
+
+    assert audit_log is not None, "no audit row was written at all"
+    assert audit_log.success is False, (
+        "a refused admin action was audited as SUCCESSFUL — the handler returned "
+        "normally, so the decorator never saw an exception"
+    )
+    assert "restricted range" in (audit_log.error_message or ""), (
+        f"the audit row must carry the refusal reason, got error_message={audit_log.error_message!r}"
+    )

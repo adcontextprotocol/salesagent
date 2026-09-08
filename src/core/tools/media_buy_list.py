@@ -275,7 +275,7 @@ def _get_media_buys_impl(
 
             # Materialize targeting_overlay from package_config so callers can verify
             # what was persisted. Tolerates the legacy "targeting" key for data written
-            # before the targeting_overlay rename (see media_buy_create.py:638-642).
+            # before the targeting_overlay rename.
             # OPTIONAL-field branch of the module's per-row failure policy (see the
             # module docstring): targeting_overlay has a legal empty value, so a
             # single corrupted package_config row renders as None with a non-fatal

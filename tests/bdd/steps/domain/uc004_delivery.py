@@ -16,11 +16,16 @@ import re
 from typing import Any
 
 import pytest
+from adcp.types import AuthenticationScheme
 from pytest_bdd import given, parsers, then, when
 
+from tests.bdd.steps._outcome_helpers import error_envelope_or_none, payload_or_none, require_payload
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.bdd.steps.generic.then_error import _get_error_message
 from tests.bdd.steps.generic.then_payload import register_boundary_handler
+from tests.harness._mixins import LocalOriginMixin
+from tests.helpers.backoff_assertions import assert_backoff_schedule
+from tests.helpers.egress_hatches import UNDIALLED_PUBLIC_HTTPS_ORIGIN
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -39,22 +44,25 @@ def _parse_json_list(text: str) -> list[str]:
     return json.loads(text)
 
 
+def _webhook_deliveries(ctx: dict) -> list[Any]:
+    """Every webhook request the local origin actually received, oldest first."""
+    return ctx["env"].delivered_requests
+
+
 def _get_last_webhook_payload(ctx: dict) -> dict[str, Any]:
-    """Extract the JSON payload from the most recent webhook POST call."""
-    mock_post = ctx["env"].mock["post"]
-    assert mock_post.called, "No webhook POST was made"
-    call_kwargs = mock_post.call_args_list[-1][1]  # kwargs of last call
-    payload = call_kwargs.get("json") or call_kwargs.get("data") or {}
-    assert payload, f"Webhook POST had no JSON payload: {call_kwargs}"
+    """The JSON body of the most recent webhook delivery, as it crossed the socket."""
+    deliveries = _webhook_deliveries(ctx)
+    assert deliveries, "No webhook POST was made"
+    payload = deliveries[-1].json()
+    assert payload, f"Webhook POST had no JSON payload: {deliveries[-1].body!r}"
     return payload
 
 
-def _get_last_webhook_headers(ctx: dict) -> dict[str, str]:
-    """Extract headers from the most recent webhook POST call."""
-    mock_post = ctx["env"].mock["post"]
-    assert mock_post.called, "No webhook POST was made"
-    call_kwargs = mock_post.call_args_list[-1][1]
-    return call_kwargs.get("headers", {})
+def _get_last_webhook_headers(ctx: dict) -> Any:
+    """The headers of the most recent webhook delivery, as the endpoint received them."""
+    deliveries = _webhook_deliveries(ctx)
+    assert deliveries, "No webhook POST was made"
+    return deliveries[-1].headers
 
 
 def _collect_all_packages(resp: Any) -> list[Any]:
@@ -326,7 +334,38 @@ def given_adapter_no_data_period(ctx: dict, mb_id: str) -> None:
 # ── Webhook configuration steps ─────────────────────────────────────
 
 
-_WEBHOOK_URL = "https://buyer.example.com/webhook"
+# The URL a buyer *declares* in a create_media_buy request. It is never fetched
+# by these scenarios — only validated — so it stays a stable literal. It IS
+# validated at ingest now (the seam's validate_url runs inside
+# _create_media_buy_impl), so the literal must pass egress policy under every
+# hatch posture: an https public-unicast IP literal resolves nothing (no DNS
+# dependency) and is refused by no gate, unlike the previous
+# ``buyer.example.com``, which NXDOMAINs and is therefore refused even with
+# both hatches open.
+_DECLARED_WEBHOOK_URL = f"{UNDIALLED_PUBLIC_HTTPS_ORIGIN}/webhook"
+
+# A destination the egress seam refuses under EVERY hatch posture. The cloud
+# metadata address is blocked by the SDK's address policy even with
+# ADCP_OUTBOUND_ALLOW_PRIVATE on, which the delivery envs turn on for their
+# loopback origin — a private-range or plaintext-http cause would be disarmed
+# there and the "blocked" scenario would silently deliver.
+BLOCKED_WEBHOOK_URL = "https://169.254.169.254/webhook"
+
+
+def _webhook_url(env: Any) -> str:
+    """The endpoint a delivery for this scenario would actually be POSTed to.
+
+    Envs that DELIVER (``WebhookEnv``, ``CircuitBreakerEnv``) run a real local
+    origin, and every webhook config row — plus every circuit-breaker key
+    derived from one — has to name it, or production would POST somewhere the
+    scenario cannot observe. Its port is assigned by the kernel, so it cannot be
+    a module constant.
+
+    Envs that merely CARRY a webhook config through a create or poll request
+    (``DeliveryPollEnv``, ``MediaBuyCreateEnv``) never fetch it: for them the URL
+    is data being validated, and the declared literal is the honest value.
+    """
+    return env.webhook_url if isinstance(env, LocalOriginMixin) else _DECLARED_WEBHOOK_URL
 
 
 def _set_active_webhook(ctx: dict, mb_id: str) -> None:
@@ -336,7 +375,7 @@ def _set_active_webhook(ctx: dict, mb_id: str) -> None:
     integration env (CircuitBreakerEnv) so send_delivery_webhook can find it.
     """
     ctx.setdefault("webhook_config", {})[mb_id] = {
-        "url": _WEBHOOK_URL,
+        "url": _webhook_url(ctx["env"]),
         "active": True,
     }
     env = ctx["env"]
@@ -344,27 +383,82 @@ def _set_active_webhook(ctx: dict, mb_id: str) -> None:
         _persist_webhook_config_if_needed(ctx, env)
 
 
+def _canonical_scheme(scheme: str) -> AuthenticationScheme:
+    """The pinned AdCP ``AuthenticationScheme`` member a Gherkin token names.
+
+    The SDK enum is the SINGLE SOURCE. Its constructor is both the membership
+    test and the refusal, and the member IS the spec spelling (a ``StrEnum``), so
+    ``authentication_type`` is canonical by construction rather than by a local
+    lookup that can drift. There used to be such a lookup here, mapping four
+    Gherkin spellings onto two DB values; the drift it permitted is exactly how
+    ``authentication_type="hmac"`` -- a fifth spelling matching nothing
+    production compares against -- reached the DB (GH #1894).
+    A local table is not re-introduced: with none, a fifth spelling has nowhere
+    to live.
+    """
+    try:
+        return AuthenticationScheme(scheme)
+    except ValueError as exc:
+        canonical = ", ".join(f"{member!s}" for member in AuthenticationScheme)
+        raise ValueError(
+            f"Gherkin names webhook authentication scheme {scheme!r}, which is not a pinned "
+            f"AdCP AuthenticationScheme. Canonical spellings: {canonical}. The pinned enum is "
+            "case-SENSITIVE; a scenario must name the scheme exactly as the spec spells it."
+        ) from exc
+
+
+def _credential_in_ctx(scheme: AuthenticationScheme, ctx: dict) -> str | None:
+    """The credential a scheme signs/authenticates with, matched EXHAUSTIVELY.
+
+    Mirrors the exhaustive destructuring production does at
+    ``src/core/security/webhook_egress.py``. The predecessor was a binary
+    if/else on one member, so Bearer was "whatever is not HMAC-SHA256" and a
+    third canonical member would have silently read the bearer token. Falling
+    out of this match is a visible gap instead.
+    """
+    match scheme:
+        case AuthenticationScheme.HMAC_SHA256:
+            return ctx.get("webhook_secret")
+        case AuthenticationScheme.Bearer:
+            return ctx.get("webhook_bearer_token")
+    raise AssertionError(
+        f"No credential source wired for AuthenticationScheme {scheme!r}. A new member was "
+        "added to the pinned enum -- give it its ctx key here rather than letting it inherit "
+        "another scheme's credential."
+    )
+
+
 def _auth_scheme_to_db_fields(scheme: str | None, ctx: dict) -> dict[str, Any]:
     """Translate a Gherkin auth scheme to the PushNotificationConfig DB columns.
 
-    The ORM model exposes ``authentication_type`` (``"bearer"`` / ``"basic"`` /
-    ``None``) plus a separate ``webhook_secret`` column for HMAC. Each scheme
-    populates a different combination.
+    ONE pair of columns for every scheme: ``authentication_type`` plus
+    ``authentication_token``, which is where AdCP 3.1.1 puts the credential
+    (``push_notification_config.authentication.credentials``).
+
+    Three outcomes, and nothing else:
+
+    1. No scheme named -> ``{}``. The scenario wants an unauthenticated webhook.
+    2. A canonical scheme with its credential -> both columns.
+    3. A scheme that is not a pinned ``AuthenticationScheme`` member -> RAISE.
+
+    A canonical scheme whose credential is not in ``ctx`` YET returns ``{}`` on
+    purpose, and that is NOT outcome 1 in disguise: scenarios name the scheme on
+    one line and supply the credential on the next
+    (BR-UC-004-deliver-media-buy-metrics.feature:252-253), and
+    ``given_webhook_auth_scheme`` persists the row on the first line, so mid-setup
+    absence is legitimate and the row is updated in place when the credential
+    arrives. The end-state invariant -- a scenario that claims auth and never
+    supplied a credential -- is enforced once setup is COMPLETE, in
+    ``_wire_webhook_db``. Raising here instead would redden the two scenarios
+    this translation exists to serve.
     """
-    fields: dict[str, Any] = {}
     if scheme is None:
-        return fields
-    normalized = scheme.lower()
-    if normalized in {"hmac-sha256", "hmac_sha256", "hmac"}:
-        secret = ctx.get("webhook_secret")
-        if secret:
-            fields["webhook_secret"] = secret
-    elif normalized == "bearer":
-        token = ctx.get("webhook_bearer_token")
-        if token:
-            fields["authentication_type"] = "bearer"
-            fields["authentication_token"] = token
-    return fields
+        return {}
+    canonical = _canonical_scheme(scheme)
+    credential = _credential_in_ctx(canonical, ctx)
+    if not credential:
+        return {}
+    return {"authentication_type": canonical, "authentication_token": credential}
 
 
 def _persist_webhook_config_if_needed(ctx: dict, env: Any) -> None:
@@ -399,7 +493,7 @@ def _persist_webhook_config_if_needed(ctx: dict, env: Any) -> None:
         select(PushNotificationConfig).where(
             PushNotificationConfig.tenant_id == tenant_id,
             PushNotificationConfig.principal_id == principal_id,
-            PushNotificationConfig.url == _WEBHOOK_URL,
+            PushNotificationConfig.url == _webhook_url(env),
         )
     ).first()
     if existing is not None:
@@ -427,7 +521,7 @@ def _persist_webhook_config_if_needed(ctx: dict, env: Any) -> None:
     PushNotificationConfigFactory(
         tenant=tenant,
         principal=principal,
-        url=_WEBHOOK_URL,
+        url=_webhook_url(env),
         is_active=True,
         **auth_fields,
     )
@@ -476,8 +570,8 @@ def given_webhook_auth_scheme(ctx: dict, mb_id: str, scheme: str) -> None:
     wh = ctx.setdefault("webhook_config", {}).setdefault(mb_id, {})
     wh["auth_scheme"] = scheme
     wh["active"] = True
-    wh["url"] = _WEBHOOK_URL
     env = ctx["env"]
+    wh["url"] = _webhook_url(env)
     if getattr(env, "_session", None) is not None:
         _persist_webhook_config_if_needed(ctx, env)
 
@@ -523,29 +617,46 @@ def given_webhook_returns_status(ctx: dict, status_code: int, reason: str) -> No
 
 @given("the outbound webhook URL is blocked by SSRF validation")
 def given_outbound_webhook_ssrf_blocked(ctx: dict) -> None:
-    """Force send-time SSRF gate to reject the configured webhook URL.
+    """Point this scenario's webhook at an address the egress seam always refuses.
 
-    Does not blanket-mock all UC-004 scenarios: only this Given opts into the
-    reject branch via CircuitBreakerEnv.set_url_invalid().
+    The send-time gate is the seam (``src.core.security.outbound_http``): it
+    resolves, validates and pins inside the same call that opens the socket, so
+    a delivery to a refused address raises ``OutboundRequestBlocked`` before any
+    POST and ``_deliver_with_backoff`` turns that into ``record_failure()``.
+    There is no longer an application-level gate above it to program, so this
+    Given states the CAUSE — a blocked destination — rather than mocking a
+    verdict.
+
+    The cause has to be one no configuration disarms. The delivery envs run a
+    real loopback origin and therefore open BOTH egress hatches
+    (``LocalOriginMixin``), which disarms the private-range and the plaintext-
+    scheme refusals; the cloud-metadata address is refused by the SDK's address
+    policy regardless of ``allow_private``, so it is the one cause that means
+    the same thing under every posture this scenario can run in.
     """
     env = ctx["env"]
-    env.set_url_invalid("Webhook URL resolves to blocked IP range 169.254.0.0/16")
+    for cfg in ctx.setdefault("webhook_config", {}).values():
+        cfg["url"] = BLOCKED_WEBHOOK_URL
+    # Rewrite the endpoint production will actually read: the preceding Given
+    # persisted a config naming the local origin, and set_db_webhooks replaces
+    # the active set (deactivating that row) rather than adding to it — leaving
+    # it active would deliver to the origin and grade nothing.
+    env.set_db_webhooks([env.make_webhook_config(url=BLOCKED_WEBHOOK_URL)])
+    # Production keys the breaker on the URL it was asked to deliver to, so the
+    # Then step has to look under the blocked URL, not the origin's.
+    ctx["circuit_breaker_endpoint_key"] = f"{env._tenant_id}:{BLOCKED_WEBHOOK_URL}"
 
 
 @given("the webhook endpoint is unreachable (connection timeout)")
 def given_webhook_unreachable(ctx: dict) -> None:
-    """Configure webhook endpoint to timeout.
+    """Make the webhook endpoint accept the connection and then drop it.
 
-    Uses ``httpx.ConnectError`` (a subclass of ``httpx.RequestError``) so
-    :class:`WebhookDeliveryService`, which catches ``httpx.RequestError`` and
-    retries with backoff, exercises the network-error retry path. Plain
-    builtin ``ConnectionError`` would fall through to the catch-all
-    ``except Exception`` branch and skip retries.
+    The client raises its own transport error, which is what
+    :class:`WebhookDeliveryService` catches as ``httpx.RequestError`` and
+    retries with backoff. Nothing here names the exception — the endpoint
+    misbehaves and the client decides what that was.
     """
-    import httpx
-
-    env = ctx["env"]
-    env.mock["post"].side_effect = httpx.ConnectError("Connection timeout")
+    ctx["env"].set_http_error()
 
 
 @given(parsers.parse("the webhook endpoint returns {status_code:d} Unauthorized"))
@@ -558,55 +669,36 @@ def given_webhook_unauthorized(ctx: dict, status_code: int) -> None:
 @given(parsers.parse("the webhook endpoint has failed {n:d} consecutive delivery attempts"))
 def given_webhook_failed_n_times(ctx: dict, n: int) -> None:
     """Trigger n consecutive delivery failures on the circuit breaker."""
-    from src.services.webhook_delivery_service import CircuitBreaker
-
     env = ctx["env"]
-    service = env.get_service()
-    webhook_url = next(iter(ctx.get("webhook_config", {}).values()), {}).get("url", _WEBHOOK_URL)
+    webhook_url = next(iter(ctx.get("webhook_config", {}).values()), {}).get("url", _webhook_url(env))
     endpoint_key = f"{env._tenant_id}:{webhook_url}"
-    if endpoint_key not in service._circuit_breakers:
-        service._circuit_breakers[endpoint_key] = CircuitBreaker()
-    cb = service._circuit_breakers[endpoint_key]
-    for _ in range(n):
-        cb.record_failure()
+    env.seed_breaker_failures(endpoint_key, n)
     ctx["circuit_breaker_endpoint_key"] = endpoint_key
     ctx["webhook_failure_count"] = n
 
 
 @given(parsers.parse('a media buy "{mb_id}" with circuit breaker in "{state}" state'))
 def given_circuit_breaker_state(ctx: dict, mb_id: str, state: str) -> None:
-    """Set circuit breaker to specific state by directly manipulating CB internals."""
-    from src.services.webhook_delivery_service import CircuitBreaker, CircuitState
-
+    """Start the scenario with the breaker already in *state* (a seed, not an effect)."""
     env = ctx["env"]
-    service = env.get_service()
-    webhook_url = ctx.get("webhook_config", {}).get(mb_id, {}).get("url", _WEBHOOK_URL)
+    webhook_url = ctx.get("webhook_config", {}).get(mb_id, {}).get("url", _webhook_url(env))
     endpoint_key = f"{env._tenant_id}:{webhook_url}"
-    if endpoint_key not in service._circuit_breakers:
-        service._circuit_breakers[endpoint_key] = CircuitBreaker()
-    cb = service._circuit_breakers[endpoint_key]
-    state_map = {
-        "OPEN": CircuitState.OPEN,
-        "HALF_OPEN": CircuitState.HALF_OPEN,
-        "CLOSED": CircuitState.CLOSED,
-    }
-    cb.state = state_map[state.upper()]
+    env.set_breaker_state(endpoint_key, state)
     ctx["circuit_breaker_state"] = state
     ctx["circuit_breaker_endpoint_key"] = endpoint_key
 
 
 @given("the circuit breaker timeout (60s) has elapsed")
 def given_circuit_breaker_timeout(ctx: dict) -> None:
-    """Set last_failure_time 61s in the past so the CB timeout has elapsed."""
-    from datetime import UTC, timedelta
-    from datetime import datetime as _dt
+    """Age the last failure past the breaker's recovery timeout.
 
+    Moves the clock, not the state: production decides that an elapsed timeout
+    means OPEN -> HALF_OPEN on the next ``can_attempt``, and setting the state
+    here would skip the very transition the scenario exercises.
+    """
     env = ctx["env"]
-    service = env.get_service()
-    endpoint_key = ctx.get("circuit_breaker_endpoint_key", f"{env._tenant_id}:{_WEBHOOK_URL}")
-    cb = service._circuit_breakers.get(endpoint_key)
-    if cb is not None:
-        cb.last_failure_time = _dt.now(UTC) - timedelta(seconds=61)
+    endpoint_key = ctx.get("circuit_breaker_endpoint_key", env.endpoint_key())
+    env.elapse_breaker_timeout(endpoint_key)
     ctx["circuit_breaker_timeout_elapsed"] = True
 
 
@@ -912,28 +1004,47 @@ def when_evaluate_circuit_breaker(ctx: dict) -> None:
     (OPEN → HALF_OPEN), then attempts delivery via call_send().
     """
     env = ctx["env"]
-    service = env.get_service()
-    endpoint_key = ctx.get("circuit_breaker_endpoint_key", f"{env._tenant_id}:{_WEBHOOK_URL}")
-    cb = service._circuit_breakers.get(endpoint_key)
-    if cb is not None:
-        ctx["cb_can_attempt"] = cb.can_attempt()
+    endpoint_key = ctx.get("circuit_breaker_endpoint_key", env.endpoint_key())
+    env.drive_breaker_transition(endpoint_key)
     try:
-        ctx["circuit_result"] = env.call_send()
+        env.call_send()
     except Exception as exc:
         ctx["error"] = exc
 
 
 @when(parsers.parse("the system delivers {n:d} successful probe reports"))
 def when_deliver_probe_reports(ctx: dict, n: int) -> None:
-    """Record n successful deliveries on the circuit breaker (simulates probe recovery)."""
+    """Deliver n probe reports for real, so the CLOSED transition is production's.
+
+    This used to call production's ``record_success()`` directly, n times. That
+    was not a tautology — the Then still graded the breaker's threshold
+    arithmetic, and mutating ``success_threshold`` reddens it — but it skipped
+    the delivery layer this step's own text names, so the scenario could not see
+    production forget to record a success at all. Deleting
+    ``record_success()`` from ``_deliver_to_config`` left it green.
+
+    The Given has already stood up a real origin returning 200 and left the
+    breaker HALF_OPEN, where ``can_attempt()`` allows the probe through.
+
+    Counts through ``env.delivery_attempts``, NOT ``env.origin.hits``.
+    ``origin`` is the in-process local origin, which does not exist under
+    e2e_rest -- the compose stack's webhook-capture service is the endpoint
+    there, and ``__enter__`` deliberately never sets the attribute. Reading it
+    directly raised ``AttributeError`` in env SETUP on the live stack, and
+    because the env then failed to unbind the factory session, every following
+    scenario on that xdist worker errored with "Factory TenantFactory session
+    already bound" -- 5 real failures cascading into 443. ``delivery_attempts``
+    is the realize-aware accessor that answers the same question on both, which
+    is what it exists for.
+    """
     env = ctx["env"]
-    service = env.get_service()
-    endpoint_key = ctx.get("circuit_breaker_endpoint_key", f"{env._tenant_id}:{_WEBHOOK_URL}")
-    cb = service._circuit_breakers.get(endpoint_key)
-    if cb is not None:
-        for _ in range(n):
-            cb.record_success()
-    ctx["probe_count"] = n
+    attempts_before = env.delivery_attempts
+
+    for _ in range(n):
+        assert env.call_send(), "a probe report against a 200 origin must be delivered"
+
+    delivered = env.delivery_attempts - attempts_before
+    assert delivered == n, f"the scenario says {n} reports were delivered; the endpoint saw {delivered}"
 
 
 @when("the system delivers a webhook report with retry")
@@ -957,19 +1068,12 @@ def when_validate_webhook_config(ctx: dict) -> None:
     rejection happens in PRODUCTION, not in test code. A 32-char credential is
     accepted and the create succeeds.
     """
-    from tests.bdd.steps.generic._create_request import pricing_option_id
-    from tests.bdd.steps.generic.given_media_buy import _ensure_request_defaults
+    from tests.bdd.steps.generic.given_media_buy import harness_create_request_kwargs
 
     secret = ctx.get("webhook_secret", "")
-    kwargs = _ensure_request_defaults(ctx)
-    product = ctx.get("default_product")
-    pricing_option = ctx.get("default_pricing_option")
-    if product is not None:
-        kwargs["packages"][0]["product_id"] = product.product_id
-    if pricing_option is not None:
-        kwargs["packages"][0]["pricing_option_id"] = pricing_option_id(pricing_option)
+    kwargs = harness_create_request_kwargs(ctx)
     kwargs["reporting_webhook"] = {
-        "url": _WEBHOOK_URL,
+        "url": _DECLARED_WEBHOOK_URL,
         "reporting_frequency": "daily",
         "authentication": {"schemes": ["Bearer"], "credentials": secret},
     }
@@ -1195,8 +1299,7 @@ def when_request_without_field(ctx: dict, mb_id: str, field: str) -> None:
 @then(parsers.re(r'the response should include delivery data for "(?P<mb_id1>[^"]+)" and "(?P<mb_id2>[^"]+)"'))
 def then_includes_delivery_data_both(ctx: dict, mb_id1: str, mb_id2: str) -> None:
     """Assert response includes delivery data for both media buys."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
     mb_ids = [d.media_buy_id for d in deliveries]
     assert mb_id1 in mb_ids, f"Expected delivery data for '{mb_id1}', got: {mb_ids}"
@@ -1206,8 +1309,7 @@ def then_includes_delivery_data_both(ctx: dict, mb_id1: str, mb_id2: str) -> Non
 @then(parsers.re(r'the response should include delivery data for "(?P<mb_id>[^"]+)"$'))
 def then_includes_delivery_data(ctx: dict, mb_id: str) -> None:
     """Assert response includes delivery data for the given media buy."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
     mb_ids = [d.media_buy_id for d in deliveries]
     assert mb_id in mb_ids, f"Expected delivery data for '{mb_id}', got: {mb_ids}"
@@ -1216,8 +1318,7 @@ def then_includes_delivery_data(ctx: dict, mb_id: str) -> None:
 @then(parsers.parse('the response should include delivery data for "{mb_id}" only'))
 def then_includes_delivery_data_only(ctx: dict, mb_id: str) -> None:
     """Assert response includes delivery data for ONLY the given media buy."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
     mb_ids = [d.media_buy_id for d in deliveries]
     assert mb_ids == [mb_id], f"Expected only '{mb_id}', got: {mb_ids}"
@@ -1226,7 +1327,7 @@ def then_includes_delivery_data_only(ctx: dict, mb_id: str) -> None:
 @then(parsers.parse('the response should NOT include delivery data for "{mb_id}"'))
 def then_excludes_delivery_data(ctx: dict, mb_id: str) -> None:
     """Assert response does NOT include delivery data for the media buy."""
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is None:
         return  # No response at all = not included
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
@@ -1237,7 +1338,7 @@ def then_excludes_delivery_data(ctx: dict, mb_id: str) -> None:
 @then(parsers.parse('the response should not include delivery data for "{mb_id}"'))
 def then_no_delivery_data(ctx: dict, mb_id: str) -> None:
     """Assert response does not include delivery data for the media buy."""
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is None:
         return
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
@@ -1248,8 +1349,7 @@ def then_no_delivery_data(ctx: dict, mb_id: str) -> None:
 @then("the response should have an empty media_buy_deliveries array")
 def then_empty_deliveries(ctx: dict) -> None:
     """Assert response has empty media_buy_deliveries."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
     assert len(deliveries) == 0, f"Expected empty deliveries, got {len(deliveries)}"
 
@@ -1261,8 +1361,7 @@ def then_has_metrics(ctx: dict) -> None:
     Asserts type correctness and cross-field consistency rather than
     hardcoded mock-adapter values.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     d = resp.media_buy_deliveries[0]
     totals = d.totals
     # Type correctness: impressions and spend must be numeric
@@ -1292,8 +1391,7 @@ def then_has_packages(ctx: dict) -> None:
     Verifies structural correctness: packages exist, have distinct IDs,
     and their impressions roll up to the media-buy totals.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     d = resp.media_buy_deliveries[0]
     packages = d.by_package
     assert isinstance(packages, list), f"by_package must be a list, got {type(packages).__name__}"
@@ -1318,8 +1416,7 @@ def then_has_reporting_period(ctx: dict) -> None:
     reporting_period is on the response object (GetMediaBuyDeliveryResponse),
     not on individual MediaBuyDeliveryData entries.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     period = getattr(resp, "reporting_period", None)
     assert period is not None, "Response missing reporting_period"
     assert period.start is not None, "Reporting period start is None"
@@ -1329,8 +1426,7 @@ def then_has_reporting_period(ctx: dict) -> None:
 @then(parsers.parse('the response should include the media buy status "{status}"'))
 def then_has_mb_status(ctx: dict, status: str) -> None:
     """Assert response includes the expected media buy status."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     d = resp.media_buy_deliveries[0]
     assert d.status == status, f"Expected status '{status}', got '{d.status}'"
 
@@ -1338,8 +1434,7 @@ def then_has_mb_status(ctx: dict, status: str) -> None:
 @then("the response should include aggregated totals across both media buys")
 def then_has_aggregated_totals(ctx: dict) -> None:
     """Assert aggregated totals equal the sum of per-delivery totals."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     agg = resp.aggregated_totals
     deliveries = resp.media_buy_deliveries
     # Aggregated impressions must equal the sum of individual delivery impressions
@@ -1365,8 +1460,7 @@ def then_aggregated_roas(ctx: dict) -> None:
     from production's own per-delivery output) means a same-source extraction
     bug cannot self-validate (PR #1430 review).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     agg = resp.aggregated_totals
     roas = getattr(agg, "roas", None)
     assert roas is not None, "aggregated_totals.roas is missing — production does not compute roas"
@@ -1389,8 +1483,7 @@ def then_aggregated_cost_per_acquisition(ctx: dict) -> None:
     each, so cpa = 500 / 20 = 25.0. Literal assertion for the same
     same-source-extraction reason as the roas step above.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     agg = resp.aggregated_totals
     cpa = getattr(agg, "cost_per_acquisition", None)
     assert cpa is not None, (
@@ -1408,8 +1501,7 @@ def then_aggregated_cost_per_acquisition(ctx: dict) -> None:
 @then(parsers.parse('the aggregated_totals should include "media_buy_count" equal to {count:d}'))
 def then_aggregated_media_buy_count(ctx: dict, count: int) -> None:
     """Assert aggregated_totals.media_buy_count matches the scenario's buy count."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     agg = resp.aggregated_totals
     assert agg.media_buy_count == count, (
         f"aggregated_totals.media_buy_count ({agg.media_buy_count}) != expected ({count})"
@@ -1419,8 +1511,7 @@ def then_aggregated_media_buy_count(ctx: dict, count: int) -> None:
 @then("the aggregated impressions should equal the sum of individual impressions")
 def then_aggregated_impressions(ctx: dict) -> None:
     """Assert aggregated impressions equal sum of individual values."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
     individual_sum = sum(getattr(getattr(d, "totals", None), "impressions", 0.0) for d in deliveries)
     agg = getattr(resp, "aggregated_totals", None)
@@ -1432,8 +1523,7 @@ def then_aggregated_impressions(ctx: dict) -> None:
 @then("the aggregated spend should equal the sum of individual spend")
 def then_aggregated_spend(ctx: dict) -> None:
     """Assert aggregated spend equals sum of individual values."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
     individual_sum = sum(getattr(getattr(d, "totals", None), "spend", 0.0) for d in deliveries)
     agg = getattr(resp, "aggregated_totals", None)
@@ -1446,7 +1536,7 @@ def then_aggregated_spend(ctx: dict) -> None:
 def then_no_error_for_mb(ctx: dict, mb_id: str) -> None:
     """Assert no error for a specific media buy — checks both global ctx and per-delivery errors."""
     assert "error" not in ctx, f"Expected no error for '{mb_id}' but got: {ctx.get('error')}"
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is not None:
         deliveries = getattr(resp, "media_buy_deliveries", None) or []
         for d in deliveries:
@@ -1472,8 +1562,7 @@ def then_only_status(ctx: dict, status: str) -> None:
     MediaBuyDeliveryStatus is an Enum (not a str-enum), so identity-compares
     against the plain wire string would otherwise fail.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
     assert deliveries, (
         f"Filter '{status}' returned no media buys — the scenario must seed a buy "
@@ -1491,8 +1580,7 @@ def then_only_status(ctx: dict, status: str) -> None:
 @then(parsers.parse('the response reporting_period start should be "{date}"'))
 def then_period_start(ctx: dict, date: str) -> None:
     """Assert reporting period start date (response-level, not per-delivery)."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     period = getattr(resp, "reporting_period", None)
     assert period is not None, "Response missing reporting_period"
     actual = str(period.start)[:10]
@@ -1502,8 +1590,7 @@ def then_period_start(ctx: dict, date: str) -> None:
 @then(parsers.parse('the response reporting_period end should be "{date}"'))
 def then_period_end(ctx: dict, date: str) -> None:
     """Assert reporting period end date (response-level, not per-delivery)."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     period = getattr(resp, "reporting_period", None)
     assert period is not None, "Response missing reporting_period"
     actual = str(period.end)[:10]
@@ -1515,8 +1602,7 @@ def then_period_end_today(ctx: dict) -> None:
     """Assert reporting period end is today (response-level)."""
     from datetime import UTC, datetime
 
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     period = getattr(resp, "reporting_period", None)
     assert period is not None, "Response missing reporting_period"
@@ -1529,15 +1615,17 @@ def then_period_end_today(ctx: dict) -> None:
 
 @then("the system should POST a delivery report to the configured webhook URL")
 def then_webhook_post(ctx: dict) -> None:
-    """Assert webhook POST was made to the configured URL."""
+    """Assert the configured endpoint actually received a POST.
+
+    The configured endpoint IS the env's local origin, and the origin only
+    records requests that genuinely reached it — so "went to the configured URL"
+    is not a separate assertion here, it is the precondition for there being
+    anything to observe at all.
+    """
     env = ctx["env"]
-    assert env.mock["post"].called, "Expected webhook POST but none was made"
-    call_args = env.mock["post"].call_args
-    called_url = call_args[0][0] if call_args[0] else call_args[1].get("url", "")
-    configured_url = ctx.get("webhook_url", "https://example.com/webhook")
-    assert called_url == configured_url, (
-        f"Webhook POST went to wrong URL: expected {configured_url!r}, got {called_url!r}"
-    )
+    deliveries = _webhook_deliveries(ctx)
+    assert deliveries, f"Expected webhook POST to {_webhook_url(env)} but none was made"
+    assert deliveries[-1].method == "POST", f"Expected the delivery report to be POSTed, got {deliveries[-1].method}"
 
 
 @then(parsers.parse('the payload should include delivery metrics for "{mb_id}"'))
@@ -1621,10 +1709,10 @@ def then_next_expected(ctx: dict, next_expected: str) -> None:
 
 @then("each report should have a higher sequence_number than the previous")
 def then_sequence_ascending(ctx: dict) -> None:
-    """Assert sequence numbers are strictly increasing across consecutive POST calls."""
-    calls = ctx["env"].mock["post"].call_args_list
-    assert len(calls) >= 2, f"Expected at least 2 webhook POSTs for sequence check, got {len(calls)}"
-    seq_nums = [call[1].get("json", {}).get("sequence_number") for call in calls]
+    """Assert sequence numbers are strictly increasing across consecutive deliveries."""
+    deliveries = _webhook_deliveries(ctx)
+    assert len(deliveries) >= 2, f"Expected at least 2 webhook POSTs for sequence check, got {len(deliveries)}"
+    seq_nums = [req.json().get("sequence_number") for req in deliveries]
     for i in range(1, len(seq_nums)):
         assert seq_nums[i] is not None, f"POST call {i} payload missing sequence_number"
         assert seq_nums[i] > seq_nums[i - 1], (
@@ -1635,9 +1723,9 @@ def then_sequence_ascending(ctx: dict) -> None:
 @then("the first sequence_number should be >= 1")
 def then_first_sequence(ctx: dict) -> None:
     """Assert first webhook POST has sequence_number >= 1."""
-    calls = ctx["env"].mock["post"].call_args_list
-    assert calls, "No webhook POSTs were made"
-    first_payload = calls[0][1].get("json", {})
+    deliveries = _webhook_deliveries(ctx)
+    assert deliveries, "No webhook POSTs were made"
+    first_payload = deliveries[0].json()
     seq = first_payload.get("sequence_number")
     assert seq is not None, f"First webhook POST payload missing sequence_number: {list(first_payload.keys())}"
     assert seq >= 1, f"Expected sequence_number >= 1, got {seq}"
@@ -1660,21 +1748,40 @@ def then_retry_3_times(ctx: dict) -> None:
     the retry mechanism was triggered, not just that it stayed under the cap.
     """
     env = ctx["env"]
-    call_count = env.mock["post"].call_count
+    call_count = env.delivery_attempts
     assert call_count >= 2, (
         f"Expected at least 2 POST calls (original + retry), got {call_count} — retry mechanism may not have triggered"
     )
     assert call_count <= 4, f"Expected at most 4 calls (1+3 retries), got {call_count}"
 
 
-def _assert_exponential_backoff(ctx: dict, *, expected_sleeps: int = 2) -> list[float]:
-    """Assert the mocked sleep calls follow an exponential backoff schedule.
+def _pinned_jitter(ctx: dict) -> float:
+    """The jitter offset this env pins production's ``random.uniform`` draw to.
 
-    Production WebhookDeliveryService sleeps between retries. This reads the
-    recorded sleep durations, asserts there were exactly ``expected_sleeps`` of
-    them (= ``expected_sleeps + 1`` total attempts), and that each duration is
-    at least 1.5x the previous one (exponential growth). Returns the durations
-    for any further per-step assertions.
+    CircuitBreakerEnv patches ``random.uniform`` to a constant so the schedule is
+    deterministic. That constant is part of the expected delay, not something to
+    tolerate: grading ``base + pinned`` exactly is what keeps a magnitude
+    regression from hiding inside a jitter window.
+    """
+    return float(ctx["env"].mock["random"].return_value)
+
+
+def _assert_exponential_backoff(ctx: dict, *, expected_sleeps: int = 2) -> list[float]:
+    """Assert the mocked sleep calls match BR-RULE-029's 1s/2s/4s schedule.
+
+    Production sleeps between retries. This reads the recorded sleep durations,
+    asserts there were exactly ``expected_sleeps`` of them (= ``expected_sleeps + 1``
+    total attempts), and grades the durations against the rule's actual magnitudes
+    via the shared grader. Returns them for any further per-step assertions.
+
+    Magnitudes, not ratios: a ratio check passes for any geometric schedule, so
+    0.1/0.2/0.4 would satisfy it while breaking the invariant the scenario names.
+
+    ``sleep`` is the one thing these scenarios still mock. It is not a transport:
+    the delivery attempts themselves reach a real endpoint and are counted there.
+    Mocking the clock is what keeps a 1s/2s/4s schedule assertable in a test that
+    finishes in milliseconds — the alternative is to wait it out, and a schedule
+    nobody waits for cannot be graded at all.
     """
     sleep_calls = ctx["env"].mock["sleep"].call_args_list
     assert sleep_calls, "Expected at least one sleep call for backoff"
@@ -1682,35 +1789,43 @@ def _assert_exponential_backoff(ctx: dict, *, expected_sleeps: int = 2) -> list[
     assert len(durations) == expected_sleeps, (
         f"Expected {expected_sleeps} backoff sleeps (for {expected_sleeps + 1} total attempts), got {len(durations)}"
     )
-    for prev, nxt in zip(durations, durations[1:], strict=False):
-        assert nxt >= prev * 1.5, (
-            f"Backoff duration {nxt:.2f}s is not exponentially larger than prior {prev:.2f}s "
-            f"(expected at least {prev * 1.5:.2f}s). Full schedule: {[f'{d:.2f}' for d in durations]}"
-        )
+    assert_backoff_schedule(durations, jitter=_pinned_jitter(ctx))
     return durations
 
 
 @then("retries should use exponential backoff (1s, 2s, 4s + jitter)")
 def then_exponential_backoff(ctx: dict) -> None:
-    """Assert sleep durations follow exponential backoff schedule.
+    """Assert sleep durations are 1s/2s/4s and that jitter is actually drawn.
 
-    Production WebhookDeliveryService does 3 total attempts (1 original + 2 retries),
-    sleeping between each retry. So we expect exactly 2 sleep calls with
-    exponentially growing durations.
+    Production does 3 total attempts (1 original + 2 retries), sleeping between
+    each retry, so we expect exactly 2 sleeps graded against the [1s, 2s] prefix.
+
+    The env pins ``random.uniform`` for determinism, so the jitter half of this
+    step is graded by the draw itself: production must ask for a jitter value in
+    [0, 1) per retry. Deleting ``+ random.uniform(0, 1)`` from the delay makes
+    this step red, which is the whole point of grading the step text.
     """
-    _assert_exponential_backoff(ctx)
+    durations = _assert_exponential_backoff(ctx)
+
+    jitter_draws = ctx["env"].mock["random"].call_args_list
+    assert len(jitter_draws) == len(durations), (
+        f"Expected one jitter draw per backoff sleep ({len(durations)}), got {len(jitter_draws)} — "
+        "BR-RULE-029 requires randomisation so retries do not thunder"
+    )
+    for i, call in enumerate(jitter_draws):
+        assert call.args == (0, 1), f"Jitter draw {i + 1} was random.uniform{call.args}, expected random.uniform(0, 1)"
 
 
 @then("the system should retry up to 3 times with exponential backoff")
 def then_retry_with_backoff(ctx: dict) -> None:
-    """Assert at most 4 POST calls (1 original + 3 retries) with exponential sleep growth.
+    """Assert at most 4 POST calls (1 original + 3 retries) on the 1s/2s/4s schedule.
 
-    Production WebhookDeliveryService does 3 total attempts with 2 sleeps between them.
+    Production does 3 total attempts with 2 sleeps between them. This step text
+    claims no jitter, so jitter is not graded here — the sibling 5xx scenario
+    that does claim it grades it.
     """
     env = ctx["env"]
-    assert env.mock["post"].call_count <= 4, (
-        f"Expected at most 4 calls (1 + 3 retries), got {env.mock['post'].call_count}"
-    )
+    assert env.delivery_attempts <= 4, f"Expected at most 4 calls (1 + 3 retries), got {env.delivery_attempts}"
     _assert_exponential_backoff(ctx)
 
 
@@ -1718,7 +1833,9 @@ def then_retry_with_backoff(ctx: dict) -> None:
 def then_no_retry(ctx: dict) -> None:
     """Assert no retry was attempted."""
     env = ctx["env"]
-    assert env.mock["post"].call_count <= 1, "Expected no retries"
+    assert env.delivery_attempts <= 1, (
+        f"Expected no retries, but the endpoint received {env.delivery_attempts} requests"
+    )
 
 
 @then("the system should log the authentication rejection")
@@ -1760,27 +1877,53 @@ def then_webhook_marked_failed(ctx: dict) -> None:
 
 @then("the webhook delivery should be skipped without an HTTP POST")
 def then_webhook_skipped_no_post(ctx: dict) -> None:
-    """Assert send-time SSRF skip: delivery failed and httpx POST was never called."""
+    """Assert the refusal happened BEFORE any connection, not after a failed one.
+
+    The two outcome assertions are wire-observable on every transport, e2e_rest
+    included, and are checked unconditionally first:
+
+    * ``delivery_attempts`` is the hit count of the REAL local origin this env
+      runs (``LocalOriginMixin``), and this scenario deliberately points the
+      config somewhere the origin is not (the cloud-metadata address). It
+      therefore reads 0 whether production refused the destination or dialled it,
+      so on its own it states only "the origin was not the destination".
+    * ``success is False`` is the same on both sides of the gate too:
+      ``OutboundRequestBlocked`` and a dead socket are both ``OutboundError`` and
+      take the identical ``record_failure(); return False`` branch in
+      ``WebhookDeliveryService._deliver_with_backoff``.
+
+    The discriminator is the retry SCHEDULE, checked last via
+    ``env.assert_no_retry_schedule_entered()``: process-local
+    (``env.mock["sleep"]``), so it is declared e2e-unsupported there (see
+    ``CircuitBreakerMixin`` in ``tests/harness/_mixins.py``) rather than
+    silently dropping the whole scenario from e2e_rest.
+    """
     env = ctx["env"]
     success = _extract_webhook_success(ctx)
     assert success is False, f"Expected SSRF-skipped delivery to return False, got success={success!r}"
-    post_mock = env.mock["post"]
-    assert post_mock.call_count == 0, f"Expected no HTTP POST after SSRF rejection, got {post_mock.call_count} call(s)"
+    assert env.delivery_attempts == 0, (
+        f"Expected no HTTP POST after SSRF rejection, the origin received {env.delivery_attempts} request(s)"
+    )
+    env.assert_no_retry_schedule_entered()
 
 
 @then("the circuit breaker should record a failure")
 def then_circuit_breaker_recorded_failure(ctx: dict) -> None:
-    """Assert the send-time SSRF path called circuit_breaker.record_failure()."""
+    """Assert the send-time SSRF path called circuit_breaker.record_failure().
+
+    Read through the production public API (``get_circuit_breaker_state``, via
+    the env's ``breaker_snapshot``), never off service internals.
+
+    Declared e2e-unsupported by
+    ``CircuitBreakerMixin.assert_circuit_breaker_failure_recorded`` for a
+    TOPOLOGY reason that the public read does not change: under e2e_rest
+    ``get_service()`` builds a fresh in-process service that the live server's
+    deliveries never touch, so there is no breaker state to observe from here at
+    all.
+    """
     env = ctx["env"]
-    service = env.get_service()
-    endpoint_key = ctx.get("circuit_breaker_endpoint_key", f"{env._tenant_id}:{_WEBHOOK_URL}")
-    cb = service._circuit_breakers.get(endpoint_key)
-    assert cb is not None, (
-        f"Expected circuit breaker for {endpoint_key!r} after SSRF skip, found keys={list(service._circuit_breakers)}"
-    )
-    assert cb.failure_count >= 1, (
-        f"Expected failure_count >= 1 after SSRF rejection for {endpoint_key!r}, got {cb.failure_count}"
-    )
+    endpoint_key = ctx.get("circuit_breaker_endpoint_key", env.endpoint_key())
+    env.assert_circuit_breaker_failure_recorded(endpoint_key)
 
 
 @then(parsers.parse('the circuit breaker should be in "{state}" state'))
@@ -1800,15 +1943,14 @@ def then_deliveries_suppressed(ctx: dict) -> None:
     count, attempt a delivery, and verify no new POST was dispatched.
     """
     env = ctx["env"]
-    post_mock = env.mock["post"]
-    calls_before = post_mock.call_count
+    calls_before = env.delivery_attempts
 
     # Attempt a delivery while breaker is open — it should be suppressed
     result = env.call_send()
     assert result is False, f"Expected delivery to be suppressed (return False) while CB is open, got {result!r}"
-    assert post_mock.call_count == calls_before, (
+    assert env.delivery_attempts == calls_before, (
         f"Expected no new POST calls while CB is open (suppressed), "
-        f"but call count went from {calls_before} to {post_mock.call_count}"
+        f"but the endpoint went from {calls_before} to {env.delivery_attempts} requests"
     )
 
 
@@ -1822,64 +1964,99 @@ def then_circuit_transition(ctx: dict, state: str) -> None:
 
 @then("the system should attempt a single probe delivery")
 def then_single_probe(ctx: dict) -> None:
-    """Assert exactly one probe delivery was dispatched in half-open state.
+    """Assert exactly one probe delivery REACHED THE ENDPOINT in half-open state.
 
-    The preceding step already verified the breaker transitioned to half_open.
-    This step verifies the behavioral claim: exactly one probe attempt was
-    made — the POST call count should have increased by exactly 1 since the
-    breaker opened, or the probe_count in ctx should be exactly 1.
+    "A probe delivery was attempted" is a claim about a DELIVERY, so it is graded
+    on the endpoint, the same way ``then_deliveries_resume`` below grades its own.
+
+    What stood here was a three-way branch whose last two arms could not run. It
+    looked for ``env.mock["httpx_post"]`` or ``env.mock["webhook_post"]``; a
+    ``CircuitBreakerEnv`` holds neither, because it delivers over real HTTP to a
+    real origin rather than through a POST mock. So the second arm was dead, and
+    the third arm — a ``pytest.xfail("HARNESS GAP")`` guarded by
+    ``ctx["cb_can_attempt"]``, a key no step in this module writes — was dead
+    twice over. A dormant xfail on a branch that cannot execute grades nothing
+    while reading, in the report, exactly like a scenario that does.
+
+    ``env.delivery_attempts`` is the realize-aware accessor, so the count is a
+    live readback of whichever endpoint this transport actually uses.
+
+    The probe is made HERE, not read from a prior step, because this scenario's
+    When is "the system evaluates the circuit breaker state" — an evaluation, not
+    a delivery. Grading a delivery claim therefore means performing one, exactly
+    as ``then_deliveries_resume`` below does for its own claim. The preceding
+    Then has already asserted the breaker reached HALF_OPEN.
     """
     env = ctx["env"]
-    probe_count = ctx.get("probe_count")
-    if probe_count is not None:
-        # Probe count was explicitly recorded by the When step
-        assert probe_count == 1, f"Expected exactly 1 probe delivery attempt, got {probe_count}"
-    else:
-        # Check mock POST call count as evidence of dispatch
-        mock_post = env.mock.get("httpx_post") or env.mock.get("webhook_post")
-        if mock_post is not None:
-            # Count calls that happened during the half-open phase
-            pre_open_calls = ctx.get("pre_open_call_count", 0)
-            probe_dispatches = mock_post.call_count - pre_open_calls
-            assert probe_dispatches == 1, (
-                f"Expected exactly 1 probe dispatch in half-open state, "
-                f"got {probe_dispatches} (total={mock_post.call_count}, pre-open={pre_open_calls})"
-            )
-        else:
-            # No dispatch mock — verify the CB gate at least allowed the attempt
-            cb_can_attempt = ctx.get("cb_can_attempt")
-            assert cb_can_attempt is True, (
-                f"Circuit breaker did not allow the probe attempt (can_attempt={cb_can_attempt!r})"
-            )
-            pytest.xfail("HARNESS GAP: no webhook POST mock — cannot count probe dispatches")
+
+    attempts_before = env.delivery_attempts
+    admitted = env.call_send()
+
+    delivered = env.delivery_attempts - attempts_before
+    assert delivered == 1, (
+        f"a half-open breaker admits exactly ONE probe; the endpoint saw {delivered}. "
+        "Zero means the breaker is still suppressing and never left OPEN in practice, "
+        "whatever it reports about its own state; more than one means it is not gating."
+    )
+    assert admitted is True, (
+        "the probe reached the endpoint but the sender reported failure — a probe that "
+        "arrives and is then recorded as a failure keeps the breaker open forever"
+    )
 
 
 @then("normal scheduled deliveries should resume")
 def then_deliveries_resume(ctx: dict) -> None:
-    """Assert normal scheduled deliveries can resume after circuit breaker closure.
+    """Assert normal scheduled deliveries RESUME — by making one happen.
 
-    The preceding step already verified the breaker transitioned to closed.
-    This step verifies the behavioral claim: the circuit breaker allows new
-    delivery attempts (can_attempt returns True), proving the gate is open
-    for scheduled deliveries to flow through.
+    "Deliveries resume" is a claim about DELIVERIES, so it is graded on a
+    delivery: a report is sent and the endpoint must actually receive it. What
+    stood here before asserted ``cb.can_attempt() is True`` on the private
+    breaker object — a gate's internal opinion of itself, which stays true even
+    when nothing can get through, and which is unfalsifiable across any process
+    boundary.
+
+    This is gradeable because the scenario now registers a webhook (the
+    ``active reporting_webhook`` Given). Without it ``_send_webhook_enhanced``
+    finds no PushNotificationConfig and returns False before the breaker is ever
+    consulted, so every step in the scenario could only ever grade test doubles.
+
+    The CLOSED state is still asserted, because the scenario text names it — but
+    it is read through the production public API (``breaker_snapshot``) rather
+    than off the private dict, and it is now the SECONDARY claim. An attempt that
+    reached the origin is the primary one.
     """
     from src.services.webhook_delivery_service import CircuitState
 
     env = ctx["env"]
-    service = env.get_service()
-    endpoint_key = ctx.get("circuit_breaker_endpoint_key", f"{env._tenant_id}:{_WEBHOOK_URL}")
-    cb = service._circuit_breakers.get(endpoint_key)
 
-    # The breaker must allow attempts (closed state permits delivery)
-    assert cb is not None, f"No circuit breaker found for endpoint key {endpoint_key!r}"
-    can_attempt = cb.can_attempt()
-    assert can_attempt is True, (
-        f"Circuit breaker should allow delivery attempts after closure, "
-        f"but can_attempt() returned {can_attempt!r} (state={cb.state})"
+    # No arrange here, deliberately: the scenario's own Given ("the webhook
+    # endpoint has recovered and returns 200") owns the endpoint. A Then that
+    # forced the endpoint healthy would grade a condition it created, and would
+    # silently mask a scenario that arranged a failing endpoint on purpose.
+    attempts_before = env.delivery_attempts
+    delivered = env.call_send()
+
+    assert delivered is True, (
+        "a delivery attempted after the breaker closed did not succeed — deliveries have not resumed"
     )
-    # Verify the breaker is in closed state (not just half_open allowing a probe)
-    assert cb.state == CircuitState.CLOSED, (
-        f"Expected circuit breaker in CLOSED state for resumed deliveries, got {cb.state}"
+    assert env.delivery_attempts == attempts_before + 1, (
+        f"the endpoint received {env.delivery_attempts - attempts_before} request(s) for one resumed "
+        "delivery — the breaker is still gating traffic, whatever its state says"
+    )
+
+    state, failure_count = env.breaker_snapshot()
+    assert state == CircuitState.CLOSED, (
+        f"Expected circuit breaker in CLOSED state for resumed deliveries, got {state} — a HALF_OPEN "
+        "breaker lets a single probe through, which is not resumed scheduled delivery"
+    )
+    # NOT claimed as an "effect of the probes": this scenario seeds a FRESH
+    # breaker at HALF_OPEN, which is born with failure_count 0 and never records
+    # a failure, so this cannot currently fail. It is kept as a pin — successful
+    # probes must not ADD failures — and it is deliberately the weakest of the
+    # four assertions here, not the grade.
+    assert failure_count == 0, (
+        f"the breaker carries {failure_count} recorded failure(s) after successful recovery "
+        "probes — successful probes must not add to the failure tally"
     )
 
 
@@ -1947,39 +2124,49 @@ def then_hmac_header(ctx: dict, header: str) -> None:
     assert re.match(r"^[0-9a-f]{1,}$", stripped), f"Header {header!r} is not a hex-encoded HMAC: {value!r}"
 
 
-@then(parsers.parse('the request should include header "{header}" with ISO timestamp'))
+@then(parsers.parse('the request should include header "{header}" with unix timestamp'))
 def then_timestamp_header(ctx: dict, header: str) -> None:
-    """Assert timestamp header is present and contains a valid ISO 8601 datetime."""
-    from datetime import datetime as _dt
+    """Assert timestamp header is present and contains a unix-seconds integer.
 
+    Per AdCP 3.1.1 (docs/building/by-layer/L3/webhooks.mdx:404-418):
+    ``X-ADCP-Timestamp: <unix timestamp in seconds>``, an exact ASCII integer.
+    """
     headers = _get_last_webhook_headers(ctx)
     assert header in headers, f"Expected header {header!r} but got: {list(headers.keys())}"
     value = headers[header]
-    try:
-        _dt.fromisoformat(value)
-    except (ValueError, TypeError) as exc:
-        raise AssertionError(f"Header {header!r} is not a valid ISO 8601 timestamp: {value!r}") from exc
+    assert value.isdigit(), f"Header {header!r} is not a unix-seconds integer: {value!r}"
 
 
 @then('the HMAC should be computed over "timestamp.payload" concatenation')
 def then_hmac_computation(ctx: dict) -> None:
-    """Assert HMAC signature is reproduced by signing timestamp.payload with the secret."""
+    """Assert the HMAC verifies against the RAW bytes the origin actually received.
+
+    Recomputes over the wire body (``deliveries[-1].body``), not a fresh
+    ``json.dumps`` of the parsed payload — a recompute from the dict can
+    silently agree with a sender that signed one serialization and
+    transmitted another, which is exactly the defect PR #1802 fixed.
+    """
     import hashlib
     import hmac as hmac_lib
-    import json as json_lib
 
-    headers = _get_last_webhook_headers(ctx)
-    payload = _get_last_webhook_payload(ctx)
-    timestamp = headers.get("X-ADCP-Timestamp") or headers.get("X-Webhook-Timestamp", "")
-    raw_sig = headers.get("X-ADCP-Signature") or headers.get("X-Webhook-Signature", "")
+    deliveries = _webhook_deliveries(ctx)
+    assert deliveries, "No webhook POST was made"
+    request = deliveries[-1]
+
+    headers = request.headers
+    timestamp = headers.get("X-ADCP-Timestamp", "")
+    raw_sig = headers.get("X-ADCP-Signature", "")
     signature = raw_sig.removeprefix("sha256=")
     assert signature, "Expected HMAC signature header to be present and non-empty"
     signing_secret: str = ctx.get("webhook_secret", "")
     assert signing_secret, "Test setup must store webhook_secret in ctx['webhook_secret']"
-    payload_str = json_lib.dumps(payload, sort_keys=True, separators=(",", ":"))
-    message = f"{timestamp}.{payload_str}".encode()
+    message = f"{timestamp}.".encode() + request.body
     expected = hmac_lib.new(signing_secret.encode(), message, hashlib.sha256).hexdigest()
-    assert signature == expected, f"HMAC signature mismatch: got {signature!r}, expected {expected!r}"
+    assert signature == expected, (
+        f"the buyer's endpoint could not verify this webhook: X-ADCP-Signature was computed over "
+        f"bytes other than the {len(request.body)} that crossed the socket (got {signature!r}, "
+        f"expected {expected!r})"
+    )
 
 
 @then(parsers.parse('the request should include header "{header}" with the bearer token'))
@@ -2010,8 +2197,7 @@ def then_has_deliveries_field(ctx: dict) -> None:
     request included specific media_buy_ids, verifies that every returned
     delivery corresponds to a requested ID (filtering correctness).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     deliveries = resp.media_buy_deliveries
     assert isinstance(deliveries, list), f"Expected media_buy_deliveries to be a list, got {type(deliveries).__name__}"
     # Every delivery item must carry a non-empty media_buy_id
@@ -2033,7 +2219,7 @@ def then_has_deliveries_field(ctx: dict) -> None:
 def then_no_errors_field(ctx: dict) -> None:
     """Assert response errors list is empty and no exception was raised."""
     assert "error" not in ctx, f"Unexpected error: {ctx.get('error')}"
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is not None:
         errors = getattr(resp, "errors", None) or []
         assert not errors, f"Unexpected errors in response: {errors}"
@@ -2049,7 +2235,7 @@ def then_has_errors_field(ctx: dict) -> None:
     present, not just that some field exists.
     """
     error_exc = ctx.get("error")
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     assert resp is not None or error_exc is not None, (
         "Expected either a response with errors or an exception, got neither"
     )
@@ -2070,7 +2256,7 @@ def then_has_errors_field(ctx: dict) -> None:
 @then('the response should not contain "media_buy_deliveries" field')
 def then_no_deliveries_field(ctx: dict) -> None:
     """Assert media_buy_deliveries is absent or empty in the serialized response."""
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is not None:
         # Check serialized form — field should not be present or should be empty
         dumped = resp.model_dump() if hasattr(resp, "model_dump") else {}
@@ -2110,13 +2296,9 @@ def then_skip_no_webhook(ctx: dict, mb_id: str) -> None:
     Verifies that no POST call contains this media buy's ID in its payload,
     confirming the system correctly skipped delivery when no webhook is configured.
     """
-    env = ctx["env"]
     real_id = _resolve_media_buy_id(ctx, mb_id)
-    post_mock = env.mock["post"]
     # Collect all media_buy_ids that received webhook POSTs
-    posted_mb_ids = [
-        call[1].get("json", {}).get("media_buy_id") for call in post_mock.call_args_list if call[1].get("json")
-    ]
+    posted_mb_ids = [req.json().get("media_buy_id") for req in _webhook_deliveries(ctx)]
     assert real_id not in posted_mb_ids, (
         f"Webhook POST was made for '{real_id}' but it should have been skipped "
         f"(no webhook configured). All posted IDs: {posted_mb_ids}"
@@ -2125,9 +2307,9 @@ def then_skip_no_webhook(ctx: dict, mb_id: str) -> None:
 
 @then("no delivery attempt should be made")
 def then_no_delivery_attempt(ctx: dict) -> None:
-    """Assert no delivery attempt was made."""
+    """Assert the endpoint received nothing at all."""
     env = ctx["env"]
-    assert not env.mock["post"].called, "Expected no delivery attempt"
+    assert env.delivery_attempts == 0, f"Expected no delivery attempt, endpoint received {env.delivery_attempts}"
 
 
 # ── Reporting dimension assertions ─────────────────────────────────
@@ -2141,8 +2323,7 @@ def then_packages_include_breakdown(ctx: dict, field: str) -> None:
     has impressions), and dimensional segmentation (each entry carries the
     dimension identifier, e.g. "device_type" for "by_device_type").
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     packages = _collect_all_packages(resp)
     checked = 0
     # Derive the dimension identifier from the field name: "by_device_type" -> "device_type"
@@ -2191,8 +2372,7 @@ def then_packages_exclude_breakdown(ctx: dict, field: str) -> None:
     which PackageDelivery never defines — a ``getattr`` check would always pass
     vacuously).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", []) or []
     packages = [pkg for d in deliveries for pkg in (getattr(d, "by_package", None) or [])]
     for pkg in packages:
@@ -2209,8 +2389,7 @@ def then_packages_limited(ctx: dict, field: str, n: int) -> None:
     Verifies the count constraint and that entries are properly typed (list
     of dicts/objects with at least one field populated).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     packages = _collect_all_packages(resp)
     checked = 0
     for pkg in packages:
@@ -2234,8 +2413,7 @@ def then_field_true(ctx: dict, field: str) -> None:
     Truncation flags (by_geo_truncated, by_device_type_truncated) live on
     PackageDelivery, not on the top-level response object.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     packages = _collect_all_packages(resp)
     assert packages, "Response has no packages to check"
     for pkg in packages:
@@ -2250,8 +2428,7 @@ def then_field_false(ctx: dict, field: str) -> None:
     Truncation flags (by_geo_truncated, by_device_type_truncated) live on
     PackageDelivery, not on the top-level response object.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     packages = _collect_all_packages(resp)
     assert packages, "Response has no packages to check"
     for pkg in packages:
@@ -2266,8 +2443,7 @@ def then_packages_include_field(ctx: dict, field: str) -> None:
     Verifies the field is non-None and, for numeric fields, is a proper
     numeric type. For string fields, verifies non-empty.
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     packages = _collect_all_packages(resp)
     checked = 0
     for pkg in packages:
@@ -2286,8 +2462,7 @@ def then_packages_include_field(ctx: dict, field: str) -> None:
 @then(parsers.parse('the response packages should include "{f1}" and "{f2}" breakdowns'))
 def then_packages_include_two(ctx: dict, f1: str, f2: str) -> None:
     """Assert every package has both named breakdown fields as non-empty lists."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     packages = _collect_all_packages(resp)
     checked = 0
     for pkg in packages:
@@ -2307,8 +2482,7 @@ def then_packages_exclude_field(ctx: dict, field: str) -> None:
     are absent from the model (e.g. 'by_audience' which PackageDelivery never
     defines — a ``getattr`` check would always pass vacuously).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", []) or []
     packages = [pkg for d in deliveries for pkg in (getattr(d, "by_package", None) or [])]
     for pkg in packages:
@@ -2325,8 +2499,7 @@ def then_geo_system(ctx: dict, system: str) -> None:
     then xfails on the specific missing field (by_geo with system).
     """
     assert "error" not in ctx, f"Expected valid response but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     assert resp.media_buy_deliveries, "Expected non-empty media_buy_deliveries"
     assert resp.reporting_period is not None, "Expected reporting_period"
 
@@ -2355,8 +2528,7 @@ def then_placement_sorted_fallback(ctx: dict, metric: str) -> None:
     then verifies sort order if by_placement is populated.
     """
     assert "error" not in ctx, f"Expected valid response but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     assert resp.media_buy_deliveries, "Expected non-empty media_buy_deliveries"
     assert resp.reporting_period is not None, "Expected reporting_period"
 
@@ -2372,8 +2544,7 @@ def then_placement_sorted(ctx: dict, metric: str) -> None:
     then verifies sort order if by_placement is populated with the metric.
     """
     assert "error" not in ctx, f"Expected valid response but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     assert resp.media_buy_deliveries, "Expected non-empty media_buy_deliveries"
     assert resp.reporting_period is not None, "Expected reporting_period"
 
@@ -2392,8 +2563,7 @@ def then_attribution_model(ctx: dict, model: str) -> None:
     equals the expected model string.
     """
     assert "error" not in ctx, f"Expected valid response but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     assert resp.media_buy_deliveries, "Expected non-empty media_buy_deliveries"
     assert resp.reporting_period is not None, "Expected reporting_period"
 
@@ -2413,8 +2583,7 @@ def then_attribution_echo(ctx: dict) -> None:
     match the request — not merely that they are non-None.
     """
     assert "error" not in ctx, f"Expected valid response but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     assert resp.media_buy_deliveries, "Expected non-empty media_buy_deliveries"
 
     aw = getattr(resp, "attribution_window", None)
@@ -2451,8 +2620,7 @@ def then_attribution_default(ctx: dict) -> None:
     from src.core.tools.media_buy_delivery import PLATFORM_DEFAULT_ATTRIBUTION_MODEL
 
     assert "error" not in ctx, f"Expected valid response but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     assert resp.media_buy_deliveries, "Expected non-empty media_buy_deliveries"
     assert resp.reporting_period is not None, "Expected reporting_period in response"
 
@@ -2509,8 +2677,7 @@ def then_attribution_has_model(ctx: dict) -> None:
     from adcp.types.generated_poc.enums.attribution_model import AttributionModel
 
     assert "error" not in ctx, f"Expected valid response but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     assert resp.media_buy_deliveries, "Expected non-empty media_buy_deliveries"
 
     aw = getattr(resp, "attribution_window", None)
@@ -2535,8 +2702,7 @@ def then_attribution_default_model(ctx: dict) -> None:
     from src.core.tools.media_buy_delivery import PLATFORM_DEFAULT_ATTRIBUTION_MODEL
 
     assert "error" not in ctx, f"Expected valid response but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     assert resp.media_buy_deliveries, "Expected non-empty media_buy_deliveries"
     assert resp.reporting_period is not None, "Expected reporting_period in response"
 
@@ -2566,8 +2732,7 @@ def then_attribution_campaign_length(ctx: dict) -> None:
     unit is 'days' and interval >= 1.
     """
     assert "error" not in ctx, f"Expected valid response but got error: {ctx.get('error')}"
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
 
     # Response-level structural assertions
     assert resp.media_buy_deliveries, "Expected non-empty media_buy_deliveries"
@@ -2601,8 +2766,7 @@ def then_attribution_campaign_length(ctx: dict) -> None:
 @then(parsers.parse('the response should indicate "{mb_id}" has partial_data or delayed metrics'))
 def then_partial_data(ctx: dict, mb_id: str) -> None:
     """Assert the named media buy has reporting_delayed status."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     deliveries = getattr(resp, "media_buy_deliveries", []) or []
     target = next((d for d in deliveries if d.media_buy_id == mb_id), None)
     assert target is not None, f"No delivery found for {mb_id!r}"
@@ -2618,8 +2782,7 @@ def then_zero_metrics(ctx: dict, mb_id: str) -> None:
     Verifies ID mapping (the requested media buy is found in deliveries)
     and exact metric values (both must be zero, not just non-negative).
     """
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
     deliveries = resp.media_buy_deliveries
     target = next((d for d in deliveries if d.media_buy_id == mb_id), None)
     assert target is not None, f"No delivery found for '{mb_id}' in {[d.media_buy_id for d in deliveries]}"
@@ -2630,8 +2793,7 @@ def then_zero_metrics(ctx: dict, mb_id: str) -> None:
 @then("no real billing records should have been created")
 def then_no_billing(ctx: dict) -> None:
     """Assert sandbox mode — verify via response flag and absence of billing adapter calls."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response"
+    resp = require_payload(ctx)
     sandbox = getattr(resp, "sandbox", None)
     assert sandbox is True, (
         f"Expected sandbox=True in response indicating no real billing records were created, got sandbox={sandbox!r}"
@@ -2675,7 +2837,7 @@ def _delivery_boundary_handler(ctx: dict, field: str, expected: str) -> bool:
     fall back to other domains (e.g. UC-005 creative formats). Behavior matches
     the delivery branch previously embedded in generic/then_payload.
     """
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     is_delivery = field.strip().lower().replace(" ", "_") in _DELIVERY_BOUNDARY_FIELDS or (
         resp is not None and hasattr(resp, "media_buy_deliveries")
     )
@@ -2702,8 +2864,7 @@ def _delivery_boundary_handler(ctx: dict, field: str, expected: str) -> bool:
 
 def _assert_valid_content(ctx: dict, field: str) -> None:
     """Per-field content assertion for 'valid' partition/boundary outcomes."""
-    resp = ctx.get("response")
-    assert resp is not None, "Expected a response but none found"
+    resp = require_payload(ctx)
 
     if field in ("status_filter", "filter"):
         deliveries = getattr(resp, "media_buy_deliveries", None) or []
@@ -2807,7 +2968,7 @@ def _assert_wire_rejection(ctx: dict, field: str) -> None:
     wire: not a server fault (INTERNAL_ERROR / transient) and not an auth failure. The
     precise code/recovery is asserted only once the scenario carries it.
     """
-    envelope = ctx.get("wire_error_envelope")
+    envelope = error_envelope_or_none(ctx)
     if isinstance(envelope, dict) and "adcp_error" in envelope:
         layer = envelope["adcp_error"]
         code = layer.get("code")
@@ -2855,7 +3016,14 @@ def _assert_partition_or_boundary(ctx: dict, expected: str, field: str = "unknow
 
     if expected == "valid":
         assert "error" not in ctx, f"Expected valid {field} result but got error: {ctx.get('error')}"
-        assert "response" in ctx, f"Expected response for valid {field} but none found"
+        # Two kinds of When feed this assertion. Most DISPATCH and are graded on
+        # the payload that came back. The webhook-credentials scenarios instead
+        # CONSTRUCT a CreateMediaBuyRequest locally and are graded on whether
+        # construction raised — there is no dispatch and so no payload, and
+        # demanding one would fail them for the wrong reason.
+        if ctx.get("constructed_request") is not None:
+            return
+        require_payload(ctx)  # raises if the dispatch produced no payload for this field
         _assert_valid_content(ctx, field)
         return
     if expected == "invalid":
@@ -2916,9 +3084,8 @@ def then_filter_result(ctx: dict, expected: str) -> None:
 
     if expected == "valid":
         assert "error" not in ctx, f"Expected valid status_filter result but got error: {ctx.get('error')}"
-        assert "response" in ctx, "Expected response for valid status_filter but none found"
-        resp = ctx.get("response")
-        assert resp is not None, "Expected a response but none found"
+        require_payload(ctx)  # raises if the dispatch produced no payload
+        resp = require_payload(ctx)
         deliveries = getattr(resp, "media_buy_deliveries", None) or []
 
         # Determine what filter was requested by inspecting the When step's kwargs.
@@ -3036,7 +3203,16 @@ def _credential_label_to_config(label: str) -> tuple[str, str]:
     must be at least 32 characters).
     """
     text = label.lower()
-    if "bearer" in text:
+    if "lowercase" in text:
+        # The exact spelling the free-form A2A push-config endpoint stored. The
+        # pinned AuthenticationScheme is case-SENSITIVE, so this is not a member
+        # and the document is invalid — the casing is refused, not folded.
+        scheme = "hmac-sha256"
+    elif "basic" in text:
+        # Not an AdCP scheme at all. Reachable the same way, and equally invalid:
+        # the pinned enum is exactly ["Bearer", "HMAC-SHA256"].
+        scheme = "Basic"
+    elif "bearer" in text:
         scheme = "Bearer"
     elif "unknown" in text:  # "unknown_scheme" / "Unknown auth scheme not in enum"
         scheme = "Frobnicate-Not-A-Scheme"
@@ -3061,6 +3237,10 @@ def _validate_reporting_webhook_credentials(ctx: dict, auth_scheme: str, credent
     accepted; an invalid one raises a ``ValidationError`` located on the credentials or
     scheme. Only credential/scheme errors count as the rejection under test; any other
     validation error means the test's base request is wrong (fail loudly).
+
+    FIXME(#2109): this grades a Pydantic constructor in the test process, not
+    production — nothing is dispatched, so the a2a/mcp/rest axis carries no
+    information for the 14 auth-scheme and credential rows that route here.
     """
     from datetime import UTC, datetime
 
@@ -3075,7 +3255,10 @@ def _validate_reporting_webhook_credentials(ctx: dict, auth_scheme: str, credent
     }
     ctx.pop("error", None)
     try:
-        ctx["response"] = CreateMediaBuyRequest(
+        # NOT ctx["response"]: this is the constructed REQUEST, not a response.
+        # It shared the key with dispatch responses, so a Then could read a
+        # request believing it had a response — the ambiguity lane gra7.5 removes.
+        ctx["constructed_request"] = CreateMediaBuyRequest(
             brand={"domain": "buyer.example.com"},
             start_time=datetime(2025, 1, 1, tzinfo=UTC),
             end_time=datetime(2025, 2, 1, tzinfo=UTC),
@@ -3290,20 +3473,35 @@ def _wire_webhook_db(ctx: dict) -> None:
         secret = ctx.get("webhook_secret")
         bearer = ctx.get("webhook_bearer_token")
 
-        auth_type = None
-        auth_token = None
-        if scheme and scheme.lower() == "hmac-sha256":
-            auth_type = "hmac"
-        elif scheme and scheme.lower() == "bearer":
-            auth_type = "bearer"
-            auth_token = bearer
+        # Same translation as _auth_scheme_to_db_fields, through the same columns:
+        # the scheme names itself in authentication_type and the credential lands
+        # in authentication_token, whichever scheme it is.
+        auth_fields = _auth_scheme_to_db_fields(
+            scheme,
+            {"webhook_secret": secret, "webhook_bearer_token": bearer},
+        )
+
+        # END-STATE INVARIANT, enforced HERE and nowhere earlier. This runs from
+        # the dispatch helper at the When step, so every Given has already run:
+        # a scheme still without its credential was never going to get one. Left
+        # tolerant, the config below would be built unauthenticated while the
+        # Gherkin claims signing, the Then steps would grade that unauthenticated
+        # config, and the scenario would pass green while measuring nothing.
+        # Deliberately not a `require_credential` flag on the translation helper:
+        # a strictness switch lets a future caller take the lax branch by
+        # accident, which is the defect class this lane removes.
+        if scheme is not None and not auth_fields:
+            raise AssertionError(
+                f"Scenario configured webhook authentication scheme {scheme} but no credential "
+                "reached ctx by dispatch time -- add the Given step that supplies it. Building "
+                "the config unauthenticated would let the scenario grade signing it never had."
+            )
 
         configs.append(
             env.make_webhook_config(
                 url=url,
-                auth_type=auth_type,
-                auth_token=auth_token,
-                secret=secret,
+                auth_type=auth_fields.get("authentication_type"),
+                auth_token=auth_fields.get("authentication_token"),
             )
         )
     if configs:
@@ -3335,14 +3533,6 @@ def _call_webhook_service(
     if next_expected_interval_seconds is not None:
         kwargs["next_expected_interval_seconds"] = next_expected_interval_seconds
     return env.call_send(**kwargs)
-
-
-def _get_webhook_payload(ctx: dict) -> dict:
-    """Extract the JSON payload from the most recent webhook POST call."""
-    env = ctx["env"]
-    call_args = env.mock["post"].call_args
-    assert call_args is not None, "No POST call recorded"
-    return call_args.kwargs.get("json") or call_args[1].get("json", {})
 
 
 _DEFAULT_PLACEMENT_DATA: list[dict[str, Any]] = [
@@ -3411,7 +3601,7 @@ def _assert_no_error_for_mb(ctx: dict, mb_id: str) -> None:
     3. Per-delivery error field for this real_id must be None
     """
     real_id = _resolve_media_buy_id(ctx, mb_id)
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     error = ctx.get("error")
     assert resp is not None or error is not None, "Neither error nor response in ctx — test setup failed"
     # If a general error occurred, check it's not about this specific mb_id
@@ -3476,8 +3666,8 @@ def _find_field_in_response(resp: object, field: str) -> tuple[object, str]:
 
 def _assert_placement_sorted_by(ctx: dict, metric: str) -> None:
     """Assert by_placement in at least one package is sorted descending by *metric*."""
-    resp = ctx.get("response") or ctx.get("result")
-    assert resp is not None, "No response in ctx — When step must store ctx['response']"
+    resp = payload_or_none(ctx)
+    assert resp is not None, "No response in ctx — When step must dispatch so a payload exists"
     deliveries = getattr(resp, "media_buy_deliveries", None) or []
     assert deliveries, "No deliveries in response"
     found_placement = False
@@ -3530,7 +3720,7 @@ def _dispatch_webhook_credentials(ctx: dict, value: str) -> None:
     wh = ctx.setdefault("webhook_config", {}).setdefault(label, {})
     wh["url"] = "https://buyer.example.com/webhook"
     wh["active"] = True
-    wh["auth_scheme"] = "hmac-sha256"
+    wh["auth_scheme"] = AuthenticationScheme.HMAC_SHA256
 
     try:
         WebhookVerifier(webhook_secret=secret)

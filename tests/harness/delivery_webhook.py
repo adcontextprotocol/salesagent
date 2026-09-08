@@ -1,8 +1,14 @@
 """WebhookEnv — integration test environment for deliver_webhook_with_retry.
 
-Patches: requests.post, WebhookURLValidator.validate_webhook_url, time.sleep
-         (all external/timing concerns).
-Real: get_db_session for delivery record tracking (requires integration_db fixture).
+Real: a local HTTP origin that actually serves the delivery attempts, and
+      ``get_db_session`` for delivery record tracking.
+Mocked: the SEAM's ``time.sleep`` (so backoff is observable without waiting for
+      it). Nothing else — the loopback allowance is the seam's own escape hatch,
+      opened by ``LocalOriginMixin``.
+
+Nothing about the outbound transport is patched. That is the point: the tests
+grade the bytes ``src.core.security.outbound_http.send`` puts on the socket, not
+which client library puts them there.
 
 Requires: integration_db fixture (creates test PostgreSQL DB).
 
@@ -12,21 +18,15 @@ Usage::
     def test_something(self, integration_db):
         with WebhookEnv() as env:
             env.set_http_status(200)
-            success, result = env.call_deliver(
-                webhook_url="https://example.com/hook",
-                payload={"event": "delivery.update"},
-            )
+            success, result = env.call_deliver(payload={"event": "delivery.update"})
             assert success is True
+            assert env.delivery_attempts == 1
 
 Available mocks via env.mock:
-    "post"      -- requests.post mock
-    "validate"  -- WebhookURLValidator.validate_webhook_url mock
-    "sleep"     -- time.sleep mock
+    "sleep"       -- the seam's time.sleep (the retry schedule, not a transport)
 """
 
 from __future__ import annotations
-
-from unittest.mock import MagicMock
 
 from tests.harness._base import IntegrationEnv
 from tests.harness._mixins import WebhookMixin
@@ -35,31 +35,25 @@ from tests.harness._mixins import WebhookMixin
 class WebhookEnv(WebhookMixin, IntegrationEnv):
     """Integration test environment for deliver_webhook_with_retry.
 
-    Only mocks external HTTP calls, URL validation, and time.sleep.
-    DB operations for delivery tracking go through the real database.
+    Delivery goes over real HTTP to a real local origin; DB operations for
+    delivery tracking go through the real database.
 
-    Fluent API (from WebhookMixin):
-        set_http_status(code, text)       -- configure single HTTP response
-        set_http_sequence(responses)      -- configure sequence of responses
-        set_http_error(exception)         -- make requests.post raise
-        set_url_invalid(error_msg)        -- make URL validation fail
+    Fluent API (from WebhookMixin / LocalOriginMixin):
+        webhook_url                       -- the running origin's URL
+        set_http_status(code, text)       -- answer every attempt with one status
+        set_http_sequence(responses)      -- answer attempts in order, last repeats
+        set_http_error()                  -- drop the connection without answering
         call_deliver(...)                 -- call deliver_webhook_with_retry
+        delivery_attempts / last_delivery -- what the endpoint actually received
     """
 
     MODULE = "src.core.webhook_delivery"
 
+    # Delivery is on the egress seam, so the schedule is observed where it is now
+    # decided. The url_policy patch is GONE: LocalOriginMixin already opens
+    # ADCP_OUTBOUND_ALLOW_PRIVATE / _INSECURE for the loopback origin, which is the
+    # seam's own supported way to say "this one address is fine" — the in-repo twin
+    # the old docstring promised would be deleted at exactly this point.
     EXTERNAL_PATCHES = {
-        "post": "src.core.webhook_delivery.requests.post",
-        "validate": "src.core.webhook_delivery.WebhookURLValidator.validate_webhook_url",
-        "sleep": "src.core.webhook_delivery.time.sleep",
+        "sleep": "src.core.security.outbound_http.time.sleep",
     }
-
-    def _configure_mocks(self) -> None:
-        # URL validation: valid by default
-        self.mock["validate"].return_value = (True, None)
-
-        # HTTP: 200 OK by default
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.text = "OK"
-        self.mock["post"].return_value = mock_response

@@ -13,17 +13,37 @@ or columns, the downgrade() references the same tables.
 """
 
 import ast
+import importlib.util
+import sys
+from pathlib import Path
 
 import pytest
 
 from scripts.ci.migration_helpers import (
+    KNOWN_EMPTY_DOWNGRADE,
     MIGRATIONS_DIR,
+    get_migration_files,
+    is_downgrade_exempt,
     is_empty_body,
     is_merge_migration,
     iter_migration_trees,
     parse_function,
 )
 from tests.unit._architecture_helpers import iter_call_expressions
+
+_HOOKS_DIR = Path(__file__).resolve().parents[2] / ".pre-commit-hooks"
+
+
+def _load_hook(name: str):
+    """Import a pre-commit hook script by path (hooks are not an importable package)."""
+    path = _HOOKS_DIR / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
 
 # Alembic operations that modify schema structure
 SCHEMA_OPS = {
@@ -41,14 +61,11 @@ SCHEMA_OPS = {
     "create_check_constraint",
 }
 
-# Pre-existing violations — allowlists shrink as violations are fixed.
-# FIXME(#2107): These legacy migrations have incomplete downgrades.
-KNOWN_EMPTY_DOWNGRADE = {
-    # Legacy: data migration (adds default values), no structural revert needed
-    "017_handle_partial_schemas.py",
-    # Legacy: fixes JSON encoding, no structural revert
-    "e81e275c9b29_fix_price_guidance_json_encoding.py",
-}
+# KNOWN_EMPTY_DOWNGRADE is imported from scripts.ci.migration_helpers — the
+# pre-push hook enforces the same policy and cannot import from tests/, so the
+# allowlist lives there and both paths read the one copy. Its two legacy
+# migrations have incomplete downgrades; FIXME(#2107) tracks them. The
+# stale-entry tests below stay here: they are the ratchet, not the policy.
 
 KNOWN_DOWNGRADE_COVERAGE_GAPS = {
     # Legacy: upgrade creates index but downgrade doesn't drop it
@@ -109,7 +126,7 @@ class TestMigrationCompleteness:
         empty = []
 
         for path, tree in iter_migration_trees():
-            if path.name in KNOWN_EMPTY_DOWNGRADE:
+            if is_downgrade_exempt(path):
                 continue
 
             if is_merge_migration(tree):
@@ -215,3 +232,56 @@ class TestMigrationCompleteness:
                 stale.append(f"{name} (gap fixed — remove from allowlist)")
 
         assert not stale, "Stale entries in KNOWN_DOWNGRADE_COVERAGE_GAPS:\n" + "\n".join(f"  {s}" for s in stale)
+
+
+class TestPrePushHookAgreesWithGuard:
+    """The pre-push hook enforces the same policy as this guard (#1613).
+
+    `.pre-commit-config.yaml` runs `.pre-commit-hooks/check_migration_completeness.py`
+    at the pre-push stage over every changed `alembic/versions/*.py`. It must reach
+    the SAME verdict this guard reaches on the same file — otherwise the tree is
+    green under `make quality` and red at push time, which is how a latent trap
+    ships to every contributor.
+    """
+
+    @pytest.mark.arch_guard
+    def test_hook_exits_zero_on_the_current_migration_tree(self, monkeypatch):
+        """The hook's EXIT CODE — what actually fails a push — must be 0 on this tree.
+
+        Asserted at `main()`, not at `check_migration_file()`: `main()` also filters
+        argv down to `alembic/versions/*.py` and turns the error list into the return
+        code pre-commit reads. A fix that satisfied only the per-file check while
+        `main()` still returned 1 would leave the push-time gate red with this test green.
+        """
+        hook = _load_hook("check_migration_completeness")
+        repo_root = Path(__file__).resolve().parents[2]
+        migrations = [str(p.relative_to(repo_root)) for p in get_migration_files()]
+
+        monkeypatch.setattr(sys, "argv", ["check_migration_completeness.py", *migrations])
+        monkeypatch.chdir(repo_root)
+        rc = hook.main()
+
+        # Recomputed only to make the failure message name the offending files.
+        errors = [e for path in get_migration_files() for e in hook.check_migration_file(path)]
+        assert rc == 0, (
+            "The pre-push hook rejects migrations this guard accepts:\n"
+            + "\n".join(f"  {e}" for e in errors)
+            + "\n\nThe two enforcement paths must share one policy and one allowlist."
+        )
+
+    @pytest.mark.arch_guard
+    def test_hook_still_rejects_an_unallowlisted_empty_downgrade(self, tmp_path):
+        """Parity must not be bought by weakening the hook."""
+        hook = _load_hook("check_migration_completeness")
+
+        offender = tmp_path / "9999_new_migration_with_no_downgrade.py"
+        offender.write_text(
+            '"""New migration."""\n\n\ndef upgrade():\n    op.create_table("widgets")\n\n\ndef downgrade():\n    pass\n',
+            encoding="utf-8",
+        )
+
+        errors = hook.check_migration_file(offender)
+
+        assert any("downgrade() is empty" in e for e in errors), (
+            f"Hook accepted a new migration with an empty downgrade(): {errors}"
+        )
