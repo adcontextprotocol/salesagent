@@ -22,6 +22,9 @@ import requests
 # leak a non-int into the pid-is-None default path.
 _GETPID = os.getpid
 
+# tests/e2e/conftest.py -> tests/ -> repo root.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 # Import contract validation - this automatically validates tool calls at test collection time
 from tests.e2e.conftest_contract_validation import pytest_collection_modifyitems  # noqa: F401
 
@@ -34,6 +37,61 @@ def e2e_host() -> str:
     the compose network with no published ports (ADCP_TEST_HOST).
     """
     return os.getenv("ADCP_TEST_HOST", "localhost")
+
+
+def e2e_tls_host() -> str:
+    """Host the stack's TLS listener answers at — DOTTED, and not loopback-literal.
+
+    ``agent.localhost`` on the host path: RFC 6761 reserves ``.localhost`` for
+    loopback, so it resolves with no DNS zone and no /etc/hosts edit, AND it has
+    a dot. That dot is the whole point — ``_get_protocol_for_domain`` publishes
+    https for it because ``_is_localhost`` matches an exact literal set
+    (``localhost``/``127.0.0.1``) that this name is not in. The predicate is
+    unchanged; the host simply earns https by having a name a certificate can
+    cover and by actually serving one.
+    """
+    return os.getenv("ADCP_TLS_HOST", "agent.localhost")
+
+
+def e2e_ca_bundle() -> str:
+    """ABSOLUTE path to the CA that signed the test stack's leaf certificate.
+
+    Absolute because pytest does not always run from the repo root. In-network
+    the repo root IS ``/app`` (the ``.:/app`` bind mount), so the runner reads
+    the very file the host generator wrote.
+    """
+    return os.getenv("E2E_CA_BUNDLE") or str(REPO_ROOT / ".test-tls" / "ca.pem")
+
+
+def e2e_tls_base_url(tls_port: int | None) -> str | None:
+    """The origin the stack serves TLS on, or ``None`` when it publishes none.
+
+    ``E2E_TLS_BASE_URL`` wins when set (the in-network stack reaches the listener
+    by its dotted network alias, where no host port exists at all); otherwise it
+    is built from the port this session published.
+    """
+    if url := os.getenv("E2E_TLS_BASE_URL"):
+        return url.rstrip("/")
+    if tls_port:
+        return f"https://{e2e_tls_host()}:{tls_port}"
+    return None
+
+
+def ensure_test_tls() -> None:
+    """Generate the stack's CA + leaf if it is missing or stale.
+
+    One chokepoint, shared with ``scripts/test-stack.sh`` and
+    ``run_all_tests.sh``: the ``tls-proxy`` service bind-mounts ``.test-tls/``,
+    so an absent directory would materialise empty and nginx would refuse to
+    start. ``sys.executable`` is handed over because the pytest interpreter is
+    guaranteed to have ``cryptography`` (a direct project dependency).
+    """
+    subprocess.run(
+        [str(REPO_ROOT / "scripts" / "dev" / "ensure-test-tls.sh")],
+        check=True,
+        env={**os.environ, "PYTHON": sys.executable},
+        cwd=REPO_ROOT,
+    )
 
 
 def e2e_db_url(fallback_port: int) -> str:
@@ -144,6 +202,13 @@ def docker_services_e2e(request):
     # Check if running from run_all_tests.sh (services already started)
     use_existing_services = os.getenv("ADCP_TESTING") == "true" or request.config.getoption("--skip-docker")
 
+    # Both branches need the TLS material on disk: the standalone branch is about
+    # to `up` a stack that bind-mounts it, and the reuse branch is about to read
+    # the CA to verify a handshake. Idempotent — current material is left alone,
+    # so a stack already serving the existing leaf is never disturbed.
+    ensure_test_tls()
+    os.environ.setdefault("E2E_CA_BUNDLE", e2e_ca_bundle())
+
     if use_existing_services:
         print("Using existing Docker services (ADCP_TESTING=true or --skip-docker)")
         # Get ports from environment (set by run_all_tests.sh)
@@ -152,6 +217,11 @@ def docker_services_e2e(request):
         a2a_port = mcp_port  # A2A is on same port as MCP (unified FastAPI process)
         admin_port = mcp_port  # Admin is on same port as MCP (unified FastAPI process)
         postgres_port = int(os.getenv("POSTGRES_PORT", "5435"))
+        # The TLS listener is OPTIONAL here: in-network it has no host port at
+        # all (it is reached by its dotted network alias via E2E_TLS_BASE_URL),
+        # and an older stack may predate it. Absent -> live_server has no "tls"
+        # key, and the tests that need one fail saying so.
+        tls_port = int(os.getenv("ADCP_TLS_PORT")) if os.getenv("ADCP_TLS_PORT") else None
 
         print(f"✓ Using ports: Server={mcp_port} (MCP+A2A+Admin), Postgres={postgres_port}")
 
@@ -208,8 +278,27 @@ def docker_services_e2e(request):
         a2a_port = mcp_port  # A2A is on same port as MCP (unified FastAPI process)
         admin_port = mcp_port  # Admin is on same port as MCP (unified FastAPI process)
         postgres_port = int(os.getenv("POSTGRES_PORT")) if os.getenv("POSTGRES_PORT") else find_free_port(25000, 30000)
+        # The TLS listener gets a DYNAMIC port like the other two, never a
+        # hardcoded 8443: several stacks run concurrently on one box and a fixed
+        # port would reintroduce exactly the cross-stack collision the ports
+        # overlay exists to avoid. Its own range sits BELOW the two above and
+        # clear of the Linux ephemeral range (32768+), which the 20000-30000
+        # choice for those two was already picked to avoid.
+        tls_port = int(os.getenv("ADCP_TLS_PORT")) if os.getenv("ADCP_TLS_PORT") else find_free_port(15000, 20000)
+        # webhook-capture's plain-HTTP READBACK control-plane (salesagent-amht.3)
+        # — same dynamic-allocation reasoning as tls_port above (a fixed default
+        # would let two concurrent stacks cross-wire onto the same host port).
+        # DELIVERY never uses this port; it goes through tls_port above.
+        webhook_capture_port = (
+            int(os.getenv("WEBHOOK_CAPTURE_PORT"))
+            if os.getenv("WEBHOOK_CAPTURE_PORT")
+            else find_free_port(30000, 32000)
+        )
 
-        print(f"Using ports: Server={mcp_port} (MCP+A2A+Admin), Postgres={postgres_port}")
+        print(
+            f"Using ports: Server={mcp_port} (MCP+A2A+Admin), Postgres={postgres_port}, "
+            f"TLS={tls_port}, WebhookCapture={webhook_capture_port}"
+        )
 
         # Set port env vars in os.environ so that:
         # 1. docker-compose subprocess inherits them via os.environ.copy()
@@ -217,6 +306,8 @@ def docker_services_e2e(request):
         #    test_landing_pages.py) pick up the correct dynamic ports
         os.environ["ADCP_SALES_PORT"] = str(mcp_port)
         os.environ["POSTGRES_PORT"] = str(postgres_port)
+        os.environ["ADCP_TLS_PORT"] = str(tls_port)
+        os.environ["WEBHOOK_CAPTURE_PORT"] = str(webhook_capture_port)
 
         env = os.environ.copy()
         # Set 5 seconds interval for delivery webhooks in E2E tests
@@ -502,7 +593,13 @@ def docker_services_e2e(request):
         print(f"   ⚠️  Warning: Database verification failed: {e}")
 
     # Yield port information for use by other fixtures
-    yield {"mcp_port": mcp_port, "a2a_port": a2a_port, "admin_port": admin_port, "postgres_port": postgres_port}
+    yield {
+        "mcp_port": mcp_port,
+        "a2a_port": a2a_port,
+        "admin_port": admin_port,
+        "postgres_port": postgres_port,
+        "tls_port": tls_port,
+    }
 
     # Cleanup Docker resources (unless --skip-docker was used, meaning services are external)
     if not use_existing_services:
@@ -540,7 +637,7 @@ def live_server(docker_services_e2e):
     # direct-DB e2e helpers hit localhost:5435 in-network.
     pg_url = e2e_db_url(ports["postgres_port"])
     parsed = urlparse(pg_url)
-    return {
+    urls = {
         "mcp": f"http://{host}:{ports['mcp_port']}",
         "a2a": f"http://{host}:{ports['a2a_port']}",
         "admin": f"http://{host}:{ports['admin_port']}",
@@ -553,6 +650,14 @@ def live_server(docker_services_e2e):
             "dbname": (parsed.path.lstrip("/") or "adcp"),
         },
     }
+    # ADDITIVE: every key above keeps its http value, because 95 e2e tests target
+    # them. "tls" is the SECOND origin — the same stack, over a real handshake at
+    # a dotted host — and it is present only when the stack actually publishes
+    # one. Tests that need it say so and fail when it is missing; none silently
+    # fall back to the plaintext key.
+    if tls_url := e2e_tls_base_url(ports.get("tls_port")):
+        urls["tls"] = tls_url
+    return urls
 
 
 @pytest.fixture

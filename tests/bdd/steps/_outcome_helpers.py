@@ -12,21 +12,79 @@ from __future__ import annotations
 
 from typing import Any
 
-from tests.harness.transport import Transport
+from tests.harness.transport import TransportResult
+
+
+def error_envelope_or_none(ctx: dict) -> dict | None:
+    """The error envelope for this dispatch, or ``None`` when there is none.
+
+    The ctx-side adapter for :meth:`TransportResult.error_envelope_or_none` —
+    the same relationship :func:`_wire_or_none` has to the success path. Steps
+    hold a ctx and the reader lives on the result, so without this the four
+    ctx-holding call sites each re-spell the ``ctx.get("result")`` dance, which
+    is three copies of the decision this lane exists to make once.
+
+    Returns ``None`` rather than raising, because every ctx-side caller branches
+    on envelope-presence as control flow: an MCP dispatch can fail with a
+    ``ToolError`` that is genuinely not an AdCP envelope.
+    """
+    result = ctx.get("result")
+    return result.error_envelope_or_none() if result is not None else None
+
+
+def _wire_or_none(ctx: dict) -> dict | None:
+    """The real wire body for this dispatch, or ``None`` when there is no wire.
+
+    Branches on the DECLARATION the dispatcher made at construction
+    (``TransportResult.has_wire``), never on which transport enum is in play.
+    The old spelling inferred wire-presence from transport IDENTITY — a lookup
+    miss against the in-process transport member — so it would break, or
+    silently reclassify every result, the day that member is removed.
+
+    Two loud failures, both harness bugs rather than test failures:
+
+    * no ``TransportResult`` in ctx — the When step did not dispatch through
+      ``dispatch_request`` or ``when_request._call_via``, so there is no
+      declaration to branch on and any answer here would be a guess;
+    * ``has_wire`` with nothing stashed — the env crossed a wire and failed to
+      capture it. Falling back to re-serializing the typed payload would assert
+      nothing about the wire while looking green, which is the tautology these
+      helpers exist to prevent.
+    """
+    result = ctx.get("result")
+    if not isinstance(result, TransportResult):
+        # Both dispatch seams end in ``except Exception as exc: ctx["error"] = exc``
+        # WITHOUT stashing a result, so a dispatch that THREW arrives here too. Say
+        # so, rather than misreporting it as "never dispatched" and sending the
+        # reader hunting for a wiring bug that does not exist.
+        failure = ctx.get("error")
+        if failure is not None:
+            raise AssertionError(
+                f"no TransportResult in ctx because the dispatch RAISED: {failure!r} — "
+                "there is no wire to read; assert on the error instead"
+            )
+        raise AssertionError(
+            "no TransportResult in ctx — the When step did not dispatch through "
+            "dispatch_request/_call_via, so wire-presence cannot be determined"
+        )
+    if not result.has_wire:
+        return None
+    # The guarded read itself lives on TransportResult (#1941): one implementation,
+    # shared with the integration tests asserting the same thing, so a step
+    # definition cannot drift from them. This helper decides only WHETHER a wire
+    # exists — from the dispatcher's declaration — and ``require_wire`` decides
+    # whether the declared wire was actually captured.
+    return result.require_wire()
 
 
 def wire_field(ctx: dict, field: str) -> Any:
     """Return a top-level success-response field as the buyer sees it on the wire.
 
-    REST/A2A/MCP expose the real success-path wire dict via ``ctx["wire_response"]``.
-    IMPL has no wire, so serialize the typed payload through the production
-    serializer — the same path that produces wire bytes for the other transports.
-
-    Loud guard: a real-wire transport (REST/A2A/MCP) that didn't stash
-    ``wire_response`` would otherwise fall through to the ``model_dump`` path and
-    assert nothing on the wire — a silent tautology. A sibling wired against a
-    non-stashing env trips this instead of passing green. IMPL (and the
-    non-parametrized ``None`` default) legitimately have no wire.
+    A dispatch that crossed a wire exposes the real success-path body; one that
+    did not (an in-process call) has none, so the typed payload is serialized
+    through the production serializer — the same path that produces wire bytes
+    for the other transports. Which case applies is read from the dispatcher's
+    own declaration, not guessed here; see :func:`_wire_or_none`.
     """
     return wire_dict(ctx)[field]
 
@@ -36,28 +94,30 @@ def wire_dict(ctx: dict) -> dict:
 
     The dict analogue of :func:`wire_field` — use when an oracle must test key
     PRESENCE/ABSENCE (e.g. an optional field) rather than read one known field.
-    Shares the same loud guard: a real-wire transport (REST/A2A/MCP) that did not
-    stash ``wire_response`` raises instead of silently asserting nothing. IMPL (and
-    the non-parametrized ``None`` default) serialize the typed payload through the
-    production serializer.
+    Shares the same loud guard and the same source of truth: see
+    :func:`_wire_or_none`.
     """
-    result = ctx.get("result")
-    transport = ctx.get("transport")
-    if transport not in (None, Transport.IMPL):
-        # A real-wire transport: the guarded read lives on TransportResult, which is
-        # the object that holds the wire. One implementation, so a step definition
-        # cannot drift from an integration test asserting the same thing.
-        if result is not None:
-            return result.require_wire()
-        wire = ctx.get("wire_response")
-        if wire is None:
-            raise AssertionError(f"{transport}: wire_response missing — env does not stash success-path wire")
+    wire = _wire_or_none(ctx)
+    if wire is not None:
         return wire
-    # IMPL has no wire — serialize the typed payload through the production
-    # serializer. _require_response preserves the diagnostic if a (reused) sibling
-    # scenario hit an error path, instead of a bare ctx["response"] KeyError.
-    wire = ctx.get("wire_response")
-    return wire if wire is not None else _require_response(ctx).model_dump(mode="json")
+    return require_payload(ctx).model_dump(mode="json")
+
+
+def assert_wire_rejection(ctx: dict, code: str, *, recovery: str, field: str) -> None:
+    """Assert the wire error envelope is *code* / *recovery* and names *field*.
+
+    One implementation for every "the request is rejected with <CODE> naming
+    field <f>" Then step. Each such step keeps its own literal Gherkin text —
+    replacing them with one ``{code}``-parameterized parser would leave two
+    parsers matching the same sentence, resolved by pytest-bdd's scan order, and
+    the shadowed body would silently stop grading (``test_architecture_bdd_no_shadowed_steps``
+    compares text ACROSS modules, so it would not catch it). Thin steps over a
+    shared helper give DRY without the shadow.
+    """
+    from tests.helpers import assert_envelope_shape
+
+    envelope = _require(ctx, "result", hint="no dispatch was recorded").error_envelope()
+    assert_envelope_shape(envelope, code, recovery=recovery, field=field)
 
 
 def _real_wire_error_envelope(ctx: dict) -> dict | None:
@@ -102,27 +162,24 @@ def wire_error_dict(ctx: dict) -> dict:
     this directly; callers verifying the error SHAPE should prefer
     ``result.assert_wire_error(...)``, the single shape authority.
 
-    Shares the same loud guard as ``wire_dict``: a real-wire transport
-    (REST/A2A/MCP) that captured no error envelope raises instead of silently
-    asserting nothing — that combination is a test bug (the operation should
-    have failed through the wire), not a legitimate no-wire case. IMPL has no
-    wire — falls back to ``synthesized_error_envelope`` (what the boundary
-    translator WOULD emit against the caught error), consistent with
-    ``wire_dict``'s IMPL fallback to the serialized typed payload.
+    Shares the same loud guard as ``wire_dict``: a dispatch that captured no
+    error envelope raises instead of silently asserting nothing — that
+    combination is a test bug (the operation should have failed through the
+    wire), not a legitimate no-wire case. IMPL has no wire, so it falls back to
+    the synthesized envelope (what the boundary translator WOULD emit against
+    the caught error), consistent with ``wire_dict``'s IMPL fallback to the
+    serialized typed payload.
+
+    Both halves of that guard live on ``TransportResult.error_envelope`` (#1941)
+    — the same reader ``error_envelope_or_none`` wraps — rather than being
+    re-derived here from ``ctx["transport"]``. Branching on transport IDENTITY
+    was the spelling ``wire_dict`` moved off: it infers wire-presence from which
+    enum member is in play instead of from the dispatcher's own ``has_wire``
+    declaration, and it reached for a ``synthesized_error_envelope`` attribute
+    that is now the private ``_synthesized_error_envelope``.
     """
-    result = ctx.get("result")
-    envelope = _real_wire_error_envelope(ctx)
-    transport = ctx.get("transport")
-    if envelope is None and transport not in (None, Transport.IMPL):
-        raise AssertionError(f"{transport}: wire_error_envelope missing — env does not stash the wire error envelope")
-    if envelope is not None:
-        return envelope
-    synthesized = getattr(result, "synthesized_error_envelope", None) if result is not None else None
-    assert synthesized is not None, (
-        f"No wire_error_envelope or synthesized_error_envelope available (result={result!r}) — "
-        "expected an error dispatch"
-    )
-    return synthesized
+    result = _require(ctx, "result", hint="expected an error dispatch")
+    return result.error_envelope()
 
 
 def _require(ctx: dict, key: str, *, hint: str | None = None) -> object:
@@ -143,16 +200,60 @@ def _require(ctx: dict, key: str, *, hint: str | None = None) -> object:
     return val
 
 
-def _require_response(ctx: dict) -> object:
-    """Return ctx["response"], failing with a diagnostic if it is absent.
+def payload_or_none(ctx: dict) -> object | None:
+    """The dispatch's typed payload, or ``None`` when it produced an error.
 
-    Then steps assert on the response produced by a prior When step. Reading
-    ``ctx["response"]`` by subscript raises a bare ``KeyError`` when the
-    operation errored (only ``ctx["error"]`` was set) — giving no hint why.
-    This helper raises an ``AssertionError`` that names the missing response
-    and surfaces any recorded error instead.
+    For steps that BRANCH on which path ran ("success response must not contain
+    X; error response must not contain Y") rather than reading a value. Those
+    steps used ``ctx.get("response")`` as the selector, and they need a selector
+    that still works now the dispatch seams stop writing that copy.
+
+    Returns None both when no dispatch happened and when the dispatch errored —
+    a branch selector does not care which, and the error branch it falls into
+    reports the difference. A step that genuinely REQUIRES a payload calls
+    :func:`require_payload`, which raises instead.
     """
-    return _require(ctx, "response", hint="The operation may have errored instead of returning.")
+    result = ctx.get("result")
+    if not isinstance(result, TransportResult):
+        return ctx.get("self_dispatched_response")
+    return result.payload
+
+
+def require_payload(ctx: dict) -> object:
+    """Return the typed payload of the dispatch that just ran.
+
+    Reads the ``TransportResult`` the dispatch seams stash under
+    ``ctx["result"]``, so the value arrives WITH its provenance rather than as a
+    detached copy. Fails loudly when no dispatch happened, and separately when
+    the dispatch recorded an error — a Then that asks for a payload after an
+    error path is asking the wrong question, and a bare ``KeyError`` would not
+    say so.
+    """
+    result = ctx.get("result")
+    if not isinstance(result, TransportResult):
+        # Second NAMED source: modules whose When still calls production directly
+        # (uc011's _list_accounts_impl) stash under ctx["self_dispatched_response"],
+        # and the GENERIC Then steps are shared with them. Both sources are explicit
+        # keys, which is the point — the removed ctx["response"] was written by
+        # dispatch AND by self-dispatching modules AND (in one case) held a REQUEST,
+        # so a reader could not tell what it had. These two can always be told apart,
+        # and when the pinned modules migrate the branch simply disappears.
+        self_dispatched = ctx.get("self_dispatched_response")
+        if self_dispatched is not None:
+            return self_dispatched
+        failure = ctx.get("error")
+        if failure is not None:
+            raise AssertionError(
+                f"no TransportResult in ctx because the dispatch RAISED: {failure!r} — "
+                "there is no payload; assert on the error instead"
+            )
+        raise AssertionError(
+            "no TransportResult in ctx — the When step did not dispatch through "
+            "dispatch_request/_call_via, so there is no payload to read"
+        )
+    if result.payload is None:
+        raise AssertionError(f"the dispatch produced no payload — it errored instead. Recorded error: {result.error!r}")
+    return result.payload
 
 
 def _require_error(ctx: dict) -> object:
@@ -198,7 +299,7 @@ def assert_media_buy_created(ctx: dict, media_buy_id: str | None = None) -> obje
     env = ctx["env"]
 
     if media_buy_id is None:
-        resp = ctx.get("response")
+        resp = payload_or_none(ctx)
         if resp is not None:
             media_buy_id = _get_response_field(resp, "media_buy_id")
 

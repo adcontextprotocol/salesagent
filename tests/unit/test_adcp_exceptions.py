@@ -338,12 +338,24 @@ class TestRecoveryClassification:
         exc = AdCPServiceUnavailableError("product temporarily unavailable")
         assert exc.recovery == "transient"
 
-    def test_recovery_can_be_overridden_per_instance(self):
-        """Callers can override recovery for specific raise sites."""
+    def test_recovery_cannot_be_overridden_per_instance(self):
+        """A raise site cannot choose a recovery — it chooses a CLASS.
+
+        REPLACES test_recovery_can_be_overridden_per_instance, which pinned the
+        exact behaviour this epic exists to remove: a free ``recovery=`` kwarg let
+        a call site pair any code with any classification, and the wire carried
+        the contradiction (SERVICE_UNAVAILABLE + terminal) with a green test
+        grading it. The contract is excised, so the test that pinned it is
+        replaced rather than deleted — what was "callers can" is now "callers
+        cannot", asserted the only way an excised argument can be.
+        """
         from src.core.exceptions import AdCPValidationError
 
-        exc = AdCPValidationError("permanent schema mismatch", recovery="terminal")
-        assert exc.recovery == "terminal"
+        with pytest.raises(TypeError):
+            AdCPValidationError("permanent schema mismatch", recovery="terminal")
+
+        # And the derived value stands on its own: VALIDATION_ERROR is pinned correctable.
+        assert AdCPValidationError("permanent schema mismatch").recovery == "correctable"
 
     def test_to_dict_includes_recovery(self):
         """to_dict() must include recovery field in serialized output."""
@@ -354,13 +366,17 @@ class TestRecoveryClassification:
         assert "recovery" in d
         assert d["recovery"] == "correctable"
 
-    def test_to_dict_includes_overridden_recovery(self):
-        """to_dict() must serialize overridden recovery value."""
+    def test_to_dict_serializes_the_derived_recovery(self):
+        """to_dict() serializes the classification the code derives.
+
+        REPLACES test_to_dict_includes_overridden_recovery. There is no overridden
+        value to serialize any more; what must hold is that the serializer reports
+        the pin's answer for the wire code, which is what a buyer reads.
+        """
         from src.core.exceptions import AdCPAdapterError
 
-        exc = AdCPAdapterError("permanent config error", recovery="terminal")
-        d = exc.to_dict()
-        assert d["recovery"] == "terminal"
+        exc = AdCPAdapterError("permanent config error")
+        assert exc.to_dict()["recovery"] == "transient"  # SERVICE_UNAVAILABLE, pinned
 
 
 # ---------------------------------------------------------------------------
@@ -736,39 +752,6 @@ class TestErrorCodeWireTranslation:
         for standard in ("MEDIA_BUY_NOT_FOUND", "SERVICE_UNAVAILABLE", "VALIDATION_ERROR"):
             assert standard in STANDARD_ERROR_CODES
             assert to_wire_error_code(standard) == standard
-
-    def test_literal_mirrors_wire_standard_codes(self):
-        """``AdCPErrorCode`` enumerates exactly the ``WIRE_STANDARD_CODES`` keys.
-
-        The Literal is a hand-mirrored copy of a table whose baseline half comes
-        from the SDK (``STANDARD_ERROR_CODES``), so it desyncs silently on an
-        ``adcp`` bump that adds or removes a standard code. Two failure modes,
-        both graded here by asserting set EQUALITY rather than containment:
-
-        - Literal ⊄ table: a code that no longer exists on the wire would still
-          type-check at a call site and then collapse to SERVICE_UNAVAILABLE.
-        - table ⊄ Literal: a newly-standard code would be rejected by mypy at a
-          call site that is actually correct.
-
-        Also pins ``to_wire_error_code``'s ``cast`` to ``AdCPErrorCode``: the cast
-        is sound only while every ``WIRE_STANDARD_CODES`` key is a Literal member.
-        On failure, refresh the Literal from ``sorted(WIRE_STANDARD_CODES)``.
-        """
-        from typing import get_args
-
-        from src.core.exceptions import WIRE_STANDARD_CODES, AdCPErrorCode, to_wire_error_code
-
-        literal_codes = set(get_args(AdCPErrorCode))
-        assert literal_codes == set(WIRE_STANDARD_CODES), (
-            "AdCPErrorCode desynced from WIRE_STANDARD_CODES — "
-            f"missing from Literal: {sorted(set(WIRE_STANDARD_CODES) - literal_codes)}; "
-            f"stale in Literal: {sorted(literal_codes - set(WIRE_STANDARD_CODES))}"
-        )
-        # The cast's premise: normalization lands inside the Literal for every
-        # member, so a narrowed forward (``code=to_wire_error_code(e.error_code)``)
-        # can never produce a value outside the annotated type.
-        for code in sorted(literal_codes):
-            assert to_wire_error_code(code) in literal_codes
 
     def test_wire_error_code_property_translates(self):
         """``wire_error_code`` exposes the translated code on an instance."""

@@ -3,6 +3,13 @@
 Reference patterns for writing code in this project. Read this when implementing new features or modifying existing code.
 
 ## SQLAlchemy 2.0 (MANDATORY for new code)
+
+ORM queries live in repository methods, reached through a Unit of Work. A raw `select()` on an
+ORM model outside a repository is banned — it bypasses tenant scoping — and
+`test_architecture_no_raw_select.py` fails the build for it.
+
+Inside a repository method, write the statement in 2.0 form:
+
 ```python
 from sqlalchemy import select
 

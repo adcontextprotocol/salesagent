@@ -3,7 +3,7 @@
 Every step calls production code directly. No stub mode.
 
 Steps store results in ctx:
-    ctx["response"] — ListCreativeFormatsResponse on success
+    ctx["result"] — the TransportResult; read its payload via require_payload
     ctx["error"] — Exception on failure
 """
 
@@ -65,14 +65,18 @@ def _call_via(
             kwargs["req"] = req
     kwargs.update(extra)
 
-    # Route through the SHARED populator. The hand-rolled
-    # version here set only error/response/wire_response, omitting ctx["result"]
-    # (the key with exactly one producer) plus the two error-envelope keys — which
+    # Route through the SHARED populator, which is the single owner of the
+    # ctx dispatch-result contract. The hand-rolled version here populated a
+    # subset of the six keys: it set error/response/wire_response but omitted
+    # the two error-envelope keys, and (before the secure-fetch branch patched
+    # it locally) ctx["result"] — the key with exactly one producer — which
     # silently downgraded the wire-first Then steps to the lossy reconstructed
-    # ctx["error"] fallback. The `except Exception: ctx["error"] = exc` that used
-    # to wrap this went with it: hand-stashing an exception is the antipattern the
-    # project's BDD rules forbid, and call_via already returns transport failures
-    # as a TransportResult carrying the real wire envelope.
+    # ctx["error"] fallback. Both branches fixed that; delegating keeps ONE
+    # spelling of the contract instead of two that can drift apart again.
+    # The `except Exception: ctx["error"] = exc` that used to wrap this went
+    # with it: hand-stashing an exception is the antipattern the project's BDD
+    # rules forbid, and call_via already returns transport failures as a
+    # TransportResult carrying the real wire envelope.
     _populate_ctx_from_result(ctx, env.call_via(t, **kwargs))
 
 

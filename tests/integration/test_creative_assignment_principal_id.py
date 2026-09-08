@@ -102,7 +102,7 @@ def mock_format_spec():
         ),
     }
 
-    def format_spec_side_effect(agent_url, format_id):
+    def format_spec_side_effect(agent_url, format_id, *, provenance=None):
         return mock_formats.get(format_id)
 
     with patch(

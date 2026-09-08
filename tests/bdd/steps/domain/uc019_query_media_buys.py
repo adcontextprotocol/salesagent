@@ -14,7 +14,7 @@ from typing import Any
 from pytest_bdd import given, parsers, then, when
 
 from src.core.schemas._base import GetMediaBuysRequest
-from tests.bdd.steps._outcome_helpers import wire_dict, wire_field
+from tests.bdd.steps._outcome_helpers import payload_or_none, require_payload, wire_dict, wire_field
 from tests.bdd.steps.generic._create_request import build_create_request_kwargs
 from tests.bdd.steps.generic._dispatch import dispatch_request
 from tests.bdd.steps.generic.then_error import _wire_code, _wire_error_object, _wire_suggestion
@@ -1168,34 +1168,6 @@ def _dispatch_query(ctx: dict, **extra_kwargs: Any) -> None:
         dispatch_request(ctx, **query_kwargs)
 
 
-@when("the Buyer Agent sends a get_media_buys request via A2A with no filters")
-def when_query_a2a_no_filters(ctx: dict) -> None:
-    """Send get_media_buys with no filters via A2A (transport-specific).
-
-    env.call_a2a() dispatches to get_media_buys_raw — the tool name is baked
-    into MediaBuyListEnv, matching the step text's 'get_media_buys' claim.
-    """
-    env = ctx["env"]
-    try:
-        ctx["response"] = env.call_a2a()
-    except Exception as exc:
-        ctx["error"] = exc
-
-
-@when("the Buyer Agent invokes the get_media_buys MCP tool with no filters")
-def when_query_mcp_no_filters(ctx: dict) -> None:
-    """Send get_media_buys with no filters via MCP (transport-specific).
-
-    env.call_mcp() dispatches to the get_media_buys MCP wrapper — the tool name
-    is baked into MediaBuyListEnv, matching the step text's 'get_media_buys' claim.
-    """
-    env = ctx["env"]
-    try:
-        ctx["response"] = env.call_mcp()
-    except Exception as exc:
-        ctx["error"] = exc
-
-
 @when("the Buyer Agent sends a get_media_buys request with include_snapshot true")
 def when_query_with_snapshot(ctx: dict) -> None:
     """Send get_media_buys with include_snapshot=True."""
@@ -1337,7 +1309,7 @@ def _assert_flight_dates_present(pkg: Any) -> None:
 
 def _get_media_buys(ctx: dict) -> list:
     """Extract media_buys list from response."""
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is None and "error" in ctx:
         raise AssertionError(f"Expected a response but got error: {ctx['error']}")
     assert resp is not None, "Expected a response"
@@ -1575,7 +1547,7 @@ def then_empty_media_buys(ctx: dict) -> None:
 def then_no_error_in_response(ctx: dict) -> None:
     """Assert no error in the response."""
     assert "error" not in ctx, f"Unexpected error: {ctx.get('error')}"
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp is not None:
         errors = getattr(resp, "errors", None)
         assert not errors, f"Unexpected errors in response: {errors}"
@@ -1820,8 +1792,7 @@ def then_error_contains(ctx: dict, fragment: str) -> None:
 @then(parsers.parse('the response errors array should include error code "{code}"'))
 def then_response_errors_include(ctx: dict, code: str) -> None:
     """Assert response.errors contains the specified error code."""
-    resp = ctx.get("response")
-    assert resp is not None, f"Expected response, got error: {ctx.get('error')}"
+    resp = require_payload(ctx)
     errors = getattr(resp, "errors", None) or []
     codes = [e.get("code") if isinstance(e, dict) else getattr(e, "code", None) for e in errors]
     assert code in codes, f"Expected error code '{code}' in response errors, got {codes}"
@@ -2222,8 +2193,7 @@ def then_response_count_scoped(ctx: dict, count: int, principal_id: str) -> None
 @then(parsers.parse('the response should contain "media_buys" array'))
 def then_response_has_media_buys_array(ctx: dict) -> None:
     """Assert response has a media_buys field that is a list (array)."""
-    resp = ctx.get("response")
-    assert resp is not None, f"Expected response, got error: {ctx.get('error')}"
+    resp = require_payload(ctx)
     buys = getattr(resp, "media_buys", None)
     assert buys is not None, "Response missing media_buys field"
     assert isinstance(buys, list), f"Expected media_buys to be a list (array), got {type(buys).__name__}"
@@ -2236,8 +2206,7 @@ def then_sandbox_true(ctx: dict) -> None:
     Scenario-level xfail (T-UC-019-sandbox-happy) handles the expected failure
     when sandbox mode is not yet implemented in production.
     """
-    resp = ctx.get("response")
-    assert resp is not None, f"Expected response, got error: {ctx.get('error')}"
+    resp = require_payload(ctx)
     sandbox = getattr(resp, "sandbox", None)
     assert sandbox is True, f"Expected sandbox=true, got {sandbox!r}"
 
@@ -2250,8 +2219,7 @@ def then_no_sandbox_field(ctx: dict) -> None:
     it anyway, this is a spec-production gap.
     """
 
-    resp = ctx.get("response")
-    assert resp is not None, f"Expected response, got error: {ctx.get('error')}"
+    resp = require_payload(ctx)
     sandbox = getattr(resp, "sandbox", None)
     # Violation path: sandbox IS present when it should NOT be
     assert sandbox is None, (
@@ -2281,7 +2249,7 @@ def then_validation_error(ctx: dict) -> None:
             f"Expected a validation error, but error doesn't indicate validation: {error}"
         )
         return
-    resp = ctx.get("response")
+    resp = payload_or_none(ctx)
     if resp:
         errors = getattr(resp, "errors", None)
         if errors:
@@ -2413,10 +2381,7 @@ def then_empty_with_error(ctx: dict, code: str) -> None:
     """Assert empty media_buys with specific error code in response."""
     buys = _get_media_buys(ctx)
     assert len(buys) == 0, f"Expected empty media_buys, got {len(buys)}"
-    resp = ctx.get("response")
-    assert resp is not None, (
-        f"Expected response with empty media_buys and error '{code}', but response is None. Error: {ctx.get('error')}"
-    )
+    resp = require_payload(ctx)
     errors = getattr(resp, "errors", None) or []
     codes = [e.get("code") if isinstance(e, dict) else getattr(e, "code", None) for e in errors]
     assert code in codes, f"Expected error '{code}' in errors, got {codes}"
@@ -2427,10 +2392,7 @@ def then_empty_buys_with_error(ctx: dict, code: str) -> None:
     """Assert empty media_buys with error (boundary table shorthand)."""
     buys = _get_media_buys(ctx)
     assert len(buys) == 0, f"Expected empty, got {len(buys)}"
-    resp = ctx.get("response")
-    assert resp is not None, (
-        f"Expected response with empty media_buys and error '{code}', but response is None. Error: {ctx.get('error')}"
-    )
+    resp = require_payload(ctx)
     errors = getattr(resp, "errors", None) or []
     codes = [e.get("code") if isinstance(e, dict) else getattr(e, "code", None) for e in errors]
     assert code in codes, f"Expected '{code}' in response errors, got {codes}"

@@ -6,10 +6,13 @@ Auth: Access token passed as query parameter.
 """
 
 import logging
+from types import MappingProxyType
 from typing import Any
 
-import requests
-from requests.exceptions import RequestException
+from pydantic import JsonValue
+
+from src.adapters.vendor_http import VendorHttpClient
+from src.core.security.outbound_http import OutboundDeliveryFailed, OutboundError, QueryParams
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,19 @@ class BroadstreetAPIError(Exception):
         super().__init__(message)
         self.status_code = status_code
         self.response_body = response_body
+
+
+def _broadstreet_error_for_status(status: int | None) -> BroadstreetAPIError:
+    """Rebuild the status-specific API error the seam's typed failure replaced."""
+    if status == 403:
+        return BroadstreetAPIError("Broadstreet API Auth Denied (HTTP 403)", status_code=403)
+    if status == 404:
+        return BroadstreetAPIError("Resource not found (HTTP 404)", status_code=404)
+    if status is not None and status >= 500:
+        return BroadstreetAPIError(f"Broadstreet API server error (HTTP {status})", status_code=status)
+    if status is not None:
+        return BroadstreetAPIError(f"Broadstreet API error (HTTP {status})", status_code=status)
+    return BroadstreetAPIError("Broadstreet API request was not delivered")
 
 
 class BroadstreetClient:
@@ -55,81 +71,21 @@ class BroadstreetClient:
         self.network_id = network_id
         self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
         self.timeout = timeout
-
-    def _build_url(self, path: str, query_params: dict[str, Any] | None = None) -> str:
-        """Build full URL with access token.
-
-        Args:
-            path: API endpoint path (e.g., "/networks/123/advertisers")
-            query_params: Optional additional query parameters
-
-        Returns:
-            Full URL with access token
-        """
-        from urllib.parse import urlencode
-
-        url = f"{self.base_url}{path}"
-        params = {"access_token": self.access_token}
-        if query_params:
-            params.update(query_params)
-
-        # Filter None values and properly URL-encode all parameters
-        query_string = urlencode({k: v for k, v in params.items() if v is not None})
-        return f"{url}?{query_string}"
-
-    def _handle_response(self, response: requests.Response) -> Any:
-        """Handle API response and raise errors if needed.
-
-        Args:
-            response: Requests response object
-
-        Returns:
-            Parsed JSON response body
-
-        Raises:
-            BroadstreetAPIError: If response indicates an error
-        """
-        try:
-            body = response.json() if response.content else None
-        except ValueError:
-            body = response.text
-
-        if response.status_code == 403:
-            raise BroadstreetAPIError(
-                "Broadstreet API Auth Denied (HTTP 403)",
-                status_code=403,
-                response_body=body,
-            )
-
-        if response.status_code == 404:
-            raise BroadstreetAPIError(
-                "Resource not found (HTTP 404)",
-                status_code=404,
-                response_body=body,
-            )
-
-        if response.status_code >= 500:
-            raise BroadstreetAPIError(
-                f"Broadstreet API server error (HTTP {response.status_code})",
-                status_code=response.status_code,
-                response_body=body,
-            )
-
-        if response.status_code >= 400:
-            raise BroadstreetAPIError(
-                f"Broadstreet API error (HTTP {response.status_code}): {body}",
-                status_code=response.status_code,
-                response_body=body,
-            )
-
-        return body
+        # Broadstreet authenticates by query parameter, so the token is a
+        # client-level dial coordinate — fixed here, never reassembled per call.
+        self._vendor = VendorHttpClient(
+            base_url=self.base_url,
+            headers={},
+            params=MappingProxyType({"access_token": access_token}),
+            timeout=float(timeout),
+        )
 
     def _request(
         self,
         method: str,
         path: str,
-        data: dict[str, Any] | None = None,
-        query_params: dict[str, Any] | None = None,
+        data: dict[str, JsonValue] | None = None,
+        query_params: QueryParams | None = None,
     ) -> Any:
         """Make an API request.
 
@@ -145,28 +101,30 @@ class BroadstreetClient:
         Raises:
             BroadstreetAPIError: If request fails
         """
-        url = self._build_url(path, query_params)
-
         try:
-            response = requests.request(
-                method=method,
-                url=url,
-                json=data if data else None,
-                timeout=self.timeout,
-            )
-            return self._handle_response(response)
-        except RequestException as e:
+            result = self._vendor.call(method, path, json=data if data else None, params=query_params)
+        except OutboundDeliveryFailed as e:
+            # The seam raises on a non-2xx and discards the response, so the
+            # status-specific errors below are rebuilt from the typed failure.
+            # response_body is now None: a counterparty's error body is exactly what
+            # the seam declines to carry back. Operators keep the status; they lose
+            # the vendor's message text.
+            raise _broadstreet_error_for_status(e.http_status) from e
+        except OutboundError as e:
             raise BroadstreetAPIError(f"Request failed: {e}") from e
 
-    def get(self, path: str, query_params: dict[str, Any] | None = None) -> Any:
+        body = result.json() if result.content else None
+        return body
+
+    def get(self, path: str, query_params: QueryParams | None = None) -> Any:
         """Make a GET request."""
         return self._request("GET", path, query_params=query_params)
 
-    def post(self, path: str, data: dict[str, Any]) -> Any:
+    def post(self, path: str, data: dict[str, JsonValue]) -> Any:
         """Make a POST request."""
         return self._request("POST", path, data=data)
 
-    def put(self, path: str, data: dict[str, Any]) -> Any:
+    def put(self, path: str, data: dict[str, JsonValue]) -> Any:
         """Make a PUT request."""
         return self._request("PUT", path, data=data)
 
@@ -229,7 +187,7 @@ class BroadstreetClient:
         Returns:
             Created campaign data
         """
-        data: dict[str, Any] = {"name": name}
+        data: dict[str, JsonValue] = {"name": name}
         if start_date:
             data["start_date"] = start_date
         if end_date:
@@ -254,7 +212,7 @@ class BroadstreetClient:
         advertiser_id: str,
         name: str,
         ad_type: str,
-        params: dict[str, Any] | None = None,
+        params: dict[str, JsonValue] | None = None,
     ) -> dict[str, Any]:
         """Create a new advertisement.
 
@@ -267,7 +225,7 @@ class BroadstreetClient:
         Returns:
             Created advertisement data
         """
-        data: dict[str, Any] = {"name": name, "type": ad_type, "active": 1}
+        data: dict[str, JsonValue] = {"name": name, "type": ad_type, "active": 1}
         if params:
             data.update(params)
 
@@ -282,7 +240,9 @@ class BroadstreetClient:
         result = self.get(f"/networks/{self.network_id}/advertisers/{advertiser_id}/advertisements/{advertisement_id}")
         return result.get("advertisement", result) if result else {}
 
-    def update_advertisement(self, advertiser_id: str, advertisement_id: str, params: dict[str, Any]) -> dict[str, Any]:
+    def update_advertisement(
+        self, advertiser_id: str, advertisement_id: str, params: dict[str, JsonValue]
+    ) -> dict[str, Any]:
         """Update an advertisement."""
         result = self.put(
             f"/networks/{self.network_id}/advertisers/{advertiser_id}/advertisements/{advertisement_id}",
@@ -295,7 +255,7 @@ class BroadstreetClient:
         advertiser_id: str,
         advertisement_id: str,
         source_type: str,
-        params: dict[str, Any] | None = None,
+        params: dict[str, JsonValue] | None = None,
     ) -> dict[str, Any]:
         """Set the source/template for an advertisement.
 
@@ -312,7 +272,7 @@ class BroadstreetClient:
         Returns:
             Updated advertisement data
         """
-        data: dict[str, Any] = {"type": source_type}
+        data: dict[str, JsonValue] = {"type": source_type}
         if params:
             data.update(params)
 
@@ -344,7 +304,7 @@ class BroadstreetClient:
         Returns:
             List of report records
         """
-        query_params: dict[str, Any] = {}
+        query_params: dict[str, str | int | float | bool] = {}
         if start_date:
             query_params["start_date"] = start_date
         if end_date:
@@ -378,7 +338,7 @@ class BroadstreetClient:
         Returns:
             Created placement data
         """
-        data = {
+        data: dict[str, JsonValue] = {
             "zone_id": zone_id,
             "advertisement_id": advertisement_id,
         }
@@ -412,7 +372,7 @@ class BroadstreetClient:
         Returns:
             Created zone data
         """
-        data: dict[str, Any] = {"name": name}
+        data: dict[str, JsonValue] = {"name": name}
         if alias:
             data["alias"] = alias
         data["self_serve"] = self_serve

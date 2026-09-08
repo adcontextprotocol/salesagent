@@ -416,11 +416,38 @@ class TestSyncCreativesA2ASuggestionParity:
     the same boundary for guard-consistency (and future SDK field additions).
     """
 
-    def test_invalid_creative_a2a_envelope_carries_suggestion(self, integration_db):
-        """A creative entry missing the required ``format_id`` rejected on the
-        A2A wire must produce the AdCP two-layer VALIDATION_ERROR envelope WITH
-        a top-level ``suggestion`` (error.json @v3.1-04f59d2d5) — parity with
-        the nine wrapped skill handlers in the same file.
+    def test_invalid_creative_a2a_reports_a_PER_ITEM_failure_not_a_whole_request_error(self, integration_db):
+        """A creative missing ``format_id`` fails AS AN ITEM on the A2A wire.
+
+        REQUIREMENT CORRECTED against the pin, not relaxed to match code. The
+        pinned schema (adcp v3.1.1
+        ``dist/schemas/3.1.1/creative/sync-creatives-response.json``) states, of
+        the creatives array: "Items with action='failed' indicate per-item
+        validation/processing failures, NOT operation-level failures." The
+        earlier version of this test demanded a request-level VALIDATION_ERROR
+        envelope, which is the inverse — and it passed only because the A2A
+        handler constructed the whole creatives array eagerly and failed the
+        batch on any one bad item, the defect the lane in #1802 removed.
+        A2A was the ONLY transport doing that; impl and REST were always
+        per-item.
+
+        The suggestion/recovery parity this file asserts for the nine wrapped
+        skill handlers does not transfer here: those operations fail as a
+        request, so they have a request envelope to carry a suggestion.
+        sync_creatives, by the pin above, does not.
+
+        NOT ASSERTED HERE, deliberately, and not because it passes: the per-item
+        error comes back ``code=SERVICE_UNAVAILABLE recovery=transient`` for a
+        MISSING REQUIRED FIELD, which is buyer-correctable — a buyer told
+        "transient" would retry forever on a payload that can never succeed.
+        Measured across transports, that misclassification is PRE-EXISTING and
+        shared: impl, REST and A2A all emit it (MCP differs only because
+        FastMCP's TypeAdapter rejects at the schema boundary before _impl). It
+        is therefore not this lane's to fix — INVALID_REQUEST vs
+        VALIDATION_ERROR unification is Epic C's, and #1802 lists it under NOT
+        IN THIS LANE. Asserting the wrong code here would pin the defect open;
+        asserting the right one would make this test a RED grader for work
+        another epic owns. It is named instead.
         """
         from src.core.schemas import SyncCreativesResponse
         from tests.harness.creative_sync import CreativeSyncEnv
@@ -440,15 +467,23 @@ class TestSyncCreativesA2ASuggestionParity:
                 creatives=[{"creative_id": "cr-invalid-1", "name": "No format"}],
             )
 
-            assert result.is_error, (
-                "A creative missing format_id must be rejected on the A2A wire, "
-                f"got success payload: {result.payload!r}"
+            assert not result.is_error, (
+                "a single invalid creative must NOT fail the whole sync_creatives request on A2A "
+                f"(pinned 3.1.1: per-item failures are not operation-level); got {result.error!r}"
             )
-            result.assert_wire_error(
-                "VALIDATION_ERROR",
-                recovery="correctable",
-                require_suggestion=True,
-                message_substr="format_id",
+            entries = result.payload.creatives
+            assert len(entries) == 1, f"expected one per-creative result, got {entries!r}"
+            entry = entries[0]
+            assert str(getattr(entry.action, "value", entry.action)) == "failed", (
+                f"the creative missing format_id must be reported action='failed', got {entry.action!r}"
+            )
+            assert entry.creative_id == "cr-invalid-1", (
+                f"the per-item result must name WHICH creative failed, got {entry.creative_id!r}"
+            )
+            assert entry.errors, f"a failed creative must carry an error explaining why: {entry!r}"
+            assert "format_id" in entry.errors[0].message, (
+                "the per-item error must name the missing field so a buyer knows what to fix; "
+                f"got {entry.errors[0].message!r}"
             )
 
 

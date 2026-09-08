@@ -292,7 +292,13 @@ uv run pytest tests/e2e/ -m requires_gam -v --timeout=300
 | pytest `arch_guard` | `make quality` | AST guards in `tests/unit/test_architecture_*.py` |
 | CI | PR to main | `make quality-ci` in Quality Gate + dedicated jobs (**20** frozen checks after PR #1379) |
 
-Requires pre-commit ≥3.2.0. Run `pre-commit install` once per clone (installs both commit and pre-push hooks).
+Requires pre-commit ≥3.2.0. Run `pre-commit install` once per clone (installs both commit and pre-push hooks). If `pre-commit install` fails with a version-too-old `FatalError`, upgrade with `uv tool install pre-commit`.
+
+Running `make quality` or `make quality-ci` may update the tracked ratchet
+baselines (`.duplication-baseline`, `.type-ignore-baseline`,
+`.ruff-complexity-baseline`, `.mypy-untyped-defs-baseline`) when counts
+decrease. Commit those updates intentionally; CI runs are ephemeral and do
+not persist baseline writes.
 
 Checks invoked directly by `make quality-ci` (not via `pre-commit run --all-files` in the Quality Gate):
 

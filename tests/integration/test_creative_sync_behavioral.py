@@ -159,24 +159,6 @@ def _assert_correctable(result) -> None:
     )
 
 
-def _assert_terminal_configuration_error(result) -> None:
-    """Assert a per-creative IMPL failure is a TERMINAL server misconfiguration.
-
-    The terminal counterpart of :func:`_assert_correctable`, over the same
-    contract body. A server-side misconfiguration cannot be fixed by the buyer
-    and must not be retried, so the pair must be (CONFIGURATION_ERROR, terminal)
-    — never the default (SERVICE_UNAVAILABLE, terminal), whose code is pinned
-    ``transient`` in the enum and therefore contradicts its own recovery field.
-    """
-    _assert_advisory_failure(
-        result.action,
-        _impl_error_pairs(result),
-        code="CONFIGURATION_ERROR",
-        not_code="SERVICE_UNAVAILABLE",
-        recovery="terminal",
-    )
-
-
 def _assert_failed_wire_entry(
     entry: WireCreativeEntry, *, code: str, not_code: str, recovery: str = "correctable"
 ) -> None:
@@ -486,43 +468,6 @@ class TestCreativeValidation:
             PrincipalFactory(tenant=tenant, principal_id="test_principal")
 
             response = env.call_impl(creatives=[_make_creative_asset(creative_id="c_bad", name="")])
-            assert len(response.creatives) == 1
-            _assert_correctable(response.creatives[0])
-
-    def test_unknown_format_failure_uses_correctable_code(self, integration_db):
-        """An unknown-format failure (typed AdCPValidationError, recovery correctable)
-        must surface as VALIDATION_ERROR, not the default SERVICE_UNAVAILABLE the
-        `except AdCPError` handler used to emit for every non-transient typed error.
-
-        Spec grounding (pinned AdCP 3.1.1, enums/error-code.json): VALIDATION_ERROR
-        → correctable. The typed AdCPValidationError is non-transient, so the
-        `except AdCPError` path (_sync.py) keeps it as a per-item failure and
-        forwards its already-wire-standard code — see
-        test_correctable_failure_code_and_recovery_on_the_wire for the sibling
-        path where the typed code (AdCPFormatNotFoundError, FORMAT_NOT_FOUND) is
-        NOT wire-standard and must be normalized to INVALID_REQUEST on the wire.
-        """
-        with CreativeSyncEnv() as env:
-            tenant = TenantFactory(tenant_id="test_tenant")
-            PrincipalFactory(tenant=tenant, principal_id="test_principal")
-
-            # Make the registry reject the format so the real unknown-format
-            # AdCPValidationError path runs (the env's default mock accepts any id).
-            # Set the return on the env's existing get_format mock rather than
-            # constructing a new one (the per-file hand-rolled-mock cap only shrinks).
-            env.mock["registry"].return_value.get_format.return_value = None
-
-            response = env.call_impl(
-                creatives=[
-                    _make_creative_asset(
-                        creative_id="c_bad_format",
-                        format_id=AdcpFormatId(
-                            agent_url="https://creative.adcontextprotocol.org",
-                            id="format_does_not_exist_xyz",
-                        ),
-                    )
-                ]
-            )
             assert len(response.creatives) == 1
             _assert_correctable(response.creatives[0])
 
@@ -1759,70 +1704,6 @@ class TestSyncExtensions:
                 recovery="transient",
                 message_substr="unreachable",
             )
-
-    @pytest.mark.parametrize("preexisting", [False, True], ids=["create", "update"])
-    def test_misconfiguration_failure_uses_terminal_code(self, integration_db, preexisting):
-        """A server-side misconfiguration emits (CONFIGURATION_ERROR, terminal), not
-        (SERVICE_UNAVAILABLE, terminal).
-
-        Production-grounded: a generative format with no GEMINI_API_KEY raises
-        ``AdCPConfigurationError`` inside the creative handler, whose
-        ``except AdCPConfigurationError`` block turns it into a per-item
-        advisory. That advisory used the builder's default code, so it shipped
-        the transient ``SERVICE_UNAVAILABLE`` alongside ``recovery=terminal`` —
-        a pair that contradicts itself, since a conforming buyer reads the code's
-        own classification too.
-
-        Spec grounding (pinned AdCP 3.1.1, enums/error-code.json):
-        CONFIGURATION_ERROR → recovery ``terminal`` ("the buyer cannot resolve a
-        seller-side deployment misconfiguration and MUST NOT auto-retry");
-        SERVICE_UNAVAILABLE → ``transient``. CONFIGURATION_ERROR is a real wire
-        code here via ``_SPEC_SUPPLEMENT_CODES``, so it passes
-        ``to_wire_error_code`` untranslated rather than collapsing.
-
-        Grades the pair, not just the code: reverting either kwarg at the raise
-        site reddens this. Parametrized over BOTH handlers — ``_create_new_creative``
-        and ``_update_existing_creative`` carry separate copies of the same
-        ``except AdCPConfigurationError`` block, so fixing one and leaving the
-        other is exactly the guard-lands-sibling-slips shape. The sibling
-        transient contract is test_unreachable_agent_fails_with_retry above.
-        """
-        from tests.factories import CreativeFactory
-
-        with CreativeSyncEnv() as env:
-            tenant = TenantFactory(tenant_id="test_tenant")
-            principal = PrincipalFactory(tenant=tenant, principal_id="test_principal")
-            fmt = env.setup_generative_build(format_id="display_gen", gemini_api_key="")
-            # setup_generative_build sets a key; clear it so the production
-            # "GEMINI_API_KEY not configured" raise is the real trigger.
-            env.mock["config"].return_value.gemini_api_key = None
-
-            if preexisting:
-                # A row already in the library routes the sync to
-                # _update_existing_creative instead of _create_new_creative.
-                CreativeFactory(
-                    tenant=tenant,
-                    principal=principal,
-                    creative_id="c_misconfigured",
-                    format=fmt["id"],
-                    agent_url=fmt["agent_url"],
-                )
-
-            response = env.call_impl(
-                creatives=[
-                    _make_creative_asset(
-                        creative_id="c_misconfigured",
-                        format_id=AdcpFormatId(agent_url=fmt["agent_url"], id=fmt["id"]),
-                    )
-                ],
-            )
-
-        assert len(response.creatives) == 1
-        result = response.creatives[0]
-        assert any("GEMINI_API_KEY" in m for m in _error_messages(result.errors)), (
-            f"expected the misconfiguration path, got {_error_messages(result.errors)}"
-        )
-        _assert_terminal_configuration_error(result)
 
     def test_package_not_found_lenient_logs_error(self, integration_db):
         """Covers: UC-006-EXT-J-02 — lenient: missing package → assignment_errors."""

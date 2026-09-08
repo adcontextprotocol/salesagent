@@ -11,13 +11,13 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
 from sqlalchemy import select
 
 from src.core.database.database_session import get_db_session
 from src.core.database.models import PushNotificationConfig, SyncJob
+from src.core.security.webhook_egress import deliver_webhook
 from src.core.thread_registry import ThreadRegistry
-from src.core.webhook_validator import reject_unsafe_outbound_webhook_url, webhook_url_for_log
+from src.core.webhook_validator import webhook_url_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,54 @@ logger = logging.getLogger(__name__)
 # threads on every read — same defensive cleanup as the sync registry
 # (production memory-leak triage #5).
 _active_approvals = ThreadRegistry()
+
+# The parallel stop-signal dict, the same dual-dict shape delivery_simulator.py
+# and gam/managers/reporting.py already use and that ThreadRegistry's own
+# docstring sanctions. Without it the registry could observe a thread but never
+# stop one: the retry path below sleeps 2**attempt behind HTTP POSTs that time
+# out after 10 s, so a started approval outlived the request that began it by
+# tens of seconds. Measured (#2056): a thread from one unit test called sleep(1)
+# and sleep(2) inside two OTHER tests ~1500 tests later, landing in their mocks
+# because src/core/webhook_delivery.py imports `time` and patching
+# src.core.webhook_delivery.time.sleep replaces it process-wide.
+_stop_signals: dict[str, threading.Event] = {}
+_stop_signals_lock = threading.Lock()  # Protects _stop_signals iteration
+
+
+def _on_approval_reaped(approval_id: str) -> None:
+    """Drop the parallel _stop_signals entry when a dead approval is reaped.
+
+    Lock-free by design, exactly as delivery_simulator._on_simulation_reaped is:
+    ``dict.pop`` is atomic under the GIL, and the reap path runs
+    registry-lock -> here while the accessors take _stop_signals_lock ->
+    registry. Taking the lock here would invert that order and risk an ABBA
+    deadlock.
+    """
+    _stop_signals.pop(approval_id, None)
+
+
+_active_approvals.add_reap_callback(_on_approval_reaped)
+
+
+def get_approval_stop_signal(approval_id: str) -> threading.Event | None:
+    """The stop signal for a running approval, or None if it is not running."""
+    with _stop_signals_lock:
+        return _stop_signals.get(approval_id)
+
+
+def cancel_order_approval(approval_id: str) -> bool:
+    """Ask a running approval thread to stop; True if one was signalled.
+
+    Cooperative: it sets the Event the worker's interruptible sleep waits on, so
+    the thread stops at its next sleep boundary rather than being killed. Join
+    it with ``_active_approvals.get(approval_id)`` when the caller needs the
+    thread actually finished.
+    """
+    signal = get_approval_stop_signal(approval_id)
+    if signal is None:
+        return False
+    signal.set()
+    return True
 
 
 def start_order_approval_background(
@@ -90,6 +138,14 @@ def start_order_approval_background(
         )
         db.add(approval_job)
         db.commit()
+
+    # Reserve the stop signal BEFORE starting the thread, so a cancel racing the
+    # start still lands: the worker reads the signal, and a caller that cancels
+    # between add() and the worker's first sleep finds an Event already there.
+    # Never call into the registry while holding this lock — the registry has its
+    # own, and the reap callback re-enters _stop_signals (ABBA avoidance).
+    with _stop_signals_lock:
+        _stop_signals[approval_id] = threading.Event()
 
     # Start background thread
     thread = threading.Thread(
@@ -291,6 +347,7 @@ def _mark_approval_complete(
                 message="Order approved successfully",
                 order_id=summary.get("order_id"),
                 attempts=summary.get("attempts"),
+                stop_signal=get_approval_stop_signal(approval_id),
             )
 
     except Exception as e:
@@ -327,85 +384,134 @@ def _mark_approval_failed(
                 message=error_message,
                 order_id=approval_job.progress.get("order_id") if approval_job and approval_job.progress else None,
                 attempts=approval_job.progress.get("attempts") if approval_job and approval_job.progress else None,
+                stop_signal=get_approval_stop_signal(approval_id),
             )
 
     except Exception as e:
         logger.error(f"Failed to mark approval failed: {e}")
 
 
-def _approval_webhook_headers(config: PushNotificationConfig | None) -> dict[str, str]:
-    """Build HTTP headers for an order-approval webhook POST."""
+def _approval_webhook_headers(validation_token: str | None) -> dict[str, str]:
+    """Build HTTP headers for an order-approval webhook POST.
+
+    Takes the already-resolved authentication rather than the config row,
+    so the auth decision is made exactly once per delivery (in
+    :func:`_send_approval_webhook`) and this function cannot reach a different
+    answer than the signing branch did.
+
+    ``validation_token`` stays outside the resolver deliberately: this sender
+    emits ``X-Webhook-Token`` and ``protocol_webhook_service`` does not, so
+    folding it into the shared decision would silently change one sender's
+    headers under cover of unification.
+    """
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "AdCP-Sales-Agent/1.0 (Order Approval Notifications)",
     }
-    if not config:
-        return headers
-    if config.authentication_type == "bearer" and config.authentication_token:
-        headers["Authorization"] = f"Bearer {config.authentication_token}"
-    elif config.authentication_type == "basic" and config.authentication_token:
-        headers["Authorization"] = f"Basic {config.authentication_token}"
-    if config.validation_token:
-        headers["X-Webhook-Token"] = config.validation_token
+    # No auth ladder here any more: the seam applies whatever the registered scheme
+    # requires. X-Webhook-Token STAYS, because it is sender-local — this sender
+    # emits it and protocol_webhook_service does not, so folding it into the shared
+    # decision would silently change one sender's headers under cover of unification.
+    if validation_token:
+        headers["X-Webhook-Token"] = validation_token
     return headers
 
 
-def _reject_unsafe_approval_webhook_url(webhook_url: str) -> bool:
-    """Return True when the order-approval outbound URL fails the SSRF gate."""
-    rejected, _error_msg = reject_unsafe_outbound_webhook_url(webhook_url, log=logger, kind="OrderApproval")
-    return rejected
-
-
-def _post_approval_webhook_with_retries(
+def _post_approval_webhook(
     webhook_url: str,
     payload: dict[str, Any],
     headers: dict[str, str],
+    *,
+    scheme: str | None = None,
+    credentials: str | None = None,
+    tenant_id: str | None = None,
+    principal_id: str | None = None,
+    stop_signal: threading.Event | None = None,
 ) -> None:
-    """POST the approval payload with retries; refuse open redirects."""
+    """POST the approval payload through the egress seam.
+
+    The seam owns every address and transport decision this function used to make
+    for itself, which is why none of them is restated here: https-only, reserved-
+    range refusal and resolve-once IP pinning (so the send-time SSRF gate is
+    subsumed — there is no separate pre-flight check to run), refusing to follow
+    redirects, the response-size cap, what counts as retryable (4xx terminal,
+    5xx/429 retried), and BR-RULE-029's 1s/2s/4s-plus-jitter backoff.
+
+    What stays local is the logging contract: every message names the SANITIZED
+    URL, never the raw one, so a webhook URL carrying credentials or a token in
+    its query string cannot reach the logs.
+
+    ``stop_signal`` is the last boundary a cancelled approval can still stop at
+    inside this module. It is passed in rather than looked up from the registry
+    so this helper stays ignorant of approval bookkeeping — it only needs "has
+    the caller been asked to stop". Its reach narrowed when the retry loop moved
+    behind the seam: the interruptible ``Event.wait`` that replaced
+    ``time.sleep(2 ** attempt)`` has no loop left to sit in, because the seam
+    owns attempt count and backoff and exposes no cancellation hook. So the
+    check happens HERE, before the hand-off — a cancelled approval never enters
+    a three-attempt delivery it could no longer be pulled out of. It does NOT
+    abort a delivery already in flight; do not read it as if it did.
+    """
     safe_url = webhook_url_for_log(webhook_url)
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            with httpx.Client(timeout=10.0, follow_redirects=False) as client:
-                response = client.post(webhook_url, json=payload, headers=headers)
+    if stop_signal is not None and stop_signal.is_set():
+        # The cancel landed before we dialled, which is the only moment this
+        # module still controls. Logged at INFO, not WARNING: a cancelled
+        # approval not sending its webhook is the requested outcome, not a fault.
+        logger.info("Approval webhook to %s not sent: the approval was cancelled", safe_url)
+        return
 
-                if 200 <= response.status_code < 300:
-                    logger.info(
-                        "Approval webhook sent to %s (status: %s, attempt: %s)",
-                        safe_url,
-                        payload.get("status"),
-                        attempt + 1,
-                    )
-                    return
+    outcome = deliver_webhook(
+        webhook_url,
+        payload,
+        scheme=scheme,
+        credentials=credentials,
+        headers=headers,
+        timeout=10.0,
+        max_attempts=3,
+    )
 
-                logger.warning(
-                    "Approval webhook to %s returned status %s (attempt: %s/%s)",
-                    safe_url,
-                    response.status_code,
-                    attempt + 1,
-                    max_retries,
-                )
-
-        except httpx.TimeoutException:
-            logger.warning(
-                "Approval webhook to %s timed out (attempt: %s/%s)",
-                safe_url,
-                attempt + 1,
-                max_retries,
-            )
-        except httpx.RequestError as e:
-            logger.warning(
-                "Approval webhook to %s failed: %s (attempt: %s/%s)",
-                safe_url,
-                e,
-                attempt + 1,
-                max_retries,
-            )
-
-        if attempt < max_retries - 1:
-            time.sleep(2**attempt)
-
-    logger.error("Failed to send approval webhook to %s after %s attempts", safe_url, max_retries)
+    if outcome.kind == "refused_auth":
+        # FAIL-CLOSED BACKSTOP -- deliberately log-and-return, and deliberately NOT
+        # a raise. This is not the primary refusal: a non-conforming registration is
+        # rejected at INGEST, where a request still exists to refuse into and the
+        # buyer -- the only party who can fix it -- actually sees it.
+        #
+        # By the time control reaches here we are on a daemon thread, after
+        # create_media_buy already returned, with the approval committed; this
+        # function's return value is discarded and its exceptions are blanket-caught
+        # by the caller. There is no caller left that could act on a raise, and
+        # TestExhaustedDeliveryIsSilent grades that this path stays non-raising. So
+        # the backstop's job is narrow: never let an unauthenticated request reach a
+        # receiver that asked to be authenticated.
+        #
+        # This does NOT cite "No Quiet Failures" -- that rule's worked example bans
+        # exactly this shape, and the honest reason it is an exception is above.
+        logger.error(
+            "Refusing to send approval webhook to %s: %s (tenant=%s, principal=%s)",
+            safe_url,
+            outcome.detail or outcome.reason,
+            tenant_id,
+            principal_id,
+        )
+    elif outcome.kind == "refused_destination":
+        # The URL never left the process. Deliberately opaque: the seam has already
+        # logged which policy refused it and why.
+        # Severity carried on the outcome, not chosen here (#1802).
+        logger.log(outcome.log_level, "Approval webhook to %s was refused by egress policy", safe_url)
+    elif outcome.kind != "delivered":
+        logger.error(
+            "Failed to send approval webhook to %s after %s attempts (last status: %s)",
+            safe_url,
+            outcome.attempts,
+            outcome.http_status,
+        )
+    else:
+        logger.info(
+            "Approval webhook sent to %s (status: %s, attempts: %s)",
+            safe_url,
+            payload.get("status"),
+            outcome.attempts,
+        )
 
 
 def _send_approval_webhook(
@@ -417,6 +523,7 @@ def _send_approval_webhook(
     message: str,
     order_id: str | None = None,
     attempts: int | None = None,
+    stop_signal: threading.Event | None = None,
 ):
     """Send webhook notification for approval status update.
 
@@ -429,6 +536,9 @@ def _send_approval_webhook(
         message: Status message
         order_id: GAM order ID (if available)
         attempts: Number of polling attempts (if available)
+        stop_signal: The approval's cancel Event, when one is running. Checked
+            before the delivery is handed to the egress seam; None means
+            "nothing to cancel", which is what every non-worker caller passes.
     """
     try:
         payload: dict[str, Any] = {
@@ -453,13 +563,21 @@ def _send_approval_webhook(
             )
             config = db.scalars(stmt).first()
 
-        if _reject_unsafe_approval_webhook_url(webhook_url):
-            return
-
-        _post_approval_webhook_with_retries(
+        # The egress seam validates the URL as part of sending it, so there is no
+        # separate SSRF pre-flight here: one refusal path, raised as
+        # OutboundRequestBlocked before any connection is attempted.
+        _post_approval_webhook(
             webhook_url,
             payload,
-            _approval_webhook_headers(config),
+            _approval_webhook_headers(config.validation_token if config else None),
+            scheme=config.authentication_type if config else None,
+            credentials=config.authentication_token if config else None,
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            # Threaded through from the caller, not looked up here: _send_approval_webhook
+            # is called from the worker thread AND from tests with no approval row at all,
+            # so "no signal" has to stay a legal, meaningful argument.
+            stop_signal=stop_signal,
         )
 
     except Exception as e:

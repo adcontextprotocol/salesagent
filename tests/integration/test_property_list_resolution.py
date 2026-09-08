@@ -17,14 +17,13 @@ These tests verify:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from tests.factories import PricingOptionFactory, PrincipalFactory, ProductFactory, TenantFactory
 from tests.harness.product import ProductEnv
+from tests.integration.property_list_helpers import allow_local_origin, origin_ref, property_list_body
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -44,38 +43,6 @@ def _make_property_list_ref(
     if auth_token is not None:
         ref["auth_token"] = auth_token
     return ref
-
-
-def _mock_http_response(
-    identifiers: list[dict],
-    has_more: bool = False,
-    cursor: str | None = None,
-    total_count: int | None = None,
-) -> dict:
-    """Build a GetPropertyListResponse JSON payload.
-
-    Args:
-        identifiers: List of {"type": ..., "value": ...} dicts.
-        has_more: Whether more pages exist.
-        cursor: Opaque cursor for next page (only when has_more=True).
-        total_count: Optional total count across all pages.
-    """
-    response: dict = {
-        "list": {
-            "list_id": "test_list",
-            "name": "Test Property List",
-        },
-        "identifiers": identifiers,
-        "resolved_at": datetime.now(UTC).isoformat(),
-    }
-    if has_more or cursor is not None:
-        pagination: dict = {"has_more": has_more}
-        if cursor is not None:
-            pagination["cursor"] = cursor
-        if total_count is not None:
-            pagination["total_count"] = total_count
-        response["pagination"] = pagination
-    return response
 
 
 # ---------------------------------------------------------------------------
@@ -162,56 +129,47 @@ class TestPropertyListResolution:
             assert "prop_nonmatch" not in product_ids, "Product with non-matching IDs should be excluded"
 
     @pytest.mark.asyncio
-    async def test_resolve_with_cursor_returns_next_page(self, integration_db):
+    async def test_resolve_with_cursor_returns_next_page(self, local_origin_tls, monkeypatch):
         """Cursor-based pagination: resolver fetches paginated identifiers from external service.
+
+        Runs against a real origin rather than a substituted ``httpx.AsyncClient``:
+        the resolver fetches through the egress seam, so a mocked client would
+        prove nothing about what it actually requests. ``origin.paths`` pins the
+        request that really left.
 
         Covers: BR-RULE-077-01
         """
         from src.core.property_list_resolver import clear_cache, resolve_property_list
 
         clear_cache()
-
-        from adcp.types import PropertyListReference
-
-        ref = PropertyListReference(
-            agent_url="https://propertylist.example.com",
-            list_id="paginated_list",
-        )
+        allow_local_origin(monkeypatch)
 
         # First page response: 2 identifiers + cursor for next page
-        page1_response = _mock_http_response(
-            identifiers=[
-                {"type": "domain", "value": "site1.com"},
-                {"type": "domain", "value": "site2.com"},
-            ],
-            has_more=True,
-            cursor="page2_cursor",
-            total_count=4,
+        local_origin_tls.respond_with(
+            200,
+            body=property_list_body(
+                [
+                    {"type": "domain", "value": "site1.com"},
+                    {"type": "domain", "value": "site2.com"},
+                ],
+                has_more=True,
+                cursor="page2_cursor",
+                total_count=4,
+            ),
         )
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = page1_response
-        mock_response.raise_for_status.return_value = None
-
-        with patch("src.core.property_list_resolver.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.get.return_value = mock_response
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
-
-            with patch("src.core.property_list_resolver._validate_agent_url"):
-                result = await resolve_property_list(ref)
+        result = await resolve_property_list(origin_ref(local_origin_tls, list_id="paginated_list"))
 
         # Resolver should return identifiers from the response
         assert len(result) == 2
         assert "site1.com" in result
         assert "site2.com" in result
+        assert local_origin_tls.paths == ["/lists/paginated_list"]
 
         clear_cache()
 
     @pytest.mark.asyncio
-    async def test_resolve_exhausted_cursor_returns_empty(self, integration_db):
+    async def test_resolve_exhausted_cursor_returns_empty(self, local_origin_tls, monkeypatch):
         """Exhausted cursor: response with has_more=false and no identifiers yields empty list.
 
         Covers: BR-RULE-077-01
@@ -219,40 +177,19 @@ class TestPropertyListResolution:
         from src.core.property_list_resolver import clear_cache, resolve_property_list
 
         clear_cache()
-
-        from adcp.types import PropertyListReference
-
-        ref = PropertyListReference(
-            agent_url="https://propertylist.example.com",
-            list_id="exhausted_list",
-        )
+        allow_local_origin(monkeypatch)
 
         # Response with no identifiers (cursor exhausted)
-        empty_response = _mock_http_response(
-            identifiers=[],
-            has_more=False,
-        )
+        local_origin_tls.respond_with(200, body=property_list_body([], has_more=False))
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = empty_response
-        mock_response.raise_for_status.return_value = None
-
-        with patch("src.core.property_list_resolver.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.get.return_value = mock_response
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
-
-            with patch("src.core.property_list_resolver._validate_agent_url"):
-                result = await resolve_property_list(ref)
+        result = await resolve_property_list(origin_ref(local_origin_tls, list_id="exhausted_list"))
 
         assert result == [], "Exhausted cursor should yield empty identifier list"
 
         clear_cache()
 
     @pytest.mark.asyncio
-    async def test_resolve_respects_page_size(self, integration_db):
+    async def test_resolve_respects_page_size(self, local_origin_tls, monkeypatch):
         """Page size (max_results) limits the number of returned identifiers per page.
 
         Covers: BR-RULE-077-01
@@ -260,36 +197,21 @@ class TestPropertyListResolution:
         from src.core.property_list_resolver import clear_cache, resolve_property_list
 
         clear_cache()
-
-        from adcp.types import PropertyListReference
-
-        ref = PropertyListReference(
-            agent_url="https://propertylist.example.com",
-            list_id="sized_list",
-        )
+        allow_local_origin(monkeypatch)
 
         # Response with exactly max_results identifiers (simulating server respecting limit)
         page_size = 3
-        sized_response = _mock_http_response(
-            identifiers=[{"type": "domain", "value": f"site{i}.com"} for i in range(page_size)],
-            has_more=True,
-            cursor="next_page",
-            total_count=10,
+        local_origin_tls.respond_with(
+            200,
+            body=property_list_body(
+                [{"type": "domain", "value": f"site{i}.com"} for i in range(page_size)],
+                has_more=True,
+                cursor="next_page",
+                total_count=10,
+            ),
         )
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = sized_response
-        mock_response.raise_for_status.return_value = None
-
-        with patch("src.core.property_list_resolver.httpx.AsyncClient") as mock_client_cls:
-            mock_client = AsyncMock()
-            mock_client.get.return_value = mock_response
-            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client_cls.return_value = mock_client
-
-            with patch("src.core.property_list_resolver._validate_agent_url"):
-                result = await resolve_property_list(ref)
+        result = await resolve_property_list(origin_ref(local_origin_tls, list_id="sized_list"))
 
         # The resolver returns exactly the identifiers from the current page
         assert len(result) == page_size, (
