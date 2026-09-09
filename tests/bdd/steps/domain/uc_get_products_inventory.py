@@ -229,7 +229,17 @@ def then_rejected_validation_field(ctx: dict, field: str) -> None:
     assertion that says the buyer can fix this themselves. ``field`` is the other
     half — where the message must disclose nothing (AdCP 3.1.1 L1 § "Webhook URL
     validation (SSRF)" point 6), it is the ONLY channel that can say WHICH of the
-    request's inputs to fix.
+    request's inputs to fix. That is what keeps an agent-supplied inventory
+    source explicit: a ``property_list.agent_url`` the egress seam refuses is
+    named back to the buyer as a rejected field, never dropped as a silently
+    skipped source.
+
+    Collapsing to one call does not drop a layer. ``field=`` reaches
+    ``assert_envelope_shape``, which pins ``errors[0].field`` — the canonical
+    error.json pointer — AND the envelope-level ``adcp_error.field`` that
+    ``exceptions.build_two_layer_error_envelope`` mirrors verbatim from
+    ``errors[0]``. Those are exactly the two reads this step used to hand-roll,
+    so both remain graded with no separate hand-rolled envelope walk.
     """
     assert_wire_rejection(ctx, "VALIDATION_ERROR", recovery="correctable", field=field)
 

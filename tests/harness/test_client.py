@@ -59,7 +59,12 @@ class TestClientMcpDispatchNoDb:
             result = client.call("list_accounts", {}, Transport.MCP, identity=None)
 
         assert result.is_error
-        result.assert_wire_error("AUTH_REQUIRED")
+        # AUTH_MISSING, not the deprecated AUTH_REQUIRED alias: no x-adcp-auth
+        # header was presented at all. adcp==6.6.0 (3.1 error-code enum) marks
+        # AUTH_REQUIRED "Deprecated — use AUTH_MISSING (no credentials
+        # presented) or AUTH_INVALID (credentials presented and rejected)", and
+        # the MCP boundary translates AdCPAuthRequiredError to AUTH_MISSING.
+        result.assert_wire_error("AUTH_MISSING")
 
 
 class TestClientA2ADispatchNoDb:
@@ -417,7 +422,11 @@ class TestClientE2eRestDelivery:
 
         assert "x-adcp-auth" not in captured["headers"]
         assert result.is_error
-        result.assert_wire_error("AUTH_REQUIRED")
+        # The asserted body is wire_body above — built by production's
+        # build_two_layer_error_envelope(AdCPAuthRequiredError(...)), which
+        # emits AUTH_MISSING (no credentials presented) rather than the
+        # deprecated AUTH_REQUIRED alias. Not AUTH_INVALID: no header was sent.
+        result.assert_wire_error("AUTH_MISSING")
 
     def test_e2e_rest_delivery_requires_e2e_config(self):
         from tests.harness.address_table import ToolAddress

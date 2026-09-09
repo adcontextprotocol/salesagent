@@ -331,11 +331,11 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
     from datetime import UTC, datetime
 
     from flask import flash, redirect, request, url_for
-    from sqlalchemy.orm import attributes
 
     from src.core.database.database_session import get_db_session
     from src.core.database.models import Context as DBContext
     from src.core.database.models import ObjectWorkflowMapping, WorkflowStep
+    from src.core.database.repositories.workflow import WorkflowRepository
 
     try:
         action = request.form.get("action")  # "approve" or "reject"
@@ -393,16 +393,11 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                 step.status = "approved"
                 step.updated_at = datetime.now(UTC)
 
-                if not step.comments:
-                    step.comments = []
-                step.comments.append(
-                    {
-                        "user": user_email,
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "comment": "Approved via media buy detail page",
-                    }
+                # Atomic tenant-scoped append (salesagent-pgqs): the old
+                # whole-list write-back erased concurrent comments.
+                WorkflowRepository(db_session, tenant_id).append_comment(
+                    step.step_id, user=user_email, text="Approved via media buy detail page"
                 )
-                attributes.flag_modified(step, "comments")
 
                 # Commit the step BEFORE calling the writer. The callee opens nested
                 # sessions, and get_db_session()'s exit closes the shared thread-scoped
@@ -486,16 +481,10 @@ def approve_media_buy(tenant_id, media_buy_id, **kwargs):
                 step.error_message = reason or "Rejected by administrator"
                 step.updated_at = datetime.now(UTC)
 
-                if not step.comments:
-                    step.comments = []
-                step.comments.append(
-                    {
-                        "user": user_email,
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "comment": f"Rejected: {reason or 'No reason provided'}",
-                    }
+                # Atomic tenant-scoped append (salesagent-pgqs), as in approve.
+                WorkflowRepository(db_session, tenant_id).append_comment(
+                    step.step_id, user=user_email, text=f"Rejected: {reason or 'No reason provided'}"
                 )
-                attributes.flag_modified(step, "comments")
 
                 if media_buy and media_buy.status == "pending_approval":
                     # approve_repo is constructed before the action split, so it is the

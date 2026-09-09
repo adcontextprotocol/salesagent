@@ -94,7 +94,7 @@ class TestSaveConfig:
     """POST /auth/oidc/tenant/<id>/config — persist OIDC provider settings."""
 
     def test_saves_config_encrypts_secret(self, client, factory_session, monkeypatch):
-        from tests.integration.test_outbound_http import set_flags
+        from tests.helpers.egress_backoff import set_flags
 
         # A loopback URL, private-range hatch open: this exercises the
         # ingest-time egress check added for discovery_url without depending
@@ -135,7 +135,7 @@ class TestSaveConfig:
         has to happen here, at ingest, same as every other stored-then-fetched
         admin URL (see src/admin/utils/url_policy.py).
         """
-        from tests.integration.test_outbound_http import set_flags
+        from tests.helpers.egress_backoff import set_flags
 
         set_flags(monkeypatch)
         tenant = TenantFactory()
@@ -161,7 +161,7 @@ class TestSaveConfig:
         """logout_url is stored and later used as a browser redirect target at
         logout — also stored-then-dereferenced, so it is graded the same way.
         """
-        from tests.integration.test_outbound_http import set_flags
+        from tests.helpers.egress_backoff import set_flags
 
         set_flags(monkeypatch)
         tenant = TenantFactory()

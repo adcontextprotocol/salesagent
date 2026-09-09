@@ -156,8 +156,8 @@ def check_file(filepath: Path) -> list[str]:
     # Find usages without imports
     errors = []
     builtins = {
-        "Exception",
         "AssertionError",
+        "Exception",
         "ValueError",
         "TypeError",
         "KeyError",

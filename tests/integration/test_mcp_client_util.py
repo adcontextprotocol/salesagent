@@ -37,12 +37,12 @@ from src.core.utils.mcp_client import (
     call_mcp_tool,
 )
 from tests.helpers import assert_backoff_schedule, assert_envelope_shape
-from tests.helpers.egress_hatches import ALLOW_PRIVATE_ENV
 
 # Reused rather than restated (precedent: tests/integration/test_vendor_egress.py):
 # the jitter pin, the escape-hatch setter and the backoff-base knob name are the
 # seam suite's own helpers — copying any of them here is how one copy drifts.
-from tests.integration.test_outbound_http import BACKOFF_BASE_ENV, pin_jitter, set_flags
+from tests.helpers.egress_backoff import BACKOFF_BASE_ENV, pin_jitter, set_flags
+from tests.helpers.egress_hatches import ALLOW_PRIVATE_ENV
 
 # A cloud-metadata address: refused by the egress seam unconditionally, escape
 # hatches or not. Spelled as an MCP endpoint because that is the shape a

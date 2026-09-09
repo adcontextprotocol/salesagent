@@ -12,11 +12,14 @@ Usage::
     buy = MediaBuyFactory(tenant=tenant, principal__tenant=tenant)
 """
 
-from tests.factories.account import AccountFactory, AgentAccountAccessFactory
+from tests.factories.account import (
+    AccountFactory,
+    AgentAccountAccessFactory,
+    BusinessEntityFactory,
+)
 from tests.factories.core import (
     AdapterConfigFactory,
     AuthorizedPropertyFactory,
-    CreativeAgentFactory,
     CurrencyLimitFactory,
     GAMInventoryFactory,
     PropertyTagFactory,
@@ -24,7 +27,7 @@ from tests.factories.core import (
     SignalsAgentFactory,
     TenantFactory,
 )
-from tests.factories.creative import CreativeAssignmentFactory, CreativeFactory
+from tests.factories.creative import CreativeAgentFactory, CreativeAssignmentFactory, CreativeFactory
 from tests.factories.creative_asset import CreativeAssetFactory
 from tests.factories.delivery_simulation import DeliverySimulationConfigFactory
 from tests.factories.format import FormatFactory, FormatIdFactory
@@ -33,6 +36,7 @@ from tests.factories.media_buy import GetMediaBuysMediaBuyFactory, MediaBuyFacto
 from tests.factories.metrics import FormatPerformanceMetricsFactory
 from tests.factories.principal import PrincipalFactory
 from tests.factories.product import PricingOptionFactory, ProductFactory
+from tests.factories.signing import SigningKeyFactory
 from tests.factories.targeting import (
     CollectionListReferenceFactory,
     PropertyListReferenceFactory,
@@ -41,6 +45,11 @@ from tests.factories.targeting import (
 from tests.factories.user import TenantAuthConfigFactory, UserFactory
 from tests.factories.webhook import PushNotificationConfigFactory, WebhookTaskContextFactory
 
+# Only SQLAlchemyModelFactory subclasses belong here: the harness rebinds
+# ``_meta.sqlalchemy_session`` across every entry. Plain ``factory.Factory``
+# builders (BusinessEntityFactory, WebhookTaskContextFactory, TargetingFactory,
+# CreativeAssetFactory, Format*Factory) have no session to bind and are exported
+# through ``__all__`` only.
 ALL_FACTORIES = [
     TenantFactory,
     AccountFactory,
@@ -66,6 +75,7 @@ ALL_FACTORIES = [
     FormatPerformanceMetricsFactory,
     UserFactory,
     TenantAuthConfigFactory,
+    SigningKeyFactory,
 ]
 
 __all__ = [
@@ -74,6 +84,7 @@ __all__ = [
     "AdapterConfigFactory",
     "AuthorizedPropertyFactory",
     "AgentAccountAccessFactory",
+    "BusinessEntityFactory",
     "CollectionListReferenceFactory",
     "CreativeAgentFactory",
     "CreativeAssetFactory",
@@ -97,6 +108,7 @@ __all__ = [
     "PublisherPartnerFactory",
     "PushNotificationConfigFactory",
     "SignalsAgentFactory",
+    "SigningKeyFactory",
     "TargetingFactory",
     "TenantAuthConfigFactory",
     "TenantFactory",

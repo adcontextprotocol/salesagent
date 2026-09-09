@@ -40,6 +40,21 @@ class WebhookEnv(WebhookMixin, BaseTestEnv):
     """
 
     MODULE = "src.core.webhook_delivery"
+    # Two patches, and only two. The signing branch's ``"post"`` (requests) is gone
+    # for the same reason the integration twin's is: delivery goes over real HTTP to
+    # LocalOriginMixin's loopback origin, so the transport is graded by the bytes that
+    # arrive rather than by a mock's call args.
+    #
+    # ``WEBHOOK_VALIDATE_EXTERNAL_PATCH`` is NOT spread in here either, contrary to
+    # what the twin's comment predicts about this env: the signing branch only swapped
+    # this env's hardcoded validator target for that shared constant, and the SEND-time
+    # gate the constant names — ``WebhookURLValidator.validate_outbound_webhook_url`` —
+    # no longer exists (``src/core/webhook_validator.py`` deleted it as a patch target
+    # that intercepted nothing). Patching an absent attribute raises at env entry, and
+    # a validator stubbed truthy would defeat ``test_refused_url_short_circuits`` /
+    # ``RESERVED_METADATA_URL``, which grade production's REAL address policy refusing
+    # 169.254.169.254. LocalOriginMixin's ADCP_OUTBOUND_ALLOW_PRIVATE / _INSECURE
+    # allowance is what lets the loopback origin through that same real policy.
     EXTERNAL_PATCHES = {
         # The seam's clock, not this module's — delivery no longer sleeps here.
         "sleep": "src.core.security.outbound_http.time.sleep",

@@ -9,10 +9,10 @@ from fastmcp.server.context import Context
 from pydantic import Field
 
 from src.core.helpers import enum_value
-from src.core.resolved_identity import ResolvedIdentity
 from src.core.schema_helpers import to_push_notification_config
 from src.core.tool_context import ToolContext
 from src.core.tools._mcp import mcp_result
+from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 
 from ._sync import _sync_creatives_impl
 
@@ -87,7 +87,7 @@ def sync_creatives_raw(
     context: ContextObject | None = None,
     account: LibraryAccountReference | None = None,
     ctx: Context | ToolContext | None = None,
-    identity: ResolvedIdentity | None = None,
+    identity: IdentityOrNotProvided = NOT_PROVIDED,
 ):
     """Sync creative assets to the centralized creative library (raw function for A2A server use).
 
@@ -108,10 +108,7 @@ def sync_creatives_raw(
     Returns:
         SyncCreativesResponse with synced creatives and assignments
     """
-    if identity is None:
-        from src.core.transport_helpers import resolve_identity_from_context
-
-        identity = resolve_identity_from_context(ctx)
+    identity = resolve_identity_if_not_provided(identity, ctx)
 
     # Resolve account at transport boundary (before _impl)
     from src.core.transport_helpers import enrich_identity_with_account

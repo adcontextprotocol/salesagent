@@ -100,6 +100,13 @@
                             <code>{{ webhook.url }}</code>
                         </td>
                         <td>
+                            {# The badge renders the STORED spelling, never a literal. Both
+                               sides of this merge renamed auth_type -> authentication_type
+                               (the actual column); ours additionally compared it to
+                               'hmac_sha256', a spelling nothing writes -- the form's options
+                               come from AuthenticationScheme, whose value is 'HMAC-SHA256',
+                               so that branch was dead and every authenticated webhook would
+                               have rendered the "None" warning. #}
                             {% if webhook.authentication_type %}
                             <span class="badge badge-success">🔐 {{ webhook.authentication_type }}</span>
                             {% else %}

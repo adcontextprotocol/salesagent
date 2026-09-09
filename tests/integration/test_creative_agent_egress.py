@@ -77,6 +77,7 @@ from src.core.exceptions import (
 )
 from src.core.security.outbound_http import OperatorEndpoint
 from tests.helpers import assert_envelope_shape
+from tests.helpers.egress_backoff import fast_backoff
 from tests.helpers.local_http_origin import LocalOrigin
 
 # Reused rather than restated: which escape hatches a case opens is one decision
@@ -84,7 +85,6 @@ from tests.helpers.local_http_origin import LocalOrigin
 # claims exactly that), and the backoff knob that keeps a retry case fast is the
 # seam suite's own helper.
 from tests.integration.property_list_helpers import allow_local_origin, enforce_egress_policy
-from tests.integration.test_outbound_http import fast_backoff
 
 pytestmark = [pytest.mark.integration]
 

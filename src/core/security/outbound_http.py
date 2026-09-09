@@ -161,7 +161,6 @@ from typing import Any, Protocol
 # underscore makes that re-export an ImportError instead of something a ban
 # list has to keep enumerating.
 import httpx as _httpx
-from adcp.signing import AsyncIpPinnedTransport, IpPinnedTransport
 from pydantic import JsonValue
 from typing_extensions import TypeIs
 
@@ -177,6 +176,7 @@ from src.core.security.egress.policy import (
     OutboundRequestBlocked,  # noqa: F401 - re-exported; ~30 call sites import it from this module
 )
 from src.core.security.egress.response import OutboundResult
+from src.core.signing_contract import AsyncIpPinnedTransport, IpPinnedTransport
 
 logger = logging.getLogger(__name__)
 

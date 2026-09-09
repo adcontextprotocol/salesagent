@@ -23,6 +23,29 @@ from tests.harness._base import BareIntegrationEnv
 from tests.harness.client import AdCPTestClient
 from tests.harness.transport import NO_IDENTITY_OVERRIDE, E2EConfig, Transport
 
+# The wire code every error case in this file dispatches for: a request sent with
+# NO credentials at all (``identity=None`` — the client omits ``x-adcp-auth``
+# entirely; see ``_e2e_headers`` in ``tests/harness/client.py``).
+#
+# ``AUTH_MISSING``, not the deprecated ``AUTH_REQUIRED``. At the pinned AdCP 3.1.1
+# (``adcp==6.6.0``, ``adcp/_schemas/3.1/enums/error-code.json``) all three of
+# ``AUTH_REQUIRED`` / ``AUTH_MISSING`` / ``AUTH_INVALID`` are enum members, but
+# ``AUTH_REQUIRED``'s own enumDescription reads "**Deprecated** — use
+# ``AUTH_MISSING`` (no credentials presented) or ``AUTH_INVALID`` (credentials
+# presented and rejected). Retained as a backward-compatible alias during the 3.x
+# deprecation window." Omitting the auth header is the no-credentials-presented
+# case, for which the enum says sellers MUST return ``AUTH_MISSING`` (recovery
+# ``correctable``). Production agrees: an unresolved principal raises
+# ``AdCPAuthRequiredError`` (``_default_error_code = "AUTH_MISSING"``,
+# ``src/core/exceptions.py``), while a presented-but-rejected credential raises
+# its base ``AdCPAuthenticationError`` (``AUTH_INVALID``, recovery ``terminal``).
+#
+# One constant rather than a literal per call site (CLAUDE.md DRY invariant), and
+# deliberately ONE exact code rather than a set of acceptable auth-shaped codes:
+# accepting several would erase the MISSING/INVALID split this file is dispatching
+# only one half of.
+_NO_CREDENTIALS_ERROR_CODE = "AUTH_MISSING"
+
 
 def _assert_success_equivalent(via, client_result) -> None:
     """Shared success-path equivalence assertion ``env.call_via`` and ``AdCPTestClient(env).call`` must agree on
@@ -262,7 +285,7 @@ class TestClientCrossTransportConsistency:
             result = client.call("list_accounts", {}, Transport.REST, identity=None)
 
         assert result.is_error
-        result.assert_wire_error("AUTH_REQUIRED")
+        result.assert_wire_error(_NO_CREDENTIALS_ERROR_CODE)
 
 
 @pytest.mark.integration
@@ -307,7 +330,7 @@ class TestEnvVsClientEquivalence:
             via = env.call_via(Transport.MCP, identity=None)
             client_result = AdCPTestClient(env).call("list_accounts", {}, Transport.MCP, identity=None)
 
-        _assert_error_equivalent(via, client_result, "AUTH_REQUIRED")
+        _assert_error_equivalent(via, client_result, _NO_CREDENTIALS_ERROR_CODE)
 
     def test_a2a_success_and_error_equivalence(self, integration_db):
         from tests.factories import PricingOptionFactory, PrincipalFactory, ProductFactory, TenantFactory
@@ -329,7 +352,7 @@ class TestEnvVsClientEquivalence:
             via = env.call_via(Transport.A2A, identity=None)
             client_result = AdCPTestClient(env).call("list_accounts", {}, Transport.A2A, identity=None)
 
-        _assert_error_equivalent(via, client_result, "AUTH_REQUIRED")
+        _assert_error_equivalent(via, client_result, _NO_CREDENTIALS_ERROR_CODE)
 
     def test_rest_success_and_error_equivalence(self, integration_db):
         from tests.factories import PricingOptionFactory, PrincipalFactory, ProductFactory, TenantFactory
@@ -351,7 +374,7 @@ class TestEnvVsClientEquivalence:
             via = env.call_via(Transport.REST, identity=None)
             client_result = AdCPTestClient(env).call("list_accounts", {}, Transport.REST, identity=None)
 
-        _assert_error_equivalent(via, client_result, "AUTH_REQUIRED")
+        _assert_error_equivalent(via, client_result, _NO_CREDENTIALS_ERROR_CODE)
 
 
 @pytest.mark.integration
@@ -509,7 +532,7 @@ class TestEnvVsClientEquivalenceE2E:
             via = env.call_via(Transport.E2E_REST, identity=None)
             client_result = AdCPTestClient(env).call("list_accounts", {}, Transport.E2E_REST, identity=None)
 
-        _assert_error_equivalent(via, client_result, "AUTH_REQUIRED")
+        _assert_error_equivalent(via, client_result, _NO_CREDENTIALS_ERROR_CODE)
 
     def test_e2e_mcp_success_and_error_equivalence(self, integration_db, e2e_live_config):
         import uuid
@@ -534,7 +557,7 @@ class TestEnvVsClientEquivalenceE2E:
             via = env.call_via(Transport.E2E_MCP, tool_name="list_accounts", identity=None)
             client_result = AdCPTestClient(env).call("list_accounts", {}, Transport.E2E_MCP, identity=None)
 
-        _assert_error_equivalent(via, client_result, "AUTH_REQUIRED")
+        _assert_error_equivalent(via, client_result, _NO_CREDENTIALS_ERROR_CODE)
 
     def test_e2e_a2a_success_and_error_equivalence(self, integration_db, e2e_live_config):
         import uuid
@@ -559,4 +582,4 @@ class TestEnvVsClientEquivalenceE2E:
             via = env.call_via(Transport.E2E_A2A, tool_name="list_accounts", identity=None)
             client_result = AdCPTestClient(env).call("list_accounts", {}, Transport.E2E_A2A, identity=None)
 
-        _assert_error_equivalent(via, client_result, "AUTH_REQUIRED")
+        _assert_error_equivalent(via, client_result, _NO_CREDENTIALS_ERROR_CODE)

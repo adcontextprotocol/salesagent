@@ -15,18 +15,18 @@ Two things shape every step here:
   the update side gained it in ``media_buy_dual._is_update_request``.
 
 * **The oracle is the wire envelope, per tests/CLAUDE.md § Error Verification
-  Policy** — ``assert_envelope_shape`` on ``result.wire_error_envelope``, with no
-  fallback to the reconstructed ``ctx["error"]``. The generic
-  ``the error code should be "..."`` step does carry such a fallback; for these
-  rows that fallback is precisely the failure mode to exclude, because a
-  request-model rejection that never reaches a boundary still produces a
-  reconstructable exception.
+  Policy** — ``TransportResult.assert_wire_error`` (tests/harness/transport.py),
+  the one sanctioned envelope-parsing surface, with no fallback to the
+  reconstructed ``ctx["error"]``. The generic ``the error code should be "..."``
+  step does carry such a fallback; for these rows that fallback is precisely the
+  failure mode to exclude, because a request-model rejection that never reaches a
+  boundary still produces a reconstructable exception.
 
 The expected code/recovery/field are MEASURED, not predicted: with the four
 constraints applied in-memory, every one of a2a/mcp/rest emits
-``VALIDATION_ERROR`` / ``correctable`` and names the offending field in both
-envelope layers. (The human-readable message is NOT asserted — it legitimately
-differs between the MCP boundary's short form and the a2a/rest long form.)
+``VALIDATION_ERROR`` / ``correctable`` and names the offending field. (The
+human-readable message is NOT asserted — it legitimately differs between the MCP
+boundary's short form and the a2a/rest long form.)
 """
 
 from __future__ import annotations
@@ -35,9 +35,7 @@ from typing import Any
 
 from pytest_bdd import given, parsers, then, when
 
-from tests.bdd.steps._outcome_helpers import wire_error_envelope_or_none
 from tests.bdd.steps.generic._dispatch import dispatch_request
-from tests.helpers import assert_envelope_shape
 
 # ═══════════════════════════════════════════════════════════════════════
 # GIVEN steps — put the out-of-bounds value on the request
@@ -134,31 +132,42 @@ def when_send_raw_update(ctx: dict) -> None:
 def then_refused_on_wire(ctx: dict, code: str, recovery: str, field: str) -> None:
     """Grade the buyer-facing rejection: two-layer envelope, code, recovery, field.
 
-    ``wire_error_envelope`` only — never ``ctx["error"]``. On a wire transport a
-    missing envelope means the request was ACCEPTED (or failed before a boundary
-    could translate it), and both are failures of this row.
+    Routed through ``TransportResult.assert_wire_error`` — the single sanctioned
+    envelope-parsing surface (tests/harness/transport.py), enforced by
+    ``tests/unit/test_architecture_bdd_wire_discipline.py`` Check D. That one call
+    reads the REAL captured envelope, never the reconstructed ``ctx["error"]``, and
+    pins:
+
+    * that an envelope was captured at all — on a wire transport its absence means
+      the request was ACCEPTED, or failed before a boundary could translate it, and
+      both are failures of this row;
+    * ``adcp_error.code`` AND ``errors[0].code`` == ``code`` (both layers);
+    * ``adcp_error.recovery`` AND ``errors[0].recovery`` == ``recovery`` (both
+      layers). ``recovery`` is passed EXPLICITLY rather than defaulted from the
+      pinned enum so the row grades the value the scenario names;
+    * ``errors[0].field`` == ``field`` — the buyer's remediation target at its
+      error.json protocol position. A generic "something was invalid" refusal is
+      not a usable answer to an out-of-bounds value, and it is what the
+      pre-constraint SERVICE_UNAVAILABLE path produced.
+
+    NOT carried over, and flagged rather than dropped quietly: the previous body
+    also asserted the envelope-LEVEL mirror ``adcp_error.field == field``. No
+    sanctioned surface exposes that layer's ``field`` — ``assert_envelope_shape``
+    pins ``field`` at ``errors[0]`` ONLY (its own docstring: "Asserted at the
+    protocol top level only"), and ``_wire_error_object`` returns ``adcp_error``
+    only as a FALLBACK for a missing ``errors[0]``, so it can never reach the mirror
+    while ``errors[0]`` exists. Re-asserting it here means hand-walking
+    ``result.wire_error_envelope``, which is the violation itself. The check belongs
+    in ``assert_envelope_shape``, which already asserts ``code`` and ``recovery`` in
+    BOTH layers and should treat ``field`` the same way; that is a one-line change
+    to a shared helper with tree-wide blast radius, so it is named here rather than
+    smuggled into this step. Until then this row grades the protocol-position field.
     """
     result = ctx.get("result")
     assert result is not None, f"no dispatch recorded; ctx error: {ctx.get('error')!r}"
     assert result.is_error, f"the request was ACCEPTED — expected a {code} refusal. Payload: {result.payload!r}"
 
-    envelope = wire_error_envelope_or_none(ctx)
-    assert envelope is not None, (
-        f"{ctx.get('transport')}: no wire error envelope — the refusal never reached a "
-        f"transport boundary, so the buyer never sees it. Reconstructed error: {ctx.get('error')!r}"
-    )
-    assert_envelope_shape(envelope, code, recovery=recovery)
-
-    # Both layers must name the offending field: the buyer's remediation target.
-    # A generic "something was invalid" refusal is not a usable answer to an
-    # out-of-bounds value, and it is what the pre-constraint SERVICE_UNAVAILABLE
-    # path produced.
-    assert envelope["adcp_error"].get("field") == field, (
-        f"adcp_error.field={envelope['adcp_error'].get('field')!r}, expected {field!r}"
-    )
-    assert envelope["errors"][0].get("field") == field, (
-        f"errors[0].field={envelope['errors'][0].get('field')!r}, expected {field!r}"
-    )
+    result.assert_wire_error(code, recovery=recovery, field=field)
 
 
 @then("no media buy is persisted for the tenant")

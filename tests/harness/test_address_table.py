@@ -261,14 +261,49 @@ class TestRestAliasesAndAbsence:
 
     def test_get_adcp_capabilities_resolves_on_rest_via_operation_id(self):
         """AC(1): get_adcp_capabilities genuinely resolves on REST — the ONE
-        true rename mismatch (get_capabilities REST handler -> get_adcp_capabilities
-        AdCP tool name), resolved via the route's self-declared operation_id —
-        against the REAL production registries, not a synthetic app."""
+        true rename mismatch (the ``post_capabilities`` REST handler ->
+        get_adcp_capabilities AdCP tool name), resolved via the route's
+        self-declared operation_id — against the REAL production registries,
+        not a synthetic app.
+
+        The tool is served by TWO routes on one path: the parameterless GET
+        (handler already named after the tool) and the body-carrying POST
+        (handler ``post_capabilities`` + ``operation_id``, the only shape that
+        can carry protocols/context). Both are pinned here straight off
+        ``app.routes``, because a ToolAddress is keyed by (tool, transport)
+        and carries a SINGLE method — the table cannot express both, so
+        asserting only on the resolved address would silently stop grading
+        whichever route lost.
+
+        Which one wins is not incidental: ``_pick_rest_method``'s documented
+        rule is to prefer POST as "the AdCP body-carrying shape", so POST is
+        the address the harness must dispatch through, and that rule is
+        asserted below so the expectation stays coupled to the design instead
+        of to an observed value. Note the two routes are separate single-verb
+        Route objects, so ``_index_rest`` currently reaches POST by
+        last-write-wins over ``app.routes`` order rather than by consulting
+        that rule — teaching the indexer to merge same-path verbs is an
+        address_table.py change, but either way POST is the correct answer and
+        a flip to GET must fail here.
+        """
+        from src.app import app
+
+        operation_id_by_verb = {
+            method: getattr(route, "operation_id", None)
+            for route in app.routes
+            if getattr(route, "path", "") == "/api/v1/capabilities"
+            for method in (getattr(route, "methods", None) or set())
+            if method != "HEAD"
+        }
+        assert set(operation_id_by_verb) == {"GET", "POST"}, operation_id_by_verb
+        assert operation_id_by_verb["POST"] == "get_adcp_capabilities"
+        assert AddressTable._pick_rest_method({"GET", "POST"}) == "post"
+
         table = AddressTable()
         address = table.resolve("get_adcp_capabilities", Transport.REST)
         assert address.name == "get_adcp_capabilities"
         assert address.path_template == "/api/v1/capabilities"
-        assert address.method == "get"
+        assert address.method == "post"
 
     def test_raw_rest_handler_name_does_not_resolve_as_a_tool_name(self):
         """`get_capabilities` is not an AdCP tool name and must not resolve.

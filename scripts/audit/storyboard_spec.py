@@ -28,6 +28,7 @@ structurally.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -142,22 +143,103 @@ def dist_root(adcp: Path, version: str) -> Path:
     return adcp / "dist" / "compliance" / version
 
 
-_SPECIALISM_RE = re.compile(r"AdcpSpecialism\.(\w+)")
-_PROTOCOL_RE = re.compile(r"SupportedProtocol\.(\w+)")
+#: Where production declares the baseline capability posture every response
+#: advertises. ``src/core/tools/capabilities.py`` only re-binds these
+#: (``_DEFAULT_SPECIALISMS = DEFAULT_SPECIALISMS``); the schema layer owns them,
+#: because ``validate_backing()`` has to reason about the emitted set and a
+#: schema importing from the tools layer would invert the layering.
+_DECLARATION_MODULE = Path("src") / "core" / "schemas" / "capability_declarations.py"
+
+#: capability kind -> the module-level binding in :data:`_DECLARATION_MODULE`
+#: that production actually emits. Deliberately the DEFAULT_* bindings and not
+#: "every enum member named in the file": the same module also holds
+#: ``_BACKED_SPECIALISMS``, the wider set a tenant *may* declare, and reading
+#: that would advertise ``signal-owned`` as on-path when no tenant has claimed it.
+_DECLARATION_BINDINGS = {
+    "specialisms": "DEFAULT_SPECIALISMS",
+    "protocols": "DEFAULT_SUPPORTED_PROTOCOLS",
+}
+
+
+def _declared_enum_members(module: ast.Module, binding: str, where: Path) -> set[str]:
+    """Enum member names on the RHS of module-level ``binding = [Enum.a, Enum.b]``.
+
+    AST, not a regex over the raw text, and not an ``import`` of the production
+    module. Regex was the original reader and it has two failure modes this
+    function does not have: it matches enum references inside COMMENTS and
+    docstrings (at the time of writing, ``capabilities.py``'s only surviving
+    ``SupportedProtocol.media_buy`` is in a prose comment, so the protocol set
+    was being derived from a sentence), and it cannot tell the emitted default
+    from a neighbouring "declarable but not declared" table. An ``import`` would
+    be precise, but this function is handed a ``repo`` path and must answer for
+    THAT checkout rather than for whatever ``src`` happens to be on ``sys.path``
+    — and the module keeps itself free of production imports at module scope.
+
+    Every unrecognised shape raises. "The binding moved", "the binding is now
+    built by a comprehension" and "the binding is empty" must not be
+    indistinguishable from "nothing is declared": returning an empty set for any
+    of them sends every ``specialisms/<name>/**`` storyboard OFF-PATH, and
+    OFF-PATH storyboards leave the published check index — the graded surface
+    shrinks and every conformance number quoted against it silently improves.
+    That is exactly how the tools-layer -> schema-layer move of
+    ``DEFAULT_SPECIALISMS`` slipped past a green merge.
+    """
+    for node in module.body:
+        if isinstance(node, ast.AnnAssign):
+            named = isinstance(node.target, ast.Name) and node.target.id == binding
+            value = node.value
+        elif isinstance(node, ast.Assign):
+            named = any(isinstance(t, ast.Name) and t.id == binding for t in node.targets)
+            value = node.value
+        else:
+            continue
+        if not named:
+            continue
+        if not isinstance(value, ast.List) or not all(isinstance(e, ast.Attribute) for e in value.elts):
+            raise StoryboardAuditError(
+                f"{where}: `{binding}` is no longer a list of `Enum.member` references "
+                f"(found {ast.dump(value) if value else 'no value'}). The storyboard gate "
+                "classifier reads this binding to decide which specialisms/protocols are "
+                "on-path; teach declared_capabilities() the new shape rather than letting it "
+                "report an empty declaration."
+            )
+        members = {e.attr.replace("_", "-") for e in value.elts if isinstance(e, ast.Attribute)}
+        if not members:
+            raise StoryboardAuditError(
+                f"{where}: `{binding}` is declared empty. If this deployment really advertises "
+                "nothing here, say so at the call site — an empty declaration sends every gated "
+                "storyboard OFF-PATH and out of the published check index."
+            )
+        return members
+    raise StoryboardAuditError(
+        f"{where}: no module-level `{binding}` binding found. Production's capability "
+        "declaration has moved or been renamed; repoint _DECLARATION_MODULE / "
+        "_DECLARATION_BINDINGS at its new home. (Failing loudly on purpose: reporting "
+        "'no capabilities declared' would silently drop every gated storyboard from the "
+        "published check index.)"
+    )
 
 
 def declared_capabilities(repo: Path) -> dict[str, set[str]]:
-    """Our declared specialisms + protocols, read from src/core/tools/capabilities.py.
+    """Our declared specialisms + protocols, read from the schema-layer declaration.
 
     Normalized hyphenated (``sales-non-guaranteed``), matching the majority
     convention (2 of the 3 pre-migration readers) — the path segments this
     is compared against are hyphenated in the pinned tree.
+
+    Raises :class:`StoryboardAuditError` rather than returning an empty set when
+    the declaration cannot be found: see :func:`_declared_enum_members`.
     """
-    text = (repo / "src" / "core" / "tools" / "capabilities.py").read_text(encoding="utf-8")
-    return {
-        "specialisms": {s.replace("_", "-") for s in _SPECIALISM_RE.findall(text)},
-        "protocols": {p.replace("_", "-") for p in _PROTOCOL_RE.findall(text)},
-    }
+    where = repo / _DECLARATION_MODULE
+    try:
+        source = where.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise StoryboardAuditError(
+            f"cannot read production's capability declaration at {where}: {exc}. "
+            "The storyboard gate classifier has no declared set to grade against."
+        ) from exc
+    tree = ast.parse(source, filename=str(where))
+    return {kind: _declared_enum_members(tree, binding, where) for kind, binding in _DECLARATION_BINDINGS.items()}
 
 
 # ── Storyboard universe ─────────────────────────────────────────────────────

@@ -10,11 +10,15 @@ Mixins may call ``self._commit_factory_data()`` which is a no-op in unit mode.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
+
+import httpx
 
 from src.adapters.mock_ad_server import simulate_breakdowns
 from src.core.schemas import (
@@ -44,7 +48,7 @@ from tests.helpers.local_http_origin import (
     responds,
     run_local_origin,
 )
-from tests.helpers.test_tls_material import load_gen_test_tls, server_ssl_context
+from tests.helpers.tls_material import load_gen_test_tls, server_ssl_context
 
 
 def _e2e_capture_url(env: Any) -> str:
@@ -54,9 +58,17 @@ def _e2e_capture_url(env: Any) -> str:
     cannot reach that, so under e2e the endpoint is the compose stack's
     long-lived ``webhook-capture`` service, addressed through the shared TLS
     front exactly as a production receiver would be.
+
+    ISSUING the address is what this does, so it records that — see
+    :meth:`~tests.harness._base.BaseTestEnv.record_capture_key_handed_out`, which
+    names both issuing paths and what went wrong while only the other one recorded.
+    :func:`_deliver_via_live_server` reads that fact to decide whether the media buy
+    gets a ``reporting_webhook`` at all, and this is the path every DELIVERY env
+    takes.
     """
     from tests.e2e._webhook_capture import delivery_url_for
 
+    env.record_capture_key_handed_out()
     return delivery_url_for(env._capture_key)
 
 
@@ -133,43 +145,44 @@ def _e2e_set_http_sequence(env: Any, responses: list) -> None:
 class _CapturedDelivery:
     """One delivery the compose stack's capture service received.
 
-    The capture service stores the parsed JSON PAYLOAD and nothing else -- no
-    headers, no raw bytes -- so this exposes ``.json()`` and refuses the rest BY
-    NAME rather than returning an empty dict that a signature assertion would
-    read as "no signature header". An assertion that cannot run over e2e must say
-    so; one that quietly passes on absent evidence is worse than one that errors.
+    Presents a ``received_raw`` capture in the shape the in-process ``OriginRequest``
+    has — ``.headers``, ``.body``, ``.json()`` — so a Then reads a delivery the same
+    way whatever transport produced it, which is what lets the SAME assertion grade
+    both.
+
+    It used to expose ``.json()`` alone and raise BY NAME on the other two, on the
+    stated grounds that "the capture service stores the parsed JSON PAYLOAD and
+    nothing else". That was never true of the service: ``_CaptureStore`` has always
+    kept ``received_raw`` (path, headers verbatim, body bytes) beside ``received``,
+    and ``captured_delivery`` has always known how to read it. Only the READER this
+    class was built on was parsed-only. The refusal was the honest response to that
+    belief — an assertion that cannot run must say so rather than pass on absent
+    evidence — but it made three graduated header-grading e2e_rest legs
+    unobservable, which is the same silence one layer up.
     """
 
-    __slots__ = ("_payload",)
+    __slots__ = ("_wire",)
 
-    def __init__(self, payload: dict) -> None:
-        self._payload = payload
+    def __init__(self, wire: Any) -> None:
+        self._wire = wire
 
     def json(self) -> dict:
-        return self._payload
+        return json.loads(self._wire.content) if self._wire.content else {}
 
     @property
     def headers(self) -> Any:
-        raise AttributeError(
-            "the webhook-capture service records the delivery PAYLOAD only, not its headers, "
-            "so header assertions (signature, auth) cannot run over e2e_rest. Grade them "
-            "in-process, or give the capture service header storage (prebid/salesagent#2098)."
-        )
+        return self._wire.headers
 
     @property
     def body(self) -> bytes:
-        raise AttributeError(
-            "the webhook-capture service records the PARSED payload, not the raw bytes on the "
-            "wire, so byte-equality assertions (HMAC over the exact body) cannot run over "
-            "e2e_rest. Grade them in-process (prebid/salesagent#2098)."
-        )
+        return bytes(self._wire.content)
 
 
 def _e2e_delivered_requests(env: Any) -> list[_CapturedDelivery]:
     """E2E realization of :attr:`LocalOriginMixin.delivered_requests`."""
     from tests.e2e._webhook_capture import ReceivedView
 
-    return [_CapturedDelivery(payload) for payload in ReceivedView(env._capture_key)]
+    return [_CapturedDelivery(wire) for wire in ReceivedView(env._capture_key).raw()]
 
 
 def _e2e_last_delivery(env: Any) -> _CapturedDelivery:
@@ -190,6 +203,316 @@ def _e2e_delivery_attempts(env: Any) -> int:
     from tests.e2e._webhook_capture import ReceivedView
 
     return len(ReceivedView(env._capture_key))
+
+
+# Patch target for the send-time gate as the DELIVERY paths reach it. One constant
+# for both WebhookEnv variants, mirroring the circuit-breaker pair above.
+#
+# It names the OWNER (src.core.webhook_validator), not the importer: every sender
+# now reaches the gate through reject_unsafe_outbound_webhook_url, so patching a
+# symbol on an importing module intercepts nothing. That is exactly how these two
+# envs came to patch a method the delivery path had stopped calling
+# (salesagent-og9k.5 / og9k.8).
+WEBHOOK_VALIDATE_TARGET = "src.core.webhook_validator.WebhookURLValidator.validate_outbound_webhook_url"
+WEBHOOK_VALIDATE_EXTERNAL_PATCH: dict[str, str] = {"validate": WEBHOOK_VALIDATE_TARGET}
+
+
+def _seed_media_buy_for_delivery(env: Any, media_buy_id: str) -> Any:
+    """The media buy the LIVE server is asked to report on. UNCONDITIONAL.
+
+    Every delivery scenario needs the server to KNOW the buy — including the ones whose
+    whole premise is that it carries no webhook. Splitting this out from
+    :func:`_attach_reporting_webhook` is not tidying: while the two were one helper and
+    the pair was made conditional, the no-config scenario's admin trigger answered
+    ``HTTP 404 'Media buy not found'`` and the leg failed for a reason that had nothing
+    to do with what it grades (salesagent-n78j0.1.4).
+
+    Seeded through the same factories the in-process Givens use. An ``AdapterConfig``
+    comes with it because the report the server builds is a REAL delivery poll: without
+    a mock adapter row the poll returns errors and the server declines to send, which
+    would read as a signing failure 45 seconds later.
+    """
+    from sqlalchemy import select
+
+    from src.core.database.models import MediaBuy, Principal, Tenant
+    from tests.factories import MediaBuyFactory, PrincipalFactory, TenantFactory
+    from tests.factories.core import set_adapter_test_behavior
+
+    session = env._session
+    tenant = session.scalars(select(Tenant).filter_by(tenant_id=env._tenant_id)).first()
+    if tenant is None:
+        tenant = TenantFactory(tenant_id=env._tenant_id)
+    principal = session.scalars(
+        select(Principal).filter_by(tenant_id=env._tenant_id, principal_id=env._principal_id)
+    ).first()
+    if principal is None:
+        principal = PrincipalFactory(tenant=tenant, principal_id=env._principal_id)
+
+    media_buy = session.scalars(select(MediaBuy).filter_by(tenant_id=env._tenant_id, media_buy_id=media_buy_id)).first()
+    if media_buy is None:
+        media_buy = MediaBuyFactory(tenant=tenant, principal=principal, media_buy_id=media_buy_id, status="active")
+    set_adapter_test_behavior(env, env._tenant_id, manual_approval_required=False)
+    env._commit_factory_data()
+    return media_buy
+
+
+def _registered_webhook_url(env: Any) -> str:
+    """The destination this scenario actually REGISTERED, as production would read it.
+
+    A real ``create_media_buy`` writes the buyer's registered URL into both places —
+    the ``push_notification_configs`` row and ``raw_request["reporting_webhook"]`` —
+    so the two agree by construction. The harness has to reproduce that agreement
+    rather than assume it: a Given may point the registration somewhere OTHER than
+    this env's own endpoint, and ``the outbound webhook URL is blocked by SSRF
+    validation`` does exactly that (it swaps the active row for one naming a
+    cloud-metadata address).
+
+    Reading the env's own endpoint here instead made the two disagree, and the
+    disagreement was invisible in the direction that mattered: the live server reads
+    ``raw_request``, so it delivered happily to the capture origin while the row said
+    the destination was blocked — and the scenario asserting "skipped without a POST"
+    was left grading a delivery that had in fact been made.
+
+    Falls back to the env's own endpoint when nothing is registered, which is the case
+    for the scenarios whose Given establishes the destination through the env rather
+    than through a config row.
+    """
+    from sqlalchemy import select
+
+    from src.core.database.models import PushNotificationConfig
+
+    registered = env._session.scalars(
+        select(PushNotificationConfig).filter_by(
+            tenant_id=env._tenant_id, principal_id=env._principal_id, is_active=True
+        )
+    ).all()
+    return str(registered[0].url) if registered else str(env.webhook_destination())
+
+
+def _attach_reporting_webhook(env: Any, media_buy: Any) -> None:
+    """Give *media_buy* the callback the scenario registered. CONDITIONAL.
+
+    The delivery path reads ``MediaBuy.raw_request["reporting_webhook"]`` — that is what
+    a real ``create_media_buy`` writes — so this is the row-level realization of a Given
+    that says "this media buy has a reporting webhook". It is the half that must NOT run
+    when no Given established a destination; see :func:`_deliver_via_live_server`.
+
+    The URL comes from :func:`_registered_webhook_url`, so what the media buy says and
+    what the registration says can never diverge.
+    """
+    raw_request = dict(media_buy.raw_request or {})
+    raw_request["reporting_webhook"] = {"url": _registered_webhook_url(env), "frequency": "daily"}
+    media_buy.raw_request = raw_request
+    env._commit_factory_data()
+
+
+def _deliver_via_live_server(
+    env: Any,
+    media_buy_id: str = "mb_001",
+    notification_type: str | None = None,
+    **kwargs: Any,
+) -> tuple[bool, dict[str, Any]]:
+    """E2E realization: the LIVE SERVER makes the delivery, the test only asks it to.
+
+    The in-process branch calls ``WebhookDeliveryService`` inside the test process,
+    which over e2e would post from the runner against its own patched socket while the
+    server sent nothing — transport bypass, and the reason a whole cluster of UC-004
+    webhook tags sat in the e2e_rest ledger (salesagent-n78j0.1.4).
+
+    The trigger is a PRODUCTION route driven over real HTTP —
+    ``/admin/tenant/<id>/media-buy/<id>/trigger-delivery-webhook`` — the same
+    admin-over-HTTP shape ``provision_signing_key_via_admin`` uses. It runs
+    ``DeliveryWebhookScheduler.trigger_report_for_media_buy_by_id`` INSIDE the server
+    container, so the report is built, signed and posted by the deployment under test.
+    Deliberately this route rather than a ``create_media_buy`` with a
+    ``push_notification_config`` (the shape ``tests/e2e/test_webhook_signature_e2e.py``
+    uses): that fires a TASK-status notification, while every scenario here says "the
+    system delivers a webhook REPORT".
+
+    THE ROUTE IS NOT THE ONLY SENDER, and an earlier version of this docstring claimed it
+    was ("it is synchronous, so a missing delivery is a delivery defect rather than a
+    scheduler race"). MEASURED, not reasoned: with this call replaced by a hardcoded
+    ``return True`` — registration performed, route never driven — the graduated
+    ``T-UC-004-webhook-9421`` e2e_rest leg still PASSED, in 3.1s against 0.6s on the
+    unmutated tree (bdd_e2e ``innet_210826_0257`` vs ``innet_210826_0240``, both
+    542 passed / 1 failed / 2033 xfailed / 18 xpassed / 2 skipped). ``run_all_tests.sh``
+    exports ``DELIVERY_WEBHOOK_INTERVAL=5``, so the server's OWN background delivery
+    scheduler picks the row up within about five seconds of
+    :func:`_attach_reporting_webhook` writing it. Both senders are the deployment under
+    test, so what the receiver captures is still a real server-made delivery — but the
+    route is a way to ask PROMPTLY, not the reason a delivery exists, and a scenario
+    cannot conclude "the trigger did it" from the fact that something arrived
+    (salesagent-n78j0.1.4).
+
+    ``notification_type`` has no server-side selector on this route (the scheduler
+    emits ``scheduled``), so it is accepted and ignored here — the scenarios that grade
+    it stay parked in the e2e_rest ledger.
+
+    The WEBHOOK ATTACHMENT is conditional and that condition is the whole point: an
+    ACTION that unconditionally creates the precondition its own scenario declares makes
+    the Given decorative — a scenario asserting "no webhook is configured" would have one
+    configured by the very step that is supposed to find none, and a scenario whose Given
+    was deleted would still pass. So :func:`_attach_reporting_webhook` runs only when a
+    Given actually established a destination
+    (:attr:`BaseTestEnv.webhook_capture_key_was_handed_out`); otherwise the live server is
+    driven exactly as it stands and gets to decline on its own terms.
+
+    The MEDIA BUY ITSELF is unconditional, and the split matters: the route resolves the
+    buy before it considers a webhook, so skipping the seed too made the no-config leg
+    fail with ``HTTP 404 'Media buy not found'`` — a setup defect wearing the costume of
+    the behaviour under test.
+    """
+    from tests.e2e._signing_e2e import trigger_delivery_webhook_via_admin
+
+    media_buy = _seed_media_buy_for_delivery(env, media_buy_id)
+    if env.webhook_capture_key_was_handed_out:
+        _attach_reporting_webhook(env, media_buy)
+    triggered = trigger_delivery_webhook_via_admin(
+        env.e2e_config.base_url, tenant_id=env._tenant_id, media_buy_id=media_buy_id
+    )
+    return triggered, {"success": triggered}
+
+
+def _provision_signing_key_on_server(env: Any, monkeypatch: Any, *, alg: str = "ed25519") -> str:
+    """E2E realization: mint the key INSIDE the server container, through the admin route.
+
+    *monkeypatch* is accepted and unused — it configures the RUNNER's deployment KEK,
+    and a key minted under that one is a key the server cannot open. ``docker-compose.e2e.yml``
+    gives the server its own ``ADCP_SIGNING_DEV_KEK``; the admin route mints under it, so
+    the row the server later signs with is one it can actually decrypt. That is exactly
+    why ``tests/e2e/test_webhook_signature_e2e.py`` refuses a runner-minted key, and why
+    the scenario's own feature comment records that no key was ever provisioned for the
+    e2e leg (BR-UC-004 :301).
+    """
+    from tests.e2e._signing_e2e import provision_signing_key_via_admin
+
+    env.make_origin_publishable()
+    return provision_signing_key_via_admin(env.e2e_config.base_url, tenant_id=env._tenant_id, alg=alg)
+
+
+def _get_from_live_server(env: Any, path: str, *, headers: dict[str, str]) -> dict[str, Any]:
+    """One anonymous GET of a per-tenant document from the LIVE server.
+
+    Anonymous because every document this serves — the JWKS, the capabilities —
+    describes the SELLER, not the caller, and is resolved from the origin header
+    rather than from a credential.
+
+    *headers* is passed in rather than read from ``env.trust_root_request_headers()``
+    here, because :func:`_realize_publishable_origin_on_server` is itself what that
+    accessor is built on: defaulting would make the origin realization call itself.
+    """
+    response = httpx.get(f"{env.e2e_config.base_url}{path}", headers=headers, timeout=30.0)
+    assert response.status_code == 200, (
+        f"the live server must serve {path!r} for origin {headers!r}; got HTTP "
+        f"{response.status_code}: {response.text[:300]!r}"
+    )
+    return dict(response.json())
+
+
+def _publishable_origin_headers(host: str) -> dict[str, str]:
+    """Headers that address a per-tenant document GET at *host*.
+
+    ``Apx-Incoming-Host`` rather than ``Host``: :func:`route_landing_page` gives the
+    proxy header precedence, and over e2e the request crosses nginx, which is free to
+    rewrite ``Host``.
+    """
+    return {"Apx-Incoming-Host": host}
+
+
+def _write_publishable_origin(env: Any) -> str:
+    """Put a PUBLISHABLE origin on this env's tenant row; return the host it publishes at.
+
+    The half of "publishable" that is a stored value, shared by both branches of
+    :meth:`CircuitBreakerMixin.make_origin_publishable` so the in-process and e2e legs
+    cannot drift on what they wrote. ``_get_protocol_for_domain`` derives ``http`` for a
+    single-label host, which ``origin_is_publishable`` then refuses, so a DOTTED
+    ``virtual_host`` is the requirement.
+    """
+    from sqlalchemy import select
+
+    from src.core.database.models import Tenant
+
+    session = env._session
+    tenant = session.scalars(select(Tenant).filter_by(tenant_id=env._tenant_id)).first()
+    assert tenant is not None, (
+        f"no tenant row for {env._tenant_id!r} — provision the tenant before its publishable origin"
+    )
+    if "." not in (tenant.virtual_host or ""):
+        tenant.virtual_host = f"{env._tenant_id}.example.com"
+    env._commit_factory_data()
+    return str(tenant.virtual_host)
+
+
+def _realize_publishable_origin_on_server(env: Any) -> str:
+    """E2E realization: the SERVER must have this tenant at this host, and route it.
+
+    In process, writing a dotted ``virtual_host`` IS the whole intent: the same process
+    that wrote the row resolves the host and builds the document. Over e2e the row is
+    written by the RUNNER into the live server's database and every document is resolved
+    INSIDE the server container, behind nginx — so "the runner wrote it" and "the
+    deployment can find it" are separate facts, and the second is the one every
+    trust-root fetch depends on. The e2e branch therefore writes the same row through the
+    same helper and then makes the SERVER answer for it: an anonymous GET of
+    ``/.well-known/jwks.json`` addressed at that origin, which 404s when no tenant
+    resolves from that Host (``src/routes/well_known.py`` ``_serve`` :117-129) and 200s
+    with an empty key set when one does. Deliberately the JWKS and not the capabilities
+    document: it answers BEFORE any key exists, which is what
+    ``_provision_signing_key_on_server`` needs, since it makes the origin publishable
+    first and mints the key second.
+
+    WHAT THE 200 DOES NOT PROVE, corrected after review: not publishability. An earlier
+    version of this docstring said a host the deployment does not route "makes
+    ``_rfc9421_sender`` drop its signing arm and send the webhook UNSIGNED". It does not.
+    ``origin_is_publishable`` (``src/core/signing/posture.py`` :504) is exactly
+    ``origin is not None and origin.startswith("https://")``, and the origin comes from
+    ``_get_protocol_for_domain`` (``src/core/domain_config.py`` :36-46), a PURE function
+    of the host STRING — a dotted host yields https whether the deployment routes it or
+    not. And this module's own docstring records that it "never consults
+    ``origin_is_publishable``" and serves at any Host. So the GET is evidence about
+    ROUTING and DB reachability, which is real and is why it is kept; publishability is
+    decided by the dotted host :func:`_write_publishable_origin` writes, one line up. In
+    an epic about retiring comments that overstate their evidence, the previous sentence
+    was itself one (salesagent-n78j0.1.4).
+
+    Verified once per host per env — the answer cannot change while the row does not, and
+    ``trust_root_request_headers`` calls this on every trust-root fetch.
+    """
+    from src.core.agent_identity import JWKS_PATH
+
+    host = _write_publishable_origin(env)
+    if env.__dict__.get("_verified_publishable_origin") != host:
+        _get_from_live_server(env, JWKS_PATH, headers=_publishable_origin_headers(host))
+        env.__dict__["_verified_publishable_origin"] = host
+    return host
+
+
+def _fetch_served_jwks_over_http(env: Any) -> dict[str, Any]:
+    """E2E realization: GET the JWKS the LIVE server publishes for this tenant's origin."""
+    from src.core.agent_identity import JWKS_PATH
+
+    return _get_from_live_server(env, JWKS_PATH, headers=env.trust_root_request_headers())
+
+
+def _fetch_advertised_webhook_signing(env: Any) -> Any:
+    """E2E realization: the ``webhook_signing`` block the LIVE server ADVERTISES.
+
+    Not the in-process re-derivation. ``signing_key_backed`` decides ``supported`` by
+    DECRYPTING the private half, and over e2e the row is encrypted under the server
+    container's KEK — the runner holds a different one, so an in-process derivation
+    reports ``supported=False`` for a key that demonstrably signs, and the tag
+    assertion would fail against a posture nobody advertises. Reading the served
+    document is also the stronger claim: it is what a receiver statically validates the
+    on-wire ``tag=`` against.
+    """
+    from src.core.signing.posture import WebhookSigningPosture
+
+    served = (
+        _get_from_live_server(env, "/api/v1/capabilities", headers=env.trust_root_request_headers()).get(
+            "webhook_signing"
+        )
+        or {}
+    )
+    return WebhookSigningPosture.model_validate(served)
 
 
 def _persist_simulation_config(env: Any, resp: AdapterGetMediaBuyDeliveryResponse) -> Any:
@@ -541,6 +864,33 @@ class LocalOriginMixin:
         """
         return f"{self.origin.base_url}/webhook"
 
+    def webhook_destination(self) -> str:
+        """Where this env's outbound deliveries are addressed: its OWN endpoint.
+
+        Overrides :meth:`~tests.harness._base.BaseTestEnv.webhook_destination`, whose
+        answer is right only for an env that merely CARRIES a webhook URL as data. An
+        env that RUNS an endpoint has exactly one honest answer, and it is the endpoint
+        it runs — otherwise "where production was told to deliver" and "where this test
+        reads deliveries back" are two different addresses, and a delivery that
+        genuinely happened is indistinguishable from one that never did.
+
+        That was the live defect. The base answers from ``webhook_capture_key``
+        (``harness-<uuid>``) while this mixin's endpoint is ``_capture_key``
+        (``register_capture_key()``), so over e2e ``_attach_reporting_webhook`` wrote
+        the FORMER into ``MediaBuy.raw_request["reporting_webhook"]`` while every Given
+        registered, and every Then read, the LATTER. The live server dutifully
+        delivered — to a capture bucket no assertion looks at. It also lost the
+        registration on the way: ``_send_report_for_media_buy`` matches
+        ``DBPushNotificationConfig.url`` against the URL it was handed, so the
+        mismatched address missed the stored row carrying the bearer/HMAC credential
+        and fell through to an anonymous, unsigned delivery.
+
+        In process this collapses to the local origin the test already asserts against,
+        which is what the Givens have always written into the config row — so the two
+        transports now name the endpoint the same way, from one place.
+        """
+        return self.webhook_url
+
     # -- Programming the endpoint to FAIL ------------------------------------
 
     @realize_e2e(_e2e_reject_next)
@@ -751,6 +1101,159 @@ class CircuitBreakerMixin(LocalOriginMixin):
 
     _service: WebhookDeliveryService | None
 
+    # ── The outbound delivery seam ────────────────────────────────────
+    #
+    # Two halves, realized per transport HERE: who MAKES a delivery
+    # (:meth:`deliver_webhook`) and how a test READS it back
+    # (:attr:`LocalOriginMixin.delivery_attempts` / ``delivered_requests`` /
+    # ``last_delivery``). The third — where it is ADDRESSED — is
+    # ``BaseTestEnv.webhook_destination``, because envs that only REGISTER a webhook
+    # need it too. No step definition learns that a transport exists; the defect this
+    # removes is a delivery that happened in the test process while the leg claimed to
+    # grade the live server (salesagent-n78j0.1.4).
+    #
+    # The READ half is INHERITED, never re-declared here. This class used to carry a
+    # second pair (``deliveries()`` / ``last_delivery()``) reading ``mock["post"]``,
+    # a patched socket; #1802 deleted that socket and replaced it with a REAL local
+    # origin, so the mock-backed pair both shadowed the inherited readers through the
+    # MRO and read an attribute that no longer exists. One reader of the endpoint,
+    # and it is the one that observes what the endpoint actually received.
+
+    @realize_e2e(_deliver_via_live_server)
+    def deliver_webhook(
+        self,
+        media_buy_id: str = "mb_001",
+        notification_type: str | None = None,
+        **kwargs: Any,
+    ) -> tuple[bool, dict[str, Any]]:
+        """Make ONE outbound delivery through the code under test.
+
+        In process that is :meth:`call_deliver` (the production
+        ``WebhookDeliveryService``); over e2e the live server is driven to send it
+        (:func:`_deliver_via_live_server`). Returns ``(success, info)`` either way.
+        """
+        return self.call_deliver(media_buy_id=media_buy_id, notification_type=notification_type, **kwargs)
+
+    @staticmethod
+    def webhook_auth_fields(
+        auth_type: str | None, auth_token: str | None, secret: str | None
+    ) -> tuple[str | None, str | None]:
+        """Fold a legacy HMAC ``secret`` onto the spec's ONE selector.
+
+        security.mdx @ v3.1.1 :1424 — the buyer's ``authentication`` block selects
+        the mode. #1291 C1 retired the second selector (the ``webhook_secret``
+        column, which production never wrote), so a test asking for an HMAC secret
+        gets an HMAC-SHA256 registration.
+        """
+        if secret:
+            return "HMAC-SHA256", secret
+        return auth_type, auth_token
+
+    @realize_e2e(_realize_publishable_origin_on_server)
+    def make_origin_publishable(self) -> str:
+        """Give this tenant a PUBLISHABLE origin, and return the host it publishes at.
+
+        One of the two halves :func:`src.core.signing.posture.origin_is_publishable`
+        needs (the other is an active key). In process the stored dotted
+        ``virtual_host`` IS the whole intent; over e2e the deployment has to actually
+        route it, which is what :func:`_realize_publishable_origin_on_server` makes the
+        server answer for. The host is returned either way because every trust-root
+        fetch has to address the tenant by it.
+        """
+        return _write_publishable_origin(self)
+
+    def trust_root_request_headers(self) -> dict[str, str]:
+        """Headers that address a trust-root GET at THIS tenant's published origin.
+
+        Naming the origin explicitly is what keeps the fetched document this tenant's
+        rather than whichever tenant the proxy's own hostname happens to resolve to;
+        see :func:`_publishable_origin_headers` for why it is the proxy header.
+        """
+        return _publishable_origin_headers(self.make_origin_publishable())
+
+    @realize_e2e(_provision_signing_key_on_server)
+    def provision_webhook_signing_key(self, monkeypatch: Any, *, alg: str = "ed25519") -> str:
+        """Opt this scenario's tenant into RFC 9421 webhook signing. Returns the ``kid``.
+
+        Per-scenario opt-in, never an env default (#1291 z6nr.31): every other UC-004
+        webhook scenario must keep its current unsigned/HMAC posture byte-for-byte, and
+        ``@T-UC-004-webhook-notification-type`` asserts exactly that.
+
+        Both halves are prerequisites for :func:`src.core.signing.posture.origin_is_publishable`
+        and neither alone is enough: an ACTIVE ``SigningKey`` row (through the SAME
+        production provisioner ``tests/e2e/_signing_e2e.py`` uses,
+        :func:`tests.helpers.signing.provision_key`, never a hand-built row) plus a
+        PUBLISHABLE origin (a dotted ``virtual_host`` — ``_get_protocol_for_domain``
+        derives ``http`` for a single-label host, which ``origin_is_publishable`` then
+        refuses). Without the origin half, ``_rfc9421_sender`` drops the arm and the
+        delivery goes out UNSIGNED — a sibling that skipped this would pass vacuously on
+        headers that were simply never sent.
+
+        *monkeypatch* is the caller's own fixture (a step function can request it like
+        any other), threaded through to :func:`tests.helpers.signing.deployment_kek` —
+        ``provision_signing_key`` refuses to mint without a configured KEK, and
+        ``deployment_kek`` has no teardown of its own; it relies entirely on
+        ``monkeypatch``'s automatic per-test undo, so the env stays scoped to this one
+        scenario.
+        """
+        from tests.helpers.signing import deployment_kek, provision_key, signing_key_repo
+
+        self.make_origin_publishable()
+
+        repo = signing_key_repo(self, self._tenant_id)  # type: ignore[attr-defined]
+        # A random suffix, not a deterministic one: this scenario runs once PER
+        # TRANSPORT (a2a/mcp/rest) against the SAME tenant_id, and
+        # _resolve_signing_provider (provider.py) caches resolved key material for
+        # 60s keyed by (tenant_id, kid) — a deterministic kid would let one
+        # transport's run resolve a STALE PEM cached under another transport's
+        # identical kid, verifying against the wrong key entirely.
+        kid = f"{self._tenant_id}-webhook-signing-{uuid4().hex[:8]}"  # type: ignore[attr-defined]
+        with deployment_kek(monkeypatch):
+            row = provision_key(repo, self._tenant_id, kid, alg=alg)  # type: ignore[attr-defined]
+        self._commit_factory_data()  # type: ignore[attr-defined]
+        return row.kid
+
+    @realize_e2e(_fetch_served_jwks_over_http)
+    def published_jwks(self) -> dict[str, Any]:
+        """The JWKS document this tenant SERVES right now, fetched over the wire.
+
+        The DOCUMENT, not the selector behind it. This used to call ``build_jwks``
+        against ``publishable_at`` in process, which grades the publication SELECTOR:
+        a route that never served, served the wrong tenant's key set, or 404'd would
+        leave every caller green (salesagent-n78j0.1.4). ``/.well-known/jwks.json`` is
+        addressed at this tenant's own published origin so the answer is the one a real
+        receiver walking our discovery chain would get.
+        """
+        from src.core.agent_identity import JWKS_PATH
+
+        response = self.get_rest_client().get(JWKS_PATH, headers=self.trust_root_request_headers())  # type: ignore[attr-defined]
+        assert response.status_code == 200, (
+            f"the app must publish a JWKS at {JWKS_PATH} for this tenant's origin; got HTTP "
+            f"{response.status_code}: {response.text[:300]!r}"
+        )
+        return dict(response.json())
+
+    @realize_e2e(_fetch_advertised_webhook_signing)
+    def advertised_webhook_signing(self) -> Any:
+        """This tenant's CURRENT ``webhook_signing`` posture — the same object ``_rfc9421_sender`` reads.
+
+        Derived through production's own :func:`src.core.signing.posture.webhook_signing_posture`
+        rather than re-typed here, so the Then step compares the wire against the SAME
+        advertisement production would compute — a literal profile string would stay
+        green while the two sides drifted apart.
+
+        Over e2e the derivation has to happen where the KEY CAN BE OPENED — inside the
+        server — so the e2e branch reads the served capabilities document instead
+        (:func:`_fetch_advertised_webhook_signing`).
+        """
+        from src.core.signing.posture import webhook_signing_posture
+        from tests.helpers.signing import signing_key_repo
+
+        repo = signing_key_repo(self, self._tenant_id)  # type: ignore[attr-defined]
+        origin = repo.canonical_origin()
+        assert origin is not None, f"no tenant row for {self._tenant_id!r}"
+        return webhook_signing_posture(repo, now=datetime.now(UTC), origin=origin)
+
     def get_service(self) -> WebhookDeliveryService:
         """Return a WebhookDeliveryService instance (cached per env)."""
         if self._service is None:
@@ -762,7 +1265,14 @@ class CircuitBreakerMixin(LocalOriginMixin):
         return CircuitBreaker(**kwargs)
 
     def set_http_response(self, status_code: int) -> None:
-        """Answer every attempt with the given status code."""
+        """Answer every attempt with the given status code.
+
+        A name kept for the callers that predate the local origin; the endpoint
+        that answers is :meth:`LocalOriginMixin.set_http_status`'s, so there is
+        exactly ONE thing that decides what a delivery gets back. The old body
+        programmed ``mock["post"]``, a patched socket that #1802 deleted — a
+        stubbed socket cannot record what a REAL receiver saw.
+        """
         self.set_http_status(status_code)
 
     def endpoint_key(self, tenant_id: str | None = None) -> str:
@@ -799,6 +1309,44 @@ class CircuitBreakerMixin(LocalOriginMixin):
             service._circuit_breakers[endpoint_key] = CircuitBreaker()
         return service._circuit_breakers[endpoint_key]
 
+    #: Why every breaker seam below is declared unrealizable over e2e_rest, once.
+    #:
+    #: TWO independent reasons, and either alone is disqualifying:
+    #:
+    #: 1. WRONG PROCESS. ``_breaker_for`` reaches ``get_service()._circuit_breakers``
+    #:    on the RUNNER's in-process ``WebhookDeliveryService``. The breaker that could
+    #:    matter lives in the server container, so a Given that seeds here arranges
+    #:    nothing the server will consult, and ``breaker_snapshot`` reads back the very
+    #:    object the test just poked. The Then that reads it was already declared
+    #:    unsupported (``assert_circuit_breaker_failure_recorded``); the GIVENS were not,
+    #:    so the scenarios kept running and driving real deliveries against an endpoint
+    #:    programmed to fail.
+    #:
+    #: 2. WRONG SENDER. The e2e delivery path is
+    #:    ``DeliveryWebhookScheduler -> ProtocolWebhookService``, which contains ZERO
+    #:    circuit-breaker references; the breaker belongs to ``WebhookDeliveryService``,
+    #:    the sender the in-process legs drive. So "subsequent scheduled deliveries
+    #:    should be suppressed" is not merely unobservable over e2e — it is not true of
+    #:    the path e2e exercises.
+    #:
+    #: NOT A COVERAGE LOSS BEING HIDDEN: AdCP 3.1.1 does not require a circuit breaker
+    #: at all. ``docs/building/by-layer/L3/webhooks.mdx`` :528 is its ONLY mention and is
+    #: descriptive ("suppressed fires under a tripped circuit breaker" as one thing a
+    #: buyer might be diagnosing); nothing in ``dist/compliance/3.1.1/`` grades it. The
+    #: spec's buyer-visible observable is ``webhook_activity[]`` on ``get_media_buys``
+    #: (``include_webhook_activity``, ``core/webhook-activity-record.json``), which this
+    #: repo does not implement — see the handoff. When it lands, these Thens should be
+    #: rewritten against it and these declarations removed, because that surface IS
+    #: readable on every transport.
+    _BREAKER_IS_PROCESS_LOCAL = (
+        "the circuit breaker is process-local to the runner's own WebhookDeliveryService "
+        "(get_service()._circuit_breakers), and the live server's delivery-report path "
+        "(ProtocolWebhookService) has no breaker at all — so this seeds and reads state no "
+        "server behaviour depends on. AdCP 3.1.1 mandates no breaker; the spec's observable "
+        "is webhook_activity[] on get_media_buys, which is not implemented here"
+    )
+
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def seed_breaker_failures(self, endpoint_key: str, n: int) -> None:
         """Record *n* consecutive failures, as production's own arithmetic would.
 
@@ -811,6 +1359,7 @@ class CircuitBreakerMixin(LocalOriginMixin):
         for _ in range(n):
             breaker.record_failure()
 
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def set_breaker_state(self, endpoint_key: str, state: str) -> None:
         """Force the breaker into *state* ('OPEN' | 'HALF_OPEN' | 'CLOSED').
 
@@ -820,6 +1369,7 @@ class CircuitBreakerMixin(LocalOriginMixin):
         """
         self._breaker_for(endpoint_key).state = CircuitState[state.upper()]
 
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def elapse_breaker_timeout(self, endpoint_key: str, seconds: int = 61) -> None:
         """Age the last failure past the breaker's recovery timeout.
 
@@ -830,6 +1380,7 @@ class CircuitBreakerMixin(LocalOriginMixin):
         """
         self._breaker_for(endpoint_key).last_failure_time = datetime.now(UTC) - timedelta(seconds=seconds)
 
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def drive_breaker_transition(self, endpoint_key: str) -> None:
         """Drive the breaker's OPEN -> HALF_OPEN transition. Returns nothing.
 
@@ -852,6 +1403,7 @@ class CircuitBreakerMixin(LocalOriginMixin):
         """
         self._breaker_for(endpoint_key).can_attempt()
 
+    @realize_e2e(e2e_unsupported(_BREAKER_IS_PROCESS_LOCAL))
     def breaker_snapshot(self, endpoint_url: str | None = None) -> tuple[CircuitState, int]:
         """(state, failure_count) for *endpoint_url*, via the PRODUCTION public API.
 

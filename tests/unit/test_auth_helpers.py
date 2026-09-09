@@ -22,7 +22,7 @@ class TestRequirePrincipalId:
     """
 
     CANONICAL_MESSAGE = (
-        "Authentication required: Principal ID not found in identity. Provide a valid x-adcp-auth token."
+        "Authentication required: Principal ID not found in identity. No x-adcp-auth token was presented."
     )
 
     def test_returns_principal_id_when_present(self):
@@ -268,7 +268,8 @@ class TestResolvePrincipalOrRaise:
 
     Collapses the identical lookup the create/update/delivery media-buy tools
     share. Returns the Principal or raises AdCPAuthenticationError
-    (AUTH_REQUIRED), echoing the request context into the error envelope.
+    (AUTH_INVALID -- presented-but-unresolvable principal_id), echoing the
+    request context into the error envelope.
     """
 
     def test_returns_principal_when_found(self):
@@ -285,7 +286,7 @@ class TestResolvePrincipalOrRaise:
             with pytest.raises(AdCPAuthenticationError, match="ghost") as exc_info:
                 resolve_principal_or_raise("ghost", tenant_id="t1")
 
-        assert exc_info.value.error_code == "AUTH_REQUIRED"
+        assert exc_info.value.error_code == "AUTH_INVALID"
 
     def test_echoes_context_into_error(self):
         from src.core.auth import resolve_principal_or_raise

@@ -42,7 +42,12 @@ BEHAVIORAL_MOCK_CONSTRUCTION_CAP: dict[str, int] = {
     "tests/unit/test_authorized_properties_behavioral.py": 23,
     "tests/unit/test_creative_formats_behavioral.py": 17,
     "tests/unit/test_delivery_poll_behavioral.py": 14,
-    "tests/unit/test_delivery_service_behavioral.py": 2,
+    # 6 -> 1, from both merged sides: #1757 turned the queue entry into a frozen
+    # dataclass of primitives (the retry-loop test builds a real QueuedWebhook
+    # instead of mocking a config object), and #1802 dropped the webhook socket
+    # patch in favour of a real local origin. Measured actual is 1; the ratchet
+    # only shrinks, so it is pinned at the lower of the two sides' reality.
+    "tests/unit/test_delivery_service_behavioral.py": 1,
     "tests/unit/test_performance_index_behavioral.py": 33,
     "tests/unit/test_sync_creatives_behavioral.py": 28,
     "tests/unit/test_update_media_buy_behavioral.py": 113,

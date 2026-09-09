@@ -89,6 +89,7 @@ EXPECTED_XFAIL_ROUTES: tuple[str, ...] = (
     "is_e2e_rest and any((t.startswith('T-UC-019') for t in marker_names))",
     "is_e2e_rest and marker_names & _UC004_E2E_WEBHOOK_INTERNAL_TAGS",
     "is_e2e_rest and marker_names & _UC005_E2E_FIXTURE_INJECTION_TAGS",
+    "is_e2e_rest and tag == 'T-UC-005-main'",
     "is_e2e_rest and tag in uc005_filter_e2e_untestable",
     "is_e2e_rest and tag in uc005_filter_e2e_untestable",
     "marker_names & _UC005_PARTIAL_TAGS and (not is_e2e_rest)",
@@ -434,12 +435,72 @@ EXPECTED_UNSUPPORTED_DECLARATIONS: frozenset[tuple[str, str, str]] = frozenset(
             "get_service() constructs a fresh in-process WebhookDeliveryService under e2e_rest, "
             "disconnected from the live server's real circuit-breaker state — no wire surface",
         ),
+        # The circuit-breaker SEEDS, added alongside the reader above rather than
+        # after it. Declaring only the Then was the hole: the Givens still ran, so the
+        # scenarios arranged a breaker in the runner's own process and then drove REAL
+        # deliveries against an endpoint programmed to fail — which is how they passed
+        # while production did the opposite, and how one per-worker server was driven
+        # unhealthy. Two independent disqualifiers, spelled out at
+        # ``_mixins._BREAKER_IS_PROCESS_LOCAL``: wrong process (the runner's
+        # WebhookDeliveryService, not the server's) and wrong sender (the e2e delivery
+        # path is ProtocolWebhookService, which has no breaker at all).
+        #
+        # Parking is honest rather than lossy: AdCP 3.1.1 mandates no circuit breaker —
+        # webhooks.mdx :528 is its only, descriptive mention and nothing in
+        # dist/compliance/3.1.1/ grades it. The spec's buyer-visible observable is
+        # webhook_activity[] on get_media_buys (include_webhook_activity;
+        # core/webhook-activity-record.json), which this repo does not implement. These
+        # five come OUT when it lands and the Thens are rewritten against it.
+        # "<dynamic>" because all five share ONE reason constant
+        # (``_mixins._BREAKER_IS_PROCESS_LOCAL``) rather than five copies of a long
+        # string, and the detector can only read a literal. Same precedent as
+        # _validate_registry_formats below. What the pin still locks is the SET of
+        # parked method names, which is the tracking property that matters; the reason
+        # itself is reviewable at the source, where it is stated once.
+        ("tests/harness/_mixins.py", "seed_breaker_failures", "<dynamic>"),
+        ("tests/harness/_mixins.py", "set_breaker_state", "<dynamic>"),
+        ("tests/harness/_mixins.py", "elapse_breaker_timeout", "<dynamic>"),
+        ("tests/harness/_mixins.py", "drive_breaker_transition", "<dynamic>"),
+        ("tests/harness/_mixins.py", "breaker_snapshot", "<dynamic>"),
         (
             "tests/harness/creative_formats.py",
             "_validate_registry_formats",
             "live stack always serves the agent catalog; an empty catalog cannot be realized over e2e",
         ),
         ("tests/harness/creative_formats.py", "_validate_registry_formats", "<dynamic>"),
+        (
+            "tests/harness/capabilities.py",
+            "set_adapter_channels",
+            "no production test_behavior channel for overriding reported default_channels "
+            "(only 'unavailable' and 'targeting_capabilities' are wired to AdapterConfig "
+            "test_behavior) — #1871",
+        ),
+        (
+            "tests/harness/capabilities.py",
+            "break_tenant_config_db",
+            "no production DB fault hook; TenantConfigUoW read failure cannot be injected over real HTTP",
+        ),
+        (
+            "tests/harness/capabilities.py",
+            "set_supported_versions",
+            "no production tenant-config surface for the seller's advertised adcp version set "
+            "(SUPPORTED_ADCP_VERSIONS/MAJORS are process-wide constants) — a "
+            "module-constant monkeypatch cannot cross a real HTTP process boundary",
+        ),
+        (
+            "tests/harness/capabilities.py",
+            "set_build_version",
+            "no production tenant-config surface for the seller's advertised build_version "
+            "(src.core.version.get_version() is a process-wide package-metadata read) "
+            "— cannot be injected over real HTTP",
+        ),
+        (
+            "tests/harness/capabilities.py",
+            "set_idempotency_posture",
+            "no production tenant-config surface for the adcp.idempotency posture "
+            "(get_idempotency_posture() is a process-wide provider) — a "
+            "module-function monkeypatch cannot cross a real HTTP process boundary",
+        ),
     }
 )
 
@@ -455,6 +516,23 @@ def test_harness_unsupported_declarations_match_pin() -> None:
         "update EXPECTED_UNSUPPORTED_DECLARATIONS in the same change and justify it.\n"
         f"New declarations: {sorted(added)}\n"
         f"Removed declarations: {sorted(removed)}"
+    )
+
+
+def test_unsupported_declarations_never_cite_a_beads_id() -> None:
+    """CLAUDE.md: a tracked gap cites a GH issue/PR number, never a local beads
+    id -- beads ids don't resolve for outside contributors (#1721 M5, R1-8).
+
+    Checks the LIVE source, not just the pin, so a new declaration can't slip
+    in with a beads citation even before EXPECTED_UNSUPPORTED_DECLARATIONS is
+    updated to match it.
+    """
+    offenders = [
+        (relpath, scope, reason) for relpath, scope, reason in _harness_declaration_sites() if "salesagent-" in reason
+    ]
+    assert not offenders, (
+        "escape-hatch reason(s) cite an unresolvable local beads id instead of a GH issue/PR "
+        f"number (or no ticket, per the break_tenant_config_db precedent): {offenders}"
     )
 
 
@@ -505,6 +583,35 @@ def test_detector_catches_new_unsupported_declarations() -> None:
         ("tests/harness/fake.py", "other_method", "<dynamic>"),
         ("tests/harness/fake.py", "set_new_thing", "brand-new unrealizable intent"),
     ]
+
+
+_SYNTHETIC_HARNESS_WITH_BEADS_CITATION = """
+from tests.harness._realize import e2e_unsupported, realize_e2e
+
+
+class SomeEnvMixin:
+    @realize_e2e(e2e_unsupported("some gap that cites a beads id — salesagent-abcd"))
+    def set_new_thing(self, value):
+        self.mock["thing"].value = value
+"""
+
+
+def test_beads_citation_check_catches_a_synthetic_offender() -> None:
+    """Negative meta-test for test_unsupported_declarations_never_cite_a_beads_id:
+    a synthetic declaration citing a beads id must be flagged as an offender by
+    the same substring check the real test runs, so the check itself can't
+    silently go blind (#1498 discipline)."""
+    sites = find_unsupported_declarations(ast.parse(_SYNTHETIC_HARNESS_WITH_BEADS_CITATION), "tests/harness/fake.py")
+    offenders = [(relpath, scope, reason) for relpath, scope, reason in sites if "salesagent-" in reason]
+    assert offenders == [("tests/harness/fake.py", "set_new_thing", "some gap that cites a beads id — salesagent-abcd")]
+
+
+def test_beads_citation_check_does_not_flag_gh_citations_or_ticket_free_reasons() -> None:
+    """Positive/control case: a GH-issue citation and a ticket-free structural
+    reason (the break_tenant_config_db precedent) must NOT be flagged."""
+    sites = find_unsupported_declarations(ast.parse(_SYNTHETIC_HARNESS), "tests/harness/fake.py")
+    offenders = [(relpath, scope, reason) for relpath, scope, reason in sites if "salesagent-" in reason]
+    assert offenders == []
 
 
 _SYNTHETIC_GENERATE_TESTS_CLEAN = """

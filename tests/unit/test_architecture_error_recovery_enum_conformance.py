@@ -209,10 +209,13 @@ def test_internal_only_codes_are_documented() -> None:
 # wire, and it must be the ONLY table in exceptions.py that answers a recovery
 # question (WIRE_STANDARD_CODES answers membership only).
 
-# The two spec codes the SDK helper table has not caught up to; the pinned enum
-# defines both (CREATIVE_NOT_FOUND correctable, CONFIGURATION_ERROR terminal),
-# so they are wire codes src can emit and must therefore be classified.
-_SUPPLEMENT_WIRE_CODES = frozenset({"CREATIVE_NOT_FOUND", "CONFIGURATION_ERROR"})
+# The spec codes the SDK helper table has not caught up to. IMPORTED, not restated:
+# a second copy here drifted the moment the v3.1.1 auth split landed (this guard still
+# said 2 while production said 8), which made the conformance check assert against a
+# stale idea of the pin rather than against the pin. The non-tautological half — that
+# every supplement code is genuinely DEFINED by the pinned enum, so it is a code src may
+# legitimately emit — is asserted below and is what this constant is really for.
+from src.core.exceptions import _SPEC_SUPPLEMENT_CODES as _SUPPLEMENT_WIRE_CODES
 
 
 def _src_recovery_by_wire_code() -> dict[str, str]:
@@ -320,9 +323,11 @@ def test_wire_standard_codes_carry_no_classification() -> None:
         f"The recovery table must be TOTAL over the wire set."
     )
 
-    assert len(WIRE_STANDARD_CODES) == 39, (
-        f"WIRE_STANDARD_CODES has {len(WIRE_STANDARD_CODES)} entries, not 39 (38 SDK "
-        f"+ 2 supplement - 1 demoted). If the SDK pin moves, the demoted-set comment "
+    expected_size = len(set(STANDARD_ERROR_CODES) | set(_SUPPLEMENT_WIRE_CODES)) - len(_SPEC_DEMOTED_CODES)
+    assert len(WIRE_STANDARD_CODES) == expected_size, (
+        f"WIRE_STANDARD_CODES has {len(WIRE_STANDARD_CODES)} entries, not {expected_size} "
+        f"({len(STANDARD_ERROR_CODES)} SDK + {len(_SUPPLEMENT_WIRE_CODES)} supplement - "
+        f"{len(_SPEC_DEMOTED_CODES)} demoted). If the SDK pin moves, the demoted-set comment "
         f"in src/core/exceptions.py is where the reason lives; update it there."
     )
 

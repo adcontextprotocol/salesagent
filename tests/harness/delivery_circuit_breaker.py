@@ -14,9 +14,12 @@ gate now lives on the seam and is driven by naming a destination it genuinely
 refuses; the loopback origin these scenarios need is admitted because
 ``LocalOriginMixin`` opens both egress hatches for the env's lifetime.
 
-The outbound transport is NOT patched — see ``LocalOriginMixin``. Webhook
-endpoints must therefore be configured with ``env.webhook_url``, which is the
-origin that is really listening.
+The outbound transport is NOT patched — see ``LocalOriginMixin``. That also
+retires this env's ``install_webhook_wire`` socket stub: a stubbed socket makes
+``delivery_attempts`` / ``last_delivery`` read zero traffic, and the RFC 9421
+signing assertions verify the signature over ``last_delivery.body`` — the bytes
+that really went out. Webhook endpoints must therefore be configured with
+``env.webhook_url``, which is the origin that is really listening.
 
 Requires: integration_db fixture (creates test PostgreSQL DB).
 
@@ -50,17 +53,7 @@ from src.core.database.models import PushNotificationConfig
 from src.services.webhook_delivery_service import WebhookDeliveryService
 from tests.harness._base import IntegrationEnv
 from tests.harness._mixins import CircuitBreakerMixin, WebhookOutcomeRowsMixin
-
-
-class _LogCaptureHandler(logging.Handler):
-    """Captures formatted log records into a list for assertion in tests."""
-
-    def __init__(self) -> None:
-        super().__init__(level=logging.WARNING)
-        self.records: list[str] = []
-
-    def emit(self, record: logging.LogRecord) -> None:
-        self.records.append(self.format(record))
+from tests.helpers.log_capture import LogCaptureHandler
 
 
 class CircuitBreakerEnv(WebhookOutcomeRowsMixin, CircuitBreakerMixin, IntegrationEnv):
@@ -91,7 +84,7 @@ class CircuitBreakerEnv(WebhookOutcomeRowsMixin, CircuitBreakerMixin, Integratio
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._service: WebhookDeliveryService | None = None
-        self._log_handler: _LogCaptureHandler | None = None
+        self._log_handler: LogCaptureHandler | None = None
         self.captured_logs: list[str] = []
 
     def _enter_post(self) -> None:
@@ -101,9 +94,13 @@ class CircuitBreakerEnv(WebhookOutcomeRowsMixin, CircuitBreakerMixin, Integratio
         handler is a resource — registering its removal with ``_guard`` is what
         stops a failed enter from leaving a dead handler attached to a
         process-global logger for every later test.
+
+        The handler itself is :class:`tests.helpers.log_capture.LogCaptureHandler`
+        rather than a private copy of it: the two were byte-identical, and a
+        second copy is the thing the DRY invariant forbids.
         """
         super()._enter_post()
-        self._log_handler = _LogCaptureHandler()
+        self._log_handler = LogCaptureHandler()
         webhook_logger = logging.getLogger("src.services.webhook_delivery_service")
         webhook_logger.addHandler(self._log_handler)
         self.captured_logs = self._log_handler.records
@@ -137,7 +134,8 @@ class CircuitBreakerEnv(WebhookOutcomeRowsMixin, CircuitBreakerMixin, Integratio
         that used it configured a row no buyer can create -- and graded a signing
         branch production has now abandoned. An HMAC row is
         ``auth_type="HMAC-SHA256", auth_token=<secret>``, which is what
-        ``media_buy_create`` and the A2A push-config handler actually persist.
+        ``media_buy_create`` and the A2A push-config handler actually persist, and
+        what this branch's signing tests already pass.
         """
         from tests.factories import PushNotificationConfigFactory
 

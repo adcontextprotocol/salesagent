@@ -65,13 +65,13 @@ from src.core.schemas import Principal, ReportingPeriod
 from src.core.security.egress.attempts import OutboundDeliveryFailed
 from src.core.security.outbound_http import OutboundError
 from tests.harness._base import IntegrationEnv
+from tests.helpers.egress_backoff import fast_backoff
 from tests.helpers.local_http_origin import LocalOrigin, OriginResponse
 
 # Reused rather than restated: which escape hatches a case opens is one decision
 # with one home, and the backoff knob that keeps a retry case fast is the seam
 # suite's own helper.
 from tests.integration.property_list_helpers import allow_local_origin
-from tests.integration.test_outbound_http import fast_backoff
 
 pytestmark = [pytest.mark.integration]
 

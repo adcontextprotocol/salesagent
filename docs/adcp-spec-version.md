@@ -1,52 +1,64 @@
 # AdCP Spec Version
 
-Prebid Sales Agent targets **AdCP spec version 3.1.1**.
+Prebid Sales Agent targets **AdCP spec version 3.1.1** via the `adcp==6.6.0`
+Python SDK (pinned exactly in `pyproject.toml`).
 
 ## Verifying the current target
 
-```python
-import adcp
-adcp.get_adcp_spec_version()  # "3.1.1"
-adcp.get_adcp_sdk_version()   # "6.6.0"
-```
-
-## Why this version
-
-The `adcp` Python SDK is pinned in `pyproject.toml` to `==6.6.0`. SDK 6.6.0
-is code-generated from AdCP spec 3.1.1 and ships Pydantic models that
-encode that spec version's request/response shapes.
-
-The SDK-to-spec mapping (verified via each wheel's bundled `ADCP_VERSION`
-file):
-
-| adcp SDK release | AdCP spec |
-|---|---|
-| 4.3.x | 3.0.1 |
-| 4.4.x | 3.0.5 |
-| 4.5.x – 4.6.x | 3.0.5 |
-| 5.0.x – 5.6.x | 3.0.7 |
-| 5.7.x | 3.1.0-beta.3 |
-| 6.x (stable) | 3.1.1 |
-
-To check what spec version any installed SDK release targets:
-
 ```bash
-uv run python -c "import adcp; print(adcp.get_adcp_spec_version())"
+uv run python -c "import adcp; print(adcp.get_adcp_spec_version(), adcp.get_adcp_sdk_version())"
+# 3.1.1 6.6.0
 ```
+
+The same command tells you what spec version any other SDK release targets —
+use it instead of looking for a version table.
 
 ## CI guard
 
 `tests/unit/test_adcp_spec_version.py` asserts the installed SDK targets
-`3.1.1`. A pin shift will fail this test, forcing a deliberate update
-across `pyproject.toml`, the test's `EXPECTED_SPEC_VERSION` constant, and
-this document.
+`3.1.1`. A pin shift fails that test, forcing a deliberate update across
+`pyproject.toml`, the test's `EXPECTED_SPEC_VERSION` constant, and this
+document.
 
-## Behavior target vs SDK pin
+## Where the spec lives
+
+`github.com/adcontextprotocol/adcp`, read at the pinned tag only:
+
+```bash
+git -C ~/projects/adcp show v3.1.1:dist/schemas/3.1.1/<path>      # type shapes
+git -C ~/projects/adcp show v3.1.1:dist/compliance/3.1.1/<path>   # graded storyboards
+git -C ~/projects/adcp show v3.1.1:docs/<path>                    # prose
+```
+
+Note the asymmetry in that third line, because it is the one that has been copied
+wrong. Schemas and storyboards live under a version-numbered `dist/` root, and prose
+does not: `dist/docs/` stops at `3.1.0`, so `dist/docs/3.1.1/` resolves at no tag. Prose
+is read from the repository-root `docs/` tree at the pinned ref, which is what makes the
+ref rather than the path carry the version.
+
+Verify a citation resolves before you rely on it — `git cat-file -e v3.1.1:<path>` exits
+non-zero when it does not.
+
+The checked-out working tree of that repo is **not** the pinned version. The
+installed `adcp` SDK is a cross-check, never the authority — it can diverge
+from the spec.
+
+## `status` vs `media_buy_status` on media-buy responses
 
 The SDK **pin** (`adcp==6.6.0`, spec **3.1.1**) fixes the request/response
 *type shapes* we build against. It does **not** always fix the graded
 *behavior*. One field diverges deliberately: the `media_buy_status` dual-emit
 on create-/update-media-buy responses.
+
+The two are different namespaces and are **not** identical:
+
+- top-level `status` is the PROTOCOL `TaskStatus` (`submitted` / `completed`),
+  set by `TaskResultEnvelope._serialize`;
+- `media_buy_status` is the DOMAIN status, mirrored by
+  `_mirror_media_buy_status` (`src/core/schemas/_base.py`).
+
+The graded storyboard moved to that model, which is why our wire looks the way
+it does:
 
 - **Then (3.1.0-beta.3):** the storyboard graded the body `status` as
   `field_value_or_absent` that MUST equal `media_buy_status` — the deprecated
@@ -55,17 +67,14 @@ on create-/update-media-buy responses.
   grades `media_buy_status` as `field_value` (the DOMAIN status, L146-148) and
   separately grades `status` as `field_value` `'completed'` (the PROTOCOL
   `TaskStatus`, protocol envelope, L150-153). There are ZERO
-  `field_value_or_absent` checks in that file. The two fields are DIFFERENT
-  namespaces and are NOT required to be identical — which is the model our wire
-  already implemented.
+  `field_value_or_absent` checks in that file. The two fields are NOT required
+  to be identical — which is the model our wire already implemented.
 
-Our wire: `TaskResultEnvelope._serialize` sets the top-level `status` to the
-protocol `TaskStatus`, while the domain status survives under `media_buy_status`
-(`src/core/schemas/_base.py` `_mirror_media_buy_status`). The dual-emit
-validator still backfills the deprecated **body** `status` from the domain
-`media_buy_status` for the deprecation window; it does not touch the wire
-top-level `status`. That backfill remains live production code — it is the
-deprecation window, not a divergence from the pin.
+The `_dual_emit_media_buy_status` validator additionally backfills the
+deprecated **body** `status` from `media_buy_status` for the deprecation
+window; it never touches the wire top-level `status`. That backfill remains
+live production code — it is the deprecation window, not a divergence from the
+pin.
 
 Grounding for the dual-emit behavior is the value-pinned `media_buy_status`
 assertions in `tests/bdd/features/BR-UC-002-media-buy-status-dual-emit.feature`
@@ -76,21 +85,35 @@ in this document — not this behavior.
 
 ## Wire negotiation
 
-AdCP wire values for `adcp_version` are release-precision (`"3.0"`,
-`"3.1"`). The SDK accepts patch-precision input for backwards
-compatibility but normalizes to release-precision on the wire.
+AdCP wire values for `adcp_version` are release-precision (`"3.0"`, `"3.1"`).
+The SDK accepts patch-precision input for backwards compatibility but
+normalizes to release-precision on the wire.
 
 ## Bumping the spec version
 
-A spec version bump is a deliberate change with downstream impact:
-
 1. Read the AdCP spec changelog for the target version.
-2. Update `pyproject.toml` SDK pin to a release that targets the new spec
-   version (see mapping above).
-3. Run `uv lock --upgrade-package adcp`.
-4. Update `EXPECTED_SPEC_VERSION` in `tests/unit/test_adcp_spec_version.py`.
-5. Update this document.
-6. Refresh the two storyboard artifacts that are pin-coupled but do not move
+2. Update the `adcp` pin in `pyproject.toml` (confirm its spec target with the
+   command above).
+3. `uv lock --upgrade-package adcp`.
+4. Update `EXPECTED_SPEC_VERSION` in `tests/helpers/adcp_pin.py` (the constant lives
+   there; `tests/unit/test_adcp_spec_version.py` imports it).
+5. Re-vendor the **pinned schema tree** to the new version — the directory under
+   `tests/fixtures/adcp_schemas_pinned/` is named for the spec version, and
+   `test_the_vendored_schema_tree_matches_the_pin` fails until it matches. A stale tree
+   grades our trust-root documents against the previous version's schemas while every
+   version literal in production has already moved.
+6. Re-vendor the request-signing conformance vectors and their `MANIFEST.json`:
+
+   ```bash
+   uv run python -m tests.fixtures.adcp_schemas_pinned._refresh
+   ```
+
+   Nothing to edit in that script first: `VECTORS_REV`, `VECTORS_SPEC_VERSION`,
+   `VECTORS_SRC` and the root sets all derive from `EXPECTED_SPEC_VERSION` and
+   `SPEC_REV`, so step 4 already moved them. `tests/unit/test_adcp_conformance_vectors_pin.py`
+   ties the vendored snapshot to the pin, so skipping the re-vendor fails CI rather
+   than silently grading the verifier against the previous version's conformance data.
+7. Refresh the two storyboard artifacts that are pin-coupled but do not move
    themselves:
    - `tests/fixtures/adcp_storyboards_pinned/index.json` — run its
      `_refresh.py` against a fresh `~/projects/adcp` clone at the new pin.
@@ -102,8 +125,16 @@ A spec version bump is a deliberate change with downstream impact:
      `tests/storyboard/runner/`. `tests/storyboard/test_runner_sdk_pin.py`'s
      `test_runner_sdk_targets_the_pinned_adcp_version` fails until this is
      done.
-7. Run `make quality` and address Pydantic field/type changes.
-8. Re-verify integration and BDD test coverage.
+8. Update this document.
+9. Run `make quality` and address Pydantic field/type changes.
+10. Re-verify integration and BDD coverage.
+
+Nothing needs updating for the served `$schema` values: `_SCHEMA_BASE`
+(`src/core/signing/trust_root.py`) derives them from `adcp.get_adcp_spec_version()`, so
+they move with the pin. They were literals until #1757, and the `$schema` assertion in
+`tests/integration/test_trust_root_documents.py` graded only that the KEY was present —
+so a bump would have left every trust-root document pointing at the previous version with
+nothing to catch it.
 
 ## Pinned schema sources
 
@@ -158,6 +189,8 @@ spec bump must consider it separately from the schema-shape pin above.
 
 - `pyproject.toml` — SDK pin
 - `tests/unit/test_adcp_spec_version.py` — CI guard
+- `tests/unit/test_adcp_conformance_vectors_pin.py` — conformance-vector pin guard
+- `tests/fixtures/adcp_conformance_vectors/` — the vendored, sha256-pinned vectors
 - `tests/helpers/pinned_schema.py` — single source of truth for schema-SHAPE resolution (the installed SDK's plain tree)
 - `tests/unit/test_pinned_schema_single_source.py` — pins that `pinned_schema.py` tracks the SDK's own version, not an independently vendored one
 - `tests/helpers/adcp_schema_validator.py` — e2e request/response validation, delegates to `pinned_schema.py`

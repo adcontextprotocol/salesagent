@@ -12,7 +12,12 @@ from typing import Any
 
 from pytest_bdd import given, parsers, then, when
 
-from tests.bdd.steps._outcome_helpers import _require_error, payload_or_none, require_payload
+from tests.bdd.steps._outcome_helpers import (
+    _require_error,
+    payload_or_none,
+    require_payload,
+    wire_error_envelope_or_none,
+)
 from tests.bdd.steps.generic.given_media_buy import _ensure_request_defaults
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1904,46 +1909,74 @@ def then_operation_succeeds(ctx: dict) -> None:
 
 @then(parsers.parse("the outcome should be {outcome}"))
 def then_outcome(ctx: dict, outcome: str) -> None:
-    """Dispatch assertion based on outcome text from partition/boundary tables."""
+    """Dispatch assertion based on outcome text from partition/boundary tables.
+
+    Wire-first (converging on uc004_delivery._assert_error_outcome, the
+    reference form): when the scenario names a canonical/pinned code and a wire
+    envelope was captured, assert the AdCP two-layer error the buyer receives
+    via ``result.assert_wire_error`` (recovery pin-sourced). assert_wire_error
+    HARD-FAILS on a non-pinned code (e.g. the scenario-only
+    DOMAIN_INVALID_FORMAT that production never emits), so those — and the
+    no-wire case — fall through to the reconstructed-exception branch.
+
+    The presence of that wire envelope is read through the single guarded
+    accessor ``wire_error_envelope_or_none`` (``_outcome_helpers.py``) rather
+    than off ``ctx['result'].wire_error_envelope`` by hand — the strict variant
+    that returns the REAL envelope or ``None``, which is exactly the
+    distinction ``assert_wire_error`` needs (it reads ``wire_error_envelope``
+    specifically and would raise its own misleading error on a
+    synthesized-only result, so ``wire_error_dict``'s IMPL fallback is the
+    wrong accessor here). Same shape as ``then_error.then_error_recovery``.
+    A non-``None`` envelope implies ``ctx['result']`` exists, so the wire
+    branch subscripts it directly.
+    """
     import re
 
     from adcp.types import Error as AdCPError
 
+    from tests.harness.transport import is_pinned_error_code
+
     outcome = outcome.strip()
-    if outcome.startswith("error"):
-        error = _require_error(ctx)
-        is_adcp_error = isinstance(error, AdCPError) or (isinstance(error, dict) and "code" in error)
-
-        # Extract expected error code from outcome string, e.g. 'error "CODE" ...'
-        code_match = re.search(r'"([^"]+)"', outcome)
-        expected_code = code_match.group(1) if code_match else None
-        actual_code: str | None = None
-
-        if expected_code and is_adcp_error:
-            actual_code = getattr(error, "code", None)
-            if actual_code is None and isinstance(error, dict):
-                actual_code = error.get("code")
-            assert actual_code, f"Expected error with code but got empty code. Error: {error}"
-            assert actual_code == expected_code, (
-                f"Expected error code '{expected_code}', got '{actual_code}'. Error: {error}"
-            )
-
-        # Verify suggestion only when the error code matches the scenario
-        # expectation.
-        codes_match = actual_code is not None and actual_code == expected_code
-        if "with suggestion" in outcome and is_adcp_error and codes_match:
-            suggestion = getattr(error, "suggestion", None)
-            if suggestion is None and isinstance(error, dict):
-                suggestion = error.get("suggestion")
-            if suggestion is None:
-                suggestion = getattr(error, "recovery", None)
-                if suggestion is None and isinstance(error, dict):
-                    suggestion = error.get("recovery")
-            assert suggestion is not None, f"Expected error with suggestion but none found. Error: {error}"
-    elif outcome.startswith("success"):
+    if outcome.startswith("success"):
         assert "error" not in ctx, f"Expected success but got error: {ctx.get('error')}"
-    else:
+        return
+    if not outcome.startswith("error"):
         raise ValueError(f"Unknown outcome format: {outcome}")
+
+    # Extract expected error code from outcome string, e.g. 'error "CODE" ...'
+    code_match = re.search(r'"([^"]+)"', outcome)
+    expected_code = code_match.group(1) if code_match else None
+    require_suggestion = "with suggestion" in outcome
+
+    if is_pinned_error_code(expected_code) and wire_error_envelope_or_none(ctx) is not None:
+        ctx["result"].assert_wire_error(expected_code, require_suggestion=require_suggestion)
+        return
+
+    # Reconstructed fallback: non-pinned scenario code, or no wire envelope.
+    error = _require_error(ctx)
+    is_adcp_error = isinstance(error, AdCPError) or (isinstance(error, dict) and "code" in error)
+    actual_code: str | None = None
+
+    if expected_code and is_adcp_error:
+        actual_code = getattr(error, "code", None)
+        if actual_code is None and isinstance(error, dict):
+            actual_code = error.get("code")
+        assert actual_code, f"Expected error with code but got empty code. Error: {error}"
+        assert actual_code == expected_code, (
+            f"Expected error code '{expected_code}', got '{actual_code}'. Error: {error}"
+        )
+
+    # Verify suggestion only when the error code matches the scenario expectation.
+    codes_match = actual_code is not None and actual_code == expected_code
+    if require_suggestion and is_adcp_error and codes_match:
+        suggestion = getattr(error, "suggestion", None)
+        if suggestion is None and isinstance(error, dict):
+            suggestion = error.get("suggestion")
+        if suggestion is None:
+            suggestion = getattr(error, "recovery", None)
+            if suggestion is None and isinstance(error, dict):
+                suggestion = error.get("recovery")
+        assert suggestion is not None, f"Expected error with suggestion but none found. Error: {error}"
 
 
 # --- Update-specific Then steps ---

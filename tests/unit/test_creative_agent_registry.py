@@ -1,15 +1,47 @@
 """Unit tests for Creative Agent Registry.
 
-``TestCreativeAgentRegistry`` (build/fetch against a mocked ``adcp.ADCPMultiAgentClient``)
-was retired by salesagent-4n88: the OPERATOR agent path no longer constructs
-that SDK client at all — it dials through the guarded MCP seam
-(``src.core.utils.mcp_client.call_mcp_tool``, reached through
-``src.core.utils.operator_mcp.call_operator_mcp_tool``) instead, via
-``_fetch_formats_operator``. Its behavioral contracts (auth propagation,
-connection-alias routing, error taxonomy) are re-expressed as integration
-tests against a real local origin in
-``tests/integration/test_creative_agent_operator_seam.py`` — the project's
-stated preference over mocking the thing under test's own dependency.
+``TestCreativeAgentRegistry`` — build/fetch against a mocked
+``adcp.ADCPMultiAgentClient`` — was retired by salesagent-4n88 / GH #1802: the
+OPERATOR agent path no longer constructs that SDK client at all. It dials through
+the guarded MCP seam (``src.core.utils.mcp_client.call_mcp_tool``, reached via
+``src.core.utils.operator_mcp.call_operator_mcp_tool``) from
+``CreativeAgentRegistry._fetch_formats_operator``, so ``_build_adcp_client``,
+``build_adcp_multi_agent_client`` and ``signed_agent_call`` no longer exist to
+test.
+
+Every obligation those tests carried survives, retargeted at the seam against a
+real local origin rather than a mock of the thing under test's own dependency:
+
+- auth propagation (custom ``auth_header``, absent header, per-agent routing) →
+  ``tests/integration/test_auth_header_propagation.py``
+  ``::TestAuthConfigForwardedToGuardedSeam``.
+- RFC 9421 signing (#1291 C3). This module's only signing surface was
+  ``mock_agent_client.signing = None`` — hygiene against the SDK's now-deleted
+  auto-signing. The obligation is now "the dial carries the tenant's per-attempt
+  ``sign=`` callback, resolved by ``request_signer_for_tenant``", graded by
+  ``test_auth_header_propagation.py::TestRequestSignerForwardedToGuardedSeam``.
+- error taxonomy (auth / timeout / connection → typed ``AdCPError``) →
+  ``tests/integration/test_operator_agent_mcp_seam_egress.py``
+  ``::TestOperatorAgentFailureIsClassifiedTerminalByCode`` and
+  ``tests/integration/test_format_fetch_transient_errors.py``. A dial-time
+  refusal is terminal, never retried or laundered, per
+  ``tests/integration/test_creative_agent_dial_refusal_recovery.py``.
+- no quiet failure on an anomalous response. The old "``submitted`` status must
+  raise, not return ``[]``" is now "a payload with no ``formats`` key raises
+  ``AdCPConfigurationError``", graded by
+  ``tests/unit/test_silent_empty_format_bug.py``.
+- format parsing, including library-``Format``-to-local-``Format`` conversion →
+  ``_validate_formats_tolerant``, graded by
+  ``tests/integration/test_operator_probe_agent.py`` and the schema-invalid
+  payload cases in ``test_operator_agent_mcp_seam_egress.py``.
+
+Genuinely retired with no successor: nothing behavioral. The three
+``_build_adcp_client`` construction tests asserted only ``client is not None`` /
+``hasattr(client, "agent")`` about a class the registry no longer instantiates;
+the auth mapping they were reaching for is the propagation obligation above.
+
+What remains here is the one contract that is still a pure unit: ``_cache_key``
+must accept a Pydantic ``AnyUrl``.
 """
 
 import pytest

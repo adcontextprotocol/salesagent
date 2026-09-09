@@ -49,10 +49,25 @@ from tests.harness.transport import Transport, TransportResult
 class TestWireResponseIsRealWire:
     """wire_response surfaces the real serialized success-path wire, per transport."""
 
-    # Envelope-only keys present only because A2A wraps the payload — absent
-    # from a bare payload reconstruction and from the REST HTTP body. MCP has no
-    # envelope-only keys anymore (see module docstring): its wire is checked
-    # separately via round-trip fidelity.
+    # A2A-only keys, present only because A2A wraps the payload:
+    # `_stamp_a2a_protocol_fields` (adcp_a2a_server.py, reached via
+    # `_serialize_for_a2a`) explicitly overwrites `message` with
+    # `str(response)` and derives `success` from the `errors` field — both are
+    # synthesized wrapper keys, always present, and genuinely absent from a
+    # bare payload reconstruction and from the REST HTTP body.
+    #
+    # MCP has NO equivalent wrapper-only marker anymore (GH #1710; see module
+    # docstring): MCP's `structured_content` is now built via
+    # `response.model_dump(mode="json")` — the identical call REST/A2A use —
+    # so MCP and REST wire shapes correctly converge (both honor
+    # `exclude_none=True` per AdCP 3.1.1 absent-means-absent). There is no
+    # longer a field present in MCP's wire but absent from REST's:
+    # `task_id`/`adcp_version` are optional payload fields that only ever
+    # "worked" as markers because MCP's old serialization bug preserved them
+    # as `null`; `status` is REQUIRED but is a payload field too, so it
+    # appears on REST's body identically. See
+    # `test_mcp_wire_is_real_wire_not_a_reconstruction` below for MCP's
+    # authenticity checks (payload provenance + round-trip fidelity) instead.
     ENVELOPE_MARKERS = {
         Transport.A2A: ("success", "message"),
     }
@@ -79,9 +94,10 @@ class TestWireResponseIsRealWire:
 
         A payload model_dump() exposes only the response model's fields (formats,
         creative_agents, pagination, ...). The A2A envelope adds success/message
-        (injected by ``_serialize_for_a2a``, not part of the response model) —
-        asserting these makes the oracle distinguish real serialized wire from a
-        reconstruction.
+        (injected by ``_serialize_for_a2a`` via ``_stamp_a2a_protocol_fields``, not
+        part of the response model), always present regardless of the payload's own
+        (unrelated, optional) ``message`` field — asserting these makes the oracle
+        distinguish real serialized wire from a reconstruction.
         """
         with CreativeFormatsEnv() as env:
             for transport, markers in self.ENVELOPE_MARKERS.items():
@@ -94,20 +110,41 @@ class TestWireResponseIsRealWire:
                         "looks like a payload reconstruction, not real wire"
                     )
 
-    def test_mcp_wire_round_trips_through_the_response_type(self, integration_db):
-        """MCP wire is a byte-faithful serialization of a valid response instance.
+    def test_mcp_wire_is_real_wire_not_a_reconstruction(self, integration_db):
+        """MCP wire is this run's payload, byte-faithfully serialized.
 
-        MCP has no envelope-only markers to assert (see module docstring): its
-        structured_content is now exactly ``response.model_dump(mode="json")``. A
-        fabricated/partial reconstruction would either fail to construct
-        ``ListCreativeFormatsResponse`` (missing/wrong-typed required fields) or
-        fail to re-dump identically (extra/dropped/differently-shaped fields), so
-        round-trip equality is the meaningful authenticity signal left post-fix.
+        MCP has no envelope-only marker left to assert (GH #1710; see module
+        docstring): its ``structured_content`` is now exactly
+        ``response.model_dump(mode="json")`` — the same call REST/A2A use — so
+        the two authenticity signals that remain are asserted together here:
+
+        1. **Provenance** — ``wire_response`` equals THIS run's typed payload's
+           own serialization. A harness bug that captured ``wire_response`` from
+           a different source (re-serializing with different kwargs, or stashing
+           a stale value from another call) diverges from this.
+        2. **Round-trip fidelity** — the wire parses back into
+           ``ListCreativeFormatsResponse`` and re-dumps identically. A
+           fabricated/partial reconstruction would either fail to construct
+           (missing/wrong-typed required fields) or fail to re-dump identically
+           (extra/dropped/differently-shaped fields).
+
+        Neither subsumes the other: (1) pins the wire to the run, (2) pins it to
+        the declared response schema.
         """
         with CreativeFormatsEnv() as env:
             result = env.call_via(Transport.MCP)
         assert isinstance(result.wire_response, dict), "MCP: wire_response not a dict"
         assert "formats" in result.wire_response, "MCP: wire_response missing formats"
+
+        # (1) provenance: the wire is this run's payload, not some other source
+        assert result.payload is not None, "MCP: no typed payload captured"
+        assert result.wire_response == result.payload.model_dump(mode="json"), (
+            "MCP wire_response diverged from payload.model_dump(mode='json') — "
+            "structured_content may no longer be sourced from the real wire"
+        )
+
+        # (2) round-trip fidelity: the wire is a complete, valid instance of the
+        # declared response type
         reparsed = ListCreativeFormatsResponse(**result.wire_response)
         assert reparsed.model_dump(mode="json") == result.wire_response, (
             "MCP wire_response does not round-trip through ListCreativeFormatsResponse — "
@@ -213,9 +250,19 @@ class TestHasWireIsDeclaredAtEveryConstructionSite:
             False,
             "in-process _impl returned — no wire by definition",
         ),
-        ("dispatchers.py", "A2ADispatcher.dispatch", 0): (
+        # A2A's construction MOVED out of ``A2ADispatcher.dispatch`` into the module-level
+        # ``a2a_transport_result``, which both A2A dispatch paths now share — one unwrap
+        # instead of the second copy that let the derived status reach one path and not
+        # the other. Two sites, because that helper has two legs.
+        ("dispatchers.py", "a2a_transport_result", 0): (
             True,
-            "success, downstream of the A2A artifact DataPart capture",
+            "success, downstream of the A2A artifact DataPart capture — the DataPart came back from the handler",
+        ),
+        ("dispatchers.py", "a2a_transport_result", 1): (
+            False,
+            "the credential-registration leg: a bare payload with no success-path wire captured by design "
+            "(_run_a2a_push_config_set — the operation dispatch owns that capture), so it declares no wire "
+            "rather than claiming one whose body it never stashed",
         ),
         ("dispatchers.py", "McpDispatcher.dispatch", 0): (
             True,
@@ -269,6 +316,10 @@ class TestHasWireIsDeclaredAtEveryConstructionSite:
     FIXTURE_CONSTRUCTORS: dict[str, str] = {
         "tests/integration/test_harness_wire_response.py": (
             "this module fabricates results to grade wire_field/wire_dict against a known declaration"
+        ),
+        "tests/harness/test_outcome_helpers_wire_contract.py": (
+            "fabricates results with a KNOWN has_wire to grade the outcome-helper accessors against a "
+            "declaration they did not make — a fixture, not a dispatcher declaring what its delivery did"
         ),
         "tests/unit/test_bdd_uc006_storyboard_dispatch_fault_is_not_xfail.py": (
             "mutation grader: fabricates the ctx an injected REST 500 leaves behind (has_wire=True — that "
@@ -398,7 +449,7 @@ class TestWireReadersBranchOnTheDeclaration:
     def test_readers_raise_when_a_declared_wire_was_not_stashed(self, payload):
         """has_wire with no wire_response is a harness bug — raise, never serialize."""
         result = TransportResult(payload=payload, wire_response=None, has_wire=True)
-        ctx = {"result": result, "response": payload, "wire_response": None}
+        ctx = {"result": result, "response": payload, "wire_response": None, "transport": Transport.REST}
         for reader, args in ((wire_field, (ctx, "formats")), (wire_dict, (ctx,))):
             with pytest.raises(AssertionError, match="wire_response"):
                 reader(*args)
@@ -408,14 +459,19 @@ class TestWireReadersBranchOnTheDeclaration:
         stashed = {"formats": [{"format_id": {"agent_url": "https://x.test", "id": "sentinel"}}]}
         assert stashed != payload.model_dump(mode="json")
         result = TransportResult(payload=payload, wire_response=stashed, has_wire=True)
-        ctx = {"result": result, "response": payload, "wire_response": stashed}
+        ctx = {"result": result, "response": payload, "wire_response": stashed, "transport": Transport.REST}
         assert wire_dict(ctx) == stashed
         assert wire_field(ctx, "formats") == stashed["formats"]
 
     def test_readers_use_the_production_serializer_only_when_no_wire_is_declared(self, payload):
-        """has_wire=False is the ONLY path onto the serializer."""
+        """has_wire=False is the ONLY path onto the serializer.
+
+        ``Transport.IMPL``, not a real-wire transport: this row's declaration IS "no
+        wire", and the two must agree — a REST leg declaring it captured nothing is a
+        contradiction the loud guard exists to refuse, not a serializer case.
+        """
         result = TransportResult(payload=payload, wire_response=None, has_wire=False)
-        ctx = {"result": result, "response": payload, "wire_response": None}
+        ctx = {"result": result, "response": payload, "wire_response": None, "transport": Transport.IMPL}
         serialized = payload.model_dump(mode="json")
         assert wire_dict(ctx) == serialized
         assert wire_field(ctx, "formats") == serialized["formats"]
@@ -428,7 +484,10 @@ class TestWireReadersBranchOnTheDeclaration:
         so a dispatch that THREW lands here and must not be misdiagnosed as "never
         dispatched".
         """
-        ctx = {"response": payload, "error": RuntimeError("boom-from-dispatch")}
+        # A transport IS declared: without one the readers stop at the unset-transport
+        # guard, which is a different diagnostic and would let this test pass without
+        # ever reaching the missing-``result`` message it exists to pin.
+        ctx = {"response": payload, "error": RuntimeError("boom-from-dispatch"), "transport": Transport.REST}
         for reader, args in ((wire_field, (ctx, "formats")), (wire_dict, (ctx,))):
             with pytest.raises(AssertionError, match="boom-from-dispatch"):
                 reader(*args)

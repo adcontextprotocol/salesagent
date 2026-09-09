@@ -20,7 +20,7 @@ from rich.console import Console
 from src.core.exceptions import (
     AdCPError,
     AdCPValidationError,
-    to_wire_error_code,
+    normalize_advisory_errors,
 )
 from src.core.helpers import enum_value
 from src.core.tool_context import ToolContext
@@ -112,6 +112,7 @@ from src.core.tools._media_buy_status import (
     NO_MORE_DATA_STATUSES,
     resolve_canonical_status,
 )
+from src.core.transport_helpers import NOT_PROVIDED, IdentityOrNotProvided, resolve_identity_if_not_provided
 from src.core.utils import utc_flight_end, utc_flight_start
 from src.core.validation_helpers import adcp_validation_boundary
 
@@ -141,24 +142,6 @@ def _simulation_clock(buy: MediaBuy, testing_ctx: "AdCPTestContext", default_dt:
         )
         return simulated, True
     return default_dt, False
-
-
-def _normalize_advisory_errors(errors: list[Error]) -> list[Error]:
-    """Re-code hand-built ``errors[]`` advisories to guaranteed-standard wire codes.
-
-    Unlike a raised ``AdCPError`` (translated at the transport boundary), advisory
-    entries serialize verbatim, so an internal-only code would leak to the buyer.
-    ``to_wire_error_code`` both translates mapped codes AND collapses anything
-    still non-standard to ``SERVICE_UNAVAILABLE``, so no internal code can reach
-    the buyer even if a future advisory is built with an unmapped internal code.
-    """
-    return [
-        Error(  # structural-guard: advisory per-buy result in GetMediaBuyDeliveryResponse.errors[]
-            code=to_wire_error_code(e.code),
-            message=e.message,
-        )
-        for e in errors
-    ]
 
 
 def _is_circuit_breaker_open(tenant_id: str) -> bool:
@@ -663,9 +646,8 @@ def _get_media_buy_delivery_impl(
             total_spend / total_conversions if total_conversions is not None and total_conversions > 0 else None
         )
 
-        # Normalize advisory error codes to guaranteed-standard wire codes
-        # (see _normalize_advisory_errors for why this can't leak an internal code).
-        advisory_errors = _normalize_advisory_errors(not_found_errors + adapter_errors)
+        # Normalize advisory error codes to guaranteed-standard wire codes.
+        advisory_errors = normalize_advisory_errors(not_found_errors + adapter_errors)
 
         # Create AdCP-compliant response
         context_val = req.context
@@ -818,7 +800,7 @@ def get_media_buy_delivery_raw(
     account: LibraryAccountReference | None = None,
     context: ContextObject | None = None,
     ctx: Context | ToolContext | None = None,
-    identity: ResolvedIdentity | None = None,
+    identity: IdentityOrNotProvided = NOT_PROVIDED,
 ):
     """Get delivery metrics for media buys (raw function for A2A server use).
 
@@ -838,10 +820,7 @@ def get_media_buy_delivery_raw(
     Returns:
         GetMediaBuyDeliveryResponse with delivery metrics
     """
-    if identity is None:
-        from src.core.transport_helpers import resolve_identity_from_context
-
-        identity = resolve_identity_from_context(ctx)
+    identity = resolve_identity_if_not_provided(identity, ctx)
 
     # Handle account resolution at boundary (same as sync_creatives pattern)
     if account is not None and identity is not None:

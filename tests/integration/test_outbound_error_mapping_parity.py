@@ -68,7 +68,7 @@ from src.core.helpers.outbound_error_mapping import raise_mapped_mcp_error, rais
 from src.core.security.outbound_http import OperatorEndpoint, OutboundDeliveryFailed, send
 from src.core.utils.mcp_client import MCPConnectionError
 from tests.helpers import assert_envelope_shape
-from tests.integration.test_outbound_http import fast_backoff, rate_limited, set_flags
+from tests.helpers.egress_backoff import fast_backoff, rate_limited, set_flags
 
 pytestmark = [pytest.mark.integration]
 

@@ -77,30 +77,145 @@ def _wire_or_none(ctx: dict) -> dict | None:
     return result.require_wire()
 
 
-def wire_field(ctx: dict, field: str) -> Any:
-    """Return a top-level success-response field as the buyer sees it on the wire.
+class _WireMissing:
+    """Type of :data:`WIRE_MISSING` — exists only to give it a readable repr."""
 
-    A dispatch that crossed a wire exposes the real success-path body; one that
-    did not (an in-process call) has none, so the typed payload is serialized
-    through the production serializer — the same path that produces wire bytes
-    for the other transports. Which case applies is read from the dispatcher's
-    own declaration, not guessed here; see :func:`_wire_or_none`.
+    def __repr__(self) -> str:  # pragma: no cover - diagnostics only
+        return "<absent from wire>"
+
+
+#: Sentinel distinguishing "the path is not on the wire at all" from "the path is
+#: present and carries a JSON null". The two are different contract violations and
+#: must never collapse: an unset optional object is ABSENT on a conformant wire, so
+#: a serialized ``null`` is a schema-invalid serialization, not an absence.
+WIRE_MISSING = _WireMissing()
+
+
+def _wire_body(ctx: dict) -> dict:
+    """The serialized success-path wire body, behind the loud guard.
+
+    Sole guard implementation for :func:`wire_field`, :func:`wire_dict` and
+    :func:`wire_absent` — three copies of it would be exactly the duplication the
+    canonical-helper rule exists to prevent.
+
+    Three reads, in this order, and the order is the contract:
+
+    1. **A stashed ``ctx["wire_response"]`` wins outright**, even over a stale
+       ``ctx["error"]``: it is a real wire that was really captured. It is read
+       before the declaration because ``when_request._call_via`` writes it
+       without necessarily rewriting ``ctx["result"]``, so a caller that
+       re-dispatched would otherwise be graded against the STALE result.
+    2. **A scenario that actually ERRORED says so, and names the error.**
+       Without this the wire guard below fires first and reports a missing wire
+       — blaming the harness for what is really a failed request, the single
+       most misleading diagnostic these helpers can emit.
+    3. **Otherwise the DISPATCHER'S DECLARATION decides** (:func:`_wire_or_none`
+       -> ``TransportResult.has_wire``). ``has_wire`` and nothing stashed is a
+       harness bug and raises there; no ``TransportResult`` at all means the When
+       step never dispatched through ``dispatch_request``/``_call_via``, so there
+       is no declaration and any answer here would be a guess — that raises too,
+       which is what keeps GH #1744 closed. Only a dispatcher that DECLARED there
+       is no wire reaches the serializer.
+
+    That third read used to compare ``ctx["transport"]`` against the in-process
+    transport member and fall back to ``model_dump`` for it. Two defects in one
+    expression: it inferred wire-presence from transport IDENTITY (the enum
+    member is being deleted, and a lookup miss would have silently reclassified
+    every result), and a ctx carrying that member but no ``TransportResult``
+    reached the serializer with no dispatcher having declared anything — a wire
+    assertion that graded a serializer round-trip. The declaration cannot be
+    spoofed by a ctx key, so both close together.
     """
-    return wire_dict(ctx)[field]
+    wire = ctx.get("wire_response")
+    if wire is not None:
+        return wire
+    error = ctx.get("error")
+    if error is not None and ctx.get("response") is None:
+        raise AssertionError(f"expected a success response, got error: {error!r}")
+    # The guarded read itself lives on TransportResult (#1941): one implementation,
+    # shared with the integration tests asserting the same thing, so a step
+    # definition cannot drift from them.
+    body = _wire_or_none(ctx)
+    if body is not None:
+        return body
+    # DECLARED no wire — serialize the typed payload through the production
+    # serializer. _require_response preserves the diagnostic if a (reused) sibling
+    # scenario hit an error path, instead of a bare ctx["response"] KeyError.
+    return _require_response(ctx).model_dump(mode="json")
 
 
-def wire_dict(ctx: dict) -> dict:
-    """Return the full success-path wire body as the buyer sees it on the wire.
+def wire_lookup(ctx: dict, path: str) -> Any:
+    """Resolve a dotted path on the success-path wire, or :data:`WIRE_MISSING` if absent.
+
+    ``"a"`` reads a top-level key; ``"a.b.c"`` walks nested objects. A hop through a
+    non-dict (e.g. a list or a scalar) counts as an absence rather than raising.
+
+    This is the shared resolver behind :func:`wire_field` / :func:`wire_dict` /
+    :func:`wire_absent`, exposed for the genuinely TRI-STATE oracle — one whose
+    contract is "absent, or present with this value" (an outline column grading
+    ``absent or false``; a conditional Then that only grades a block when the seller
+    emits it). It ASSERTS NOTHING, so it is a primitive, not a competing assertion
+    surface: whenever the oracle is binary, reach for wire_field/wire_absent instead,
+    and never rebuild a private dotted-path resolver on top of this one.
+    """
+    cur: Any = _wire_body(ctx)
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return WIRE_MISSING
+        cur = cur[part]
+    return cur
+
+
+def wire_field(ctx: dict, field: str) -> Any:
+    """Return a success-response field, by dotted path, as the buyer sees it on the wire.
+
+    ``field`` is a dotted path (``"media_buy.features.sandbox"``), of which a bare
+    top-level key is the one-segment case.
+
+    DUAL assert — the path must be both present AND non-null:
+
+    - **absent** fails, naming the top-level keys actually on the wire;
+    - **present but JSON null** fails too. These are optional object/array fields
+      whose schemas do not admit ``null``, so a null on the wire is a serialization
+      defect, not a populated section (observed on MCP ``structured_content``, which
+      serializes unset ``None`` fields; #1592). Downgrading this to a presence-only
+      check would silently reintroduce the vacuous-pass class this helper exists to
+      catch — see :func:`wire_absent` for the symmetric rule.
+    """
+    value = wire_lookup(ctx, field)
+    assert value is not WIRE_MISSING, f"{field!r} absent from wire response (top-level keys: {sorted(_wire_body(ctx))})"
+    assert value is not None, f"{field!r} is JSON null on the wire — schema-invalid serialization of an unset field"
+    return value
+
+
+def wire_dict(ctx: dict, path: str | None = None) -> dict:
+    """Return the success-path wire body — the whole envelope, or the object at *path*.
 
     The dict analogue of :func:`wire_field` — use when an oracle must test key
     PRESENCE/ABSENCE (e.g. an optional field) rather than read one known field.
-    Shares the same loud guard and the same source of truth: see
-    :func:`_wire_or_none`.
+    With ``path``, resolves the same dotted path :func:`wire_field` does (same
+    absent/null dual assert) and additionally pins that the resolved value IS a
+    JSON object, so a caller that goes on to index it cannot fail with a confusing
+    ``TypeError`` on a scalar. Shares the same loud guard on a non-stashing env.
     """
-    wire = _wire_or_none(ctx)
-    if wire is not None:
-        return wire
-    return require_payload(ctx).model_dump(mode="json")
+    doc = _wire_body(ctx)
+    if path is None:
+        return doc
+    value = wire_field(ctx, path)
+    assert isinstance(value, dict), f"{path!r} is not a JSON object on the wire: {value!r}"
+    return value
+
+
+def wire_absent(ctx: dict, path: str) -> None:
+    """Assert the dotted *path* is not present on the success-path wire at all.
+
+    The strict complement of :func:`wire_field`: only the missing key counts as
+    absent. A path that resolves to a JSON ``null`` is PRESENT and therefore FAILS
+    here — an unset optional section must not appear on the wire at all, and a
+    serialized ``null`` is the schema-invalid emission this asserts against.
+    """
+    value = wire_lookup(ctx, path)
+    assert value is WIRE_MISSING, f"{path!r} unexpectedly present on the wire: {value!r}"
 
 
 def assert_wire_rejection(ctx: dict, code: str, *, recovery: str, field: str) -> None:
@@ -176,7 +291,15 @@ def wire_error_dict(ctx: dict) -> dict:
     was the spelling ``wire_dict`` moved off: it infers wire-presence from which
     enum member is in play instead of from the dispatcher's own ``has_wire``
     declaration, and it reached for a ``synthesized_error_envelope`` attribute
-    that is now the private ``_synthesized_error_envelope``.
+    that is now the private ``_synthesized_error_envelope`` — so the old body
+    could only ever have taken the assert-and-fail branch on IMPL.
+
+    Moving the branch onto the declaration KEEPS the GH #1744 property the
+    ``_wire_body`` guard states in transport terms: an unset transport is a
+    caller that never dispatched, so it has no ``TransportResult`` and
+    :func:`_require` raises here — it can no longer reach a synthesized
+    fallback and grade the error against what the translator WOULD have emitted
+    instead of what the wire actually carried.
     """
     result = _require(ctx, "result", hint="expected an error dispatch")
     return result.error_envelope()
@@ -198,6 +321,25 @@ def _require(ctx: dict, key: str, *, hint: str | None = None) -> object:
     detail = f" {hint}" if hint else ""
     assert val is not None, f"Expected ctx[{key!r}] in ctx but none found.{detail} Recorded error: {ctx.get('error')!r}"
     return val
+
+
+def _require_response(ctx: dict) -> object:
+    """Return ctx["response"], failing with a diagnostic if it is absent.
+
+    Then steps assert on the response produced by a prior When step. Reading
+    ``ctx["response"]`` by subscript raises a bare ``KeyError`` when the
+    operation errored (only ``ctx["error"]`` was set) — giving no hint why.
+    This helper raises an ``AssertionError`` that names the missing response
+    and surfaces any recorded error instead.
+
+    Kept for the modules still on the detached ``ctx["response"]`` copy
+    (``uc011_accounts``, ``test_uc018_list_creatives``) and for
+    :func:`_wire_body`'s declared-no-wire fallback, whose contract test hands it
+    a ctx carrying only ``response``. Everything reached by ``dispatch_request``
+    reads :func:`require_payload` instead, which gets the payload WITH its
+    provenance; this one disappears when those modules migrate.
+    """
+    return _require(ctx, "response", hint="The operation may have errored instead of returning.")
 
 
 def payload_or_none(ctx: dict) -> object | None:
@@ -286,7 +428,16 @@ def _get_response_field(resp: object, field: str) -> object:
 
 
 def is_e2e(ctx: dict) -> bool:
-    """Check if the current transport is E2E (Docker-based)."""
+    """Check if the current transport is E2E (Docker-based).
+
+    FIXME(#1757): silent default — an unset transport reads as "not e2e" here, so a
+    caller that branches on this skips its e2e assertions instead of reporting the
+    missing setup. Same class as the twin site ``then_payload._is_e2e``, which was
+    converted to the raising form in salesagent-n78j0.1.5; this one has ~25 callers
+    across UC-002/003/006 including Given steps, so it needs its own measured BDD
+    slice rather than a drive-by change. Tracked as its own task, not suppressed by
+    any allowlist.
+    """
     transport = ctx.get("transport")
     return transport is not None and hasattr(transport, "value") and str(transport.value).startswith("e2e_")
 

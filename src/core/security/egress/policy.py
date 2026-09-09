@@ -30,9 +30,8 @@ import logging
 from typing import NamedTuple
 from urllib.parse import ParseResult, urlparse
 
-from adcp.signing import SSRFValidationError, resolve_and_validate_host
-
 from src.core.exceptions import AdCPBlockedUrlError, AdCPError
+from src.core.signing_contract import SSRFValidationError, resolve_and_validate_host
 
 logger = logging.getLogger(__name__)
 

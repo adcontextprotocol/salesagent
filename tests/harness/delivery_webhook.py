@@ -54,6 +54,11 @@ class WebhookEnv(WebhookMixin, IntegrationEnv):
     # ADCP_OUTBOUND_ALLOW_PRIVATE / _INSECURE for the loopback origin, which is the
     # seam's own supported way to say "this one address is fine" — the in-repo twin
     # the old docstring promised would be deleted at exactly this point.
+    # ``WEBHOOK_VALIDATE_EXTERNAL_PATCH`` is deliberately NOT spread in here. The
+    # signing branch only replaced this env's hardcoded validator target with that
+    # shared constant; the destination-policy patch itself is now gone from this
+    # env entirely, so there is no target left to name. The remaining envs that do
+    # program the validator (``delivery_webhook_unit``) still import the constant.
     EXTERNAL_PATCHES = {
         "sleep": "src.core.security.outbound_http.time.sleep",
     }

@@ -73,19 +73,34 @@ def assert_envelope_shape(
         message_substr: If provided, must appear in ``errors[0].message``.
                 ``adcp_error.message`` is allowed to differ (it carries the
                 envelope-level summary).
-        field: If provided, both ``adcp_error.field`` and ``errors[0].field``
-                must equal this JSONPath-lite path into the buyer's request
-                payload (``core/error.json`` @3.1.1 — e.g.
-                ``property_list.agent_url``). Checked on BOTH layers for the
-                same reason ``recovery`` is: the pinned storyboards read both
-                in the wild — ``proposal_finalize.yaml:207/352/397`` grade
+        field: If provided, the ``core/error.json`` ``field`` pointer naming
+                WHICH request field was rejected — a JSONPath-lite path into
+                the buyer's request payload (``core/error.json`` @3.1.1, e.g.
+                ``property_list.agent_url``). Both ``errors[0].field`` and
+                ``adcp_error.field`` must equal it exactly, checked on BOTH
+                layers for the same reason ``recovery`` is: the pinned
+                storyboards read both in the wild —
+                ``proposal_finalize.yaml:207/352/397`` grade
                 ``adcp_error.field`` while the other scenarios grade
                 ``errors[0].field`` — and ``error-handling.mdx:88`` calls
                 populating only one layer "the source-of-truth for most
-                interop bugs". ``None`` (the default) does not assert absence:
-                ``field`` is optional in the schema, so most envelopes legally
-                carry none. A call site that needs "no ``field`` key at all"
-                asserts that itself.
+                interop bugs". ``errors[0].field`` is the CANONICAL protocol
+                position and is therefore asserted — and reported — first;
+                ``adcp_error.field`` is the envelope-level mirror
+                ``build_two_layer_error_envelope`` copies out of ``errors[0]``,
+                so a divergence is a mirroring bug and reads best after the
+                canonical layer has already been pinned. Asserted at the
+                protocol top level of each layer only: a copy buried in the
+                free-form ``details`` dict is not at the protocol position and
+                does not satisfy the contract (same burial rule as
+                ``extract_wire_suggestion``). ``None`` (the default) does not
+                assert absence: ``field`` is optional in the schema, so most
+                envelopes legally carry none. A call site that needs "no
+                ``field`` key at all" asserts that itself. This lives here, on
+                the one envelope primitive, rather than as a second
+                free-function error surface — a parallel error-assertion
+                mechanism is exactly what step definitions must not have to
+                choose between.
         check_mcp_tool_error: If ``True``, additionally assert that ``target``
                 is an ``AdCPToolError`` instance before reading its envelope.
                 MCP-boundary call sites use this to pin the exception type as
@@ -125,11 +140,14 @@ def assert_envelope_shape(
     )
 
     if field is not None:
-        assert body["adcp_error"].get("field") == field, (
-            f"adcp_error.field={body['adcp_error'].get('field')!r}, expected {field!r}"
-        )
+        # errors[0] is the canonical protocol position, so it is pinned (and
+        # reported) FIRST; adcp_error is the envelope-level mirror that
+        # build_two_layer_error_envelope copies out of errors[0].
         assert body["errors"][0].get("field") == field, (
             f"errors[0].field={body['errors'][0].get('field')!r}, expected {field!r}"
+        )
+        assert body["adcp_error"].get("field") == field, (
+            f"adcp_error.field={body['adcp_error'].get('field')!r}, expected {field!r}"
         )
 
     if message_substr is not None:

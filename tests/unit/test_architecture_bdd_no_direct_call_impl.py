@@ -27,12 +27,21 @@ _BDD_STEPS_DIR = Path(__file__).resolve().parents[1] / "bdd" / "steps"
 # Functions that legitimately bypass transport dispatch.
 # Each entry: (filename_stem, function_name).
 # This allowlist can only shrink — never add new entries.
-_ALLOWLIST: set[tuple[str, str]] = {
-    # FIXME(#1880): cross-cutting list under sync env —
-    # AccountSyncEnv can't dispatch list_accounts requests
-    ("uc011_accounts", "when_list_accounts_unfiltered"),
-    ("uc011_accounts", "when_list_sandbox_filter"),
-}
+#
+# EMPTY, and emptied by the staleness test below rather than by a decision. Its two
+# rows were ``uc011_accounts.when_list_accounts_unfiltered`` and
+# ``.when_list_sandbox_filter``; both stopped calling ``_list_accounts_impl`` in their
+# own bodies when the two copies of that bypass were extracted into the shared
+# ``_self_dispatch_list`` helper. Neither step needs a row now: the extraction left the
+# ``# TRANSPORT-BYPASS`` marker at both call sites, which is this guard's own sanctioned
+# hatch and is what ``_scan_bdd_steps`` reads. The underlying bypass is unchanged and
+# still carries FIXME(#1880) on the helper — it goes away when list_accounts dispatches
+# on the wire.
+#
+# Note for whoever closes #1880: ``_has_direct_impl_call`` walks a step's OWN body only,
+# so a bypass moved into a helper is invisible to the scan and rests entirely on the
+# marker comment. Widening the scan to follow same-module helpers is the real close.
+_ALLOWLIST: set[tuple[str, str]] = set()
 
 
 def _is_when_or_given_decorated(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

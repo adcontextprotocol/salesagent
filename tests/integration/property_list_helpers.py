@@ -27,11 +27,10 @@ from typing import Any
 
 from adcp.types import PropertyListReference
 
-from tests.helpers.local_http_origin import LocalOrigin
-
 # Reuse the seam suite's flag helper rather than restating the variable names:
 # a third spelling of "both hatches, explicitly" is a third thing to get wrong.
-from tests.integration.test_outbound_http import set_flags
+from tests.helpers.egress_backoff import set_flags
+from tests.helpers.local_http_origin import LocalOrigin
 
 DEFAULT_LIST_ID = "test_list"
 

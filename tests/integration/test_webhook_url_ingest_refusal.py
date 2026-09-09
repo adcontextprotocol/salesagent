@@ -77,6 +77,9 @@ from tests.harness.media_buy_dual import MediaBuyDualEnv
 from tests.harness.transport import Transport
 from tests.helpers import assert_envelope_shape
 from tests.helpers.adcp_factories import create_test_media_buy_request_dict
+from tests.integration._egress_ingest_helpers import (
+    _assert_no_push_config_persisted,
+)
 from tests.integration.property_list_helpers import enforce_egress_policy
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
@@ -203,24 +206,6 @@ def _assert_registration_suggestion(envelope: dict, surface: str) -> None:
         )
 
 
-def _assert_no_push_config_persisted(tenant_id: str, principal_id: str) -> None:
-    """The refused URL left no push_notification_configs row.
-
-    The repository upsert is the single write funnel for this table
-    (GH #1697 disposition row 19: the repository is the verification
-    point, deliberately not the fix site), so an empty active list for the
-    principal IS "the refusal preceded the store".
-    """
-    from src.core.database.repositories.uow import PushNotificationConfigUoW
-
-    with PushNotificationConfigUoW(tenant_id) as uow:
-        assert uow.push_notification_configs is not None
-        persisted = uow.push_notification_configs.list_active_by_principal(principal_id)
-    assert persisted == [], (
-        f"a refused push_notification_config.url must not be persisted, found {[(c.id, c.url) for c in persisted]}"
-    )
-
-
 def _create_kwargs(product) -> dict:
     """A fully valid create_media_buy request (real product/pricing chain).
 
@@ -277,7 +262,7 @@ class TestCreateMediaBuyRefusedPushNotificationConfigUrl:
         fact rather than the seam's own metadata-outranks-the-override behaviour, which
         is graded separately in ``tests/integration/test_outbound_http.py``.
         """
-        from tests.integration.test_outbound_http import set_flags
+        from tests.helpers.egress_backoff import set_flags
 
         set_flags(monkeypatch, private=True)
 

@@ -33,9 +33,9 @@ sys.path.insert(0, str(REPO_ROOT))
 # node ids by identity rather than by size.
 #
 # The set spans BOTH sources, deliberately. The literal `ENV_ROUTES` block holds
-# 20 wired rows; `ENV_ROUTES +=` appends 5 more from `_UC_BUCKET_ROUTES` at
-# import time. "How many wired rows are there" therefore has two answers (20 and
-# 25), and a floor that does not say which it means is itself an ambiguous
+# 21 wired rows; `ENV_ROUTES +=` appends 5 more from `_UC_BUCKET_ROUTES` at
+# import time. "How many wired rows are there" therefore has two answers (21 and
+# 26), and a floor that does not say which it means is itself an ambiguous
 # counter. This pins the runtime set — what actually routes scenarios.
 #
 # Discipline, matching EXPECTED_LEDGER in test_storyboard_ledger_state.py:
@@ -66,6 +66,14 @@ EXPECTED_WIRED_ROUTES: frozenset[str] = frozenset(
         "uc004-create",
         "uc004-poll",
         "uc006-creative-sync",
+        # UC-010 was wired on the signing branch while this floor was landing on
+        # main; the merge brought a wired row that no pin covered. The row builds
+        # a real `CapabilitiesEnv` (`_build_capabilities_env`) with
+        # `xfail_reason=None` and routes every tag in `_UC010_WIRED_TAGS` — the
+        # UC's placeholder rows (`uc010-parked-*`, `uc010-not-wired`) stay
+        # unpinned, as placeholders must. This is a pin ADDED alongside the
+        # graduation it records, one commit late.
+        "uc010-capabilities",
         "uc019-post-create-poll",
         "uc011-list",
         "uc011-sync",

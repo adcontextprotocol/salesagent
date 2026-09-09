@@ -467,16 +467,26 @@ Feature: BR-UC-003 Update Media Buy
     | paused       | true        |
     When the Buyer Agent sends the update_media_buy request
     Then the operation should fail
-    And the error code should be "AUTH_REQUIRED"
+    And the error code should be "AUTH_MISSING"
     And the error message should contain "authentication"
     And the error should include "suggestion" field
-    And the suggestion should contain "valid credentials"
+    And the suggestion should contain "credentials"
     # POST-F1: System state unchanged
     # POST-F2: Error explains authentication failed
-    # POST-F3: Suggestion to obtain valid credentials
+    # POST-F3: Suggestion to obtain credentials
 
   @T-UC-003-ext-a-unknown @extension @ext-a @error @post-f1 @post-f2 @post-f3
   Scenario: Authentication error -- principal not found in database
+    # NOTE (salesagent-mkso, salesagent-otc5, salesagent-z9e0): a principal_id
+    # with no backing DB row resolves to identity.principal_id=None (the real
+    # resolve_identity() nulls it on a failed token->principal lookup, and the
+    # BDD harness's identity_for() now mirrors that — salesagent-z9e0). So
+    # require_principal_id fires FIRST with AUTH_MISSING, before
+    # update_media_buy's ownership check (AdCPAuthorizationError /
+    # PERMISSION_DENIED, salesagent-otc5) is ever reached — that check only
+    # fires for a principal_id that resolved but doesn't own the media buy, a
+    # genuinely different case from "principal_id never resolved". This now
+    # matches the scenario's own title on every transport.
     Given the Buyer is authenticated as principal "unknown_principal"
     And the principal "unknown_principal" does not exist in the database
     And a valid update_media_buy request with:
@@ -485,7 +495,7 @@ Feature: BR-UC-003 Update Media Buy
     | paused       | true        |
     When the Buyer Agent sends the update_media_buy request
     Then the operation should fail
-    And the error code should be "AUTH_REQUIRED"
+    And the error code should be "AUTH_MISSING"
     And the error should include "suggestion" field
     # POST-F1: System state unchanged
     # POST-F2: Error explains principal not found
@@ -2209,6 +2219,17 @@ Feature: BR-UC-003 Update Media Buy
     Then the operation should fail
     And the error code should be "VALIDATION_ERROR"
     And the error should include "suggestion" field
+    And the suggestion should contain "authorized"
+    # LOCAL DIVERGENCE from the generated scenario — mirror upstream in adcp-req.
+    # The three Thens above are satisfied by ANY VALIDATION_ERROR carrying a
+    # suggestion, and on [mcp] one arrives for an unrelated reason: update_media_buy
+    # types its parameters, so the spec-defined `invoice_recipient` field (present in
+    # update-media-buy-request.json @ v3.1.1) is refused as an "Unexpected keyword
+    # argument" before any authorization check runs. That made this strict-xfail
+    # XPASS on [mcp] alone while the production gap it ledgers — BR-RULE-214 is not
+    # implemented on any transport — was untouched. The suggestion is what tells the
+    # two refusals apart: POST-F3 below requires it to offer an AUTHORIZED recipient,
+    # which a schema-shape rejection cannot say.
     # BR-RULE-214 INV-8: invoice_recipient override must be authorized for the account before the operation proceeds
     # POST-F1: System state unchanged (no billing redirected); POST-F3: omit override or supply an authorized recipient
     # @source repo=adcp ref=v3.1.1 commit=467fd93d7 path=static/schemas/source/media-buy/update-media-buy-request.json

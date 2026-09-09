@@ -486,6 +486,18 @@ def test_slack(tenant_id):
             # dial the raw egress seam, duplicating what slack_notifier already does
             # — and skipping its retry/record bookkeeping in the process.
             #
+            # The SEND-time re-judgement this route used to spell out for itself is
+            # preserved, not dropped: the stored URL is never trusted because
+            # settings.update_slack gated it on WRITE (redirect_if_url_blocked). This
+            # row may predate that gate or have been edited straight into the
+            # database. send_message -> webhook_delivery.deliver_webhook_with_retry ->
+            # the egress seam re-runs EgressPolicy.resolve_for_dial, which re-resolves
+            # DNS at dial time and raises OutboundRequestBlocked on refusal. That is
+            # strictly LOUDER than the helper it replaces: a write-time verdict cannot
+            # see a hostname that was re-pointed afterwards, and the seam also refuses
+            # to chase redirects. One shared sender, so this path cannot drift onto a
+            # different policy from the other stored-URL senders.
+            #
             # max_retries=1 is preserved deliberately: a test notification that
             # silently sends three times is worse than one that fails visibly. That
             # decision predates this change and survives it; the notifier grew a
@@ -519,12 +531,22 @@ def test_slack(tenant_id):
 
             if not sent:
                 # Same contract the OutboundError arm used to serve: 400 with an
-                # opaque message. Slack's own response body is a counterparty
-                # response and is never echoed back to the operator.
+                # opaque message. An egress refusal is reported, never swallowed —
+                # the cause is logged by the seam but never returned, because it
+                # names the destination policy and our topology (AdCP 3.1.1
+                # L1/security.mdx:104-119 step 6). Slack's own response body is a
+                # counterparty response and is likewise never echoed to the operator.
                 return jsonify({"success": False, "error": "Slack webhook delivery failed"}), 400
 
             return jsonify({"success": True, "message": "Test message sent successfully"})
 
+    # No `except requests.exceptions.RequestException` here, deliberately: this send
+    # goes through the egress seam, which reports transport failure and destination
+    # refusal as a False return rather than by raising `requests` types at this
+    # frame. The handler that used to sit here outlived its `import requests`, so it
+    # was both unreachable AND a NameError if anything had reached it -- it would
+    # have masked the real exception with a lookup failure. mypy
+    # --check-untyped-defs caught it (name-defined, ADR-009 / #1611).
     except Exception as e:
         logger.error(f"Unexpected error testing Slack: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Internal server error"}), 500

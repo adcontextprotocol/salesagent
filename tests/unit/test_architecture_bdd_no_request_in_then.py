@@ -76,11 +76,22 @@ _DISPATCH_IN_THEN_ALLOWLIST: set[str] = {
     # was migrated from env.call_impl to the shared wire dispatcher
     # (dispatch_request) so that, when these scenarios are wired, they exercise
     # the parametrized transport on the wire (#1417). Rate limiting and
-    # payload size remain spec-production gaps (FIXME: no GitHub issue filed).
-    "bdd/steps/domain/uc002_nfr.py:126 then_auth_before_business_logic",
-    "bdd/steps/domain/uc002_nfr.py:190 then_rate_limiting_enforced",
-    "bdd/steps/domain/uc002_nfr.py:236 then_payload_size_limits",
-    "bdd/steps/domain/uc002_nfr.py:411 then_budget_validated_against_min_order",
+    # payload size remain spec-production gaps (FIXME: no GitHub issue filed —
+    # the original tracker id was emptied by an earlier beads-id scrub and the
+    # pointer is lost; do not guess a replacement number).
+    #
+    # RE-PINNED at merge: this allowlist is keyed by LINE NUMBER, so any edit above a
+    # violation re-reports it as new. Both merge parents edited uc002_nfr.py above these
+    # steps and each re-pinned the SAME FOUR entries to its own coordinates — no side
+    # added or removed a violation. The semantic (file, function) sets of both parents
+    # are identical, so their intersection is those same 4 entries; only the line
+    # coordinates are re-pinned here, to the merged tree's actual ``def`` lines. Re-keying
+    # this allowlist on (file, function) so line drift stops masquerading as a new
+    # violation is tracked separately.
+    "bdd/steps/domain/uc002_nfr.py:127 then_auth_before_business_logic",
+    "bdd/steps/domain/uc002_nfr.py:194 then_rate_limiting_enforced",
+    "bdd/steps/domain/uc002_nfr.py:237 then_payload_size_limits",
+    "bdd/steps/domain/uc002_nfr.py:413 then_budget_validated_against_min_order",
 }
 
 _ASSERT_ON_REQUEST_ALLOWLIST: set[str] = set()

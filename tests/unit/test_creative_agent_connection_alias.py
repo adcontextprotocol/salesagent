@@ -18,6 +18,30 @@ tests below mock that seam instead of the deleted SDK client. They patch the
 dial as ``operator_mcp`` imports it, one frame below the registry, so the
 alias resolution AND its handoff to the shared seam function both stay under
 test.
+
+RETIRED HERE by that same migration: the RFC 9421 request-signing branch's only
+edit to this file retargeted one ``patch()`` string from the registry's
+module-level re-export of the SDK client to the ``adcp`` package that defines
+it, because the signing work dropped that re-export. Nothing is left for either
+spelling to patch -- the registry's private client-builder, the two
+``adapter_helpers`` factories that fed it (an agent-config builder and a
+multi-agent-client factory) and the structural Protocol they shared were all
+deleted along with the direct SDK-client construction that ``ruff-egress.toml``
+now bans; ``tests/unit/test_shared_helpers.py`` and
+``tests/unit/test_guards_outbound_adcp_client_seam.py`` record those names and
+guard against their return. The OBLIGATION behind that hunk -- the alias
+reaches the outbound transport config while the federation identity does not --
+is NOT retired: it is regraded one frame lower, at the seam the dial actually
+goes through, by ``TestRegistryConnectionRouting`` and
+``TestAliasPreservesIdentity`` below.
+
+Signing is deliberately NOT asserted here. ``_fetch_formats_operator`` now
+passes ``sign=request_signer_for_tenant(tenant_id=tenant_id)`` into the same
+``call_mcp_tool`` these tests patch, but WHETHER a tenant signs is that
+function's decision and is graded on its own surface
+(``tests/integration/test_outbound_signing_client_seam.py``). These tests dial
+with no tenant in scope (``tenant_id=None``, which yields ``None`` and dials
+unsigned), so the aliasing obligation stays independent of signing posture.
 """
 
 from __future__ import annotations

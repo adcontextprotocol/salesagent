@@ -180,6 +180,13 @@ class TestRecoveryFieldInErrorResponses:
     recovery lives inside ``adcp_error.recovery`` and ``errors[0].recovery``,
     not at the top level. These tests confirm the full chain: AdCPError raised
     -> exception handler -> envelope JSON body.
+
+    Every test takes ``integration_db`` even though none of them reads a row. They drive
+    the REAL ASGI app, and since #1291 D1 made ``request_signing`` declarable the inbound
+    verifier middleware resolves the seller tenant on every AdCP request — a read that
+    trips the connection health circuit breaker when no database exists, failing the
+    route (and the file's other classes) for a reason that has nothing to do with error
+    envelopes. The file is already marked ``requires_db``; this makes the class honour it.
     """
 
     @pytest.mark.parametrize(
@@ -230,7 +237,7 @@ class TestRecoveryFieldInErrorResponses:
         ],
     )
     def test_rest_recovery_field_propagates_from_typed_error(
-        self, error_factory_path, exc_message, expected_status, expected_code, expected_recovery
+        self, integration_db, error_factory_path, exc_message, expected_status, expected_code, expected_recovery
     ):
         """REST exception handler propagates recovery hint from typed AdCPError to both envelope layers."""
         import importlib
@@ -253,7 +260,7 @@ class TestRecoveryFieldInErrorResponses:
             assert response.status_code == expected_status
             assert_envelope_shape(response.json(), expected_code, recovery=expected_recovery)
 
-    def test_rest_derived_recovery_reaches_both_envelope_layers(self):
+    def test_rest_derived_recovery_reaches_both_envelope_layers(self, integration_db):
         """The DERIVED recovery reaches both REST envelope layers unchanged.
 
         REPLACES test_rest_custom_recovery_override_preserved, which pinned a
@@ -261,6 +268,10 @@ class TestRecoveryFieldInErrorResponses:
         recovery is derived from the wire code. The surviving obligation — that the
         REST boundary puts the correct classification on BOTH layers rather than
         dropping or defaulting one — is what this asserts.
+
+        Takes ``integration_db`` for the class-docstring reason: it drives the real
+        ASGI app, whose inbound signature-verifier middleware resolves the seller
+        tenant on every AdCP request.
         """
         from unittest.mock import patch
 

@@ -251,6 +251,16 @@ class TestAdCPReferenceImplementation:
         loopback-pinned fixture — so the webhook lands once the server links the mapping
         before firing. Discovers all ids from prior responses.
         """
+        # No callback host to choose any more, and that is the fix rather than a
+        # loss. This leg used to pin host='127.0.0.1' — correct only for a
+        # host-run receiver, and dead on arrival for the containerized
+        # adcp-server that actually POSTs here, which cannot reach the host's
+        # loopback. The handle is now the shared compose capture service
+        # addressed at ``webhooks.adcp.test``, reachable both host-run and
+        # in-network, so the delivery this test asserts on can genuinely land.
+        # One flavor end to end: the key is minted by ``register_capture_key``,
+        # delivered at ``delivery_url_for``, and read back through the
+        # ``ReceivedView`` behind ``webhook["received"]``.
         with run_webhook_capture_server() as webhook:
             async with make_mcp_client(live_server, token=test_auth_token) as client:
                 products_data = parse_tool_result(

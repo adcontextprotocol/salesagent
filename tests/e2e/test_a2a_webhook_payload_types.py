@@ -9,23 +9,93 @@ Per AdCP A2A spec (https://docs.adcontextprotocol.org/docs/protocols/a2a-guide#p
 This test validates that our A2A server sends the correct payload type based on status.
 """
 
+import json
 import uuid
 from typing import Any
 
 import httpx
 import pytest
 
-from tests.e2e._webhook_capture import run_webhook_capture_server
-from tests.e2e._webhook_capture_loopback import WebhookCaptureHandler
-from tests.e2e._webhook_capture_loopback import run_webhook_capture_server as run_loopback_capture_server
+from tests.e2e._signing_e2e import origin, resolvable_signing_counterparty
+from tests.e2e._tenant_state import set_mock_approval
+from tests.e2e._webhook_capture import tls_capture
+from tests.e2e._webhook_capture_loopback import WebhookCaptureHandler, run_webhook_capture_server
 from tests.e2e.adcp_request_builder import (
     build_a2a_message_send,
     build_adcp_media_buy_request,
     get_test_date_range,
     parse_tool_result,
 )
-from tests.e2e.utils import make_mcp_client, set_live_adapter_behavior, wait_until
+from tests.e2e.conftest import e2e_in_network
+from tests.e2e.utils import make_mcp_client, wait_until
+from tests.e2e.webhook_capture_service import decode_body
 from tests.factories import WebhookTaskContextFactory
+from tests.helpers.signing import signed_headers
+
+#: The A2A JSON-RPC endpoint, as the SIGNATURE covers it: ``@target-uri`` is
+#: ``origin + path``, so this string and the URL posted to must agree exactly.
+_A2A_PATH = "/a2a"
+
+#: The tenant hint every request in this module carries. The stack's own seeded
+#: buyer lives here (``scripts/setup/init_database_ci.py``).
+_TENANT_SUBDOMAIN = "ci-test"
+
+#: The callback secret a registration hands the seller, at the pinned
+#: ``Authentication.credentials`` minimum of 32 characters
+#: (``src/core/security/webhook_egress.py`` maps a shorter one to
+#: ``credentials_too_short``). These cases grade the webhook PAYLOAD shape, so the
+#: credential is incidental fixture data — but a shorter one is refused at the
+#: egress seam and NO webhook arrives at all, which would fail them for a reason
+#: they do not test.
+_CALLBACK_CREDENTIALS = "e2e-webhook-token-padded-to-32ch"
+
+
+async def _post_signed_a2a(live_server: dict, *, token: str, message: dict[str, Any]) -> httpx.Response:
+    """POST *message* to ``/a2a`` under a REAL RFC 9421 signature, and return the answer.
+
+    WHY the two credential-carrying tests in this module sign and the three others do
+    not. ``push_notification_config.authentication.credentials`` is the secret the
+    SELLER will present when it calls the buyer BACK, and security.mdx @ v3.1.1
+    :1462-1465 makes a seller that supports request signing REQUIRE the inbound request
+    carrying one to be 9421-signed — ":1375, regardless of ``required_for`` membership".
+    The buyer's own ``Authorization: Bearer`` does not satisfy that and never did: the
+    rule exists precisely because the registering request is normally bearer-authed and
+    an on-path mutator can strip or inject the ``authentication`` block.
+
+    Those two legs used to be ACCEPTED unsigned only because the escalation could not
+    see the A2A PROTOCOL envelope — ``params.configuration.pushNotificationConfig``,
+    which is where ``adcp_a2a_server.on_message_send`` READS the config it persists.
+    Closing that is SF-4 (``salesagent-n78j0.2``), and a credentialed registration
+    SUCCEEDING when signed is the half of that claim a refusal test cannot make.
+
+    Two rules are load-bearing and are stated here once rather than at each call site:
+
+    1. SERIALIZE ONCE and send exactly those bytes. httpx's ``json=`` re-serializes
+       with its own separators, so a signature over a different rendering of the same
+       object covers bytes the wire does not carry and is refused as
+       ``request_signature_digest_mismatch`` — a fixture bug wearing a verifier bug's
+       clothes.
+    2. The signature covers ``@target-uri``, and ``_verify_url``
+       (``src/core/signing/request_verifier_middleware.py``) rebuilds the authority from
+       the ``Host`` header as received — PORT INCLUDED. :func:`origin` is the one
+       definition of that value.
+    """
+    with resolvable_signing_counterparty(live_server, access_token=token) as counterparty:
+        raw = json.dumps(message).encode()
+        headers = signed_headers(
+            counterparty.private_key,
+            counterparty.token,
+            method="POST",
+            path=_A2A_PATH,
+            body=raw,
+            # ``request_headers`` otherwise injects the in-process signing suite's own
+            # tenant hint, which names no tenant in this database.
+            extra={"x-adcp-tenant": _TENANT_SUBDOMAIN, "Content-Type": "application/json"},
+            key_id=counterparty.key_id,
+            origin=origin(live_server["a2a"]),
+        )
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            return await client.post(f"{live_server['a2a']}{_A2A_PATH}", content=raw, headers=headers)
 
 
 async def _discover_product_and_pricing(live_server: dict, test_auth_token: str) -> tuple[str, str]:
@@ -117,26 +187,27 @@ def assert_no_classification_errors(received: list[dict[str, Any]]) -> None:
     )
 
 
-def _classify_entry(payload: dict[str, Any], *, path: str | None = None) -> dict[str, Any]:
-    """Map a raw inbound JSON payload to its A2A classification.
+def classified_capture(payload: dict[str, Any], path: str | None) -> dict[str, Any]:
+    """One capture, classified — the shape every assertion in this module reads.
 
-    Shared by the hermetic path's server-side ``WebhookPayloadCapture.record()``
-    hook (below, ``path`` is the receiver's own ``self.path``) and the
-    compose-coupled path's client-side :class:`_ClassifiedReceivedView`
-    (``path`` is not available once capture is a remote keyed store —
-    salesagent-amht.3 — so it is ``None`` there; nothing asserts on it).
+    A module-level function rather than a handler method so the SAME classification
+    runs whether the payload came from the in-process receiver (hermetic leg, where
+    ``path`` is the receiver's own ``self.path``) or was read back from the TLS
+    capture origin (compose leg, where ``path`` is the recorded request path),
+    instead of the two legs grading subtly different things.
+
+    A2A wire contract is camelCase (proto json_name): taskId, contextId, messageId.
+    snake_case (task_id, context_id) is a spec violation — the a2a-sdk protobuf
+    descriptor declares the JSON names explicitly. The classification (or its
+    failure) is recorded rather than raised so a regression in
+    protocol_webhook_service is observable to the test instead of being swallowed
+    by an "unknown" classification (gh-#1299 follow-up).
     """
     status = None
     if "status" in payload:
         status_obj = payload["status"]
         status = status_obj.get("state") if isinstance(status_obj, dict) else str(status_obj)
 
-    # A2A wire contract is camelCase (proto json_name): taskId, contextId,
-    # messageId. snake_case (task_id, context_id) is a spec violation — the
-    # a2a-sdk protobuf descriptor declares the JSON names explicitly. Record
-    # the classification (or its failure) BEFORE responding so a regression
-    # in protocol_webhook_service is observable to the test instead of being
-    # swallowed by an "unknown" classification (gh-#1299 follow-up).
     classification_error = None
     payload_type = None
     try:
@@ -156,60 +227,62 @@ def _classify_entry(payload: dict[str, Any], *, path: str | None = None) -> dict
 class WebhookPayloadCapture(WebhookCaptureHandler):
     """HERMETIC-ONLY webhook receiver that captures each payload with its A2A classification.
 
-    Extends the shared loopback capture handler via the ``record`` hook — only
-    the classification logic lives here, never a copied ``do_POST``. Used
-    exclusively by ``TestProtocolWebhookWireFormat`` (no Docker stack); the
-    compose-coupled tests below classify client-side instead (salesagent-amht.3
-    — capture moved to a real network service, so a server-side subclass hook
-    has nowhere to live for that path).
+    Extends the shared loopback capture handler via the ``record`` hook — only the
+    classification logic lives here, never a copied ``do_POST``. Used exclusively by
+    ``TestProtocolWebhookWireFormat`` (no Docker stack, no database); the
+    compose-coupled classes above capture through the TLS origin instead, where a
+    server-side subclass hook has nowhere to live because the receiver is a
+    separate long-lived service.
     """
 
     received_webhooks: list[dict[str, Any]] = []
 
     def record(self, payload):
-        return _classify_entry(payload, path=self.path)
+        return classified_capture(payload, self.path)
 
 
-class _ClassifiedReceivedView:
-    """Wraps a :class:`~tests.e2e._webhook_capture.ReceivedView`, classifying each raw payload on read.
+class _ClassifiedCaptureHandle:
+    """A :class:`CaptureHandle` whose ``received`` is CLASSIFIED, not raw.
 
-    The webhook-capture service stores/returns only raw decoded JSON bodies —
-    classification is applied here, client-side, on every access, so ``not
-    received`` / ``received[0]`` / ``for w in received`` see the SAME enriched
-    shape (``payload``/``payload_type``/``classification_error``/``status``/
-    ``path``) the old server-side ``WebhookPayloadCapture.record()`` hook
-    produced.
+    Keeps this module's assertions ("payload_type", "status", "classification_error")
+    reading the same shape they always did, while the bytes now come from the TLS
+    capture origin. ``received()`` re-reads on every call — the capture service is a
+    separate process, so a poll loop must call it each turn rather than hold a list.
+
+    It decodes ``raw()`` rather than calling ``payloads()``: only the raw entry
+    carries the request ``path``, and one readback per call is what keeps a capture
+    landing mid-poll from being seen by the body read but not the path read.
     """
 
-    def __init__(self, raw) -> None:
-        self._raw = raw
+    def __init__(self, handle) -> None:
+        self._handle = handle
+        self.url = handle.url
 
-    def _classified(self) -> list[dict[str, Any]]:
-        return [_classify_entry(payload) for payload in self._raw]
-
-    def __bool__(self) -> bool:
-        return bool(self._raw)
-
-    def __len__(self) -> int:
-        return len(self._raw)
-
-    def __getitem__(self, index):
-        return self._classified()[index]
-
-    def __iter__(self):
-        return iter(self._classified())
-
-    def clear(self) -> None:
-        self._raw.clear()
+    def received(self) -> list[dict[str, Any]]:
+        return [classified_capture(json.loads(decode_body(entry)), entry["path"]) for entry in self._handle.raw()]
 
 
 @pytest.fixture
 def webhook_capture_server():
-    """Register a fresh capture key against the shared webhook-capture service."""
-    with run_webhook_capture_server() as info:
-        yield {"url": info["url"], "received": _ClassifiedReceivedView(info["received"])}
+    """A capture key on the TLS receiver, yielding classified captures."""
+    with tls_capture("a2a-payload-e2e") as handle:
+        yield _ClassifiedCaptureHandle(handle)
 
 
+#: Only the classes that capture through the TLS receiver are in-network gated.
+#: ``TestProtocolWebhookWireFormat`` below runs the service IN-PROCESS against a
+#: loopback callback and needs no compose network, so a module-level mark would
+#: wrongly skip it.
+_IN_NETWORK_ONLY = pytest.mark.skipif(
+    not e2e_in_network(),
+    reason=(
+        "in-network only: the webhook-capture service publishes no host port, so its readback "
+        "control plane is reachable by compose service name alone (set ADCP_TEST_HOST)"
+    ),
+)
+
+
+@_IN_NETWORK_ONLY
 class TestA2AWebhookPayloadTypes:
     """Test A2A webhook payload type compliance with AdCP spec."""
 
@@ -229,9 +302,8 @@ class TestA2AWebhookPayloadTypes:
         - Final states should send Task object with artifacts
         """
         # Enable auto-approval so create_media_buy completes immediately
-        set_live_adapter_behavior(live_server, manual_approval_required=False)
+        set_mock_approval(live_server, manual=False)
 
-        a2a_url = f"{live_server['a2a']}/a2a"
         context_id = str(uuid.uuid4())
 
         product_id, pricing_option_id = await _discover_product_and_pricing(live_server, test_auth_token)
@@ -251,34 +323,25 @@ class TestA2AWebhookPayloadTypes:
             parameters=media_buy_params,
             context_id=context_id,
             push_notification_config={
-                "url": webhook_capture_server["url"],
-                # 32 chars: the pinned Authentication.credentials minimum. These cases grade the
-                # webhook PAYLOAD shape, so the credential is incidental fixture data — but a
-                # shorter one is refused at the egress seam as ``credentials_too_short`` and no
-                # webhook arrives at all, which would fail them for a reason they do not test.
-                "authentication": {"schemes": ["Bearer"], "credentials": "e2e-webhook-token-padded-to-32ch"},
+                "url": webhook_capture_server.url,
+                "authentication": {"schemes": ["Bearer"], "credentials": _CALLBACK_CREDENTIALS},
             },
         )
 
-        headers = {
-            "Authorization": f"Bearer {test_auth_token}",
-            "Content-Type": "application/json",
-            "x-adcp-tenant": "ci-test",
-        }
+        # SIGNED, and that is not incidental to this test's subject — it is what makes
+        # the registration above legal at all. See ``_post_signed_a2a``.
+        response = await _post_signed_a2a(live_server, token=test_auth_token, message=message)
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(a2a_url, json=message, headers=headers)
-
-            # Request should succeed
-            assert response.status_code == 200, f"A2A request failed: {response.text}"
-            result = response.json()
-            assert "error" not in result, f"A2A error: {result.get('error')}"
+        # Request should succeed
+        assert response.status_code == 200, f"A2A request failed: {response.text}"
+        result = response.json()
+        assert "error" not in result, f"A2A error: {result.get('error')}"
 
         # Wait for webhook to be delivered
-        wait_until(lambda: bool(webhook_capture_server["received"]), timeout_seconds=15, poll_interval=0.5)
+        wait_until(lambda: bool(webhook_capture_server.received()), timeout_seconds=15, poll_interval=0.5)
 
         # Verify webhook was received
-        received = webhook_capture_server["received"]
+        received = webhook_capture_server.received()
         assert received, "Expected at least one webhook delivery"
 
         # No received webhook may carry a snake_case wire violation (gh-#1299).
@@ -326,91 +389,89 @@ class TestA2AWebhookPayloadTypes:
         - Submitted is an intermediate state
         - Intermediate states should send TaskStatusUpdateEvent
         """
-        # Enable manual approval so create_media_buy returns submitted state
-        set_live_adapter_behavior(live_server, manual_approval_required=True)
+        # Enable manual approval so create_media_buy returns submitted state.
+        # MUST be restored in the finally below: adapter_config is SHARED
+        # tenant state — leaving manual approval on leaks into every later
+        # e2e test (pytest-randomly ordering), turning their creates into
+        # spec-3.1.1 submitted envelopes with no media_buy_id.
+        set_mock_approval(live_server, manual=True)
+        try:
+            context_id = str(uuid.uuid4())
 
-        a2a_url = f"{live_server['a2a']}/a2a"
-        context_id = str(uuid.uuid4())
+            # AdCP-spec packages[] format (the A2A skill rejects legacy
+            # product_ids/total_budget before the manual-approval path).
+            product_id, pricing_option_id = await _discover_product_and_pricing(live_server, test_auth_token)
+            start_time, end_time = get_test_date_range(days_from_now=1, duration_days=30)
+            media_buy_params = build_adcp_media_buy_request(
+                product_ids=[product_id],
+                total_budget=50000.0,
+                start_time=start_time,
+                end_time=end_time,
+                brand={"domain": "testbrand.com"},
+                pricing_option_id=pricing_option_id,
+                context={"e2e": "webhook_submitted_test"},
+            )
 
-        # AdCP-spec packages[] format (the A2A skill rejects legacy
-        # product_ids/total_budget before the manual-approval path).
-        product_id, pricing_option_id = await _discover_product_and_pricing(live_server, test_auth_token)
-        start_time, end_time = get_test_date_range(days_from_now=1, duration_days=30)
-        media_buy_params = build_adcp_media_buy_request(
-            product_ids=[product_id],
-            total_budget=50000.0,
-            start_time=start_time,
-            end_time=end_time,
-            brand={"domain": "testbrand.com"},
-            pricing_option_id=pricing_option_id,
-            context={"e2e": "webhook_submitted_test"},
-        )
+            # Send A2A create_media_buy message that triggers approval workflow
+            message = build_a2a_message_send(
+                skill="create_media_buy",
+                parameters=media_buy_params,
+                context_id=context_id,
+                push_notification_config={
+                    "url": webhook_capture_server.url,
+                    "authentication": {"schemes": ["Bearer"], "credentials": _CALLBACK_CREDENTIALS},
+                },
+            )
 
-        # Send A2A create_media_buy message that triggers approval workflow
-        message = build_a2a_message_send(
-            skill="create_media_buy",
-            parameters=media_buy_params,
-            context_id=context_id,
-            push_notification_config={
-                "url": webhook_capture_server["url"],
-                # 32 chars: the pinned Authentication.credentials minimum. These cases grade the
-                # webhook PAYLOAD shape, so the credential is incidental fixture data — but a
-                # shorter one is refused at the egress seam as ``credentials_too_short`` and no
-                # webhook arrives at all, which would fail them for a reason they do not test.
-                "authentication": {"schemes": ["Bearer"], "credentials": "e2e-webhook-token-padded-to-32ch"},
-            },
-        )
-
-        headers = {
-            "Authorization": f"Bearer {test_auth_token}",
-            "Content-Type": "application/json",
-            "x-adcp-tenant": "ci-test",
-        }
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(a2a_url, json=message, headers=headers)
+            # Signed for the same reason as the sibling test above: the registration
+            # carries the callback secret, and security.mdx @ v3.1.1 :1462-1465 makes a
+            # signature mandatory on the request that hands one over.
+            response = await _post_signed_a2a(live_server, token=test_auth_token, message=message)
 
             # Request should succeed (returns submitted status for async operations)
             assert response.status_code == 200, f"A2A request failed: {response.text}"
 
-        # A manual-approval media buy emits the intermediate `submitted`
-        # TaskStatusUpdateEvent first, then (mock auto-approval simulation) a
-        # terminal `completed` Task. Breaking on merely the first delivery
-        # races against that ordering — poll until the submitted webhook is
-        # actually captured (or timeout).
-        wait_until(
-            lambda: any(w["status"] == "submitted" for w in webhook_capture_server["received"]),
-            timeout_seconds=15,
-            poll_interval=0.5,
-        )
+            # A manual-approval media buy emits the intermediate `submitted`
+            # TaskStatusUpdateEvent first, then (mock auto-approval simulation) a
+            # terminal `completed` Task. Breaking on merely the first delivery
+            # races against that ordering — poll until the submitted webhook is
+            # actually captured (or timeout).
+            wait_until(
+                lambda: any(w["status"] == "submitted" for w in webhook_capture_server.received()),
+                timeout_seconds=15,
+                poll_interval=0.5,
+            )
 
-        received = webhook_capture_server["received"]
-        assert received, "Expected at least one webhook delivery"
+            received = webhook_capture_server.received()
+            assert received, "Expected at least one webhook delivery"
 
-        # No received webhook may carry a snake_case wire violation (gh-#1299).
-        assert_no_classification_errors(received)
+            # No received webhook may carry a snake_case wire violation (gh-#1299).
+            assert_no_classification_errors(received)
 
-        # The submitted-status webhook MUST be present and MUST be a
-        # TaskStatusUpdateEvent. No `if submitted_webhooks:` guard — a missing or
-        # misclassified webhook is a failure, not a silent pass.
-        submitted_webhooks = [w for w in received if w["status"] == "submitted"]
-        assert submitted_webhooks, (
-            f"Expected a 'submitted' status webhook. Received statuses: {[w['status'] for w in received]}"
-        )
+            # The submitted-status webhook MUST be present and MUST be a
+            # TaskStatusUpdateEvent. No `if submitted_webhooks:` guard — a missing or
+            # misclassified webhook is a failure, not a silent pass.
+            submitted_webhooks = [w for w in received if w["status"] == "submitted"]
+            assert submitted_webhooks, (
+                f"Expected a 'submitted' status webhook. Received statuses: {[w['status'] for w in received]}"
+            )
 
-        webhook = submitted_webhooks[0]
-        # Per AdCP spec: submitted status should send TaskStatusUpdateEvent (has 'taskId' field)
-        assert webhook["payload_type"] == "TaskStatusUpdateEvent", (
-            f"Submitted status should send TaskStatusUpdateEvent payload, not {webhook['payload_type']}. "
-            f"Payload has 'id': {'id' in webhook['payload']}, 'taskId': {'taskId' in webhook['payload']}"
-        )
+            webhook = submitted_webhooks[0]
+            # Per AdCP spec: submitted status should send TaskStatusUpdateEvent (has 'taskId' field)
+            assert webhook["payload_type"] == "TaskStatusUpdateEvent", (
+                f"Submitted status should send TaskStatusUpdateEvent payload, not {webhook['payload_type']}. "
+                f"Payload has 'id': {'id' in webhook['payload']}, 'taskId': {'taskId' in webhook['payload']}"
+            )
 
-        # Verify TaskStatusUpdateEvent structure (camelCase per A2A wire contract)
-        payload = webhook["payload"]
-        assert "taskId" in payload, "TaskStatusUpdateEvent payload must have 'taskId' field"
-        assert "task_id" not in payload, "TaskStatusUpdateEvent must NOT use snake_case 'task_id'"
-        assert "status" in payload, "TaskStatusUpdateEvent payload must have 'status' field"
-        assert "state" in payload["status"], "TaskStatusUpdateEvent.status must have 'state' field"
+            # Verify TaskStatusUpdateEvent structure (camelCase per A2A wire contract)
+            payload = webhook["payload"]
+            assert "taskId" in payload, "TaskStatusUpdateEvent payload must have 'taskId' field"
+            assert "task_id" not in payload, "TaskStatusUpdateEvent must NOT use snake_case 'task_id'"
+            assert "status" in payload, "TaskStatusUpdateEvent payload must have 'status' field"
+            assert "state" in payload["status"], "TaskStatusUpdateEvent.status must have 'state' field"
+        finally:
+            # Restore shared tenant state for subsequent e2e tests.
+            set_mock_approval(live_server, manual=False)
 
     @pytest.mark.asyncio
     async def test_webhook_payload_type_matches_status(
@@ -428,7 +489,7 @@ class TestA2AWebhookPayloadTypes:
         - Intermediate states (working, input-required, submitted): TaskStatusUpdateEvent
         """
         # Enable auto-approval
-        set_live_adapter_behavior(live_server, manual_approval_required=False)
+        set_mock_approval(live_server, manual=False)
 
         a2a_url = f"{live_server['a2a']}/a2a"
         context_id = str(uuid.uuid4())
@@ -449,7 +510,7 @@ class TestA2AWebhookPayloadTypes:
             skill="create_media_buy",
             parameters=media_buy_params,
             context_id=context_id,
-            push_notification_config={"url": webhook_capture_server["url"]},
+            push_notification_config={"url": webhook_capture_server.url},
         )
 
         headers = {
@@ -462,9 +523,9 @@ class TestA2AWebhookPayloadTypes:
             await client.post(a2a_url, json=message, headers=headers)
 
         # Wait for webhooks
-        wait_until(lambda: bool(webhook_capture_server["received"]), timeout_seconds=15, poll_interval=0.5)
+        wait_until(lambda: bool(webhook_capture_server.received()), timeout_seconds=15, poll_interval=0.5)
 
-        received = webhook_capture_server["received"]
+        received = webhook_capture_server.received()
         assert received, "Expected at least one webhook delivery"
 
         # No received webhook may carry a snake_case wire violation (gh-#1299).
@@ -499,6 +560,7 @@ class TestA2AWebhookPayloadTypes:
         assert asserted > 0, "No webhook with a classifiable status was received"
 
 
+@_IN_NETWORK_ONLY
 class TestWebhookPayloadStructure:
     """Test webhook payload structure compliance."""
 
@@ -511,7 +573,7 @@ class TestWebhookPayloadStructure:
         webhook_capture_server,
     ):
         """Test that Task payload has all required A2A fields."""
-        set_live_adapter_behavior(live_server, manual_approval_required=False)
+        set_mock_approval(live_server, manual=False)
 
         a2a_url = f"{live_server['a2a']}/a2a"
 
@@ -530,7 +592,7 @@ class TestWebhookPayloadStructure:
         message = build_a2a_message_send(
             skill="create_media_buy",
             parameters=media_buy_params,
-            push_notification_config={"url": webhook_capture_server["url"]},
+            push_notification_config={"url": webhook_capture_server.url},
         )
 
         headers = {
@@ -543,9 +605,9 @@ class TestWebhookPayloadStructure:
             await client.post(a2a_url, json=message, headers=headers)
 
         # Wait for webhook
-        wait_until(lambda: bool(webhook_capture_server["received"]), timeout_seconds=15, poll_interval=0.5)
+        wait_until(lambda: bool(webhook_capture_server.received()), timeout_seconds=15, poll_interval=0.5)
 
-        received = webhook_capture_server["received"]
+        received = webhook_capture_server.received()
         assert received, "Expected at least one webhook delivery"
         assert_no_classification_errors(received)
 
@@ -581,64 +643,71 @@ class TestWebhookPayloadStructure:
         webhook_capture_server,
     ):
         """Test that TaskStatusUpdateEvent payload has all required A2A fields."""
-        # Enable manual approval to get submitted status
-        set_live_adapter_behavior(live_server, manual_approval_required=True)
+        # Enable manual approval to get submitted status.
+        # MUST be restored in the finally below: adapter_config is SHARED
+        # tenant state — leaving manual approval on leaks into every later
+        # e2e test (pytest-randomly ordering), turning their creates into
+        # spec-3.1.1 submitted envelopes with no media_buy_id.
+        set_mock_approval(live_server, manual=True)
+        try:
+            a2a_url = f"{live_server['a2a']}/a2a"
 
-        a2a_url = f"{live_server['a2a']}/a2a"
+            # AdCP-spec packages[] format (legacy product_ids/total_budget is
+            # rejected before the manual-approval path → no submitted webhook).
+            product_id, pricing_option_id = await _discover_product_and_pricing(live_server, test_auth_token)
+            start_time, end_time = get_test_date_range(days_from_now=1, duration_days=30)
+            media_buy_params = build_adcp_media_buy_request(
+                product_ids=[product_id],
+                total_budget=10000.0,
+                start_time=start_time,
+                end_time=end_time,
+                brand={"domain": "testbrand.com"},
+                pricing_option_id=pricing_option_id,
+                context={"e2e": "webhook_tsue_required_fields"},
+            )
 
-        # AdCP-spec packages[] format (legacy product_ids/total_budget is
-        # rejected before the manual-approval path → no submitted webhook).
-        product_id, pricing_option_id = await _discover_product_and_pricing(live_server, test_auth_token)
-        start_time, end_time = get_test_date_range(days_from_now=1, duration_days=30)
-        media_buy_params = build_adcp_media_buy_request(
-            product_ids=[product_id],
-            total_budget=10000.0,
-            start_time=start_time,
-            end_time=end_time,
-            brand={"domain": "testbrand.com"},
-            pricing_option_id=pricing_option_id,
-            context={"e2e": "webhook_tsue_required_fields"},
-        )
+            # Trigger an async operation that sends intermediate status
+            message = build_a2a_message_send(
+                skill="create_media_buy",
+                parameters=media_buy_params,
+                push_notification_config={"url": webhook_capture_server.url},
+            )
 
-        # Trigger an async operation that sends intermediate status
-        message = build_a2a_message_send(
-            skill="create_media_buy",
-            parameters=media_buy_params,
-            push_notification_config={"url": webhook_capture_server["url"]},
-        )
+            headers = {
+                "Authorization": f"Bearer {test_auth_token}",
+                "Content-Type": "application/json",
+                "x-adcp-tenant": "ci-test",
+            }
 
-        headers = {
-            "Authorization": f"Bearer {test_auth_token}",
-            "Content-Type": "application/json",
-            "x-adcp-tenant": "ci-test",
-        }
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                await client.post(a2a_url, json=message, headers=headers)
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            await client.post(a2a_url, json=message, headers=headers)
+            # Wait for webhook
+            wait_until(lambda: bool(webhook_capture_server.received()), timeout_seconds=15, poll_interval=0.5)
 
-        # Wait for webhook
-        wait_until(lambda: bool(webhook_capture_server["received"]), timeout_seconds=15, poll_interval=0.5)
+            received = webhook_capture_server.received()
+            assert received, "Expected at least one webhook delivery"
+            assert_no_classification_errors(received)
 
-        received = webhook_capture_server["received"]
-        assert received, "Expected at least one webhook delivery"
-        assert_no_classification_errors(received)
+            event_webhooks = [w for w in received if w["payload_type"] == "TaskStatusUpdateEvent"]
+            assert event_webhooks, (
+                f"Expected at least one TaskStatusUpdateEvent webhook. Received payload "
+                f"types: {[w['payload_type'] for w in received]}"
+            )
 
-        event_webhooks = [w for w in received if w["payload_type"] == "TaskStatusUpdateEvent"]
-        assert event_webhooks, (
-            f"Expected at least one TaskStatusUpdateEvent webhook. Received payload "
-            f"types: {[w['payload_type'] for w in received]}"
-        )
+            for webhook in event_webhooks:
+                payload = webhook["payload"]
 
-        for webhook in event_webhooks:
-            payload = webhook["payload"]
+                # Required TaskStatusUpdateEvent fields per A2A spec (camelCase wire contract)
+                assert "taskId" in payload, "TaskStatusUpdateEvent must have 'taskId' field"
+                assert "task_id" not in payload, "TaskStatusUpdateEvent must NOT use snake_case 'task_id'"
+                assert "status" in payload, "TaskStatusUpdateEvent must have 'status' field"
 
-            # Required TaskStatusUpdateEvent fields per A2A spec (camelCase wire contract)
-            assert "taskId" in payload, "TaskStatusUpdateEvent must have 'taskId' field"
-            assert "task_id" not in payload, "TaskStatusUpdateEvent must NOT use snake_case 'task_id'"
-            assert "status" in payload, "TaskStatusUpdateEvent must have 'status' field"
-
-            status = payload["status"]
-            assert "state" in status, "TaskStatusUpdateEvent.status must have 'state' field"
+                status = payload["status"]
+                assert "state" in status, "TaskStatusUpdateEvent.status must have 'state' field"
+        finally:
+            # Restore shared tenant state for subsequent e2e tests.
+            set_mock_approval(live_server, manual=False)
 
 
 class TestProtocolWebhookWireFormat:
@@ -670,36 +739,44 @@ class TestProtocolWebhookWireFormat:
         serves https now, so there is nothing to relax.
         """
         import os
-        from unittest.mock import patch as mock_patch
+        from unittest.mock import patch
 
         from tests.helpers.egress_hatches import egress_hatch_env
-        from tests.helpers.test_tls_material import load_gen_test_tls
+        from tests.helpers.tls_material import load_gen_test_tls
 
         gen_test_tls = load_gen_test_tls()
         gen_test_tls.ensure_test_tls()
         env = egress_hatch_env(private=True)
         env["SSL_CERT_FILE"] = str(gen_test_tls.COMBINED_CERT)
-        with mock_patch.dict(os.environ, env):
+        with patch.dict(os.environ, env):
             yield
 
     def _send_and_capture(self, payload) -> dict[str, Any]:
         """Send `payload` via the real service and return the classified capture."""
         import asyncio
-        from unittest.mock import patch
 
         from src.core.database.models import PushNotificationConfig
         from src.services.protocol_webhook_service import ProtocolWebhookService
 
-        # host='127.0.0.1': this class is unit-style (no Docker) — the service
-        # runs in-process, so loopback is always the right callback host.
-        # Real outbound validator allows localhost when ADCP_TESTING=true
-        # (do not patch the SSRF gate — that would hide regressions).
-        with (
-            run_loopback_capture_server(
-                WebhookPayloadCapture, WebhookPayloadCapture.received_webhooks, host="127.0.0.1"
-            ) as info,
-            patch.dict("os.environ", {"ADCP_TESTING": "true"}),
-        ):
+        # host='127.0.0.1': this class is unit-style (no Docker) — the service runs
+        # in-process, so loopback is always the right callback host. The loopback
+        # receiver serves REAL https there (the generated CA covers the loopback IP
+        # SANs), which is why ``_open_egress_hatches`` above has to trust that CA as
+        # well as open the private-range hatch.
+        #
+        # ADCP_TESTING is NOT set here. The autouse fixture (tests/conftest.py)
+        # already sets it for every test, so a second setenv only obscured which
+        # posture this test actually grades — it read as "this test deliberately
+        # opts into leniency" when in fact it inherits it like everything else
+        # (salesagent-og9k.4). Removing it changes no behaviour and stops the
+        # redundant spelling from being copied.
+        #
+        # The SSRF gate itself is never patched: the hatch above is the seam's own
+        # documented environment switch, not a monkeypatched validator, so a
+        # regression in the gate still surfaces here.
+        with run_webhook_capture_server(
+            WebhookPayloadCapture, WebhookPayloadCapture.received_webhooks, host="127.0.0.1"
+        ) as info:
             config = PushNotificationConfig(
                 id="pnc-test",
                 tenant_id="t-test",
@@ -713,6 +790,12 @@ class TestProtocolWebhookWireFormat:
             # The typed task identity, not a loose dict. send_notification used to
             # take metadata and rebuild a context from it downstream, which reset
             # sequence_number and notification_type on the way to the delivery row.
+            #
+            # The factory's ``tenant_id`` default of None is load-bearing here and
+            # is the reason this stays hermetic: ``delivery_signer_for_tenant(None)``
+            # is a DECIDED unsigned posture, not a lookup, so nothing in this class
+            # needs a database to resolve signing material. A named tenant here
+            # would demand one.
             task = WebhookTaskContextFactory()
             sent = asyncio.run(service.send_notification(config, payload, task=task))
             assert sent is True, "ProtocolWebhookService.send_notification should report success"

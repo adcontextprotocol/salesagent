@@ -39,6 +39,19 @@ def e2e_host() -> str:
     return os.getenv("ADCP_TEST_HOST", "localhost")
 
 
+def e2e_in_network() -> bool:
+    """Whether this process runs INSIDE the compose network rather than on the host.
+
+    The in-network runner addresses the stack by service name (:func:`e2e_host` is a
+    compose alias); the host path reaches published ports on localhost and cannot
+    resolve a compose alias at all. Any claim that depends on compose DNS — reaching a
+    service that publishes NO host port, or resolving a network alias — is only
+    meaningful here. ``./run_all_tests.sh`` runs every suite in-network, so this is the
+    normal path and the host path is the developer convenience.
+    """
+    return e2e_host() not in {"localhost", "127.0.0.1"}
+
+
 def e2e_tls_host() -> str:
     """Host the stack's TLS listener answers at — DOTTED, and not loopback-literal.
 
@@ -300,10 +313,17 @@ def docker_services_e2e(request):
             f"TLS={tls_port}, WebhookCapture={webhook_capture_port}"
         )
 
-        # Set port env vars in os.environ so that:
-        # 1. docker-compose subprocess inherits them via os.environ.copy()
-        # 2. Tests that read ports via os.getenv() (e.g., test_a2a_endpoints_working.py,
-        #    test_landing_pages.py) pick up the correct dynamic ports
+        # Set port env vars in os.environ for ONE consumer: the docker-compose
+        # subprocess, which inherits them via os.environ.copy() at the call below.
+        # Exporting to a child process is what environment variables are for.
+        #
+        # Tests must NOT read these back. A test receives its port from the fixture
+        # that allocated it — this fixture's yielded ports dict, or the `live_server`
+        # URLs built from it. A process-global carries no sender (this fixture,
+        # docker-compose.e2e.yml:146 and scripts/test-stack.sh:174 all write
+        # ADCP_SALES_PORT), no lifetime (a stale value outlives the fixture instead of
+        # failing) and no multiplicity (one variable cannot hold a port per xdist
+        # worker). Env at the edge, data on the inside.
         os.environ["ADCP_SALES_PORT"] = str(mcp_port)
         os.environ["POSTGRES_PORT"] = str(postgres_port)
         os.environ["ADCP_TLS_PORT"] = str(tls_port)

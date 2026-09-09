@@ -86,7 +86,7 @@ from typing import Any
 
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from tests.bdd.steps._outcome_helpers import require_payload, wire_dict
+from tests.bdd.steps._outcome_helpers import require_payload, wire_field
 from tests.bdd.steps.generic._auth import authenticate_env_as
 
 # Three genuinely-different formats (display / video / audio) for the "three
@@ -199,8 +199,8 @@ def when_list_creatives_no_filters(ctx: dict) -> None:
 
     Reuses the canonical generic dispatch helper (``env.call_via`` + ctx stash of
     ``response`` / ``wire_response`` / ``error``) rather than re-implementing it.
-    No filter kwargs are passed, so the listing runs unfiltered; the helper maps a
-    missing transport to IMPL.
+    No filter kwargs are passed, so the listing runs unfiltered; a missing
+    transport raises in ``_call_via`` (loud guard — there is no IMPL fallback).
     """
     from tests.bdd.steps.generic.when_request import _call_via
 
@@ -347,15 +347,21 @@ def when_list_creatives_concept_ids(ctx: dict, concept_list: str) -> None:
 def _wire_creatives(ctx: dict) -> list[dict[str, Any]]:
     """Return the creatives array as the buyer sees it on the wire.
 
-    Delegates to the shared :func:`wire_dict`, which branches on the
-    DECLARATION the dispatcher made (``TransportResult.has_wire``) and raises
-    when a declared wire was not captured. This function used to key on
-    transport IDENTITY (``transport not in (None, Transport.IMPL)``), which is
-    the spelling `wire_dict` replaced across the suite: a lookup against an enum
-    member reclassifies every result the day that member moves, and it made this
-    the last site free to drift from the guard the others share.
+    REST/A2A/MCP stash the real serialized response on ``ctx["wire_response"]``
+    (CreativeListEnv stashes on all three wire transports), so the concept-field
+    assertions check the actual on-the-wire bytes rather than a re-serialization.
+    Delegates to the canonical :func:`wire_field` guard (GH #1744 collapsed the
+    private guard clone this used to carry), which branches on the DECLARATION
+    the dispatcher made (``TransportResult.has_wire``) and raises when a declared
+    wire was not captured: only an explicit IMPL dispatch may serialize the typed
+    payload, and an unset transport raises loudly. The clone this replaced keyed
+    on transport IDENTITY instead — a lookup against an enum member reclassifies
+    every result the day that member moves, and it made this the last site free
+    to drift from the guard the rest of the suite shares. ``wire_field`` also
+    dual-asserts presence AND non-null, so a serialized ``null`` creatives array
+    fails here rather than passing vacuously into the loops below.
     """
-    return wire_dict(ctx)["creatives"]
+    return wire_field(ctx, "creatives")
 
 
 @then(parsers.parse('the creatives array should only include creatives belonging to concept "{concept_id}"'))
@@ -395,15 +401,15 @@ def then_each_creative_carries_concept(ctx: dict, concept_id: str) -> None:
 # creatives, never another principal's, even within the same tenant.
 #
 # Spec ground (Spec-Grounding Gate): this is an AdCP normative MUST, pinned at
-# v3.1-04f59d2d5 — docs/media-buy/advanced-topics/accounts-and-security.mdx §Data
-# Isolation (L33-37): a created object is "permanently associated with the account",
+# v3.1.1 — docs/media-buy/advanced-topics/accounts-and-security.mdx §Data
+# Isolation (L35-37): a created object is "permanently associated with the account",
 # and for any later read "the server MUST verify that the agent has access to that
 # account", else it "MUST return a permission denied error". The deeper normative
 # reference is docs/building/by-layer/L1/security.mdx §Agent and Account Isolation
-# (L159), incl. §"Client-side isolation: cross-principal tool-call confusion" (L229).
+# (L171), incl. §"Client-side isolation: cross-principal tool-call confusion" (L241).
 # (At the pin the superseded 2.5.3 principals-and-security.mdx was renamed to
-# accounts-and-security.mdx; the source docs/ paths resolve at the pin — the built
-# dist/docs/3.1.0-beta.3/ tree is only on later commits.) It is ungraded-by-storyboard:
+# accounts-and-security.mdx; read the repository-root docs/ tree at the tag, which is
+# where the prose the anchors above point at lives.) It is ungraded-by-storyboard:
 # no conformance storyboard grades multi-principal isolation (universal/security.yaml
 # grades authentication, not authenticated isolation), so these two scenarios are the
 # ONLY executable guard of that MUST.
@@ -419,8 +425,8 @@ def then_each_creative_carries_concept(ctx: dict, concept_id: str) -> None:
 # assigns a globally-unique creative_id per row, so the two principals' id sets are
 # disjoint and the isolation assertion is well-formed. Assertions read
 # the real serialized bytes on a2a/mcp/rest via _wire_creatives (which reads the
-# dispatcher's own wire declaration through wire_dict),
-# satisfying the "actual wire bytes" constraint.
+# dispatcher's own wire declaration through wire_field), satisfying the "actual
+# wire bytes" constraint.
 
 _ISOLATION_CREATIVES_KEY = "isolation_creatives_by_principal"
 

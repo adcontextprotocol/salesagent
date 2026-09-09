@@ -24,13 +24,12 @@ import time
 from collections.abc import Mapping
 from typing import Any
 
-from adcp.signing.webhook_hmac import (
+from src.core.security.webhook_strict_json import DuplicateKeyInput, loads_rejecting_duplicate_keys
+from src.core.signing_contract import (
     LegacyWebhookHmacError,
     LegacyWebhookHmacOptions,
     verify_webhook_hmac,
 )
-
-from src.core.security.webhook_strict_json import DuplicateKeyInput, loads_rejecting_duplicate_keys
 
 
 class WebhookVerificationError(Exception):

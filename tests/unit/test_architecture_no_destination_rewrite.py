@@ -26,6 +26,25 @@ behaviourally instead: ``tests/unit/test_creative_agent_connection_alias.py``
 asserts it applies only to the public default agent, only when the env var is
 set, and that identity/cache-key URLs stay byte-identical.
 
+ONE named file is out of scope, and it is not a destination at all. RFC 9421's
+``@target-uri`` and ``@authority`` derived components are STRINGS THAT GET
+SIGNED: the profile requires the signer to emit a normalized form (lowercased
+scheme, IDNA/UTS-46 host, default port elided, fragment dropped per RFC 9421
+§2.2.2 + RFC 7230 §5.5) so that a signer and a verifier who received the same
+request compute the same signature base. Building that string is necessarily a
+reassembly, and ``src/core/signing_contract/_upstream/canonical.py`` is where it
+happens — a leaf module with no network reach whatsoever, whose output goes into
+a signature base and into federation identity comparison
+(``src/core/schemas/_base.py``), never into a dial.
+
+The exemption is one file, not a directory, and it is not taken on trust:
+``TestSignatureBaseExemption`` pins that the file cannot dial (no transport
+import can reach it) and that it is still the derived-component builder, so the
+name cannot be repointed at something that does route traffic. Note also that
+this module is a verbatim, provenance-cited copy of upstream ``adcp.signing``
+(see ``src/core/signing/__init__.py``) — rewriting it to dodge a spelling scan
+would destroy the byte-identity that is the whole reason the copy exists.
+
 Sibling guards for the other egress properties: the raw-lib and SDK-client
 import bans formerly in ``test_architecture_no_raw_egress.py`` now live in
 ``ruff-egress.toml`` (TID251, run over ``src/`` by ``make quality-ci``), with
@@ -90,9 +109,34 @@ def find_destination_rewrite_violations(tree: ast.Module) -> list[int]:
     return sorted(call.lineno for call in iter_call_expressions(tree) if _call_is_destination_rewrite(call))
 
 
+#: The RFC 9421 signature-base builder — the one file whose reassembly produces a string
+#: to SIGN rather than a place to go (see module docstring). Graded by
+#: ``TestSignatureBaseExemption`` rather than exempted on trust.
+SIGNATURE_BASE_MODULE = "src/core/signing_contract/_upstream/canonical.py"
+
+#: Top-level packages through which a module could acquire a connection.
+TRANSPORT_PACKAGES = frozenset({"httpx", "requests", "urllib3", "socket", "http", "aiohttp", "adcp"})
+
+#: ...except these two ``adcp`` sub-trees, which are pure value code: canonicalization
+#: helpers and pydantic types. Named at SUB-PACKAGE granularity to match
+#: ``ruff-egress.toml``, which bans the SDK's dialling surface by symbol
+#: (``adcp.ADCPClient``, ``adcp.client.ADCPClient``, …) rather than banning ``adcp``
+#: wholesale — a package-level ban here would contradict the tree's own policy and flag
+#: an import that cannot open anything.
+INERT_SDK_SUBPACKAGES = frozenset({"adcp.signing", "adcp.types"})
+
+
 def _scan_src() -> dict[str, list[int]]:
-    """Map every offending module under src/ to its violation lines. No exemptions."""
-    return scan_src(find_destination_rewrite_violations)
+    """Map every offending module under src/ to its violation lines.
+
+    One exemption, by exact path: the ``@target-uri`` / ``@authority``
+    derived-component builder. Everything else — the seam included — is scanned.
+    """
+    return {
+        mod: lines
+        for mod, lines in scan_src(find_destination_rewrite_violations).items()
+        if mod != SIGNATURE_BASE_MODULE
+    }
 
 
 class TestNoDestinationRewrite:
@@ -120,6 +164,60 @@ class TestNoDestinationRewrite:
                 "There is no allowlist.",
             ]
             raise AssertionError("\n".join(lines))
+
+
+class TestSignatureBaseExemption:
+    """The one exempted file earns it — it signs strings, it cannot send requests.
+
+    Without these, ``SIGNATURE_BASE_MODULE`` is a name someone could later point at a
+    module that really does route traffic, and the scan would go quiet about it.
+    """
+
+    @pytest.mark.arch_guard
+    def test_the_exempt_module_has_a_rewrite_to_exempt(self):
+        """A dead exemption is a hole. It must still be the reassembling module."""
+        tree = parse_module(repo_root() / SIGNATURE_BASE_MODULE)
+        assert tree is not None, f"{SIGNATURE_BASE_MODULE} is gone — delete the exemption with it"
+        assert find_destination_rewrite_violations(tree), (
+            f"{SIGNATURE_BASE_MODULE} no longer reassembles a URL, so the exemption grades "
+            "nothing. Remove it and let the scan cover the file again."
+        )
+
+    @pytest.mark.arch_guard
+    def test_the_exempt_module_cannot_dial(self):
+        """It reassembles for a SIGNATURE. Nothing it imports can open a connection.
+
+        This is what makes the reassembly harmless: there is no seam in front of this
+        code to get in front of. Checked on imports rather than call sites because a
+        module that imports no transport cannot acquire one at runtime without an
+        import statement showing up here.
+        """
+        tree = parse_module(repo_root() / SIGNATURE_BASE_MODULE)
+        assert tree is not None
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                imported.add(node.module)
+
+        reachable = {
+            module
+            for module in imported
+            if module.split(".")[0] in TRANSPORT_PACKAGES
+            and not any(module == ok or module.startswith(f"{ok}.") for ok in INERT_SDK_SUBPACKAGES)
+        }
+        assert not reachable, (
+            f"{SIGNATURE_BASE_MODULE} imports {sorted(reachable)} — it can reach the network, so "
+            "its URL reassembly is no longer provably a signature base. Revoke the exemption."
+        )
+
+    @pytest.mark.arch_guard
+    def test_the_exemption_is_exactly_one_file(self):
+        """Scoped to a path, never a prefix — a directory exemption would cover new files."""
+        assert SIGNATURE_BASE_MODULE.endswith(".py"), "the exemption must name a file, not a package"
+        assert (repo_root() / SIGNATURE_BASE_MODULE).is_file()
 
 
 class TestDestinationRewriteDetector:

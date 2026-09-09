@@ -91,8 +91,9 @@ class CreateMediaBuyBody(SalesAgentBaseModel):
     context: dict[str, Any] | None = None
     ext: dict[str, Any] | None = None
     idempotency_key: str | None = None
-    # AdCP 3.1.1 create-in-paused-state. Declared but NOT forwarded to the raw wrapper
-    # below, and not honored by _impl even if it were — see #1619.
+    # AdCP 3.1.1 create-in-paused-state; accepted, validated, and forwarded to the
+    # raw wrapper on all transports for wire parity, but pause-on-create is not yet
+    # honored by _impl — see #1619.
     paused: bool | None = None
     adcp_version: str = "1.0.0"
 
@@ -215,8 +216,11 @@ class ListAuthorizedPropertiesBody(SalesAgentBaseModel):
 
 
 class ListAccountsBody(SalesAgentBaseModel):
+    account: dict[str, Any] | None = None
     status: str | None = None
     sandbox: bool | None = None
+    idempotency_key: str | None = None
+    ext: dict[str, Any] | None = None
     pagination: dict[str, Any] | None = None
     context: dict[str, Any] | None = None
     adcp_version: str = "1.0.0"
@@ -229,6 +233,13 @@ class SyncAccountsBody(SalesAgentBaseModel):
     push_notification_config: dict[str, Any] | None = None
     context: dict[str, Any] | None = None
     adcp_version: str = "1.0.0"
+
+
+class GetCapabilitiesBody(SalesAgentBaseModel):
+    protocols: list[str] | None = None
+    context: dict[str, Any] | None = None
+    adcp_version: str | None = None
+    adcp_major_version: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +270,34 @@ async def get_products(body: GetProductsBody, identity: ResolvedIdentity | None 
 async def get_adcp_capabilities(identity: ResolvedIdentity | None = resolve_auth):
     """Get AdCP capabilities (auth-optional discovery skill)."""
     response = await capabilities_module.get_adcp_capabilities_raw(identity=identity)
+    return response.model_dump(mode="json")
+
+
+@router.post("/capabilities", operation_id="get_adcp_capabilities")
+async def post_capabilities(body: GetCapabilitiesBody, identity: ResolvedIdentity | None = resolve_auth):
+    """Get AdCP capabilities with request parameters (auth-optional discovery skill).
+
+    Additive alongside the parameterless GET route above (owner decision
+    2026-07-24): protocols filtering and context echo need a real request
+    body, which a bare GET cannot carry — matches the POST+JSON-body
+    convention every other route in this file follows.
+
+    ``operation_id`` declares the AdCP tool this route implements. The Python
+    handler cannot be named ``get_adcp_capabilities`` — the GET route above
+    already owns that name in this module — so the route publishes its tool
+    identity explicitly instead. This is the route's own public metadata: it
+    is the ``operationId`` FastAPI emits into the OpenAPI schema, which names
+    the method on every generated client (without it the id is the
+    verb/path-derived ``post_capabilities_api_v1_capabilities_post``, which
+    tells a client author nothing about which AdCP tool it calls).
+    """
+    response = await capabilities_module.get_adcp_capabilities_raw(
+        protocols=body.protocols,
+        context=to_context_object(body.context),
+        adcp_version=body.adcp_version,
+        adcp_major_version=body.adcp_major_version,
+        identity=identity,
+    )
     return response.model_dump(mode="json")
 
 
@@ -352,6 +391,7 @@ async def create_media_buy(
         context=context,
         ext=body.ext,
         idempotency_key=body.idempotency_key,
+        paused=body.paused,
         identity=identity,
         raw_wire_payload=raw_wire_payload,
     )

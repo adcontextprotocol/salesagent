@@ -111,18 +111,50 @@ def _load_pinned_recovery() -> dict[str, RecoveryHint]:
 # 3.1 pin). Read-only vocabulary: consumers look a code up, never assign one.
 RECOVERY_BY_WIRE_CODE: dict[str, RecoveryHint] = _load_pinned_recovery()
 
-# Spec codes the SDK helper table has not caught up to. The pinned 3.1 enum
+# Spec codes the SDK helper table has not caught up to. The pinned 3.1.1 enum
 # (enums/error-code.json, shipped inside the installed adcp SDK) defines these
-# as real wire codes; the SDK's ``STANDARD_ERROR_CODES`` predates them, and the
-# SDK is a cross-check, not the authority. CREATIVE_NOT_FOUND per the enum:
-# "Sellers MUST return this code uniformly for any creative_id not owned by the
-# calling account" (#1430 review). CONFIGURATION_ERROR per the enum: "the buyer
-# cannot resolve a seller-side deployment misconfiguration and MUST NOT
-# auto-retry" (#1430 review). Their recovery classifications are NOT repeated
-# here — this is a set of code NAMES; RECOVERY_BY_WIRE_CODE answers what they
-# mean. The remaining demoted spec code (BILLING_NOT_SUPPORTED) is tracked for
-# the same treatment in #1602.
-_SPEC_SUPPLEMENT_CODES: frozenset[str] = frozenset({"CREATIVE_NOT_FOUND", "CONFIGURATION_ERROR"})
+# as real wire codes; adcp 6.6.0's ``STANDARD_ERROR_CODES`` predates them, and
+# the SDK is a cross-check, not the authority. Their recovery classifications
+# are NOT repeated here — this is a set of code NAMES; RECOVERY_BY_WIRE_CODE
+# answers what they mean, machine-read from the same pin the citations below
+# quote.
+#
+# * CREATIVE_NOT_FOUND — "Sellers MUST return this code uniformly for any
+#   creative_id not owned by the calling account" (#1430 review).
+# * CONFIGURATION_ERROR — "the buyer cannot resolve a seller-side deployment
+#   misconfiguration and MUST NOT auto-retry" (#1430 review).
+# * AUTH_MISSING / AUTH_INVALID — v3.1.1 replaces the now-deprecated
+#   AUTH_REQUIRED alias with a split: AUTH_MISSING ("No credentials were
+#   presented"; correctable) vs AUTH_INVALID ("Credentials were presented but
+#   rejected"; terminal). See salesagent-mkso; adcp 6.6.0 has not implemented
+#   the split yet.
+# * PERMISSION_DENIED — authenticated caller not authorized under the seller's
+#   own policies. Distinct from AUTHORIZATION_REQUIRED, which is a
+#   downstream-platform-connection gap. Replaces the deprecated AUTH_REQUIRED
+#   alias for AdCPAuthorizationError (salesagent-otc5).
+# * VERSION_UNSUPPORTED — buyer pinned an adcp_version/adcp_major_version this
+#   seller doesn't support; the buyer can re-pin to a version advertised via
+#   get_adcp_capabilities.adcp and retry (salesagent-rldj, #1592 C4).
+# * UNSUPPORTED_PROVISIONING — a settings-update (AccountReference)
+#   sync_accounts entry matched no existing account. Settings-update entries
+#   MUST NOT provision a new account, so the mismatch is rejected rather than
+#   silently falling through to provisioning (salesagent-5g8e, #1592 A2).
+# * BILLING_NOT_SUPPORTED — the seller declines the requested `billing` value,
+#   at the seller-wide capability level or the per-account-relationship level.
+#   Promoting it here (with UNSUPPORTED_PROVISIONING) closes #1602: it is a
+#   pinned wire code, no longer a demotion translated to UNSUPPORTED_FEATURE.
+_SPEC_SUPPLEMENT_CODES: frozenset[str] = frozenset(
+    {
+        "CREATIVE_NOT_FOUND",
+        "CONFIGURATION_ERROR",
+        "AUTH_MISSING",
+        "AUTH_INVALID",
+        "PERMISSION_DENIED",
+        "VERSION_UNSUPPORTED",
+        "UNSUPPORTED_PROVISIONING",
+        "BILLING_NOT_SUPPORTED",
+    }
+)
 
 # Codes the SDK helper ships that the PINNED spec does not define. The pin is the
 # authority and the helper is a cross-check (CLAUDE.md spec-grounding gate), so a
@@ -136,7 +168,10 @@ _SPEC_SUPPLEMENT_CODES: frozenset[str] = frozenset({"CREATIVE_NOT_FOUND", "CONFI
 # from `enumMetadata`, and absent from the whole of dist/ at v3.1.1. The SDK even
 # assigns it recovery="terminal", which _load_pinned_recovery's docstring above
 # already explains is not a value to trust. UNSUPPORTED_FEATURE, which IS pinned,
-# is the code this seller emits instead; nothing in src/ produces the bare one.
+# is the code this seller emits instead; nothing in src/ produces the bare one,
+# and ERROR_CODE_MAPPING translates it to UNSUPPORTED_FEATURE belt-and-braces so
+# a stray raise site collapses to the canonical code rather than to the generic
+# SERVICE_UNAVAILABLE.
 _SPEC_DEMOTED_CODES: frozenset[str] = frozenset({"NOT_SUPPORTED"})
 
 # The authoritative wire-code table: SDK code-name baseline + pinned-spec
@@ -182,11 +217,18 @@ ERROR_CODE_MAPPING: dict[str, str] = {
     "FORMAT_NOT_FOUND": "INVALID_REQUEST",
     "TASK_NOT_FOUND": "INVALID_REQUEST",
     "INTERNAL_ERROR": "SERVICE_UNAVAILABLE",
-    # Authentication / authorisation
-    "AUTHORIZATION_ERROR": "AUTH_REQUIRED",
-    "PRINCIPAL_ID_MISSING": "AUTH_REQUIRED",
-    "PRINCIPAL_NOT_FOUND": "AUTH_REQUIRED",
-    "INSUFFICIENT_PRIVILEGES": "AUTH_REQUIRED",
+    # Authentication / authorisation. PRINCIPAL_ID_MISSING (no principal_id
+    # resolved at all) is the absent-credential case -> AUTH_MISSING.
+    # PRINCIPAL_NOT_FOUND / INSUFFICIENT_PRIVILEGES (a specific, presented
+    # identifier was rejected) are the presented-but-invalid case ->
+    # AUTH_INVALID. Per v3.1.1 error-code.json AUTH_MISSING/AUTH_INVALID
+    # split (salesagent-mkso). The authz axis (authenticated but not
+    # authorized) is PERMISSION_DENIED, carried directly by
+    # AdCPAuthorizationError's class default (salesagent-otc5) — no internal
+    # code maps through this table for it.
+    "PRINCIPAL_ID_MISSING": "AUTH_MISSING",
+    "PRINCIPAL_NOT_FOUND": "AUTH_INVALID",
+    "INSUFFICIENT_PRIVILEGES": "AUTH_INVALID",
     # Validation (field-level)
     "INVALID_DATE_RANGE": "VALIDATION_ERROR",
     "INVALID_DATETIME": "VALIDATION_ERROR",
@@ -209,7 +251,10 @@ ERROR_CODE_MAPPING: dict[str, str] = {
     "UNSUPPORTED_TARGETING": "UNSUPPORTED_FEATURE",
     "PLACEMENT_TARGETING_NOT_SUPPORTED": "UNSUPPORTED_FEATURE",
     "UNSUPPORTED_ACTION": "UNSUPPORTED_FEATURE",
-    "BILLING_NOT_SUPPORTED": "UNSUPPORTED_FEATURE",
+    # Legacy SDK code AdCP v3.1.1 dropped (see _SPEC_DEMOTED_CODES);
+    # feature-unsupported is canonically UNSUPPORTED_FEATURE per v3.1.1
+    # error-code.json.
+    "NOT_SUPPORTED": "UNSUPPORTED_FEATURE",
     # Resource lookup
     "NO_PACKAGES_FOUND": "PACKAGE_NOT_FOUND",
     # Resource state
@@ -352,6 +397,63 @@ def wire_advisory(
         field=field,
         suggestion=suggestion,
     )
+
+
+def normalize_advisory_errors(errors: list[LibraryError]) -> list[LibraryError]:
+    """Re-code already-built ``errors[]`` advisories to guaranteed-standard wire codes
+    and populate ``recovery``, preserving every other caller-set field verbatim.
+
+    The bulk counterpart to :func:`wire_advisory`, and it reads the same single
+    authority: ``wire_advisory`` DERIVES the (code, recovery) pair when an advisory
+    is constructed; this re-derives it for a list of advisories already assembled
+    with their per-item ``details``/``issues``/``source`` payloads, which
+    ``wire_advisory``'s narrow signature deliberately does not carry.
+
+    Unlike a raised ``AdCPError`` (translated at the transport boundary), advisory
+    entries serialize verbatim, so an internal-only code would leak to the buyer.
+    ``to_wire_error_code`` both translates mapped codes AND collapses anything
+    still non-standard to ``SERVICE_UNAVAILABLE``, so no internal code can reach
+    the buyer even if a future advisory is built with an unmapped internal code.
+
+    ``field``/``suggestion``/``details``/``retry_after``/``issues``/``source``/
+    ``sdk_id`` pass through untouched -- only ``code`` is re-coded. ``recovery``
+    is FILLED from ``RECOVERY_BY_WIRE_CODE`` -- the pinned enumMetadata, the one
+    table in this module that answers a recovery question -- only when the caller
+    left it unset. An explicit ``recovery`` the caller pinned (e.g. media_buy_list's
+    blob-defect advisories, whose classification is narrower than the code's
+    enum-wide default) is never clobbered.
+
+    The lookup is a subscript, not a ``.get``, for the same reason as
+    ``wire_advisory``'s: ``to_wire_error_code`` guarantees membership in
+    WIRE_STANDARD_CODES, and the drift raise above guarantees
+    WIRE_STANDARD_CODES <= RECOVERY_BY_WIRE_CODE, so no authored fallback is
+    reachable here.
+
+    ``recovery`` is populated even though ``core/error.json`` lists only
+    ``[code, message]`` as required: the ``recovery`` property description is
+    normative in the other direction — "Senders SHOULD populate ``recovery`` on
+    every error from 3.1 onward — it is the normative carrier of recovery
+    semantics across version skew".
+
+    Lives here, beside ``to_wire_error_code``, rather than in a tool module: it is
+    shared by every ``_impl`` that emits advisories, and a tool importing an
+    advisory normalizer from a sibling tool module is a layering inversion.
+    """
+    return [
+        LibraryError(  # structural-guard: advisory entry serialized verbatim into a response errors[]
+            code=(wire_code := to_wire_error_code(e.code)),
+            message=e.message,
+            recovery=e.recovery if e.recovery is not None else RECOVERY_BY_WIRE_CODE[wire_code],
+            field=e.field,
+            suggestion=e.suggestion,
+            details=e.details,
+            retry_after=e.retry_after,
+            issues=e.issues,
+            source=e.source,
+            sdk_id=e.sdk_id,
+        )
+        for e in errors
+    ]
 
 
 def _serialize_context(
@@ -680,6 +782,17 @@ class AdCPBlockedUrlError(AdCPValidationError):
         )
 
 
+class AdCPVersionUnsupportedError(AdCPError):
+    """Buyer pinned an adcp_version/adcp_major_version this seller doesn't support (400).
+
+    Recovery is correctable per v3.1.1 error-code.json enumMetadata: re-pin to
+    a release in the returned error.details.supported_versions and retry.
+    """
+
+    _default_status_code: ClassVar[int] = 400
+    _default_error_code: ClassVar[str] = "VERSION_UNSUPPORTED"
+
+
 class AdCPInvalidRequestError(AdCPValidationError):
     """A structurally invalid request graded as INVALID_REQUEST by the storyboard (400).
 
@@ -692,52 +805,73 @@ class AdCPInvalidRequestError(AdCPValidationError):
     _default_error_code: ClassVar[str] = "INVALID_REQUEST"
 
 
-AUTH_REQUIRED_SUGGESTION = "Provide valid credentials (x-adcp-auth token)."
+# v3.1.1 error-code.json deprecates the single AUTH_REQUIRED code in favor of
+# a split: AUTH_MISSING (no credentials presented; correctable — provide
+# credentials and retry) vs AUTH_INVALID (credentials presented but rejected;
+# terminal — do not auto-retry, rotate/escalate). AUTH_REQUIRED itself is
+# retained by the spec only as a deprecated backward-compat alias. See
+# salesagent-mkso for the migration; distinct suggestion strings per code
+# since "provide valid credentials" reads as invalid-framing for the
+# genuinely-absent-credential sites.
+AUTH_MISSING_SUGGESTION = "Provide credentials (x-adcp-auth token) and retry."
+AUTH_INVALID_SUGGESTION = (
+    "Do not auto-retry with the same credentials — they were rejected. Rotate/refresh and retry, or escalate."
+)
 
 
 class AdCPAuthenticationError(AdCPError):
-    """Missing or invalid authentication credentials (401).
+    """Presented-but-invalid authentication credentials (401, AUTH_INVALID).
 
-    Emits the standard ``AUTH_REQUIRED`` wire code — the sole authentication
-    error code in the AdCP 3.1 error-code enum and adcp 5.7
-    ``STANDARD_ERROR_CODES``. Its enum description explicitly covers both
-    "credentials missing" and "credentials presented but rejected", so it is
-    the canonical code for every authentication failure.
+    Emits ``AUTH_INVALID`` per the v3.1.1 error-code enum: "Credentials were
+    presented but rejected — revoked, malformed signature, or a key no longer
+    in the seller's keystore ... Recovery: terminal." This is the base class
+    for the presented-but-rejected case; ``AdCPAuthRequiredError`` below
+    overrides to ``AUTH_MISSING`` for the genuinely-absent-credential case.
 
-    Recovery is ``correctable`` per the pinned AdCP error-code enum
-    (``AUTH_REQUIRED.recovery == "correctable"``; released 3.1.0 agrees) —
-    not the ``terminal`` base default. The enum carries operationally distinct
-    sub-cases (missing credentials → retry; presented-but-rejected → escalate),
-    but its single canonical ``recovery`` classification is ``correctable``,
-    and the wire contract is graded against that enum (#1417,
-    superseding the earlier "storyboards grade only the code" judgment).
+    Recovery is ``terminal`` — the buyer MUST NOT blindly auto-retry
+    (rejected credentials, retried unmodified, will be rejected again);
+    rotate/refresh once if applicable, otherwise escalate to a human.
     """
 
     _default_status_code: ClassVar[int] = 401
-    _default_error_code: ClassVar[str] = "AUTH_REQUIRED"
-    # Every authentication rejection shares one buyer fix hint, so the graded
-    # top-level suggestion (error.json) can never be forgotten at a raise site
-    # (#1417 round-8 review item 4: 11 of 12 raise sites emitted an empty suggestion).
-    _default_suggestion: ClassVar[str | None] = AUTH_REQUIRED_SUGGESTION
+    _default_error_code: ClassVar[str] = "AUTH_INVALID"
+    # No ``_default_recovery``: recovery is derived from the pinned enumMetadata,
+    # which classifies AUTH_INVALID ``terminal``. Declaring it here would only
+    # re-open the divergence channel the derivation closed.
+    #
+    # Every presented-but-rejected authentication failure shares one buyer fix
+    # hint, so the graded top-level suggestion (error.json) can never be forgotten
+    # at a raise site (#1417 round-8 review item 4: 11 of 12 raise sites emitted an
+    # empty suggestion). AdCPAuthRequiredError overrides it for the
+    # absent-credential framing.
+    _default_suggestion: ClassVar[str | None] = AUTH_INVALID_SUGGESTION
 
 
 class AdCPAuthRequiredError(AdCPAuthenticationError):
-    """No authentication context present (401, AUTH_REQUIRED).
+    """No authentication context present (401, AUTH_MISSING).
 
-    Raised when the request contains no auth token at all. Inherits the
-    standard ``AUTH_REQUIRED`` wire code from its parent.
+    Raised when the request contains no auth token / identity at all. Per
+    the v3.1.1 error-code enum: "No credentials were presented ... Recovery:
+    correctable (provide credentials via the auth header and retry)."
     """
+
+    _default_error_code: ClassVar[str] = "AUTH_MISSING"
+    _default_suggestion: ClassVar[str | None] = AUTH_MISSING_SUGGESTION
 
 
 class AdCPAuthorizationError(AdCPError):
     """Authenticated but not authorized for this resource (403).
 
-    Emits ``AUTH_REQUIRED`` with ``correctable`` recovery, matching the pinned
-    AdCP error-code enum and ``AdCPAuthenticationError`` (#1417).
+    Emits ``PERMISSION_DENIED`` with ``correctable`` recovery per the v3.1.1
+    error-code enum: "The authenticated caller is not authorized for the
+    requested action under the seller's own policies." Distinct from
+    ``AUTHORIZATION_REQUIRED`` (a downstream-platform-connection gap, not this
+    class's shape) — migrated off the deprecated AUTH_REQUIRED alias
+    (salesagent-otc5, completing salesagent-mkso for this axis).
     """
 
     _default_status_code: ClassVar[int] = 403
-    _default_error_code: ClassVar[str] = "AUTH_REQUIRED"
+    _default_error_code: ClassVar[str] = "PERMISSION_DENIED"
 
 
 class AdCPPolicyViolationError(AdCPAuthorizationError):

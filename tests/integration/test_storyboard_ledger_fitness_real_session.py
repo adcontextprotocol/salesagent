@@ -70,12 +70,12 @@ import pytest
 
 from scripts.audit import ledger
 from tests.helpers.ledger import load_ledger_nodeids
-from tests.unit import test_storyboard_ledger_state as ledger_state
+from tests.helpers.storyboard_ledger_pin import EXPECTED_LEDGER, LEDGER_PATH
 
 pytestmark = [pytest.mark.integration]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-LEDGER = REPO_ROOT / "tests" / "storyboard" / "known_failures.txt"
+LEDGER = LEDGER_PATH
 
 # The one module under measurement (see this module's docstring). Named
 # explicitly rather than by directory so the graded outcome counts stay a
@@ -116,14 +116,14 @@ def _ledger_entries() -> list[ledger.LedgerCheckId]:
     # entries that moved instead of just the arithmetic.
     # Both sides as NODEIDs: LedgerCheckId.format() emits the bracket CONTENT
     # (`mcp::core::…`), while EXPECTED_LEDGER holds full pytest nodeids.
-    expected = ledger_state.EXPECTED_LEDGER
+    expected = EXPECTED_LEDGER
     actual = load_ledger_nodeids(LEDGER)
     if actual != expected:
         only_ledger = sorted(actual - expected)
         only_expected = sorted(expected - actual)
         raise AssertionError(
             "the storyboard ledger disagrees with EXPECTED_LEDGER in "
-            "tests/unit/test_storyboard_ledger_state.py — re-seed both together. "
+            "tests/helpers/storyboard_ledger_pin.py — re-seed both together. "
             f"ledger={len(actual)} EXPECTED_LEDGER={len(expected)}\n"
             f"  only in the ledger ({len(only_ledger)}): {only_ledger[:5]}\n"
             f"  only in EXPECTED_LEDGER ({len(only_expected)}): {only_expected[:5]}"

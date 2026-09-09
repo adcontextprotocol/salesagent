@@ -51,6 +51,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+from src.core.config import AppConfig
 from src.core.schemas import SyncCreativesResponse
 from tests.harness._base import IntegrationEnv
 from tests.harness.egress import EgressHatchMixin
@@ -105,10 +106,25 @@ class CreativeSyncEnv(EgressHatchMixin, IntegrationEnv):
         # Audit log: no-op
         self.mock["audit_log"].return_value = None
 
-        # Config: default with no gemini key (safe for static creatives)
-        mock_config = MagicMock()
-        mock_config.gemini_api_key = None
-        self.mock["config"].return_value = mock_config
+        # Config: the REAL AppConfig, overriding only gemini_api_key (no key -> safe for
+        # static creatives). NOT a MagicMock, and the reason has nothing to do with
+        # creatives (#1291):
+        #
+        # the [rest] transport imports the app LAZILY (``from src.app import app``, in
+        # tests/harness/_base.py), ``src/app.py`` imports ``RequestSignatureMiddleware``,
+        # and that module does ``from src.core.config import get_config`` at MODULE level.
+        # So the FIRST [rest] scenario to run in a worker decides what the middleware
+        # binds for the rest of that worker's life — and a ``from X import Y`` binding is
+        # NOT restored when this patch unwinds. A MagicMock captured that way then answers
+        # every truth test the middleware makes (``config.verifier_enabled``) and
+        # fabricates every value, so nothing fails until the first read that does
+        # ARITHMETIC (``size > config.max_signed_body_bytes``) — in an unrelated test file,
+        # arbitrarily later. Measured: uc006_sync_creatives before uc005 = 149 failures,
+        # all [rest]; reverse order = 0.
+        #
+        # The need here is ONE field for ``_processing.py``'s lazy import. A real config
+        # meets it without faking every other field in the system.
+        self.mock["config"].return_value = AppConfig(gemini_api_key=None)
 
     def setup_generative_build(
         self,
@@ -200,28 +216,47 @@ class CreativeSyncEnv(EgressHatchMixin, IntegrationEnv):
         """Dispatch sync_creatives through the REAL A2A ``on_message_send`` pipeline.
 
         This used to call ``sync_creatives_raw`` directly, routing AROUND
-        ``on_message_send``. The consequence (per tests/CLAUDE.md's own table:
-        A2A ``wire_response`` is populated ONLY when the env routes through
-        ``_run_a2a_handler``) was that the A2A leg produced no wire at all — so
-        every storyboard Then on this transport had nothing transport-observable
-        to assert and fell back to reading an in-memory object. Delegating to the
-        base ``_run_a2a_handler`` (message parse → skill routing →
-        ``_handle_sync_creatives_skill`` → ``_serialize_for_a2a`` →
-        Task/Artifact DataPart) makes the a2a seat grade the real handler,
-        per-item failures included, instead of standing in for it.
+        ``on_message_send``. TWO independent defects converged on that bypass,
+        and delegating to the base ``_run_a2a_handler`` (message parse → skill
+        routing → ``_handle_sync_creatives_skill`` → ``_serialize_for_a2a`` →
+        Task/Artifact DataPart) removes both:
+
+        1. NO WIRE. Per tests/CLAUDE.md's own table, A2A ``wire_response`` is
+           populated ONLY when the env routes through ``_run_a2a_handler``, so
+           the A2A leg produced no wire at all — every storyboard Then on this
+           transport had nothing transport-observable to assert and fell back to
+           reading an in-memory object. Routing through the real handler makes
+           the a2a seat grade it, per-item failures included, instead of standing
+           in for it. That is the defect this module exists to remove, so the
+           bypass is replaced rather than worked around.
+        2. NO SIGNATURE (salesagent-n78j0.1.3). ``_raw`` is a direct function
+           call: it puts nothing on a wire, so ``RequestSignatureMiddleware`` —
+           which is ASGI, above the whole app — never sees the request, and a
+           ``signed=True`` dispatch would run UNSIGNED while reporting success.
+           That silent downgrade is the precise false green S1 exists to remove.
+
+        The signing fork is deliberately NOT repeated here. ``_run_a2a_handler``
+        itself defers to ``_run_a2a_over_http`` once ``can_sign``, so this leg
+        already goes over real HTTP under signing — and because that fork sits
+        BELOW the normalization this method performs, the signed leg puts the
+        SAME JSON body on the wire that the unsigned one does. A local
+        ``can_sign`` short-circuit here would hand ``message/send`` the raw
+        Python objects (account, push_notification_config, validation_mode)
+        that ``_dict_to_value`` cannot serialize, so the two dispatches would
+        differ by more than the signature.
 
         Outbound kwargs are JSON-normalized through :meth:`_wire_value` — the
         SAME normalizer the REST leg's ``build_rest_body`` uses, not a second
         hand-rolled one — because they now travel via
         ``create_a2a_message_with_skill`` -> ``_dict_to_value`` (protobuf),
-        which cannot carry the Pydantic models the raw wrapper accepted as live
-        Python objects (account, push_notification_config) and would otherwise
-        turn them into repr strings instead of a document a buyer could send.
-        Normalization is applied per-kwarg rather than by calling
-        ``build_rest_body``, because that helper SELECTS the REST body's keys:
-        routing through it would silently drop the three kwargs
-        ``_run_a2a_handler`` consumes itself (see ``_A2A_RESERVED_KWARGS``),
-        which must reach it untouched.
+        which cannot carry the Pydantic models or enums the raw wrapper accepted
+        as live Python objects (account, push_notification_config,
+        validation_mode) and would otherwise turn them into repr strings instead
+        of a document a buyer could send. Normalization is applied per-kwarg
+        rather than by calling ``build_rest_body``, because that helper SELECTS
+        the REST body's keys: routing through it would silently drop the three
+        kwargs ``_run_a2a_handler`` consumes itself (see
+        ``_A2A_RESERVED_KWARGS``), which must reach it untouched.
         """
         kwargs.setdefault("creatives", [])
         return self._run_a2a_handler(

@@ -33,8 +33,17 @@ from adcp.types import Error as AdCPResponseError
 from pydantic import ValidationError
 
 from src.core.database.models import CreativeAgent as DBCreativeAgent
-from src.core.exceptions import AdCPValidationError
+from src.core.exceptions import AdCPConfigurationError, AdCPValidationError
 from src.core.format_cache import load_reference_formats
+
+# The ONE home of the outbound request-signing posture gate, shared with
+# SignalsAgentRegistry. This module used to re-derive it locally, and its local
+# copy had DRIFTED: it spelled the key-presence half
+# ``signing_key_backed(repo, now=now).signs``, which folds an unreadable private
+# half into ``False`` and dialled unsigned where the signals registry raised.
+# Three copies of a security gate mean a fix to one is a fix to one (CLAUDE.md
+# DRY invariant).
+from src.core.helpers.adapter_helpers import request_signer_for_tenant
 from src.core.helpers.outbound_error_mapping import raise_mapped_outbound_error
 from src.core.schemas import Format, FormatId, canonical_agent_url
 from src.core.security.outbound_http import (
@@ -346,6 +355,7 @@ class CreativeAgentRegistry:
         is_responsive: bool | None = None,
         asset_types: list[str] | None = None,
         name_search: str | None = None,
+        tenant_id: str | None = None,
     ) -> list[Format]:
         """Fetch format list from an OPERATOR-configured creative agent, through the guarded MCP seam.
 
@@ -358,6 +368,17 @@ class CreativeAgentRegistry:
         counterparty-supplied ``agent_url`` never reaches this method — see
         ``_fetch_formats_raw_mcp`` for that path, unchanged by this migration.
 
+        The dial is SSRF-guarded and SIGNED, and those are no longer alternatives:
+        ``sign=`` computes the RFC 9421 signature inside the seam's own pinned
+        transport, over the exact bytes, target URI and headers httpx is about to
+        transmit, on every JSON-RPC message and every retry. Before that parameter
+        the only way to sign was to hand key material to an SDK client that dialled
+        for itself, so "signed" and "guarded" could not both hold (#1291 C3 vs
+        GH #1802); :func:`~src.core.helpers.adapter_helpers.request_signer_for_tenant`
+        decides WHETHER this tenant signs and
+        raises rather than downgrade, so this call site states what it wants signed
+        and never how.
+
         Args:
             agent: CreativeAgent to query (operator-configured — a tenant DB row
                 or the built-in default agent, never a buyer-supplied URL)
@@ -368,6 +389,8 @@ class CreativeAgentRegistry:
             is_responsive: Filter for responsive formats
             asset_types: Filter by asset types
             name_search: Search by name
+            tenant_id: Whose signing posture governs this dial. ``None`` — a caller
+                with no tenant in scope — dials unsigned, exactly as before.
 
         Returns:
             List of Format objects from the agent
@@ -387,6 +410,9 @@ class CreativeAgentRegistry:
         )
         args = request.model_dump(mode="json", exclude_none=True)
 
+        # Resolved BEFORE the dial: the signing session is opened, read and closed
+        # by request_signer_for_tenant, so no pooled connection is parked on an
+        # agent's latency.
         payload = await call_operator_mcp_tool(
             _connection_agent_url(agent.agent_url),
             "list_creative_formats",
@@ -395,8 +421,18 @@ class CreativeAgentRegistry:
             auth=agent.auth,
             auth_header=agent.auth_header,
             timeout=agent.timeout,
+            sign=request_signer_for_tenant(tenant_id=tenant_id),
         )
-        return _validate_formats_tolerant(payload.get("formats", []), logger)
+        if "formats" not in payload:
+            # Nothing parseable came back: ``extract_tool_payload`` answers ``{}``
+            # when neither structured_content nor a TextContent block carried a JSON
+            # object, and an agent that answered with an object lacking ``formats``
+            # did not answer ``list_creative_formats``. Reading ``.get("formats", [])``
+            # over either turns a dead agent into "agent up, 0 formats" — the exact
+            # bug prebid/salesagent#1136 filed and tests/unit/test_silent_empty_format_bug.py
+            # guards. Mirrors the signals twin's ``if not payload`` raise.
+            raise AdCPConfigurationError(f"No parseable content in list_creative_formats response from {agent.name}")
+        return _validate_formats_tolerant(payload["formats"], logger)
 
     @staticmethod
     def config_for(db_agent: DBCreativeAgent) -> CreativeAgent:
@@ -429,10 +465,16 @@ class CreativeAgentRegistry:
         method: the route holds a database row, and everything between that row
         and the dial -- the config mapping, the operator provenance, both error
         vocabularies -- is this class's business, not a blueprint's.
+
+        "Exactly as production dials it" now includes the SIGNATURE: the row carries
+        its own ``tenant_id``, so the probe signs with the same key the same tenant's
+        production fetch signs with. A probe that dialled unsigned against a
+        counterparty enforcing RFC 9421 would pass while production failed -- the
+        same class of lie that dropping ``auth_header`` and ``timeout`` produced.
         """
         agent = self.config_for(db_agent)
         try:
-            formats = await self._fetch_formats_operator(agent)
+            formats = await self._fetch_formats_operator(agent, tenant_id=db_agent.tenant_id)
         except Exception as exc:  # noqa: BLE001 - an operator probe reports every failure, it never 500s
             return probe_failure(exc, logger=logger)
 
@@ -468,6 +510,15 @@ class CreativeAgentRegistry:
         The adcp SDK 3.6.0 requires structuredContent in MCP responses, but some
         creative agents return TextContent with JSON. This method calls the MCP
         endpoint directly via HTTP and parses the JSON response.
+
+        Deliberately UNSIGNED, and that is a posture, not an oversight. Two reasons,
+        either sufficient: no tenant is in scope on this path, and ``asend``'s
+        ``sign=`` hook is a :class:`~src.core.security.outbound_http.SignAttempt`
+        — ``(method, url, body)``, with no ``headers`` — while the RFC 9421 request
+        profile must cover the request's REAL headers or produce a signature no
+        verifier can reconstruct (``adcp.signing.verifier._check_components``).
+        Adapting one to the other would mean signing headers that never ship, which
+        is worse than sending none.
         """
         import json
 
@@ -555,6 +606,7 @@ class CreativeAgentRegistry:
         name_search: str | None = None,
         type_filter: str | None = None,
         provenance: UrlProvenance | None = None,
+        tenant_id: str | None = None,
     ) -> list[Format]:
         """Get formats from agent with caching.
 
@@ -573,6 +625,9 @@ class CreativeAgentRegistry:
                 (even with no ``field``) routes through the egress seam; anything
                 else (an :class:`OperatorEndpoint`, or ``None``) is operator
                 configuration and is eligible for the testing short-circuit below.
+            tenant_id: Whose signing posture governs the OPERATOR dial below.
+                Forwarded, never re-derived: which tenant is asking is the caller's
+                fact, not something a cache-keyed-by-agent-url could recover.
 
         Returns:
             List of Format objects
@@ -627,7 +682,7 @@ class CreativeAgentRegistry:
 
         # Fetch from agent
         filter_kwargs = {field: locals()[field] for field in _FORMAT_FILTER_FIELDS}
-        formats = await self._fetch_formats_operator(agent, **filter_kwargs)
+        formats = await self._fetch_formats_operator(agent, tenant_id=tenant_id, **filter_kwargs)
 
         return self._cache_formats(agent, formats, has_filters)
 
@@ -719,7 +774,11 @@ class CreativeAgentRegistry:
                 # cache-store logic (DRY — this loop used to reimplement it inline).
                 filter_kwargs = {field: locals()[field] for field in _FORMAT_FILTER_FIELDS}
                 formats = await self.get_formats_for_agent(
-                    agent, force_refresh=force_refresh, type_filter=type_filter, **filter_kwargs
+                    agent,
+                    force_refresh=force_refresh,
+                    type_filter=type_filter,
+                    tenant_id=tenant_id,
+                    **filter_kwargs,
                 )
 
                 logger.info(f"list_all_formats: Got {len(formats)} formats from {agent.agent_url}")
@@ -791,6 +850,12 @@ class CreativeAgentRegistry:
 
         Returns:
             Format object or None if not found
+
+        Note:
+            No ``tenant_id`` is threaded here yet, so this call dials unsigned --
+            unchanged from before request signing existed. Its caller
+            (``media_buy_create.py``) has one in scope; wiring it is a follow-up,
+            not a downgrade introduced here.
         """
         # Find agent
         agent = CreativeAgent(agent_url=agent_url, name="Unknown", enabled=True)
@@ -805,7 +870,12 @@ class CreativeAgentRegistry:
         return None
 
     async def preview_creative(
-        self, agent_url: str, format_id: str, creative_manifest: dict[str, Any]
+        self,
+        agent_url: str,
+        format_id: str,
+        creative_manifest: dict[str, Any],
+        *,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
         """Generate preview renderings for a creative using the creative agent.
 
@@ -823,6 +893,9 @@ class CreativeAgentRegistry:
                         "logo": {"asset_type": "image", "url": "https://..."}
                     }
                 }
+            tenant_id: Whose signing posture governs this dial (see
+                :func:`~src.core.helpers.adapter_helpers.request_signer_for_tenant`).
+                ``None`` dials unsigned, as before.
 
         Returns:
             Preview response containing array of preview variants with preview_url.
@@ -853,6 +926,7 @@ class CreativeAgentRegistry:
                 "creative_manifest": creative_manifest,
             },
             label="the creative agent",
+            sign=request_signer_for_tenant(tenant_id=tenant_id),
         )
 
     async def build_creative(
@@ -864,6 +938,8 @@ class CreativeAgentRegistry:
         promoted_offerings: dict[str, Any] | None = None,
         context_id: str | None = None,
         finalize: bool = False,
+        *,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
         """Build a creative using AI generation via the creative agent.
 
@@ -878,6 +954,9 @@ class CreativeAgentRegistry:
             promoted_offerings: Brand and product information for AI generation
             context_id: Session ID for iterative refinement (optional)
             finalize: Set to true to finalize the creative (default: False)
+            tenant_id: Whose signing posture governs this dial (see
+                :func:`~src.core.helpers.adapter_helpers.request_signer_for_tenant`).
+                ``None`` dials unsigned, as before.
 
         Returns:
             Build response containing:
@@ -901,7 +980,11 @@ class CreativeAgentRegistry:
             params["context_id"] = context_id
 
         return await call_operator_mcp_tool(
-            _connection_agent_url(agent_url), "build_creative", params, label="the creative agent"
+            _connection_agent_url(agent_url),
+            "build_creative",
+            params,
+            label="the creative agent",
+            sign=request_signer_for_tenant(tenant_id=tenant_id),
         )
 
 

@@ -166,10 +166,11 @@ _ALLOWED_ALLOW_PRIVATE_SITES: frozenset[str] = frozenset(
         "tox.ini",
         # The host runner stands up the same stack outside compose.
         "run_all_tests_host.sh",
-        # The creative integration matrix group consumes the same private
-        # origins; its own comment records that the compose files and the host
-        # runner already open the hatch and this group needs it too.
-        ".github/workflows/ci.yml",
+        # NOTE: .github/workflows/ci.yml was removed from this pin at the #1802 merge.
+        # Its "creative" integration group used to run on the host and set the flag
+        # inline; the group now runs IN-NETWORK via ./run_all_tests.sh, so the compose
+        # file and run_all_tests_host.sh are the only declaration sites left. Dropping a
+        # site that genuinely stopped declaring is a shrink, not a relaxation.
     }
 )
 

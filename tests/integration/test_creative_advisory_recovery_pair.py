@@ -85,7 +85,7 @@ from tests.harness.transport import Transport, TransportResult
 # Pydantic ``__eq__`` trap that decides whether ``_processing.py`` finds a
 # matching ``format_obj`` at all (a pre-built ``src.core.schemas.FormatId``
 # silently never matches), and that decision must have exactly one owner.
-from tests.integration.test_creative_agent_dial_refusal_recovery import _FORMAT_ID, _registered_format
+from tests.integration._egress_ingest_helpers import _FORMAT_ID, _registered_format
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 

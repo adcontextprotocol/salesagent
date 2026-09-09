@@ -581,11 +581,10 @@ class TestDeliverWithBackoffGenericException:
     """
 
     def test_generic_exception_breaks_retry_loop(self):
-        from unittest.mock import MagicMock
-
         from src.core.webhooks.delivery import WebhookDeliveryOutcome
         from src.services.webhook_delivery_service import (
             CircuitBreaker,
+            QueuedWebhook,
             WebhookDeliveryService,
             WebhookQueue,
         )
@@ -594,20 +593,26 @@ class TestDeliverWithBackoffGenericException:
         cb = CircuitBreaker()
         queue = WebhookQueue()
 
-        mock_config = MagicMock()
-        mock_config.url = "https://example.com/hook"
-        # No webhook_secret: production stopped reading that column with
-        # salesagent-47n9.24, and a MagicMock answers every attribute, so leaving
-        # it set would keep this mock describing a config shape nothing reads.
-        mock_config.authentication_type = None
-        mock_config.authentication_token = None
-
+        # A QueuedWebhook, not a MagicMock config: the queue carries PRIMITIVES ONLY
+        # (#1757), so the retry loop cannot hold a session across its sleep and POST.
+        # The three fields below are exactly what the mock used to expose.
+        #
+        # That projection is also how the webhook_secret obligation is now met by
+        # CONSTRUCTION rather than by omission: production stopped reading that column
+        # with salesagent-47n9.24, and the old MagicMock answered every attribute, so
+        # dropping the line was the only way to stop it describing a config shape
+        # nothing reads. QueuedWebhook is frozen and has no such field at all, so the
+        # mock can no longer over-answer — which is why the MagicMock is gone entirely.
         queue.enqueue(
-            {
-                "config": mock_config,
-                "payload": {"test": "data"},
-                "timestamp": datetime.now(UTC),
-            }
+            QueuedWebhook(
+                url="https://example.com/hook",
+                authentication_type=None,
+                authentication_token=None,
+                payload={"test": "data"},
+                tenant_id="test_tenant",
+                idempotency_key="whk_behavioral_test",
+                timestamp=datetime.now(UTC),
+            )
         )
 
         # salesagent-vkxf part 2: the subject is a NON-transport exception escaping

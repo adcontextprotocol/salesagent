@@ -72,6 +72,7 @@ from tests.harness.media_buy_create import MediaBuyCreateEnv
 from tests.harness.transport import Transport
 from tests.helpers.adcp_factories import create_test_media_buy_request_dict
 from tests.helpers.envelope_assertions import assert_envelope_shape
+from tests.helpers.signing import inbound_verifier_disabled
 from tests.helpers.webhook_credential_refusal import SHORT_CREDENTIAL, assert_credentials_refusal_envelope
 
 # The persistence assertion for this exact table, already written for the
@@ -79,7 +80,7 @@ from tests.helpers.webhook_credential_refusal import SHORT_CREDENTIAL, assert_cr
 # upsert is the single write funnel, so an empty active list IS 'the refusal
 # preceded the store'" is one fact about one table, and two copies of it would
 # drift the moment the funnel moves.
-from tests.integration.test_webhook_url_ingest_refusal import _assert_no_push_config_persisted
+from tests.integration._egress_ingest_helpers import _assert_no_push_config_persisted
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -144,6 +145,36 @@ def _create_kwargs(product, authentication: dict | None) -> dict:
         po_number="HMAC-CREDS-INGEST",
         push_notification_config={"url": _SAFE_URL, "authentication": authentication},
     )
+
+
+@pytest.fixture(autouse=True)
+def _not_a_verifying_agent(monkeypatch):
+    """This module's agent does not verify inbound signatures.
+
+    Every scenario here grades the INGEST gate's verdict on a webhook credential's
+    SHAPE, and every one of them registers ``push_notification_config.authentication``.
+    On an agent that CAN verify, that block forces a signature "regardless of
+    ``required_for`` membership" (security.mdx @ v3.1.1 :1462-1465,
+    ``_credentials_force_a_signature``), so the REST leg is refused with a bodyless 401
+    — no body, so no AdCP envelope, so the assertions fail with "no error envelope
+    captured" instead of on the obligation they exist to grade.
+
+    ``SigningConfig.verifier_enabled`` is the lever rather than a per-tenant
+    ``request_signing {supported: false}`` because the pin defines that field as an
+    AGENT-level fact and ``RequestSignatureMiddleware`` is mounted process-wide; see
+    :func:`tests.helpers.signing.inbound_verifier_disabled`. It is sound HERE because
+    every transport this module dispatches on (MCP, REST, A2A) runs in THIS process.
+
+    The sibling BDD ``@egress`` scenarios use the declared-posture lever instead, and
+    must: they also run over ``e2e_rest``, whose server is a separate process this
+    patch cannot reach.
+
+    Autouse rather than a per-test seeding call — a per-test call is the line the next
+    case added here will forget, and forgetting it fails as "no error envelope
+    captured" rather than as a missing declaration.
+    """
+    with inbound_verifier_disabled(monkeypatch):
+        yield
 
 
 class TestCreateMediaBuyRefusesHmacRegistrationWithoutCredentials:
@@ -321,9 +352,9 @@ class TestShortCredentialReachesOneVerdictOnEverySurface:
         be compared byte-for-byte. What must match is the VERDICT: refused,
         nothing stored, and the operator pointed at the credential.
         """
+        from tests.helpers.egress_backoff import set_flags
         from tests.helpers.webhook_credential_refusal import assert_admin_flash_refuses_the_credential
-        from tests.integration.test_admin_ingest_url_policy import flashes, post_register_hmac_webhook
-        from tests.integration.test_outbound_http import set_flags
+        from tests.integration._egress_ingest_helpers import flashes, post_register_hmac_webhook
 
         set_flags(monkeypatch, private=True)
 

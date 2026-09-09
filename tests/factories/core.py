@@ -16,7 +16,6 @@ from factory import LazyAttribute, RelatedFactory, Sequence, SubFactory
 from src.core.database.models import (
     AdapterConfig,
     AuthorizedProperty,
-    CreativeAgent,
     CurrencyLimit,
     GAMInventory,
     PropertyTag,
@@ -24,7 +23,6 @@ from src.core.database.models import (
     SignalsAgent,
     Tenant,
 )
-from src.core.database.repositories.adapter_config import AdapterConfigRepository
 
 
 def get_or_create(env: Any, model: type, filters: dict[str, Any], create: Any):
@@ -83,8 +81,22 @@ class TenantFactory(factory.alchemy.SQLAlchemyModelFactory):
     is_active = True
     billing_plan = "standard"
     ad_server = "mock"
+    # Auto-approval by default: the Tenant model's column default is True
+    # (production-safe), but factory tenants back tests whose success paths
+    # assume a synchronous create_media_buy. The live e2e server reads this ROW
+    # (in-process transports mock the adapter, so the gate never fires there),
+    # and with True every e2e_rest create takes the manual-approval path and
+    # returns CreateMediaBuySubmitted with no media_buy_id. Mirrors the seeded
+    # dev tenant (src/core/database/database.py human_review_required=False).
+    # Manual-approval scenarios opt IN explicitly via Given steps
+    # (tests/bdd/steps/generic/given_media_buy.py) or per-test overrides.
+    human_review_required = False
     authorized_emails = factory.LazyFunction(lambda: ["test@example.com"])
     authorized_domains = factory.LazyFunction(lambda: ["example.com"])
+    # #1592 T1a: no capability blocks declared by default, so a factory tenant
+    # reproduces the pre-declaration capabilities wire. Scenarios opt in through
+    # CapabilitiesEnv.declare_capabilities(), never by overriding this directly.
+    capability_declarations = None
 
     @classmethod
     def make_tenant(cls, tenant_id: str = "test_tenant", **overrides: Any) -> dict[str, Any]:
@@ -170,49 +182,6 @@ class AdapterConfigFactory(factory.alchemy.SQLAlchemyModelFactory):
     adapter_type = "mock"
 
 
-def set_adapter_test_behavior(env: Any, tenant_id: str, **behavior: Any) -> AdapterConfig:
-    """Persist adapter test-behavior to the tenant's AdapterConfig row.
-
-    BDD Given steps configure the in-process mock adapter directly (attribute /
-    side_effect on ``env.mock["adapter"]``), then call this helper to mirror the
-    same behavior into the database so the DB-backed mock adapter
-    (``mock_ad_server._read_test_behavior``) picks up failure/approval injection
-    for Docker-hosted / out-of-process transports.
-
-    All keyword behavior flags (``fail_on_create``, ``fail_on_update``,
-    ``error_message``, ``error_details``, ``recovery``, ``manual_approval_required``)
-    are merged into ``config_json["test_behavior"]`` — accumulating across calls so
-    a later flag does not clobber an earlier one. ``manual_approval_required`` is
-    additionally written to the ``mock_manual_approval_required`` column, which is
-    the read path used when the real mock adapter is constructed from config.
-
-    Args:
-        env: Harness environment exposing ``get_session()`` (real-DB envs).
-        tenant_id: Tenant whose AdapterConfig to upsert.
-        **behavior: Test-behavior flags to persist.
-    """
-    session = env.get_session()
-    repo = AdapterConfigRepository(session, tenant_id)
-    row = repo.find_by_tenant()
-    if row is None:
-        row = AdapterConfig(tenant_id=tenant_id, adapter_type="mock")
-        session.add(row)
-
-    # Reassign config_json (rather than mutating in place) so SQLAlchemy's JSON
-    # change tracking marks the column dirty and emits an UPDATE.
-    config_json = dict(row.config_json or {})
-    test_behavior = dict(config_json.get("test_behavior") or {})
-    test_behavior.update(behavior)
-    config_json["test_behavior"] = test_behavior
-    row.config_json = config_json
-
-    if "manual_approval_required" in behavior:
-        row.mock_manual_approval_required = bool(behavior["manual_approval_required"])
-
-    session.commit()
-    return row
-
-
 class GAMInventoryFactory(factory.alchemy.SQLAlchemyModelFactory):
     class Meta:
         model = GAMInventory
@@ -249,34 +218,19 @@ class PropertyTagFactory(factory.alchemy.SQLAlchemyModelFactory):
     description = LazyAttribute(lambda o: f"Description for {o.name}")
 
 
-class CreativeAgentFactory(factory.alchemy.SQLAlchemyModelFactory):
-    """A stored creative-agent row — the operator configuration a probe dials.
+class SignalsAgentFactory(factory.alchemy.SQLAlchemyModelFactory):
+    """A stored signals-agent row — the operator configuration a probe dials.
 
     Every column the dial reads (``auth_type``/``auth_credentials``,
     ``auth_header``, ``timeout``) is a plain default here rather than a
     generated one, so a test that cares about one of them sets exactly that one
     and the rest stay boring.
+
+    The creative-agent counterpart is :class:`tests.factories.creative.CreativeAgentFactory`
+    — deliberately NOT redefined here. One factory per model: ``tests.factories``
+    exports the ``creative`` module's, so a second ``CreativeAgentFactory`` in this
+    module would be unreachable and would drift from the exported one.
     """
-
-    class Meta:
-        model = CreativeAgent
-        sqlalchemy_session = None
-        sqlalchemy_session_persistence = "commit"
-
-    tenant = SubFactory(TenantFactory)
-    tenant_id = LazyAttribute(lambda o: o.tenant.tenant_id)
-    agent_url = Sequence(lambda n: f"https://creative-{n:04d}.example.com/mcp")
-    name = Sequence(lambda n: f"Creative Agent {n:04d}")
-    enabled = True
-    priority = 10
-    auth_type = None
-    auth_header = None
-    auth_credentials = None
-    timeout = 30
-
-
-class SignalsAgentFactory(factory.alchemy.SQLAlchemyModelFactory):
-    """A stored signals-agent row. Mirrors :class:`CreativeAgentFactory`."""
 
     class Meta:
         model = SignalsAgent
@@ -293,3 +247,35 @@ class SignalsAgentFactory(factory.alchemy.SQLAlchemyModelFactory):
     auth_credentials = None
     forward_promoted_offering = True
     timeout = 30
+
+
+def set_adapter_test_behavior(env: Any, tenant_id: str, **behavior: Any) -> AdapterConfig:
+    """Upsert the mock-adapter ``test_behavior`` for a tenant (BDD/E2E support).
+
+    The Docker-hosted mock adapter reads injected behavior — ``manual_approval_required``,
+    ``fail_on_create``, ``fail_on_update``, ``error_message``, ``error_details``,
+    ``recovery`` — from ``AdapterConfig.config_json["test_behavior"]`` (see
+    ``mock_ad_server._read_test_behavior``). In-process transports use the env's
+    MagicMock adapter directly and ignore this row; it exists so the same BDD Given
+    steps also drive the real adapter over E2E.
+
+    Merges ``behavior`` into any existing ``test_behavior``. Factory-based upsert —
+    no raw model construction in step bodies.
+    """
+    session = env.get_session()
+    row = session.get(AdapterConfig, tenant_id)
+    if row is None:
+        tenant = session.get(Tenant, tenant_id)
+        row = AdapterConfigFactory(tenant=tenant, adapter_type="mock")
+    config = dict(row.config_json or {})
+    test_behavior = dict(config.get("test_behavior", {}))
+    test_behavior.update(behavior)
+    config["test_behavior"] = test_behavior
+    row.config_json = config
+    if "manual_approval_required" in behavior:
+        # Mirror to the typed column — adapter_helpers reads
+        # AdapterConfig.mock_manual_approval_required when constructing the
+        # real mock adapter from config (the E2E manual-approval read path).
+        row.mock_manual_approval_required = bool(behavior["manual_approval_required"])
+    env._commit_factory_data()
+    return row

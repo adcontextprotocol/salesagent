@@ -183,11 +183,13 @@ class MockAdServer(AdServerAdapter):
         """Set the current simulation time."""
         self._current_simulation_time = simulation_time
 
-    def get_supported_pricing_models(self) -> set[str]:
+    @staticmethod
+    def get_supported_pricing_models() -> set[str]:
         """Mock adapter supports all pricing models (AdCP PR #88)."""
         return {"cpm", "vcpm", "cpcv", "cpp", "cpc", "cpv", "flat_rate"}
 
-    def get_targeting_capabilities(self) -> TargetingCapabilities:
+    @staticmethod
+    def get_targeting_capabilities() -> TargetingCapabilities:
         """Mock adapter supports all targeting for testing flexibility."""
         return TargetingCapabilities(
             geo_countries=True,
@@ -200,6 +202,8 @@ class MockAdServer(AdServerAdapter):
             gb_outward=True,
             gb_full=True,
             de_plz=True,
+            ch_plz=True,
+            at_plz=True,
             fr_code_postal=True,
             au_postcode=True,
             eurostat_nuts2=True,
@@ -338,40 +342,9 @@ class MockAdServer(AdServerAdapter):
         test_behavior = self._read_test_behavior()
         if not test_behavior.get(flag):
             return
-        from src.core.exceptions import AdCPAdapterError, AdCPConfigurationError, AdCPValidationError
+        from src.core.helpers.adapter_helpers import raise_injected_adapter_failure
 
-        # The injected knob selects a CLASS, not a recovery value. ``recovery`` is
-        # derived from the wire code now, so "give me a terminal failure" is
-        # expressible only as "raise the class the pin classifies terminal" — which
-        # is the invariant this epic exists to establish, holding for injected test
-        # failures exactly as it does for real ones.
-        recovery_to_class = {
-            "transient": AdCPAdapterError,  # SERVICE_UNAVAILABLE
-            "terminal": AdCPConfigurationError,  # CONFIGURATION_ERROR
-            "correctable": AdCPValidationError,  # VALIDATION_ERROR
-        }
-        requested = test_behavior.get("recovery", "transient")
-        try:
-            error_cls = recovery_to_class[requested]
-        except KeyError:
-            # No Quiet Failures: a misspelt knob used to sail through as a free
-            # string on the wire (the "retryable" spelling did exactly that).
-            # Typed, not ValueError: a bad knob is deployment/test configuration,
-            # which is what CONFIGURATION_ERROR means, and src/ may not grow new
-            # bare ValueError raises (test_architecture_no_value_error_in_impl).
-            raise AdCPConfigurationError(
-                f"test_behavior recovery={requested!r} is not a recovery classification. "
-                f"Use one of {sorted(recovery_to_class)} — each selects the exception class "
-                f"whose pinned enumMetadata recovery is that value."
-            ) from None
-
-        details = test_behavior.get("error_details")
-        suggestion = (details or {}).pop("suggestion", None) if isinstance(details, dict) else None
-        raise error_cls(
-            test_behavior.get("error_message", "Test adapter failure"),
-            suggestion=suggestion or "Retry the operation or contact ad server support",
-            details=details or None,
-        )
+        raise_injected_adapter_failure(test_behavior)
 
     def _validate_targeting(self, targeting_overlay):
         """Mock adapter accepts all targeting."""
@@ -509,7 +482,17 @@ class MockAdServer(AdServerAdapter):
         thread.start()
 
     def _send_completion_webhook(self, step_id: str, approved: bool, rejection_reason: str | None = None):
-        """Send webhook notification when async task completes."""
+        """Send webhook notification when async task completes.
+
+        FIXME(#1291): this POSTs to a URL the buyer registered, so it is an AdCP
+        webhook and must be authenticated by the mode that registration selects —
+        through ``src.core.signing.webhook_sender_factory``, like the three
+        production senders. It is not routed yet because the async-completion URL
+        arrives on the adapter config rather than as a ``PushNotificationConfig``
+        row, so which registration governs it is a decision, not a refactor
+        (tracked as salesagent-hop4). Allowlisted in
+        ``tests/unit/test_architecture_webhook_sender_boundary.py``.
+        """
         if not self.async_webhook_url:
             return
 
@@ -917,10 +900,13 @@ class MockAdServer(AdServerAdapter):
             for package in packages:
                 if package.targeting_overlay:
                     targeting = package.targeting_overlay
+                    # GeoCountry/GeoRegion are RootModels — log the wrapped values,
+                    # not root='US' reprs. geo_metros stays as-is on purpose:
+                    # GeoMetro is a plain model (system/values), not a RootModel.
                     if targeting.geo_countries:
-                        self.log(f"      'countries': {targeting.geo_countries},")
+                        self.log(f"      'countries': {[c.root for c in targeting.geo_countries]},")
                     if targeting.geo_regions:
-                        self.log(f"      'regions': {targeting.geo_regions},")
+                        self.log(f"      'regions': {[r.root for r in targeting.geo_regions]},")
                     if targeting.geo_metros:
                         self.log(f"      'metros': {targeting.geo_metros},")
                     if getattr(targeting, "key_value_pairs", None):

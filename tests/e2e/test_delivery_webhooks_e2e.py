@@ -15,27 +15,48 @@ from typing import Any
 
 import pytest
 
-from tests.e2e._webhook_capture import run_webhook_capture_server
+from tests.e2e._tenant_state import set_mock_approval
+from tests.e2e._webhook_capture import tls_capture
 from tests.e2e.adcp_request_builder import (
     build_adcp_media_buy_request,
     build_creative,
     get_test_date_range,
     parse_tool_result,
 )
+from tests.e2e.conftest import e2e_in_network
 from tests.e2e.utils import (
     force_approve_media_buy_in_db,
     make_mcp_client,
-    set_live_adapter_behavior,
     wait_for_server_readiness,
     wait_until,
+)
+
+#: In-network only: deliveries land on the compose ``webhook-capture`` service, whose
+#: readback control plane publishes no host port. ``run_all_tests.sh`` runs every suite
+#: in-network, so this costs the host-path developer convenience, not CI coverage.
+pytestmark = pytest.mark.skipif(
+    not e2e_in_network(),
+    reason=(
+        "in-network only: the webhook-capture service publishes no host port, so its readback "
+        "control plane is reachable by compose service name alone (set ADCP_TEST_HOST)"
+    ),
 )
 
 
 @pytest.fixture
 def delivery_webhook_server():
-    """Register a fresh capture key against the shared webhook-capture service."""
-    with run_webhook_capture_server() as info:
-        yield info
+    """A capture key on the TLS receiver for this test's delivery_report webhooks.
+
+    The ``.adcp-e2e.dev`` flavor (:func:`tests.e2e._webhook_capture.tls_capture`),
+    matching the sibling ``test_a2a_webhook_payload_types``: the sales agent
+    delivers to a real HTTPS origin on a non-private address, so production's
+    UNPATCHED SSRF gate accepts it on its own terms rather than the stack
+    relaxing the gate to reach a plaintext private one. ``payloads()`` decodes
+    the RAW capture entries, so this module grades the bytes the origin actually
+    received rather than the capture service's own re-parse.
+    """
+    with tls_capture("delivery-e2e") as handle:
+        yield handle
 
 
 class TestDailyDeliveryWebhookFlow:
@@ -91,7 +112,7 @@ class TestDailyDeliveryWebhookFlow:
             start_time=start_time,
             end_time=end_time,
             brand={"domain": "testbrand.com"},
-            webhook_url=delivery_webhook_server["url"],
+            webhook_url=delivery_webhook_server.url,
             reporting_frequency="daily",
             context={"e2e": "delivery_webhook_create_media_buy"},
             pricing_option_id=pricing_option_id,
@@ -131,7 +152,7 @@ class TestDailyDeliveryWebhookFlow:
         3. Get delivery metrics explicitly via get_media_buy_delivery
         4. Wait for scheduled delivery_report webhook and inspect payload
         """
-        set_live_adapter_behavior(live_server, manual_approval_required=False)
+        set_mock_approval(live_server, manual=False)
 
         # Wait for server readiness
         wait_for_server_readiness(live_server["mcp"])
@@ -184,14 +205,16 @@ class TestDailyDeliveryWebhookFlow:
             # We configured DELIVERY_WEBHOOK_INTERVAL=5 in conftest.py for E2E tests.
             # It should trigger in 5 seconds.
 
-            received = delivery_webhook_server["received"]
+            # The predicate RE-READS every turn: the capture service is a separate
+            # process, so unlike the old in-process receiver there is no list that
+            # fills itself while this loop holds a reference to it. Each read is a
+            # readback HTTP round trip (salesagent-amht.3), not free — so the wait
+            # is wait_until's monotonic deadline, which stays bounded at
+            # timeout_seconds regardless of readback latency, where the hand-rolled
+            # iteration counter it replaces would silently drift past it.
+            wait_until(lambda: bool(delivery_webhook_server.payloads()), timeout_seconds=30, poll_interval=1)
 
-            # Wait for webhook. Each `received` access is now a readback HTTP round
-            # trip (salesagent-amht.3), not free like the old in-process shared
-            # list — wait_until's monotonic deadline keeps the actual wait bounded
-            # at timeout_seconds regardless of readback latency, where an
-            # iteration counter would silently drift past it.
-            wait_until(lambda: bool(received), timeout_seconds=30, poll_interval=1)
+            received = delivery_webhook_server.payloads()
 
             assert received, (
                 "Expected at least one delivery report webhook. Check connectivity and DELIVERY_WEBHOOK_INTERVAL."

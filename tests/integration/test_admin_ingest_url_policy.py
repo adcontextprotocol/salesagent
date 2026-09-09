@@ -41,8 +41,15 @@ from sqlalchemy import select
 
 from src.core.database.models import CreativeAgent, PushNotificationConfig, SignalsAgent, Tenant
 from tests.factories import PrincipalFactory
+from tests.helpers.egress_backoff import set_flags
 from tests.helpers.webhook_credential_refusal import SHORT_CREDENTIAL, assert_admin_flash_refuses_the_credential
-from tests.integration.test_outbound_http import set_flags
+from tests.integration._egress_ingest_helpers import (
+    ADMITTED_URL,
+    PRINCIPAL_ID,
+    TENANT_ID,
+    flashes,
+    post_register_hmac_webhook,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_db]
 
@@ -59,7 +66,6 @@ INSECURE_PUBLIC_URL = "http://signals.example.com/agent"
 # response body would be the leak point 6 forbids.
 LEAKED_FRAGMENTS = ("169.254.169.254", "reserved", "resolve", "metadata")
 
-TENANT_ID = "ingest_url_policy"
 API_KEY = "sk-ingest-url-policy-test"
 
 
@@ -76,9 +82,6 @@ def seeded_tenant(integration_db):
     with IntegrationEnv() as env:
         TenantFactory(tenant_id=TENANT_ID, name="Ingest URL Policy", subdomain="ingesturlpolicy")
         yield env
-
-
-PRINCIPAL_ID = "ingest_url_policy_principal"
 
 
 @pytest.fixture
@@ -108,16 +111,6 @@ def management_api_client(seeded_tenant, monkeypatch):
     return app.test_client()
 
 
-def flashes(client) -> list[tuple[str, str]]:
-    """The (category, message) pairs queued for the next rendered page.
-
-    Read from the session rather than from rendered HTML: the flash is the
-    thing the handler produced, and the template is not under test here.
-    """
-    with client.session_transaction() as session:
-        return list(session.get("_flashes", []))
-
-
 def signals_agents_for(env) -> list[SignalsAgent]:
     """Every signals agent row for the test tenant, read fresh.
 
@@ -137,9 +130,6 @@ def post_signals_agent(client, url: str):
         data={"agent_url": url, "name": "Ingest Policy Agent", "enabled": "on", "timeout": "30"},
         follow_redirects=False,
     )
-
-
-ADMITTED_URL = "https://127.0.0.1:9999/agent"
 
 
 def create_agent_through_the_add_form(client, env, monkeypatch) -> SignalsAgent:
@@ -406,29 +396,6 @@ def post_register_webhook(client, url: str):
     return client.post(
         f"/tenant/{TENANT_ID}/principals/{PRINCIPAL_ID}/webhooks/register",
         data={"url": url, "auth_type": "none"},
-        follow_redirects=False,
-    )
-
-
-def post_register_hmac_webhook(
-    client, url: str, secret: str, *, tenant_id: str = TENANT_ID, principal_id: str = PRINCIPAL_ID
-):
-    """POST the principal-webhook registration form as an HMAC-SHA256 registration.
-
-    ``auth_type`` is the enum member rather than a literal: the form's option
-    values are rendered from ``AuthenticationScheme`` (webhook_management.html),
-    so this posts what a browser posts, and the non-canonical ``"hmac_sha256"``
-    spelling the gate refuses cannot creep back in through a test.
-
-    ``tenant_id`` / ``principal_id`` default to this module's fixtures and are
-    parameters only so the cross-surface equivalence pin in
-    ``test_webhook_hmac_credentials_ingest_refusal.py`` can drive this same form
-    against the tenant its own harness seeded, instead of spelling the route a
-    second time.
-    """
-    return client.post(
-        f"/tenant/{tenant_id}/principals/{principal_id}/webhooks/register",
-        data={"url": url, "auth_type": AuthenticationScheme.HMAC_SHA256, "hmac_secret": secret},
         follow_redirects=False,
     )
 

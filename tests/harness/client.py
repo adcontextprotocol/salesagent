@@ -236,9 +236,31 @@ def e2e_identity_headers(identity: Any) -> dict[str, str]:
 
     ``identity=None`` means "dispatch without auth headers" (explicit
     unauthenticated) — the live server's own auth middleware then returns the
-    real 401/``AUTH_REQUIRED`` rejection. When identity carries no
-    ``auth_token`` (e.g. ``principal_id=None`` boundary tests), the header is
-    simply omitted rather than sent empty.
+    real 401/``AUTH_MISSING`` rejection.
+
+    ``AUTH_MISSING``, not the deprecated ``AUTH_REQUIRED``: at the pinned
+    AdCP 3.1.1 (``adcp==6.6.0``,
+    ``adcp/_schemas/3.1/enums/error-code.json``) all three of
+    ``AUTH_REQUIRED`` / ``AUTH_MISSING`` / ``AUTH_INVALID`` are enum members,
+    but ``AUTH_REQUIRED``'s own enumDescription reads "**Deprecated** — use
+    ``AUTH_MISSING`` (no credentials presented) or ``AUTH_INVALID``
+    (credentials presented and rejected). Retained as a backward-compatible
+    alias during the 3.x deprecation window." Omitting ``x-adcp-auth`` is the
+    no-credentials-presented case, for which the enum says sellers MUST
+    return ``AUTH_MISSING`` (recovery ``correctable``) — so this path grades
+    ``AUTH_MISSING`` specifically, never ``AUTH_INVALID`` (recovery
+    ``terminal``, for a credential that was presented and rejected) and never
+    the deprecated alias. Production matches: no resolved principal maps
+    ``PRINCIPAL_ID_MISSING`` -> ``AUTH_MISSING`` and raises
+    ``AdCPAuthRequiredError`` (``_default_error_code = "AUTH_MISSING"``),
+    whereas a presented-but-rejected credential raises its base
+    ``AdCPAuthenticationError`` (``_default_error_code = "AUTH_INVALID"``) —
+    ``src/core/exceptions.py``. Assertions on this path must therefore pin
+    ``AUTH_MISSING`` rather than accept any auth-shaped code, which would
+    erase that split.
+
+    When identity carries no ``auth_token`` (e.g. ``principal_id=None``
+    boundary tests), the header is simply omitted rather than sent empty.
     """
     headers: dict[str, str] = {}
     if identity is None:
