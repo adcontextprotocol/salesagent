@@ -12,8 +12,11 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from typing import Any
+from urllib.parse import urlsplit
 
+from requests.structures import CaseInsensitiveDict
 from sqlalchemy import delete
 
 from src.core.database.database_session import get_db_session
@@ -31,10 +34,13 @@ class _AdminResponse:
     know which transport is active.
     """
 
-    def __init__(self, status_code: int, data: bytes, headers: dict[str, str], json_data: Any = None) -> None:
+    def __init__(self, status_code: int, data: bytes, headers: Mapping[str, str], json_data: Any = None) -> None:
         self.status_code = status_code
         self._data = data
-        self.headers = headers
+        # Case-insensitive on purpose: werkzeug canonicalises header names, nginx does
+        # not, so a plain dict built from a requests response has "location" where a
+        # Flask response has "Location" and every Location assertion is transport-bound.
+        self.headers = CaseInsensitiveDict(headers)
         self._json_data = json_data
 
     @property
@@ -182,21 +188,27 @@ class AdminAccountEnv:
             sess["test_user_name"] = "Test User"
             sess["test_tenant_id"] = tenant_id
 
-    def _auth_e2e(self, tenant_id: str) -> None:
-        """Cookie-based auth via /test/auth endpoint on Docker stack."""
+    def _auth_e2e(
+        self, tenant_id: str, *, email: str = "test_super_admin@example.com", password: str = "test123"
+    ) -> None:
+        """Cookie-based auth via /test/auth endpoint on Docker stack.
+
+        Defaults to the super-admin test user; a subclass proving authorization passes
+        one of the non-admin identities ``/test/auth`` accepts instead.
+        """
         assert self._session is not None
         resp = self._session.post(
             f"{self._base_url}/test/auth",
-            data={
-                "email": "test_super_admin@example.com",
-                "password": "test123",
-                "tenant_id": tenant_id,
-            },
+            data={"email": email, "password": password, "tenant_id": tenant_id},
             allow_redirects=False,
         )
         # /test/auth redirects on success (302) — session cookie is stored
         if resp.status_code not in (200, 302):
             raise RuntimeError(f"E2E auth failed: {resp.status_code} {resp.text[:200]}")
+        # A rejected credential is ALSO a 302 (flash, then back to the login page); only
+        # the dashboard redirect means the cookie now carries a session.
+        if resp.status_code == 302 and urlsplit(resp.headers.get("Location", "")).path.endswith("/login"):
+            raise RuntimeError(f"E2E auth rejected credentials for {email!r} on tenant {tenant_id!r}")
 
     def clear_auth(self) -> None:
         """Clear the authenticated session."""
