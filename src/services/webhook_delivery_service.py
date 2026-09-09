@@ -20,10 +20,9 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
-from adcp import get_adcp_spec_version
-
 from src.core.security.egress.attempts import env_float
 from src.core.security.webhook_egress import deliver_webhook
+from src.core.version_compat import wire_adcp_version
 from src.core.webhook_validator import webhook_url_for_log
 from src.core.webhooks.delivery import WebhookDeliveryOutcome, WebhookTaskContext
 from src.services.webhook_conclusion import record_conclusion
@@ -293,7 +292,9 @@ class WebhookDeliveryService:
 
             # Build AdCP compliant payload with new fields
             delivery_payload = {
-                "adcp_version": get_adcp_spec_version(),
+                # Release precision on the wire (the seller's implemented version), via the ONE
+                # wire-adcp_version accessor — not full semver (#1329).
+                "adcp_version": wire_adcp_version(),
                 "notification_type": notification_type,
                 "is_adjusted": is_adjusted,  # New field for late data
                 "sequence_number": sequence_number,
