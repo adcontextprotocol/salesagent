@@ -107,14 +107,15 @@ make quality
 
 ## Step 2: Cook and walk the molecule
 
-The dev-practices `execute` machinery lives in the plugin (absolute paths,
-reachable from any worktree). Use the formula the lead specified, else
+The dev-practices `execute` machinery lives in the plugin. The lead passes its
+portable root as `DEV_PRACTICES_ROOT`. Use the formula the lead specified, else
 auto-select via `bd show <id>` (bug → `bug-triage.yaml`; research/TDD →
 `task-execute.yaml`; well-defined → `task-single.yaml`).
 
 ```bash
-python3 /Users/konst/projects/pi-agentic-coding/plugins/dev-practices/skills/execute/scripts/cook_formula.py \
-  --formula /Users/konst/projects/pi-agentic-coding/plugins/dev-practices/skills/execute/formulas/<formula> \
+: "${DEV_PRACTICES_ROOT:?Set DEV_PRACTICES_ROOT to the dev-practices plugin directory}"
+python3 "$DEV_PRACTICES_ROOT/skills/execute/scripts/cook_formula.py" \
+  --formula "$DEV_PRACTICES_ROOT/skills/execute/formulas/<formula>" \
   --var "<TASK_IDS|BUG_IDS>=<ids>" --epic-title "Execute: <ids>"
 ```
 
