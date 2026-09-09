@@ -77,6 +77,7 @@ pytest_plugins = [
     "tests.bdd.steps.domain.uc005_format_id_third_party",
     "tests.bdd.steps.domain.uc011_accounts",
     "tests.bdd.steps.domain.admin_accounts",
+    "tests.bdd.steps.domain.admin_tenant_scoping",
     "tests.bdd.steps.domain.uc_get_products_inventory",
     "tests.bdd.steps.domain.egress_ssrf",
     "tests.bdd.steps.domain.uc_brand_shorthand",
@@ -3571,6 +3572,17 @@ def _build_admin_env(e2e_config: object | None) -> AbstractContextManager:
     return AdminAccountEnv(mode="integration")
 
 
+def _build_admin_tenant_scoping_env(e2e_config: object | None) -> AbstractContextManager:
+    """The T-ADMIN-SCOPE-* scenarios (#2203): same Flask test_client transport, different harness.
+
+    ``e2e_config`` is always ``None`` here for the same reason as ``_build_admin_env``;
+    the e2e transport for this feature is tests/e2e/test_admin_tenant_scoping_e2e.py.
+    """
+    from tests.harness.admin_tenant_scoping import AdminTenantScopingEnv
+
+    return AdminTenantScopingEnv(mode="integration")
+
+
 def _build_product_env(e2e_config: object | None) -> AbstractContextManager:
     """Shared by COMPAT and UC-GET-PRODUCTS — both are read-only product listing."""
     from tests.harness.product import ProductEnv
@@ -3810,10 +3822,11 @@ _UC_BUCKET_ROUTES: dict[str, EnvRoute] = {
     ),
     # The five rows below are keyed by the coarse `uc` bucket (from
     # _detect_uc), not a per-scenario tag: they are what a scenario in these
-    # UCs falls back to when no predicate row above claims it. ADMIN, COMPAT,
+    # UCs falls back to when no predicate row above claims it. COMPAT,
     # UC-GET-PRODUCTS and UC-005 have no predicate rows at all — one env + one
-    # seed serves every scenario. UC-019 does have one (@post-create-poll needs
-    # create + list in a single scenario), so its bucket row is the remainder.
+    # seed serves every scenario. ADMIN has one (T-ADMIN-SCOPE-* takes its own
+    # harness) and UC-019 has one (@post-create-poll needs create + list in a
+    # single scenario), so their bucket rows are the remainder.
     "ADMIN": EnvRoute(tag="ADMIN", env_builder=_build_admin_env),
     "COMPAT": EnvRoute(tag="COMPAT", env_builder=_build_product_env),
     "UC-GET-PRODUCTS": EnvRoute(tag="UC-GET-PRODUCTS", env_builder=_build_product_env),
@@ -3851,6 +3864,16 @@ _UC003_STORYBOARD_CLIENT_TAGS = frozenset(
 )
 
 ENV_ROUTES: list[EnvRoute] = [
+    # ── ADMIN (hand-authored admin UI features) ─────────────────────────────
+    # T-ADMIN-* detects as the ADMIN bucket (storyboard_spec.detect_uc); the
+    # bucket row serves BR-ADMIN-ACCOUNTS. BR-ADMIN-TENANT-SCOPING carries the
+    # narrower T-ADMIN-SCOPE- prefix and needs its own harness, so it is claimed
+    # here, ahead of the bucket, by predicate.
+    EnvRoute(
+        tag="admin-tenant-scoping",
+        when=lambda m: any(t.startswith("T-ADMIN-SCOPE-") for t in m),
+        env_builder=_build_admin_tenant_scoping_env,
+    ),
     # ── @egress (local SSRF / webhook-credential refusal feature) ───────────
     # These scenarios carry T-EGRESS-* identity tags, NOT T-UC-<n>, so
     # storyboard_spec.detect_uc returns None for them and no coarse bucket can

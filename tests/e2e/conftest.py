@@ -11,7 +11,10 @@ import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -27,6 +30,35 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Import contract validation - this automatically validates tool calls at test collection time
 from tests.e2e.conftest_contract_validation import pytest_collection_modifyitems  # noqa: F401
+
+
+@contextmanager
+def admin_stack_env(ports: dict[str, int], build_env: Callable[[], AbstractContextManager]) -> Iterator[Any]:
+    """Run an admin harness env against the running Docker stack.
+
+    Points ``ADCP_SALES_PORT`` at the stack's admin port and ``DATABASE_URL`` at the
+    SERVER's ``/adcp`` Postgres for the env's lifetime, so the harness's DB reads and
+    factory writes land in the database the HTTP server reads. In-network the runner
+    exports ``E2E_DATABASE_URL`` (postgres:5432/adcp, no host port); on the host path
+    the URL is built from the published port. Both variables are restored on exit,
+    including when the test fails.
+    """
+    saved = {name: os.environ.get(name) for name in ("ADCP_SALES_PORT", "DATABASE_URL")}
+    db_host = os.environ.get("ADCP_TEST_DB_HOST", "localhost")
+    db_port = os.environ.get("ADCP_TEST_DB_PORT", str(ports["postgres_port"]))
+    os.environ["ADCP_SALES_PORT"] = str(ports["admin_port"])
+    os.environ["DATABASE_URL"] = os.environ.get("E2E_DATABASE_URL") or (
+        f"postgresql://adcp_user:secure_password_change_me@{db_host}:{db_port}/adcp"
+    )
+    try:
+        with build_env() as env:
+            yield env
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def e2e_host() -> str:
@@ -285,8 +317,8 @@ def docker_services_e2e(request):
         # clear of the Linux ephemeral range (32768+), which the 20000-30000
         # choice for those two was already picked to avoid.
         tls_port = int(os.getenv("ADCP_TLS_PORT")) if os.getenv("ADCP_TLS_PORT") else find_free_port(15000, 20000)
-        # webhook-capture's plain-HTTP READBACK control-plane (salesagent-amht.3)
-        # — same dynamic-allocation reasoning as tls_port above (a fixed default
+        # webhook-capture's plain-HTTP READBACK control-plane — same
+        # dynamic-allocation reasoning as tls_port above (a fixed default
         # would let two concurrent stacks cross-wire onto the same host port).
         # DELIVERY never uses this port; it goes through tls_port above.
         webhook_capture_port = (
