@@ -63,6 +63,7 @@ from pytest_bdd.exceptions import StepDefinitionNotFoundError
 from pytest_bdd.scenario import get_step_function
 
 from scripts.audit import storyboard_spec
+from tests.bdd import xfail_taxonomy
 from tests.helpers.ledger import load_ledger_nodeids
 from tests.helpers.marker_names import derive_marker_names
 
@@ -185,16 +186,30 @@ def _classify_reason(reason: str | None) -> str:
 
     Grounded in conftest.py's actual, distinct code paths — not free-text
     guessing: ``StepDefinitionNotFoundError``/``NotImplementedError`` always
-    produce the two literal prefixes matched below (the auto-xfail hookwrapper
-    in ``tests/bdd/conftest.py`` builds them verbatim), and every
-    harness-selection fallback raises ``pytest.xfail`` with a message
-    containing both "harness" and "wired" (``_harness_env``'s catch-all and
-    the UC-004 harness-type fallback). Anything else reaching xfail is an
-    explicit, curated marker for a known gap — the residual "ledgered" bucket.
+    produce the two prefixes matched below, and every harness-selection
+    fallback raises ``pytest.xfail`` with a message containing both "harness"
+    and "wired" (``_harness_env``'s catch-all and the UC-004 harness-type
+    fallback). Anything else reaching xfail is an explicit, curated marker for
+    a known gap — the residual "ledgered" bucket.
+
+    The two prefixes are READ FROM ``tests.bdd.xfail_taxonomy``, the leaf module
+    that also builds the reasons ``conftest.py`` emits, rather than re-spelled
+    here. They used to be string literals in this file while conftest built the
+    same text independently, so rewording a reason in the writer moved scenarios
+    into the residual "ledgered" bucket — silently reclassifying a scenario that
+    nothing wires as a documented gap. That is the copy-the-constant defect
+    ``test_architecture_liveness_contract_owner`` names, in the one spot its
+    structural check does not reach (a string, not a lookup).
+
+    The harness rule below stays a substring test rather than the taxonomy's
+    narrower marker tuple: it is deliberately broader than the two phrasings in
+    use today, and narrowing it here would be a behaviour change, not a merge.
     """
     if reason is None:
         return "live"
-    if reason.startswith("Step definition not found:") or reason.startswith("Not implemented:"):
+    if reason.startswith(f"{xfail_taxonomy.STEP_DEFINITION_NOT_FOUND}:") or reason.startswith(
+        f"{xfail_taxonomy.NOT_IMPLEMENTED}:"
+    ):
         return "no_steps_bound"
     lowered = reason.lower()
     if "harness" in lowered and "wired" in lowered:
@@ -272,9 +287,9 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> Any:
     reason = getattr(report, "wasxfail", None)
     if reason is None and call.excinfo is not None:
         if call.excinfo.errisinstance(StepDefinitionNotFoundError):
-            reason = f"Step definition not found: {call.excinfo.value}"
+            reason = xfail_taxonomy.step_definition_not_found(call.excinfo.value)
         elif call.excinfo.errisinstance(NotImplementedError):
-            reason = f"Not implemented: {call.excinfo.value}"
+            reason = xfail_taxonomy.not_implemented(call.excinfo.value)
 
     category = _classify_reason(reason)
     outcome_name = "passed" if report.passed else ("xfailed" if reason is not None else "failed")
