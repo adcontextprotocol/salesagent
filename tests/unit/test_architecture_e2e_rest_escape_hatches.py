@@ -98,7 +98,10 @@ EXPECTED_XFAIL_ROUTES: tuple[str, ...] = (
 
 def test_conftest_e2e_rest_xfail_routes_match_pin() -> None:
     """Every is_e2e_rest xfail route in the BDD conftest is pinned exactly."""
-    tree = ast.parse(_BDD_CONFTEST.read_text())
+    # encoding= is explicit: source files are UTF-8 regardless of the platform
+    # default (cp1252 on Windows), and a non-ASCII character in a pinned reason
+    # string would otherwise decode differently here than in this module.
+    tree = ast.parse(_BDD_CONFTEST.read_text(encoding="utf-8"))
     actual = find_e2e_rest_xfail_conditions(tree)
     expected = sorted(EXPECTED_XFAIL_ROUTES)
     added = [c for c in actual if actual.count(c) > expected.count(c)]
@@ -155,7 +158,7 @@ EXPECTED_E2E_REST_PARAMETRIZE_GATE = "os.environ.get('BDD_E2E_ENABLED') == 'true
 
 def test_e2e_rest_parametrize_gate_matches_pin() -> None:
     """The E2E_REST parametrize gate in pytest_generate_tests is pinned exactly."""
-    tree = ast.parse(_BDD_CONFTEST.read_text())
+    tree = ast.parse(_BDD_CONFTEST.read_text(encoding="utf-8"))
     actual = find_e2e_rest_parametrize_gate(tree)
     assert actual == EXPECTED_E2E_REST_PARAMETRIZE_GATE, (
         "The E2E_REST parametrize gate in tests/bdd/conftest.py's pytest_generate_tests "
@@ -255,7 +258,7 @@ EXPECTED_E2E_REST_EXCLUSION_POINTS: tuple[str, ...] = (
 
 def test_e2e_rest_exclusion_points_match_the_pin() -> None:
     """Every path that can withhold e2e_rest from a scenario is pinned."""
-    tree = ast.parse(_BDD_CONFTEST.read_text())
+    tree = ast.parse(_BDD_CONFTEST.read_text(encoding="utf-8"))
     actual = find_e2e_rest_exclusion_points(tree)
     assert actual == EXPECTED_E2E_REST_EXCLUSION_POINTS, (
         "The set of paths that can withhold e2e_rest from a scenario in "
@@ -399,7 +402,8 @@ def _harness_declaration_sites() -> list[tuple[str, str, str]]:
         if path.name.startswith("test_") or path.name == "_realize.py":
             continue
         relpath = f"tests/harness/{path.name}"
-        sites.extend(find_unsupported_declarations(ast.parse(path.read_text()), relpath))
+        # encoding= is explicit — see test_conftest_e2e_rest_xfail_routes_match_pin.
+        sites.extend(find_unsupported_declarations(ast.parse(path.read_text(encoding="utf-8")), relpath))
     return sorted(sites)
 
 
