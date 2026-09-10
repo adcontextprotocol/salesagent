@@ -839,11 +839,11 @@ Obligation tags                0            0                 675
 
 | Path | Branch | Purpose |
 |------|--------|---------|
-| `/Users/konst/projects/salesagent` | `v3.6-product-completion` | Product domain |
-| `/Users/konst/projects/salesagent-creative` | `v3.6-creative-completion` | Creative domain |
-| `/Users/konst/projects/salesagent-delivery` | `v3.6-delivery-mb-cleanup` | Delivery domain |
-| `/Users/konst/projects/salesagent-errors` | `v3.6-error-resilience-clean` | Error classification |
-| `/Users/konst/projects/salesagent-admin-oath` | `admin-gam-oauth-fix` | GAM OAuth fix |
+| `salesagent` | `v3.6-product-completion` | Product domain |
+| `salesagent-creative` | `v3.6-creative-completion` | Creative domain |
+| `salesagent-delivery` | `v3.6-delivery-mb-cleanup` | Delivery domain |
+| `salesagent-errors` | `v3.6-error-resilience-clean` | Error classification |
+| `salesagent-admin-oath` | `admin-gam-oauth-fix` | GAM OAuth fix |
 
 ### Test Suite Snapshot (March 9, 2026)
 
