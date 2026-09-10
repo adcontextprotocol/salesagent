@@ -235,7 +235,7 @@ ERROR_CODE_MAPPING: dict[str, str] = {
 # justification for why it is internal.
 INTERNAL_CODES: frozenset[str] = frozenset(
     {
-        "INTERNAL_ERROR",  # Base-class default; never instantiated for wire
+        "INTERNAL_ERROR",  # AdCPError base default; untyped fallthrough raises it. wire → SERVICE_UNAVAILABLE
         "NOT_FOUND",  # Base-class for entity-specific NotFound subclasses
         "FORMAT_NOT_FOUND",  # AdCPFormatNotFoundError; wire → INVALID_REQUEST
         "TASK_NOT_FOUND",  # AdCPTaskNotFoundError; wire → INVALID_REQUEST
@@ -1337,6 +1337,24 @@ def build_validation_error_details(errors: Sequence[Mapping[str, Any]]) -> dict[
     }
 
 
+# The single buyer-facing generic message for the untyped INTERNAL_ERROR
+# fallthrough. Named here so the value the production sink emits and the value
+# the deletion-oracle tests assert against are one symbol that cannot drift —
+# a rename of the code key or message field moves both at once.
+#
+# Read from the SDK helper rather than from ``WIRE_STANDARD_CODES``: that table's
+# values are deliberately EMPTY (see its definition above), because carrying the
+# SDK's ``recovery`` there would contradict the pin on 7 codes. That emptiness is
+# about the recovery classification, which has a normative pinned source
+# (``RECOVERY_BY_WIRE_CODE``). The buyer-facing default MESSAGE has no such
+# source — the pinned ``error-code.json`` carries only ``recovery`` and
+# ``suggestion`` per code — so the SDK helper is the only table that answers it,
+# and reading it here does not reintroduce the value-read the empty table exists
+# to prevent. Membership questions still go to ``WIRE_STANDARD_CODES``,
+# classification questions still go to ``RECOVERY_BY_WIRE_CODE``.
+GENERIC_INTERNAL_ERROR_MESSAGE: str = STANDARD_ERROR_CODES[to_wire_error_code("INTERNAL_ERROR")]["message"]
+
+
 def normalize_to_adcp_error(exc: Exception) -> AdCPError:
     """Normalize untyped exceptions to typed AdCPError subclasses.
 
@@ -1361,4 +1379,24 @@ def normalize_to_adcp_error(exc: Exception) -> AdCPError:
         return AdCPValidationError(str(exc))
     if isinstance(exc, PermissionError):
         return AdCPAuthorizationError(str(exc))
-    return AdCPError(str(exc) or type(exc).__name__)
+    # Scope: this sanitization covers the untyped fallthrough below and nothing
+    # above it. The earlier branches forward their own message by design — an
+    # already-typed AdCPError keeps whatever message its raiser chose, and
+    # ValueError/PermissionError map to AdCPValidationError/AdCPAuthorizationError
+    # with str(exc) intact, because a buyer-correctable error has to say what to
+    # correct. Those messages are therefore only as safe as their raise sites: a
+    # library-raised ValueError or an errno-bearing OSError reaches the buyer
+    # verbatim.
+    #
+    # The untyped fallthrough carries no such contract. Its str() can hold SQL
+    # fragments, table names, or filesystem paths (SQLAlchemy/OS errors), and
+    # build_two_layer_error_envelope forwards the message verbatim to the wire
+    # envelope and the A2A failed-Task webhook body — so this branch, and only
+    # this branch, substitutes the generic wire message. The raw detail
+    # is captured server-side at the transport boundary — every boundary passes
+    # the raw exception to record_boundary_error (MCP _handle_tool_exception; A2A
+    # on_message_send, the skill loop, and the four push-config methods), which
+    # logs the untyped fallthrough with exc_info. This helper is a pure mapping
+    # invoked at every boundary; logging here would double-log (record_boundary_
+    # error already fired) and give every future caller a silent log write.
+    return AdCPError(GENERIC_INTERNAL_ERROR_MESSAGE)

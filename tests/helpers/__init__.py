@@ -66,10 +66,12 @@ def assert_effective_properties_normalized(
 # correct move rather than importing it. A leaf that cannot be imported without
 # its heaviest sibling is what manufactures duplication.
 _LAZY_EXPORTS: dict[str, str] = {
+    "RAW_EXCEPTION_LEAK_SENTINEL": "tests.helpers.envelope_assertions",
     "SIGNATURE_HEADER": "tests.helpers.hmac_assertions",
     "TIMESTAMP_HEADER": "tests.helpers.hmac_assertions",
     "assert_backoff_schedule": "tests.helpers.backoff_assertions",
     "assert_envelope_shape": "tests.helpers.envelope_assertions",
+    "assert_no_raw_exception_leak": "tests.helpers.envelope_assertions",
     "assert_no_raw_validation_leak": "tests.helpers.envelope_assertions",
     "assert_delivered_unsigned": "tests.helpers.hmac_assertions",
     "assert_signature_verifies_over_wire_body": "tests.helpers.hmac_assertions",
@@ -118,6 +120,8 @@ __all__ = [
     # Envelope assertions
     "assert_envelope_shape",
     "assert_no_raw_validation_leak",
+    "assert_no_raw_exception_leak",
+    "RAW_EXCEPTION_LEAK_SENTINEL",
     # HMAC signature assertions
     "SIGNATURE_HEADER",
     "TIMESTAMP_HEADER",
