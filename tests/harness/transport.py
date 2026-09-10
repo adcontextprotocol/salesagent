@@ -17,7 +17,7 @@ import functools
 import json
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypedDict
 
 from pydantic import BaseModel
 
@@ -162,6 +162,60 @@ TRANSPORT_PROTOCOL: dict[Transport, str] = {
     Transport.E2E_MCP: "mcp",
     Transport.E2E_A2A: "a2a",
 }
+
+
+class InvalidAuthHint(TypedDict):
+    """Shape of the transport-blind ``_invalid_auth`` hint the BDD step forwards.
+
+    Names the two keys ONCE, so the producer (``uc002_create_media_buy``'s
+    ``_dispatch_full_create``) and both REST consumers (``_run_rest_request`` in
+    ``_base``; ``RestE2EDispatcher`` in ``dispatchers``, which forwards it to
+    ``client._deliver_e2e_rest``) are bound to one declaration instead of
+    re-spelling the string keys three times. ``tenant``
+    carries the bare host-routed tenant id the whole non-disclosure contract
+    turns on: a typo or a dropped key would otherwise be caught by nothing until
+    the leg silently stopped reaching the redacted raise.
+
+    Lives here, in the leaf transport module, rather than in ``_base``: both
+    consumers already import down from ``transport``, and ``transport`` imports
+    nothing from ``tests.harness``, so neither consumer has to reach up into the
+    env layer to name the contract.
+    """
+
+    token: str
+    tenant: str
+
+
+def _invalid_auth_headers(hint: InvalidAuthHint) -> dict[str, str]:
+    """Realize the ``_invalid_auth`` hint as REST auth headers — one recipe, both legs.
+
+    The in-process leg (``_run_rest_request``) and the e2e leg
+    (``client._deliver_e2e_rest``, fed the hint by ``RestE2EDispatcher``) send
+    the identical pair. Hand-copying it per leg is how the two silently diverge,
+    and a divergence here does not fail loudly — it false-floors the grade,
+    because a leg that stops reaching the redacted raise still reports no
+    disclosure.
+    """
+    return {"x-adcp-auth": hint["token"], "x-adcp-tenant": hint["tenant"]}
+
+
+def _discard_invalid_auth_hint(kwargs: dict[str, Any]) -> None:
+    """Drop the transport-blind ``_invalid_auth`` hint on the A2A and MCP legs.
+
+    The BDD invalid-token scenario forwards the bad token uniformly as
+    ``_invalid_auth`` (``_dispatch_full_create``) so no step carries
+    transport-specific knowledge. A2A and MCP need no special realization: the
+    bad token already rides the dispatched identity's ``auth_token`` and the real
+    auth chain (header → token → DB lookup → ``ResolvedIdentity``) runs against
+    it, so both simply discard the hint. REST is the only transport that realizes
+    it specially — the in-process leg routes the bad token through the real
+    auth dep as headers (``_run_rest_request``) because its dep override would
+    otherwise inject a resolved identity and skip the raise, and the e2e leg
+    CONSUMES the hint into real headers (``RestE2EDispatcher``, not this discard)
+    because the identity's tenant dict carries only the derived ``pub-<uuid>``
+    subdomain, not the bare host-routed tenant id under test.
+    """
+    kwargs.pop("_invalid_auth", None)
 
 
 # The ONE identity-argument omission sentinel for the whole dispatch core
@@ -465,6 +519,8 @@ class TransportResult:
         non-vacuous without per-scenario duplication. This is the single
         harness-provided way to verify an error on the wire — step definitions
         must not hand-roll envelope parsing.
+
+        Args:
         """
         from tests.helpers import assert_envelope_shape
 

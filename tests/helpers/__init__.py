@@ -71,6 +71,7 @@ _LAZY_EXPORTS: dict[str, str] = {
     "assert_backoff_schedule": "tests.helpers.backoff_assertions",
     "assert_envelope_shape": "tests.helpers.envelope_assertions",
     "assert_no_raw_validation_leak": "tests.helpers.envelope_assertions",
+    "assert_no_tenant_disclosure": "tests.helpers.envelope_assertions",
     "assert_delivered_unsigned": "tests.helpers.hmac_assertions",
     "assert_signature_verifies_over_wire_body": "tests.helpers.hmac_assertions",
     "create_minimal_product": "tests.helpers.adcp_factories",
@@ -118,6 +119,7 @@ __all__ = [
     # Envelope assertions
     "assert_envelope_shape",
     "assert_no_raw_validation_leak",
+    "assert_no_tenant_disclosure",
     # HMAC signature assertions
     "SIGNATURE_HEADER",
     "TIMESTAMP_HEADER",

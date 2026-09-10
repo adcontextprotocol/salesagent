@@ -139,7 +139,10 @@ def _iter_step_modules() -> list[tuple[str, ast.Module]]:
     for py_file in sorted(_STEPS_DIR.rglob("*.py")):
         if py_file.name.startswith("__"):
             continue
-        rel = str(py_file.relative_to(_TESTS_ROOT))
+        # as_posix(), not str(): on Windows str() yields backslash keys that match no
+        # allowlist entry, so every allowlisted site reports as BOTH a new violation and
+        # a stale entry. The sibling scanner below already spells it this way.
+        rel = py_file.relative_to(_TESTS_ROOT).as_posix()
         out.append((rel, ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))))
     return out
 

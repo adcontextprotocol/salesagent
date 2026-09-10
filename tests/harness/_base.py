@@ -28,6 +28,12 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from tests.harness.transport import (
+    InvalidAuthHint,
+    _discard_invalid_auth_hint,
+    _invalid_auth_headers,
+)
+
 # The MCP transport boots the real FastMCP app lifespan, which starts the
 # background schedulers. Those run a batch immediately on the *real* wall clock
 # and rewrite media-buy status rows — silently mutating data a test just seeded
@@ -760,6 +766,12 @@ class BaseTestEnv:
 
         self._commit_factory_data()
 
+        # A2A realizes the transport-blind invalid-token contract by running the
+        # real auth chain against the dispatched identity's bad token, so the
+        # uniformly-forwarded ``_invalid_auth`` hint is discarded here (shared with
+        # the MCP leg; see ``_discard_invalid_auth_hint`` for the full rationale).
+        _discard_invalid_auth_hint(kwargs)
+
         # Pop identity — used for the handler mock, not sent as a skill parameter.
         identity = kwargs.pop("identity", NO_IDENTITY_OVERRIDE)
         # Pop the protocol-level push config — it belongs on SendMessageRequest.
@@ -926,6 +938,12 @@ class BaseTestEnv:
 
         self._commit_factory_data()
 
+        # MCP realizes the transport-blind invalid-token contract by running the
+        # real header→token→DB chain against the dispatched identity's bad token, so
+        # the uniformly-forwarded ``_invalid_auth`` hint is discarded here (shared
+        # with the A2A leg; see ``_discard_invalid_auth_hint`` for the full rationale).
+        _discard_invalid_auth_hint(kwargs)
+
         # Pop identity — used for the auth mock, not sent as a tool argument.
         identity = kwargs.pop("identity", NO_IDENTITY_OVERRIDE)
         mcp_identity = self.identity_for(Transport.MCP) if identity is NO_IDENTITY_OVERRIDE else identity
@@ -1044,8 +1062,19 @@ class BaseTestEnv:
         - identity is ResolvedIdentity → dep returns it (valid token)
         - identity absent → uses default self.identity_for(Transport.REST)
         """
+        invalid_auth: InvalidAuthHint | None = kwargs.pop("_invalid_auth", None)
         client, identity = self._prepare_rest_request(kwargs)
         body = self.build_rest_body(**kwargs)
+        if invalid_auth is not None:
+            # Invalid-token path. In-process REST authenticates by dependency
+            # override, which would inject a resolved identity and skip the raise
+            # entirely. Instead run the REAL auth dependency and carry the bad
+            # token plus a tenant hint as headers, so resolve_identity detects the
+            # tenant and rejects — the same production 401 the A2A/MCP transports
+            # reach against the injected identity's token. _prepare_rest_request
+            # already installed the identity override; drop it so the real dep runs.
+            self._configure_rest_auth_override(None)
+            return client.post(endpoint, json=body, headers=_invalid_auth_headers(invalid_auth))
         return client.post(endpoint, json=body)
 
     def _prepare_rest_request(self, kwargs: dict[str, Any]) -> tuple[Any, Any]:
